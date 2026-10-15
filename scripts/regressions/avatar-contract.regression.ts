@@ -1,8 +1,8 @@
 /**
  * The shared contract of the 2D and 3D avatar agents:
  *   - every sprite label the Engine suggests maps to one of the six VRM emotions, and free-form labels
- *     (Game Master lines, custom sprite names) map through word stems or not at all;
- *   - sprite labels bind to emotions with a source and a confidence;
+ *     (Game Master lines, custom sprite names) map through word stems, a feeling's name, or not at all;
+ *   - sprite labels bind to emotions with a source and a confidence, and to the 23 extra feelings by whole words;
  *   - avatar.json and its stored paths stay inside the owner's folder;
  *   - the 2D agent's generation prompts merge like other built-in template collections;
  *   - the contract stubs are inert: no importer claims a file and no avatar route is registered;
@@ -25,15 +25,18 @@ const {
   AVATAR_FEELING_EMOTIONS,
   AVATAR_PROMPT_TEMPLATE_IDS,
   AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY,
+  SPRITE_EXPRESSION_AVATAR_EMOTIONS,
   SPRITE_EXPRESSION_LABELS,
   avatarConfigSchema,
   avatarConfigUpdateSchema,
   avatarModelFileUrl,
   createAvatarConfig,
   detectSpriteEmotionBindings,
+  detectSpriteFeelingBindings,
   isAvatarExtraFeeling,
   isAvatarFilePath,
   mapSpriteExpressionToAvatarEmotion,
+  mapSpriteExpressionToAvatarFeeling,
   mergeBuiltInAgentSettings,
   replaceBuiltInAgentDefinitions,
 } = await import("../../packages/shared/src/index.js");
@@ -249,5 +252,106 @@ for (const [emotion, ...feelings] of AVATAR_FACE_GROUPS) {
 assert.equal(isAvatarExtraFeeling("fear"), true);
 assert.equal(isAvatarExtraFeeling("joy"), false, "a main face is not an extra feeling");
 assert.equal(isAvatarExtraFeeling("toString"), false);
+
+// ── Sprite labels → feelings ──
+for (const label of SPRITE_EXPRESSION_LABELS) {
+  assert.deepEqual(
+    mapSpriteExpressionToAvatarEmotion(label),
+    SPRITE_EXPRESSION_AVATAR_EMOTIONS[label],
+    `the suggested label ${label} keeps its emotion`,
+  );
+}
+for (const feeling of AVATAR_FEELINGS) {
+  assert.equal(
+    mapSpriteExpressionToAvatarEmotion(feeling)?.emotion,
+    AVATAR_FEELING_EMOTIONS[feeling].emotion,
+    `a sprite named ${feeling} shows its feeling's emotion, never neutral by default`,
+  );
+}
+assert.deepEqual(mapSpriteExpressionToAvatarEmotion("gratitude"), { emotion: "happy", weight: 0.7 });
+assert.deepEqual(mapSpriteExpressionToAvatarEmotion("smug"), { emotion: "happy", weight: 0.6 }, "a feeling's word");
+for (const feeling of AVATAR_EXTRA_FEELINGS) assert.equal(mapSpriteExpressionToAvatarFeeling(feeling), feeling);
+const feelingCases: Array<[string, string | null]> = [
+  ["Fear_2", "fear"],
+  ["full_Scared", "fear"],
+  ["grossed out-2", "disgust"],
+  ["Thumbs Up", "approval"],
+  ["disapproving", "disapproval"],
+  ["approving", "approval"],
+  ["fear eyes", "fear"],
+  ["in_love", "love"],
+  // Judgement calls adopted for #7691: close words for a feeling.
+  ["thinking", "curiosity"],
+  ["crying", "grief"],
+  ["smirk", "amusement"],
+  ["smug", "pride"],
+  ["ashamed", "remorse"],
+  // Whole words only: a feeling inside another word is not that feeling.
+  ["scarecrow", null],
+  ["careful", null],
+  ["glove", null],
+  ["fearless", null],
+  ["hopeless", null],
+  // The six main faces and labels with no feeling of their own.
+  ["happy", null],
+  ["joy", null],
+  ["determined", null],
+  ["hurt", null],
+  ["", null],
+];
+for (const [label, feeling] of feelingCases) {
+  assert.equal(mapSpriteExpressionToAvatarFeeling(label), feeling, `${JSON.stringify(label)} names ${feeling}`);
+}
+assert.equal(mapSpriteExpressionToAvatarFeeling(undefined), null);
+assert.deepEqual(
+  detectSpriteFeelingBindings(["scared", "happy", "fear", "blush", "embarrassed", "smile"]),
+  {
+    fear: { target: "fear", source: "sprite-label", confidence: 1 },
+    embarrassment: { target: "blush", source: "sprite-label", confidence: 0.8 },
+  },
+  "a feeling's own name beats another word for it; a tie keeps the first; only feelings found are written",
+);
+assert.deepEqual(detectSpriteFeelingBindings(["neutral", "happy"]), {}, "no feeling, no binding");
+
+// avatar.json with faces for extra feelings: no other key and no unknown feeling is accepted.
+const withFeelings = {
+  ...config,
+  activeKind: "pngtuber",
+  kinds: {
+    pngtuber: {
+      layers: {
+        happy: { base: { source: "sprite", label: "happy" } },
+        fear: { base: { source: "sprite", label: "fear" } },
+      },
+      expressionMap: { happy: { target: "happy", source: "sprite-label", confidence: 1 } },
+      feelingMap: {
+        fear: { target: "fear", source: "sprite-label", confidence: 1 },
+        amusement: { target: null, source: "user", confidence: 1 },
+      },
+      motion: { bounceOnTalk: true, bounceHeight: 0.06, blinkIntervalSeconds: 4.5 },
+      source: "sprites",
+    },
+  },
+};
+assert.ok(
+  avatarConfigSchema.safeParse(withFeelings).success,
+  "a PNGTuber setup with faces for extra feelings is valid",
+);
+const withFeelingMap = (feelingMap: unknown) => ({
+  ...withFeelings,
+  kinds: { pngtuber: { ...withFeelings.kinds.pngtuber, feelingMap } },
+});
+for (const key of ["joy", "happy", "terror"]) {
+  assert.equal(
+    avatarConfigSchema.safeParse(withFeelingMap({ [key]: { target: "fear", source: "user", confidence: 1 } })).success,
+    false,
+    `${key} is not an extra feeling`,
+  );
+}
+assert.equal(
+  avatarConfigUpdateSchema.safeParse({ kinds: { pngtuber: withFeelings.kinds.pngtuber } }).success,
+  true,
+  "a save may carry the faces for extra feelings",
+);
 
 console.log("avatar contract regression passed");

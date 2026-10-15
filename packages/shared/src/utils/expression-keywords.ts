@@ -10,7 +10,9 @@
 // scripts do not separate words. Other languages carry only words that cannot be read as something else.
 import {
   AVATAR_EMOTIONS,
+  AVATAR_FEELING_EMOTIONS,
   SPRITE_EXPRESSION_AVATAR_EMOTIONS,
+  mapSpriteExpressionToAvatarFeeling,
   type AvatarClassification,
   type AvatarEmotion,
   type SpriteExpressionLabel,
@@ -578,11 +580,13 @@ export function inferExpressionCandidates(text: string): string[] {
 }
 
 /** The avatar classifier's instant tier: each matching group adds its label's emotion, and whatever the
- *  matches leave of 1 stays neutral, so one strong word is confident and one mild word is not. */
+ *  matches leave of 1 stays neutral, so one strong word is confident and one mild word is not. The feeling is
+ *  the first matching group's that belongs to the winning emotion (`laughs` → amusement). */
 export function classifyExpressionKeywords(text: string): AvatarClassification {
   const scores = Object.fromEntries(AVATAR_EMOTIONS.map((emotion) => [emotion, 0])) as Record<AvatarEmotion, number>;
   let total = 0;
-  for (const group of matchExpressionKeywordGroups(text)) {
+  const groups = matchExpressionKeywordGroups(text);
+  for (const group of groups) {
     const { emotion, weight } = SPRITE_EXPRESSION_AVATAR_EMOTIONS[group.label];
     scores[emotion] += weight;
     total += weight;
@@ -592,5 +596,9 @@ export function classifyExpressionKeywords(text: string): AvatarClassification {
   scores.neutral += Math.max(0, 1 - total) / scale;
   let best: AvatarEmotion = "neutral";
   for (const emotion of AVATAR_EMOTIONS) if (scores[emotion] > scores[best]) best = emotion;
-  return { emotion: best, weight: scores[best], scores };
+  const feeling =
+    groups
+      .map((group) => mapSpriteExpressionToAvatarFeeling(group.label))
+      .find((found) => found && AVATAR_FEELING_EMOTIONS[found].emotion === best) ?? null;
+  return { emotion: best, weight: scores[best], scores, feeling };
 }

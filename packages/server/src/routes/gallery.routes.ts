@@ -1405,7 +1405,14 @@ export async function galleryRoutes(app: FastifyInstance) {
     const { chatId } = req.params;
     if (!isValidChatId(chatId)) return reply.status(400).send({ error: "Invalid chatId" });
     const input = z
-      .object({ description: z.string().trim().max(2_000).optional(), debugMode: z.boolean().optional() })
+      .object({
+        description: z.string().trim().max(2_000).optional(),
+        debugMode: z.boolean().optional(),
+        /** Return the written prompt for review instead of making the clip. */
+        previewOnly: z.boolean().optional(),
+        /** The prompt as the user reviewed it; skips writing a new one. */
+        promptOverride: z.string().trim().max(20_000).optional(),
+      })
       .parse(req.body ?? {});
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
@@ -1429,23 +1436,35 @@ export async function galleryRoutes(app: FastifyInstance) {
       }
       // The same recent messages Illustrator reads (its context size), the latest reply last, as /illustrate does.
       const exchange = formatRecentVideoContext(messages, { count: await loadIllustratorContextSize(app.db) });
-      const prompt = await writeRoleplayClipPrompt({
-        chat,
-        meta,
-        videoConn: setup.videoConn,
-        videoRuntime: setup.runtime,
-        durationSeconds: setup.durationSeconds,
-        aspectRatio: setup.aspectRatio,
-        sourceExchange: [input.description ? `Requested clip: ${input.description}` : "", exchange]
-          .filter(Boolean)
-          .join("\n\n"),
-        referenceImagePrompt: "",
-        // /video never animates a picture here (that path asks for one first), so the director describes the scene.
-        withoutPicture: true,
-        characterNames: await collectChatSceneCharacterNames(chat),
-        debugMode: input.debugMode,
-        signal: createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Roleplay video"),
-      });
+      const maxPromptLength = setup.runtime.promptLimits.finalPrompt;
+      const prompt = input.promptOverride
+        ? resolveSceneVideoPrompt({ generatedPrompt: "", promptOverride: input.promptOverride, maxPromptLength })
+        : await writeRoleplayClipPrompt({
+            chat,
+            meta,
+            videoConn: setup.videoConn,
+            videoRuntime: setup.runtime,
+            durationSeconds: setup.durationSeconds,
+            aspectRatio: setup.aspectRatio,
+            sourceExchange: [input.description ? `Requested clip: ${input.description}` : "", exchange]
+              .filter(Boolean)
+              .join("\n\n"),
+            referenceImagePrompt: "",
+            // /video never animates a picture here (that path asks for one first), so the director describes the scene.
+            withoutPicture: true,
+            characterNames: await collectChatSceneCharacterNames(chat),
+            debugMode: input.debugMode,
+            signal: createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Roleplay video"),
+          });
+      if (input.previewOnly) {
+        return {
+          prompt,
+          durationSeconds: setup.durationSeconds,
+          aspectRatio: setup.aspectRatio,
+          resolution: setup.runtime.resolution ?? null,
+          maxPromptLength,
+        };
+      }
       // The Avatar first frame starts from whoever the description names first (the persona too), else from the
       // chat's first character with a usable avatar or sprite.
       let avatar: { base64: string; name: string } | null = null;
@@ -1468,7 +1487,16 @@ export async function galleryRoutes(app: FastifyInstance) {
         const persona =
           chat.personaId && personaIds.includes(chat.personaId) ? await characters.getPersona(chat.personaId) : null;
         const description = input.description?.toLowerCase() ?? "";
-        const named = (name: string) => (name ? description.indexOf(name.toLowerCase()) : -1);
+        // Whole words only, so "Bram" doesn't match "Bramble" and "Al" doesn't match "also".
+        const named = (name: string) =>
+          name
+            ? description.search(
+                new RegExp(
+                  `(?<![\\p{L}\\p{N}])${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\p{L}\\p{N}])`,
+                  "u",
+                ),
+              )
+            : -1;
         const namedCandidates = [
           ...candidates,
           ...(persona
@@ -1520,7 +1548,11 @@ export async function galleryRoutes(app: FastifyInstance) {
       }
       return { video, messageId };
     } catch (err) {
-      if (err instanceof ChatVideoError || err instanceof GallerySceneVideoRequestError) {
+      if (
+        err instanceof ChatVideoError ||
+        err instanceof GallerySceneVideoRequestError ||
+        err instanceof SceneVideoPromptReviewError
+      ) {
         return reply.status(err.statusCode).send({ error: err.message });
       }
       logger.warn(err, "[gallery/roleplay-video] Roleplay video failed for chat %s", chatId);

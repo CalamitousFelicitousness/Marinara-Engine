@@ -4,9 +4,9 @@ This guide explains how Marinara Engine turns a scene illustration into a short 
 
 ## What scene video does
 
-A scene video takes an existing gallery image and animates it into a short MP4 clip. The still image becomes the first frame, and the AI adds motion. Scene videos work in **Roleplay** and **Game Mode** chats. Conversation chats send video messages instead; see [Video messages](../conversation/selfies.md#video-messages).
+A scene video is a short MP4 clip of the scene. It can animate a gallery picture, with the picture as the first frame and the AI adding motion, or, in **Roleplay**, it can be made from the story alone. Scene videos work in **Roleplay** and **Game Mode** chats. Conversation chats send video messages instead; see [Video messages](../conversation/selfies.md#video-messages).
 
-You always need a picture first. Scene video generation cannot run from text alone. You must generate or upload a gallery image before you can animate it.
+**Game Mode** and **Animate illustration** always start from a picture, so generate or upload one first. In **Roleplay**, `/video` and the Gallery's **Video** button follow Illustrator's **First frame** setting, and with no First frame chosen they need no picture at all.
 
 Scene videos use a separate connection type called **Video Generation**. They are not the same as normal image generation. The finished clips are saved with the chat and shown in the Gallery, where you can pin, download, or view them.
 
@@ -128,7 +128,7 @@ Both **Roleplay** and **Game Mode** chats can make scene videos from the **Galle
 
 The Gallery has an **Images** tab and a **Videos** tab, each with a count. Still pictures live under **Images**. Finished clips live under **Videos**.
 
-In **Roleplay**, **Video** in the action row at the top of the Gallery makes a clip of the **latest reply**, the same as typing `/video`. What it starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the latest reply (drawn first, then animated), the character's avatar or sprite, or no picture at all. Add a description after `/video` to say what the clip should show. The AI writing the clip reads as many recent messages as Illustrator does for a picture (its **Agent Budget** context size), so it shows what is happening now. When the clip starts from no picture or an avatar, it describes the scene itself; its instructions are **Roleplay Clip Director** under **Settings**, **Generations**, **Video Generation Prompt Overrides**.
+In **Roleplay**, **Video** in the action row at the top of the Gallery makes a clip of the **latest reply**, the same as typing `/video`. What it starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the latest reply (drawn first, then animated), the character's avatar or sprite, or no picture at all. With no First frame chosen, no picture is drawn and the clip is made from the story alone. When **Expose media prompts before sending** is on, you can review and edit the clip's prompt first. Add a description after `/video` to say what the clip should show. The AI writing the clip reads as many recent messages as Illustrator does for a picture (its **Agent Budget** context size), so it shows what is happening now. When the clip starts from no picture or an avatar, it describes the scene itself; its instructions are **Roleplay Clip Director** under **Settings**, **Generations**, **Video Generation Prompt Overrides**.
 
 In **Game Mode**, **Video** animates the newest picture:
 
@@ -150,7 +150,7 @@ The same **Review Video Prompt** window appears for **Animate illustration** whe
 
 Under the **Videos** tab, each clip plays inline and shows its length and model name. You can pin a clip with **Pin video to chat**, or save it with **Download scene video**. If there are no clips yet, the tab reads **No videos yet**.
 
-If you try to make a video with no picture in the chat, Marinara shows this message: "Add or generate a gallery image before generating a scene video." Generate or upload a picture first, then try again.
+If you try to animate a picture in Game Mode with no picture in the chat, Marinara shows this message: "Add or generate a gallery image before generating a scene video." Generate or upload a picture first, then try again.
 
 ## Game Mode scene video
 

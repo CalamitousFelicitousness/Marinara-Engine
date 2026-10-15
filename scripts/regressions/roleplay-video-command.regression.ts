@@ -112,6 +112,29 @@ try {
   assert.equal(h.lastComfyInputs()?.image, personaPng.toString("base64"), "the persona, named first");
   assert.equal((await roleplayVideo(pair.id, "Bram hides behind James")).statusCode, 200);
   assert.equal(h.lastComfyInputs()?.image, bramPng.toString("base64"), "the character, named first");
+  // Names match whole words only: "brambles" doesn't name Bram, so James is the first one named.
+  assert.equal((await roleplayVideo(pair.id, "The brambles part as James steps through")).statusCode, 200);
+  assert.equal(h.lastComfyInputs()?.image, personaPng.toString("base64"), "a name inside a word doesn't count");
+
+  // Prompt review: a preview returns the written prompt and makes no clip; the reviewed prompt is the one sent.
+  const clipsBefore = requests.comfy.length;
+  const preview = await h.app.inject({
+    method: "POST",
+    url: `/api/gallery/${pair.id}/roleplay-video`,
+    payload: { description: "Bottles explode off the shelf", previewOnly: true },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  const previewBody = preview.json() as { prompt?: string; durationSeconds?: number; maxPromptLength?: unknown };
+  assert.match(previewBody.prompt ?? "", /Bottles burst across the lab floor/u);
+  assert.equal(typeof previewBody.durationSeconds, "number");
+  assert.equal(requests.comfy.length, clipsBefore, "a preview makes no clip");
+  const reviewed = await h.app.inject({
+    method: "POST",
+    url: `/api/gallery/${pair.id}/roleplay-video`,
+    payload: { promptOverride: "A reviewed shot of Bram ducking" },
+  });
+  assert.equal(reviewed.statusCode, 200, reviewed.body);
+  assert.match(h.lastComfyInputs()?.text ?? "", /^A reviewed shot of Bram ducking/u, "the reviewed prompt is sent");
 
   // A new Illustrator picture is drawn by /illustrate first; the route says so instead of drawing it.
   await h.saveChatSettings(pair.id, { sceneVideoFirstFrame: "picture" });

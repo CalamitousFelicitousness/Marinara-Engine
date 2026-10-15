@@ -1481,6 +1481,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const [conversationSelfieReviewSubmitting, setConversationSelfieReviewSubmitting] = useState(false);
   const roleplaySceneVideoGeneratingRef = useRef(false);
   const conversationVideoGeneratingRef = useRef(false);
+  const roleplayVideoGeneratingRef = useRef(false);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1653,32 +1654,92 @@ const LocalChatArea = memo(function LocalChatArea({
   const handleRoleplayVideo = useCallback(
     async (description?: string) => {
       if (!activeChatId || chatMode !== "roleplay") return;
-      const result = await api.post<{ needsPicture?: boolean }>(
-        `/gallery/${activeChatId}/roleplay-video`,
-        { ...(description ? { description } : {}), debugMode: useUIStore.getState().debugMode },
-        { signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS) },
-      );
-      if (result?.needsPicture) {
-        const drawn = await retryAgents(activeChatId, ["illustrator"], {
-          illustratorRetryTargets: ["illustration"],
-          ...(description
-            ? {
-                illustratorPromptReviewOverride: {
-                  prompt: description,
-                  subjectOnly: true,
-                  resultData: { prompt: description, characters: [] },
-                },
-              }
-            : {}),
-        });
-        if (drawn) await handleGenerateRoleplaySceneVideo();
-        return;
+      // One at a time, through drawing a picture first: a second request would pay for a second clip.
+      if (roleplayVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
+      let reviewOpened = false;
+      try {
+        roleplayVideoGeneratingRef.current = true;
+        const payload: Record<string, unknown> = {
+          ...(description ? { description } : {}),
+          debugMode: useUIStore.getState().debugMode,
+        };
+        const url = `/gallery/${activeChatId}/roleplay-video`;
+        type RoleplayVideoReply = { needsPicture?: boolean } & Partial<RoleplaySceneVideoPromptPreview>;
+        let needsPicture = false;
+        if (useUIStore.getState().reviewImagePromptsBeforeSend) {
+          let preview: RoleplayVideoReply | undefined;
+          try {
+            preview = await api.post<RoleplayVideoReply>(
+              url,
+              { ...payload, previewOnly: true },
+              { signal: AbortSignal.timeout(MEDIA_PROMPT_PREVIEW_TIMEOUT_MS) },
+            );
+          } catch (error) {
+            if (!isMediaPromptPreviewTimeout(error)) throw error;
+            toast.error(localizeUi("ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault"));
+          }
+          needsPicture = preview?.needsPicture === true;
+          if (preview?.prompt && !needsPicture) {
+            const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
+              (value): value is string => Boolean(value),
+            );
+            reviewOpened = true;
+            const overrides = await openRoleplayVideoPromptReview([
+              {
+                id: "roleplay-video",
+                kind: "video",
+                title: "Roleplay video",
+                prompt: preview.prompt,
+                details: details.join(" | "),
+                maxLength: preview.maxPromptLength ?? undefined,
+              },
+            ]);
+            const reviewedPrompt = overrides?.[0]?.prompt.trim();
+            if (!reviewedPrompt) return;
+            payload.promptOverride = reviewedPrompt;
+          }
+        }
+        if (!needsPicture) {
+          const result = await api.post<RoleplayVideoReply>(url, payload, {
+            signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
+          });
+          needsPicture = result?.needsPicture === true;
+        }
+        if (needsPicture) {
+          const drawn = await retryAgents(activeChatId, ["illustrator"], {
+            illustratorRetryTargets: ["illustration"],
+            ...(description
+              ? {
+                  illustratorPromptReviewOverride: {
+                    prompt: description,
+                    subjectOnly: true,
+                    resultData: { prompt: description, characters: [] },
+                  },
+                }
+              : {}),
+          });
+          if (drawn) await handleGenerateRoleplaySceneVideo();
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
+        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+        toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
+      } finally {
+        // Closing the review is left to the call that opened it.
+        if (reviewOpened) closeRoleplayVideoPromptReview(null);
+        roleplayVideoGeneratingRef.current = false;
       }
-      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
-      void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
-      toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
     },
-    [activeChatId, chatMode, handleGenerateRoleplaySceneVideo, localizeUi, queryClient, retryAgents],
+    [
+      activeChatId,
+      chatMode,
+      closeRoleplayVideoPromptReview,
+      handleGenerateRoleplaySceneVideo,
+      localizeUi,
+      openRoleplayVideoPromptReview,
+      queryClient,
+      retryAgents,
+    ],
   );
 
   /** A Conversation character sends a video message, or animates a gallery picture under the newest reply. */
@@ -4034,16 +4095,9 @@ const LocalChatArea = memo(function LocalChatArea({
           onIllustrate={handleIllustrate}
           onIllustrateWithAgent={handleIllustrateWithAgent}
           onGenerateBackground={handleGenerateRoleplayBackground}
-          // The Gallery's Video button makes a clip of the latest reply, like /video.
-          onGenerateVideo={() =>
-            void Promise.resolve(handleRoleplayVideo()).catch((error: unknown) =>
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : localizeUi("ui.game.gamesurfacecomponent.sceneVideoGenerationFailed"),
-              ),
-            )
-          }
+          // The Gallery's Video button makes a clip of the latest reply, like /video. The Gallery waits for it (its
+          // busy state blocks a second click) and shows any error.
+          onGenerateVideo={() => handleRoleplayVideo()}
           onRoleplayVideo={handleRoleplayVideo}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}
           onWizardFinish={() => {

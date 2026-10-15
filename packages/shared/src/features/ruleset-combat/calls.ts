@@ -18,6 +18,9 @@ import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
 /** The most a fight holds once anybody has been called into it. */
 export const RULESET_CALLED_FIGHT_MAX = 40;
 
+/** The most one call brings (1.350). */
+export const RULESET_CALL_MAX = 32;
+
 /**
  * Calls `count` of the action's creatures into the fight, beside or among `cells`: the ids of those
  * who came. None come once the fight holds as many as it may.
@@ -34,7 +37,8 @@ export function rulesetCallCreatures(
   const calls = action.calls;
   if (!calls) return [];
   const room = Math.max(0, RULESET_CALLED_FIGHT_MAX - state.combatants.length);
-  const coming = Math.min(Math.max(0, Math.floor(count)), room, 8);
+  // As many as Conjure Animals calls at 9th level (1.350): eight, four times over.
+  const coming = Math.min(Math.max(0, Math.floor(count)), room, RULESET_CALL_MAX);
   if (coming === 0) return [];
   const same = state.combatants.filter((one) => one.calledBy && one.name.startsWith(calls.name)).length;
   const entries = Array.from({ length: coming }, (_, index) => {

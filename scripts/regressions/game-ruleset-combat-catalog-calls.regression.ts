@@ -347,6 +347,37 @@ try {
     assert.equal(wolves(undefined), 1, "its own 3rd-level slot");
     assert.equal(wolves("slots_5"), 2);
     assert.equal(wolves("slots_7"), 3);
+    // Eight at a time, picked among options read from the bestiary: more than eight come (1.350).
+    const pack = conjure({
+      options: [
+        { creature: "creatures/cinder-hound", count: { flat: 2 } },
+        { from: { catalog: "creatures" }, count: { flat: 8 } },
+      ],
+      timesPerSteps: 2,
+    });
+    const packed = parsed(
+      document([{ ...pack, mechanics: { ...pack.mechanics, cost: [{ pool: "slots_3", amount: 1 }] } }]),
+    );
+    const many = (payWith: string) => {
+      const state = fight(packed, {
+        level: 17,
+        spellcasting_ability: "wis",
+        slots_max_3: 3,
+        slots_max_5: 2,
+        slots_max_7: 1,
+      });
+      const option = rulesetCombatOptions(packed, state, "druid").find((one) => one.label === "Conjure Animals")!;
+      const taken = step(packed, state, {
+        actorId: "druid",
+        optionId: option.id,
+        targetIds: [],
+        mode: option.modes!.find((one) => one.id.endsWith("-dire-wolf"))!.id,
+        payWith,
+      });
+      return of(taken.events, "called")[0]?.ids.length;
+    };
+    assert.equal(many("slots_5"), 16);
+    assert.equal(many("slots_7"), 24);
   }
 
   // ── A bestiary creature or a stat block beside the party, built as an opponent is ──

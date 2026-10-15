@@ -3317,7 +3317,7 @@ const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
       test.tags !== undefined ||
       test.upToSize !== undefined ||
       test.atLeastSize !== undefined,
-    { message: "A target test names types, tags, sizes or some of them" },
+    { message: "A target test names types, tags or both, or a size" },
   );
 
 /** One more amount on the same blow, rolled and typed on its own: "and 2d6 fire", "and 1d6 poison

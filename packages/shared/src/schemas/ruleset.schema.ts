@@ -4180,6 +4180,17 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so
  *  the vocabulary is closed and strict, and a typo is refused now rather than ignored then. */
+/** The entries of a catalog whose declared filter reads this (Capability API 1.361): a word, a
+ *  number, or one of a list of words. 5e's wizard evocation spells, `{"filter": "school", "equals":
+ *  "evocation"}`, and its cantrips, `{"filter": "level", "equals": 0}`. */
+export interface RulesetCatalogWhere {
+  filter: string;
+  equals: string | number;
+}
+export const catalogWhereSchema: z.ZodType<RulesetCatalogWhere, z.ZodTypeDef, unknown> = z
+  .object({ filter: sheetId, equals: z.union([z.string().trim().min(1).max(80), z.number().finite()]) })
+  .strict();
+
 /** How an entry changes another as it is used (Capability API 1.253): 5e's Metamagic. Typed by hand,
  *  as written out its inferred type is too long for the schema around it to emit. */
 export interface RulesetCatalogAlters {
@@ -4193,6 +4204,9 @@ export interface RulesetCatalogAlters {
   drops?: string[];
   twins?: true;
   joins?: true;
+  where?: RulesetCatalogWhere;
+  sparesWhole?: true;
+  sparesByLevel?: true;
 }
 
 const catalogAltersSchema: z.ZodType<RulesetCatalogAlters, z.ZodTypeDef, unknown> = z
@@ -4220,8 +4234,23 @@ const catalogAltersSchema: z.ZodType<RulesetCatalogAlters, z.ZodTypeDef, unknown
     twins: z.literal(true).optional(),
     /** May be chosen beside another one: Empowered. */
     joins: z.literal(true).optional(),
+    /** Only entries of its catalogs whose filter reads this (Capability API 1.361): Sculpt Spells on
+     *  evocation spells. */
+    where: catalogWhereSchema.optional(),
+    /** Those it spares take nothing where a success would leave them half (Capability API 1.361):
+     *  Sculpt Spells. */
+    sparesWhole: z.literal(true).optional(),
+    /** It spares as many more as the level the entry is paid at (Capability API 1.361): Sculpt
+     *  Spells' 1 + the spell's level. */
+    sparesByLevel: z.literal(true).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((alters, ctx) => {
+    for (const key of ["sparesWhole", "sparesByLevel"] as const) {
+      if (alters[key] && alters.spares === undefined)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `"${key}" changes "spares", so it has one` });
+    }
+  });
 
 /** Who an entry may be pointed at or catch, by what they are (Capability API 1.168). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
@@ -4846,8 +4875,19 @@ const catalogMechanicsObject = z
       .array(
         z
           .object({
-            entry: catalogEntryRef,
+            entry: catalogEntryRef.optional(),
+            /** In place of `entry`, every entry of these catalogs (Capability API 1.361), only those
+             *  `where` reads so: Empowered Evocation's wizard evocation spells. */
+            catalogs: z.array(sheetId).min(1).max(8).optional(),
+            where: catalogWhereSchema.optional(),
             damageAdd: rulesetValueRefSchema.optional(),
+            /** Added to one damage roll of each use (Capability API 1.361): every target of a roll
+             *  they all take, the first of an entry that rolls for each. Empowered Evocation's
+             *  Intelligence modifier. */
+            damageOnce: rulesetValueRefSchema.optional(),
+            /** A save that `negates` it leaves half its damage instead, and nothing else it does
+             *  (Capability API 1.361): Potent Cantrip. */
+            halfOnSave: z.literal(true).optional(),
             /** More damage of its own type on a hit (Capability API 1.306), at least `atLeast`:
              *  Lifedrinker's necrotic equal to the Charisma modifier, minimum 1. */
             damagePlus: z
@@ -4870,11 +4910,23 @@ const catalogMechanicsObject = z
             (amend) =>
               amend.damageAdd !== undefined ||
               amend.damagePlus !== undefined ||
+              amend.damageOnce !== undefined ||
+              amend.halfOnSave !== undefined ||
               amend.range !== undefined ||
               amend.push !== undefined ||
               amend.strikes !== undefined,
-            { message: 'An amend changes something: "damageAdd", "damagePlus", "range", "push" or "strikes"' },
+            {
+              message:
+                'An amend changes something: "damageAdd", "damagePlus", "damageOnce", "halfOnSave", "range", "push" or "strikes"',
+            },
           )
+          .refine((amend) => (amend.entry === undefined) !== (amend.catalogs === undefined), {
+            message: 'An amend names one "entry" or "catalogs" of them',
+          })
+          .refine((amend) => amend.where === undefined || amend.catalogs !== undefined, {
+            message: '"where" narrows "catalogs"',
+            path: ["where"],
+          })
           .refine((amend) => !amend.pushOptional || amend.push !== undefined, {
             message: '"pushOptional" offers its "push" or none, so it has one',
             path: ["pushOptional"],
@@ -17348,8 +17400,12 @@ export function rulesetCatalogEntryIssues(
       const alters = mechanics.alters;
       const path = [index, "mechanics", "alters"];
       alters.catalogs.forEach((catalogId, catalogIndex) => {
-        if (!definition.catalogs?.some((catalog) => catalog.id === catalogId)) {
+        const catalog = definition.catalogs?.find((one) => one.id === catalogId);
+        if (!catalog) {
           add([...path, "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+        } else if (alters.where && !catalog.filters?.some((one) => one.id === alters.where!.filter)) {
+          // A filter its catalogs declare (1.361).
+          add([...path, "where", "filter"], `Catalog "${catalogId}" has no filter "${alters.where.filter}"`);
         }
       });
       for (const key of ["spares", "rerolls"] as const) {
@@ -17447,6 +17503,23 @@ export function rulesetCatalogEntryIssues(
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
     }
     mechanics?.amends?.forEach((amend, amendIndex) => {
+      if ((amend.range !== undefined || amend.push !== undefined) && !definition.combat?.distance)
+        add(
+          [index, "mechanics", "amends", amendIndex],
+          'A range or a push is measured in cells, so the combat block declares "distance" too',
+        );
+      // Catalogs by name, and a filter they declare (1.361).
+      amend.catalogs?.forEach((id, catalogIndex) => {
+        const catalog = definition.catalogs?.find((one) => one.id === id);
+        if (!catalog)
+          add([index, "mechanics", "amends", amendIndex, "catalogs", catalogIndex], `Unknown catalog "${id}"`);
+        else if (amend.where && !catalog.filters?.some((one) => one.id === amend.where!.filter))
+          add(
+            [index, "mechanics", "amends", amendIndex, "where", "filter"],
+            `Catalog "${id}" has no filter "${amend.where.filter}"`,
+          );
+      });
+      if (!amend.entry) return;
       const catalogId = amend.entry.slice(0, amend.entry.indexOf("/"));
       const catalog = definition.catalogs?.find((one) => one.id === catalogId);
       // A catalog kept in its own file has no entries here yet: the whole ruleset's pass checks it.
@@ -17455,11 +17528,6 @@ export function rulesetCatalogEntryIssues(
         (catalog.entries && !catalog.from && !catalog.entries.some((one) => `${catalogId}/${one.id}` === amend.entry))
       )
         add([index, "mechanics", "amends", amendIndex, "entry"], `Unknown entry "${amend.entry}"`);
-      if ((amend.range !== undefined || amend.push !== undefined) && !definition.combat?.distance)
-        add(
-          [index, "mechanics", "amends", amendIndex],
-          'A range or a push is measured in cells, so the combat block declares "distance" too',
-        );
     });
     if (mechanics?.ignoresSurpriseWith) {
       const catalogId = mechanics.ignoresSurpriseWith.slice(0, mechanics.ignoresSurpriseWith.indexOf("/"));

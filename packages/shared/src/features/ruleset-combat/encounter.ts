@@ -2745,6 +2745,9 @@ function mechanicsAction(
       ...(alters.drops?.length ? { drops: [...alters.drops] } : {}),
       ...(alters.twins ? { twins: true as const } : {}),
       ...(alters.joins ? { joins: true as const } : {}),
+      ...(alters.where ? { where: { ...alters.where } } : {}),
+      ...(alters.sparesWhole ? { sparesWhole: true as const } : {}),
+      ...(alters.sparesByLevel ? { sparesByLevel: true as const } : {}),
     };
   }
   if (mechanics.usesSpentByLevel) action.usesSpentByLevel = true;
@@ -3736,14 +3739,43 @@ function sheetCombatant(
     }
     action.modes = modes;
   }
+  // An alteration of only the entries its filter reads so (1.361), named now: Sculpt Spells.
+  for (const action of actions) {
+    const alters = action.alters;
+    if (!alters?.where) continue;
+    alters.entries = [...byRef.entries()].flatMap(([ref, entry]) =>
+      alters.catalogs.includes(ref.slice(0, ref.indexOf("/"))) && rulesetCatalogWhereReads(entry, alters.where!)
+        ? [ref]
+        : [],
+    );
+  }
   // Held, what changes one named entry of theirs each time they use it (1.302): 5e's invocations.
+  // Since 1.361 also every entry of catalogs a filter reads so: Empowered Evocation, Potent Cantrip.
   const amends = held.flatMap((mechanics) => mechanics.amends ?? []);
+  const amended = (amend: (typeof amends)[number], action: RulesetCombatAction) => {
+    if (amend.entry !== undefined) return action.entry === amend.entry;
+    const ref = action.entry;
+    if (!ref || !amend.catalogs?.includes(ref.slice(0, ref.indexOf("/")))) return false;
+    if (!amend.where) return true;
+    const entry = byRef.get(ref);
+    return !!entry && rulesetCatalogWhereReads(entry, amend.where);
+  };
   const amendAll = (list: RulesetCombatAction[]) => {
     for (const amend of amends) {
       for (const action of list) {
-        if (action.entry !== amend.entry) continue;
+        if (!amended(amend, action)) continue;
         if (amend.damageAdd && action.damage) {
           action.damage.flat += Math.round(resolveRulesetValueRef(definition, build, amend.damageAdd, evaluated));
+        }
+        // To one damage roll of each use (1.361): Empowered Evocation.
+        if (amend.damageOnce && action.damage) {
+          action.damageOnce =
+            (action.damageOnce ?? 0) +
+            Math.round(resolveRulesetValueRef(definition, build, amend.damageOnce, evaluated));
+        }
+        // Half on a save that would leave nothing (1.361): Potent Cantrip.
+        if (amend.halfOnSave && action.damage && action.save?.onSuccess === "negates") {
+          action.save = { ...action.save, onSuccess: "half" };
         }
         // More of its own type on a hit (1.306): Lifedrinker.
         if (amend.damagePlus && action.damage) {
@@ -3771,7 +3803,7 @@ function sheetCombatant(
     // Pushes last, so one offered without its push carries everything else.
     for (const amend of amends) {
       for (const action of [...list]) {
-        if (action.entry !== amend.entry || action.id.endsWith(":still")) continue;
+        if (!amended(amend, action) || action.id.endsWith(":still")) continue;
         if (amend.push !== undefined && perCell !== undefined) {
           // Offered without it too where it says the push is its user's choice.
           if (amend.pushOptional) {
@@ -4423,6 +4455,19 @@ function fillShapeForms(
   }
   action.modes = modes;
   if (forms.upTo?.targetLevel) action.formCap = { filter: forms.upTo.filter, targetLevel: forms.upTo.targetLevel };
+}
+
+/** Whether a catalog entry's filter reads as a `where` says (1.361): its word, its number, or one of
+ *  its list of words, without case. */
+export function rulesetCatalogWhereReads(
+  entry: { filters?: Record<string, unknown> },
+  where: { filter: string; equals: string | number },
+): boolean {
+  const value = entry.filters?.[where.filter];
+  const wanted = String(where.equals).trim().toLowerCase();
+  const reads = (one: unknown) =>
+    (typeof one === "string" || typeof one === "number") && String(one).trim().toLowerCase() === wanted;
+  return Array.isArray(value) ? value.some(reads) : reads(value);
 }
 
 export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEncounterState {

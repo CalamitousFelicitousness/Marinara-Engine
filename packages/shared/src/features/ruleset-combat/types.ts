@@ -20,6 +20,7 @@ import type {
   RulesetTargetIs,
   RulesetInsideRoom,
   RulesetValueRef,
+  RulesetCatalogWhere,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
 import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
@@ -770,7 +771,12 @@ export interface RulesetCombatAction {
     /** Who Heightened gives disadvantage, as its user picked them (1.255). */
     heightened?: string;
     subtle?: true;
+    /** Those it spares take nothing (1.361), and as many more as the level it is paid at. */
+    sparesWhole?: true;
+    sparesByLevel?: true;
   };
+  /** Added to one damage roll of each use (1.361): Empowered Evocation. */
+  damageOnce?: number;
   /** A miss deals half its damage, and nothing else it does on a hit (1.255). */
   halfOnMiss?: true;
   /** The alterations already set on it (1.253), so they are never set twice. */
@@ -2907,6 +2913,13 @@ export interface RulesetCombatAlter {
   drops?: string[];
   twins?: true;
   joins?: true;
+  /** Only entries its filter reads so (1.361), resolved to `entries` as its holder is set up. */
+  where?: RulesetCatalogWhere;
+  entries?: string[];
+  /** Those it spares take nothing on a success that leaves half (1.361): Sculpt Spells. */
+  sparesWhole?: true;
+  /** It spares as many more as the level it is paid at (1.361). */
+  sparesByLevel?: true;
 }
 
 /** What an entry spends itself on once its holder's own roll has failed (1.249): rolled again, a

@@ -4364,7 +4364,12 @@ function applyAlteredChoice(
   // once and each of its user's side.
   const spares = choice.spares;
   if (spares !== undefined) {
-    const most = Math.max(0, ...chosen.map((alter) => alter.alters!.spares ?? 0));
+    // As many more as the level it is paid at, for one that says so (1.361): Sculpt Spells.
+    const level = rulesetPaidLevel(definition, actor, own, choice.payWith);
+    const most = Math.max(
+      0,
+      ...chosen.map((alter) => (alter.alters!.spares ?? 0) + (alter.alters!.sparesByLevel ? level : 0)),
+    );
     // None at all is a choice too: it spares nobody.
     const ids = Array.isArray(spares) ? spares : [null];
     if (
@@ -9327,17 +9332,36 @@ function resolveActionBody(
     for (const die of low) rolls[die.index] = rollRulesetDice(ctx.roll, 1, die.sides)[0]!;
     return { ...bonus, rolls };
   };
-  const damage =
+  const rollDamage =
     empowered > 0 && action.damage ? () => hitFor(true).sets[0]! : once(action.damage, action.damage?.reroll);
+  // Added to the first damage roll of the use (1.361): every target of a roll they share, the first
+  // of one rolled for each. Empowered Evocation.
+  let onceLeft = action.damageOnce ?? 0;
+  const damage =
+    rollDamage && onceLeft !== 0
+      ? () => {
+          const rolled = rollDamage();
+          if (onceLeft !== 0) {
+            rolled.flat += onceLeft;
+            rolled.total += onceLeft;
+            onceLeft = 0;
+          }
+          return rolled;
+        }
+      : rollDamage;
   // Careful (1.253): up to so many of its user and their allies it catches make its save outright,
   // the ones its user picked (1.254), else in the order it caught them. Heightened: its first target
   // rolls its first save at disadvantage.
   const picked = action.altered?.spared;
+  // As many more as the level it is paid at (1.361): Sculpt Spells' 1 + the spell's level.
+  const sparing =
+    (action.altered?.spares ?? 0) +
+    (action.altered?.sparesByLevel ? rulesetPaidLevel(ctx.definition, actor, action, payWith) : 0);
   const careful = new Set(
     action.altered?.spares
       ? targets
           .filter((target) => target.side === actor.side && (!picked || picked.includes(target.id)))
-          .slice(0, action.altered.spares)
+          .slice(0, sparing)
           .map((target) => target.id)
       : [],
   );
@@ -9752,7 +9776,9 @@ function resolveActionBody(
       rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) =>
         entry.evasion?.includes(action.save!.save),
       );
-    if (evades && saved) {
+    // Spared whole (1.361): Sculpt Spells' allies take nothing where a success leaves half.
+    const sculpted = careful.has(target.id) && !!action.altered?.sparesWhole && action.save?.onSuccess === "half";
+    if ((evades || sculpted) && saved) {
       ctx.events.push({ type: "evaded", targetId: target.id, label: action.label });
       spendUsed();
       continue;

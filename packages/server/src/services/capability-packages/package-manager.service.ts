@@ -2179,6 +2179,21 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Amends and alterations by a catalog's filter, one roll's damage, half on a save, spared whole or
+ *  by level (1.361): the evocation wizard's features. */
+function carriesEvocation361(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEvocation361(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sparesWhole === true || record.sparesByLevel === true || record.halfOnSave === true) return true;
+  if (record.damageOnce !== undefined) return true;
+  if (Array.isArray(record.catalogs) && plainRecord(record.where)) return true;
+  if (Array.isArray(record.amends) && record.amends.some((one) => Array.isArray(plainRecord(one)?.catalogs)))
+    return true;
+  return featureValues(record).some((one) => carriesEvocation361(one, depth + 1));
+}
+
 /** A damage modifier adding a value off the sheet, or lessening a fall (1.360): Deflect Missiles and
  *  Slow Fall. */
 function carriesLessenedHarm360(value: unknown, depth = 0): boolean {
@@ -5407,6 +5422,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Amends and alterations by a filter, one roll's damage, half on a save, spared whole, 1.361.
+  if (
+    !declaresApi(361) &&
+    (carriesEvocation361(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEvocation361(document)))
+  ) {
+    return "A ruleset whose entries amend or alter by a catalog's filter, add to one damage roll (damageOnce), leave half on a save (halfOnSave) or spare whole or by level requires schemaVersion 2 and capabilityApi 1.361 or newer";
+  }
   // A damage modifier off the sheet, or on a fall, 1.360.
   if (
     !declaresApi(360) &&

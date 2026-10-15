@@ -2606,6 +2606,8 @@ const ALTER_LASTS_MOST = 14400;
  *  to change. */
 export function rulesetAlterFits(alter: RulesetCombatAlter, action: RulesetCombatAction): boolean {
   if (!action.catalog || !alter.catalogs.includes(action.catalog) || action.alters || action.reaction) return false;
+  // Only the entries its filter reads so (1.361).
+  if (alter.entries && !alter.entries.includes(action.entry ?? "")) return false;
   const own = action.targets.side === "self" && !action.area;
   if (alter.spares !== undefined && !(alter.spares > 0 && action.save)) return false;
   if (alter.range && !(action.range || (alter.range.touch !== undefined && action.reach !== undefined && !own))) {
@@ -2679,11 +2681,16 @@ export function rulesetAlteredAction(
       altered.subtle = true;
     }
     if (alter.twins) out.targets = { ...out.targets, count: out.targets.count + 1 };
-    if (alter.spares) altered.spares = Math.max(altered.spares ?? 0, alter.spares);
+    if (alter.spares) {
+      altered.spares = Math.max(altered.spares ?? 0, alter.spares);
+      if (alter.sparesWhole) altered.sparesWhole = true;
+      if (alter.sparesByLevel) altered.sparesByLevel = true;
+    }
     if (alter.rerolls) altered.rerolls = Math.max(altered.rerolls ?? 0, alter.rerolls);
     if (alter.heightens) altered.heightens = true;
   }
-  if (spared && altered.spares) altered.spared = spared.slice(0, altered.spares);
+  // As many more as the level it is paid at (1.361) are counted as it resolves.
+  if (spared && altered.spares) altered.spared = altered.sparesByLevel ? [...spared] : spared.slice(0, altered.spares);
   if (heightened !== undefined && altered.heightens) altered.heightened = heightened;
   if (Object.keys(altered).length > 0) out = { ...out, altered };
   out.alteredWith = [...(action.alteredWith ?? []), ...alters.map((one) => one.id)];

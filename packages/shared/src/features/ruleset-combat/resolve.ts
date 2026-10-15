@@ -15,6 +15,8 @@ import {
   type RulesetDefinition,
   type RulesetHangsOn,
   type RulesetConditionHarms,
+  type RulesetConditionInside,
+  type RulesetInsideRoom,
 } from "../../schemas/ruleset.schema.js";
 import { evaluateRulesetSheetLive, readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
@@ -65,6 +67,8 @@ import {
   rulesetSealed,
   rulesetSealedApart,
   rulesetEngulfable,
+  rulesetSizeRank,
+  rulesetInsideCorpse,
   rulesetFitCell,
   rulesetLairRound,
   rulesetCombatFailsSave,
@@ -149,6 +153,7 @@ import {
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
+  RULESET_CLIMB_OUT_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   rulesetRelightCells,
@@ -228,7 +233,9 @@ import type {
   RulesetCombatModeLine,
   RulesetCombatAmount,
   RulesetCombatAroundHit,
+  RulesetAllHit,
   RulesetCombatApplies,
+  RulesetCombatAttackOutcome,
   RulesetCombatCell,
   RulesetReachableCell,
   RulesetCombatChoice,
@@ -789,6 +796,13 @@ function applyDamage(
     )
   )
     target.regenHeld = true;
+  // Dealt from inside it (1.352), for what lets those it holds out on blows like it.
+  if (dealt > 0 && from && from.insideOf === target.id) {
+    const turn = `${ctx.state.round}:${ctx.state.turn}`;
+    const hurt = target.insideHurt?.turn === turn ? target.insideHurt : { turn, by: {} };
+    hurt.by[from.id] = (hurt.by[from.id] ?? 0) + dealt;
+    target.insideHurt = hurt;
+  }
   return dealt;
 }
 
@@ -2061,6 +2075,18 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
     return;
   }
+  // Its holder already holding all it has room for (1.352): Whelm's one Large or two Medium.
+  const insideRoom = insideRule(ctx, condition)?.room;
+  const holding = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  if (
+    insideRoom &&
+    holding &&
+    target.insideOf !== holding.id &&
+    insideUsed(ctx, holding, insideRoom) + insideTakes(ctx, target, insideRoom) > insideRoom.of
+  ) {
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
+    return;
+  }
   // A form above what its target may become changes nothing (1.342): Polymorph's "equal or less".
   const shapeRule = ctx.combat.conditions?.find((one) => one.condition === condition)?.shape;
   if (shapeRule && applies.form && !rulesetFormAllowed(ctx.definition, target, applies)) {
@@ -2146,6 +2172,9 @@ function applyConditionId(
   // Inside whoever put it on (1.350): a gelatinous cube's engulfed, a purple worm's swallowed.
   if (rule?.inside && extra.sourceId && extra.sourceId !== target.id && target.insideOf !== extra.sourceId) {
     takeInside(ctx, target, extra.sourceId);
+    // How it climbs out once they have fallen (1.352).
+    const corpse = rule.inside === true ? undefined : rule.inside.corpse;
+    if (corpse) target.insideCorpse = { ...corpse };
   }
   endImmuneConditions(ctx, target);
   groundFlier(ctx, target);
@@ -2161,6 +2190,103 @@ function applyConditionId(
       target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
     }
   }
+}
+
+/** What a condition's `inside` says (1.350, 1.352), `true` read as nothing more. */
+function insideRule(ctx: RulesetCombatContext, condition: string): RulesetConditionInside | undefined {
+  const inside = ctx.combat.conditions?.find((one) => one.condition === condition)?.inside;
+  return inside === undefined ? undefined : inside === true ? {} : inside;
+}
+
+/** The places one creature takes inside another (1.352): what `takes` gives its size, else one. */
+function insideTakes(ctx: RulesetCombatContext, one: RulesetCombatant, room: RulesetInsideRoom): number {
+  const size = ctx.combat.sizes && rulesetSizeRank(ctx.combat, one) !== undefined ? one.size : undefined;
+  return (size !== undefined ? room.takes?.[size] : undefined) ?? 1;
+}
+
+/** The places those `holder` already holds inside take (1.352). */
+function insideUsed(ctx: RulesetCombatContext, holder: RulesetCombatant, room: RulesetInsideRoom): number {
+  return ctx.state.combatants
+    .filter((one) => one.insideOf === holder.id && !one.defeated)
+    .reduce((total, one) => total + insideTakes(ctx, one, room), 0);
+}
+
+/** Put prone (1.352): the fight's condition that takes half a walk to stand from. */
+function layProne(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const prone = ctx.combat.conditions?.find((one) => one.effects.includes("half-move-to-stand"))?.condition;
+  if (!prone || target.defeated || rulesetCombatConditions(ctx.definition, target).includes(prone)) return;
+  applyConditionId(ctx, target, prone, { condition: prone, duration: "instant" }, {});
+}
+
+/** Lets out of `holder` everybody it holds inside (or `only` them), ending what keeps them there. */
+function letOutOf(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  inside: RulesetCombatant,
+  reason: "expired" | "contest",
+): void {
+  for (const entry of [...inside.tracked]) {
+    if (entry.source === holder.id && insideRule(ctx, entry.condition))
+      removeCondition(ctx, inside, entry.condition, reason);
+  }
+  if (inside.insideOf === holder.id) letOut(ctx, inside);
+}
+
+/**
+ * As a turn ends (1.352), whoever was dealt `releasedWhen`'s amount or more in it by somebody they
+ * hold inside saves or lets them out, prone where it says so: a behir's 30 damage, DC 14.
+ */
+function releaseOnHurt(ctx: RulesetCombatContext): void {
+  const turn = `${ctx.state.round}:${ctx.state.turn}`;
+  for (const holder of ctx.state.combatants) {
+    const hurt = holder.insideHurt;
+    if (!hurt) continue;
+    delete holder.insideHurt;
+    if (hurt.turn !== turn || !rulesetCombatStanding(holder)) continue;
+    for (const [id, dealt] of Object.entries(hurt.by)) {
+      const inside = rulesetCombatant(ctx.state, id);
+      if (!inside || inside.insideOf !== holder.id) continue;
+      const rule = inside.tracked
+        .filter((entry) => entry.source === holder.id)
+        .map((entry) => insideRule(ctx, entry.condition)?.releasedWhen)
+        .find((one) => one !== undefined && dealt >= one.dealt);
+      if (!rule || rollSave(ctx, holder, rule.save.save, rule.save.difficulty)) continue;
+      letOutOf(ctx, holder, inside, "expired");
+      if (rule.prone) layProne(ctx, inside);
+    }
+  }
+}
+
+/** Nothing keeps `target` inside a holder who has fallen (1.352): it stays there until it climbs
+ *  out, and on its own turn has the walk it was kept from to do it with. */
+function freeInCorpse(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  if (currentRulesetActor(ctx.state)?.id !== target.id) return;
+  const allowance = rulesetMovementAllowance(ctx.definition, ctx.combat, target, ctx.state);
+  target.movementLeft = Math.max(target.movementLeft ?? 0, allowance);
+}
+
+/** Climbing out of a fallen holder (1.352): what it costs of the walk, set down beside them, prone
+ *  where it says so. */
+function resolveClimbOut(ctx: RulesetCombatContext, actor: RulesetCombatant, option: RulesetCombatOption): void {
+  const corpse = rulesetInsideCorpse(ctx.state, actor);
+  const holder = actor.insideOf ? rulesetCombatant(ctx.state, actor.insideOf) : undefined;
+  const cost = option.movementCost ?? 0;
+  spendRulesetMovement(actor, cost);
+  const from = rulesetPositionOf(actor) ? { x: actor.x!, y: actor.y! } : undefined;
+  if (holder) letOutOf(ctx, holder, actor, "expired");
+  else letOut(ctx, actor);
+  if (from) {
+    ctx.events.push({
+      type: "move",
+      actorId: actor.id,
+      from,
+      to: { x: actor.x!, y: actor.y! },
+      path: [],
+      cost,
+      left: actor.movementLeft ?? 0,
+    });
+  }
+  if (corpse?.prone) layProne(ctx, actor);
 }
 
 /** `target` is taken inside `holderId` (1.350): off the ground, where its holder is, and carried along
@@ -2195,6 +2321,7 @@ function keptInside(ctx: RulesetCombatContext, target: RulesetCombatant): boolea
 function letOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const holderId = target.insideOf!;
   delete target.insideOf;
+  delete target.insideCorpse;
   const holder = rulesetCombatant(ctx.state, holderId);
   const grid = ctx.state.board?.grid;
   if (grid && holder && rulesetPositionOf(holder) && rulesetPositionOf(target)) {
@@ -2241,9 +2368,17 @@ function engulfLands(
   entered: readonly RulesetCombatant[],
 ): void {
   const engulf = action.engulf!;
-  const held = ctx.state.combatants.filter((one) => one.insideOf === actor.id).length;
-  const room = engulf.atMost === undefined ? entered.length : Math.max(0, engulf.atMost - held);
-  const taken = entered.filter((one) => rulesetEngulfable(ctx.definition, actor, engulf, one)).slice(0, room);
+  // As many as it has room for (1.352), or `atMost` of any size.
+  const room = engulf.room ?? (engulf.atMost !== undefined ? { of: engulf.atMost } : undefined);
+  let used = room ? insideUsed(ctx, actor, room) : 0;
+  const taken = entered.filter((one) => {
+    if (!rulesetEngulfable(ctx.definition, actor, engulf, one)) return false;
+    if (!room) return true;
+    const takes = insideTakes(ctx, one, room);
+    if (used + takes > room.of) return false;
+    used += takes;
+    return true;
+  });
   if (taken.length > 0) {
     const { engulf: _engulf, ...rest } = action;
     resolveAction(
@@ -2428,8 +2563,12 @@ function removeCondition(
   if (target.shape?.condition === condition) leaveShape(ctx, target, reason);
   // Out of the sphere, nobody is carrying them (1.314).
   if (target.carriedBy && !rulesetSealed(ctx.definition, target, ctx.state)) delete target.carriedBy;
-  // Out of whoever held them inside (1.350), once nothing of theirs keeps them there.
-  if (target.insideOf && !keptInside(ctx, target)) letOut(ctx, target);
+  // Out of whoever held them inside (1.350), once nothing of theirs keeps them there: still inside
+  // where they have fallen and may be climbed out of (1.352).
+  if (target.insideOf && !keptInside(ctx, target)) {
+    if (rulesetInsideCorpse(ctx.state, target)) freeInCorpse(ctx, target);
+    else letOut(ctx, target);
+  }
   // What an aura put on, ended, keeps that aura off them where it says so (1.269).
   if (removed?.auraSafeOnEnd && !target.auraSafe?.includes(removed.auraSafeOnEnd)) {
     target.auraSafe = [...(target.auraSafe ?? []), removed.auraSafeOnEnd];
@@ -2640,6 +2779,8 @@ function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entr
 }
 
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
+  // Let out on what was dealt from inside this turn (1.352).
+  if (at === "turn-end") releaseOnHurt(ctx);
   // What this one put on others that runs on their turns.
   for (const holder of ctx.state.combatants) {
     if (holder.id === actor.id) continue;
@@ -3904,7 +4045,9 @@ function whyNotOffered(
   // Caught unaware (1.237): the first turn is only ended.
   if (actor.surprised) return "surprised";
   // The two a positioned fight adds. Off the menu, they are movement that cannot be paid for.
-  if (optionId === RULESET_MOVE_OPTION || optionId === RULESET_STAND_OPTION) return "unreachable";
+  if (optionId === RULESET_MOVE_OPTION || optionId === RULESET_STAND_OPTION || optionId === RULESET_CLIMB_OUT_OPTION) {
+    return "unreachable";
+  }
   // Turning a zone (1.182): none to turn, or nothing left to turn it with.
   if (optionId.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
     const actionId = optionId.slice(RULESET_ZONE_TURN_OPTION_PREFIX.length);
@@ -4288,7 +4431,8 @@ function applyChoice(
     if (cell) resolveMove(ctx, walking, cell);
     else if (option.id === RULESET_FLY_UP_OPTION || option.id === RULESET_FLY_DOWN_OPTION) {
       resolveFly(ctx, walking, option);
-    } else resolveStand(ctx, walking, option);
+    } else if (option.id === RULESET_CLIMB_OUT_OPTION) resolveClimbOut(ctx, walking, option);
+    else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
     if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
@@ -8043,6 +8187,8 @@ function resolveSequence(
   const wanted = parts.reduce((total, part) => total + part.targets.count, 0);
   const enough = targets.length >= wanted;
   let cursor = 0;
+  // The one target every attack in it has hit so far (1.352), false once one has not.
+  let allHit: string | false | undefined = action.allHit ? held?.allHit : undefined;
   for (const [index, part] of parts.entries()) {
     const count = part.targets.count;
     const chosen = (enough ? targets.slice(cursor, cursor + count) : targets.slice(0, count)).filter(
@@ -8057,16 +8203,87 @@ function resolveSequence(
       // One budget for the whole sequence, and each part still keeps its own books: a part that
       // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
       // a part that has none left simply does not happen.
-      if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
+      if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) {
+        if (part.toHit !== undefined) allHit = false;
+        continue;
+      }
       // A cap on attacks a turn (combat C6d) ends the sequence at the attacks it allows.
-      if (part.toHit !== undefined && attacksCapped(ctx, actor)) break;
+      if (part.toHit !== undefined && attacksCapped(ctx, actor)) {
+        allHit = false;
+        break;
+      }
       spendAvailability(ctx, actor, part);
       if (part.toHit !== undefined) countAttack(ctx, actor);
     }
+    const from = ctx.events.length;
     const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
-    if (hold) return { ...hold, part: index };
+    if (hold) return { ...hold, part: index, ...(action.allHit && allHit !== undefined ? { allHit } : {}) };
+    if (action.allHit && part.toHit !== undefined && allHit !== false) {
+      allHit = partHit(ctx.events.slice(from), actor, part, resuming, allHit);
+    }
   }
+  if (action.allHit && typeof allHit === "string") allHitLands(ctx, actor, action, action.allHit, allHit);
   return null;
+}
+
+/** Whether one attack part of a sequence hit `so far`'s target, or the first it was made at (1.352):
+ *  its target, or false where it missed, hit another, or never came round. */
+function partHit(
+  events: readonly RulesetCombatEvent[],
+  actor: RulesetCombatant,
+  part: RulesetCombatAction,
+  resuming: RulesetHeldAttack | undefined,
+  so: string | undefined,
+): string | false {
+  const outcomes: { targetId: string; outcome: RulesetCombatAttackOutcome }[] = [];
+  if (resuming) {
+    // Held as it hit: hit still, unless what was done in answer turned it.
+    const recheck = events.filter(
+      (event) =>
+        event.type === "recheck" &&
+        event.actorId === actor.id &&
+        event.optionId === part.id &&
+        event.targetId === resuming.targetId,
+    );
+    const last = recheck.at(-1);
+    outcomes.push({ targetId: resuming.targetId, outcome: last?.type === "recheck" ? last.outcome : "hit" });
+  }
+  for (const event of events) {
+    if (event.type === "attack" && event.actorId === actor.id && event.optionId === part.id) {
+      outcomes.push({ targetId: event.targetId, outcome: event.outcome });
+    }
+  }
+  if (outcomes.length === 0) return false;
+  let target = so;
+  for (const one of outcomes) {
+    if (one.outcome === "miss" || (target !== undefined && one.targetId !== target)) return false;
+    target = one.targetId;
+  }
+  return target ?? false;
+}
+
+/** A sequence whose every attack hit the one target (1.352): what it puts on them, then the action it
+ *  uses on them, while they are what it asks. A shambling mound's grapple, and its Engulf. */
+function allHitLands(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  rule: RulesetAllHit,
+  targetId: string,
+): void {
+  const target = rulesetCombatant(ctx.state, targetId);
+  if (!target || target.defeated || !rulesetCombatStanding(actor)) return;
+  if (rule.targetIs && !rulesetTargetIs(ctx.definition, target, rule.targetIs)) return;
+  for (const applies of rule.applies ?? []) {
+    applyConditionId(ctx, target, applies.condition, applies, {
+      sourceId: actor.id,
+      action: [action.id, action.label],
+    });
+  }
+  const used = rule.uses ? actor.actions.find((one) => one.id === rule.uses) : undefined;
+  if (!used || target.defeated) return;
+  if (used.engulf) engulfLands(ctx, actor, used, [target]);
+  else resolveAction(ctx, actor, used, [target]);
 }
 
 /**

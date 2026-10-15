@@ -71,6 +71,7 @@ import {
   rulesetLairRound,
   rulesetEngulfable,
   rulesetSealed,
+  rulesetInsideCorpse,
   rulesetSealedApart,
   rulesetSizeRank,
   type RulesetConditionModifier,
@@ -411,6 +412,8 @@ export const RULESET_ZONE_OPTION_PREFIX = "zone:";
 /** Turning a line or cone its caster carries to face another way (1.182): this, then the action's id. */
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
+/** Climbing out of whoever it was inside, once they have fallen (1.352): a purple worm's corpse. */
+export const RULESET_CLIMB_OUT_OPTION = "move:climb-out";
 /** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
 /** Lighting a prop again (1.332), followed by its id. */
@@ -2902,6 +2905,24 @@ function movementOptions(
     return [];
   }
   const left = Math.max(0, Math.floor(actor.movementLeft ?? 0));
+  // Inside somebody (1.350): nothing but climbing out once they have fallen (1.352), for what that
+  // costs of its walk, prone or not.
+  if (actor.insideOf) {
+    const corpse = rulesetInsideCorpse(state, actor);
+    const perCell = combat.distance?.perCell;
+    if (!corpse || !perCell) return [];
+    const cost = Math.ceil(corpse.costs / perCell);
+    if (left < cost) return [];
+    return [
+      {
+        id: RULESET_CLIMB_OUT_OPTION,
+        kind: "move",
+        label: "Climb out",
+        targets: { side: "self", count: 0 },
+        movementCost: cost,
+      },
+    ];
+  }
   const prone = rulesetProneCondition(definition, combat, actor);
   if (prone) {
     const cost = rulesetStandCost(actor);

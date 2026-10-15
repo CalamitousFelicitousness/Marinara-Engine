@@ -280,6 +280,9 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.draws ? { draws: { ...action.draws } } : {}),
     // Engulf and Whelm (1.350).
     ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
+    // Aimed only at whoever is this, and what a sequence does once all of it hit (1.352).
+    ...(action.targetTypes ? { targetTypes: structuredClone(action.targetTypes) } : {}),
+    ...(action.allHit ? { allHit: structuredClone(action.allHit) } : {}),
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),

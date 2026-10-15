@@ -2179,6 +2179,35 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** Swallowing (1.352): a condition's `inside` with room, a let-out on blows or climbing out of a
+ *  corpse; an engulf's room; and a creature action aimed by type or with an `allHit`. */
+function carriesSwallow352(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSwallow352(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  // A zone's `inside` is an object of its own, of other keys.
+  const inside = plainRecord(record.inside);
+  if (
+    inside &&
+    (typeof record.condition === "string" ||
+      inside.room !== undefined ||
+      inside.releasedWhen !== undefined ||
+      inside.corpse !== undefined)
+  )
+    return true;
+  if (plainRecord(record.engulf)?.room !== undefined) return true;
+  const creature = plainRecord(record.creature);
+  if (
+    Array.isArray(creature?.actions) &&
+    creature.actions.some(
+      (one) => plainRecord(one)?.targetTypes !== undefined || plainRecord(one)?.allHit !== undefined,
+    )
+  )
+    return true;
+  return featureValues(record).some((one) => carriesSwallow352(one, depth + 1));
+}
+
 /** Hanging on off a list row's pool or only while holding a condition, and a shape's better-of
  *  saves and checks (1.351). `pools` are the sheet's declared pool ids. */
 function carriesHangsOnRows351(value: unknown, pools: ReadonlySet<string>, depth = 0): boolean {
@@ -5278,6 +5307,14 @@ export function getCapabilityPackageInstallIssue(
     (carriesDraws(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesDraws(document)))
   ) {
     return "A ruleset with a creature action that draws whoever it lands on toward it requires schemaVersion 2 and capabilityApi 1.326 or newer";
+  }
+  // Swallowing: room inside, let out on blows, out of a corpse, and all-hit or typed creature actions, 1.352.
+  if (
+    !declaresApi(352) &&
+    (carriesSwallow352(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSwallow352(document)))
+  ) {
+    return "A ruleset that holds inside by size, lets out on the blows dealt from inside or out of a fallen holder, or with a creature action aimed by type or with what follows all of a sequence hitting, requires schemaVersion 2 and capabilityApi 1.352 or newer";
   }
   // Hanging on off a list row's pool or while holding a condition, and better-of shapes, 1.351.
   if (!declaresApi(351)) {

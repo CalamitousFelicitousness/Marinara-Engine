@@ -18,6 +18,7 @@ import type {
   RulesetRegeneration,
   RulesetHangsOn,
   RulesetTargetIs,
+  RulesetInsideRoom,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
@@ -395,8 +396,12 @@ export interface RulesetStatBlockAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on walks toward it on their own budget (1.326): Whisper a Name. */
   draws?: { spends: string };
+  /** Aimed only at whoever is this (1.352): a behir's Constrict. */
+  targetTypes?: RulesetCombatAction["targetTypes"];
   /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
+  /** What a sequence does once every attack in it hit the one target (1.352): a shambling mound's. */
+  allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327): the Hour Bell. */
   actedOnly?: true;
   /** Its concentration broken, this lair action is its next (1.327): the Litany of Keeping. One of a
@@ -927,6 +932,8 @@ export interface RulesetCombatAction {
   draws?: { spends: string };
   /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
+  /** What a sequence does once every attack in it hit the one target (1.352): a shambling mound's. */
+  allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327). */
   actedOnly?: true;
   /** Its concentration broken, this lair action of its user's is the next they take (1.327), or one of
@@ -1192,6 +1199,15 @@ export interface RulesetEngulf {
   save: { save: string; difficulty: number };
   ownMovement?: boolean;
   atMost?: number;
+  /** What it holds by size (1.352), in place of `atMost`. */
+  room?: RulesetInsideRoom;
+}
+
+/** What a sequence does once every attack in it hit the one target (1.352). */
+export interface RulesetAllHit {
+  targetIs?: RulesetTargetIs;
+  applies?: RulesetCombatApplies[];
+  uses?: string;
 }
 
 /** A shape on the board, in cells. `friendlyFire` false leaves the actor's own side out of it. */
@@ -1349,6 +1365,10 @@ export interface RulesetCombatant {
   legendaryResisted?: number;
   /** The creature it is inside of (1.350), engulfed: it moves with that creature. */
   insideOf?: string;
+  /** What those it holds inside have dealt it this turn (1.352), by who, for `releasedWhen`. */
+  insideHurt?: { turn: string; by: Record<string, number> };
+  /** How it climbs out once whoever holds it inside has fallen (1.352), from what took it in. */
+  insideCorpse?: { costs: number; prone?: true };
   /** How many times it has hung on at 1 instead of dropping (1.320). */
   hungOn?: number;
   /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.347),
@@ -1899,6 +1919,9 @@ export interface RulesetHeldAttack {
   hurt: string[];
   /** What its maker added to the blow while it was held (1.241): Divine Smite. */
   adds?: RulesetHeldAddition[];
+  /** The one target every attack of its sequence before this part hit, or false once one missed
+   *  (1.352), for the sequence's `allHit`. */
+  allHit?: string | false;
 }
 
 /** A walk stopped in its tracks, with everything needed to finish it exactly as it would have gone:

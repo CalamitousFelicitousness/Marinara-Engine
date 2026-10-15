@@ -2440,6 +2440,55 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
  *  say it the same way. */
 /** An area that stays (Capability API 1.172), as a catalog entry or an item's use carries it. Typed by
  *  hand: written out, its inferred type is too long for the definition schema around it to emit. */
+/** How much one creature may hold inside it at once (Capability API 1.352): `of` places, each held
+ *  creature taking one, or what `takes` gives its size. A water elemental's Whelm, "one Large
+ *  creature or up to two Medium or smaller", is `{"of": 2, "takes": {"large": 2}}`. */
+export interface RulesetInsideRoom {
+  of: number;
+  takes?: Record<string, number>;
+}
+export const insideRoomSchema: z.ZodType<RulesetInsideRoom, z.ZodTypeDef, unknown> = z
+  .object({
+    of: z.number().int().min(1).max(20),
+    takes: z.record(sheetId, z.number().int().min(1).max(20)).optional(),
+  })
+  .strict();
+
+/** A combat condition that holds its holder inside whoever put it on (Capability API 1.350), with,
+ *  since 1.352, how much that one may hold at once (`room`), being let out on the blows the held one
+ *  deals it (`releasedWhen`), and climbing out of it once it has fallen (`corpse`). Typed by hand, as
+ *  its harm is. */
+export interface RulesetConditionInside {
+  room?: RulesetInsideRoom;
+  releasedWhen?: { dealt: number; save: { save: string; difficulty: number }; prone?: true };
+  corpse?: { costs: number; prone?: true };
+}
+const conditionInsideSchema: z.ZodType<true | RulesetConditionInside, z.ZodTypeDef, unknown> = z.union([
+  z.literal(true),
+  z
+    .object({
+      room: insideRoomSchema.optional(),
+      /** Dealt this much or more in one turn by somebody it holds, its holder saves at that turn's
+       *  end or lets them out, `prone` where it says so: a behir's 30 damage and DC 14. */
+      releasedWhen: z
+        .object({
+          dealt: z.number().int().min(1).max(10000),
+          save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) }).strict(),
+          prone: z.literal(true).optional(),
+        })
+        .strict()
+        .optional(),
+      /** Its holder fallen, those inside stay inside until they climb out for this much of their
+       *  walk, in the ruleset's own distance, `prone` where it says so: "escape from the corpse by
+       *  using 15 feet of movement, exiting prone". */
+      corpse: z
+        .object({ costs: z.number().int().min(0).max(1000), prone: z.literal(true).optional() })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+]);
+
 /** Damage a combat condition deals its holder each turn (Capability API 1.189). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
 export interface RulesetConditionHarms {
@@ -5916,8 +5965,28 @@ const creatureActionSchema = z
         save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) }).strict(),
         ownMovement: z.literal(true).optional(),
         atMost: z.number().int().min(1).max(20).optional(),
+        /** What it holds by size (Capability API 1.352), in place of `atMost`: Whelm's. */
+        room: insideRoomSchema.optional(),
       })
       .strict()
+      .optional(),
+    /** Aimed only at a target that is this (Capability API 1.352), as a catalog entry's
+     *  `targetTypes` reads: a behir's Constrict at "one Large or smaller creature". */
+    targetTypes: catalogTargetTypesSchema.optional(),
+    /** What a sequence does once every attack in it has hit the one target (Capability API 1.352):
+     *  `applies` on them, then the action `uses` names made at them, as long as they are `targetIs`.
+     *  A shambling mound's Multiattack: "If both attacks hit a Medium or smaller target, the target
+     *  is grappled (escape DC 14), and the shambling mound uses its Engulf on it." */
+    allHit: z
+      .object({
+        targetIs: targetIsSchema.optional(),
+        applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+        uses: sheetId.optional(),
+      })
+      .strict()
+      .refine((hit) => hit.applies !== undefined || hit.uses !== undefined, {
+        message: '"allHit" names "applies", "uses" or both',
+      })
       .optional(),
     /** Only somebody who has already taken their turn this round may be picked (Capability API
      *  1.327): the Hour Bell's "one creature that has already acted this round". */
@@ -9318,7 +9387,7 @@ const combatConditionSchema = z
     /** Its holder is inside whoever put it on (Capability API 1.350), off the ground and carried
      *  along wherever they go, until it ends and they are set down beside them: a gelatinous cube's
      *  engulfed. */
-    inside: z.literal(true).optional(),
+    inside: conditionInsideSchema.optional(),
     /** What its holder regains as each of their own turns starts (Capability API 1.346). */
     regenerates: regenerationSchema.optional(),
     /** Left at 1 instead of dropping to 0 while it holds (Capability API 1.347): Relentless Rage. */
@@ -13309,6 +13378,23 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "onEnd", "harm", "type"], `Unknown damage type "${endType}"`);
       }
       targetIsIssues(def, entry.onEnd?.harm?.unless, [...path, "onEnd", "harm", "unless"], issue);
+      // Inside (1.352): room by the fight's own sizes, a save the sheet has, and somebody to lay prone.
+      if (entry.inside && entry.inside !== true) {
+        insideRoomIssues(def, entry.inside.room, [...path, "inside", "room"], issue);
+        const released = entry.inside.releasedWhen;
+        if (released && !def.sheet.saves.some((one) => one.id === released.save.save))
+          issue([...path, "inside", "releasedWhen", "save", "save"], `Unknown save "${released.save.save}"`);
+        if (
+          (released?.prone || entry.inside.corpse?.prone) &&
+          !combat.conditions?.some((one) => one.effects.includes("half-move-to-stand"))
+        )
+          issue(
+            [...path, "inside"],
+            'Let out prone needs a combat condition with the "half-move-to-stand" effect to lay them in',
+          );
+        if (entry.inside.corpse && !combat.distance)
+          issue([...path, "inside", "corpse"], "Climbing out costs movement, so the fight has a distance");
+      }
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -14248,6 +14334,21 @@ function targetIsIssues(
   });
 }
 
+/** How much one creature holds inside it (1.352): sizes the fight has. */
+function insideRoomIssues(
+  definition: RulesetDefinition,
+  room: RulesetInsideRoom | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (!room?.takes) return;
+  const sizes = definition.combat?.sizes;
+  for (const size of Object.keys(room.takes)) {
+    if (!sizes) add([...at, "takes", size], '"takes" reads combat.sizes, so the block declares "sizes" too');
+    else if (!sizes.order.some((one) => one.id === size)) add([...at, "takes", size], `Unknown size "${size}"`);
+  }
+}
+
 /** The target tests one action, entry or use carries (1.168): on its extra clauses, the conditions it
  *  applies, and who it may be pointed at. */
 function targetTestIssues(
@@ -14801,6 +14902,35 @@ function creatureIssues(
           [...path, "engulf"],
           "An engulf is saved against with its own save, so it has no attack roll or save of its own",
         );
+      insideRoomIssues(definition, action.engulf.room, [...path, "engulf", "room"], add);
+      if (action.engulf.room && action.engulf.atMost !== undefined)
+        add([...path, "engulf", "room"], 'An engulf says how much it holds with "room" or "atMost", not both');
+    }
+    // Aimed only at whoever is this (1.352), as an entry's own reads.
+    if (action.targetTypes) targetTestIssues(definition, { targetTypes: action.targetTypes }, path, add);
+    // Once every attack in a sequence hit (1.352): a sequence's, with conditions it knows and an action
+    // of its own to use.
+    const allHit = action.allHit;
+    if (allHit) {
+      const where = [...path, "allHit"];
+      if (!action.sequence) add(where, '"allHit" is what a sequence does once all of it hit, so it has a "sequence"');
+      else if (!action.sequence.some((step) => byId.get(step.action)?.toHit !== undefined))
+        add(where, '"allHit" needs a sequence with an attack roll in it');
+      targetIsIssues(definition, allHit.targetIs, [...where, "targetIs"], add);
+      allHit.applies?.forEach((applies, appliesIndex) => {
+        const at = [...where, "applies", appliesIndex];
+        if (!conditions.has(applies.condition)) add([...at, "condition"], `Unknown condition "${applies.condition}"`);
+        escapeDcIssues(definition, applies, at, add);
+        if (applies.when) add([...at, "when"], 'A creature has no sheet to read "when" off');
+        if (applies.saveEnds && !saves.has(applies.saveEnds.save))
+          add([...at, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
+      });
+      if (allHit.uses !== undefined) {
+        const used = byId.get(allHit.uses);
+        if (!used) add([...where, "uses"], `"${allHit.uses}" is not one of its actions`);
+        else if (used.sequence || used.id === action.id)
+          add([...where, "uses"], `"${allHit.uses}" is a sequence, which another sequence does not use`);
+      }
     }
     if (action.ability !== undefined && !definition.sheet.abilities.some((one) => one.id === action.ability)) {
       add([...path, "ability"], `Unknown ability "${action.ability}"`);

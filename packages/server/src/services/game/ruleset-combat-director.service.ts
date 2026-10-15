@@ -89,6 +89,7 @@ import {
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
+  RULESET_CLIMB_OUT_OPTION,
   type CombatAiCandidate,
   type Combatant,
   type CombatDecisionOption,
@@ -2092,6 +2093,11 @@ function playRulesetTurn(
   // Somebody on the ground gets up before anything else, when the rules offer it. Fighting from
   // the floor is worse in every ruleset that has a floor, walking is not offered until they are up,
   // and a creature that never stood would lie where it fell for the rest of the fight.
+  // Out of a fallen holder first (1.352), where it was inside one: nothing else is offered in there.
+  const climb = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+    (option) => option.id === RULESET_CLIMB_OUT_OPTION,
+  );
+  if (climb) applyChoice(definition, state, fight, { actorId, optionId: climb.id, targetIds: [] });
   const stand = rulesetCombatOptions(definition, fight.encounter, actorId).find(
     (option) => option.id === RULESET_STAND_OPTION,
   );

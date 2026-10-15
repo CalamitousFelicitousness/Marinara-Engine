@@ -1217,6 +1217,17 @@ export function rulesetLightMatches(light: RulesetBoardLight | undefined, wanted
 }
 
 /** A combatant who can still be acted on and still take a turn. */
+/** How `combatant` climbs out of whoever it is inside (1.352), once they have fallen: undefined
+ *  while they stand, or where what took it in said nothing of it. */
+export function rulesetInsideCorpse(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): { costs: number; prone?: true } | undefined {
+  if (!combatant.insideOf || !combatant.insideCorpse) return undefined;
+  const holder = rulesetCombatant(state, combatant.insideOf);
+  return holder && rulesetCombatStanding(holder) ? undefined : combatant.insideCorpse;
+}
+
 export function rulesetCombatStanding(combatant: RulesetCombatant): boolean {
   return !combatant.defeated && !combatant.down;
 }
@@ -3407,6 +3418,9 @@ function blockActions(
     ...(action.draws ? { draws: { ...action.draws } } : {}),
     // Engulf and Whelm (1.350).
     ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
+    // Aimed only at whoever is this, and what a sequence does once all of it hit (1.352).
+    ...(action.targetTypes ? { targetTypes: structuredClone(action.targetTypes) } : {}),
+    ...(action.allHit ? { allHit: structuredClone(action.allHit) } : {}),
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
@@ -4029,8 +4043,9 @@ export function rulesetMovementAllowance(
   if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
   // Shut in a sphere (1.314): it goes only where it is rolled or carried.
   if (!unsealed && rulesetSealed(definition, combatant, state)) return 0;
-  // Inside somebody (1.350): it goes only where they go.
-  if (combatant.insideOf) return 0;
+  // Inside somebody (1.350): it goes only where they go, until they have fallen and it may climb
+  // out (1.352).
+  if (combatant.insideOf && !(state && rulesetInsideCorpse(state, combatant))) return 0;
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
   const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);

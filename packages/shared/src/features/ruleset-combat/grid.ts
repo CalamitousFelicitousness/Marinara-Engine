@@ -759,6 +759,8 @@ export function rulesetReachableCells(
   if (!combat || !grid || !actor || !from) return [];
   // Levitating (1.345): up and down only, never across.
   if (actor.levitating) return [];
+  // Inside somebody (1.350), even fallen (1.352): out is climbed, never walked.
+  if (actor.insideOf) return [];
   const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
   if (budget < 1) return [];
 

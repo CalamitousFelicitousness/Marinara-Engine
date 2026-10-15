@@ -1933,6 +1933,7 @@
   "game.combat.ruleset.board.aimTurnPrompt": "Choose the square {{label}} runs toward, or lay it across.",
   "game.combat.ruleset.board.aimWallPrompt": "Choose where {{label}} goes up. The next square you choose is the way it runs.",
   "game.combat.ruleset.board.cell": "Cell {{x}}, {{y}}.",
+  "game.combat.ruleset.board.climbOut": "Climb out",
   "game.combat.ruleset.board.distance": "{{amount}} {{unit}}",
   "game.combat.ruleset.board.flyDown": "Fly down",
   "game.combat.ruleset.board.flying": "Flying at height {{height}}.",

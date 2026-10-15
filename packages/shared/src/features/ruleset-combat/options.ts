@@ -34,7 +34,7 @@ import {
   rulesetShotsAvailable,
   rulesetItemChargesLeft,
 } from "./ammo.js";
-import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
+import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
@@ -938,22 +938,41 @@ export function rulesetDefenseAgainst(
   action?: RulesetCombatAction,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
-  const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
-    ({ condition, level, derived, item, modifier }) => ({
+  const modifiers = rulesetConditionModifiers(definition, combat, target, "defense", state);
+  const guards = modifiers
+    .filter(({ modifier }) => modifier.atLeast === undefined)
+    .map(({ condition, level, derived, item, modifier }) => ({
       condition,
       ...(level !== undefined ? { level } : {}),
       ...(derived ? { derived } : {}),
       ...(item ? { item } : {}),
       value: modifier.flat ?? 0,
-    }),
-  );
+    }));
   // What a dropped item gave it is gone with it (1.266): a shield let fall.
   let lost = 0;
   if (target.heldDefense && target.dropped?.length) {
     for (const index of rulesetDroppedItems(target)) lost += target.heldDefense[index] ?? 0;
   }
   lost += rulesetDroppedHeldDefense(target);
-  const defense = target.defense - lost + guards.reduce((total, guard) => total + guard.value, 0);
+  let defense = target.defense - lost + guards.reduce((total, guard) => total + guard.value, 0);
+  // Never below a floor (1.353), said as what it raised it by: Barkskin's 16, Mage Armor's 13 + Dex.
+  let floor: { value: number; from: (typeof modifiers)[number] } | undefined;
+  for (const one of modifiers) {
+    if (one.modifier.atLeast === undefined) continue;
+    const value = rulesetDefenseFloor(definition, target, one.modifier.atLeast);
+    if (value !== undefined && (!floor || value > floor.value)) floor = { value, from: one };
+  }
+  if (floor && floor.value > defense) {
+    const { condition, level, derived, item } = floor.from;
+    guards.push({
+      condition,
+      ...(level !== undefined ? { level } : {}),
+      ...(derived ? { derived } : {}),
+      ...(item ? { item } : {}),
+      value: floor.value - defense,
+    });
+    defense = floor.value;
+  }
   const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
   const cover = ignored
     ? 0
@@ -961,6 +980,32 @@ export function rulesetDefenseAgainst(
   const highGround = combat.elevation?.highGround;
   const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
   return { defense: defense + cover - above, cover, guards };
+}
+
+/** A floor under defense (1.353): its number, or what it reads off the holder's sheet; a creature
+ *  without one reads a `const` or an `abilityMod` off its block. Undefined where nothing can be read. */
+function rulesetDefenseFloor(
+  definition: RulesetDefinition,
+  target: RulesetCombatant,
+  atLeast: number | RulesetValueRef,
+): number | undefined {
+  if (typeof atLeast === "number") return atLeast;
+  if (target.sheet) {
+    const { build, live, items } = target.sheet;
+    const value = resolveRulesetValueRef(
+      definition,
+      build,
+      atLeast,
+      evaluateRulesetSheetLive(definition, build, live, items),
+    );
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
+  }
+  if ("const" in atLeast && typeof atLeast.const === "number") return atLeast.const;
+  if ("abilityMod" in atLeast && typeof atLeast.abilityMod === "string") {
+    const score = target.block?.abilities?.[atLeast.abilityMod];
+    return score === undefined ? undefined : rulesetAbilityModifier(definition, score);
+  }
+  return undefined;
 }
 
 /** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the

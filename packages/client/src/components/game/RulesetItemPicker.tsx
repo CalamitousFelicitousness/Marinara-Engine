@@ -318,6 +318,7 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   if (fact.to === "speed" && "value" in fact.change) {
     return t("ui.game.gameinventory.effectSpeed", { change: fact.change.value });
   }
+  if ("floor" in fact.change) return t("ui.game.gameinventory.effectDefenseFloor", { value: fact.change.floor });
   if (fact.to === "defense" && "value" in fact.change) {
     return names
       ? t("ui.game.gameinventory.effectDefenseNamed", { change: fact.change.value, names })

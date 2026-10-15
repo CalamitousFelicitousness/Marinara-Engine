@@ -101,6 +101,8 @@ export interface RulesetItemEffectFact {
     | { value: string }
     | { fails: true }
     | { atLeast: number }
+    /** Defense never below this (1.353): a number, or the label of what it reads off the sheet. */
+    | { floor: string }
     | { times: 0.5 | 2 }
     | { effect: string }
     | { hide: "resist" | "vulnerable" | "immune" };
@@ -794,6 +796,8 @@ export function rulesetItemEffectFacts(
       });
     }
     if (modifier.mode) facts.push({ to, names: narrowed, ...against, change: { mode: modifier.mode } });
+    if (modifier.atLeast !== undefined)
+      facts.push({ to, names: [], change: { floor: floorLabel(definition, modifier.atLeast) } });
   }
   if (effect.failsSaves?.length) {
     facts.push({ to: "saves", names: names("saves", effect.failsSaves), change: { fails: true } });
@@ -822,6 +826,12 @@ export function rulesetItemEffectFacts(
     facts.push({ to: "conditions", names: effect.conditionImmunities.map(label), change: { hide: "immune" } });
   }
   return facts;
+}
+
+/** What a floor under defense reads (1.353), as a reader would say it: its number, or the sheet value
+ *  it reads in the sheet's own words. */
+function floorLabel(definition: RulesetDefinition, atLeast: number | RulesetValueRef): string {
+  return typeof atLeast === "number" ? String(atLeast) : sheetBonusWords(definition, atLeast);
 }
 
 /** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)", "+1 Brawn". */
@@ -855,6 +865,7 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   // The health maximum is only ever halved (the schema refuses anything else).
   if (fact.to === "health-max") return "half health maximum";
   if ("times" in change) return change.times === 0.5 ? "half speed" : "double speed";
+  if ("floor" in change) return `defense at least ${change.floor}`;
   if (fact.to === "defense" || fact.to === "speed") {
     return `${"value" in change ? change.value : ""} ${fact.to === "speed" ? "speed" : list || "defense"}`;
   }

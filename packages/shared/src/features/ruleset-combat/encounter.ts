@@ -933,7 +933,8 @@ export function rulesetConditionModifiers(
           modifier.dice === undefined &&
           modifier.times === undefined &&
           modifier.diceTimes === undefined &&
-          modifier.criticalDice === undefined
+          modifier.criticalDice === undefined &&
+          modifier.atLeast === undefined
         )
           return false;
         const skills = modifier.skills ?? entry.skills;

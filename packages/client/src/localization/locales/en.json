@@ -9507,6 +9507,7 @@
   "ui.game.gameinventory.effectCannotAct": "cannot act",
   "ui.game.gameinventory.effectCannotReact": "cannot react",
   "ui.game.gameinventory.effectDefense": "{{change}} defense",
+  "ui.game.gameinventory.effectDefenseFloor": "Defense at least {{value}}",
   "ui.game.gameinventory.effectDefenseNamed": "{{change}} {{names}}",
   "ui.game.gameinventory.effectDisadvantage": "disadvantage",
   "ui.game.gameinventory.effectFailsSaves": "fails saves ({{names}})",

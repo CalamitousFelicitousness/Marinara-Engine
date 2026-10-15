@@ -8497,10 +8497,27 @@ const combatModifierSchema = z
      *  its most could make up the difference, and the condition it came from is spent (Capability
      *  API 1.249): 5e's Bardic Inspiration, Guidance and Resistance, added after seeing the roll. */
     rescue: z.literal(true).optional(),
+    /** Defense never below this while it holds (Capability API 1.353), after every other change and
+     *  before cover: a number (Barkskin's "can't be less than 16"), or a value read off the holder's
+     *  sheet (Mage Armor's 13 + Dexterity, as the ruleset's own derived value works it out with a
+     *  shield and without armor); a creature without a sheet reads a `const` or an `abilityMod` off
+     *  its block's abilities, and nothing else. */
+    atLeast: z.union([z.number().int().min(0).max(1000), rulesetValueRefSchema]).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (modifier.atLeast !== undefined) {
+      if (modifier.to !== "defense") add("atLeast", '"atLeast" is a floor under defense only');
+      if (
+        modifier.flat !== undefined ||
+        modifier.dice !== undefined ||
+        modifier.times !== undefined ||
+        modifier.mode !== undefined
+      )
+        add("atLeast", 'A floor says "atLeast" alone, with no flat, dice, times or mode beside it');
+      return;
+    }
     if (
       modifier.flat === undefined &&
       modifier.dice === undefined &&
@@ -15153,6 +15170,7 @@ function effectNameIssues(
       abilities?: string[];
       against?: { conditions?: string[]; damage?: string[]; from?: RulesetTargetIs };
       from?: RulesetTargetIs;
+      atLeast?: number | RulesetValueRef;
     }>;
   },
   skills: ReadonlySet<string>,
@@ -15171,6 +15189,13 @@ function effectNameIssues(
   each(entry.failsSaves, saves, [...at, "failsSaves"], "save");
   each(entry.evasion, saves, [...at, "evasion"], "save");
   entry.modifiers?.forEach((modifier, index) => {
+    // A floor read off the holder's sheet (1.353) reads what the sheet has.
+    if (typeof modifier.atLeast === "object") {
+      const names = rulesetSheetNames(definition.sheet, definition.items);
+      for (const found of rulesetValueRefIssues(modifier.atLeast, names, names.derived)) {
+        add([...at, "modifiers", index, "atLeast", found.key], found.message);
+      }
+    }
     if (modifier.ability !== undefined && !abilities.has(modifier.ability)) {
       add([...at, "modifiers", index, "ability"], `Unknown ability "${modifier.ability}"`);
     }

@@ -2179,6 +2179,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+function carriesDefenseFloor353(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDefenseFloor353(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.to === "defense" && record.atLeast !== undefined) return true;
+  return featureValues(record).some((one) => carriesDefenseFloor353(one, depth + 1));
+}
+
 /** Swallowing (1.352): a condition's `inside` with room, a let-out on blows or climbing out of a
  *  corpse; an engulf's room; and a creature action aimed by type or with an `allHit`. */
 function carriesSwallow352(value: unknown, depth = 0): boolean {
@@ -5315,6 +5325,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A floor under defense, 1.353.
+  if (
+    !declaresApi(353) &&
+    (carriesDefenseFloor353(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDefenseFloor353(document)))
+  ) {
+    return "A ruleset with a floor under defense (a modifier to defense with atLeast) requires schemaVersion 2 and capabilityApi 1.353 or newer";
+  }
   // Swallowing: room inside, let out on blows, out of a corpse, and all-hit or typed creature actions, 1.352.
   if (
     !declaresApi(352) &&

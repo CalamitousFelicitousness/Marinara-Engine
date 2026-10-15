@@ -68,6 +68,7 @@ import {
 import { embedMemoryRecallTexts, type MemoryRecallEmbeddingOptions } from "./memory-recall.js";
 import { resolveMemoryRecallEmbeddingSource } from "./memory-recall-embedding.js";
 import {
+  bestOverQueries,
   fuseRecallRanks,
   recallNames,
   recallTerms,
@@ -241,6 +242,12 @@ const RECOLLECTION_SCENES_PER_RUN = 3;
  * under a second of the local embedder, in the background after the reply.
  */
 const VECTOR_UPKEEP_RECORDS = 32;
+/**
+ * Recall reads at most this many user messages since the responder last spoke, the latest kept (#7699). Each is its
+ * own embedding query, all in one request: six of 6000 characters take about 0.2 s on the local embedder, well
+ * inside the query's 1.5 s. Every earlier message is one more chance to lift an unrelated scene.
+ */
+const RECALL_QUERY_MESSAGES = 6;
 /** What a summary or excerpt is embedded as. */
 function embeddingText(record: { content: string }): string {
   return parseRoleplayUserCommands(record.content).content.slice(0, 6000);
@@ -453,7 +460,7 @@ function preparationPolicyRevision(ctx: Context): string {
   // Automatic message visibility changes no prepared memory; keep existing snapshots reusable.
   const { autoMessageVisibility: _visibility, ...settings } = ctx.settings;
   return hash([
-    "scene-timeframe-constants-v28", // Invalidate reusable contexts without rebuilding valid source archives.
+    "scene-timeframe-constants-v29", // Invalidate reusable contexts without rebuilding valid source archives.
     policyFingerprint(ctx),
     settings,
     ctx.metadata.summaryEntries,
@@ -2573,15 +2580,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return parseRoleplayUserCommands(rendered).content.replace(/\n([ \t]*\n){2,}/g, "\n\n");
   }
 
+  /** With `replace`, a record with a vector gets a new one too; the old one stays if the request fails. */
   async function embedRecord(
     ctx: Context,
     record: StoredRecord,
     embeddingOptions: MemoryRecallEmbeddingOptions,
     options: AdvancedMemoryOperationOptions,
+    replace = false,
   ) {
     if (!record.content || !record.enabled) return;
     const space = embeddingOptions.embeddingSource?.spaceId ?? "local-default";
-    if (record.embedding?.length && record.embeddingSpaceId === space) return;
+    if (!replace && record.embedding?.length && record.embeddingSpaceId === space) return;
     try {
       const vectors = await embedMemoryRecallTexts([embeddingText(record)], {
         ...embeddingOptions,
@@ -3972,8 +3981,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
   /**
    * After a reply: vectors for a few summaries and excerpts that have none from the current embedding model,
    * summaries first, the newest scenes first. Scenes archived in Decision mode before #7699 have none, and an
-   * embedding model change leaves old ones; Reindex does them all at once. Only the vector is written, and only
-   * while its record still has the text it was made from, so nothing else is checked again.
+   * embedding model change leaves old ones; Reindex does them all at once. Like Reindex, only valid records: one
+   * whose sources or corrections changed waits for its rebuild. Only the vector is written, and only while its
+   * record still has the text it was made from.
    */
   async function upkeepVectors(chatId: string, options: AdvancedMemoryOperationOptions) {
     const ctx = await context(chatId);
@@ -3986,7 +3996,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const space = embeddingSource?.spaceId ?? "local-default";
     const key = (record: StoredRecord) => `${space}\n${record.id}\n${hash(record.content)}`;
     const order = new Map(ctx.messages.map((message, index) => [message.id, index]));
-    const missing = (await operationRecords(ctx))
+    const current = await operationRecords(ctx);
+    const unvectored = current
       .filter(
         (record) =>
           (record.kind === "scene" || record.kind === "excerpt") &&
@@ -4002,8 +4013,12 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         (a, b) =>
           Number(b.kind === "scene") - Number(a.kind === "scene") ||
           order.get(b.startMessageId)! - order.get(a.startMessageId)!,
-      )
-      .slice(0, VECTOR_UPKEEP_RECORDS);
+      );
+    const missing: StoredRecord[] = [];
+    for (const record of unvectored) {
+      if (missing.length === VECTOR_UPKEEP_RECORDS) break;
+      if (recordValid(ctx, record) && dependenciesValid(record, current, ctx)) missing.push(record);
+    }
     if (!missing.length) return;
     const embed = (batch: StoredRecord[]) =>
       embedMemoryRecallTexts(batch.map(embeddingText), {
@@ -5052,19 +5067,40 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               .join("\n"),
     );
     // The caller's generic group query may contain a hidden speaker; construct the actual query from this audience's source view.
+    // The responders answer what the user said since one of them last spoke, in a group also to another character,
+    // as when Maukie replies after the user talked with Pantalone (#7699). A first reply, or one with no user
+    // message since, reads the latest user message.
+    const responderIds = new Set(audience.length ? audience : ctx.characterIds);
+    let spanStart = visible.length;
+    while (
+      spanStart > 0 &&
+      (visible[spanStart - 1]!.role === "user" || !responderIds.has(visible[spanStart - 1]!.characterId ?? ""))
+    )
+      spanStart--;
+    const lastUser = [...visible].reverse().find((message) => message.role === "user");
+    const spanUser = spanStart > 0 ? visible.slice(spanStart).filter((message) => message.role === "user") : [];
+    const queryMessages = spanUser.length ? spanUser.slice(-RECALL_QUERY_MESSAGES) : lastUser ? [lastUser] : [];
+    // Word matching and the Decision model read the last 4 messages, and back to the span's start within 6000
+    // characters, the newest kept.
+    let windowStart = Math.max(0, visible.length - 4);
+    let windowLength = visible.slice(windowStart).reduce((length, message) => length + message.content.length + 1, 0);
+    while (spanStart > 0 && windowStart > spanStart && windowLength < 6000)
+      windowLength += visible[--windowStart]!.content.length + 1;
     const query = visible
-      .slice(-4)
+      .slice(windowStart)
       .map((message) => message.content)
       .join("\n")
       .slice(-6000);
     const queryWords = recallTerms(query);
-    const lastUser = [...visible].reverse().find((message) => message.role === "user");
-    const cueWords = recallTerms(lastUser?.content.slice(-6000) ?? query);
-    // Embeddings compare the latest user message alone (#7699). With the window above, the local embedder cut it
-    // off at 512 wordpieces, and long story turns made every scene look alike: on a synthetic archive, an unrelated
-    // question lifted every scene over the 0.45 floor below and a paraphrase reached a 24-scene shortlist far less
-    // often. Word matching keeps the window.
-    const vectorQuery = (lastUser ?? visible.at(-1))?.content.slice(0, 6000) || query;
+    const cueTexts = queryMessages.length ? queryMessages.map((message) => message.content.slice(-6000)) : [query];
+    const cueQueries = cueTexts.map(recallTerms);
+    // Embeddings compare each of those user messages alone, never the window (#7699). Joined, the local embedder cut
+    // them off at 512 wordpieces, and long story turns made every scene look alike: on a synthetic archive, an
+    // unrelated question lifted every scene over the 0.45 floor below and a paraphrase reached a 24-scene shortlist
+    // far less often. A record scores its best match; see bestOverQueries for the long turns among them.
+    const vectorQueries = queryMessages.length
+      ? queryMessages.map((message) => message.content.slice(0, 6000))
+      : [visible.at(-1)?.content.slice(0, 6000) || query];
     const recallDiagnostics: AdvancedMemoryDecisionDiagnostics | undefined =
       ctx.settings.decisionEnabled && !input.readOnly
         ? {
@@ -5080,7 +5116,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const recalling = candidates.length > 0 && optionalMemoryBudget > 64;
     // Ordinary relevance always ranks every candidate. It shortlists the scenes the
     // Decision model judges, and it decides alone when that model is off or fails.
-    let queryVector: number[] | undefined;
+    let queryVectors: number[][] = [];
     let vectorSpace: string | null = null;
     if (!input.readOnly && recalling) {
       try {
@@ -5100,15 +5136,13 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         ) {
           const timeoutMs = 1500;
           const timeoutSignal = AbortSignal.timeout(timeoutMs);
-          queryVector = (
-            await withLlmRequestTimeout(timeoutMs, () =>
-              embedMemoryRecallTexts([vectorQuery], {
-                ...(embeddingSource ? { embeddingSource } : {}),
-                inputType: "query",
-                signal: input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal,
-              }),
-            )
-          )[0];
+          queryVectors = await withLlmRequestTimeout(timeoutMs, () =>
+            embedMemoryRecallTexts(vectorQueries, {
+              ...(embeddingSource ? { embeddingSource } : {}),
+              inputType: "query",
+              signal: input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal,
+            }),
+          );
         }
       } catch (error) {
         abortIfNeeded(input.signal);
@@ -5125,29 +5159,41 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const rankingTerms = recallTerms(trackerRankingHint(ctx, currentTracker, audience));
     const candidateWords = candidateTexts.map(recallTerms);
     const responders = audience.map((id) => ctx.names.get(id) ?? id);
-    // Names the latest user message mentions, like a pet's, weigh most. Its lowercase words are no names,
+    // Names those user messages mention, like a pet's, weigh most. Their lowercase words are no names,
     // and the responders' and persona's names say who is talking, not about what.
     const speakerWords = recallTerms(
-      [...responders, String(object(object(lastUser?.extra).personaSnapshot).name ?? "")].join(" "),
+      [
+        ...responders,
+        ...queryMessages.map((message) => String(object(object(message.extra).personaSnapshot).name ?? "")),
+      ].join(" "),
     );
     const cueNames = new Set(
-      [...recallNames(cueWords, [...candidateTexts, lastUser?.content.slice(-6000) ?? query])].filter(
+      [...recallNames(new Set(cueQueries.flatMap((words) => [...words])), [...candidateTexts, ...cueTexts])].filter(
         (word) => !speakerWords.has(word),
       ),
     );
-    const cueScores = scoreRecallTerms(cueWords, candidateWords, cueNames);
+    // Each message's cue words score on their own, so many messages' common words add up to no cue.
+    const cueScoresFor = (documents: ReadonlySet<string>[]) =>
+      bestOverQueries(cueQueries.map((words) => scoreRecallTerms(words, documents, cueNames)));
+    const cueScores = cueScoresFor(candidateWords);
+    const compared = candidates.flatMap((record, index) =>
+      queryVectors.length === vectorQueries.length &&
+      candidateTexts[index] === record.content &&
+      record.embedding?.length === queryVectors[0]!.length &&
+      record.embeddingSpaceId === vectorSpace
+        ? [index]
+        : [],
+    );
+    const bestSimilarities = bestOverQueries(
+      queryVectors.map((vector) => compared.map((index) => cosineSimilarity(vector, candidates[index]!.embedding!))),
+    );
+    const similarities = new Map(compared.map((index, position) => [index, bestSimilarities[position]!]));
     const relevance = candidates
       .map((record, index) => {
         const words = candidateWords[index]!;
         const overlap = [...queryWords].filter((word) => words.has(word)).length;
         const lexical = Math.max(cueScores[index]!, overlap / Math.max(4, Math.sqrt(queryWords.size * words.size)));
-        const similarity =
-          queryVector?.length &&
-          candidateTexts[index] === record.content &&
-          record.embedding?.length === queryVector.length &&
-          record.embeddingSpaceId === vectorSpace
-            ? cosineSimilarity(queryVector, record.embedding)
-            : null;
+        const similarity = similarities.get(index) ?? null;
         const relevance = Math.max(lexical, similarity !== null && similarity > 0.45 ? similarity - 0.25 : 0);
         // Current mood/relationship only breaks ties between independently relevant memories.
         const hint = relevance >= 0.12 && [...rankingTerms].some((word) => words.has(word)) ? 0.03 : 0;
@@ -5159,7 +5205,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     for (const { record, score } of relevance)
       if (!sceneRelevance.has(record.sceneId)) sceneRelevance.set(record.sceneId, score);
     let sceneOrder = [...sceneRelevance].filter(([, score]) => score >= 0.12).map(([sceneId]) => sceneId);
-    const conversation = logMessages(ctx, visible.slice(-4));
+    const conversation = logMessages(ctx, visible.slice(windowStart));
     // Set only when the scene pass answered; the message pass runs only after it.
     let decisionThreshold: number | null = null;
     // Both passes share one total limit, and each has its own within it. Preparing again for the same reply keeps
@@ -5296,13 +5342,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         );
       return { scene, excerptRecords, sceneSource, words: sceneSource.map((message) => recallTerms(message.content)) };
     });
-    // Text matching orders each scene's messages: distinctive words from the latest
-    // user message first, then shared words, then the scene's best-matching excerpt chunk.
-    const messageCues = scoreRecallTerms(
-      cueWords,
-      sceneSources.flatMap(({ words }) => words),
-      cueNames,
-    );
+    // Text matching orders each scene's messages: distinctive words from the user's
+    // messages first, then shared words, then the scene's best-matching excerpt chunk.
+    const messageCues = cueScoresFor(sceneSources.flatMap(({ words }) => words));
     let cueOffset = 0;
     const excerptPlans = sceneSources.map(({ words, ...plan }) => {
       const cues = messageCues.slice(cueOffset, (cueOffset += words.length));
@@ -6387,14 +6429,14 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           // Rebuild saved text only. Scene detection/preparation must never
           // overwrite a correction or spend summary tokens during reindexing.
           // Decision mode shortlists by vectors too, so it rebuilds them the same way (#7699).
-          record.embedding = null;
-          record.embeddingSpaceId = null;
-          await put(ctx, record, operationOptions);
+          // The old vector stays until the new one is written, so a failed request loses none; one from another
+          // embedding model is never compared.
           await embedRecord(
             ctx,
             record,
             { ...(embeddingSource ? { embeddingSource } : {}), signal: operationOptions.signal },
             operationOptions,
+            true,
           );
           await progress(ctx, { completed: index + 1 }, operationOptions);
         }

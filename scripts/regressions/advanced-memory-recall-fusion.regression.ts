@@ -24,6 +24,7 @@ let embeddingRequests = 0;
 let rejectedEmbedding: RegExp | null = null;
 const recallRequests: Array<Array<{ id: string; text: string }>> = [];
 const decisionBodies: string[] = [];
+const recallConversations: string[] = [];
 let embeddingsDown = false;
 let failFirstRecallBatch = false;
 let accepted = /locket|TARGET_SCENE/u;
@@ -37,6 +38,7 @@ const provider = createServer(async (request, response) => {
     const memories: Array<{ id: string; text: string }> | undefined = body.state.memories;
     if (memories) {
       recallRequests.push(memories);
+      recallConversations.push(body.state.currentConversation);
       if (failFirstRecallBatch && recallRequests.length === 1) {
         response.statusCode = 500;
         response.end("{}");
@@ -114,9 +116,11 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
 const { rankDecisionMemories, memoryDecisionClock } =
   await import("../../packages/server/src/services/advanced-memory-decisions.js");
-const { recallTerms, scoreRecallTerms, fuseRecallRanks } =
+const { recallTerms, scoreRecallTerms, fuseRecallRanks, bestOverQueries } =
   await import("../../packages/server/src/services/advanced-memory-ranking.js");
 const { estimateChatSummaryTokens } = await import("../../packages/shared/dist/index.js");
+const { advancedMemoryRecords } = await import("../../packages/server/src/db/schema/advanced-memory.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
 const db = await createFileNativeDB();
 const chats = createChatsStorage(db);
 const connections = createConnectionsStorage(db);
@@ -383,6 +387,177 @@ try {
   assert(estimateChatSummaryTokens(oathLine) <= 25);
   assert.doesNotMatch(decisionBodies.join("\n"), /Autumn 1|Winter 9|PRIVATE_SECRET/u, "nothing the reader missed");
 
+  // A group reply's recall reads what the user said since the responder last spoke, as when Maukie answers after
+  // the user talked with Pantalone: each user message is its own embedding query, a record scores its best match,
+  // and the cue words and the Decision model's conversation cover the same span (#7699).
+  const conceptVector = vector;
+  vector = (text: string) => [
+    (text.match(/\b(?:locket|pendant|chain)\b/giu) ?? []).length,
+    (text.match(/\brope\b/giu) ?? []).length,
+    (text.match(/\bmarket\b/giu) ?? []).length,
+    0.1,
+  ];
+  const span = await chats.create({
+    name: "Span",
+    mode: "roleplay",
+    characterIds: ["maukie", "pantalone", "colombina"],
+    connectionId: helper.id,
+  });
+  assert(span);
+  await chats.patchMetadata(span.id, { groupChatMode: "individual" });
+  await memory.updateSettings(span.id, {
+    ...decisionSettings,
+    knowledgeStarts: { maukie: null, pantalone: null, colombina: null },
+  });
+  const cue = "Pantalone, do you remember the pendant on its chain?";
+  const smallTalk = ["We still need rope, Pantalone.", "Anyway, we still need rope."];
+  await chats.createMessagesBatch(span.id, [
+    ...summaries.flatMap((_, index) =>
+      sceneMessages(index).map((message) =>
+        message.role === "assistant" ? { ...message, characterId: "pantalone" } : message,
+      ),
+    ),
+    { role: "user", content: "SCENE_CHANGE Mari comes home late.", extra: { isConversationStart: true } },
+    { role: "assistant", characterId: "maukie", content: "Maukie waves from the kitchen." },
+    { role: "user", content: cue },
+    { role: "assistant", characterId: "pantalone", content: "Pantalone shrugs." },
+    { role: "user", content: smallTalk[0]! },
+    { role: "assistant", characterId: "pantalone", content: "Pantalone counts his coins." },
+    { role: "user", content: smallTalk[1]! },
+  ]);
+  await memory.initialize(span.id);
+  const spanRecords = (await memory.status(span.id)).records;
+  const spanScene = (index: number) =>
+    spanRecords.find((record) => record.kind === "scene" && record.content === summaries[index])!;
+  const replyAs = async (responder: string) => {
+    recallRequests.length = 0;
+    recallConversations.length = 0;
+    embeddingInputs.length = 0;
+    return memory.prepare({
+      chatId: span.id,
+      messages: await chats.listMessages(span.id),
+      audienceCharacterIds: [responder],
+      budgetTokens: 50000,
+    });
+  };
+  // Mari's case: the question was the first of three user messages to Pantalone, and Maukie replies.
+  const maukie = await replyAs("maukie");
+  assert.deepEqual(embeddingInputs, [[cue, ...smallTalk]], "each user message since Maukie spoke, one request");
+  assert(
+    recallRequests[0]!.some(({ id }) => id === spanScene(LOCKET_SCENE).id),
+    "the locket scene reaches the Decision shortlist through the first message",
+  );
+  assert.match(recallConversations[0]!, /pendant on its chain/u, "the Decision model reads the question too");
+  assert.deepEqual(maukie.receipt.recalledSceneIds, [spanScene(LOCKET_SCENE).sceneId]);
+  // Decision off: the locket scene scores by the first message and the rope scenes by the later ones, each by its
+  // best match, so the locket comes first, then the scenes most about rope.
+  await memory.updateSettings(span.id, { decisionEnabled: false });
+  const plain = await replyAs("maukie");
+  await memory.updateSettings(span.id, { decisionEnabled: true });
+  const mostRope = summaries.flatMap((summary, index) => (summary.split("rope").length === 4 ? [index] : []));
+  assert.equal(plain.receipt.recalledSceneIds[0], spanScene(LOCKET_SCENE).sceneId, "the locket scene first");
+  assert.equal(plain.receipt.recalledSceneIds.length, 3);
+  assert(
+    plain.receipt.recalledSceneIds
+      .slice(1)
+      .every((sceneId) => mostRope.some((index) => spanScene(index).sceneId === sceneId)),
+    "then the scenes the latest message matches best",
+  );
+  // Colombina has not spoken yet: the latest user message, as before.
+  await replyAs("colombina");
+  assert.deepEqual(embeddingInputs, [[smallTalk[1]]], "a first reply reads the latest user message");
+  assert.doesNotMatch(recallConversations[0] ?? "", /pendant/u, "and the last four messages");
+  // What Maukie may not read never joins his query: a whisper to Pantalone, a message hidden from Maukie.
+  await chats.createMessagesBatch(span.id, [
+    {
+      role: "user",
+      content: '[whisper: character="Pantalone" text="WHISPERED_PENDANT"]',
+      extra: {
+        roleplayCommandActivity: [
+          {
+            command: { type: "whisper", character: "Pantalone", text: "WHISPERED_PENDANT" },
+            raw: '[whisper: character="Pantalone" text="WHISPERED_PENDANT"]',
+            whisperRecipient: { id: "pantalone", kind: "character" },
+          },
+        ],
+      },
+    },
+    { role: "user", content: "HIDDEN_PENDANT chain", extra: { hiddenFromAICharacterIds: ["maukie"] } },
+  ]);
+  await replyAs("maukie");
+  assert.deepEqual(embeddingInputs, [[cue, ...smallTalk]], "nothing Maukie may not read");
+  assert.doesNotMatch(recallConversations.join("\n"), /WHISPERED|HIDDEN_PENDANT/u);
+  await replyAs("pantalone");
+  assert.deepEqual(embeddingInputs, [[smallTalk[1], "HIDDEN_PENDANT chain"]], "Pantalone's span is his own");
+  // At most the six latest user messages.
+  const notes = Array.from({ length: 8 }, (_, index) => `Rope note ${index + 1}.`);
+  await chats.createMessagesBatch(span.id, [
+    { role: "assistant", characterId: "maukie", content: "Maukie nods." },
+    ...notes.map((content) => ({ role: "user" as const, content })),
+  ]);
+  await replyAs("maukie");
+  assert.deepEqual(embeddingInputs, [notes.slice(-6)], "the six latest user messages");
+  vector = conceptVector;
+
+  // After-reply vector upkeep and Reindex use only records Reindex accepts, and a failed Reindex keeps old vectors.
+  const stale = await chats.create({
+    name: "Stale",
+    mode: "roleplay",
+    characterIds: ["kaito"],
+    connectionId: helper.id,
+  });
+  assert(stale);
+  await memory.updateSettings(stale.id, decisionSettings);
+  await chats.createMessagesBatch(stale.id, [
+    ...summaries.flatMap((_, index) => sceneMessages(index)),
+    ...liveMessages,
+  ]);
+  embeddingsDown = true;
+  await memory.initialize(stale.id);
+  embeddingsDown = false;
+  const staleRecords = (await memory.status(stale.id)).records.filter(
+    (record) => record.content && record.status === "closed",
+  );
+  // The two newest scenes' records lean on a summary correction that no longer exists.
+  const newestStart = Math.max(...staleRecords.map((record) => record.startIndex));
+  const outdated = staleRecords.filter((record) => record.startIndex >= newestStart - 3);
+  assert.equal(outdated.length, 4);
+  for (const record of outdated)
+    await db
+      .update(advancedMemoryRecords)
+      .set({ dependencies: JSON.stringify([{ id: "summary:removed", revision: "gone" }]) })
+      .where(eq(advancedMemoryRecords.id, record.id));
+  const outdatedIds = new Set(outdated.map((record) => record.id));
+  assert.deepEqual(
+    (await memory.status(stale.id)).records.filter((record) => record.embeddingStatus === "stale").map(({ id }) => id),
+    outdated.map(({ id }) => id),
+    "only those are invalid",
+  );
+  const outdatedVectors = async () =>
+    (await db.select().from(advancedMemoryRecords)).filter((row) => outdatedIds.has(row.id) && row.embedding).length;
+  embeddingInputs.length = 0;
+  await memory.checkScenesAfterGeneration(stale.id);
+  const staleVectorized = () =>
+    memory.status(stale.id).then(({ records }) => records.filter((record) => record.embeddingStatus === "vectorized"));
+  assert.equal(embeddingInputs.flat().length, 32, "the reply's places all go to valid records");
+  assert.equal(await outdatedVectors(), 0, "no invalid record is embedded");
+  const before = new Map((await staleVectorized()).map((record) => [record.id, record]));
+  assert.equal(before.size, 32);
+  embeddingsDown = true;
+  await memory.reindex(stale.id);
+  embeddingsDown = false;
+  assert.deepEqual(
+    (await staleVectorized()).map((record) => record.id).sort(),
+    [...before.keys()].sort(),
+    "Reindex with the embedder down keeps every vector",
+  );
+  // 28 closed scenes' two records each, and the live scene's excerpt.
+  embeddingInputs.length = 0;
+  await memory.reindex(stale.id);
+  assert.equal(embeddingInputs.flat().length, 57, "Reindex embeds every valid record again, and no invalid one");
+  assert.equal(await outdatedVectors(), 0);
+  assert.equal((await staleVectorized()).length, 57);
+
   // Until nearly every scene has a vector, the shortlist keeps ordinary recall's order. Vectors come to the newest
   // scenes first, and fused with so few, their unrelated similarities would push word matches out (#7699).
   const cues =
@@ -550,6 +725,29 @@ try {
       .map(([id]) => id)
       .sort(),
     [...candidates.slice(24, 30).map(({ id }) => id), "huge"].sort(),
+  );
+
+  // A record scores its best match over the queries. An earlier query close to everything, like a long story turn,
+  // first loses 1.5 times how much its mean is above the latest's, so it lifts only what stands out for it.
+  const rounded = (values: number[]) => values.map((value) => Math.round(value * 100) / 100);
+  assert.deepEqual(bestOverQueries([[0.2, 0.9]]), [0.2, 0.9], "one query: its own scores");
+  assert.deepEqual(
+    bestOverQueries([
+      [0.8, 0, 0.1],
+      [0.3, 0.3, 0.3],
+    ]),
+    [0.8, 0.3, 0.3],
+    "a focused earlier query",
+  );
+  assert.deepEqual(
+    rounded(
+      bestOverQueries([
+        [0.8, 0.6, 0.7],
+        [0.1, 0.2, 0.6],
+      ]),
+    ),
+    [0.2, 0.2, 0.6],
+    "a diffuse earlier query loses 1.5 times its excess mean",
   );
 
   // Fusion keeps the word order when no vector exists, and lets a strong vector match in.

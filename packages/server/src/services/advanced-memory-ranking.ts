@@ -76,6 +76,29 @@ export function scoreRecallTerms(
 }
 
 /**
+ * ponytail: measured with the local MiniLM on a synthetic archive (#7699), where 1 still let long story turns push
+ * paraphrased questions out of the shortlist. Another embedding model may spread its scores differently; measuring
+ * it per embedding model is the upgrade.
+ */
+const DIFFUSE_QUERY_PENALTY = 1.5;
+
+/**
+ * Each item's best score over several queries, the latest query last (#7699). An earlier query's scores first lose
+ * 1.5 times as much as their mean is above the latest's: a long story turn is close to nearly everything, so taken
+ * as is it would outrank every focused match. With one query, its own scores.
+ */
+export function bestOverQueries(scores: readonly (readonly number[])[]): number[] {
+  const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / (values.length || 1);
+  const latest = mean(scores.at(-1) ?? []);
+  const shifts = scores.map((values, index) =>
+    index < scores.length - 1 ? DIFFUSE_QUERY_PENALTY * Math.max(0, mean(values) - latest) : 0,
+  );
+  return (scores.at(-1) ?? []).map((_, item) =>
+    Math.max(...scores.map((values, index) => values[item]! - shifts[index]!)),
+  );
+}
+
+/**
  * Small, so the top of either ranking gets in. The usual 60 favours scenes both rankings place in the middle: on a
  * synthetic 800-scene archive it kept a scene with a unique name or object out of a 24-scene shortlist up to 100%
  * of the time, and 1, 3 and 10 kept every one (#7699).

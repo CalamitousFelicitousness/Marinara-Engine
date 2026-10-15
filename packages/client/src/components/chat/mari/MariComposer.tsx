@@ -356,6 +356,7 @@ export function MariComposer({
             scrollLeft={composerScroll.left}
             scrollTop={composerScroll.top}
             className="mari-workspace-composer__text"
+            onAccept={acceptDraftCompletion}
           />
           <textarea
             ref={floatingTextareaRef}

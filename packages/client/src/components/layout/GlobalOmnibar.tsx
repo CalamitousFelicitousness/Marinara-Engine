@@ -2065,6 +2065,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
                     value={query}
                     suffix={inlineSuffix}
                     className="text-base font-medium leading-normal"
+                    onAccept={() => setQuery(query + inlineSuffix)}
                   />
                   <input
                     ref={inputRef}

@@ -1688,7 +1688,7 @@ const LocalChatArea = memo(function LocalChatArea({
               {
                 id: "roleplay-video",
                 kind: "video",
-                title: "Roleplay video",
+                title: localizeUi("ui.chat.chatarea.roleplayVideo"),
                 prompt: preview.prompt,
                 details: details.join(" | "),
                 maxLength: preview.maxPromptLength ?? undefined,

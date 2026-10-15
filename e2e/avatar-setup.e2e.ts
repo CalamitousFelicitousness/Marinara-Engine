@@ -577,6 +577,7 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
       spriteType: "expressions",
       noBackground: true,
       expressions: ["neutral", "happy", "angry", "sad", "relaxed", "surprised"],
+      talkingHeadFaces: true,
     });
     await dialog.getByRole("button", { name: /^Save \d+ Sprites?$/u }).click();
     await expect(dialog).toBeHidden();

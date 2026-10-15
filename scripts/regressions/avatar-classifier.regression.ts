@@ -133,6 +133,8 @@ const keywordFeelings: Array<[string, string, string | null]> = [
   ["I love you.", "relaxed", "love"],
   ["She is crying.", "sad", "grief"],
   ["He is nervous.", "neutral", null],
+  // "I think" is too common to name curiosity; the model tier reads that feeling instead.
+  ["I think you're right.", "neutral", null],
 ];
 for (const [text, emotion, feeling] of keywordFeelings) {
   const result = classifyExpressionKeywords(text);

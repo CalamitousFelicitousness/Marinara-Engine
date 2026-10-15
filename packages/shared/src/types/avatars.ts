@@ -367,10 +367,10 @@ const AVATAR_FEELING_SYNONYMS: Readonly<Record<AvatarExtraFeeling, readonly stri
   disgust: ["disgusted", "grossed_out", "revolted", "eww"],
   disappointment: ["disappointed", "letdown", "dejected"],
   grief: ["grieving", "crying", "sobbing", "weeping", "heartbroken", "mourning", "devastated"],
-  nervousness: ["nervous", "anxious", "worried", "uneasy", "tense"],
+  nervousness: ["nervous", "anxious", "worried", "concerned", "uneasy", "tense"],
   remorse: ["remorseful", "guilty", "guilt", "apologetic", "sorry", "ashamed", "regret"],
   approval: ["approving", "nod", "thumbs_up", "agree"],
-  caring: ["care", "gentle", "kind", "sympathetic", "comforting", "concerned"],
+  caring: ["care", "gentle", "kind", "sympathetic", "comforting"],
   love: ["loving", "in_love", "affection", "affectionate", "adoring", "heart_eyes"],
   relief: ["relieved", "phew"],
   confusion: ["confused", "puzzled", "perplexed", "huh"],
@@ -489,13 +489,17 @@ export function detectSpriteEmotionBindings(labels: readonly string[]): AvatarEx
 export type AvatarFeelingMap = Partial<Record<AvatarExtraFeeling, AvatarExpressionBinding>>;
 
 /** Binds each extra feeling a sprite label names (mapSpriteExpressionToAvatarFeeling) to the best such label:
- *  the feeling's own name before another word for it, the first label on a tie. Feelings no label names are
+ *  the feeling's own name before another word for it, the first label on a tie. A label whose own emotion is
+ *  another one (`crying_laughing` is happy, so never the grief face) is skipped. Feelings no label names are
  *  left out, so they show their emotion's face. */
 export function detectSpriteFeelingBindings(labels: readonly string[]): AvatarFeelingMap {
   const map: AvatarFeelingMap = {};
   for (const label of labels) {
     const match = matchSpriteFeeling(label);
-    if (match && match.confidence > (map[match.feeling]?.confidence ?? 0)) {
+    if (!match) continue;
+    const emotion = mapSpriteExpressionToAvatarEmotion(label)?.emotion;
+    if (emotion && emotion !== AVATAR_FEELING_EMOTIONS[match.feeling].emotion) continue;
+    if (match.confidence > (map[match.feeling]?.confidence ?? 0)) {
       map[match.feeling] = { target: label, source: "sprite-label", confidence: match.confidence };
     }
   }

@@ -581,7 +581,8 @@ export function inferExpressionCandidates(text: string): string[] {
 
 /** The avatar classifier's instant tier: each matching group adds its label's emotion, and whatever the
  *  matches leave of 1 stays neutral, so one strong word is confident and one mild word is not. The feeling is
- *  the first matching group's that belongs to the winning emotion (`laughs` → amusement). */
+ *  the first matching group's that belongs to the winning emotion (`laughs` → amusement), never on a calm reading:
+ *  `think` words are too common ("I think so") to name curiosity, so the model tier reads it instead. */
 export function classifyExpressionKeywords(text: string): AvatarClassification {
   const scores = Object.fromEntries(AVATAR_EMOTIONS.map((emotion) => [emotion, 0])) as Record<AvatarEmotion, number>;
   let total = 0;
@@ -597,8 +598,10 @@ export function classifyExpressionKeywords(text: string): AvatarClassification {
   let best: AvatarEmotion = "neutral";
   for (const emotion of AVATAR_EMOTIONS) if (scores[emotion] > scores[best]) best = emotion;
   const feeling =
-    groups
-      .map((group) => mapSpriteExpressionToAvatarFeeling(group.label))
-      .find((found) => found && AVATAR_FEELING_EMOTIONS[found].emotion === best) ?? null;
+    best === "neutral"
+      ? null
+      : (groups
+          .map((group) => mapSpriteExpressionToAvatarFeeling(group.label))
+          .find((found) => found && AVATAR_FEELING_EMOTIONS[found].emotion === best) ?? null);
   return { emotion: best, weight: scores[best], scores, feeling };
 }

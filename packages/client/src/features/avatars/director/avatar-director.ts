@@ -279,7 +279,11 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       const feeling = result.feeling ?? null;
       if (!feeling || feeling === owner.feeling || result.weight < T.switchScore) return;
       if (now - owner.feelingSwitchedAt < T.minDwellMs) owner.pendingFeeling = feeling;
-      else setFeeling(owner, feeling);
+      else {
+        // A face picked by label (an earlier reply's Expression Engine pick) gives way to the newer feeling.
+        owner.label = null;
+        setFeeling(owner, feeling);
+      }
       return;
     }
     if (result.emotion === "neutral") {
@@ -475,6 +479,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         switchTo(owner, emotion, weight, null, feeling ?? null);
       }
       if (owner.pendingFeeling && now - owner.feelingSwitchedAt >= T.minDwellMs) {
+        owner.label = null;
         setFeeling(owner, owner.pendingFeeling);
       }
       if (mode !== "roleplay" || generating || streamEndedAt === null || owner.settled || owner.speaking) continue;

@@ -286,6 +286,7 @@ const feelingCases: Array<[string, string | null]> = [
   ["smirk", "amusement"],
   ["smug", "pride"],
   ["ashamed", "remorse"],
+  ["concerned", "nervousness"],
   // Whole words only: a feeling inside another word is not that feeling.
   ["scarecrow", null],
   ["careful", null],
@@ -312,6 +313,27 @@ assert.deepEqual(
   "a feeling's own name beats another word for it; a tie keeps the first; only feelings found are written",
 );
 assert.deepEqual(detectSpriteFeelingBindings(["neutral", "happy"]), {}, "no feeling, no binding");
+assert.deepEqual(
+  mapSpriteExpressionToAvatarEmotion("concerned"),
+  { emotion: "sad", weight: 0.5 },
+  "concerned is a worried face, like the Expression Engine reads it",
+);
+// A label whose own emotion is another one never becomes the feeling's face.
+assert.deepEqual(
+  detectSpriteFeelingBindings(["neutral", "sad", "crying_laughing", "sobbing"]),
+  { grief: { target: "sobbing", source: "sprite-label", confidence: 0.8 } },
+  "crying_laughing is happy, so sobbing is the grief face",
+);
+for (const label of [
+  "crying_laughing",
+  "happy_crying",
+  "kind_of_happy",
+  "sad_love",
+  "scared_angry",
+  "angry_flustered",
+]) {
+  assert.deepEqual(detectSpriteFeelingBindings(["neutral", "sad", label]), {}, `${label} is no feeling's face`);
+}
 
 // avatar.json with faces for extra feelings: no other key and no unknown feeling is accepted.
 const withFeelings = {

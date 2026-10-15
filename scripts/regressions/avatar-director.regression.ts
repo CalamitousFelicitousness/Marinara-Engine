@@ -821,6 +821,27 @@ const scene = (id: string, names: string[]) => {
     ["happy", null],
     "a feeling of another emotion (caring) is left out",
   );
+
+  // A pick from the last reply gives way to a newer feeling of the same emotion, whether the feeling lands at once
+  // or waits out the pick's 2 s hold.
+  const { buildPngtuberLayersFromSprites, pickPngtuberLayerKey } =
+    await import("../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.js");
+  const head = buildPngtuberLayersFromSprites(
+    ["neutral", "happy", "smirk", "gratitude"].map((expression) => ({ expression })),
+  )!;
+  for (const holdMs of [2_500, 0]) {
+    feelings.pushExpressionPicks([{ ownerId: "alice", expression: "smirk" }]);
+    await play(16);
+    assert.equal(pickPngtuberLayerKey(head, alice), "smirk");
+    await play(holdMs);
+    begin();
+    tell("Alice thanks you.");
+    await until("gratitude after a pick", () => alice.feeling === "gratitude");
+    assert.deepEqual([alice.emotion, alice.label], ["happy", null], "the earlier pick's label gives way");
+    assert.equal(pickPngtuberLayerKey(head, alice), "gratitude", "the talking head shows the new feeling's face");
+    finish();
+    await play(16);
+  }
   feelings.dispose();
 
   // Game Master lines: a feeling's own name no longer reads as neutral.

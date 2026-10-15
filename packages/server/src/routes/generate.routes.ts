@@ -293,7 +293,11 @@ import {
   type RulesetItemBook,
   type RulesetLiveStates,
 } from "@marinara-engine/shared";
-import { prepareRoleplayRoll } from "../services/generation/roleplay-rolls.js";
+import {
+  isRoleplayRollEnabled,
+  prepareRoleplayRoll,
+  withRoleplayRollSchema,
+} from "../services/generation/roleplay-rolls.js";
 import {
   appendRoleplayMessageNotes,
   appendRoleplayPromptTail,
@@ -8426,14 +8430,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   content: latestRoleplayMessage.content,
                 }
               : null;
-          // While the Rolls command is on, it decides who may roll. Otherwise a roll_dice the
-          // chat's Function Calling settings attached is offered and run the same way (#6945).
-          const roleplayRollEnabled =
-            chatMode === "roleplay" &&
-            !input.impersonate &&
-            (isRoleplayCommandEnabled(chatMeta, "roll")
-              ? isRoleplayCommandAllowed(chatMeta, "roll", roleplayCallerId)
-              : chatResolvedToolNames.has("roll_dice"));
+          const roleplayRollEnabled = isRoleplayRollEnabled({
+            chatMode,
+            impersonate: input.impersonate,
+            chatMeta,
+            callerId: roleplayCallerId,
+            resolvedToolNames: chatResolvedToolNames,
+          });
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
           // The reply text before each command, so a reply split at scene breaks keeps it with its part.
@@ -8441,35 +8444,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let roleplayParsedLength = 0;
           const responderToolDefs =
             chatMode === "roleplay"
-              ? toolDefs
-                  ?.filter((tool) => tool.function.name !== "roll_dice" || roleplayRollEnabled)
-                  .map((tool) =>
-                    tool.function.name !== "roll_dice"
-                      ? tool
-                      : {
-                          ...tool,
-                          function: {
-                            ...tool.function,
-                            parameters: {
-                              ...tool.function.parameters,
-                              properties: {
-                                ...(tool.function.parameters.properties as Record<string, unknown>),
-                                character: {
-                                  type: "string",
-                                  enum: roleplayRollParticipants.map((character) => character.name),
-                                  description: "The chat participant whose action is being rolled.",
-                                },
-                                attribute: {
-                                  type: "string",
-                                  description:
-                                    "Optional assigned RPG attribute, such as Strength or STR. The engine adds its modifier; do not include that bonus in notation.",
-                                },
-                              },
-                              required: [...((tool.function.parameters.required as string[]) ?? []), "character"],
-                            },
-                          },
-                        },
-                  )
+              ? withRoleplayRollSchema(
+                  toolDefs?.filter((tool) => tool.function.name !== "roll_dice" || roleplayRollEnabled),
+                  roleplayRollParticipants,
+                )
               : toolDefs;
           const responderToolsAttached = toolsAttached && Boolean(responderToolDefs?.length);
           if (chatMode === "roleplay") appendLocalEndpointTools(preparedMessagesForGen, responderToolDefs);

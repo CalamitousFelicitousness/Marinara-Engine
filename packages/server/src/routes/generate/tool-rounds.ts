@@ -5,6 +5,12 @@ import { appendRoundGeminiParts } from "../../services/generation/generation-par
 import { getRequestInputTokens } from "../../services/generation/generation-text-utils.js";
 import { parseRoleplayCommands, RoleplayCommandStreamFilter } from "../../services/generation/roleplay-commands.js";
 import {
+  cutPendingRoll,
+  rollActivityFromToolResult,
+  rollResultFollowUp,
+  textualRollToolCall,
+} from "../../services/generation/roleplay-rolls.js";
+import {
   withLlmRequestTimeout,
   type ChatCompletionResult,
   type ChatMessage,
@@ -209,33 +215,15 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
     }
     finishReason = result.finishReason;
 
-    let textualRoleplayRoll = false;
-    const requestedRoll =
-      roleplayRollEnabled && !result.toolCalls.length ? parseRoleplayCommands(result.content ?? "").roll : undefined;
-    if (requestedRoll) {
-      textualRoleplayRoll = true;
-      text = text.slice(0, roundResponseStart) + (result.content ?? "").slice(0, requestedRoll.end);
+    const textualRoll =
+      roleplayRollEnabled && !result.toolCalls.length ? textualRollToolCall(result.content ?? "", newId) : null;
+    if (textualRoll) {
+      text = text.slice(0, roundResponseStart) + (result.content ?? "").slice(0, textualRoll.end);
       result = {
         ...result,
-        content: (result.content ?? "").slice(0, requestedRoll.start),
+        content: textualRoll.promptContent,
         providerMetadata: undefined,
-        toolCalls: [
-          {
-            id: newId(),
-            type: "function" as const,
-            function: {
-              name: "roll_dice",
-              arguments: JSON.stringify({
-                notation: requestedRoll.command.notation,
-                reason: requestedRoll.command.reason,
-                character: requestedRoll.command.character,
-                attribute: requestedRoll.command.attribute,
-                modifier: requestedRoll.command.modifier,
-                dc: requestedRoll.command.dc,
-              }),
-            },
-          },
-        ],
+        toolCalls: [textualRoll.call],
       };
     }
 
@@ -244,7 +232,7 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
     loopMessages.push({
       role: "assistant",
       content: result.content ?? "",
-      ...(textualRoleplayRoll ? {} : { tool_calls: result.toolCalls }),
+      ...(textualRoll ? {} : { tool_calls: result.toolCalls }),
       ...(result.providerMetadata ? { providerMetadata: result.providerMetadata } : {}),
     });
 
@@ -276,29 +264,13 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
       if (ctx.chatMode === "roleplay" && tr.name === "roll_dice") {
         const call = result.toolCalls.find((candidate) => candidate.id === tr.toolCallId);
         if (call) {
-          let args: Record<string, unknown> = {};
-          try {
-            args = JSON.parse(call.function.arguments);
-          } catch {
-            /* The tool result reports invalid input. */
-          }
-          const activity: RoleplayCommandActivity = {
-            command: {
-              type: "roll",
-              notation: String(args?.notation ?? ""),
-              reason: String(args?.reason ?? ""),
-              ...(typeof args?.character === "string" ? { character: args.character } : {}),
-              ...(typeof args?.attribute === "string" ? { attribute: args.attribute } : {}),
-              ...(typeof args?.modifier === "number" ? { modifier: args.modifier } : {}),
-              ...(typeof args?.dc === "number" ? { dc: args.dc } : {}),
-            },
-            raw:
-              textualRoleplayRoll && requestedRoll
-                ? text.slice(roundResponseStart + requestedRoll.start, roundResponseStart + requestedRoll.end)
-                : `roll_dice(${call.function.arguments})`,
-            ...(!tr.success ? { error: tr.result } : {}),
-            ...(tr.success ? { result: tr.result } : {}),
-          };
+          const activity = rollActivityFromToolResult(
+            call,
+            tr,
+            textualRoll
+              ? text.slice(roundResponseStart + textualRoll.start, roundResponseStart + textualRoll.end)
+              : undefined,
+          );
           ctx.roleplayActivity.push(activity);
           ctx.roleplayInlinePrefixes.set(activity, parseRoleplayCommands(text).content);
         }
@@ -355,11 +327,8 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
 
     for (const tr of toolResults) {
       loopMessages.push(
-        textualRoleplayRoll
-          ? {
-              role: "user",
-              content: `The engine resolved your roll request:\n${formatToolExecutionResultForModel(tr)}\nContinue the same reply from the interruption. Use this result; do not repeat the preceding narration or reroll this action.${round === maxToolRounds - 1 ? " No further rolls are available this turn." : ""}`,
-            }
+        textualRoll
+          ? { role: "user", content: rollResultFollowUp(tr, round === maxToolRounds - 1) }
           : {
               role: "tool",
               content: formatToolExecutionResultForModel(tr),
@@ -385,9 +354,9 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
           signal: generationSignal,
         }),
       );
-      const pendingRoll = roleplayRollEnabled ? parseRoleplayCommands(finalResult.content ?? "").roll : undefined;
-      if (pendingRoll) {
-        finalResult.content = (finalResult.content ?? "").slice(0, pendingRoll.start);
+      const contentBeforeRoll = roleplayRollEnabled ? cutPendingRoll(finalResult.content ?? "") : null;
+      if (contentBeforeRoll !== null) {
+        finalResult.content = contentBeforeRoll;
         finalResult.providerMetadata = undefined;
         text = text.slice(0, prevLen) + finalResult.content;
         sendSseEvent(ctx.output, { type: "roleplay_command_error", data: { rollLimit: true } });

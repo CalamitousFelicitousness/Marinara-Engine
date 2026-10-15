@@ -72,6 +72,7 @@ import {
 } from "../services/prompt/advanced-memory-prompt.js";
 import { registerParameterPreviewRoute } from "./generate/parameter-preview-route.js";
 import { GenerationStreamOutput } from "./generate/generation-stream-output.js";
+import { parseConversationReplyCommands, parseRoleplayDmReplyCommands } from "./generate/reply-commands.js";
 import { runToolRounds } from "./generate/tool-rounds.js";
 // ──────────────────────────────────────────────
 // Routes: Generation (SSE Streaming with Tool Use + Agent Pipeline)
@@ -469,13 +470,7 @@ import {
   npcAvatarSlug,
   sanitizeGameNpcAvatarUrls,
 } from "../services/game/npc-avatar-utils.js";
-import {
-  parseCharacterCommands,
-  parseCharacterCommandsBySpeaker,
-  parseDirectMessageCommands,
-  type CharacterCommand,
-  type DirectMessageCommand,
-} from "../services/conversation/character-commands.js";
+import { parseDirectMessageCommands, type CharacterCommand } from "../services/conversation/character-commands.js";
 import {
   suppressesReferencePromptLine,
   mergeIllustratorNegativePrompt,
@@ -710,11 +705,7 @@ import {
   normalizeHapticAgentCommand,
   normalizeHapticAgentCommands,
 } from "../services/generation/haptic-runtime.js";
-import {
-  buildConversationCommandsReminder,
-  filterEnabledConversationCommands,
-  isConversationCommandEnabled,
-} from "../services/generation/conversation-command-runtime.js";
+import { buildConversationCommandsReminder } from "../services/generation/conversation-command-runtime.js";
 import {
   DIRECTOR_SECRET_PLOT_LAST_MESSAGE_KEY,
   appendSecretPlotSystemMessage,
@@ -778,11 +769,6 @@ import {
   type RuntimeAgentSectionType,
 } from "../services/generation/runtime-agent-sections.js";
 import { applySpotifyAgentPlaybackFallbacks } from "../services/generation/spotify-agent-runtime.js";
-import {
-  formatUnresolvedRoleplayDmFallback,
-  replaceRoleplayDmCommandText,
-  resolveRoleplayDmTarget,
-} from "../services/generation/roleplay-dm-utils.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
 import {
   getHiddenCompletionTokens,
@@ -797,7 +783,6 @@ import {
   formatSmartGroupCandidates,
   parsePromptPresetChoices,
 } from "../services/generation/conversation-context-utils.js";
-import { recoverImplicitSelfieCommand } from "../services/generation/selfie-command-recovery.js";
 import {
   buildLorebookScanMessagesWithGenerationGuide,
   persistLorebookRuntimeState,
@@ -9239,105 +9224,30 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           }
           if (conversationCommandsEnabled && !input.impersonate) {
-            const responseBeforeCommandParsing = fullResponse;
-            // Merged group conversations carry multiple characters' turns in one
-            // response; attribute each command to its speaker so e.g. a [selfie]
-            // renders the character that took it, not always the first one.
-            const useSpeakerAttribution = isGroupChat && groupChatMode === "merged" && chatMode === "conversation";
-            const speakerParse = useSpeakerAttribution
-              ? parseCharacterCommandsBySpeaker(fullResponse, charInfo, targetCharId)
-              : null;
-            const parsed = speakerParse ?? parseCharacterCommands(fullResponse);
-            const speakerIdByCommand = speakerParse
-              ? new Map(
-                  speakerParse.commands.map(
-                    (command, index) => [command, speakerParse.commandCharacterIds[index] ?? targetCharId] as const,
-                  ),
-                )
-              : null;
-            if (parsed.commands.length > 0) {
-              parsedRawCommandCount += parsed.commands.length;
-              parsedCommands = filterEnabledConversationCommands(parsed.commands, chatMeta);
-              if (parsedCommands.length > 0) {
-                conversationCommandContent = responseBeforeCommandParsing.trim();
-                if (speakerIdByCommand) {
-                  parsedCommandCharacterIds = parsedCommands.map(
-                    (command) => speakerIdByCommand.get(command) ?? targetCharId,
-                  );
-                }
-              }
-              fullResponse = parsed.cleanContent;
-              contentReplaced = true;
-              logger.info(
-                "[generate] Parsed %d character command(s), %d enabled: %j",
-                parsed.commands.length,
-                parsedCommands.length,
-                parsedCommands.map((c) => c.type),
-              );
-            }
-            const recoveredSelfieCommand = recoverImplicitSelfieCommand({
-              response: fullResponse,
+            const parsed = parseConversationReplyCommands(fullResponse, {
+              chatId: input.chatId,
+              chatMeta,
+              charInfo,
+              targetCharId,
+              speakerAttribution: isGroupChat && groupChatMode === "merged" && chatMode === "conversation",
               latestUserMessage: input.userMessage,
-              imageGenerationEnabled:
-                isConversationCommandEnabled(chatMeta, "selfie") &&
-                typeof chatMeta.imageGenConnectionId === "string" &&
-                chatMeta.imageGenConnectionId.trim().length > 0,
-              existingCommands: parsedCommands,
             });
-            if (recoveredSelfieCommand) {
-              parsedCommands = [...parsedCommands, recoveredSelfieCommand];
-              // Recovered (implicit) selfies have no speaker prefix to attribute to;
-              // fall back to the generation's character.
-              if (parsedCommandCharacterIds) parsedCommandCharacterIds = [...parsedCommandCharacterIds, targetCharId];
-              logger.info("[generate] Recovered implicit selfie command for chat %s", input.chatId);
-            }
+            parsedRawCommandCount += parsed.rawCount;
+            parsedCommands = parsed.commands;
+            parsedCommandCharacterIds = parsed.commandCharacterIds;
+            conversationCommandContent = parsed.commandContent;
+            fullResponse = parsed.text;
+            if (parsed.changed) contentReplaced = true;
           }
           if (roleplayDmCommandsEnabled) {
-            const parsed = parseDirectMessageCommands(fullResponse);
-            if (parsed.commands.length > 0) {
-              const allCharacters = (await chars.list()) as Array<{ id: string; data?: unknown }>;
-              const executableCommands: DirectMessageCommand[] = [];
-              const skippedTargets: string[] = [];
-              let nextResponse = fullResponse;
-
-              for (const command of parsed.commands) {
-                const target = resolveRoleplayDmTarget(command.character, charInfo, allCharacters);
-                if (target) {
-                  roleplayActivity.push({
-                    command: { type: "dm", character: command.character, message: command.message },
-                    raw: command.raw ?? JSON.stringify(command),
-                  });
-                  executableCommands.push({
-                    ...command,
-                    resolvedCharacterId: target.id,
-                    resolvedCharacterName: target.name,
-                  });
-                  nextResponse = replaceRoleplayDmCommandText(nextResponse, command, "");
-                } else {
-                  skippedTargets.push(command.character);
-                  nextResponse = replaceRoleplayDmCommandText(
-                    nextResponse,
-                    command,
-                    formatUnresolvedRoleplayDmFallback(command),
-                  );
-                }
-              }
-
-              if (executableCommands.length > 0) {
-                parsedCommands = [...parsedCommands, ...executableCommands];
-              }
-              fullResponse = nextResponse.replace(/\n{3,}/g, "\n\n").trim();
-              contentReplaced = true;
-              logger.info(
-                "[generate] Parsed %d executable roleplay DM command(s), skipped %d cardless target(s): %j",
-                executableCommands.length,
-                skippedTargets.length,
-                executableCommands.map((c) => c.resolvedCharacterName ?? c.character),
-              );
-              for (const target of skippedTargets) {
-                logger.warn('[generate] Skipped roleplay DM command for cardless target "%s"', target);
-              }
-            }
+            const parsed = await parseRoleplayDmReplyCommands(fullResponse, {
+              charInfo,
+              listCharacters: async () => (await chars.list()) as Array<{ id: string; data?: unknown }>,
+            });
+            roleplayActivity.push(...parsed.activity);
+            if (parsed.commands.length > 0) parsedCommands = [...parsedCommands, ...parsed.commands];
+            fullResponse = parsed.text;
+            if (parsed.changed) contentReplaced = true;
           }
 
           // ── Extract <ooc> tags from roleplay responses and post to connected conversation ──

@@ -1613,6 +1613,8 @@ export interface RulesetCombatant {
   /** Harm its regeneration is stopped by was taken since its last turn started (1.346). */
   regenHeld?: true;
   /** Down at 0 but not out while it may regenerate (1.346): a troll, until its turn. */
+  /** Who dealt them damage last (1.359), for what grants points as a foe drops. */
+  harmedBy?: string;
   regrowing?: true;
   /** Their own ways of moving while a condition gives them more (1.345); `speeds` and `hover` are
    *  what they have now. Absent while nothing gives them any. */

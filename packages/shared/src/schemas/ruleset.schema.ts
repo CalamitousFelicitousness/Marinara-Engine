@@ -2556,6 +2556,11 @@ export const rerollsFaceSchema: z.ZodType<RulesetRerollsFace, z.ZodTypeDef, unkn
   })
   .strict();
 
+/** Temporary points its holder gains as a foe they harmed last drops to 0 (Capability API 1.359): a
+ *  fiend warlock's Dark One's Blessing, `{"temporary": {"derived": "dark_ones_blessing"}}` on a
+ *  level, Charisma modifier + warlock level read off their sheet. A creature reads a `const`. */
+export const fellsGrantSchema = z.object({ temporary: rulesetValueRefSchema }).strict();
+
 export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, unknown> = z
   .object({
     flat: z.number().int().min(0).max(1000).optional(),
@@ -8795,6 +8800,9 @@ const combatLevelSchema = z
     /** A face of the fight's own dice rolled again (Capability API 1.355): 5e's Lucky on a
      *  halfling's level. See `rerollsFaceSchema`. */
     rerollsFace: rerollsFaceSchema.optional(),
+    /** Temporary points as a foe its holder harmed last drops (Capability API 1.359): 5e's Dark
+     *  One's Blessing on a fiend warlock's level. See `fellsGrantSchema`. */
+    fellsGrant: fellsGrantSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -8829,13 +8837,14 @@ const combatLevelSchema = z
       !entry.conditionImmunities &&
       !entry.regenerates &&
       !entry.hangsOn &&
-      !entry.rerollsFace
+      !entry.rerollsFace &&
+      !entry.fellsGrant
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, or a face it rolls again",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, or points as a foe drops",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9529,6 +9538,9 @@ const combatConditionSchema = z
     /** A face of the fight's own dice its holder rolls again while it holds (Capability API 1.355).
      *  See `rerollsFaceSchema`. */
     rerollsFace: rerollsFaceSchema.optional(),
+    /** Temporary points as a foe its holder harmed last drops, while it holds (Capability API
+     *  1.359). See `fellsGrantSchema`. */
+    fellsGrant: fellsGrantSchema.optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13493,6 +13505,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
     });
 
+    // Points as a foe drops (1.359): a buffer on hit points, read off the sheet.
+    const fellsGrantIssues = (grant: { temporary: RulesetValueRef }, path: (string | number)[]) => {
+      if ("track" in combat.health)
+        issue([...path, "temporary"], "Temporary points need health in points, not a wound track");
+      checkRef(grant.temporary, [...path, "temporary"], derivedIds);
+    };
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {
       const path = at("conditions", index);
@@ -13561,6 +13579,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "inside", "corpse"], "Climbing out costs movement, so the fight has a distance");
       }
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
+      if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -13806,6 +13825,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
+      if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);

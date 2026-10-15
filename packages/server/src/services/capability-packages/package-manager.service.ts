@@ -2179,7 +2179,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
-/** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** Temporary points as a foe drops (1.359): a condition's or a level's `fellsGrant`. */
+function carriesFellsGrant359(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFellsGrant359(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.fellsGrant)) return true;
+  return featureValues(record).some((one) => carriesFellsGrant359(one, depth + 1));
+}
+
 /** A text column by steps, or a pool refilled at initiative (1.358): Font and Superior Inspiration. */
 function carriesInspiration358(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2240,6 +2249,7 @@ function carriesPullOut354(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesPullOut354(one, depth + 1));
 }
 
+/** A floor under defense (1.353): a modifier to defense with `atLeast`. */
 function carriesDefenseFloor353(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesDefenseFloor353(one, depth + 1));
@@ -5385,6 +5395,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Temporary points as a foe drops, 1.359.
+  if (
+    !declaresApi(359) &&
+    (carriesFellsGrant359(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFellsGrant359(document)))
+  ) {
+    return "A ruleset whose condition or level grants temporary points as a foe drops (fellsGrant) requires schemaVersion 2 and capabilityApi 1.359 or newer";
+  }
   // A scaled text by steps, or a pool refilled at initiative, 1.358.
   if (
     !declaresApi(358) &&

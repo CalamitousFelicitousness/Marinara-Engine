@@ -770,6 +770,7 @@ function applyDamage(
     }
   }
   const after = healthOf(ctx, target);
+  if (dealt > 0 && input.sourceId && input.sourceId !== target.id) target.harmedBy = input.sourceId;
   ctx.events.push({
     type: "damage",
     targetId: target.id,
@@ -1365,7 +1366,10 @@ function dropToZero(
     return;
   }
   // A prop is nobody (1.316): nothing feeds on it falling.
-  if (!target.object) feedAuras(ctx, target);
+  if (!target.object) {
+    feedAuras(ctx, target);
+    fellsGrant(ctx, target);
+  }
   target.down = true;
   // Held Ground (1.323): felled, out of the fight but never dying, unless the blow reaps.
   const held = ctx.state.heldGround;
@@ -1399,6 +1403,27 @@ function dropToZero(
 /** Whoever holds an aura that feeds (1.331) and reaches somebody now falling regains what it says:
  *  The Owed's Collector. Read before the one falling is out of the fight, so the aura still reaches
  *  them. */
+/** A foe dropped by whoever harmed them last gives that one temporary points (1.359): Dark One's
+ *  Blessing. Points never stack, so the bigger buffer stands. */
+function fellsGrant(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const feller = target.harmedBy ? rulesetCombatant(ctx.state, target.harmedBy) : undefined;
+  if (!feller || feller.side === target.side || !rulesetCombatStanding(feller)) return;
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, feller, ctx.state)) {
+    const ref = entry.fellsGrant?.temporary;
+    if (!ref) continue;
+    const amount = feller.sheet
+      ? resolveRulesetValueRef(
+          ctx.definition,
+          feller.sheet.build,
+          ref,
+          evaluateRulesetSheetLive(ctx.definition, feller.sheet.build, feller.sheet.live, feller.sheet.items),
+        )
+      : (ref.const ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    grantTemporary(ctx, feller, { sourceId: feller.id, rolls: [], flat: amount, amount });
+  }
+}
+
 function feedAuras(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const feeding = (ctx.combat.conditions ?? []).filter((entry) => entry.auras?.some((aura) => aura.feeds));
   if (feeding.length === 0) return;

@@ -877,6 +877,7 @@ function activeLevels(
         ...(level.regenerates ? { regenerates: level.regenerates } : {}),
         ...(level.hangsOn ? { hangsOn: level.hangsOn } : {}),
         ...(level.rerollsFace ? { rerollsFace: level.rerollsFace } : {}),
+        ...(level.fellsGrant ? { fellsGrant: level.fellsGrant } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];

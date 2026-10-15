@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { AVATAR_EMOTIONS, AVATAR_EXTRA_FEELINGS } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
 
 // #7537 (base lane): a character with expression sprites already has a PNGTuber avatar in a Roleplay chat
@@ -12,7 +13,9 @@ import { seedUIState } from "./ui-state-fixture.js";
 // 3D Avatars pages leave out the agent pipeline's settings, which never run for them; 2D keeps its
 // connection, which the Mesh Avatar Layout uses to look at the sprite. On the 2D page, "Make faces from the
 // avatar" opens sprite generation with the owner's avatar as the checked reference and the background
-// removal on, also for an owner without sprites, and the faces it saves become the owner's sprites.
+// removal on, also for an owner without sprites, and the faces it saves become the owner's sprites. It starts
+// with the six main faces on one 2x3 sheet and can make all 29, a sheet at a time (one face at a time on older
+// GPT Image models), with one review of every sheet's prompt.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -498,19 +501,24 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
   });
   expect(noAvatarResponse.ok(), await noAvatarResponse.text()).toBeTruthy();
   const noAvatar = (await noAvatarResponse.json()) as { id: string };
-  const connectionResponse = await request.post("/api/connections", {
-    data: {
-      name: `Faces image ${info.project.name}`,
-      provider: "image_generation",
-      imageGenerationSource: "openai",
-      imageService: "openai",
-      model: "gpt-image-1",
-      baseUrl: "http://127.0.0.1:9/v1",
-      apiKey: "fixture",
-    },
-  });
-  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
+  const imageConnection = async (model: string) => {
+    const response = await request.post("/api/connections", {
+      data: {
+        name: `Faces image ${model} ${info.project.name}`,
+        provider: "image_generation",
+        imageGenerationSource: "openai",
+        imageService: "openai",
+        model,
+        baseUrl: "http://127.0.0.1:9/v1",
+        apiKey: "fixture",
+      },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return (await response.json()) as { id: string };
+  };
+  // A model that draws a whole sheet, and an older one that draws each face as its own image.
+  const connection = await imageConnection("gpt-image-2");
+  const olderConnection = await imageConnection("gpt-image-1");
 
   try {
     const avatarPath = async (path: string) => {
@@ -541,6 +549,8 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     const dialog = page.getByRole("dialog", { name: "Generate Sprites" });
     const reference = dialog.getByRole("checkbox", { name: "Use current avatar as a reference image" });
     const makeFaces = setup.getByRole("button", { name: "Make faces from the avatar", exact: true });
+    const useConnection = (id: string) => dialog.locator("select").first().selectOption(id);
+    const face = (name: string) => dialog.getByRole("button", { name, exact: true });
 
     // ── A character without sprites ──
     await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
@@ -563,20 +573,29 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     );
     await expect(dialog.getByRole("checkbox", { name: "Transparent sprite background" })).toBeChecked();
     await expect(dialog.locator("textarea").first()).toHaveValue(OVERRIDE_LOOK);
-    // The faces offered are the avatar's six feelings, all chosen, in grids they can fill.
+    // The faces offered are the avatar's six main faces, all chosen, and the 23 extra feelings, which every grid
+    // can fill. Talking-head faces are still portraits: no full-body or animated ones.
+    await useConnection(connection.id);
     await expect(dialog.getByRole("button", { name: "6 (2×3)", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(dialog.getByRole("button", { name: "9 (3×3)", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "16 (4×4)", exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "smirk", exact: true })).toHaveCount(0);
+    for (const emotion of AVATAR_EMOTIONS) await expect(face(emotion)).toHaveAttribute("aria-pressed", "true");
+    for (const feeling of AVATAR_EXTRA_FEELINGS) await expect(face(feeling)).toHaveAttribute("aria-pressed", "false");
+    await expect(dialog.getByText("6 faces in 1 picture.", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Full-body", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("checkbox", { name: /Generate animated portraits/u })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("avatar-faces-generator.png"), animations: "disabled" });
     await dialog.getByRole("button", { name: "Generate Sheet", exact: true }).click();
     await expect.poll(() => sheets.length).toBe(1);
     expect(sheets[0]).toMatchObject({
-      connectionId: expect.any(String),
+      connectionId: connection.id,
       appearance: OVERRIDE_LOOK,
       referenceImages: [characterAvatar],
       spriteType: "expressions",
       noBackground: true,
       expressions: ["neutral", "happy", "angry", "sad", "relaxed", "surprised"],
+      cols: 2,
+      rows: 3,
       talkingHeadFaces: true,
     });
     await dialog.getByRole("button", { name: /^Save \d+ Sprites?$/u }).click();
@@ -586,6 +605,46 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
     await expect(setup.getByRole("group", { name: "neutral: Face", exact: true })).toBeVisible();
     const saved = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{ expression: string }>;
     expect(saved.map((sprite) => sprite.expression)).toContain("neutral");
+
+    // ── All 29 faces, a 2x3 sheet at a time, main faces first ──
+    const allFaces = [...AVATAR_EMOTIONS, ...AVATAR_EXTRA_FEELINGS];
+    await makeFaces.click();
+    await useConnection(connection.id);
+    await face("All faces").click();
+    await expect(dialog.getByText("29 faces in 5 pictures.", { exact: true })).toBeVisible();
+    // A grid only sets how many faces go in each picture; the faces chosen stay chosen.
+    await dialog.getByRole("button", { name: "9 (3×3)", exact: true }).click();
+    await expect(dialog.getByText("29 faces in 4 pictures.", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "6 (2×3)", exact: true }).click();
+    await expect(face("realization")).toHaveAttribute("aria-pressed", "true");
+    sheets.length = 0;
+    await dialog.getByRole("button", { name: "Generate Sprites", exact: true }).click();
+    await expect(dialog.getByRole("combobox", { name: /^Assign expression for sprite \d+$/u })).toHaveCount(29);
+    expect(sheets.map((sheet) => sheet.expressions)).toEqual(
+      [0, 6, 12, 18, 24].map((at) => allFaces.slice(at, at + 6)),
+    );
+    for (const sheet of sheets) expect(sheet).toMatchObject({ cols: 2, rows: 3, talkingHeadFaces: true });
+    await page.screenshot({ path: info.outputPath("avatar-faces-all.png"), animations: "disabled" });
+    await dialog.getByRole("button", { name: "Save 29 Sprites", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const savedAll = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{
+      expression: string;
+    }>;
+    expect(savedAll.map((sprite) => sprite.expression)).toEqual(expect.arrayContaining(allFaces));
+
+    // ── An older GPT Image model gets one face per request, past its eight-face limit ──
+    await makeFaces.click();
+    await useConnection(olderConnection.id);
+    await expect(dialog.getByRole("button", { name: "6 (2×3)", exact: true })).toHaveCount(0);
+    await face("All faces").click();
+    await face("Main faces").click();
+    await expect(dialog.getByText("6 faces in 6 pictures.", { exact: true })).toBeVisible();
+    sheets.length = 0;
+    await dialog.getByRole("button", { name: "Generate Sprites", exact: true }).click();
+    await expect(dialog.getByRole("combobox", { name: /^Assign expression for sprite \d+$/u })).toHaveCount(6);
+    expect(sheets.map((sheet) => sheet.expressions)).toEqual(AVATAR_EMOTIONS.map((emotion) => [emotion]));
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
 
     // ── A persona with sprites ──
     await setup.getByLabel("Character or persona").selectOption(`persona:${persona.id}`);
@@ -608,11 +667,39 @@ test("2D Avatars makes faces from the avatar with sprite generation, also for an
       timeout: FIRST_LOAD_TIMEOUT_MS,
     });
     await expect(makeFaces).toBeDisabled();
+
+    // ── With prompt review on, every picture's prompt is reviewed once, before the first is sent ──
+    await seedUIState(page, { reviewImagePromptsBeforeSend: true }, "merge");
+    await page.reload();
+    await setup.getByLabel("Character or persona").selectOption(`character:${character.id}`);
+    await makeFaces.click();
+    await useConnection(connection.id);
+    await dialog.getByRole("button", { name: "1 (1×1)", exact: true }).click();
+    await expect(dialog.getByText("6 faces in 6 pictures.", { exact: true })).toBeVisible();
+    sheets.length = 0;
+    await dialog.getByRole("button", { name: "Generate Sprites", exact: true }).click();
+    const review = page.getByRole("dialog", { name: "Review Image Prompts", exact: true });
+    await expect(review).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    const prompts = review.locator("textarea");
+    await expect(prompts).toHaveCount(12);
+    // Each picture's prompt describes its own face, with open eyes and closed lips.
+    await expect(prompts.first()).toHaveValue(/Draw each face like this: neutral: calm resting face/u);
+    await expect(prompts.first()).not.toHaveValue(/happy: /u);
+    expect(sheets).toHaveLength(0);
+    await review.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(dialog.getByRole("combobox", { name: /^Assign expression for sprite \d+$/u })).toHaveCount(6);
+    await expect(review).toBeHidden();
+    expect(sheets.map((sheet) => sheet.expressions)).toEqual(AVATAR_EMOTIONS.map((emotion) => [emotion]));
+    for (const sheet of sheets) {
+      expect(sheet).toMatchObject({ cols: 1, rows: 1, talkingHeadFaces: true });
+      expect(sheet.promptOverrides).toHaveLength(6);
+    }
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined);
     await request.delete(`/api/characters/personas/${noAvatar.id}`).catch(() => undefined);
     await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+    await request.delete(`/api/connections/${olderConnection.id}`).catch(() => undefined);
   }
 });
 

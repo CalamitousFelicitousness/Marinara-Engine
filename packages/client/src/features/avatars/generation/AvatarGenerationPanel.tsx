@@ -10,7 +10,14 @@ import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wand2 } from "lucide-react";
-import { AVATAR_EMOTIONS, isChatProvider, readImageAppearanceOverride, type Persona } from "@marinara-engine/shared";
+import {
+  AVATAR_EMOTIONS,
+  AVATAR_EXTRA_FEELINGS,
+  AVATAR_FACE_GROUPS,
+  isChatProvider,
+  readImageAppearanceOverride,
+  type Persona,
+} from "@marinara-engine/shared";
 import { useConnections } from "../../../hooks/use-connections";
 import {
   spriteKeys,
@@ -35,6 +42,9 @@ type ConnectionRow = ConnectionOption & { defaultForAgents?: boolean | string };
 const SpriteGenerationModal = lazy(() =>
   import("../../../components/ui/SpriteGenerationModal").then((m) => ({ default: m.SpriteGenerationModal })),
 );
+
+/** The six main faces first, so a run cut short already has every face the others fall back to. */
+const TALKING_HEAD_FACES = [...AVATAR_EMOTIONS, ...AVATAR_EXTRA_FEELINGS];
 
 function cardRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
@@ -227,9 +237,10 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
             existingExpressionSprites={portraitSprites}
             defaultAppearance={seed.appearance}
             defaultAvatarUrl={seed.avatarUrl}
-            // The avatar's six feelings, so each gets its own face, with open eyes and a closed mouth for its
-            // blink and talk pictures to change.
-            expressionChoices={AVATAR_EMOTIONS}
+            // The six main faces, chosen at first, and the 23 extra feelings that fall back to them, each with open
+            // eyes and a closed mouth for its blink and talk pictures to change.
+            expressionChoices={TALKING_HEAD_FACES}
+            expressionGroups={AVATAR_FACE_GROUPS}
             talkingHeadFaces
             onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
           />

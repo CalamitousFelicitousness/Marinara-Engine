@@ -113,7 +113,8 @@ let sceneSummaries = summaries;
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
+const { createAdvancedMemoryService, UNEMBEDDABLE_RETRY_MS } =
+  await import("../../packages/server/src/services/advanced-memory.js");
 const { rankDecisionMemories, memoryDecisionClock } =
   await import("../../packages/server/src/services/advanced-memory-decisions.js");
 const { recallTerms, scoreRecallTerms, fuseRecallRanks, bestOverQueries } =
@@ -339,6 +340,19 @@ try {
   assert.equal(embeddingRequests - requests, 1, "the rejected text is not sent again");
   assert.equal(embeddingInputs.flat().length, 28, "the fill moves on to the other excerpts");
   rejectedEmbedding = null;
+  // A refusal is not forever: after the cooldown the rejected text is tried again and gets its vector.
+  embeddingInputs.length = 0;
+  await memory.checkScenesAfterGeneration(backfill.id);
+  assert.equal(embeddingInputs.length, 0, "not before the cooldown ends");
+  const realNow = Date.now;
+  Date.now = () => realNow() + UNEMBEDDABLE_RETRY_MS + 1;
+  try {
+    await memory.checkScenesAfterGeneration(backfill.id);
+  } finally {
+    Date.now = realNow;
+  }
+  assert.equal(embeddingInputs.flat().length, 1, "the rejected text is tried again after the cooldown");
+  assert.match(embeddingInputs.flat()[0]!, /\[scene 29\]/u);
   // With the embedder down, a reply sends the batch and its shortest text, not every text alone.
   await connections.update(helper.id, { embeddingModel: "fixture-3" });
   embeddingsDown = true;

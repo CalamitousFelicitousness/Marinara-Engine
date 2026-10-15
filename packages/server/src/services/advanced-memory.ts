@@ -244,6 +244,8 @@ const RECOLLECTION_SCENES_PER_RUN = 3;
  * under a second of the local embedder, in the background after the reply.
  */
 const VECTOR_UPKEEP_RECORDS = 32;
+/** How long after-reply upkeep leaves a text the embedder rejected on its own before trying it again. */
+export const UNEMBEDDABLE_RETRY_MS = 60 * 60_000;
 /**
  * Recall reads at most this many user messages since the responder last spoke, the latest kept (#7699). Each is its
  * own embedding query, all in one request: six of 6000 characters take about 0.2 s on the local embedder, well
@@ -3977,8 +3979,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     await finishRecollections(chatId, { failed: 0 }, options);
   }
 
-  /** Records an embedder rejected on their own, by embedding model and text, which upkeep skips from then on. */
-  const unembeddable = new Set<string>();
+  /** Records an embedder rejected on their own, by embedding model and text, with when upkeep may try them again:
+   *  a provider's passing refusal must not cost a record its vector for the rest of the server's run. */
+  const unembeddable = new Map<string, number>();
 
   /**
    * After a reply: vectors for a few summaries and excerpts that have none from the current embedding model,
@@ -4008,7 +4011,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           record.enabled &&
           order.has(record.startMessageId) &&
           !(record.embedding?.length && record.embeddingSpaceId === space) &&
-          !unembeddable.has(key(record)) &&
+          !((unembeddable.get(key(record)) ?? 0) > Date.now()) &&
           embeddingText(record).trim(),
       )
       .sort(
@@ -4046,7 +4049,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         const [vector] = await embed([record]);
         if (vector?.length) await save(record, vector);
         else if (index === 0) return;
-        else unembeddable.add(key(record));
+        else unembeddable.set(key(record), Date.now() + UNEMBEDDABLE_RETRY_MS);
       }
     } catch (error) {
       abortIfNeeded(options.signal);
@@ -5085,7 +5088,11 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       spanStart > 0
         ? visible.slice(spanStart).filter((message) => message.role === "user" && message.content.trim())
         : [];
-    const queryMessages = spanUser.length ? spanUser.slice(-RECALL_QUERY_MESSAGES) : lastUser ? [lastUser] : [];
+    const queryMessages = spanUser.length
+      ? spanUser.slice(-RECALL_QUERY_MESSAGES)
+      : lastUser?.content.trim()
+        ? [lastUser]
+        : [];
     // Word matching and the Decision model read the last 4 messages, and back to the span's start within 6000
     // characters, the newest kept.
     let windowStart = Math.max(0, visible.length - 4);

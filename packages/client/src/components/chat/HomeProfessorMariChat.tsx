@@ -2300,11 +2300,13 @@ export function HomeProfessorMariChat({
     // under her answer once the thread has a message.
     handledArrivalAppendRequestRef.current = arrivalAppendRequestRef.current;
     let localMessageId: string | undefined;
+    let runChatId: string | null = null;
     // Your newest question the server holds now: a different one after the failure means it saved this one
     // (an id, not a count, because the thread loads only its newest page).
     const lastSavedUserId = messagesRef.current.findLast(isSavedUserMessage)?.id;
     try {
       const chat = await ensureProfessorMariChat(effectiveConnectionId);
+      runChatId = chat.id;
       // A retry or a chip sends its own text: leave whatever you have typed since in the composer.
       if (overrideText === undefined) setDraft("");
       setMariChips(chat.id, []);
@@ -2356,12 +2358,16 @@ export function HomeProfessorMariChat({
       // No toast over her header, and the text is not pushed back into the composer as a duplicate.
       if (!isProfessorMariAbortError(error)) setHandoffContext(submittedContext);
       // Awaited so `sending` holds until the reload lands: a new send cannot start under it.
-      await failRun(error, {
-        text: messageText,
-        attachments: submittedAttachments,
-        context: submittedContext,
-        localMessageId,
-      })?.then((loaded) => {
+      await failRun(
+        error,
+        {
+          text: messageText,
+          attachments: submittedAttachments,
+          context: submittedContext,
+          localMessageId,
+        },
+        runChatId ?? undefined,
+      )?.then((loaded) => {
         if (!localMessageId || !loaded || loaded.findLast(isSavedUserMessage)?.id !== lastSavedUserId) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
         // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.

@@ -104,7 +104,12 @@ export function useMariWorkspaceRun({
 }: MariWorkspaceRunInput) {
   const qc = useQueryClient();
   const failRun = useCallback(
-    (error: unknown, retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">) => {
+    (
+      error: unknown,
+      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">,
+      // The chat this send created or used: the captured `chatId` is still null on a first send.
+      runChatId: string | null = chatId,
+    ) => {
       if (isProfessorMariAbortError(error)) return;
       console.error("[Professor Mari] Run failed", error);
       setRecovery({ ...retry, kind: classifyProfessorMariFailure(error), detail: describeProfessorMariError(error) });
@@ -112,7 +117,7 @@ export function useMariWorkspaceRun({
       // still lacks mariRunError, so an OLDER failure in the same session loses its quiet line until
       // the next full reload.
       // Returns the reload so the caller can tell whether the server saved the message at all.
-      return chatId ? loadMessages(chatId, { restoreFocus: false }).catch(() => undefined) : undefined;
+      return runChatId ? loadMessages(runChatId, { restoreFocus: false }).catch(() => undefined) : undefined;
     },
     [chatId, loadMessages, setRecovery],
   );

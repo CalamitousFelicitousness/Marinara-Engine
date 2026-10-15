@@ -1,7 +1,8 @@
 // Making a 2D avatar from a sprite, end to end against the real server with local image and vision models
 // that hold their answers: Cancel aborts the picture or mesh avatar being made (the model's request closes)
-// and leaves the panel idle with only finished pictures, and a sprite drawn on a flat background is used as
-// it is: nothing is cut out of the blink picture or the saved mesh avatar.
+// and leaves the panel idle with only finished pictures, Try again shows the picture being redone, and a
+// sprite drawn on a flat background is used as it is: nothing is cut out of the blink picture or the saved
+// mesh avatar.
 import { expect, test, type Page } from "@playwright/test";
 import AdmZip from "adm-zip";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -173,7 +174,11 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     await panel.getByLabel("Image connection").selectOption(imageId);
 
     // ── Cancel while a blink picture is being drawn ──
-    await panel.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }).click();
+    // Every feeling shows the one neutral face, so it is the only row, with its blink and talk slots empty.
+    await expect(panel.locator("[data-talking-head-face]")).toHaveCount(1);
+    await expect(panel.locator('[data-talking-head-face="neutral"]')).toContainText(
+      "Neutral, Happy, Angry, Sad, Relaxed, Surprised",
+    );
     await panel.getByRole("button", { name: "Make 2 pictures" }).click();
     await expect.poll(() => models.state.held.length).toBe(1);
     expect(models.state.held[0]!.url).toMatch(/\/images\/edits$/u);
@@ -195,9 +200,10 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
       .toEqual([models.state.held[0]!.url]);
 
     // ── The next picture starts at once, the late cancel doesn't stop it, and nothing is cut out of it ──
-    await panel.getByRole("checkbox", { name: "Mouth open" }).uncheck();
-    await panel.getByRole("button", { name: "Make 1 picture" }).click();
+    const blink = panel.getByRole("group", { name: "neutral: Eyes closed", exact: true });
+    await blink.getByRole("button", { name: "Make neutral: Eyes closed", exact: true }).click();
     await expect.poll(() => models.state.held.length).toBe(2);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
     await expect.poll(() => cancelDelivered).toBe(true);
     expect(models.state.closed, "the late cancel left the new picture alone").toHaveLength(1);
     await models.state.held[1]!.respond();
@@ -209,6 +215,32 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     expect(await alphaAt(picture, 300, 330), "the face stays").toBe(255);
     await page.screenshot({ path: testInfo.outputPath("pngtuber-picture.png"), animations: "disabled" });
 
+    // ── Try again shows the picture being redone, not a picture that seems done ──
+    const retry = blink.getByRole("button", { name: "Try neutral: Eyes closed again", exact: true });
+    await retry.click();
+    await expect.poll(() => models.state.held.length).toBe(3);
+    await expect(blink).toHaveAttribute("aria-busy", "true");
+    await expect(drawn).toBeVisible();
+    await expect(blink.getByRole("button", { name: "Keep", exact: true })).toHaveCount(0);
+    await expect(retry).toHaveCount(0);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
+    await page.screenshot({ path: testInfo.outputPath("pngtuber-redo.png"), animations: "disabled" });
+    await models.state.held[2]!.respond();
+    await expect(blink).toHaveAttribute("aria-busy", "false", { timeout: 30_000 });
+    await expect(retry).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveCount(0);
+
+    // ── A kept picture is stored in the PNGTuber avatar ──
+    await blink.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(blink.getByRole("button", { name: "Kept", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await panel.getByRole("button", { name: "Save kept pictures (1)" }).click();
+    await expect
+      .poll(async () => {
+        const config = await request.get(`/api/avatar-models/character/${characterId}`);
+        return config.ok() ? (await config.json()).kinds?.pngtuber?.layers?.neutral?.eyesClosed : undefined;
+      })
+      .toMatchObject({ source: "file", path: expect.stringMatching(/^pngtuber\/.+\.png$/u) });
+
     // ── Cancel while the vision model looks at the sprite for the mesh avatar ──
     await panel.getByLabel("Chat connection that can see pictures").selectOption(visionId);
     // The neutral sprite is picked for a mesh avatar until the user picks another.
@@ -216,8 +248,8 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
       panel.getByRole("group", { name: "Sprite to use" }).getByRole("button", { name: "neutral" }),
     ).toHaveAttribute("aria-pressed", "true");
     await panel.getByRole("button", { name: "Make mesh avatar" }).click();
-    await expect.poll(() => models.state.held.length).toBe(3);
-    expect(models.state.held[2]!.url).toMatch(/\/chat\/completions$/u);
+    await expect.poll(() => models.state.held.length).toBe(4);
+    expect(models.state.held[3]!.url).toMatch(/\/chat\/completions$/u);
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.poll(() => models.state.closed.length, { message: "the vision request is aborted" }).toBe(2);
     await expect(panel.getByText("Building the mesh avatar…")).toHaveCount(0);

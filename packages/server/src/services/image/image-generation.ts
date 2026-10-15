@@ -1298,11 +1298,14 @@ function chatGPTCanvasHint(request: ImageGenRequest, hasReferences: boolean): st
   let rest = height;
   while (rest) [divisor, rest] = [rest, divisor % rest];
   const shape = width === height ? "square" : width < height ? "portrait" : "landscape";
+  const target = `Target canvas: ${shape}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`;
+  // An in-place edit's reference already is this canvas; asking for a new composition redraws the picture.
+  if (hasReferences && request.referenceIsCanvas) return target;
   return [
     ...(hasReferences
       ? ["Do not inherit the canvas dimensions or aspect ratio of the attached reference images."]
       : []),
-    `Target canvas: ${shape}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`,
+    target,
     "Compose the final image for this aspect ratio.",
   ].join("\n");
 }

@@ -917,7 +917,13 @@ export type RulesetSheetOp =
   | { op: "rest"; rest: string; dice?: number; pool?: string; extra?: { sides: number; add: number } }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
    *  `planRulesetUse` before it reaches `applyRulesetSheetOp`, because it needs the catalogs. */
-  | { op: "use"; name: string; pool?: string };
+  | { op: "use"; name: string; pool?: string; recover?: RulesetUseRecover[] };
+
+/** A pool a use gives back (1.357) and how many of it: one of the spell slots Arcane Recovery picks. */
+export interface RulesetUseRecover {
+  pool: string;
+  count: number;
+}
 
 export type RulesetSheetRefusal =
   | "unknown-pool"
@@ -1768,6 +1774,41 @@ export function planRulesetUse(
       }
       if (keeps && pool && (sameName(pool.key, keeps) || sameName(pool.label, keeps))) continue;
       if (pool && !running.has(pool.key)) spend(pool, uses);
+    }
+  }
+  // Spent pools it gives back, as many levels as its user's sheet allows (1.357): Arcane Recovery.
+  const recovers = entry.mechanics?.recovers;
+  if (op.recover?.length && !recovers) return { ok: false, reason: `bad-amount: ${entry.label} recovers nothing` };
+  if (recovers) {
+    const group = definition.sheet.live.pools.filter((pool) => pool.group === recovers.group);
+    const names = group.map((pool) => declaredByKey.get(pool.id)?.label ?? pool.id).join(", ");
+    if (!op.recover?.length) {
+      return {
+        ok: false,
+        reason: `bad-amount: name what ${entry.label} recovers, as recover="Pool:count" from ${names}`,
+      };
+    }
+    const upTo = Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, recovers.upTo)));
+    let levels = 0;
+    const given = new Map<string, number>();
+    for (const wanted of op.recover) {
+      const target = declared.find(
+        (pool) =>
+          group.some((one) => one.id === pool.key) &&
+          (sameName(pool.key, wanted.pool) || sameName(pool.label, wanted.pool)),
+      );
+      if (!target) return { ok: false, reason: "bad-pool" };
+      const level = poolLevel(target.key);
+      if (recovers.most !== undefined && level > recovers.most) return { ok: false, reason: "bad-pool" };
+      if (!Number.isInteger(wanted.count) || wanted.count < 1) return { ok: false, reason: "bad-amount" };
+      const spent = target.max - target.value + (running.get(target.key) ?? 0) - (given.get(target.key) ?? 0);
+      if (wanted.count > spent) return { ok: false, reason: "insufficient" };
+      given.set(target.key, (given.get(target.key) ?? 0) + wanted.count);
+      levels += level * wanted.count;
+      steps.push({ op: { op: "restore", pool: target.key, amount: wanted.count }, label: target.label });
+    }
+    if (levels > upTo) {
+      return { ok: false, reason: `bad-amount: ${entry.label} recovers ${upTo} levels at most, not ${levels}` };
     }
   }
   return { ok: true, label: entry.label, steps };

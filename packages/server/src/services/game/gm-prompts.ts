@@ -1449,6 +1449,15 @@ function renderRulesetSheetSection(
           `- [sheet: who="Name" op="use" name="Name on the sheet"] - pays what that ability costs. Add pool="Pool" to pay from a higher pool of the same group.`,
         ]
       : []),
+    // What a use gives back that its user picks (1.357): Arcane Recovery's slots.
+    ...(ruleset.catalogs?.some((catalog) => catalog.entries?.some((entry) => entry.mechanics?.recovers))
+      ? [
+          `- For an ability that recovers spent pools (such as ${
+            ruleset.catalogs.flatMap((catalog) => catalog.entries ?? []).find((entry) => entry.mechanics?.recovers)!
+              .label
+          }), add recover="Pool:count, Pool:count" with the pools the player picks; the Engine checks what they may.`,
+        ]
+      : []),
     `Leave out who for the player; who="party" applies to every member. Use the pool, track, field and condition names shown on the sheets. Never write result, reason or now yourself: the Engine adds them. A refused command did not happen, so do not narrate it as if it had.`,
     // A sheet block leaves out a track or a note that still has its default, so the names a command
     // can use are listed once here.

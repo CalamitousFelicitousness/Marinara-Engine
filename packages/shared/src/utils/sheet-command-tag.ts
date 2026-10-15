@@ -173,7 +173,14 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     const entry = (values.get("name") ?? values.get("spell"))?.trim();
     if (!entry) return parsed;
     const pool = values.get("pool")?.trim();
-    return { ...parsed, op: { op: "use", name: entry, ...(pool ? { pool } : {}) } };
+    // What it gives back (1.357): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
+    const rawRecover = values.get("recover");
+    const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
+    if (recover === null) return parsed;
+    return {
+      ...parsed,
+      op: { op: "use", name: entry, ...(pool ? { pool } : {}), ...(recover.length ? { recover } : {}) },
+    };
   }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
@@ -184,6 +191,22 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   // From one pool of several (1.337): 5e's d8 hit dice.
   const pool = dice ? values.get("pool")?.trim() : undefined;
   return { ...parsed, op: { op: "rest", rest, ...(dice ? { dice } : {}), ...(pool ? { pool } : {}) } };
+}
+
+/** Pools and counts, `Pool:2, Other:1`; a pool without a count is one of it. Null when a count is not
+ *  a whole number above 0. */
+function readRecover(raw: string): Array<{ pool: string; count: number }> | null {
+  const out: Array<{ pool: string; count: number }> = [];
+  for (const part of raw.split(",")) {
+    const text = part.trim();
+    if (!text) continue;
+    const colon = text.lastIndexOf(":");
+    const pool = (colon < 0 ? text : text.slice(0, colon)).trim();
+    const count = colon < 0 ? 1 : readInteger(text.slice(colon + 1).trim());
+    if (!pool || count === null || count < 1) return null;
+    out.push({ pool, count });
+  }
+  return out;
 }
 
 /** The outcome summary (`now`) of a command for the whole party lists one value per member, so it
@@ -265,6 +288,8 @@ export function serializeSheetCommandTag(
     } else if (op.op === "use") {
       attribute("name", op.name);
       if (op.pool) attribute("pool", op.pool);
+      if (op.recover?.length)
+        attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
     } else if (op.op === "rest") {
       attribute("rest", op.rest);
       if (op.dice) attribute("dice", op.dice);

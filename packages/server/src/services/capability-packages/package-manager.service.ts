@@ -2180,6 +2180,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
 }
 
 /** A floor under defense (1.353): a modifier to defense with `atLeast`. */
+/** Pools a use gives back, picked within a budget (1.357): Arcane Recovery's `recovers`. */
+function carriesRecovers357(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRecovers357(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.recovers)) return true;
+  return featureValues(record).some((one) => carriesRecovers357(one, depth + 1));
+}
+
 /** Harm copied to a condition's source (1.356): Warding Bond. */
 function carriesCopiedHarm356(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5364,6 +5374,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Pools given back within a budget, 1.357.
+  if (
+    !declaresApi(357) &&
+    (carriesRecovers357(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRecovers357(document)))
+  ) {
+    return "A ruleset whose entry gives back pools its user picks within a budget (mechanics.recovers) requires schemaVersion 2 and capabilityApi 1.357 or newer";
+  }
   // Harm copied to whoever put a condition on, 1.356.
   if (
     !declaresApi(356) &&

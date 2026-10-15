@@ -5103,6 +5103,19 @@ const catalogMechanicsObject = z
       })
       .strict()
       .optional(),
+    /** Gives back spent pools of one group that its user picks as they use it, whose levels add up
+     *  to no more than `upTo` read off their sheet, none above level `most` (Capability API 1.357):
+     *  5e's Arcane Recovery and Natural Recovery, "a combined level that is equal to or less than half
+     *  your wizard level (rounded up), and none of the slots can be 6th level or higher". A pool's
+     *  level is its own `level`, else its place in the group. Named in the use as `recover`. */
+    recovers: z
+      .object({
+        group: sheetId,
+        upTo: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+        most: z.number().int().min(1).max(100).optional(),
+      })
+      .strict()
+      .optional(),
     /** A target that fails the save drops to 0 health instead of taking the amount (Capability API
      *  1.245), as if the blow had taken every point it had: 5e's Quivering Palm, whose made save
      *  still takes 10d10 necrotic. */
@@ -17029,6 +17042,14 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.reducesMax)
       reducesMaxIssues(definition, mechanics.reducesMax, [index, "mechanics", "reducesMax"], add);
     targetHoldsIssues(definition, mechanics?.targetHolds, [index, "mechanics", "targetHolds"], add);
+    // What it recovers (1.357): a pool group the sheet has, and a budget its sheet reads.
+    if (mechanics?.recovers) {
+      if (!definition.sheet.live.pools.some((pool) => pool.group === mechanics.recovers!.group))
+        add([index, "mechanics", "recovers", "group"], `Unknown pool group "${mechanics.recovers.group}"`);
+      for (const found of rulesetValueRefIssues(mechanics.recovers.upTo, names, names.derived, false)) {
+        add([index, "mechanics", "recovers", "upTo", found.key], found.message);
+      }
+    }
     mechanics?.healthPoolSkips?.conditions?.forEach((condition, conditionIndex) => {
       if (!liveConditions.has(condition))
         add([index, "mechanics", "healthPoolSkips", "conditions", conditionIndex], `Unknown condition "${condition}"`);

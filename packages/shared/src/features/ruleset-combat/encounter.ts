@@ -932,6 +932,8 @@ function activeLevels(
         ...(level.whenSeen ? { whenSeen: true as const } : {}),
         ...(level.checkFloor ? { checkFloor: level.checkFloor } : {}),
         ...(level.strikesAgain ? { strikesAgain: level.strikesAgain } : {}),
+        ...(level.ignoresHardGround ? { ignoresHardGround: true as const } : {}),
+        ...(level.runsAcross ? { runsAcross: true as const } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -5657,8 +5659,13 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
   const changed: string[] = [];
   for (const combatant of state.combatants) {
     const grants = rulesetActiveConditions(definition, combat, combatant, state).filter(
-      (entry) => entry.speeds || entry.hover || entry.levitates,
+      (entry) => entry.speeds || entry.hover || entry.levitates || entry.ignoresHardGround || entry.runsAcross,
     );
+    // Ways over the ground (1.379): held only while what gives them holds.
+    if (grants.some((entry) => entry.ignoresHardGround)) combatant.ignoresHardGround = true;
+    else delete combatant.ignoresHardGround;
+    if (grants.some((entry) => entry.runsAcross)) combatant.runsAcross = true;
+    else delete combatant.runsAcross;
     if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) continue;
     const own = combatant.baseSpeeds ?? {
       ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),

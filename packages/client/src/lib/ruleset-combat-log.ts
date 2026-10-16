@@ -1027,6 +1027,8 @@ export function rulesetCombatEventLine(
         count: event.left,
         left: event.left,
       });
+    case "ashore":
+      return key("ashore", { actor: names.combatant(event.actorId), x: event.to.x, y: event.to.y });
     case "sustained":
       return key("sustained", {
         actor: names.combatant(event.actorId),

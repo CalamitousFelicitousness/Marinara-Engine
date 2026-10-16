@@ -1977,6 +1977,7 @@
   "game.combat.ruleset.event.added": "{{actor}} adds {{label}} to the {{to}} that hit {{target}}.",
   "game.combat.ruleset.event.altered": "{{actor}} uses {{label}} with {{alters}}.",
   "game.combat.ruleset.event.area": "{{actor}} aims {{label}} at {{x}}, {{y}}, covering {{cells}} cells.",
+  "game.combat.ruleset.event.ashore": "{{actor}} cannot stop on the water and comes out at {{x}}, {{y}}.",
   "game.combat.ruleset.event.attackCritical": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a critical hit.",
   "game.combat.ruleset.event.attackHit": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a hit.",
   "game.combat.ruleset.event.attackMiss": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a miss.",

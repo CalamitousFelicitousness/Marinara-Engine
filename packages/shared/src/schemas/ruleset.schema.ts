@@ -9216,6 +9216,12 @@ const combatLevelSchema = z
       .object({ within: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
+    /** As on a condition (Capability API 1.379): ground hard going of itself costs a plain step,
+     *  and on foot steps of any height and water are crossed but never stopped on. Read off a
+     *  derived value, a level holds only while it says so: 5e's Unarmored Movement at monk 9 while no
+     *  armor or shield is worn. */
+    ignoresHardGround: z.literal(true).optional(),
+    runsAcross: z.literal(true).optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9253,13 +9259,15 @@ const combatLevelSchema = z
       !entry.rerollsFace &&
       !entry.fellsGrant &&
       !entry.checkFloor &&
-      !entry.strikesAgain
+      !entry.strikesAgain &&
+      !entry.ignoresHardGround &&
+      !entry.runsAcross
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, a floor under its checks, or a strike again",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, a floor under its checks, a strike again, or a way over the ground",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9819,6 +9827,15 @@ const combatConditionSchema = z
       .optional(),
     hover: z.literal(true).optional(),
     levitates: z.literal(true).optional(),
+    /** Ground hard going of itself costs its holder a plain step (Capability API 1.379): the board's
+     *  terrain and its growth, 5e's Land's Stride over nonmagical difficult terrain and plants. Hard
+     *  going a lasting area makes, a spell's, still counts. */
+    ignoresHardGround: z.literal(true).optional(),
+    /** On foot its holder takes steps of any height and crosses water, on the ground it steps onto
+     *  (Capability API 1.379), but never stops on water: 5e's Unarmored Movement at 9th level, along
+     *  walls and across liquids without falling during the move. A walk cut short on water sets
+     *  them down on the nearest open ground. */
+    runsAcross: z.literal(true).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied

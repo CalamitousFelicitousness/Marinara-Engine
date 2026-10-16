@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Ways over the ground (1.379): Land's Stride, Unarmored Movement along walls and across water. */
+function carriesGroundWays379(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesGroundWays379(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.ignoresHardGround !== undefined || record.runsAcross !== undefined) return true;
+  return featureValues(record).some((one) => carriesGroundWays379(one, depth + 1));
+}
+
 /** Kept up on later turns without concentration, and spared only on a made save (1.378):
  *  Intimidating Presence. */
 function carriesSustains378(value: unknown, depth = 0): boolean {
@@ -5635,6 +5645,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ways over the ground, 1.379.
+  if (
+    !declaresApi(379) &&
+    (carriesGroundWays379(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesGroundWays379(document)))
+  ) {
+    return "A ruleset whose conditions or levels ignore ground hard going of itself (ignoresHardGround) or run up heights and across water (runsAcross) requires schemaVersion 2 and capabilityApi 1.379 or newer";
+  }
   // Kept up without concentration, and spared only on a made save, 1.378.
   if (
     !declaresApi(378) &&

@@ -101607,6 +101607,14 @@
                 "type": "boolean",
                 "const": true
               },
+              "ignoresHardGround": {
+                "type": "boolean",
+                "const": true
+              },
+              "runsAcross": {
+                "type": "boolean",
+                "const": true
+              },
               "endsWhenSourceDown": {
                 "type": "boolean"
               },
@@ -110340,6 +110348,14 @@
                   "within"
                 ],
                 "additionalProperties": false
+              },
+              "ignoresHardGround": {
+                "type": "boolean",
+                "const": true
+              },
+              "runsAcross": {
+                "type": "boolean",
+                "const": true
               },
               "defeats": {
                 "type": "boolean",

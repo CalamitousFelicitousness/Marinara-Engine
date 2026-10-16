@@ -131,6 +131,7 @@ import {
   rulesetLevelOf,
   rulesetSlowedCells,
   rulesetSlowedStep,
+  rulesetOnlyCrosses,
   rulesetWallShape,
   rulesetDistanceTo,
   rulesetCombatantDistance,
@@ -7649,6 +7650,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
           rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y),
           rulesetSlowedCells(ctx.state, actor),
           at,
+          actor,
         )
       : 1;
     walked.push(cell);
@@ -7734,6 +7736,21 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
+  // Stopped on water they could only run across (1.379): it does not hold them up, and they come out
+  // on the nearest open ground.
+  let ashore: RulesetCombatCell | null = null;
+  if (grid && rulesetCombatStanding(actor) && rulesetPositionOf(actor) && rulesetOnlyCrosses(grid, at, actor)) {
+    const taken = new Set<string>();
+    for (const one of ctx.state.combatants) {
+      if (one.id === actor.id || one.insideOf || !rulesetCombatStanding(one) || !rulesetPositionOf(one)) continue;
+      for (const cell of rulesetFootprint(one)) taken.add(`${cell.x},${cell.y}`);
+    }
+    ashore = rulesetFitCell(grid, at, rulesetSpanOf(actor), taken);
+    if (ashore) {
+      actor.x = ashore.x;
+      actor.y = ashore.y;
+    }
+  }
   // Its own allowance back (1.283): the lent one was for this move only.
   if (legendary) {
     if (legendary.kept.movementLeft === undefined) delete actor.movementLeft;
@@ -7751,6 +7768,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
   });
+  if (ashore) ctx.events.push({ type: "ashore", actorId: actor.id, to: { ...ashore } });
   // Whoever an engulf walked into (1.350), once it has stopped.
   if (engulfing && engulfAction && rulesetCombatStanding(actor)) {
     engulfLands(

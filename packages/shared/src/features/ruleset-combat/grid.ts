@@ -283,10 +283,23 @@ function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
 }
 
 /** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
- *  is not, to a swimmer or a flier (1.113). */
+ *  is not, to a swimmer or a flier (1.113), nor to somebody who runs across it (1.379). */
 export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
   if (!rulesetCellBlocked(grid, x, y)) return false;
-  return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim));
+  return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim || !!mover?.runsAcross));
+}
+
+/** Whether this mover may cross a cell here but never stop on it (1.379): water, to somebody who
+ *  runs across it and neither swims nor flies. */
+export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mover: RulesetCombatant): boolean {
+  if (!mover.runsAcross || mover.speeds?.swim || mover.speeds?.fly) return false;
+  return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
+}
+
+/** What stepping into this cell costs this mover: a plain step over ground hard going of itself, for
+ *  somebody who ignores it (1.379). */
+function enterCostFor(grid: TacticalGrid, cell: RulesetCombatCell, mover?: RulesetCombatant): number {
+  return mover?.ignoresHardGround ? 1 : rulesetCellEnterCost(grid, cell.x, cell.y);
 }
 
 /**
@@ -296,6 +309,8 @@ export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mo
  * takes a step of any height for the ground it steps onto; a flier steps anywhere not solid for one
  * cell, water and heights included; a swimmer crosses water for one cell, and walks on land. Null
  * when no way it moves takes the step. Somebody who only walks gets exactly `rulesetStepCost`.
+ * Ground hard going of itself costs a plain step to somebody who ignores it, and somebody who runs
+ * across walks steps of any height as a climber does and water for one cell (1.379).
  */
 export function rulesetMoveStep(
   grid: TacticalGrid,
@@ -306,6 +321,9 @@ export function rulesetMoveStep(
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
   const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
+  const enter = enterCostFor(grid, to, mover);
+  const climb = climbCost(grid, from, to);
+  const onFoot = climb === null ? null : enter + climb;
   // Up in the air (1.114) it only flies, a cell a step over anything not solid. Ground as high as
   // it is, or higher, it lands on, exactly as a flier on the ground flies onto a cliff.
   const altitude = mover.altitude;
@@ -316,11 +334,12 @@ export function rulesetMoveStep(
   } else if (isWater(grid, to.x, to.y)) {
     if (speeds.swim) options.push({ mode: "swim", cost: 1 });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
+    if (mover.runsAcross) options.push({ mode: "walk", cost: 1 });
   } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
-    options.push({ mode: "walk", cost: rulesetStepCost(grid, from, to) });
-    if (speeds.climb) options.push({ mode: "climb", cost: rulesetCellEnterCost(grid, to.x, to.y) });
+    options.push({ mode: "walk", cost: mover.runsAcross ? enter : onFoot });
+    if (speeds.climb) options.push({ mode: "climb", cost: enter });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
-    if (speeds.burrow) options.push({ mode: "burrow", cost: rulesetStepCost(grid, from, to) });
+    if (speeds.burrow) options.push({ mode: "burrow", cost: onFoot });
   }
   let best: { mode: RulesetMoveMode; cost: number } | null = null;
   for (const option of options) {
@@ -914,7 +933,7 @@ export function rulesetReachableCells(
       const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
       // Ground a lasting area makes hard going (1.173).
-      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at);
+      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -923,6 +942,8 @@ export function rulesetReachableCells(
       // A friend can be walked past and not stood on, so their cell is searched through and never
       // offered as somewhere to stop.
       if (occupied.has(next) || (span > 1 && !fits(x, y, occupied))) continue;
+      // Run across and never stopped on (1.379).
+      if (rulesetOnlyCrosses(grid, { x, y }, actor)) continue;
       if (
         driven.some((one) => {
           const gap = rulesetGapFrom({ x, y }, span, one.source);
@@ -1023,14 +1044,15 @@ export function rulesetWalkingDistances(
    *  turn's allowance to run out of. */
   mover?: RulesetCombatant,
 ): Map<string, number> {
-  const unbounded = mover?.speeds
-    ? {
-        ...mover,
-        modeLeft: Object.fromEntries(
-          (["walk", ...Object.keys(mover.speeds)] as RulesetMoveMode[]).map((mode) => [mode, Infinity]),
-        ),
-      }
-    : undefined;
+  const unbounded =
+    mover?.speeds || mover?.ignoresHardGround || mover?.runsAcross
+      ? {
+          ...mover,
+          modeLeft: Object.fromEntries(
+            (["walk", ...Object.keys(mover.speeds ?? {})] as RulesetMoveMode[]).map((mode) => [mode, Infinity]),
+          ),
+        }
+      : undefined;
   const solid = (x: number, y: number) => rulesetCellSolidFor(grid, x, y, unbounded);
   const into = (from: RulesetCombatCell, to: RulesetCombatCell) =>
     unbounded ? (rulesetMoveStep(grid, from, to, unbounded)?.cost ?? null) : rulesetStepCost(grid, from, to);
@@ -1229,13 +1251,15 @@ export function rulesetSlowedCells(
 /** A step into a cell a zone slows costs its times the ground's plain price, without charging again
  *  for ground that was already hard going: difficult terrain does not stack (1.173). Halved speed is
  *  on top of that, as the step costs double again (1.175). Ground hard going only toward a caster
- *  counts when the step, from `from`, brings the mover nearer them (1.182). */
+ *  counts when the step, from `from`, brings the mover nearer them (1.182). Ground the mover ignores
+ *  was never hard going for them, so an area's is charged in full (1.379). */
 export function rulesetSlowedStep(
   grid: TacticalGrid,
   cell: RulesetCombatCell,
   step: number,
   slowed: ReadonlyMap<string, RulesetSlowedCell>,
   from?: RulesetCombatCell,
+  mover?: RulesetCombatant,
 ): number {
   const slow = slowed.get(`${cell.x},${cell.y}`);
   if (!slow) return step;
@@ -1245,6 +1269,6 @@ export function rulesetSlowedStep(
       times = Math.max(times, toward.times);
     }
   }
-  const hard = step + Math.max(0, times - rulesetCellEnterCost(grid, cell.x, cell.y));
+  const hard = step + Math.max(0, times - enterCostFor(grid, cell, mover));
   return slow.halves ? hard * 2 : hard;
 }

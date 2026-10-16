@@ -1699,6 +1699,12 @@ export interface RulesetCombatant {
   baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };
   /** Moving only up and down, never across (1.345): Levitate. */
   levitating?: true;
+  /** Ground hard going of itself, the board's terrain and its growth, costs them a plain step
+   *  (1.379): 5e's Land's Stride. A lasting area's hard going still counts. */
+  ignoresHardGround?: true;
+  /** On foot they take steps of any height and cross water, but never stop on water (1.379): 5e's
+   *  Unarmored Movement at 9th level. */
+  runsAcross?: true;
   /** What is left this turn of each way they move, in CELLS (1.113): every cell moved comes off all
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */
@@ -2678,6 +2684,8 @@ export type RulesetCombatEvent =
   | { type: "legendaryResistance"; actorId: string; save: string; left: number }
   /** A lair action taken on its lair's count (1.315); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
+  /** Stopped on water they could only run across (1.379), and come out on the nearest open ground. */
+  | { type: "ashore"; actorId: string; to: RulesetCombatCell }
   /** What its user put on somebody kept up for longer (1.378): Intimidating Presence. */
   | { type: "sustained"; actorId: string; targetId: string; condition: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */

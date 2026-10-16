@@ -331,21 +331,12 @@ async function resolveVideoCharacterIds(
   },
 ): Promise<string[]> {
   // What people say in the clip names no one it shows ("Hey Jamie!"), and an animated picture keeps its characters.
-  const context = withoutQuotedSpeech([args.context ?? "", args.picturePrompt ?? ""].join("\n"));
+  const context = [args.context, args.picturePrompt].map((text) => withoutQuotedSpeech(text ?? "")).join("\n");
   const prompt = withoutQuotedSpeech(args.prompt);
   const mentioned = namesMentionedByPart(
     [context, prompt].join("\n"),
     [...args.charInfo, ...(args.persona ? [args.persona] : [])].map(({ id, name }) => ({ id, name })),
   );
-  const requestedNames = [
-    ...resolveConversationSelfieRequestedNames({
-      speakerName: args.characterName,
-      chatCharacters: args.charInfo,
-      commandContext: context,
-      imagePrompt: prompt,
-    }),
-    ...args.charInfo.filter((character) => mentioned.has(character.id)).map((character) => character.name),
-  ];
   const resolution = await resolveIllustratorCharacterReferences({
     charactersStore: createCharactersStorage(args.db),
     chatCharacters: args.charInfo.map((character) => ({
@@ -354,19 +345,28 @@ async function resolveVideoCharacterIds(
       avatarPath: character.avatarPath,
       appearance: character.appearance,
     })),
-    persona: args.persona ?? null,
-    requestedNames,
-    promptText: [args.characterName, context, prompt].join("\n"),
+    persona: null,
+    requestedNames: [
+      ...resolveConversationSelfieRequestedNames({
+        speakerName: args.characterName,
+        chatCharacters: args.charInfo,
+        commandContext: context,
+        imagePrompt: prompt,
+      }),
+      ...args.charInfo.filter((character) => mentioned.has(character.id)).map((character) => character.name),
+    ],
+    // Names are matched above, by capitalised word, so a lowercase "rose" or "hazel" is not taken for a character.
+    promptText: args.characterName,
     fallbackToChatCharacters: false,
     includeReferenceImages: false,
     maxReferences: 12,
   });
   // The persona is listed only when the clip names it, so it reaches the persona's gallery only when it is in it.
-  const personaId = resolution.personaId ?? (args.persona?.id && mentioned.has(args.persona.id) ? args.persona.id : null);
+  const personaId = args.persona?.id && mentioned.has(args.persona.id) ? args.persona.id : null;
   return Array.from(new Set([args.characterId, ...resolution.characterIds, ...(personaId ? [personaId] : [])]));
 }
 
-const QUOTED_SPEECH_RE = /"[^"]*"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb/gu;
+const QUOTED_SPEECH_RE = /"[^"\n]*"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb/gu;
 
 function withoutQuotedSpeech(text: string): string {
   return text.replace(QUOTED_SPEECH_RE, " ");
@@ -376,14 +376,14 @@ function withoutQuotedSpeech(text: string): string {
  * The chat members (characters and persona) a clip's text names by a part of their name no one else in the chat
  * shares: "Lena" for "Dr. Lena Kowalski". Video prompts usually call people by first name, while the shared
  * matcher only takes a full name, which stays the rule for pictures. A part counts only when written with a
- * capital, so "hazel eyes" or "the snow" name no one.
+ * capital (or in a script without capitals), so "hazel eyes" or "the snow" name no one.
  */
 function namesMentionedByPart(text: string, members: Array<{ id: string | null; name: string }>): Set<string | null> {
   const capitalised = new Set(
     text
       .normalize("NFKC")
       .split(/[^\p{L}\p{N}]+/u)
-      .filter((word) => word !== word.toLowerCase())
+      .filter((word) => word !== word.toLowerCase() || word === word.toUpperCase())
       .map((word) => word.toLowerCase()),
   );
   const parts = members.map(({ id, name }) => ({

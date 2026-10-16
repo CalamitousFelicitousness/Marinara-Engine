@@ -200,6 +200,34 @@ try {
   assert.ok(!(await clipIds(turner.id)).includes(lowercaseClip), "a lowercase word is not a name");
   const capitalClip = await sendClip("Aster laughs as Will joins in");
   assert.ok((await clipIds(turner.id)).includes(capitalClip), "a capitalised name part is");
+  const bobLowercase = await sendClip("Aster smiles, a bob of hair swaying");
+  assert.ok(!(await clipIds(bob.id)).includes(bobLowercase), "a one-word name in lowercase is not a name either");
+
+  // A persona with a two-part name is found by its first name, by id, without borrowing a character's name.
+  const alex = await characters.createPersona("Alex Smith", "Another player.");
+  assert.ok(alex);
+  const duo = await chats.create({
+    name: "Duo",
+    mode: "conversation",
+    characterIds: [aster.id],
+    connectionId: text.id,
+    personaId: alex.id,
+  });
+  assert.ok(duo);
+  await chats.patchMetadata(duo.id, { sceneVideoConnectionId: video.id, sceneVideoFirstFrame: "prompt_only" });
+  writerReply = "Aster hugs Alex";
+  const duoSent = await app.inject({
+    method: "POST",
+    url: `/api/gallery/${duo.id}/video`,
+    payload: { characterId: aster.id },
+  });
+  assert.equal(duoSent.statusCode, 200, duoSent.body);
+  const duoVideoId = (duoSent.json() as { video: { id: string } }).video.id;
+  const alexClips = await app.inject({ method: "GET", url: `/api/characters/personas/${alex.id}/gallery/clips` });
+  assert.ok(
+    alexClips.json<{ clips: Array<{ id: string }> }>().clips.some((clip) => clip.id === `scene:${duoVideoId}`),
+    "a persona's first name files the clip under it",
+  );
   console.log("convo-video-character-galleries regression passed");
 } finally {
   await app.close();

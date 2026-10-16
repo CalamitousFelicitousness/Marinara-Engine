@@ -81,6 +81,7 @@ import {
   resolveGalleryVideoSourceExchange,
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
+import { writeRoleplayClipDirection } from "../services/video/roleplay-clip-writer.js";
 import {
   generateConversationVideo,
   namesMentionedByPart,
@@ -107,10 +108,6 @@ import {
   type ChatVideoAnchor,
   serializeSceneVideo,
 } from "../services/video/chat-video-messages.js";
-import {
-  buildRoleplayVideoDirectionMessages,
-  resolveRoleplayVideoDirection,
-} from "../services/video/roleplay-video-direction.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { newId } from "../utils/id-generator.js";
 import { DATA_DIR } from "../utils/data-dir.js";
@@ -727,8 +724,6 @@ export async function galleryRoutes(app: FastifyInstance) {
     return Array.from(names).slice(0, 10);
   }
 
-  const ROLEPLAY_VIDEO_DIRECTOR_MAX_TOKENS = 8_196;
-
   /**
    * Who a Roleplay clip shows, read from its prompt: chat characters and the persona named in full or by a name part
    * no one else in the chat shares. Gives their ids (for galleries) and their appearance lines.
@@ -798,88 +793,34 @@ export async function galleryRoutes(app: FastifyInstance) {
     debugMode?: boolean;
     signal?: AbortSignal;
   }): Promise<string> {
-    const connections = createConnectionsStorage(app.db);
-    const promptOverridesStorage = createPromptOverridesStorage(app.db);
-    let promptDraft = "";
-    const defaultPromptConnection =
-      args.chat.connectionId && args.chat.connectionId !== LOCAL_SIDECAR_CONNECTION_ID
-        ? await connections.getWithKey(args.chat.connectionId)
-        : null;
-    let promptRuntime;
+    let promptDraft: string;
     try {
-      promptRuntime = await resolveIllustratorPromptRuntime({
-        chatMetadata: args.meta,
-        defaultConnection: defaultPromptConnection,
-        defaultConnectionId: args.chat.connectionId,
-        connections,
-        resolveBaseUrl,
-      });
-    } catch (err) {
-      logger.warn(err, "[gallery/roleplay-video-director] Prompt Model is unavailable for chat %s", args.chat.id);
-      throw new GallerySceneVideoRequestError(
-        400,
-        "Choose a text Prompt Model or main chat connection before planning a Roleplay animation.",
-      );
-    }
-    const directionMessages = await buildRoleplayVideoDirectionMessages(promptOverridesStorage, {
-      durationSeconds: args.durationSeconds,
-      aspectRatio: args.aspectRatio,
-      sourceExchange: args.sourceExchange,
-      referenceImagePrompt: args.referenceImagePrompt,
-      characterNames: args.characterNames,
-      setting: buildRoleplayVideoSettingLine(args.chat, args.meta, args.videoRuntime.promptLimits.artStyle),
-      videoPromptInstructions: args.videoConn.videoPromptInstructions,
-      withoutPicture: args.withoutPicture,
-    });
-    const [systemMessage, userMessage] = directionMessages;
-    const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
-    logDebugOverride(
-      debugOverrideEnabled,
-      "[debug/gallery/roleplay-video-director] system:\n%s\nuser:\n%s",
-      systemMessage.content,
-      userMessage.content,
-    );
-    let finishReason: string | null | undefined;
-    try {
-      const result = await promptRuntime.provider.chatComplete(directionMessages, {
-        model: promptRuntime.model,
-        // Room for a model that thinks before answering, as the Conversation video writer has.
-        ...(promptRuntime.suppressModelParameters
-          ? {}
-          : { temperature: 0.5, maxTokens: ROLEPLAY_VIDEO_DIRECTOR_MAX_TOKENS }),
-        suppressModelParameters: promptRuntime.suppressModelParameters,
+      // The shared writer: the video connection's Video Prompting Instructions decide the prompt's format.
+      promptDraft = await writeRoleplayClipDirection(app.db, {
+        chat: args.chat,
+        meta: args.meta,
+        setup: {
+          videoConn: args.videoConn,
+          runtime: args.videoRuntime,
+          durationSeconds: args.durationSeconds,
+          aspectRatio: args.aspectRatio,
+        },
+        sourceExchange: args.sourceExchange,
+        referenceImagePrompt: args.referenceImagePrompt,
+        characterNames: args.characterNames,
+        withoutPicture: args.withoutPicture === true,
+        debugMode: args.debugMode,
         signal: args.signal,
-        enableCaching: promptRuntime.enableCaching,
-        anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
       });
-      finishReason = result.finishReason;
-      // A sentence of the connection's instructions the director copied word for word is not video-model text.
-      promptDraft = removeCopiedPromptGuidance(
-        resolveRoleplayVideoDirection(result.content, args.videoRuntime.promptLimits.finalPrompt),
-        [args.videoConn.videoPromptInstructions],
-      );
     } catch (err) {
-      logger.warn(err, "[gallery/roleplay-video-director] Failed to plan animation for chat %s", args.chat.id);
-      const message =
-        err instanceof Error && err.message.trim()
-          ? err.message.trim()
-          : "The Roleplay animation Prompt Model failed to plan this clip.";
-      throw new GallerySceneVideoRequestError(502, message);
-    }
-    if (!promptDraft) {
-      throw new GallerySceneVideoRequestError(
-        502,
-        finishReason === "length"
-          ? "The Roleplay animation Prompt Model used its whole response budget before writing the clip. Try a model that thinks less, or shorter Video Prompting Instructions."
-          : "The Roleplay animation Prompt Model returned an empty direction.",
-      );
+      if (err instanceof ChatVideoError) throw new GallerySceneVideoRequestError(err.statusCode, err.message);
+      throw err;
     }
     if (args.meta.illustratorVideoIncludeCharacterAppearance === true) {
       // The characters the direction names get their appearance lines, as Illustrator images do.
       const { appearanceBlock } = await resolveRoleplayClipCast(args.chat, promptDraft);
       if (appearanceBlock) promptDraft = `${promptDraft}\n\n${appearanceBlock}`;
     }
-    logDebugOverride(debugOverrideEnabled, "[debug/gallery/roleplay-video-director] final prompt:\n%s", promptDraft);
     return promptDraft;
   }
 

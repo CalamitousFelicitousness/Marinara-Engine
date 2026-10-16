@@ -10,7 +10,7 @@ import type {
 } from "./professor-mari-workspace.js";
 import type { GameDicePlaceholderRecord } from "../utils/dice-placeholder.js";
 import type { GenerationGuideSource } from "../utils/generation-guide.js";
-import type { ContextFitSummary } from "./generation-integration.js";
+import type { ContextFitSummary, GenerationFallbackNotice } from "./generation-integration.js";
 import type { HapticFeedbackSensitivity } from "./haptic.js";
 import type { CustomEmojiSelectionPrefs } from "../schemas/custom-emoji.schema.js";
 import type { DiceRollResult, GameDicePoolConsumption, GameDicePoolMismatch } from "./game.js";
@@ -1127,6 +1127,8 @@ export interface GenerationInfo {
   finishReason: string | null;
   /** What the context fit cut from this prompt, for the "replies got worse" checkup. */
   contextFit?: ContextFitSummary | null;
+  /** Set when the chosen connection failed and the fallback wrote this reply (#7697). */
+  fallback?: GenerationFallbackNotice | null;
 }
 
 /** A swipe (alternate response) for a message. */

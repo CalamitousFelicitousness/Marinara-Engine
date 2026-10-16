@@ -2179,6 +2179,16 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** A floor under its holder's checks (1.365): Reliable Talent, Indomitable Might. */
+function carriesCheckFloor365(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCheckFloor365(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.checkFloor)) return true;
+  return featureValues(record).some((one) => carriesCheckFloor365(one, depth + 1));
+}
+
 /** Held off while its holder has something (notWhile), save effects only against what is seen
  *  (whenSeen), and attacks against its holder never with advantage (1.364): Danger Sense, Elusive. */
 function carriesUnseenGuard364(value: unknown, depth = 0): boolean {
@@ -5455,6 +5465,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A floor under checks, 1.365.
+  if (
+    !declaresApi(365) &&
+    (carriesCheckFloor365(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCheckFloor365(document)))
+  ) {
+    return "A ruleset whose conditions or levels put a floor under their holder's checks (checkFloor) requires schemaVersion 2 and capabilityApi 1.365 or newer";
+  }
   // Held off while, seen saves, no advantage against, 1.364.
   if (
     !declaresApi(364) &&

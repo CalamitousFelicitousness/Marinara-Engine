@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────
 import type {
   RulesetCatalogEntriesById,
+  RulesetCheckFloor,
   RulesetContextualCheck,
   RulesetContextualCost,
   RulesetCombatCondition,
@@ -94,6 +95,10 @@ export interface RulesetCheckSource {
   light?: Readonly<{ bright: number; dim: number }>;
   /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
+  /** Held off while its holder has any of these, conditions or effects (Capability API 1.364). */
+  notWhile?: readonly string[];
+  /** A floor under its holder's checks (Capability API 1.365). */
+  checkFloor?: RulesetCheckFloor;
 }
 
 /**
@@ -135,11 +140,19 @@ export function rulesetCheckSources(
       sources.push({ ...level, name: `${label} ${level.at}` });
     }
   }
-  return [
+  const all = [
     ...sources,
     ...rulesetItemSources(definition, build, items, sheet),
     ...rulesetSheetHideSources(definition, build),
   ];
+  // Held off while its holder has something it names (1.364), as in a fight.
+  if (!all.some((source) => source.notWhile)) return all;
+  const live = readRulesetLive(definition, build, stored);
+  const has = new Set<string>([
+    ...live.conditions.filter((entry) => entry.active).map((entry) => entry.id),
+    ...all.flatMap((source) => source.effects ?? []),
+  ]);
+  return all.filter((source) => !source.notWhile?.some((one) => has.has(one)));
 }
 
 /** A sheet row's typed hides (Capability API 1.132), read afresh so removing the row removes them.
@@ -226,6 +239,18 @@ export interface RulesetCheckEffects {
   disadvantage: string[];
   /** A save these make fail without a roll. Empty for a check. */
   fails: string[];
+  /** Floors under a check (Capability API 1.365), each from a source, its `total` not yet read off
+   *  the sheet and its `proficient` not yet weighed. Left out where there are none. */
+  floors?: Array<{ from: string; floor: RulesetCheckFloor }>;
+}
+
+/** Whether a skill trained to this tier adds its holder's whole proficiency (1.365): a tier above
+ *  the first whose multiplier is at least 1. Half proficiency is not "your proficiency bonus". */
+export function rulesetTierAddsProficiency(definition: RulesetDefinition, tier: string | undefined): boolean {
+  const tiers = definition.resolution.proficiencyTiers;
+  if (tier === undefined || tier === tiers[0]?.id) return false;
+  const found = tiers.find((one) => one.id === tier);
+  return !!found && found.multiplier >= 1;
 }
 
 /**
@@ -266,6 +291,10 @@ export function rulesetCheckEffects(
       if (effects.includes("own-checks-advantage")) lean("advantage", source.name);
       if (effects.includes("own-checks-disadvantage")) lean("disadvantage", source.name);
     }
+    // A floor under a check (1.365), narrowed by its own abilities and skills.
+    const floor = source.checkFloor;
+    if (floor && save === undefined && about(floor.skills, skill) && about(floor.abilities, ability))
+      (found.floors ??= []).push({ from: source.name, floor });
     for (const modifier of source.modifiers ?? []) {
       const applies =
         save !== undefined

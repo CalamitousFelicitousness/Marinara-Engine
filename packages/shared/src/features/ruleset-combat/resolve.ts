@@ -6,7 +6,7 @@
 // `applyRulesetSheetOp`, so a fight can never write something the sheet would refuse from the
 // player or from the Game Master.
 
-import type { RulesetSaveAgainst } from "../rulesets/check-effects.js";
+import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import {
   rulesetPoolMaxSuccesses,
   type RulesetBehaviorDrops,
@@ -5549,20 +5549,59 @@ function throwCheck(
   const { count, sides } = ctx.combat.attackRoll!.dice;
   const first = throwOwnDice(ctx, who, "checks", count, sides);
   const second = mode === "normal" ? null : throwOwnDice(ctx, who, "checks", count, sides);
-  const kept = second
+  const thrown = second
     ? mode === "advantage"
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
+  // Floors under the check (1.365): Reliable Talent lifts a single die, Indomitable Might the total.
+  const floors = checkFloors(ctx, who, skill, ability);
+  const kept = count === 1 && floors.face !== undefined ? Math.max(thrown, floors.face) : thrown;
   const bonuses = rollBonuses(ctx, checkModifiers());
   return {
     check,
     rolls: second ? [...first, ...second] : first,
     modifier,
-    total: kept + modifier + bonusTotal(bonuses),
+    total: Math.max(kept + modifier + bonusTotal(bonuses), floors.total ?? -Infinity),
     ...(mode === "normal" ? {} : { mode }),
     ...(bonuses.length > 0 ? { bonuses } : {}),
   };
+}
+
+/** The floors under one of this combatant's checks (1.365), off their active conditions and levels:
+ *  the highest face and the highest total. A `proficient` one counts only on a skill their sheet adds
+ *  their whole proficiency to; a creature off a stat block has none of those. */
+function checkFloors(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  skill: string | undefined,
+  ability: string | undefined,
+): { face?: number; total?: number } {
+  const out: { face?: number; total?: number } = {};
+  const floors = rulesetActiveConditions(ctx.definition, ctx.combat, who, ctx.state).flatMap((entry) =>
+    entry.checkFloor ? [entry.checkFloor] : [],
+  );
+  if (floors.length === 0) return out;
+  const about = (narrowed: readonly string[] | undefined, id: string | undefined) =>
+    !narrowed || (id !== undefined && narrowed.includes(id));
+  let trained: boolean | undefined;
+  const isTrained = () => {
+    if (trained !== undefined) return trained;
+    const sheet = who.sheet;
+    const tier =
+      sheet && skill
+        ? evaluateRulesetSheetLive(ctx.definition, sheet.build, sheet.live, sheet.items).skillTiers[skill]
+        : undefined;
+    return (trained = rulesetTierAddsProficiency(ctx.definition, tier));
+  };
+  for (const floor of floors) {
+    if (!about(floor.skills, skill) || !about(floor.abilities, ability)) continue;
+    if (floor.proficient && !isTrained()) continue;
+    if (floor.face !== undefined) out.face = Math.max(out.face ?? floor.face, floor.face);
+    const total = floor.total ? rulesetHolderValue(ctx.definition, who, floor.total) : undefined;
+    if (total !== undefined) out.total = Math.max(out.total ?? total, total);
+  }
+  return out;
 }
 
 function resolveContest(

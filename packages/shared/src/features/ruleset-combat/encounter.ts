@@ -884,6 +884,7 @@ function activeLevels(
         ...(level.fellsGrant ? { fellsGrant: level.fellsGrant } : {}),
         ...(level.notWhile ? { notWhile: level.notWhile } : {}),
         ...(level.whenSeen ? { whenSeen: true as const } : {}),
+        ...(level.checkFloor ? { checkFloor: level.checkFloor } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];

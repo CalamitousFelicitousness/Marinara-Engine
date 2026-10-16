@@ -8897,6 +8897,25 @@ function skillsNeedSomethingToNarrow(
   }
 }
 
+/** A floor under its holder's own checks (Capability API 1.365): a d20 face below `face` counts as
+ *  `face`, and a total below `total` (a value off the sheet) as that value. `proficient` narrows it to
+ *  checks its holder adds a trained tier to, and `abilities` and `skills` to checks made with those.
+ *  5e's Reliable Talent, `{"face": 10, "proficient": true}`; Indomitable Might, `{"total":
+ *  {"abilityScore": "str"}, "abilities": ["str"]}`. */
+export const checkFloorSchema = z
+  .object({
+    face: z.number().int().min(1).max(100).optional(),
+    total: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    proficient: z.literal(true).optional(),
+    abilities: z.array(sheetId).min(1).max(12).optional(),
+    skills: z.array(sheetId).min(1).max(40).optional(),
+  })
+  .strict()
+  .refine((floor) => floor.face !== undefined || floor.total !== undefined, {
+    message: 'A check floor names a "face", a "total" or both',
+  });
+export type RulesetCheckFloor = z.infer<typeof checkFloorSchema>;
+
 /** The effects a LEVEL may not have: a level is not something anybody put on its holder, so it has
  *  no source to be kept from, and it ends only when the track goes down, not by standing up or being
  *  hurt. */
@@ -8956,6 +8975,7 @@ const combatLevelSchema = z
     /** Its save effects count only on a save against something its holder can see, and a save with
      *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
     whenSeen: z.literal(true).optional(),
+    checkFloor: checkFloorSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -8991,13 +9011,14 @@ const combatLevelSchema = z
       !entry.regenerates &&
       !entry.hangsOn &&
       !entry.rerollsFace &&
-      !entry.fellsGrant
+      !entry.fellsGrant &&
+      !entry.checkFloor
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, or points as a foe drops",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, or a floor under its checks",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9705,6 +9726,7 @@ const combatConditionSchema = z
     /** Its save effects count only on a save against something its holder can see, and a save with
      *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
     whenSeen: z.literal(true).optional(),
+    checkFloor: checkFloorSchema.optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),
@@ -13675,6 +13697,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "temporary"], "Temporary points need health in points, not a wound track");
       checkRef(grant.temporary, [...path, "temporary"], derivedIds);
     };
+    // A floor under checks (1.365): a value the sheet reads, abilities and skills it has.
+    const checkFloorIssues = (floor: RulesetCheckFloor, path: (string | number)[]) => {
+      if (floor.total) checkRef(floor.total, [...path, "total"], derivedIds);
+      floor.abilities?.forEach((one, index) => {
+        if (!abilityIds.has(one)) issue([...path, "abilities", index], `Unknown ability "${one}"`);
+      });
+      floor.skills?.forEach((one, index) => {
+        if (!skills.has(one)) issue([...path, "skills", index], `Unknown skill "${one}"`);
+      });
+    };
     // Held off while (1.364): conditions it names are declared ones, and whenSeen has saves to scope.
     const notWhileIssues = (
       entry: { notWhile?: string[]; whenSeen?: true; effects: string[]; modifiers?: Array<{ to: string }> },
@@ -13761,6 +13793,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       notWhileIssues(entry, path);
+      if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -14008,6 +14041,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       rerollsFaceIssues(def, entry.rerollsFace, [...path, "rerollsFace"], issue);
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       notWhileIssues(entry, path);
+      if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);

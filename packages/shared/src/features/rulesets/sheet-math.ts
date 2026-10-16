@@ -1029,6 +1029,10 @@ export function rollDiceSumCheck(
     advantage?: boolean;
     disadvantage?: boolean;
     preRolled?: number;
+    /** A single die's face below this counts as this (1.365): Reliable Talent's 10. */
+    faceFloor?: number;
+    /** A total below this counts as this (1.365): Indomitable Might's Strength score. */
+    totalFloor?: number;
   },
   rollDie: (sides: number) => number,
 ): RulesetCheckRoll {
@@ -1083,16 +1087,18 @@ export function rollDiceSumCheck(
       : second.worth < first.worth
         ? second
         : first;
-  const usedRoll = kept.worth;
+  // A floor under a single die (1.365) lifts the face that counted, and so its natural too.
+  const floor = single && input.faceFloor !== undefined && kept.thrown[0]! < input.faceFloor ? input.faceFloor : 0;
+  const usedRoll = floor ? Math.max(kept.worth, faceWorth(floor)) : kept.worth;
   const rolls = second ? [...first.thrown, ...second.thrown] : first.thrown;
   // The natural is the first face of the set that counted, before anything was added or rolled again.
-  const natural = kept.thrown[0]!;
+  const natural = floor || kept.thrown[0]!;
 
   const policy = input.isSave ? naturals.save : naturals.check;
   const criticalSuccess = single && natural === dice.sides && (policy === "both" || policy === "max-only");
   const criticalFailure = single && natural === 1 && (policy === "both" || policy === "min-only");
   const unmodified = single && resolution.unmodified?.includes(natural) ? natural : undefined;
-  const total = usedRoll + input.modifier;
+  const total = Math.max(usedRoll + input.modifier, input.totalFloor ?? -Infinity);
 
   const roll: RulesetCheckRoll = {
     rolls,

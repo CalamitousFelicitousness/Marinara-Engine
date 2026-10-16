@@ -64,6 +64,7 @@ import {
   rulesetCheckEffects,
   rulesetCheckRollMode,
   rulesetCheckSources,
+  rulesetTierAddsProficiency,
   rulesetContextualCheck,
   rulesetContextualItems,
   rollRulesetCheckModifiers,
@@ -843,6 +844,34 @@ export function rulesetUntrainedFor(
   return entry ? rulesetUntrainedRule(definition, entry) : null;
 }
 
+/** The floors under this check (1.365), read off the roller's sheet: the highest face any of them
+ *  lifts a die to, and the highest total. A `proficient` one counts only on a skill the roller adds
+ *  their whole proficiency to. */
+export function rulesetCheckFloorsFor(
+  ruleset: SkillCheckRulesetContext,
+  request: SkillCheckRequest,
+  target: RulesetCheckTarget | null,
+  effects: RulesetCheckEffects,
+): { faceFloor?: number; totalFloor?: number; from: string[] } {
+  const out: { faceFloor?: number; totalFloor?: number; from: string[] } = { from: [] };
+  if (!effects.floors?.length) return out;
+  const { definition } = ruleset;
+  const sheet = request.who
+    ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
+    : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
+  const tier = target?.type === "skill" ? sheet?.skillTiers[target.id] : undefined;
+  const trained = rulesetTierAddsProficiency(definition, tier);
+  for (const { from, floor } of effects.floors) {
+    if (floor.proficient && !trained) continue;
+    const total = floor.total ? rulesetCheckValueFor(ruleset, floor.total, request.who) : undefined;
+    if (floor.face === undefined && total === undefined) continue;
+    if (floor.face !== undefined) out.faceFloor = Math.max(out.faceFloor ?? floor.face, floor.face);
+    if (total !== undefined) out.totalFloor = Math.max(out.totalFloor ?? total, total);
+    out.from.push(from);
+  }
+  return out;
+}
+
 /** Whether this check is one the character may not attempt at all, untrained. */
 export function rulesetRefusesUntrained(ruleset: SkillCheckRulesetContext, request: SkillCheckRequest): boolean {
   return rulesetUntrainedFor(ruleset, request) === "refuse";
@@ -1293,6 +1322,8 @@ function resolveRulesetSkillCheck(
   const summed = modifier + penalty + adjust + boost;
   // The Game Master's `mode=` and what leans the character's own roll, cancelling out together.
   const mode = rulesetCheckRollMode(request, effects);
+  // Floors under the check (1.365): Reliable Talent's 10, Indomitable Might's Strength score.
+  const floors = isSave ? { from: [] } : rulesetCheckFloorsFor(ruleset, request, target, effects);
   const rolled = rollDiceSumCheck(
     definition,
     {
@@ -1305,9 +1336,12 @@ function resolveRulesetSkillCheck(
         sides === 20 && count === 1 && !resolution.dice.faces && !resolution.openEnded
           ? request.preRolledD20
           : undefined,
+      ...("faceFloor" in floors && floors.faceFloor !== undefined ? { faceFloor: floors.faceFloor } : {}),
+      ...("totalFloor" in floors && floors.totalFloor !== undefined ? { totalFloor: floors.totalFloor } : {}),
     },
     rollDie,
   );
+  const floored = floors.from.filter((name) => !effected.from?.includes(name));
   return {
     skill: request.skill,
     dc: askedDc,
@@ -1316,6 +1350,7 @@ function resolveRulesetSkillCheck(
     ...rolled,
     ...applied,
     ...effected,
+    ...(floored.length ? { from: [...(effected.from ?? []), ...floored] } : {}),
     ...who,
   };
 }
@@ -1366,7 +1401,13 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
     rulesetCheckTargetFor(ruleset, tag.skill, tag.who, tag.withAbility),
     tag.who,
   );
-  if (changed.modifiers.length || changed.advantage.length || changed.disadvantage.length || changed.fails.length) {
+  if (
+    changed.modifiers.length ||
+    changed.advantage.length ||
+    changed.disadvantage.length ||
+    changed.fails.length ||
+    changed.floors?.length
+  ) {
     return false;
   }
   const { count, sides } = resolution.dice;

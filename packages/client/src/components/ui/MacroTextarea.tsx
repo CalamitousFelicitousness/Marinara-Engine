@@ -116,7 +116,9 @@ function ExpandedMacroEditor({
     setLocalValue(valueRef.current);
     const focusTimer = window.setTimeout(() => textareaRef.current?.focus(), 20);
     return () => window.clearTimeout(focusTimer);
-  }, [open, textareaRef]);
+    // textareaRef is a stable ref; only opening should initialize and focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) {

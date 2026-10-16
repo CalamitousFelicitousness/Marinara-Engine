@@ -3844,7 +3844,7 @@ export interface RulesetCatalogApplies {
   saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "attacked" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
-  endsAway?: { beyond: number; unseen?: true };
+  endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   escapeDc?: number | "save";
   escapeChecks?: string[];
   heldAtMost?: number;
@@ -3936,10 +3936,20 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** It comes off once its holder stands farther than `beyond` (the ruleset's own distance) from
      *  whoever put it on, and, with `unseen`, can no longer see them (Capability API 1.310): 5e's
      *  Eyebite, whose panicked target is free again "at least 60 feet away from you where it can no
-     *  longer see you". Asked as each step of a walk ends and as each turn ends. */
+     *  longer see you". Asked as each step of a walk ends and as each turn ends. With `orUnseen`
+     *  (Capability API 1.380) either is enough, asked only as its holder ends a turn: 5e's
+     *  Intimidating Presence, which ends "if the creature ends its turn out of line of sight or more
+     *  than 60 feet away from you". */
     endsAway: z
-      .object({ beyond: z.number().min(0).max(100000), unseen: z.literal(true).optional() })
+      .object({
+        beyond: z.number().min(0).max(100000),
+        unseen: z.literal(true).optional(),
+        orUnseen: z.literal(true).optional(),
+      })
       .strict()
+      .refine((away) => !(away.unseen && away.orUnseen), {
+        message: '"endsAway" ends out of sight AND far ("unseen") or out of sight OR far ("orUnseen"): one of them',
+      })
       .optional(),
     /** What breaking free of it is rolled against, in place of the holder's own side of the contest
      *  that breaks free of it (Capability API 1.103): 5e's "the target is grappled (escape DC 13)".

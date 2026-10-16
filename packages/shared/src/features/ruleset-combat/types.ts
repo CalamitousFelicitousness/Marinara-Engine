@@ -161,8 +161,8 @@ export interface RulesetCombatApplies {
     uses?: string[];
   };
   /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
-   *  their sight (1.310): Eyebite's panic. */
-  endsAway?: { beyond: number; unseen?: true };
+   *  their sight (1.310): Eyebite's panic. With `orUnseen`, either as its holder ends a turn (1.380). */
+  endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.103): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.174). */
   escapeDc?: number | "save";
@@ -1345,8 +1345,9 @@ export interface RulesetTrackedCondition {
     acts?: true;
     uses?: string[];
   };
-  /** How far from its putter, and out of their sight, takes it off (1.310). */
-  endsAway?: { beyond: number; unseen?: true };
+  /** How far from its putter, and out of their sight, takes it off (1.310), or either as its holder
+   *  ends a turn (1.380). */
+  endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** The saves that ended it made and failed so far, where they are counted (1.258). */

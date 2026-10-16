@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A condition ended far OR out of sight, as its holder ends a turn (1.380): Intimidating Presence. */
+function carriesEndsAwayOr380(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsAwayOr380(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.endsAway)?.orUnseen !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsAwayOr380(one, depth + 1));
+}
+
 /** Ways over the ground (1.379): Land's Stride, Unarmored Movement along walls and across water. */
 function carriesGroundWays379(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5645,6 +5655,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Far or out of sight, 1.380.
+  if (
+    !declaresApi(380) &&
+    (carriesEndsAwayOr380(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsAwayOr380(document)))
+  ) {
+    return "A ruleset whose conditions end as their holder ends a turn far away or out of sight (endsAway orUnseen) requires schemaVersion 2 and capabilityApi 1.380 or newer";
+  }
   // Ways over the ground, 1.379.
   if (
     !declaresApi(379) &&

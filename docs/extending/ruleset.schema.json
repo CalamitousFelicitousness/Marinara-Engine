@@ -45596,6 +45596,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "orUnseen": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -46628,6 +46632,10 @@
                                 "maximum": 100000
                               },
                               "unseen": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "orUnseen": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -51318,6 +51326,10 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "orUnseen": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -52662,6 +52674,10 @@
                                           "maximum": 100000
                                         },
                                         "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "orUnseen": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -56420,6 +56436,10 @@
                                           "maximum": 100000
                                         },
                                         "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "orUnseen": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -64688,6 +64708,10 @@
                                           "maximum": 100000
                                         },
                                         "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "orUnseen": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -73866,6 +73890,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "orUnseen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -74898,6 +74926,10 @@
                                     "maximum": 100000
                                   },
                                   "unseen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "orUnseen": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -86424,6 +86456,10 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "orUnseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -87456,6 +87492,10 @@
                                           "maximum": 100000
                                         },
                                         "unseen": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "orUnseen": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -103318,6 +103358,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "orUnseen": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -104814,6 +104858,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "orUnseen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -105867,6 +105915,10 @@
                                         "maximum": 100000
                                       },
                                       "unseen": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "orUnseen": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -107422,6 +107474,10 @@
                               "maximum": 100000
                             },
                             "unseen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "orUnseen": {
                               "type": "boolean",
                               "const": true
                             },

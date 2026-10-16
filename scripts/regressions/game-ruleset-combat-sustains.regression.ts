@@ -5,7 +5,9 @@
  *     action keeps it up, its rounds started again, with no save and nothing spent.
  *   - Kept up only at a creature it is still on, and offered only while it is on somebody.
  *   - A creature that made its save is spared it until a long rest; one that failed is not.
- *   - Refusals and the install gate.
+ *   - Far OR out of sight, asked only as its holder ends a turn (Capability API 1.380): "ends if the
+ *     creature ends its turn out of line of sight or more than 60 feet away from you".
+ *   - Refusals and the install gates.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -21,6 +23,7 @@ import {
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
+  RULESET_MOVE_OPTION,
   type RulesetCatalogEntry,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -100,9 +103,9 @@ try {
   });
   // A d20 of 10: the shaky foe's 10 fails against 15, the steady one's 20 makes it.
   const roll = (sides: number) => (sides === 20 ? 10 : 3);
-  const fight = (): RulesetEncounterState => {
+  const fight = (rules = definition, held = entries): RulesetEncounterState => {
     const state = createRulesetEncounter({
-      definition,
+      definition: rules,
       seed: 1,
       roller: roll,
       combatants: [
@@ -115,13 +118,13 @@ try {
             abilities: { str: 18, dex: 12, con: 16, int: 8, wis: 10, cha: 16 },
             fields: { level: 10, ac: 15, speed: 30, hp_max: 100, spellcasting_ability: "cha" },
             lists: {
-              features: entries.flatMap((entry) =>
+              features: held.flatMap((entry) =>
                 rowsFromCatalogEntry("berserker", entry).flatMap((one) => (one.list === "features" ? [one.row] : [])),
               ),
             },
           }),
           live: {},
-          catalogs: { berserker: entries },
+          catalogs: { berserker: held },
         },
         { id: "shaky", name: "Shaky", side: "enemy", block: block(0) },
         { id: "steady", name: "Steady", side: "enemy", block: block(10) },
@@ -203,6 +206,79 @@ try {
     assert.equal(of(anew.events, "refused").length, 0, JSON.stringify(of(anew.events, "refused")));
   }
 
+  // ── Far or out of sight, as its holder ends a turn (1.380) ──
+  {
+    const orDefinition = parsed(
+      fiveE((doc) => {
+        doc.catalogs.at(-1).entries[0].mechanics.applies[0].endsAway = { beyond: 60, orUnseen: true };
+      }),
+    );
+    const orEntries = orDefinition.catalogs!.find((one) => one.id === "berserker")!.entries as RulesetCatalogEntry[];
+    const frighten = () => {
+      const start = fight(orDefinition, orEntries);
+      const option = rulesetCombatOptions(orDefinition, start, "barbarian").find(
+        (one) => one.label === "Intimidating Presence" && !one.sustain,
+      )!;
+      const step = applyRulesetCombatChoice(
+        orDefinition,
+        start,
+        { actorId: "barbarian", optionId: option.id, targetIds: ["shaky"] },
+        roll,
+      );
+      assert.ok(frightened(step.state, "shaky"));
+      step.state.turn = step.state.order.indexOf("shaky");
+      who(step.state, "shaky").movementLeft = 6;
+      return step.state;
+    };
+    const endTurn = (at: RulesetEncounterState) =>
+      applyRulesetCombatChoice(orDefinition, at, { actorId: "shaky", optionId: "end-turn", targetIds: [] }, roll).state;
+    // 65 feet off, in plain sight: kept through its walk, gone as its turn ends.
+    const far = frighten();
+    who(far, "shaky").x = 18;
+    const walked = applyRulesetCombatChoice(
+      orDefinition,
+      far,
+      { actorId: "shaky", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 19, y: 5 } },
+      roll,
+    );
+    assert.equal(of(walked.events, "refused").length, 0, JSON.stringify(of(walked.events, "refused")));
+    assert.ok(frightened(walked.state, "shaky"), "asked only as its turn ends");
+    assert.equal(frightened(endTurn(walked.state), "shaky"), undefined, "far is enough");
+    // Near, but a wall between them: gone too.
+    const unseen = frighten();
+    for (const row of unseen.board!.grid.tiles) row[6] = "wall";
+    assert.equal(frightened(endTurn(unseen), "shaky"), undefined, "out of sight is enough");
+    // Near and in sight: it stays.
+    assert.ok(frightened(endTurn(frighten()), "shaky"), "near and seen, it holds");
+    refused(
+      fiveE((doc) => {
+        doc.catalogs.at(-1).entries[0].mechanics.applies[0].endsAway = { beyond: 60, unseen: true, orUnseen: true };
+      }),
+      /"endsAway" ends out of sight AND far/,
+    );
+    const gate =
+      "A ruleset whose conditions end as their holder ends a turn far away or out of sight (endsAway orUnseen) requires schemaVersion 2 and capabilityApi 1.380 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const orDoc = fiveE((doc) => {
+      doc.catalogs.at(-1).entries[0].mechanics.applies[0].endsAway = { beyond: 60, orUnseen: true };
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(379) as never, orDoc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(380) as never, orDoc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(379) as never, fiveE()), gate);
+  }
+
   // ── Refusals ──
   {
     const withMechanics = (edit: (mechanics: Record<string, any>) => void) =>
@@ -252,7 +328,7 @@ try {
   }
 
   console.log(
-    "Sustains: Intimidating Presence frightens on a failed save, is kept up on a later turn with no save, only at one it is still on, and spares only a creature that made its save until a long rest; gated at 1.378.",
+    "Sustains: Intimidating Presence frightens on a failed save, is kept up on a later turn with no save, only at one it is still on, and spares only a creature that made its save until a long rest; gated at 1.378. It ends as its holder ends a turn far away or out of sight; gated at 1.380.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

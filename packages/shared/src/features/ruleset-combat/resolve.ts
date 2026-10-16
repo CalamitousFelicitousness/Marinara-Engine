@@ -3017,12 +3017,20 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
 
 /** What comes off its holder by being far enough from whoever put it on, and out of their sight
  *  where it says so (1.310): Eyebite's panic. Anybody's walk may part them, the putter's own too. */
-function endsAway(ctx: RulesetCombatContext): void {
+function endsAway(ctx: RulesetCombatContext, turnEnder?: RulesetCombatant): void {
   const perCell = ctx.definition.combat?.distance?.perCell;
   if (!ctx.state.board?.grid || perCell === undefined) return;
   for (const holder of ctx.state.combatants) {
     for (const entry of holder.tracked.filter((one) => one.endsAway && one.source)) {
       const source = rulesetCombatant(ctx.state, entry.source!);
+      // Far OR out of sight (1.380), asked only as its holder ends a turn.
+      if (entry.endsAway!.orUnseen) {
+        if (turnEnder?.id !== holder.id) continue;
+        const far = !source || rulesetGap(holder, source) > rulesetInCells(entry.endsAway!.beyond, perCell);
+        if (!far && rulesetCanSee(ctx.definition, ctx.state, holder, source!)) continue;
+        if (holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "spent");
+        continue;
+      }
       if (source && rulesetGap(holder, source) <= rulesetInCells(entry.endsAway!.beyond, perCell)) continue;
       if (source && entry.endsAway!.unseen && rulesetCanSee(ctx.definition, ctx.state, holder, source)) continue;
       if (holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "spent");
@@ -11326,7 +11334,7 @@ export function advanceRulesetTurn(
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
-    endsAway(ctx);
+    endsAway(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");
     // The first turn, spent surprised, is over (1.237).
     endSurprise(ctx, leaving);

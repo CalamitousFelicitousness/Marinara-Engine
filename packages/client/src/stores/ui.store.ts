@@ -955,6 +955,8 @@ interface UIState {
   showMessageNumbers: boolean;
   /** When true, the swipe selector and message action buttons render above the message body instead of below it. */
   messageControlsAbove: boolean;
+  /** When true, every chat of a mode shares one button and window layout instead of keeping its own. */
+  sharedChatWindowLayout: boolean;
   /** When false, the "older messages not sent" note is left out of the reply line (the checkup still lists it). */
   showHistoryTrimNotice: boolean;
   /** When true, character cards are available in Persona pickers. */
@@ -1381,6 +1383,7 @@ interface UIState {
   setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
   setMessageControlsAbove: (v: boolean) => void;
+  setSharedChatWindowLayout: (v: boolean) => void;
   setShowHistoryTrimNotice: (v: boolean) => void;
   setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
@@ -1648,6 +1651,7 @@ export function pickSyncedSettings(state: UIState) {
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     messageControlsAbove: state.messageControlsAbove,
+    sharedChatWindowLayout: state.sharedChatWindowLayout,
     showHistoryTrimNotice: state.showHistoryTrimNotice,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
@@ -1905,6 +1909,7 @@ export function pickPersistedUIState(state: UIState) {
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     messageControlsAbove: state.messageControlsAbove,
+    sharedChatWindowLayout: state.sharedChatWindowLayout,
     showHistoryTrimNotice: state.showHistoryTrimNotice,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
@@ -2198,6 +2203,7 @@ export const useUIStore = create<UIState>()(
         showContextUsage: true,
         showMessageNumbers: false,
         messageControlsAbove: false,
+        sharedChatWindowLayout: false,
         showHistoryTrimNotice: true,
         showCharactersInPersonaPickers: false,
         guideGenerations: false,
@@ -3068,6 +3074,7 @@ export const useUIStore = create<UIState>()(
         setShowContextUsage: (v) => set({ showContextUsage: v }),
         setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
         setMessageControlsAbove: (v) => set({ messageControlsAbove: v }),
+        setSharedChatWindowLayout: (v) => set({ sharedChatWindowLayout: v }),
         setShowHistoryTrimNotice: (v) => set({ showHistoryTrimNotice: v }),
         setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
         setGuideGenerations: (v) => set({ guideGenerations: v }),

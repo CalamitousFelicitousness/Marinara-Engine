@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
-import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
+import { ChatWindowApplyAllButton, ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
@@ -5187,7 +5187,7 @@ export function ChatSettingsDrawer({
     if (confirmed) resetView();
     if (button.isConnected) button.focus({ preventScroll: true });
   };
-  // Reset View and the favorite arrangement, then the Tracker Panel dice and window controls.
+  // Reset View, the favorite arrangement and applying it to every chat, then the Tracker Panel dice and window controls.
   const headerControls = (
     <>
       <button
@@ -5202,6 +5202,7 @@ export function ChatSettingsDrawer({
         <RotateCcw size="0.8125rem" />
       </button>
       <ChatWindowFavoriteButton mode={chatMode} hintsDismissed={metadata.chatSettingsHintDismissed === true} />
+      <ChatWindowApplyAllButton mode={chatMode} />
       {trackerPanelToggleAvailable && (
         <button
           type="button"

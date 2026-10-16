@@ -1031,6 +1031,16 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Toggle",
   },
   {
+    id: "shared-chat-window-layout",
+    sectionId: "app-style",
+    labelKey: "settings.controls.sharedChatWindowLayout.label",
+    label: "Share one layout across chats",
+    description: "Use one arrangement of chat buttons and windows for every chat of the same type.",
+    descriptionKey: "settings.search.sharedChatWindowLayout.description",
+    aliases: ["layout", "buttons", "windows", "bubbles", "arrangement", "every chat", "per chat"],
+    kind: "Toggle",
+  },
+  {
     id: "display-size",
     sectionId: "text-scale",
     labelKey: "ui.panels.appearancesettings.displaySize",

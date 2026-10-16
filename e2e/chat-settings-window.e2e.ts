@@ -479,6 +479,7 @@ test.describe("Chat Settings window on desktop", () => {
       expect(controls.filter((control) => control !== "tracker-panel")).toEqual([
         "reset-view",
         "favorite-layout",
+        "apply-layout-to-all",
         "pin",
         "lock",
         "close",
@@ -607,7 +608,15 @@ test.describe("Chat Settings window on desktop", () => {
               element.getAttribute("data-chat-settings-control") ?? element.getAttribute("data-window-control"),
           ),
         );
-      expect(controls).toEqual(["reset-view", "favorite-layout", "tracker-panel", "pin", "lock", "close"]);
+      expect(controls).toEqual([
+        "reset-view",
+        "favorite-layout",
+        "apply-layout-to-all",
+        "tracker-panel",
+        "pin",
+        "lock",
+        "close",
+      ]);
       const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
       await expect(dice).toHaveAttribute("title", "Tracker Panel");
       await expect(dice).toHaveAttribute("aria-pressed", "false");

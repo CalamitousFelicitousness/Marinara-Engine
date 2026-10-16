@@ -40,6 +40,11 @@ export function getChatWindowDefaultSettingsKey(mode: ChatMode): string {
   return `chat-window-default-${mode}`;
 }
 
+/** The one layout every chat of `mode` uses while the shared-layout setting is on. */
+export function getChatWindowSharedLayoutSettingsKey(mode: ChatMode): string {
+  return `chat-window-shared-${mode}`;
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return (
     value !== null &&
@@ -49,6 +54,17 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+/** A window layout snapshot's outer shape; the client sanitizes individual window coordinates. */
+export function isChatWindowLayoutShape(layout: unknown): layout is Record<string, unknown> {
+  if (!isPlainRecord(layout) || layout.version !== 1 || !isPlainRecord(layout.windows)) return false;
+  if ("detached" in layout && (!Array.isArray(layout.detached) || layout.detached.some((id) => typeof id !== "string")))
+    return false;
+  if ("bubbles" in layout && !isPlainRecord(layout.bubbles)) return false;
+  if ("phoneBubbles" in layout && !isPlainRecord(layout.phoneBubbles)) return false;
+  if ("phoneMenu" in layout && !isPlainRecord(layout.phoneMenu)) return false;
+  return true;
+}
+
 /** Read only reusable presentation settings; the client sanitizes individual window coordinates. */
 export function parseChatWindowDefault(value: string | null): ChatWindowDefault | null {
   if (!value) return null;
@@ -56,18 +72,7 @@ export function parseChatWindowDefault(value: string | null): ChatWindowDefault 
     const parsed: unknown = JSON.parse(value);
     if (!isPlainRecord(parsed) || typeof parsed.chatSettingsHintDismissed !== "boolean") return null;
     const layout = parsed.windowLayout;
-    if (layout !== null) {
-      if (!isPlainRecord(layout) || layout.version !== 1 || !isPlainRecord(layout.windows)) return null;
-      if (
-        "detached" in layout &&
-        (!Array.isArray(layout.detached) || layout.detached.some((id) => typeof id !== "string"))
-      ) {
-        return null;
-      }
-      if ("bubbles" in layout && !isPlainRecord(layout.bubbles)) return null;
-      if ("phoneBubbles" in layout && !isPlainRecord(layout.phoneBubbles)) return null;
-      if ("phoneMenu" in layout && !isPlainRecord(layout.phoneMenu)) return null;
-    }
+    if (layout !== null && !isChatWindowLayoutShape(layout)) return null;
     return { windowLayout: layout, chatSettingsHintDismissed: parsed.chatSettingsHintDismissed };
   } catch {
     return null;

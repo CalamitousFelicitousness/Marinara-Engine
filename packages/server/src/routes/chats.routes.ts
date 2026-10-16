@@ -62,6 +62,8 @@ import {
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
+  chatModeSchema,
+  isChatWindowLayoutShape,
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
 } from "@marinara-engine/shared";
@@ -1757,6 +1759,25 @@ export async function chatsRoutes(app: FastifyInstance) {
       afterWrite: cancelReplacedAdvancedMemory,
     });
     return updated ? normalizeChatForResponse(updated) : updated;
+  });
+
+  // Give every chat of one mode the same window layout. Professor Mari's own chats and multiplayer
+  // chats keep theirs; a layout is a view preference, so no chat counts as recently active.
+  app.post("/window-layout/apply", async (req, reply) => {
+    const body = z
+      .object({ mode: chatModeSchema, windowLayout: z.unknown() })
+      .refine((value) => value.windowLayout === null || isChatWindowLayoutShape(value.windowLayout))
+      .safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ error: "A chat mode and a window layout are required." });
+    const { mode, windowLayout } = body.data;
+    let updated = 0;
+    for (const chat of await storage.list()) {
+      if (chat.mode !== mode || isHomeProfessorMariChat(chat)) continue;
+      const metadata = parseChatMetadata(chat.metadata);
+      if (metadata.multiplayer || metadata.multiplayerSetup === true) continue;
+      if (await storage.patchMetadata(chat.id, { windowLayout }, { touchUpdatedAt: false })) updated++;
+    }
+    return { updated };
   });
 
   // Mark a chat as having autonomous messages the user has not viewed yet.

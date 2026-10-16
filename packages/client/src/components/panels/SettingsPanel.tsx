@@ -3562,6 +3562,8 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setChatWidgetApplyShape = useUIStore((s) => s.setChatWidgetApplyShape);
   const chatWidgetApplyColors = useUIStore((s) => s.chatWidgetApplyColors);
   const setChatWidgetApplyColors = useUIStore((s) => s.setChatWidgetApplyColors);
+  const sharedChatWindowLayout = useUIStore((s) => s.sharedChatWindowLayout);
+  const setSharedChatWindowLayout = useUIStore((s) => s.setSharedChatWindowLayout);
   const chatBackground = useUIStore((s) => s.chatBackground);
   const setChatBackgroundRaw = useUIStore((s) => s.setChatBackground);
   const defaultRoleplayBackground = useUIStore((s) => s.defaultRoleplayBackground);
@@ -4287,6 +4289,13 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     checked={chatWidgetApplyColors}
                     onChange={setChatWidgetApplyColors}
                     help={localizeUi("settings.controls.chatWidgetApplyColors.help")}
+                  />
+                  <ToggleSetting
+                    anchorId={getSettingsControlAnchorId("shared-chat-window-layout")}
+                    label={localizeUi("settings.controls.sharedChatWindowLayout.label")}
+                    checked={sharedChatWindowLayout}
+                    onChange={setSharedChatWindowLayout}
+                    help={localizeUi("settings.controls.sharedChatWindowLayout.help")}
                   />
                 </div>
               </fieldset>

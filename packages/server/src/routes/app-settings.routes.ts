@@ -20,6 +20,8 @@ import {
   type FeatureSettingsResponse,
   impersonatePromptTemplateCatalogSchema,
   getChatWindowDefaultSettingsKey,
+  getChatWindowSharedLayoutSettingsKey,
+  isChatWindowLayoutShape,
   LOCAL_SIDECAR_CONNECTION_ID,
   parseChatWindowDefault,
 } from "@marinara-engine/shared";
@@ -51,6 +53,9 @@ const ALLOWED_KEYS = new Set([
   getChatWindowDefaultSettingsKey("conversation"),
   getChatWindowDefaultSettingsKey("roleplay"),
   getChatWindowDefaultSettingsKey("game"),
+  getChatWindowSharedLayoutSettingsKey("conversation"),
+  getChatWindowSharedLayoutSettingsKey("roleplay"),
+  getChatWindowSharedLayoutSettingsKey("game"),
 ]);
 
 const isAllowedSettingsKey = (key: string) => ALLOWED_KEYS.has(key) || isProfessorMariSeenRunSettingsKey(key);
@@ -146,6 +151,17 @@ export async function appSettingsRoutes(app: FastifyInstance) {
       }
       // Store only layout and hint preferences, never chat-specific content sent alongside them.
       input.value = JSON.stringify(favorite);
+    }
+    if (req.params.key.startsWith("chat-window-shared-")) {
+      let layout: unknown;
+      try {
+        layout = JSON.parse(input.value);
+      } catch {
+        layout = undefined;
+      }
+      if (layout !== null && !isChatWindowLayoutShape(layout)) {
+        return reply.status(400).send({ error: "Invalid shared chat window layout" });
+      }
     }
     await storage.set(req.params.key, input.value);
     return { value: input.value };

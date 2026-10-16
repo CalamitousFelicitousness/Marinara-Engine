@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Star } from "lucide-react";
+import { Layers, Star } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -9,6 +9,9 @@ import {
   type ChatWindowDefault,
 } from "@marinara-engine/shared";
 import { api } from "../../lib/api-client";
+import { showConfirmDialog } from "../../lib/app-dialogs";
+import { chatKeys } from "../../hooks/use-chats";
+import { readCurrentWindowLayout } from "../../hooks/use-chat-window-layout";
 import {
   isEmptyWindowLayoutSnapshot,
   parseWindowLayoutSnapshot,
@@ -84,6 +87,46 @@ export function ChatWindowFavoriteButton({ mode, hintsDismissed }: { mode: ChatM
       }
     >
       <Star size="0.8125rem" fill={matches ? "currentColor" : "none"} />
+    </button>
+  );
+}
+
+/** Copy this chat's arrangement into every existing chat of the same type, after a confirmation. */
+export function ChatWindowApplyAllButton({ mode }: { mode: ChatMode }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const modeName = t(`settings.modes.${mode}`);
+  const apply = useMutation({
+    mutationFn: () =>
+      api.post<{ updated: number }>("/chats/window-layout/apply", {
+        mode,
+        windowLayout: readCurrentWindowLayout(),
+      }),
+    onSuccess: ({ updated }) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      toast.success(t("chat.settings.applyLayoutToAll.done", { count: updated, mode: modeName }));
+    },
+    onError: () => toast.error(t("chat.settings.applyLayoutToAll.failed")),
+  });
+  const label = t("chat.settings.applyLayoutToAll.label", { mode: modeName });
+  return (
+    <button
+      type="button"
+      data-chat-settings-control="apply-layout-to-all"
+      className="mari-window__control"
+      aria-label={label}
+      title={label}
+      disabled={apply.isPending}
+      onClick={async () => {
+        const confirmed = await showConfirmDialog({
+          title: t("chat.settings.applyLayoutToAll.confirmTitle", { mode: modeName }),
+          message: t("chat.settings.applyLayoutToAll.confirmMessage", { mode: modeName }),
+          confirmLabel: t("chat.settings.applyLayoutToAll.confirm"),
+        });
+        if (confirmed) apply.mutate();
+      }}
+    >
+      <Layers size="0.8125rem" />
     </button>
   );
 }

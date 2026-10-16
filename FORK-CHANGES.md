@@ -3025,6 +3025,31 @@ bodies from both `/generate` and `/generate/dryRun` and fails on either route wh
 gate is removed. `e2e/message-attachment-remove.e2e.ts` removes a file in Conversation and
 Roleplay after the server saved another one the page has not fetched.
 
+### One button layout for every chat, and Apply to all chats
+
+Upstream saves each chat's window and button layout in `chat.metadata.windowLayout`, so every
+chat arranged by hand looks different. Settings > Appearance > "Share one layout across chats"
+(`sharedChatWindowLayout` in `ui.store.ts`, off by default, synced like the other display
+settings) makes every chat of a mode load and save one layout instead, kept in the app setting
+`chat-window-shared-<mode>`. Each chat's own layout is left as it was and returns when the setting
+is off; turning it on starts from the open chat's arrangement. Multiplayer chats keep their own.
+The shared layout is read once per session (`staleTime: Infinity`), so another tab's changes show
+after a reload; a refetch racing a save could otherwise restore the older layout.
+
+A Layers button beside the star in the Chat Settings header copies the current arrangement into
+every existing chat of that mode after a confirmation. `POST /chats/window-layout/apply` writes it
+in one pass without touching `updatedAt`, skipping Professor Mari's chats and multiplayer chats.
+
+Patches to upstream files: `hooks/use-chat-window-layout.ts` (the save target is a chat or a shared
+mode), `ChatWindowFavoriteButton.tsx` (`ChatWindowApplyAllButton`), `ChatSettingsDrawer.tsx`,
+`SettingsPanel.tsx`, `lib/settings-registry.ts`, `ui.store.ts`, `en.json` (9 keys),
+`chats.routes.ts`, `app-settings.routes.ts` (the three keys and their validation), and
+`packages/shared/src/utils/chat-window-defaults.ts` (`getChatWindowSharedLayoutSettingsKey`,
+`isChatWindowLayoutShape` split out of `parseChatWindowDefault`). Covered by
+`scripts/regressions/chat-window-shared-layout.regression.ts` and
+`e2e/chat-window-shared-layout.e2e.ts`; `e2e/chat-settings-window.e2e.ts` lists the new header
+button in its two expected control orders.
+
 ### Validation skill
 
 `.claude/skills/marinara-validation/SKILL.md` records how to validate a change here: which lane

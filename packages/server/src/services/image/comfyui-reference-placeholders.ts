@@ -6,6 +6,14 @@ export function numberedComfyReferencePlaceholder(baseName: ComfyReferencePlaceh
   return `%${baseName}_${String(index + 1).padStart(2, "0")}%`;
 }
 
+/** Whether a workflow has a slot for a reference picture; one without draws from the prompt alone. */
+export function comfyWorkflowTakesReference(workflowText: string): boolean {
+  return (["reference_image", "reference_image_name"] as const).some(
+    (baseName) =>
+      workflowText.includes(`%${baseName}%`) || findMissingComfyReferenceSlots(workflowText, baseName, 0).length > 0,
+  );
+}
+
 /** Return only missing reference slots that the workflow actually declares. */
 export function findMissingComfyReferenceSlots(
   workflowText: string,

@@ -118,7 +118,7 @@ export function RoleplayCommandsSettings({
                         labelPosition="start"
                         onChange={(value) => update.mutate({ id: chat.id, roleplayIllustrateInline: value })}
                         className={cn(
-                          "min-h-11 items-center justify-between rounded-lg px-3 py-2 text-left ring-1",
+                          "min-h-11 shrink-0 items-center justify-between rounded-lg px-3 py-2 text-left ring-1",
                           metadata.roleplayIllustrateInline === true
                             ? "bg-[var(--primary)]/10 ring-[var(--primary)]/30"
                             : "bg-[var(--background)]/75 ring-[var(--border)] hover:bg-[var(--accent)]",

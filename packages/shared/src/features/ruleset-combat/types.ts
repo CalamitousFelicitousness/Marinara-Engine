@@ -1295,6 +1295,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** Who saved against its sanctuary and is free of it for the rest of the fight (1.370). */
+  immune?: string[];
   /** Removed once the action that opened its window finishes (1.131). */
   thisAction?: true;
   condition: string;
@@ -2287,6 +2289,9 @@ export type RulesetCombatEvent =
   | { type: "letFall"; actorId: string; condition: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
   | { type: "averted"; actorId: string; holderId: string; back?: true }
+  /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
+   *  `to`, or lost. */
+  | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
   /** What a condition's table made of a turn as it began (1.264): the roll, and what it does. */
   | {
       type: "compelled";

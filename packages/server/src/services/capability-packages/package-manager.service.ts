@@ -2191,6 +2191,12 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
   );
 }
 
+/** A sanctuary on a condition (1.370): Sanctuary, Tranquility, Nature's Sanctuary. */
+function carriesSanctuary370(ruleset: unknown): boolean {
+  const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
+  return Array.isArray(conditions) && conditions.some((one) => plainRecord(plainRecord(one)?.sanctuary));
+}
+
 /** An attack that is over as a moment, a source test, a holder's own strike as an answer, and a
  *  missed attack sent elsewhere (1.369): Retaliation, Giant Killer, Stand Against the Tide. */
 function carriesAttackedAnswer369(value: unknown, depth = 0): boolean {
@@ -5524,6 +5530,10 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // A sanctuary, 1.370.
+  if (!declaresApi(370) && carriesSanctuary370(ruleset)) {
+    return "A ruleset whose conditions keep attacks off their holder behind a save (sanctuary) requires schemaVersion 2 and capabilityApi 1.370 or newer";
+  }
   // An attacked moment and the answers to it, 1.369.
   if (
     !declaresApi(369) &&

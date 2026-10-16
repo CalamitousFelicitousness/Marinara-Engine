@@ -9898,6 +9898,20 @@ const combatConditionSchema = z
       .strict()
       .refine((ends) => ends.moves || ends.acts, { message: 'Say what ends it: "moves", "acts" or both' })
       .optional(),
+    /** Whoever aims an attack or a harmful entry at its holder, an area aside, first makes this save
+     *  (Capability API 1.370): failed, it goes to the nearest other creature it could be aimed at,
+     *  or is lost. Its difficulty is the one it was put on with, else `difficulty` off its holder's
+     *  sheet; `from` keeps it to attackers that are so, and `immuneOnSave` leaves one that saved
+     *  free of it for the rest of the fight. 5e's Sanctuary, Tranquility, Nature's Sanctuary. */
+    sanctuary: z
+      .object({
+        save: sheetId,
+        difficulty: rulesetValueRefSchema.optional(),
+        from: targetIsSchema.optional(),
+        immuneOnSave: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
     /** Only a cure from one of these catalogs, at this level or higher as it is paid, ends it
      *  (Capability API 1.261): the aboleth's later disease, only by a 6th-level spell. */
     curedOnlyBy: z
@@ -13926,6 +13940,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       notWhileIssues(entry, path);
       if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
+      // A sanctuary (1.370): a save the sheet has, a difficulty it reads and attackers it knows.
+      if (entry.sanctuary) {
+        const ward = entry.sanctuary;
+        if (!def.sheet.saves.some((one) => one.id === ward.save))
+          issue([...path, "sanctuary", "save"], `Unknown save "${ward.save}"`);
+        if (ward.difficulty) checkRef(ward.difficulty, [...path, "sanctuary", "difficulty"], derivedIds);
+        targetIsIssues(def, ward.from, [...path, "sanctuary", "from"], issue);
+      }
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)

@@ -669,6 +669,13 @@ export function rulesetCombatEventLine(
       });
     case "pickedUp":
       return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
+    case "sanctuary":
+      return key(event.to ? "sanctuary" : "sanctuaryLost", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.holderId),
+        label: event.label,
+        ...(event.to ? { instead: names.combatant(event.to) } : {}),
+      });
     case "averted":
       return key(event.back ? "lookedBack" : "averted", {
         actor: names.combatant(event.actorId),

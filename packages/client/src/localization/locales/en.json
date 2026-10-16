@@ -2176,6 +2176,8 @@
   "game.combat.ruleset.event.revived": "{{actor}} is back up on {{health}}.",
   "game.combat.ruleset.event.rider": "{{label}} catches {{target}} as well.",
   "game.combat.ruleset.event.round": "Round {{round}}.",
+  "game.combat.ruleset.event.sanctuary": "{{actor}} cannot bring themself to aim {{label}} at {{target}}, and turns it on {{instead}}.",
+  "game.combat.ruleset.event.sanctuaryLost": "{{actor}} cannot bring themself to aim {{label}} at {{target}}, and it is lost.",
   "game.combat.ruleset.event.saveAutomatic": "{{actor}} fails {{save}} without rolling.",
   "game.combat.ruleset.event.saveAutomaticSuccess": "{{actor}} succeeds on {{save}} without rolling.",
   "game.combat.ruleset.event.saveFailure": "{{actor}} rolls {{save}}: {{roll}} against {{difficulty}}, a failure.",

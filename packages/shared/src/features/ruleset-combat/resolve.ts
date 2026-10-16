@@ -131,6 +131,7 @@ import {
   rulesetSlowedStep,
   rulesetWallShape,
   rulesetDistanceTo,
+  rulesetCombatantDistance,
   rulesetFills,
   rulesetFootprint,
   rulesetFootprintAt,
@@ -9403,6 +9404,75 @@ function chargedAction(action: RulesetCombatAction, charge: RulesetCombatCharge)
   };
 }
 
+/**
+ * The targets an attack or a harmful entry goes to once every sanctuary among them has been tried
+ * (1.370): its maker saves against each it is aimed at, an area aside; a failure sends it to the
+ * nearest other creature it could be aimed at that is not already one of its targets and holds no
+ * sanctuary, or loses it. One that saves is free of a sanctuary that says so, for the fight.
+ */
+function sanctuaryTargets(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+): RulesetCombatant[] {
+  const harmful =
+    rulesetIsAttack(action) ||
+    !!action.harmful ||
+    !!action.damage ||
+    !!action.save ||
+    (action.kind === "block" && !!action.applies?.length);
+  if (!harmful || action.area || action.around || targets.length === 0) return targets;
+  const rules = ctx.combat.conditions ?? [];
+  const sanctuaries = (one: RulesetCombatant) =>
+    one.tracked.flatMap((entry) => {
+      const rule = rules.find((candidate) => candidate.condition === entry.condition)?.sanctuary;
+      return rule ? [{ entry, rule }] : [];
+    });
+  if (!targets.some((one) => one.id !== actor.id && sanctuaries(one).length > 0)) return targets;
+  const out: RulesetCombatant[] = [];
+  for (const target of targets) {
+    if (target.id === actor.id) {
+      out.push(target);
+      continue;
+    }
+    let kept = true;
+    for (const { entry, rule } of sanctuaries(target)) {
+      if (rule.from && !rulesetTargetIs(ctx.definition, actor, rule.from)) continue;
+      if (entry.immune?.includes(actor.id)) continue;
+      const difficulty =
+        entry.difficulty ?? (rule.difficulty ? rulesetSheetValue(ctx.definition, target, rule.difficulty) : undefined);
+      if (difficulty === undefined) continue;
+      if (rollSave(ctx, actor, rule.save, Math.trunc(difficulty), target.id)) {
+        if (rule.immuneOnSave) (entry.immune ??= []).push(actor.id);
+        continue;
+      }
+      kept = false;
+      break;
+    }
+    if (kept) {
+      out.push(target);
+      continue;
+    }
+    const taken = new Set([...targets, ...out].map((one) => one.id));
+    const legal = rulesetOptionTargets(ctx.definition, ctx.state, actor.id, action)
+      .filter((id) => !taken.has(id))
+      .map((id) => rulesetCombatant(ctx.state, id)!)
+      .filter((one) => !!one && sanctuaries(one).length === 0)
+      .sort((a, b) => rulesetCombatantDistance(ctx.state, actor, a) - rulesetCombatantDistance(ctx.state, actor, b));
+    const instead = legal[0];
+    ctx.events.push({
+      type: "sanctuary",
+      actorId: actor.id,
+      holderId: target.id,
+      label: action.label,
+      ...(instead ? { to: instead.id } : {}),
+    });
+    if (instead) out.push(instead);
+  }
+  return out;
+}
+
 function resolveActionBody(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9431,6 +9501,9 @@ function resolveActionBody(
   if (action.damage?.alternatives) {
     action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };
   }
+  // Kept off a sanctuary's holder by a failed save (1.370), before anything is rolled at them. A held
+  // blow picking up was let through already.
+  if (!held) targets = sanctuaryTargets(ctx, actor, action, targets);
   // A blow after a straight run at its one target carries the charge (1.186), read again as a held
   // blow picks up, since the run is still the one this turn walked.
   const charging = action.charge && (held ? rulesetCombatant(ctx.state, held.targetId) : targets[0]);

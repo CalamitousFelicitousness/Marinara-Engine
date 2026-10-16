@@ -1640,8 +1640,6 @@ const LocalChatArea = memo(function LocalChatArea({
         queueMediaGenerationRequests: useUIStore.getState().queueImageGenerationRequests,
         debugMode: useUIStore.getState().debugMode,
       };
-      // Closing the review is left to the call that opened it; it can belong to another chat's request.
-      let reviewOpened = false;
       try {
         conversationVideoGeneratingRef.current = true;
         if (useUIStore.getState().reviewImagePromptsBeforeSend) {
@@ -1684,8 +1682,11 @@ const LocalChatArea = memo(function LocalChatArea({
                 height: preview.selfie.height,
               });
             }
-            reviewOpened = !roleplayVideoReviewResolveRef.current;
+            // Close only the review this call opened (another chat's request may hold the window), and close it as
+            // soon as its prompts are read, not after the minutes-long clip, when a newer review may be showing.
+            const reviewOpened = !roleplayVideoReviewResolveRef.current;
             const overrides = await openRoleplayVideoPromptReview(items);
+            if (reviewOpened) closeRoleplayVideoPromptReview(null);
             if (!overrides) return;
             const reviewedPrompt = overrides.find((item) => item.id === "conversation-video")?.prompt.trim();
             if (!reviewedPrompt) return;
@@ -1710,7 +1711,6 @@ const LocalChatArea = memo(function LocalChatArea({
         // A selfie or clip can be saved even when the request then failed, so the Gallery always refreshes.
         void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
         void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
-        if (reviewOpened) closeRoleplayVideoPromptReview(null);
       }
     },
     [

@@ -125,12 +125,14 @@ export interface StateSearchResult {
   preview: string;
   /** 1-based line of the match in the section's pretty-printed JSON. */
   line: number;
+  /** Where the match sits in the section's value, so the Fields view can scroll to it. */
+  path: StateEditorPath;
 }
 
 const NAME_FIELDS = ["name", "title", "label", "id"] as const;
 
 /** Names an array item by its own name/title/label/id when it has one, so trails read like the tracker. */
-function describeArrayItem(item: unknown, index: number): string {
+export function describeArrayItem(item: unknown, index: number): string {
   if (isPlainRecord(item)) {
     for (const field of NAME_FIELDS) {
       const candidate = item[field];
@@ -185,6 +187,7 @@ export function searchStateSections(
             key,
             preview: typeof last === "string" ? `${JSON.stringify(last)}: ${preview}` : preview,
             line: lineByPath.get(statePathKey(path)) ?? 1,
+            path,
           });
         }
       }
@@ -202,4 +205,38 @@ export function searchStateSections(
     if (results.length >= limit) break;
   }
   return results;
+}
+
+// ── Fields view ──
+
+/**
+ * A copy of `root` with the value at `path` replaced. Only the containers on the path are copied, so
+ * the rest of the draft keeps its identity and key order.
+ */
+export function setStateValueAtPath(root: unknown, path: StateEditorPath, next: unknown): unknown {
+  if (path.length === 0) return next;
+  const [head, ...rest] = path;
+  if (Array.isArray(root) && typeof head === "number") {
+    const copy = root.slice();
+    copy[head] = setStateValueAtPath(root[head], rest, next);
+    return copy;
+  }
+  if (isPlainRecord(root) && typeof head === "string") {
+    return { ...root, [head]: setStateValueAtPath(root[head], rest, next) };
+  }
+  return root;
+}
+
+/** "currentMood" and "current_mood" read as "Current mood", "maxHP" as "Max HP"; the raw key stays in the tooltip. */
+export function humanizeStateKey(key: string): string {
+  const words = key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/\s+/)
+    .filter(Boolean)
+    // Acronyms (HP, XP) keep their capitals; other words read as a sentence.
+    .map((word) => (word.length > 1 && word === word.toUpperCase() ? word : word.toLowerCase()));
+  if (words.length === 0) return key;
+  const sentence = words.join(" ");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }

@@ -1,13 +1,27 @@
 // ──────────────────────────────────────────────
 // State Editor — a reusable editor for structured state.
 // Sections list, search across every section, a JSON draft per section, and a
-// review diff before saving. It knows nothing about where the state comes from:
+// review diff before saving. Each section shows as Fields (simple values as
+// inputs) or JSON; both write the same draft. It knows nothing about where the state comes from:
 // the caller passes sections and a save function (see lib/state-editor).
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, ArrowRight, ChevronRight, Loader2, RotateCcw, Search, Wand2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Braces,
+  ChevronRight,
+  ListTree,
+  Loader2,
+  RotateCcw,
+  Search,
+  Wand2,
+  X,
+} from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { UnifiedLineDiff } from "../../chat/MariUnifiedDiff";
+import { StateFieldsView } from "./StateFieldsView";
 import { StateJsonField } from "./StateJsonField";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { cn } from "../../../lib/utils";
@@ -21,7 +35,11 @@ import {
   type StateSearchResult,
   type StateSectionDraftStatus,
 } from "../../../lib/state-editor/state-editor-json";
-import type { StateEditorChange, StateEditorSection } from "../../../lib/state-editor/state-editor.types";
+import type {
+  StateEditorChange,
+  StateEditorPath,
+  StateEditorSection,
+} from "../../../lib/state-editor/state-editor.types";
 
 interface StateEditorProps {
   sections: StateEditorSection[];
@@ -36,6 +54,7 @@ interface StateEditorProps {
 }
 
 type StateEditorView = "section" | "results" | "review";
+type StateSectionMode = "fields" | "json";
 
 const SECONDARY_BUTTON =
   "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--secondary)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
@@ -72,6 +91,8 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingLine, setPendingLine] = useState<number | null>(null);
+  const [mode, setMode] = useState<StateSectionMode>("fields");
+  const [focusPath, setFocusPath] = useState<StateEditorPath | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const layouts = useMemo(() => {
@@ -113,10 +134,10 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
   const activeText = activeSection ? (drafts[activeSection.id] ?? layouts.get(activeSection.id)?.text ?? "") : "";
 
   useEffect(() => {
-    if (pendingLine === null || view !== "section" || !textareaRef.current) return;
+    if (pendingLine === null || view !== "section" || mode !== "json" || !textareaRef.current) return;
     revealTextareaLine(textareaRef.current, pendingLine);
     setPendingLine(null);
-  }, [pendingLine, view, activeSectionId]);
+  }, [pendingLine, view, mode, activeSectionId]);
 
   const setDraft = useCallback(
     (sectionId: string, text: string) => {
@@ -133,13 +154,16 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
     [layouts],
   );
 
-  const openSection = (sectionId: string, line?: number) => {
+  const openSection = (sectionId: string, target?: { line: number; path: StateEditorPath }) => {
     setActiveSectionId(sectionId);
     setView("section");
-    setPendingLine(line ?? null);
+    setPendingLine(target?.line ?? null);
+    setFocusPath(target?.path ?? null);
   };
 
-  const openResult = (result: StateSearchResult) => openSection(result.sectionId, result.line);
+  const openResult = (result: StateSearchResult) => openSection(result.sectionId, result);
+
+  const clearFocusPath = useCallback(() => setFocusPath(null), []);
 
   const handleQueryChange = (next: string) => {
     setQuery(next);
@@ -301,16 +325,43 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{activeSection.description}</p>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={formatActive}
-              disabled={activeStatus?.kind === "invalid"}
-              className={SMALL_TOOL_BUTTON}
+          <div className="flex shrink-0 flex-wrap items-center gap-0.5">
+            <div
+              role="group"
+              aria-label={localizeUi("ui.stateEditor.editor.viewLabel")}
+              className="mr-1 inline-flex rounded-lg bg-[var(--secondary)]/60 p-0.5 ring-1 ring-[var(--border)]/60"
             >
-              <Wand2 size="0.75rem" />
-              {localizeUi("ui.stateEditor.editor.format")}
-            </button>
+              {(["fields", "json"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  aria-pressed={mode === option}
+                  className={cn(
+                    "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
+                    mode === option
+                      ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm ring-1 ring-[var(--border)]/60"
+                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+                  )}
+                >
+                  {option === "fields" ? <ListTree size="0.75rem" /> : <Braces size="0.75rem" />}
+                  {localizeUi(
+                    option === "fields" ? "ui.stateEditor.editor.viewFields" : "ui.stateEditor.editor.viewJson",
+                  )}
+                </button>
+              ))}
+            </div>
+            {mode === "json" ? (
+              <button
+                type="button"
+                onClick={formatActive}
+                disabled={activeStatus?.kind === "invalid"}
+                className={SMALL_TOOL_BUTTON}
+              >
+                <Wand2 size="0.75rem" />
+                {localizeUi("ui.stateEditor.editor.format")}
+              </button>
+            ) : null}
             <button type="button" onClick={revertActive} disabled={!hasDraft} className={SMALL_TOOL_BUTTON}>
               <RotateCcw size="0.75rem" />
               {localizeUi("ui.stateEditor.editor.revert")}
@@ -329,14 +380,28 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
             </span>
           </div>
         ) : null}
-        <StateJsonField
-          value={activeText}
-          onChange={(text) => setDraft(activeSection.id, text)}
-          ariaLabel={localizeUi("ui.stateEditor.editor.ariaLabel", { section: activeSection.label })}
-          invalid={activeStatus?.kind === "invalid"}
-          textareaRef={textareaRef}
-          className="min-h-[16rem] flex-1"
-        />
+        {mode === "json" ? (
+          <StateJsonField
+            value={activeText}
+            onChange={(text) => setDraft(activeSection.id, text)}
+            ariaLabel={localizeUi("ui.stateEditor.editor.ariaLabel", { section: activeSection.label })}
+            invalid={activeStatus?.kind === "invalid"}
+            textareaRef={textareaRef}
+            className="min-h-[16rem] flex-1"
+          />
+        ) : activeStatus?.kind === "invalid" ? (
+          <button type="button" onClick={() => setMode("json")} className={cn(SECONDARY_BUTTON, "self-start")}>
+            <Braces size="0.875rem" />
+            {localizeUi("ui.stateEditor.fields.fixInJson")}
+          </button>
+        ) : (
+          <StateFieldsView
+            value={activeSection.id in searchValues ? searchValues[activeSection.id] : activeSection.value}
+            onChange={(next) => setDraft(activeSection.id, layoutStateJson(next).text)}
+            focusPath={focusPath}
+            onFocusHandled={clearFocusPath}
+          />
+        )}
       </div>
     );
   };

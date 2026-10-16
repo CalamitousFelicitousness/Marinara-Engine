@@ -1,6 +1,6 @@
 import { clipVerbatimVideoSource, compactVideoPromptText } from "./prompt-context.js";
 import type { PromptOverridesStorage } from "../storage/prompt-overrides.storage.js";
-import { loadPrompt, ROLEPLAY_GALLERY_VIDEO_DIRECTOR } from "../prompt-overrides/index.js";
+import { loadPrompt, ROLEPLAY_CLIP_DIRECTOR, ROLEPLAY_GALLERY_VIDEO_DIRECTOR } from "../prompt-overrides/index.js";
 import { appendVideoPromptInstructions } from "../generation/image-prompt-instructions.js";
 
 const ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH = 6_000;
@@ -14,6 +14,8 @@ export interface RoleplayVideoDirectionContext {
   setting: string;
   /** The video connection's Video Prompting Instructions. */
   videoPromptInstructions?: string | null;
+  /** The clip has no picture of this moment (text to video, or starting from an avatar): describe the scene. */
+  withoutPicture?: boolean;
 }
 
 export type RoleplayVideoDirectionMessages = [{ role: "system"; content: string }, { role: "user"; content: string }];
@@ -31,7 +33,9 @@ export function buildRoleplayVideoDirectionUserPrompt(ctx: RoleplayVideoDirectio
     referenceImagePrompt
       ? `<first_frame_generation_context>\n${referenceImagePrompt}\n</first_frame_generation_context>`
       : "",
-    "Write one duration-aware narrationBeat. Use the first-frame generation context only to understand the starting pose and scene; do not repeat it in the output.",
+    ctx.withoutPicture
+      ? "Write one duration-aware narrationBeat that describes the scene and its action."
+      : "Write one duration-aware narrationBeat. Use the first-frame generation context only to understand the starting pose and scene; do not repeat it in the output.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -43,9 +47,13 @@ export async function buildRoleplayVideoDirectionMessages(
   storage: PromptOverridesStorage,
   ctx: RoleplayVideoDirectionContext,
 ): Promise<RoleplayVideoDirectionMessages> {
-  const systemPrompt = await loadPrompt(storage, ROLEPLAY_GALLERY_VIDEO_DIRECTOR, {
-    durationSeconds: ctx.durationSeconds,
-  });
+  const systemPrompt = await loadPrompt(
+    storage,
+    ctx.withoutPicture ? ROLEPLAY_CLIP_DIRECTOR : ROLEPLAY_GALLERY_VIDEO_DIRECTOR,
+    {
+      durationSeconds: ctx.durationSeconds,
+    },
+  );
   return [
     { role: "system", content: systemPrompt },
     { role: "user", content: buildRoleplayVideoDirectionUserPrompt(ctx) },

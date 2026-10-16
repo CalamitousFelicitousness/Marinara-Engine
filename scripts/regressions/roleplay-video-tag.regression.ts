@@ -68,7 +68,10 @@ try {
   await h.generate(roleplay.id, "Aster looks outside.");
   assert.match(requests.reply.at(-1) ?? "", /\[video: subject=/u, "the storyteller is offered [video]");
   assert.equal((await h.attachments(roleplay.id, "video")).length, 1);
-  assert.match(h.lastComfyInputs()?.text ?? "", /She turns slowly as rain streaks the glass/u);
+  // The Clip Director writes the clip from the storyteller's subject and motion, to the instructions.
+  assert.match(requests.director.at(-1) ?? "", /Requested clip: Aster at the window\\nShe turns slowly/u);
+  assert.match(requests.director.at(-1) ?? "", /No picture of this moment exists/u);
+  assert.equal(h.lastComfyInputs()?.text, "Bottles burst across the lab floor", "the director's prompt is sent");
   assert.notEqual(h.lastComfyInputs()?.image, png.toString("base64"), "prompt only sends no picture");
   assert.equal(requests.images, 0, "no Illustrator picture for a prompt-only clip");
 
@@ -78,7 +81,10 @@ try {
   assert.equal(requests.images, 1, "Illustrator drew the first frame");
   assert.equal((await h.attachments(roleplay.id, "image")).length, 0, "the picture is only the clip's first frame");
   assert.equal((await h.attachments(roleplay.id, "video")).length, 2);
-  assert.match(h.lastComfyInputs()?.text ?? "", /She turns slowly as rain streaks the glass/u);
+  // From a picture, the Gallery animation director writes the storyteller's motion to the instructions.
+  assert.match(requests.director.at(-1) ?? "", /Requested clip: She turns slowly as rain streaks the glass/u);
+  assert.match(requests.director.at(-1) ?? "", /<first_frame_generation_context>/u);
+  assert.equal(h.lastComfyInputs()?.text, "Bottles burst across the lab floor", "the director's prompt is sent");
   assert.equal(h.lastComfyInputs()?.image, png.toString("base64"), "the clip starts from Illustrator's picture");
 
   // Command off: no offer and no clip.

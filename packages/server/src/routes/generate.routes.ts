@@ -12523,8 +12523,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         request.messageId,
                       );
                       if (!allowed) return;
-                      const prompt = [command.subject, command.motion].filter(Boolean).join("\n");
-                      const cast = await resolveClipCast(command.characters ?? [], prompt, firstFrame !== "none");
+                      // The storyteller's subject and motion are the request; the Clip Director writes the clip to
+                      // the video connection's instructions.
+                      const prompt = await writeClipPrompt({
+                        messageId: request.messageId,
+                        request: [command.subject, command.motion].filter(Boolean).join("\n"),
+                        withoutPicture: true,
+                      });
+                      const cast = await resolveClipCast(
+                        command.characters ?? [],
+                        [command.subject, prompt].filter(Boolean).join("\n"),
+                        firstFrame !== "none",
+                      );
                       const video = await generateRoleplayClip(app.db, {
                         chatId: input.chatId,
                         chatMeta,
@@ -14458,16 +14468,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   chatId: input.chatId,
                                   chatMeta,
                                   galleryImageId: firstGalleryImageId,
-                                  // Illustrator's videoPrompt was written to the video connection's instructions; a
-                                  // required clip (Clips only) without one gets it from the Gallery animation director.
+                                  // Illustrator's videoPrompt was written to the video connection's instructions. A
+                                  // storyteller's [video] motion, or a required clip without one, goes through the
+                                  // Gallery animation director, which writes it to those instructions.
                                   motionPrompt:
-                                    writtenMotion ||
-                                    (await writeClipPrompt({
-                                      messageId,
-                                      request: "",
-                                      withoutPicture: false,
-                                      referenceImagePrompt: imagePrompt,
-                                    })),
+                                    writtenMotion && !videoRequested
+                                      ? writtenMotion
+                                      : await writeClipPrompt({
+                                          messageId,
+                                          request: videoRequested ? writtenMotion : "",
+                                          withoutPicture: false,
+                                          referenceImagePrompt: imagePrompt,
+                                        }),
                                   appearanceBlock,
                                   queue: true,
                                   signal: agentSignal,

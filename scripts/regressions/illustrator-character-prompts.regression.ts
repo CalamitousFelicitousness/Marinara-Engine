@@ -526,4 +526,6 @@ assert.equal(
   assert.match(commandWriter, /characterPromptInstruction: buildManualIllustratorCharacterPromptInstruction\(/u);
   assert.match(commandWriter, /_illustratorCharacterPromptInstruction/u);
   assert.match(commandWriter, /_illustratorCaptionAppearanceReference === true/u);
+  // Naming characters in a command no longer forces avatar references past the chat's switch.
+  assert.doesNotMatch(generateRouteSource, /commandTarget\.command\.characters\?\.length/u);
 }

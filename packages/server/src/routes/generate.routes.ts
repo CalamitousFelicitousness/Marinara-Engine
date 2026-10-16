@@ -13775,12 +13775,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
                       // Collect optional character visual context. Prefer avatar
                       // portraits for references, then fall back to full-body sprites.
+                      // Illustrate commands follow the same reference switch as automatic and manual
+                      // illustrations; naming characters only narrows whose references are sent.
                       const useAvatarRefs =
-                        (commandTarget?.command.type === "illustrate" &&
-                          Boolean(commandTarget.command.characters?.length)) ||
-                        (usesChatIllustratorSettings && typeof chatMeta.illustratorUseAvatarReferences === "boolean"
+                        usesChatIllustratorSettings && typeof chatMeta.illustratorUseAvatarReferences === "boolean"
                           ? chatMeta.illustratorUseAvatarReferences
-                          : imagePromptAgent?.settings?.useAvatarReferences === true);
+                          : imagePromptAgent?.settings?.useAvatarReferences === true;
                       const includeCharacterAppearance =
                         usesChatIllustratorSettings &&
                         typeof chatMeta.illustratorIncludeCharacterAppearance === "boolean"

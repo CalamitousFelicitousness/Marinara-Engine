@@ -85,6 +85,13 @@ try {
     .join("\n");
   assert.ok(sent.includes("Scene persona") && sent.includes("Alice") && sent.includes("Bob"));
   assert.ok(!sent.includes("Charlie"), "Excluded character cards are not sent to the planner");
+  // The starred Roleplay settings profile, as a new Roleplay chat would get it.
+  const profile = await api("POST", "/api/chat-presets", {
+    name: "Scene defaults",
+    mode: "roleplay",
+    settings: { metadata: { illustratorRunInterval: 7, enableAgents: false } },
+  });
+  await api("POST", `/api/chat-presets/${profile.id}/set-active`);
   const payload = {
     originChatId: origin.id,
     connectionId: conn.id,
@@ -102,6 +109,13 @@ try {
   );
   const created = creations.find((response) => response.statusCode === 200)!.json();
   const scene = await api("GET", `/api/chats/${created.chatId}`);
+  // The scene starts from the starred Roleplay profile, with its own scene settings on top.
+  const sceneMeta = typeof scene.metadata === "string" ? JSON.parse(scene.metadata) : scene.metadata;
+  assert.equal(sceneMeta.appliedChatPresetId, profile.id, "the starred Roleplay profile is applied");
+  assert.equal(sceneMeta.illustratorRunInterval, 7);
+  assert.equal(sceneMeta.enableAgents, false);
+  assert.equal(sceneMeta.sceneStatus, "active", "the scene's own settings stay");
+  assert.equal(scene.connectionId, conn.id, "the connection the scene was given stays");
   assert.deepEqual(scene.characterIds, selected.participantCharacterIds);
   assert.equal(scene.personaId, persona.id);
   const messages = await api("GET", `/api/chats/${scene.id}/messages`);

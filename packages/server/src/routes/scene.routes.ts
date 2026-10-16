@@ -12,6 +12,7 @@ import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { readdirSync, existsSync } from "fs";
 import { join, extname } from "path";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
+import { createChatPresetsStorage } from "../services/storage/chat-presets.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
@@ -532,6 +533,18 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     if (!sceneChat) return reply.status(500).send({ error: "Failed to create scene chat" });
 
+    // A scene is a new Roleplay chat, so it starts from the starred Roleplay settings profile, as a new Roleplay
+    // chat does. The connection is the profile's unless the request named one; a prompt preset picked for the
+    // scene stays; the scene's own settings below are written on top.
+    const chatPresetsStorage = createChatPresetsStorage(app.db);
+    const starredProfile = await chatPresetsStorage.getActive("roleplay");
+    if (starredProfile && !starredProfile.isDefault) {
+      await chatPresetsStorage.applyToChat(starredProfile.id, sceneChat.id, {
+        connectionId: connectionId ?? starredProfile.settings.connectionId ?? origin.connectionId ?? null,
+      });
+      if (selectedPresetId) await chats.update(sceneChat.id, { promptPresetId: selectedPresetId });
+    }
+
     // Build conversation transcript as hidden context (NOT displayed)
     const { personaName } = await buildPersonaContext(chars, origin.personaId, origin.mode, origin.personaCharacterId);
     const initiatorName = initiatorCharId ? await getCharacterName(chars, initiatorCharId) : "User";
@@ -543,7 +556,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     // Inherit lorebooks from the origin
     const originLorebookIds = origin.lorebookIds;
 
-    const existingMeta = parseMetadata(sceneChat);
+    const existingMeta = parseMetadata((await chats.getById(sceneChat.id)) ?? sceneChat);
     await chats.updateMetadata(sceneChat.id, {
       ...existingMeta,
       ...(origin.chat

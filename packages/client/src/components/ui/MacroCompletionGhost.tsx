@@ -49,15 +49,7 @@ const MIRRORED_PROPERTIES = [
 
 function measure(textarea: HTMLTextAreaElement): Pick<MacroCompletion, "box" | "text"> {
   const computed = getComputedStyle(textarea);
-  const text: Record<string, string> = {
-    boxSizing: "border-box",
-    borderStyle: "solid",
-    borderColor: "transparent",
-    // Grow with the text and let the outer box clip, so a scrolled field still shows the caret line.
-    bottom: "auto",
-    minHeight: "100%",
-    overflow: "visible",
-  };
+  const text: Record<string, string> = {};
   for (const property of MIRRORED_PROPERTIES) text[property] = computed[property];
   // A vertical scrollbar narrows the textarea's text column; widen the padding to wrap at the same place.
   const borders = parseFloat(computed.borderLeftWidth) + parseFloat(computed.borderRightWidth);
@@ -72,6 +64,11 @@ function measure(textarea: HTMLTextAreaElement): Pick<MacroCompletion, "box" | "
     },
     text,
   };
+}
+
+// The scripted insert bypasses the browser's own maxLength check, so never offer what would overflow it.
+function fitsMaxLength(textarea: HTMLTextAreaElement, suffix: string) {
+  return textarea.maxLength < 0 || textarea.value.length + suffix.length <= textarea.maxLength;
 }
 
 /**
@@ -97,7 +94,7 @@ export function useMacroCompletion(enabled: boolean, value: string) {
     }
     const caret = textarea.selectionStart;
     const suffix = completeMacro(textarea.value, caret);
-    if (!suffix) {
+    if (!suffix || !fitsMaxLength(textarea, suffix)) {
       setCompletion(null);
       return;
     }
@@ -125,9 +122,12 @@ export function useMacroCompletion(enabled: boolean, value: string) {
 
   const clear = useCallback(() => setCompletion(null), []);
 
+  /** Inserts the suggestion. Returns false when there is none or it no longer fits the field's maxLength. */
   const insert = useCallback(() => {
     const textarea = textareaRef.current;
-    if (completion && textarea) insertTextAtCaret(textarea, completion.suffix);
+    if (!completion || !textarea || !fitsMaxLength(textarea, completion.suffix)) return false;
+    insertTextAtCaret(textarea, completion.suffix);
+    return true;
   }, [completion]);
 
   /** Accepts the ghost on a plain Tab. Returns true when it handled the key. */
@@ -145,8 +145,9 @@ export function useMacroCompletion(enabled: boolean, value: string) {
       ) {
         return false;
       }
+      // Over maxLength: let Tab fall through to indenting instead of claiming an insert.
+      if (!insert()) return false;
       event.preventDefault();
-      insert();
       return true;
     },
     [completion, insert],
@@ -177,6 +178,8 @@ export function MacroCompletionGhost({
         multiline
         scrollLeft={completion.scrollLeft}
         scrollTop={completion.scrollTop}
+        // Grow with the text and let the outer box clip, so a scrolled field still shows the caret line.
+        className="bottom-auto box-border min-h-full overflow-visible border-solid border-transparent"
         style={completion.text}
         onAccept={onAccept}
       />

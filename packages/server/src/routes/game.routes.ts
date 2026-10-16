@@ -186,6 +186,7 @@ import {
   sanitizeGameNpcAvatarUrls,
 } from "../services/game/npc-avatar-utils.js";
 import {
+  buildCheckpointGameMetadataRestore,
   createCheckpointService,
   type CapturedEngineState,
   type CheckpointTrigger,
@@ -16624,10 +16625,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     });
 
-    // Restore chat metadata fields from checkpoint
-    if (cp.gameState) {
-      await chats.patchMetadata(input.chatId, () => ({
-        gameActiveState: cp.gameState as GameActiveState,
+    // Restore chat metadata fields from checkpoint: the game's own keys it captured (#7742), and the
+    // active state. A checkpoint from before gameMetadataData leaves those keys as they are, as before.
+    const capturedGameMetadata = parseJsonField<Record<string, unknown> | null>(cp.gameMetadataData, null);
+    const restoresGameMetadata =
+      !!capturedGameMetadata && typeof capturedGameMetadata === "object" && !Array.isArray(capturedGameMetadata);
+    if (cp.gameState || restoresGameMetadata) {
+      await chats.patchMetadata(input.chatId, (current) => ({
+        ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
+        ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
       }));
     }
 

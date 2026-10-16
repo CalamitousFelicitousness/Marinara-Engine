@@ -2194,6 +2194,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Kept up on later turns without concentration, and spared only on a made save (1.378):
+ *  Intimidating Presence. */
+function carriesSustains378(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSustains378(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sustains !== undefined || plainRecord(record.oncePerTarget)?.whenSaved !== undefined) return true;
+  return featureValues(record).some((one) => carriesSustains378(one, depth + 1));
+}
+
 /** Defense against an attacker that has hit already, and attacks-taken on opportunity attacks only
  *  (1.377): Multiattack Defense, Escape the Horde. */
 function carriesAttackerNarrowing377(value: unknown, depth = 0): boolean {
@@ -5624,6 +5635,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Kept up without concentration, and spared only on a made save, 1.378.
+  if (
+    !declaresApi(378) &&
+    (carriesSustains378(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSustains378(document)))
+  ) {
+    return "A ruleset whose entries are kept up on later turns (sustains) or spare a creature only once it makes its save (oncePerTarget whenSaved) requires schemaVersion 2 and capabilityApi 1.378 or newer";
+  }
   // Defense against an attacker that has hit, and opportunity attacks only, 1.377.
   if (
     !declaresApi(377) &&

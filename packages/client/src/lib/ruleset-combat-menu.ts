@@ -146,6 +146,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   if (option.dismiss) return t("game.combat.ruleset.menu.dismiss", { item: option.label });
   // A concentration entry made again (1.310): Vampiric Touch's later touches.
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
+  if (option.sustain) return t("game.combat.ruleset.menu.sustain", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {

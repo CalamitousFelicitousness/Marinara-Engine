@@ -4143,7 +4143,14 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
 
 /** Who succeeded on a save against a cast its maker concentrates on, or against a repeat of it
  *  (1.310): Eyebite never picks them again. */
-function noteSaved(actor: RulesetCombatant, action: RulesetCombatAction, target: RulesetCombatant): void {
+function noteSaved(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  // Spared it until the rest that frees it (1.378): Intimidating Presence's 24 hours.
+  if (action.oncePerTarget?.whenSaved) markUsedOn(state, actor, action, [target], true);
   const held = actor.concentrating;
   if (!held || (held.actionId !== action.id && !(action.again && rulesetRepeatsHeld(actor, action.again)))) return;
   if (!held.saved?.includes(target.id)) held.saved = [...(held.saved ?? []), target.id];
@@ -4177,8 +4184,12 @@ function markUsedOn(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
+  /** Marked as they made their save (1.378), for an entry that spares only those. */
+  saved = false,
 ): void {
   if (!action.oncePerTarget || targets.length === 0) return;
+  // Only whoever made their save, as they make it (1.378).
+  if (action.oncePerTarget.whenSaved && !saved) return;
   const key = rulesetUsedOnKey(action);
   const marks = targets.flatMap((target) => rulesetUsedOnMarks(state, target));
   const names = [...new Set([...rulesetUsedOn(actor, action), ...marks])].slice(-60);
@@ -9822,6 +9833,29 @@ function resolveActionBody(
     }
     return null;
   }
+  // What it put on them kept up (1.378), its rounds started again as if put on now, and nothing else:
+  // Intimidating Presence on a later turn.
+  if (action.sustain && !held) {
+    for (const target of targets) {
+      for (const entry of target.tracked) {
+        if (entry.source !== actor.id || entry.action?.[0] !== action.sustain.of) continue;
+        const rounds = action.sustain.rounds[entry.condition];
+        if (rounds === undefined) continue;
+        // On its putter's clock, kept up in their own turn, the end of this one does not count.
+        const startsNext =
+          entry.clockOf === "source" && !entry.clock && rulesetOnOwnTurn(ctx.state, actor) && ctx.ticking !== actor.id;
+        entry.rounds = startsNext ? rounds + 1 : rounds;
+        ctx.events.push({
+          type: "sustained",
+          actorId: actor.id,
+          targetId: target.id,
+          condition: entry.condition,
+          label: action.label,
+        });
+      }
+    }
+    return null;
+  }
   // A blow after a straight run at its one target carries the charge (1.186), read again as a held
   // blow picks up, since the run is still the one this turn walked.
   const charging = action.charge && (held ? rulesetCombatant(ctx.state, held.targetId) : targets[0]);
@@ -10396,7 +10430,7 @@ function resolveActionBody(
         automatic: true,
       });
       saved = true;
-      noteSaved(actor, action, target);
+      noteSaved(ctx.state, actor, action, target);
     } else if (action.save?.alliesMayFail && target.side === actor.side) {
       // A friend lets it in (1.278): failed, nothing rolled.
       ctx.events.push({
@@ -10425,7 +10459,7 @@ function resolveActionBody(
           ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
           : saveLean(ctx, target, action.save.modes),
       );
-      if (saved) noteSaved(actor, action, target);
+      if (saved) noteSaved(ctx.state, actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;

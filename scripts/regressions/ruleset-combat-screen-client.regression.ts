@@ -661,6 +661,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["rider", say({ type: "rider", actorId: "brenna", targetId: "lurker", riderId: "sly", label: "Sly Strike" })],
     [
+      "sustained",
+      say({
+        type: "sustained",
+        actorId: "brenna",
+        targetId: "lurker",
+        condition: "poisoned",
+        label: "Intimidating Presence",
+      }),
+    ],
+    [
       "concentration",
       say({ type: "concentration", actorId: "corwin", label: "Bless", state: "ended", reason: "damage" }),
     ],
@@ -1158,6 +1168,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("strikes"), "Brenna swings with Longsword, with 1 strike left.");
   assert.equal(printed.get("gives"), "Brenna uses Second Wind and has 1 Action.");
   assert.equal(printed.get("rider"), "Sly Strike catches Thorn Lurker as well.");
+  assert.equal(printed.get("sustained"), "Brenna keeps Thorn Lurker Poisoned with Intimidating Presence.");
   // The last strike of a spend says so rather than promising none left.
   assert.equal(
     line(fiveE, state, { type: "strikes", actorId: "brenna", optionId: "sword", label: "Longsword", left: 0 }),

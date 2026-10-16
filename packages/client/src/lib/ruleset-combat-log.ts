@@ -1027,6 +1027,13 @@ export function rulesetCombatEventLine(
         count: event.left,
         left: event.left,
       });
+    case "sustained":
+      return key("sustained", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        condition: names.condition(event.condition),
+        label: event.label,
+      });
     case "gives":
       return key("gives", {
         actor: names.combatant(event.actorId),

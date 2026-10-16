@@ -845,7 +845,11 @@ export interface RulesetCombatAction {
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
   /** Not used on the same creature again until its user takes this rest (1.304): Chains of Carceri. */
-  oncePerTarget?: { until: string };
+  oncePerTarget?: { until: string; whenSaved?: true };
+  /** Kept up on later turns with `budget` (1.378): Intimidating Presence. */
+  sustains?: { budget: string };
+  /** The copy that keeps it up (1.378): the conditions it put on start these rounds again. */
+  sustain?: { of: string; rounds: Record<string, number> };
   /** Its damage never takes a target below this much health (1.235). */
   leavesAtLeast?: number;
   /** It brings back a target that died no more than `withinRounds` rounds ago, at `amount` (1.176). */
@@ -2674,6 +2678,8 @@ export type RulesetCombatEvent =
   | { type: "legendaryResistance"; actorId: string; save: string; left: number }
   /** A lair action taken on its lair's count (1.315); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
+  /** What its user put on somebody kept up for longer (1.378): Intimidating Presence. */
+  | { type: "sustained"; actorId: string; targetId: string; condition: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */
   | { type: "strikes"; actorId: string; optionId: string; label: string; left: number }
   /** A budget something handed its user, and what they hold of it now. */
@@ -3159,6 +3165,8 @@ export interface RulesetCombatOption {
   dismiss?: true;
   /** A concentration entry's effect made again (1.310), named by `label`. */
   again?: true;
+  /** What its user put on somebody kept up (1.378), named by `label`. */
+  sustain?: true;
   /** Picking up what its holder dropped (1.266), named by `label`. */
   pickUp?: true;
   /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.268). */

@@ -2911,7 +2911,12 @@ function mechanicsAction(
   if (mechanics.targetsUpTo) action.targetsUpTo = mechanics.targetsUpTo;
   // Clears growth where it lands (1.318).
   if (mechanics.clears) action.clears = mechanics.clears;
-  if (mechanics.oncePerTarget) action.oncePerTarget = { until: mechanics.oncePerTarget.until };
+  if (mechanics.oncePerTarget)
+    action.oncePerTarget = {
+      until: mechanics.oncePerTarget.until,
+      ...(mechanics.oncePerTarget.whenSaved ? { whenSaved: true as const } : {}),
+    };
+  if ("sustains" in mechanics && mechanics.sustains) action.sustains = { budget: mechanics.sustains.budget };
   // Leaving `toHit` unset here would send it down the no-roll path and land it automatically.
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
@@ -4968,6 +4973,33 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       return [copy];
     });
     if (again.length) combatant.actions = [...combatant.actions, ...again];
+  }
+
+  // What an entry put on somebody, kept up on its own budget (1.378): no cost, no save, nothing new.
+  for (const combatant of state.combatants) {
+    const sustaining = combatant.actions.flatMap((action): RulesetCombatAction[] => {
+      if (!action.sustains || !action.applies?.length) return [];
+      const rounds: Record<string, number> = {};
+      for (const applies of action.applies) {
+        if (typeof applies.duration === "object" && typeof applies.duration.rounds === "number")
+          rounds[applies.condition] = applies.duration.rounds;
+      }
+      return [
+        {
+          id: `${action.id}:sustain`,
+          label: action.label,
+          kind: action.kind,
+          budget: action.sustains.budget,
+          targets: { ...action.targets },
+          ...(action.range ? { range: { ...action.range } } : {}),
+          ...(action.reach !== undefined ? { reach: action.reach } : {}),
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+          ...(action.entry ? { entry: action.entry } : {}),
+          sustain: { of: action.id, rounds },
+        } as RulesetCombatAction,
+      ];
+    });
+    if (sustaining.length) combatant.actions = [...combatant.actions, ...sustaining];
   }
 
   // Kept on through the fight by what they hold or what their block says (1.263): 5e's paladin

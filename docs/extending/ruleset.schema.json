@@ -44576,6 +44576,21 @@
                       ],
                       "additionalProperties": false
                     },
+                    "sustains": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "budget"
+                      ],
+                      "additionalProperties": false
+                    },
                     "reaction": {
                       "anyOf": [
                         {
@@ -48266,6 +48281,10 @@
                           "type": "string",
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "whenSaved": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "$comment": {}
                       },
@@ -72827,6 +72846,21 @@
                         "concentration": {
                           "type": "boolean"
                         },
+                        "sustains": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "budget"
+                          ],
+                          "additionalProperties": false
+                        },
                         "reaction": {
                           "anyOf": [
                             {
@@ -76277,6 +76311,10 @@
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "whenSaved": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },
@@ -85366,6 +85404,21 @@
                               "concentration": {
                                 "type": "boolean"
                               },
+                              "sustains": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget"
+                                ],
+                                "additionalProperties": false
+                              },
                               "reaction": {
                                 "anyOf": [
                                   {
@@ -88816,6 +88869,10 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "whenSaved": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

@@ -5202,6 +5202,11 @@ const catalogMechanicsObject = z
       })
       .strict()
       .optional(),
+    /** Kept up on later turns with `budget` (Capability API 1.378), with no concentration, no cost
+     *  and no save: what it put on a creature, still on them, starts its rounds again. 5e's
+     *  Intimidating Presence, "on subsequent turns, you can use your action to extend the duration of
+     *  this effect on the frightened creature until the end of your next turn". */
+    sustains: z.object({ budget: sheetId }).strict().optional(),
     /** Something taken at a MOMENT rather than on a turn. `true` says only that much, and an entry
      *  that says only that much is on no menu: nothing knows which moment it waits for. An object
      *  names the moment, and then the entry is offered in the window that moment opens.
@@ -5313,7 +5318,13 @@ const catalogMechanicsObject = z
     /** Used on a creature, not used on that one again until its user takes this rest (Capability API
      *  1.304), however many fights come between: Chains of Carceri's "You must finish a long rest
      *  before you can use this invocation on the same creature again". Not on an area or on its user. */
-    oncePerTarget: z.object({ until: sheetId }).strict().optional(),
+    /** `whenSaved` (Capability API 1.378): only a creature that succeeded on its save against it is
+     *  spared it until then: Intimidating Presence's "If the creature succeeds on its saving throw,
+     *  you can't use this feature on that creature again for 24 hours". */
+    oncePerTarget: z
+      .object({ until: sheetId, whenSaved: z.literal(true).optional() })
+      .strict()
+      .optional(),
     /** How many of those uses one use spends (Capability API 1.245): Quivering Palm's 3 ki. */
     usesSpent: z.number().int().min(2).max(20).optional(),
     /** Its user chooses how many of those uses one use spends, one up to what is left, and it heals
@@ -5497,6 +5508,23 @@ const catalogMechanicsSchema: z.ZodType<
     });
   }
   // Made again only while held by concentration (1.310).
+  if (
+    mechanics.sustains &&
+    !mechanics.applies?.some((one) => typeof one.duration === "object" && typeof one.duration.rounds === "number")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["sustains"],
+      message: '"sustains" starts again the rounds of what it puts on, so it applies a condition lasting some rounds',
+    });
+  }
+  if (mechanics.oncePerTarget?.whenSaved && !mechanics.save) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["oncePerTarget", "whenSaved"],
+      message: '"whenSaved" spares a creature that made its save, so the entry asks one',
+    });
+  }
   if (mechanics.repeats && !mechanics.concentration) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -18020,6 +18048,13 @@ export function rulesetCatalogEntryIssues(
       !definition.combat.economy.budgets.some((one) => one.id === mechanics.repeats!.budget)
     ) {
       add([index, "mechanics", "repeats", "budget"], `Unknown budget "${mechanics.repeats.budget}"`);
+    }
+    if (
+      mechanics?.sustains &&
+      definition.combat &&
+      !definition.combat.economy.budgets.some((one) => one.id === mechanics.sustains!.budget)
+    ) {
+      add([index, "mechanics", "sustains", "budget"], `Unknown budget "${mechanics.sustains.budget}"`);
     }
     // The biggest it reaches is one of the fight's sizes (1.314).
     if (mechanics?.targetsUpTo && !definition.combat?.sizes?.order.some((one) => one.id === mechanics.targetsUpTo)) {

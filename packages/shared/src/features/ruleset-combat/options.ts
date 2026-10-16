@@ -1802,6 +1802,8 @@ export function rulesetOptionTargets(
         // A repeat never at one that saved against the cast (1.310), or only at whom it was aimed at.
         if (cure?.again?.notSaved && actor.concentrating?.saved?.includes(combatant.id)) return false;
         if (cure?.again?.sameTargets && !actor.concentrating?.targets?.includes(combatant.id)) return false;
+        // Kept up only on whom it is still on (1.378).
+        if (cure?.sustain && !rulesetSustainedOn(actor, cure.sustain.of, combatant)) return false;
         // Used on them already since the rest that frees it (1.304).
         if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
@@ -1951,6 +1953,15 @@ export function rulesetSheetValue(
 
 /** Whether the action has uses left, has recharged, and has the coven members it needs nearby, and
  *  (given the ruleset) whether its holder's sheet allows it (1.166). */
+/** Whether `actor`'s entry `of` put something on `combatant` that is on them still (1.378), which its
+ *  copy on a later turn keeps up: Intimidating Presence's frightened. */
+export function rulesetSustainedOn(actor: RulesetCombatant, of: string, combatant: RulesetCombatant): boolean {
+  return (
+    !combatant.defeated &&
+    combatant.tracked.some((entry) => entry.source === actor.id && entry.action?.[0] === of && entry.rounds !== null)
+  );
+}
+
 export function rulesetActionAvailable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -1991,6 +2002,9 @@ export function rulesetActionAvailable(
   }
   // Made again only while its cast is concentrated on (1.310).
   if (action.again && !rulesetRepeatsHeld(actor, action.again)) return false;
+  // Kept up only while what it put on is still on somebody (1.378).
+  if (action.sustain && state && !state.combatants.some((one) => rulesetSustainedOn(actor, action.sustain!.of, one)))
+    return false;
   // Given by a condition, only while its user holds it (1.236).
   if (action.whileHolds) {
     const held = definition
@@ -2503,6 +2517,7 @@ function optionFrom(
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),
+    ...(action.sustain ? { sustain: true as const } : {}),
   };
   if (paid && paid.cost.length > 0) option.cost = paid.cost;
   // As many uses as its user chooses (1.251).

@@ -48,6 +48,17 @@ export interface KnowledgeAgentSourceSettings {
   sourceFileIds?: string[];
 }
 
+/**
+ * What a Conversation video message starts from: a fresh selfie, the character's avatar (or
+ * sprite), a selfie with the avatar as fallback, or nothing (text-to-video).
+ */
+export const VIDEO_FIRST_FRAMES = ["picture_or_avatar", "picture", "avatar", "prompt_only"] as const;
+export type VideoFirstFrame = (typeof VIDEO_FIRST_FRAMES)[number];
+
+export function normalizeVideoFirstFrame(value: unknown): VideoFirstFrame {
+  return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : "picture_or_avatar";
+}
+
 export const CONVERSATION_COMMAND_KEYS = [
   "schedule_update",
   "cross_post",
@@ -740,8 +751,10 @@ export interface ChatMetadata {
   gameStoryboardUseNovelAiCharacterPrompts?: boolean;
   /** Last generated scene-video record ID for this game. */
   gameLastSceneVideoId?: string | null;
-  /** Connection used for roleplay/gallery scene-video generation. */
+  /** Connection used for roleplay/gallery scene-video generation and Conversation video messages. */
   sceneVideoConnectionId?: string | null;
+  /** First frame of a Conversation video message; see `normalizeVideoFirstFrame`. */
+  sceneVideoFirstFrame?: VideoFirstFrame | null;
   /** Last generated roleplay/gallery scene-video record ID. */
   sceneLastVideoId?: string | null;
   /** Game-mode GM instruction override. Empty/null uses the built-in default prompt. */

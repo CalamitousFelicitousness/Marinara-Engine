@@ -203,6 +203,10 @@ try {
   const singleQuoted = await sendClip("Aster grins and says 'I'm here, Bob!' while Lena's hat falls");
   assert.ok(!(await clipIds(bob.id)).includes(singleQuoted), "a name inside single-quoted speech names no one");
   assert.ok((await clipIds(lena.id)).includes(singleQuoted), "a possessive is not a quote");
+  const wrapped = await sendClip('Aster says "Hi,\nBob!" and waves');
+  assert.ok(!(await clipIds(bob.id)).includes(wrapped), "a quote that wraps onto the next line is still speech");
+  const strayQuote = await sendClip('Aster is 5\'10" tall.\n\nBob walks in');
+  assert.ok((await clipIds(bob.id)).includes(strayQuote), "a stray quote mark doesn't hide the next paragraph");
   const twoLetter = await sendClip("Aster and Al share a milkshake");
   assert.ok((await clipIds(al.id)).includes(twoLetter), "a two-letter first name counts");
   const bobLowercase = await sendClip("Aster smiles, a bob of hair swaying");

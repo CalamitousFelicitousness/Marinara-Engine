@@ -366,10 +366,12 @@ async function resolveVideoCharacterIds(
   return Array.from(new Set([args.characterId, ...resolution.characterIds, ...(personaId ? [personaId] : [])]));
 }
 
-// Double quotes, curly quotes and guillemets, on one line. A single quote opens only after a non-letter and closes
-// only before one, so "Lena's" and "dogs'" are not quotes, while 'I'm here, Bob' is skipped whole.
+// Double quotes, curly quotes, guillemets and single quotes. A quote may wrap onto the next line but never crosses
+// a blank line, so a stray quote mark (5'10") can't hide a whole paragraph of narration. A single quote opens only
+// after a non-letter and closes only before one, so "Lena's" and "dogs'" are not quotes, while 'I'm here, Bob' is
+// skipped whole.
 const QUOTED_SPEECH_RE =
-  /"[^"\n]*"|\u201c[^\u201d\n]*\u201d|\u00ab[^\u00bb\n]*\u00bb|(?<![\p{L}\p{N}])['\u2018](?:[^'\u2018\u2019\n]|(?<=\p{L})['\u2019](?=\p{L}))*['\u2019](?![\p{L}\p{N}])/gu;
+  /"(?:[^"\n]|\n(?!\s*\n))*"|\u201c(?:[^\u201d\n]|\n(?!\s*\n))*\u201d|\u00ab(?:[^\u00bb\n]|\n(?!\s*\n))*\u00bb|(?<![\p{L}\p{N}])['\u2018](?:[^'\u2018\u2019\n]|\n(?!\s*\n)|(?<=\p{L})['\u2019](?=\p{L}))*['\u2019](?![\p{L}\p{N}])/gu;
 
 function withoutQuotedSpeech(text: string): string {
   return text.replace(QUOTED_SPEECH_RE, " ");

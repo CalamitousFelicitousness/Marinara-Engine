@@ -9,6 +9,8 @@
 //      inventory's turn record.
 //   2) End-to-end: create → change metadata → POST /game/checkpoint/load → keys are back, settings
 //      and keys outside the allow-list are untouched.
+//   2b) The chat's characterIds mirror of the party is rewound with gamePartyCharacterIds, so a
+//      member recruited after the save does not come back at the next session start.
 //   3) A checkpoint from before the field (gameMetadataData null) loads as it always did.
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -172,6 +174,29 @@ try {
     assert.equal(after.gameMorale, 50);
     assert.equal(after.gameJournal, null, "a journal started after the save is cleared");
     assert.equal(after.gameSystemPrompt, "changed after the save", "settings are never rewound");
+  }
+
+  // ── Part 2b: the characterIds mirror of the party is rewound too ──
+  {
+    const { chatId, snapshot } = await seedGameChat("checkpoint party mirror", {
+      gamePartyCharacterIds: ["char-luna", "npc:old-wick"],
+    });
+    await chats.patchMetadataWithCharacterIds(chatId, () => ({ metadata: {}, characterIds: ["char-luna"] }));
+    const checkpointId = await createCheckpoint(chatId, snapshot);
+
+    await chats.patchMetadataWithCharacterIds(chatId, () => ({
+      metadata: { gamePartyCharacterIds: ["char-luna", "char-mira", "npc:old-wick"] },
+      characterIds: ["char-luna", "char-mira"],
+    }));
+
+    await loadCheckpoint(chatId, checkpointId);
+    const chat = await chats.getById(chatId);
+    assert.deepEqual((await metadataOf(chatId)).gamePartyCharacterIds, ["char-luna", "npc:old-wick"]);
+    assert.deepEqual(
+      JSON.parse(chat!.characterIds as unknown as string),
+      ["char-luna"],
+      "a member recruited after the save leaves the chat's characters too",
+    );
   }
 
   // ── Part 3: a checkpoint from before the field loads as it did ──

@@ -16630,11 +16630,27 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const capturedGameMetadata = parseJsonField<Record<string, unknown> | null>(cp.gameMetadataData, null);
     const restoresGameMetadata =
       !!capturedGameMetadata && typeof capturedGameMetadata === "object" && !Array.isArray(capturedGameMetadata);
-    if (cp.gameState || restoresGameMetadata) {
-      await chats.patchMetadata(input.chatId, (current) => ({
-        ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
-        ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
-      }));
+    const restorePatch = (current: Record<string, unknown>): Record<string, unknown> => ({
+      ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
+      ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
+    });
+    if (restoresGameMetadata && Array.isArray(capturedGameMetadata.gamePartyCharacterIds)) {
+      // The chat's characterIds column mirrors the library members of the party, and session start
+      // trusts it over gamePartyCharacterIds. So it is rewound in the same queued write, or a member
+      // recruited after the save would come back at the next session.
+      await chats.patchMetadataWithCharacterIds(input.chatId, (current) => {
+        const metadata = restorePatch(current);
+        const characterIds = Array.from(
+          new Set(
+            (metadata.gamePartyCharacterIds as unknown[]).filter(
+              (id): id is string => typeof id === "string" && id.trim().length > 0 && !isPartyNpcId(id),
+            ),
+          ),
+        );
+        return { metadata, characterIds };
+      });
+    } else if (cp.gameState || restoresGameMetadata) {
+      await chats.patchMetadata(input.chatId, restorePatch);
     }
 
     return { ok: true, messageId: restoreMsg.id };

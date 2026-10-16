@@ -323,7 +323,10 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
             className="flex items-center gap-2 rounded-lg bg-[var(--marinara-app-accent-static)]/10 px-3 py-2 text-xs text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/30"
           >
             <AlertTriangle size="0.875rem" className="shrink-0" />
-            <span className="min-w-0 break-words">{activeStatus.error}</span>
+            <span className="min-w-0 break-words">
+              {localizeUi("ui.stateEditor.editor.invalidJson")}
+              {activeStatus.error ? <span className="opacity-80"> {activeStatus.error}</span> : null}
+            </span>
           </div>
         ) : null}
         <StateJsonField

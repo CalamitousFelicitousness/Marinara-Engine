@@ -68,13 +68,14 @@ export function layoutStateJson(value: unknown): StateJsonLayout {
   return { text: lines.join("\n"), lineByPath };
 }
 
+/** `error` is the JSON parser's own detail (may be empty); the UI leads it with a localized message. */
 export type StateDraftParse = { ok: true; value: unknown } | { ok: false; error: string };
 
 export function parseStateDraft(text: string): StateDraftParse {
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Invalid JSON" };
+    return { ok: false, error: error instanceof Error ? error.message : "" };
   }
 }
 

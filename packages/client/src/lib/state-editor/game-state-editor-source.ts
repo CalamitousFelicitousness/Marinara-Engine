@@ -39,12 +39,13 @@ export function buildGameStateEditorSections(
 export function buildGameStateEditorPatch(
   snapshot: GameState,
   changes: StateEditorChange[],
-): { patch: Record<string, unknown> } | { error: string; sectionId: string } {
+): { patch: Record<string, unknown> } | { error: string | null; sectionId: string } {
   let working = snapshot;
   const patch: Record<string, unknown> = {};
   for (const change of changes) {
     const slice = AGENT_SUITE_TRACKER_SLICES[change.sectionId];
-    if (!slice) return { error: `Unknown section "${change.sectionId}"`, sectionId: change.sectionId };
+    // null: no tracker slice has this id; the modal words that message.
+    if (!slice) return { error: null, sectionId: change.sectionId };
     const slicePatch = slice.buildPatch(working, change.value);
     if ("error" in slicePatch && typeof slicePatch.error === "string") {
       return { error: slicePatch.error, sectionId: change.sectionId };

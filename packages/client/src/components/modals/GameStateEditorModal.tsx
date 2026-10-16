@@ -203,7 +203,8 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
       const result = buildGameStateEditorPatch(fresh, changes);
       if ("error" in result) {
         const section = sections.find((item) => item.id === result.sectionId);
-        throw new Error(section ? `${section.label}: ${result.error}` : result.error);
+        const message = result.error ?? localizeUi("ui.stateEditor.gameState.unknownSection");
+        throw new Error(section ? `${section.label}: ${message}` : message);
       }
       // Aim at the exact snapshot row, like the tracker panel's own patcher.
       await api.patch(`/chats/${chatId}/game-state`, {

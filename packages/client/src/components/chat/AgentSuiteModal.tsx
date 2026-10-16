@@ -191,8 +191,10 @@ function DataBlock({
   const jsonError = useMemo(() => {
     if (mode !== "json" || !isDirty) return null;
     const parsed = parseStateDraft(currentText);
-    return parsed.ok ? null : parsed.error;
-  }, [currentText, isDirty, mode]);
+    if (parsed.ok) return null;
+    const lead = localizeUi("ui.stateEditor.editor.invalidJson");
+    return parsed.error ? `${lead} ${parsed.error}` : lead;
+  }, [currentText, isDirty, localizeUi, mode]);
 
   // Report dirty state so the modal can guard close/agent-switch transitions.
   useEffect(() => {

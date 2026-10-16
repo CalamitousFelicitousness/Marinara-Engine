@@ -81,6 +81,9 @@ const GlobalSearchModal = lazy(() =>
 const ChatStatsModal = lazy(() =>
   import("../modals/ChatStatsModal").then((module) => ({ default: module.ChatStatsModal })),
 );
+const GameStateEditorModal = lazy(() =>
+  import("../modals/GameStateEditorModal").then((module) => ({ default: module.GameStateEditorModal })),
+);
 const ActivityOverviewModal = lazy(() =>
   import("../modals/ActivityOverviewModal").then((module) => ({ default: module.ActivityOverviewModal })),
 );
@@ -256,6 +259,9 @@ export function ModalRenderer() {
       break;
     case "chat-stats":
       content = <ChatStatsModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
+      break;
+    case "game-state-editor":
+      content = <GameStateEditorModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
       break;
     case "activity-overview":
       content = <ActivityOverviewModal open onClose={closeModal} />;

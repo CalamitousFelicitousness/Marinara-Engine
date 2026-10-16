@@ -118,7 +118,8 @@ function PinnedMediaViewer({
   }
   const shown = useMemo(() => fitFrameToViewport(frame, viewport), [frame, viewport]);
   const [touchControlsVisible, setTouchControlsVisible] = useState(false);
-  const dragRef = useRef<{ startX: number; startY: number; origin: Frame; frame: Frame } | null>(null);
+  // A drag moves what is shown but keeps the saved size, so a pin shrunk by a small window grows back later.
+  const dragRef = useRef<{ startX: number; startY: number; origin: Frame; saved: Frame; frame: Frame } | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; origin: Frame; frame: Frame } | null>(null);
   const touchControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaNoun =
@@ -158,10 +159,10 @@ function PinnedMediaViewer({
       e.preventDefault();
       if (e.pointerType !== "mouse") showTouchControls();
       if (locked) return;
-      dragRef.current = { startX: e.clientX, startY: e.clientY, origin: shown, frame: shown };
+      dragRef.current = { startX: e.clientX, startY: e.clientY, origin: shown, saved: frame, frame };
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [locked, shown, showTouchControls],
+    [frame, locked, shown, showTouchControls],
   );
 
   const onDragMove = useCallback((e: React.PointerEvent) => {
@@ -169,7 +170,7 @@ function PinnedMediaViewer({
     if (!drag) return;
     const { origin } = drag;
     const pos = clampPosition({ x: origin.x + e.clientX - drag.startX, y: origin.y + e.clientY - drag.startY }, origin);
-    drag.frame = { ...origin, ...pos };
+    drag.frame = { ...drag.saved, ...pos };
     setFrame(drag.frame);
   }, []);
 
@@ -178,7 +179,7 @@ function PinnedMediaViewer({
       const drag = dragRef.current;
       dragRef.current = null;
       if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-      if (drag && drag.frame !== drag.origin) saveLayout(drag.frame, locked);
+      if (drag && drag.frame !== drag.saved) saveLayout(drag.frame, locked);
     },
     [locked, saveLayout],
   );

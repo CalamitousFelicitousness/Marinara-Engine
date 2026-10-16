@@ -84,7 +84,8 @@ test("a pinned gallery image keeps its place and size after a reload, and a lock
     await openChat(page, chat.id, { ...image, kind: "image" });
 
     const pinned = page.getByLabel("Pinned gallery image. Drag to move.", { exact: true });
-    await expect(pinned).toBeVisible();
+    // The first page a fresh dev server serves can take longer than the default wait.
+    await expect(pinned).toBeVisible({ timeout: 30_000 });
     const start = await box(pinned);
 
     // Move it near the top-left corner, then make it smaller from its corner handle.
@@ -99,13 +100,27 @@ test("a pinned gallery image keeps its place and size after a reload, and a lock
     const handle = page.getByLabel("Resize pinned image", { exact: true });
     const corner = await box(handle);
     await drag(page, { x: corner.x + corner.width / 2, y: corner.y + corner.height / 2 }, { x: -90, y: -90 });
-    const arranged = await box(pinned);
+    let arranged = await box(pinned);
     expect(arranged.width).toBeLessThan(moved.width - 40);
     expect(Math.abs(arranged.width / arranged.height - 1.5)).toBeLessThan(0.02);
 
     await page.reload();
     await expect(pinned).toBeVisible();
     expectSameBox(await box(pinned), arranged);
+
+    // A narrower window (a phone's keyboard or rotation) shrinks the pin to fit. Moving it there keeps the size
+    // it was given, so it grows back when the window does.
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ width: Math.round(arranged.width * 0.8) + 16, height: viewport.height });
+    await expect.poll(async () => (await box(pinned)).width).toBeLessThan(arranged.width - 10);
+    const squeezed = await box(pinned);
+    await drag(page, { x: squeezed.x + squeezed.width / 2, y: squeezed.y + squeezed.height / 2 }, { x: 0, y: 30 });
+    await page.setViewportSize(viewport);
+    await expect.poll(async () => Math.round((await box(pinned)).width)).toBe(Math.round(arranged.width));
+    const regrown = await box(pinned);
+    expect(Math.abs(regrown.y - (squeezed.y + 30))).toBeLessThanOrEqual(1);
+    expect(Math.abs(regrown.height - arranged.height)).toBeLessThanOrEqual(1);
+    arranged = regrown;
 
     // Lock it: dragging the image or looking for its resize handle does nothing now.
     const lock = page.getByRole("button", { name: "Lock pinned image", exact: true });

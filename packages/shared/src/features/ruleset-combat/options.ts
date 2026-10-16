@@ -104,6 +104,7 @@ import {
   rulesetPositionOf,
   rulesetReachableCells,
   rulesetDistanceTo,
+  rulesetZoneCells,
   rulesetFootprint,
   rulesetFootprintsSee,
   rulesetGap,
@@ -114,7 +115,13 @@ import {
   rulesetFills,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
-import { rulesetStandingProps, rulesetStandingSections, rulesetZoneMoveCells, rulesetZoneTurnCells } from "./zones.js";
+import {
+  rulesetStandingProps,
+  rulesetStandingSections,
+  rulesetStandingZones,
+  rulesetZoneMoveCells,
+  rulesetZoneTurnCells,
+} from "./zones.js";
 import {
   rulesetCanSee,
   rulesetCarriesLight,
@@ -551,6 +558,28 @@ export function rulesetTargetRefusal(
   const actor = rulesetCombatant(state, actorId);
   if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
   return null;
+}
+
+/**
+ * The lasting areas an entry that ends what catalogs' entries put on may be aimed at (1.374): ones
+ * an entry of those catalogs left standing, any of whose cells is within its reach. Off a board,
+ * every such one.
+ */
+export function rulesetDispelTargets(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): Array<{ casterId: string; actionId: string; label: string }> {
+  const ends = action.endsSpells;
+  if (!ends?.zones) return [];
+  const reach = positioned(state) && rulesetPositionOf(actor) ? rulesetOptionReach(state, actor.id, action.id) : null;
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action: made }) => {
+    if (made.catalog === undefined || !ends.catalogs.includes(made.catalog)) return [];
+    if (reach && !rulesetZoneCells(state, caster, zone).some((cell) => rulesetDistanceTo(cell, actor) <= reach.max)) {
+      return [];
+    }
+    return [{ casterId: caster.id, actionId: zone.actionId, label: zone.label }];
+  });
 }
 
 /**
@@ -2492,6 +2521,29 @@ function optionFrom(
   if (!atItsMoment) {
     const walls = rulesetWallTargets(state, actor, action);
     if (walls.length > 0) option.walls = walls;
+    // Lasting areas it may end instead (1.374): Dispel Magic on a Wall of Fire.
+    const dispels = rulesetDispelTargets(state, actor, action);
+    if (dispels.length > 0) option.dispels = dispels;
+  }
+  // What its user may pick to end on each target (1.374): Cleansing Touch's one spell.
+  if (action.endsSpells?.chosen) {
+    const ends = action.endsSpells;
+    const choices: NonNullable<RulesetCombatOption["endsChoices"]> = {};
+    for (const id of rulesetOptionTargets(definition, state, actor.id, option)) {
+      const held = (rulesetCombatant(state, id)?.tracked ?? []).filter(
+        (entry) => entry.catalog !== undefined && ends.catalogs.includes(entry.catalog) && !entry.kept,
+      );
+      const seen = new Set<string>();
+      const list = held.flatMap((entry) => {
+        if (seen.has(entry.condition)) return [];
+        seen.add(entry.condition);
+        const label =
+          definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+        return [{ condition: entry.condition, label, ...(entry.level !== undefined ? { level: entry.level } : {}) }];
+      });
+      if (list.length > 0) choices[id] = list;
+    }
+    if (Object.keys(choices).length > 0) option.endsChoices = choices;
   }
   // Where a teleport may go, and who may go along (1.276). With nowhere to go it is not offered.
   // Or out of the fight altogether, where it may leave it (1.279), the only way it goes off a board.

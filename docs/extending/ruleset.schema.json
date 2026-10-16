@@ -41172,6 +41172,14 @@
                           ],
                           "additionalProperties": false
                         },
+                        "chosen": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "zones": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -69394,6 +69402,14 @@
                               ],
                               "additionalProperties": false
                             },
+                            "chosen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "zones": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -81886,6 +81902,14 @@
                                       "dc"
                                     ],
                                     "additionalProperties": false
+                                  },
+                                  "chosen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "zones": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

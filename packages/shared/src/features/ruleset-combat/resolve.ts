@@ -319,6 +319,10 @@ interface RulesetCombatContext {
   aimedAt?: RulesetCombatCell;
   /** Where further copies of the area were set down (1.178). */
   aimedAlso?: RulesetCombatCell[];
+  /** A lasting area its endsSpells is aimed at instead of a creature (1.374). */
+  dispel?: { casterId: string; actionId: string };
+  /** The conditions its user picked for its endsSpells to end (1.374). */
+  endsChosen?: ReadonlySet<string>;
   falling?: RulesetFallResume[];
   /** A standing zone is striking on its own, not its caster acting (1.180). */
   byZone?: true;
@@ -4693,40 +4697,73 @@ function applyChoice(
   }
   // A wall's section struck at instead of a creature (1.200).
   if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
+  // A lasting area to end instead of a creature (1.374), one the menu offered; and what to end on a
+  // target, picked from what the menu offered for them.
+  const dispel =
+    choice.dispel !== undefined
+      ? option.dispels?.find(
+          (one) =>
+            typeof choice.dispel === "object" &&
+            one.casterId === choice.dispel?.casterId &&
+            one.actionId === choice.dispel?.actionId,
+        )
+      : undefined;
+  if (choice.dispel !== undefined && (!dispel || choice.targetIds.length > 0)) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
+  if (choice.ends !== undefined) {
+    const offered = option.endsChoices;
+    const named = actor.actions.find((entry) => entry.id === option.id)?.endsSpells;
+    if (
+      !offered ||
+      !Array.isArray(choice.ends) ||
+      choice.ends.length === 0 ||
+      choice.ends.length > (named?.count ?? choice.ends.length) ||
+      !choice.ends.every(
+        (condition) =>
+          typeof condition === "string" &&
+          choice.targetIds.some((id) => offered[id]?.some((one) => one.condition === condition)),
+      )
+    ) {
+      return refusal(state, choice.actorId, "bad-target", option.id);
+    }
+  }
   // Targets, checked against the side and the count the option itself declared, or the count the
   // pool it is paid with lets it take (1.171).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
   const grow = areaGrowth(definition, actor, option.id, choice.payWith);
   // A burst centred on its user (1.282) catches whom it reaches, and is pointed at nobody.
   const around = actor.actions.find((entry) => entry.id === option.id && entry.around);
-  const targets = around
-    ? rulesetAroundTargets(state, actor, around).filter((one) => !rulesetSealedApart(definition, state, actor, one))
-    : area
-      ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
-          toward: choice.toward,
-          ring: choice.ring,
-          also,
-          ...(grow ? { grow } : {}),
-        })
-          .map((id) => rulesetCombatant(state, id)!)
-          // A sphere keeps an area out, and in (1.314).
-          .filter((one) => !rulesetSealedApart(definition, state, actor, one))
-      : pickTargets(
-          definition,
-          state,
-          actor,
-          mode
-            ? {
-                id: option.id,
-                targets: { ...option.targets, count: mode.targets },
-                // A mode's own reach (1.190): a javelin of lightning's bolt.
-                ...modeRange(actor, option.id, mode.id),
-              }
-            : paidCount !== undefined
-              ? { id: option.id, targets: { ...option.targets, count: paidCount } }
-              : option,
-          choice.targetIds,
-        );
+  const targets = dispel
+    ? []
+    : around
+      ? rulesetAroundTargets(state, actor, around).filter((one) => !rulesetSealedApart(definition, state, actor, one))
+      : area
+        ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
+            toward: choice.toward,
+            ring: choice.ring,
+            also,
+            ...(grow ? { grow } : {}),
+          })
+            .map((id) => rulesetCombatant(state, id)!)
+            // A sphere keeps an area out, and in (1.314).
+            .filter((one) => !rulesetSealedApart(definition, state, actor, one))
+        : pickTargets(
+            definition,
+            state,
+            actor,
+            mode
+              ? {
+                  id: option.id,
+                  targets: { ...option.targets, count: mode.targets },
+                  // A mode's own reach (1.190): a javelin of lightning's bolt.
+                  ...modeRange(actor, option.id, mode.id),
+                }
+              : paidCount !== undefined
+                ? { id: option.id, targets: { ...option.targets, count: paidCount } }
+                : option,
+            choice.targetIds,
+          );
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, option.id);
   // A target named behind a ward this payment does not get through (1.179).
   const named = actor.actions.find((entry) => entry.id === option.id);
@@ -4742,6 +4779,8 @@ function applyChoice(
   if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
 
   const { ctx, finish } = begin(definition, combat, state, roller);
+  if (dispel) ctx.dispel = { casterId: dispel.casterId, actionId: dispel.actionId };
+  if (choice.ends?.length) ctx.endsChosen = new Set(choice.ends);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
   if (also) ctx.aimedAlso = also;
   if (teleporting) {
@@ -9374,6 +9413,8 @@ function endSpellsOn(
   const reach = ends.upTo === "paid" ? paid : ends.upTo;
   const found = target.tracked
     .filter((entry) => entry.catalog !== undefined && ends.catalogs.includes(entry.catalog) && !entry.kept)
+    // Only what its user picked (1.374), where they picked.
+    .filter((entry) => !ends.chosen || !ctx.endsChosen || ctx.endsChosen.has(entry.condition))
     .sort((a, b) => (b.level ?? 0) - (a.level ?? 0));
   let left = ends.count ?? found.length;
   const done = new Set<RulesetTrackedCondition>();
@@ -9408,6 +9449,44 @@ function endSpellsOn(
     } else removeCondition(ctx, target, entry.condition, "cured");
     done.add(entry);
   }
+}
+
+/** A lasting area an endsSpells is aimed at (1.374), ended on the same terms as a condition: within
+ *  reach outright, above it on the check. Dispel Magic on a Wall of Fire. */
+function endSpellZone(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  paid: number,
+): void {
+  const ends = action.endsSpells!;
+  const aimed = ctx.dispel!;
+  const found = rulesetStandingZones(ctx.state).find(
+    ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
+  );
+  if (!found || found.action.catalog === undefined || !ends.catalogs.includes(found.action.catalog)) return;
+  const { caster, zone } = found;
+  const level = rulesetPaidLevel(ctx.definition, caster, found.action, zone.payWith);
+  const reach = ends.upTo === "paid" ? paid : ends.upTo;
+  if (reach !== undefined && level > reach) {
+    const said = {
+      type: "counter" as const,
+      actorId: actor.id,
+      targetId: caster.id,
+      label: zone.label,
+      level,
+      reach,
+      success: false,
+    };
+    if (!ends.above || rulesetCombatIsPool(ctx.combat)) {
+      ctx.events.push(said);
+      return;
+    }
+    if (!levelCheck(ctx, actor, action.label, ends.above, level, said)) return;
+  }
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "dispelled" });
+  if (caster.concentrating?.actionId === zone.actionId) endConcentration(ctx, caster, "dispelled");
+  else endZones(ctx, caster, zone.actionId);
 }
 
 /** Every point of health, temporary ones too, gone at once. */
@@ -9636,6 +9715,10 @@ function resolveActionBody(
   // Kept off a sanctuary's holder by a failed save (1.370), before anything is rolled at them. A held
   // blow picking up was let through already.
   if (!held) targets = sanctuaryTargets(ctx, actor, action, targets);
+  // Aimed at a lasting area rather than a creature (1.374): Dispel Magic on a wall.
+  if (action.endsSpells && ctx.dispel && !held) {
+    endSpellZone(ctx, actor, action, rulesetPaidLevel(ctx.definition, actor, action, payWith));
+  }
   // A blow after a straight run at its one target carries the charge (1.186), read again as a held
   // blow picks up, since the run is still the one this turn walked.
   const charging = action.charge && (held ? rulesetCombatant(ctx.state, held.targetId) : targets[0]);

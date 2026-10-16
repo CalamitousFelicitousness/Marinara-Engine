@@ -221,6 +221,10 @@ const command = z.discriminatedUnion("type", [
     also: z.array(coord).max(9).optional(),
     /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
     wall: coord.optional(),
+    /** A lasting area ended instead of a creature (1.374), checked by the resolver. */
+    dispel: z.object({ casterId: key, actionId: key }).strict().optional(),
+    /** Which of its target's conditions it ends (1.374), checked by the resolver. */
+    ends: z.array(key).max(16).optional(),
     /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */

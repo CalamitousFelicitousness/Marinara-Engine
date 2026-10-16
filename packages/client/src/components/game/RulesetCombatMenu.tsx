@@ -874,6 +874,65 @@ export function RulesetCombatMenu({
               </button>
             );
           })}
+          {/* What to end on a target, picked (1.374): Cleansing Touch's one spell. */}
+          {!many &&
+            targets.flatMap((combatant) =>
+              (option.endsChoices?.[combatant.id] ?? []).map((choice) => (
+                <button
+                  key={`${combatant.id}:${choice.condition}`}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    closeStep();
+                    onChoose(
+                      option.id,
+                      [combatant.id],
+                      step.payWith,
+                      { ends: [choice.condition] },
+                      step.style,
+                      step.mode,
+                      step.amount,
+                      step.alters,
+                    );
+                  }}
+                  className={cn(
+                    buttonClass,
+                    "border-violet-300/30 bg-violet-500/10 text-white/85 hover:bg-violet-500/20",
+                  )}
+                >
+                  <span className="block font-semibold">
+                    {t("game.combat.ruleset.target.endsChosen", { target: combatant.name, spell: choice.label })}
+                  </span>
+                </button>
+              )),
+            )}
+          {/* A lasting area to end instead (1.374): Dispel Magic on a wall. */}
+          {(option.dispels ?? []).map((zone, index) => (
+            <button
+              ref={index === 0 && targets.length === 0 ? first : undefined}
+              key={`${zone.casterId}:${zone.actionId}`}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  { dispel: { casterId: zone.casterId, actionId: zone.actionId } },
+                  step.style,
+                  step.mode,
+                  step.amount,
+                  step.alters,
+                );
+              }}
+              className={cn(buttonClass, "border-violet-300/30 bg-violet-500/10 text-white/85 hover:bg-violet-500/20")}
+            >
+              <span className="block font-semibold">
+                {t("game.combat.ruleset.target.dispel", { zone: zone.label })}
+              </span>
+            </button>
+          ))}
           {sections.map((section, index) => (
             <button
               ref={index === 0 && targets.length === 0 ? first : undefined}

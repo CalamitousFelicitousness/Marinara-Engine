@@ -2192,6 +2192,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 }
 
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
+/** Ending a picked spell, or a lasting area (1.374): Cleansing Touch, Dispel Magic on a wall. */
+function carriesEndsChoice374(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsChoice374(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const ends = plainRecord(record.endsSpells);
+  if (ends && (ends.chosen !== undefined || ends.zones !== undefined)) return true;
+  return featureValues(record).some((one) => carriesEndsChoice374(one, depth + 1));
+}
+
 /** A rest that puts a condition on, and a condition whose rule ends it on its holder's attack or
  *  cast (1.373): Tranquility. */
 function carriesRestPuts373(ruleset: unknown): boolean {
@@ -5567,6 +5578,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ending a picked spell, or a lasting area, 1.374.
+  if (
+    !declaresApi(374) &&
+    (carriesEndsChoice374(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsChoice374(document)))
+  ) {
+    return "A ruleset whose entries end a spell their user picks (endsSpells chosen) or a lasting area (endsSpells zones) requires schemaVersion 2 and capabilityApi 1.374 or newer";
+  }
   // A rest that puts a condition on, and a rule ended by attacking or casting, 1.373.
   if (!declaresApi(373) && carriesRestPuts373(ruleset)) {
     return "A ruleset whose rests put a condition on (puts) or whose conditions' rules end on their holder's attack or cast (endsWhenHolder attacks, casts) requires schemaVersion 2 and capabilityApi 1.373 or newer";

@@ -286,7 +286,10 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
   // Something aimed at the actor themselves is not a choice, so it is never a picking step.
   if (option.targets.side === "self") return false;
   // A wall's section it may strike instead counts (1.200).
-  return option.targets.count > 0 && (option.targetIds.length > 0 || (option.walls?.length ?? 0) > 0);
+  return (
+    option.targets.count > 0 &&
+    (option.targetIds.length > 0 || (option.walls?.length ?? 0) > 0 || (option.dispels?.length ?? 0) > 0)
+  );
 }
 
 /** The targets a player has picked after clicking one more. Only ids the option itself lists can

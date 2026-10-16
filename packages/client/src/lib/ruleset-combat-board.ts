@@ -114,6 +114,10 @@ export interface RulesetAimChoice {
 export type RulesetCellChoice = {
   to?: RulesetCombatCell;
   wall?: RulesetCombatCell;
+  /** A lasting area ended instead of a creature (1.374). */
+  dispel?: { casterId: string; actionId: string };
+  /** Which of its target's conditions it ends (1.374). */
+  ends?: string[];
   /** Who goes along on a teleport (1.276). */
   carries?: string[];
 } & Partial<RulesetAimChoice>;
@@ -318,7 +322,11 @@ export function rulesetNothingInReach(view: DirectedRulesetView): boolean {
   );
   if (offensive.length === 0) return false;
   return offensive.every(
-    (option) => option.targetIds.length === 0 && (option.aim?.length ?? 0) === 0 && (option.walls?.length ?? 0) === 0,
+    (option) =>
+      option.targetIds.length === 0 &&
+      (option.aim?.length ?? 0) === 0 &&
+      (option.walls?.length ?? 0) === 0 &&
+      (option.dispels?.length ?? 0) === 0,
   );
 }
 

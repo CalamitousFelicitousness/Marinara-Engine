@@ -4944,7 +4944,7 @@ const catalogMechanicsObject = z
      *  first and `count` of them at most: within `upTo` (`"paid"`, the level it is paid at, or a
      *  number) outright, above it on a check of `above.check` against `above.dc` plus its level.
      *  5e's Dispel Magic, `{"catalogs": ["spells"], "upTo": "paid", "above": {...}}`; Cleansing
-     *  Touch, one spell. */
+     *  Touch, one spell. On an item's use too (Capability API 1.374): a scroll of Dispel Magic. */
     endsSpells: z
       .object({
         catalogs: z.array(sheetId).min(1).max(8),
@@ -4954,6 +4954,12 @@ const catalogMechanicsObject = z
           .object({ check: rulesetValueRefSchema, dc: z.number().int().min(0).max(1000) })
           .strict()
           .optional(),
+        /** Its user picks which of them end, up to `count` (Capability API 1.374), rather than the
+         *  highest first: 5e's Cleansing Touch, "one spell". */
+        chosen: z.literal(true).optional(),
+        /** It may be aimed at a lasting area one of those catalogs' entries left standing instead of a
+         *  creature (Capability API 1.374), ending it on the same terms: Dispel Magic on a Wall of Fire. */
+        zones: z.literal(true).optional(),
       })
       .strict()
       .refine((ends) => !ends.above || ends.upTo !== undefined, {
@@ -8080,7 +8086,15 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
-    if (use.kind === "utility" && !use.teleport && !use.clears && !use.calls && (!use.zone || !use.area)) {
+    // Or ends what spells put on (1.374): a scroll of Dispel Magic.
+    if (
+      use.kind === "utility" &&
+      !use.teleport &&
+      !use.clears &&
+      !use.calls &&
+      !use.endsSpells &&
+      (!use.zone || !use.area)
+    ) {
       issue(
         "kind",
         "A utility use leaves an area standing, clears growth, teleports or calls creatures, so it has an area and a zone, clears, a teleport or calls",
@@ -16254,6 +16268,16 @@ function useIssues(
     const names = rulesetSheetNames(definition.sheet, definition.items);
     for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
       add([...at, "sheetDifficulty", issue.key], issue.message);
+    }
+  }
+  // What ends a catalog's entries' conditions from an item (1.374): catalogs there are, a sheet it reads.
+  if (use.endsSpells) {
+    castsIssues(definition, use.endsSpells.catalogs, [...at, "endsSpells", "catalogs"], add);
+    if (use.endsSpells.above) {
+      const names = rulesetSheetNames(definition.sheet, definition.items);
+      for (const issue of rulesetValueRefIssues(use.endsSpells.above.check, names, names.derived, true)) {
+        add([...at, "endsSpells", "above", "check", issue.key], issue.message);
+      }
     }
   }
   if (use.amountAdd) {

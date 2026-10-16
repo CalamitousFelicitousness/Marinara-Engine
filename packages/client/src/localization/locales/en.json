@@ -2433,6 +2433,8 @@
   "game.combat.ruleset.style.prompt": "How is {{label}} made?",
   "game.combat.ruleset.target.back": "Back",
   "game.combat.ruleset.target.confirm": "Confirm {{count}}",
+  "game.combat.ruleset.target.dispel": "End {{zone}}",
+  "game.combat.ruleset.target.endsChosen": "{{target}}: end {{spell}}",
   "game.combat.ruleset.target.prompt": "Choose a target for {{label}}.",
   "game.combat.ruleset.target.promptMany": "Choose up to {{count}} targets for {{label}}, then confirm.",
   "game.combat.ruleset.target.promptRepeat": "Choose {{count}} targets for {{label}}, the same one again if you like, then confirm.",

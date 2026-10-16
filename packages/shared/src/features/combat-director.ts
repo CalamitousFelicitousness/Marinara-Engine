@@ -63,6 +63,10 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
       wall?: { x: number; y: number };
+      /** A lasting area ended instead of a creature (1.374): one of the option's `dispels`. */
+      dispel?: { casterId: string; actionId: string };
+      /** Which of its target's conditions it ends (1.374), from the option's `endsChoices`. */
+      ends?: string[];
       /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
       carries?: string[];
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */

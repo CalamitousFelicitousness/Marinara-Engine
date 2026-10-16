@@ -729,6 +729,10 @@ export interface RulesetCombatAction {
     count?: number;
     upTo?: "paid" | number;
     above?: { modifier: number; dc: number };
+    /** Its user picks which end (1.374). */
+    chosen?: true;
+    /** It may be aimed at a lasting area instead (1.374). */
+    zones?: true;
   };
   /** Offered only while its user holds this condition, which gave it to them (1.236). */
   whileHolds?: string;
@@ -3107,6 +3111,12 @@ export interface RulesetCombatOption {
   targetsWith?: Record<string, number>;
   /** The cells of standing wall sections this attack may be pointed at instead (1.200). */
   walls?: RulesetCombatCell[];
+  /** Lasting areas it may be aimed at instead of a creature, to end them (1.374): Dispel Magic on a
+   *  Wall of Fire. The choice names one as `dispel`. */
+  dispels?: Array<{ casterId: string; actionId: string; label: string }>;
+  /** What its user may pick to end on each target, by target id (1.374): the conditions entries of
+   *  its catalogs put on them. The choice names them as `ends`; left out, the highest end first. */
+  endsChoices?: Record<string, Array<{ condition: string; label: string; level?: number }>>;
   /** Where a teleport may go (1.276), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
   teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
@@ -3222,6 +3232,10 @@ export interface RulesetCombatChoice {
   /** A wall's section to strike at instead of a creature (1.200): any cell of it, one the option's
    *  `walls` offers. */
   wall?: RulesetCombatCell;
+  /** A lasting area to end instead of a creature (1.374): one the option's `dispels` offers. */
+  dispel?: { casterId: string; actionId: string };
+  /** Which of its target's conditions to end (1.374), from the option's `endsChoices`. */
+  ends?: string[];
   /** Lay a wall whose area allows it as a ring around `at` instead (1.177). */
   ring?: boolean;
   /** Where further copies of an area that allows them are set down (1.178), each touching the cells

@@ -2898,6 +2898,8 @@ function mechanicsAction(
       ...(ends.count !== undefined ? { count: ends.count } : {}),
       ...(ends.upTo !== undefined ? { upTo: ends.upTo } : {}),
       ...(ends.above ? { above: { modifier: Math.trunc(resolve(ends.above.check)), dc: ends.above.dc } } : {}),
+      ...(ends.chosen ? { chosen: true as const } : {}),
+      ...(ends.zones ? { zones: true as const } : {}),
     };
   }
   if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;

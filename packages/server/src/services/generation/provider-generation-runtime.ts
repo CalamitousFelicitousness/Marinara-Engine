@@ -1,4 +1,5 @@
 import {
+  capabilityModelId,
   isClaudeAdaptiveOnlyNoSamplingModel,
   normalizeThinkingTagPairs,
   resolveManagedGenerationParameters,
@@ -194,7 +195,7 @@ export function resolveGenerationParameters(args: GenerationParameterArgs): Reso
     if (capped < runtime.maxTokens) forceParameters("outputCap", { maxTokens: capped });
   }
 
-  const modelLower = (args.connection.model ?? "").toLowerCase();
+  const modelLower = capabilityModelId(args.connection.model ?? "");
   const providerLower = (args.connection.provider ?? "").toLowerCase();
   const isCodex = providerLower === "openai_chatgpt";
   if (runtime.reasoningEffort !== null && keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) {

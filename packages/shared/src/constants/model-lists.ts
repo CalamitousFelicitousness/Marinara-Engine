@@ -13,16 +13,37 @@ export interface KnownModel {
   maxOutput: number;
 }
 
+/** Channel tags that proxies put in front of a model id, such as LinkAPI's `[次]`, `[SP]` and `[free]`. */
+const DECORATIVE_MODEL_PREFIX_RE = /^(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）))+\s*/u;
+
+/**
+ * The id that capability checks read: trimmed, lower case, without a proxy channel tag. `[次]claude-opus-4-6` is
+ * checked as `claude-opus-4-6`. Vendor paths (`anthropic/…`) stay, because OpenRouter rules read them. Never send
+ * this id to a provider; the request keeps the id the user configured.
+ */
+export function capabilityModelId(model: string): string {
+  return model.trim().toLowerCase().replace(DECORATIVE_MODEL_PREFIX_RE, "");
+}
+
+/**
+ * Proxy ids such as `claude-opus-4-6-thinking` (new-api, LinkAPI) make the proxy turn thinking on for the request,
+ * whatever the request says. Treat them like a thinking request: no sampling and no forced tool choice, which
+ * Anthropic rejects while thinking runs. Thinking settings Marinara sends still apply where the proxy keeps them.
+ */
+export function impliesProxyThinking(model: string): boolean {
+  return /(?<!-no|-non)-thinking$/u.test(capabilityModelId(model));
+}
+
 const CLAUDE_ADAPTIVE_ONLY_OPUS_RE = /claude-opus-4-(?:[7-9]|\d{2,})/;
 
 /** Native Claude ID and the dotted ID used by OpenRouter/compatible gateways. */
 export function isClaudeOpus55Model(model: string): boolean {
-  return /(?:^|\/)claude-opus-5[.-]5(?:$|[-:])/iu.test(model.trim());
+  return /(?:^|\/)claude-opus-5[.-]5(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 /** Native Claude ID and the dotted ID used by OpenRouter/compatible gateways. */
 export function isClaudeSonnet55Model(model: string): boolean {
-  return /(?:^|\/)claude-sonnet-5[.-]5(?:$|[-:])/iu.test(model.trim());
+  return /(?:^|\/)claude-sonnet-5[.-]5(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 /**
@@ -36,7 +57,7 @@ export function isClaudeStrictRequestModel(model: string): boolean {
 }
 
 export function isClaudeAdaptiveOnlyNoSamplingModel(model: string): boolean {
-  const normalized = model.toLowerCase();
+  const normalized = capabilityModelId(model);
   return (
     CLAUDE_ADAPTIVE_ONLY_OPUS_RE.test(normalized) ||
     /claude-(?:opus|sonnet)-5(?:$|[-.])/u.test(normalized) ||
@@ -46,7 +67,7 @@ export function isClaudeAdaptiveOnlyNoSamplingModel(model: string): boolean {
 }
 
 export function supportsXhighReasoningEffort(model: string): boolean {
-  const normalized = model.toLowerCase();
+  const normalized = capabilityModelId(model);
   return (
     isOpenAIGpt6Model(normalized) ||
     normalized.startsWith("gpt-5.6") ||
@@ -64,7 +85,7 @@ export function supportsXhighReasoningEffort(model: string): boolean {
  * lowered to `high` on the way to the provider.
  */
 export function isZaiMaxReasoningEffortModel(model: string): boolean {
-  return /(?:^|\/)glm-5\.[23](?:$|[-:])/u.test(model.toLowerCase());
+  return /(?:^|\/)glm-5\.[23](?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 /**
@@ -73,7 +94,7 @@ export function isZaiMaxReasoningEffortModel(model: string): boolean {
  * https://docs.mistral.ai/capabilities/reasoning
  */
 export function isMistralAdjustableReasoningModel(model: string): boolean {
-  const normalized = model.trim().toLowerCase();
+  const normalized = capabilityModelId(model);
   return (
     normalized === "mistral-small-latest" ||
     /^mistral-large-4(?:$|[-.])/u.test(normalized) ||
@@ -83,19 +104,19 @@ export function isMistralAdjustableReasoningModel(model: string): boolean {
 
 /** GLM 5.3 on Mistral (`zai-glm-5-3`) always reasons and takes only "low", "high" or "max", never "none". */
 export function isMistralGlm53Model(model: string): boolean {
-  return /^zai-glm-5-3(?:$|-)/u.test(model.trim().toLowerCase());
+  return /^zai-glm-5-3(?:$|-)/u.test(capabilityModelId(model));
 }
 
 export function isOpenAIGpt56Model(model: string): boolean {
-  return model.toLowerCase().startsWith("gpt-5.6");
+  return capabilityModelId(model).startsWith("gpt-5.6");
 }
 
 export function isOpenAIGpt6AstraModel(model: string): boolean {
-  return /^(?:openai\/)?gpt-6-astra(?:$|[-:])/i.test(model);
+  return /^(?:openai\/)?gpt-6-astra(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 export function isOpenAIGpt6Model(model: string): boolean {
-  return /^(?:openai\/)?gpt-6(?:-(?:astra|sol|luna)|\.1-sol)(?:$|[-:])/i.test(model);
+  return /^(?:openai\/)?gpt-6(?:-(?:astra|sol|luna)|\.1-sol)(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 /**
@@ -103,7 +124,7 @@ export function isOpenAIGpt6Model(model: string): boolean {
  * so these never take it at all. https://developers.openai.com/api/docs/models/gpt-6.1-sol
  */
 export function isOpenAIGpt6AlwaysReasoningModel(model: string): boolean {
-  return isOpenAIGpt6AstraModel(model) || /^(?:openai\/)?gpt-6\.1-sol(?:$|[-:])/i.test(model);
+  return isOpenAIGpt6AstraModel(model) || /^(?:openai\/)?gpt-6\.1-sol(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 export function isOpenAIGpt56SolProAlias(model: string): boolean {
@@ -132,7 +153,7 @@ export function resolveProviderReasoningEffort(args: {
     return "medium";
   }
   if (!args.reasoningEffort || args.reasoningEffort === "none") return null;
-  const modelLower = args.model.toLowerCase();
+  const modelLower = capabilityModelId(args.model);
 
   const xaiUsesAutoReasoning =
     (providerLower === "xai" && isXaiAutoReasoningModel(modelLower)) ||
@@ -175,7 +196,7 @@ export function resolveProviderReasoningEffort(args: {
 
 /** Gemini 3 and later set thinking with `thinkingLevel`; Gemini 2.5 and older take `thinkingBudget`. */
 export function isGeminiThinkingLevelModel(model: string): boolean {
-  return /gemini-(?:[3-9]|[1-9]\d)(?!\d)/i.test(model);
+  return /gemini-(?:[3-9]|[1-9]\d)(?!\d)/u.test(capabilityModelId(model));
 }
 
 /**
@@ -185,12 +206,12 @@ export function isGeminiThinkingLevelModel(model: string): boolean {
  * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
  */
 export function isGeminiArgonModel(model: string): boolean {
-  return /(?:^|\/)gemini-4-argon(?:$|-)/i.test(model);
+  return /(?:^|\/)gemini-4-argon(?:$|-)/u.test(capabilityModelId(model));
 }
 
 /** Any Gemini model id, bare or with a router prefix such as OpenRouter's `google/`. */
 export function isGeminiModel(model: string): boolean {
-  return /(?:^|\/)gemini-/i.test(model);
+  return /(?:^|\/)gemini-/u.test(capabilityModelId(model));
 }
 
 /**
@@ -202,16 +223,16 @@ export function isGeminiModel(model: string): boolean {
  * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-6-flash (also 3-7, 3-8)
  */
 export function isGeminiStrictRequestModel(model: string): boolean {
-  return /(?:^|\/)gemini-(?:4-argon|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/i.test(model);
+  return /(?:^|\/)gemini-(?:4-argon|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/u.test(capabilityModelId(model));
 }
 
 export function isXaiConfigurableReasoningModel(model: string): boolean {
-  const normalized = model.toLowerCase().replace(/^x-ai\//, "");
+  const normalized = capabilityModelId(model).replace(/^x-ai\//, "");
   return /^grok-4\.[3567](?:$|-)/.test(normalized);
 }
 
 export function isXaiAutoReasoningModel(model: string): boolean {
-  const normalized = model.toLowerCase().replace(/^x-ai\//, "");
+  const normalized = capabilityModelId(model).replace(/^x-ai\//, "");
   return normalized.startsWith("grok-4-1-fast");
 }
 
@@ -1261,22 +1282,40 @@ const OPENAI_COMPATIBLE_AGGREGATOR_MODELS: KnownModel[] = [
 ];
 
 /**
- * Look up a known model by ID across all providers.
+ * Variant suffixes proxies add to a catalog id (LinkAPI `-thinking` and `-r`, `-nothinking`, `-search`, effort
+ * levels). findKnownModel removes them one at a time, and only while the id is still unknown, so a real catalog id
+ * that ends the same way (`command-r`) always matches as it is.
+ */
+const PROXY_MODEL_SUFFIX_RE = /-(?:thinking|nothinking|no-thinking|non-thinking|search|minimal|low|medium|high|r)$/u;
+
+/**
+ * Look up a known model by ID across all providers. A proxy id resolves to the catalog model it serves:
+ * `[次]claude-opus-4-6-thinking` is `claude-opus-4-6`.
  */
 export function findKnownModel(provider: APIProvider, modelId: string): KnownModel | undefined {
   const exact = MODEL_LISTS[provider]?.find((model) => model.id === modelId);
-  if (exact || (provider !== "openrouter" && provider !== "nanogpt" && provider !== "custom")) return exact;
+  if (exact) return exact;
 
   // Aggregators namespace model IDs (for example, `deepseek/deepseek-v4-pro`)
   // while direct OAI-compatible endpoints generally do not. Resolve both
   // forms without exposing a large, stale static list in their model pickers.
-  const normalizedId = modelId.trim().toLowerCase();
-  const unqualifiedId = isClaudeOpus55Model(normalizedId)
+  const catalog =
+    provider === "openrouter" || provider === "nanogpt" || provider === "custom"
+      ? OPENAI_COMPATIBLE_AGGREGATOR_MODELS
+      : MODEL_LISTS[provider];
+  if (!catalog?.length) return undefined;
+  const normalizedId = capabilityModelId(modelId);
+  let id = isClaudeOpus55Model(normalizedId)
     ? "claude-opus-5-5"
     : isClaudeSonnet55Model(normalizedId)
       ? "claude-sonnet-5-5"
       : (normalizedId.split("/").pop()?.split(":", 1)[0] ?? normalizedId);
-  return OPENAI_COMPATIBLE_AGGREGATOR_MODELS.find((model) => model.id.toLowerCase() === unqualifiedId);
+  for (;;) {
+    const known = catalog.find((model) => model.id.toLowerCase() === id);
+    const shorter = id.replace(PROXY_MODEL_SUFFIX_RE, "");
+    if (known || shorter === id) return known;
+    id = shorter;
+  }
 }
 
 function normalizeProviderForCatalog(provider: APIProvider | string): APIProvider | null {

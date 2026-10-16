@@ -6,8 +6,10 @@ import type { GameState } from "@marinara-engine/shared";
 import {
   collectStateChanges,
   getStateSectionDraftStatus,
+  humanizeStateKey,
   layoutStateJson,
   searchStateSections,
+  setStateValueAtPath,
   statePathKey,
 } from "../../packages/client/src/lib/state-editor/state-editor-json.js";
 import {
@@ -96,6 +98,22 @@ assert.equal(
   "search reads the draft values it's given",
 );
 assert.deepEqual(searchStateSections([section], "   "), [], "a blank query finds nothing");
+assert.deepEqual(hits[0]!.path, [0, "mood"], "a result carries its path for the Fields view");
+
+// ── fields view ──
+
+const people0 = sample.people as Array<Record<string, unknown>>;
+const edited = setStateValueAtPath(sample.people, [0, "mood"], "calm") as Array<Record<string, unknown>>;
+assert.equal(edited[0]!.mood, "calm", "a field edit lands at its path");
+assert.equal(people0[0]!.mood, "tense", "the saved value is never mutated");
+assert.equal(edited[1], people0[1], "untouched items keep their identity");
+assert.deepEqual(Object.keys(edited[0]!), Object.keys(people0[0]!), "key order stays as the user sees it");
+assert.equal(setStateValueAtPath({ a: 1 }, [], 2), 2, "the empty path replaces the root");
+assert.deepEqual(setStateValueAtPath({ a: 1 }, [0, "x"], 2), { a: 1 }, "a path that doesn't fit changes nothing");
+assert.equal(humanizeStateKey("currentMood"), "Current mood");
+assert.equal(humanizeStateKey("world_custom-fields"), "World custom fields");
+assert.equal(humanizeStateKey("maxHP"), "Max HP", "acronyms keep their capitals");
+assert.equal(humanizeStateKey("___"), "___", "a key with no words stays as it is");
 
 // ── game-state patch folding ──
 

@@ -1217,18 +1217,31 @@ export async function sceneRoutes(app: FastifyInstance) {
       },
     ];
 
-    if (preset) {
-      const [sections, groups] = await Promise.all([prompts.listSections(preset.id), prompts.listGroups(preset.id)]);
+    // With no preset picked for the scene, the opening follows the writing rules the scene chat will use: the prompt
+    // preset of the starred Roleplay settings profile, which /scene/create applies.
+    const starredProfile = preset ? null : await createChatPresetsStorage(app.db).getActive("roleplay");
+    const profilePresetId =
+      starredProfile && !starredProfile.isDefault ? (starredProfile.settings.promptPresetId ?? null) : null;
+    const writingPreset = preset ?? (profilePresetId ? await prompts.getById(profilePresetId) : null);
+    if (writingPreset) {
+      const writingChoiceBlocks = preset ? choiceBlocks : await prompts.listChoiceBlocksForPreset(writingPreset.id);
+      const [sections, groups] = await Promise.all([
+        prompts.listSections(writingPreset.id),
+        prompts.listGroups(writingPreset.id),
+      ]);
       const assembled = await assemblePrompt({
         db: app.db,
         model: conn.model,
-        preset,
+        preset: writingPreset,
         groups,
-        choiceBlocks,
+        choiceBlocks: writingChoiceBlocks,
         // The planner already supplies scene history/characters and owns its JSON response format.
         // Reuse preset instructions/macros, without expanding live chat, lore, or agent markers.
         sections: sections.filter((section) => section.isMarker !== "true"),
-        chatChoices: { ...(parsePromptPresetChoices(preset.defaultChoices) ?? {}), ...(presetChoices ?? {}) },
+        chatChoices: {
+          ...(parsePromptPresetChoices(writingPreset.defaultChoices) ?? {}),
+          ...(preset ? (presetChoices ?? {}) : {}),
+        },
         chatId: origin.chat?.id ?? "",
         characterIds,
         personaId: participants.personaId,

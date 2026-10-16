@@ -156,6 +156,31 @@ try {
     /<scene_writing_instructions>[\s\S]*HOUSE-STYLE: write dialogue in double quotes\./u,
     "the starred profile's writing rules reach the planner",
   );
+
+  // The opening message is credited to the initiator, so the planner writes it in their voice.
+  await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: { pov: "first_person", tense: "present", ...selected },
+    initiatorCharId: ids[1],
+  });
+  const openerPrompt = requests
+    .at(-1)!
+    .messages.map((m) => m.content)
+    .join("\n");
+  assert.match(openerPrompt, /<opening_character>Bob<\/opening_character>/u, "the planner knows who opens");
+  assert.match(openerPrompt, /"firstMessage" is posted by Bob\. Write it only as Bob/u);
+  // Without chosen participants, a cast the model picks always keeps the opening character.
+  providerContent = JSON.stringify({ ...plan, characterIds: [ids[0]] });
+  const castPlan = await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    initiatorCharId: ids[1],
+  });
+  assert.deepEqual(castPlan.plan.characterIds, [ids[1], ids[0]], "the opening character stays in the scene");
+  providerContent = JSON.stringify(plan);
   const payload = {
     originChatId: origin.id,
     connectionId: conn.id,

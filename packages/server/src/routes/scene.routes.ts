@@ -1122,6 +1122,15 @@ export async function sceneRoutes(app: FastifyInstance) {
     const provider = await createSceneProvider(conn, baseUrl, createReplyFallbackNotifier(reply));
 
     const characterIds = participants.characterIds;
+    // Who posts the opening message: the initiator when they are in the scene, else the first participant, the
+    // same rule /scene/create uses to credit it. The planner writes it in that character's voice only.
+    const requestedInitiator = req.body.initiatorCharId;
+    if (requestedInitiator !== undefined && requestedInitiator !== null && typeof requestedInitiator !== "string") {
+      return reply.status(400).send({ error: "initiatorCharId must be a string or null" });
+    }
+    const openerId =
+      requestedInitiator && characterIds.includes(requestedInitiator) ? requestedInitiator : (characterIds[0] ?? null);
+    const openerName = openerId ? await getCharacterName(chars, openerId) : "";
     const characterCtx = await buildCharacterContext(chars, characterIds);
     const { personaName, personaCtx } = await buildPersonaContext(
       chars,
@@ -1167,6 +1176,7 @@ export async function sceneRoutes(app: FastifyInstance) {
           `<available_character_ids>`,
           characterIds.map((id) => `"${id}"`).join(", "),
           `</available_character_ids>`,
+          ...(openerName ? [``, `<opening_character>${openerName}</opening_character>`] : []),
           ``,
           `<backgrounds>`,
           bgListStr,
@@ -1190,7 +1200,7 @@ export async function sceneRoutes(app: FastifyInstance) {
           `  "name": "A short title for the scene, MUST start with 'Scene: ' (e.g. 'Scene: The Doctor's Ungracious Return'). Max 60 chars.",`,
           `  "description": "A vivid 2-3 sentence description of the scene setting. This is shown to the user as a narrator intro. Set the mood.",`,
           `  "scenario": "A detailed hidden plot outline for the AI — the dramatic arc, key beats, twists, and emotional trajectory. The user NEVER sees this (it's a surprise). Write 3-5 sentences.",`,
-          `  "firstMessage": "The first in-character message from the main character that kicks off the scene. Write 2-4 paragraphs of immersive roleplay prose. This should feel like the opening of a story — set the scene through the character's actions, dialogue, and inner thoughts.",`,
+          `  "firstMessage": "The first in-character message${openerName ? `, posted by ${openerName},` : " from the main character"} that kicks off the scene. Write 2-4 paragraphs of immersive roleplay prose. This should feel like the opening of a story — set the scene through ${openerName ? `${openerName}'s` : "the character's"} actions, dialogue, and inner thoughts.",`,
           `  "background": "Pick a background filename from the available list that best matches the scene, or null if none fit.",`,
           `  "characterIds": ["array of character IDs to include in the scene — use the IDs from available_character_ids"],`,
           `  "systemPrompt": "A custom system prompt for this specific scene. Include: writing style (e.g. literary, casual, poetic), narration POV, tense (past, present, future), and what the AI should focus on. Tailor it to the mood and genre of the scene. Use the user's selected POV and tense when provided; otherwise choose ONE POV and use it consistently in both this prompt AND the firstMessage: first-person (from character's perspective, using 'I'), second-person (from user's perspective, addressing the user as 'you'), or third-person limited (from user's or character's perspective, using 'he/she/they'). 3-6 sentences.",`,
@@ -1204,6 +1214,11 @@ export async function sceneRoutes(app: FastifyInstance) {
           `- The "description" IS shown. Keep it atmospheric but don't spoil the plot.`,
           `- The "background" must be an EXACT filename from the available backgrounds list (case-sensitive, including extension). If no background fits, set it to null. Do NOT invent or modify filenames.`,
           `- The "firstMessage" should be written in character, not as a narrator. Make it engaging.`,
+          ...(openerName
+            ? [
+                `- "firstMessage" is posted by ${openerName}. Write it only as ${openerName}: ${openerName}'s own actions, dialogue and thoughts (in first person, "I" is ${openerName}). Other characters appear only as ${openerName} sees and hears them; never narrate as another character.`,
+              ]
+            : []),
           req.body.promptPreferences?.participantCharacterIds !== undefined
             ? `- Include exactly the selected participants in available_character_ids. Do not add or remove participants.`
             : "",
@@ -1305,9 +1320,13 @@ export async function sceneRoutes(app: FastifyInstance) {
     // Only accept the background if it actually exists on disk
     const validBg = chosenBg && availableBackgrounds.includes(chosenBg) ? chosenBg : null;
 
+    // The opening character is always in the scene, so the opening message stays theirs.
     const plannedParticipants = [
       ...new Set(parseCharacterIds(parsed.characterIds).filter((id) => characterIds.includes(id))),
     ];
+    if (openerId && plannedParticipants.length && !plannedParticipants.includes(openerId)) {
+      plannedParticipants.unshift(openerId);
+    }
 
     const fullPlan: SceneFullPlan = {
       name: (() => {

@@ -190,6 +190,9 @@ function resolveImageBackend(source: string, baseUrl: string, serviceHint: strin
 
 type ReferencePictureTarget = { model: string; baseUrl: string; comfyWorkflow: string };
 
+/** A ComfyUI file-name slot, which SwarmUI workflows can't fill. */
+const SWARMUI_FILE_NAME_SLOT = /%reference_image_name(?:_0[1-4])?%/;
+
 const openAITakesReference = ({ model }: ReferencePictureTarget) => isOpenAIGptImageModel(model);
 
 /**
@@ -223,9 +226,10 @@ const REFERENCE_PICTURE_SUPPORT: Readonly<Record<string, boolean | ((target: Ref
   // ComfyUI's built-in workflow is text-to-image; a workflow needs a reference placeholder.
   comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
   // SwarmUI takes pictures as prompt images, or in a workflow through %reference_image% only
-  // (buildSwarmUiGenerationBody refuses file-name slots).
+  // (buildSwarmUiGenerationBody refuses a workflow with any file-name slot).
   swarmui: ({ comfyWorkflow }) =>
-    !comfyWorkflow.trim() || comfyWorkflowTakesReference(comfyWorkflow, ["reference_image"]),
+    !comfyWorkflow.trim() ||
+    (comfyWorkflowTakesReference(comfyWorkflow, ["reference_image"]) && !SWARMUI_FILE_NAME_SLOT.test(comfyWorkflow)),
   automatic1111: true,
   runpod_comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
   gemini_image: true,
@@ -1781,22 +1785,24 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
     "model lookup",
   );
   const inputSchema = (modelInfo as { data?: { inputSchema?: unknown } } | null)?.data?.inputSchema;
-  const input = withImageCustomParameters(
-    request,
-    buildSpicyApiImageInput(inputSchema, {
-      prompt: request.prompt,
-      negativePrompt: request.negativePrompt,
-      width: request.width,
-      height: request.height,
-      referenceImages: openAIReferenceImages(request).map(imageDataUrlFromReference),
-    }),
-  );
+  const modelInput = buildSpicyApiImageInput(inputSchema, {
+    prompt: request.prompt,
+    negativePrompt: request.negativePrompt,
+    width: request.width,
+    height: request.height,
+    referenceImages: openAIReferenceImages(request).map(imageDataUrlFromReference),
+  });
+  // Read from the model's schema, before custom parameters, so a custom picture field can't pass for one.
+  const takesPicture = modelInput.image_urls !== undefined || modelInput.image_url !== undefined;
+  const input = withImageCustomParameters(request, modelInput);
   const body = { model, input };
-  const takesPicture = input.image_urls !== undefined || input.image_url !== undefined;
   await fitSpicyApiReferences(body);
   // Checked before the task is made, so a model without a picture input never bills a redrawn edit. A model
   // that takes one but lost every reference to the size limits gets a size error instead.
-  if (request.referenceIsCanvas && input.image_urls === undefined && input.image_url === undefined) {
+  if (
+    request.referenceIsCanvas &&
+    (!takesPicture || (input.image_urls === undefined && input.image_url === undefined))
+  ) {
     throw new Error(takesPicture ? IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE : IMAGE_EDIT_UNSUPPORTED_MESSAGE);
   }
   logDebugOverride(
@@ -3926,7 +3932,7 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
     }
     return body;
   }
-  if (/%reference_image_name(?:_0[1-4])?%/.test(workflowText)) {
+  if (SWARMUI_FILE_NAME_SLOT.test(workflowText)) {
     throw new Error(
       "SwarmUI workflows must use %reference_image% placeholders; backend-local filename placeholders cannot be distributed safely.",
     );

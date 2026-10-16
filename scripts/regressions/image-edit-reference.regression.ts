@@ -49,6 +49,10 @@ assert.equal(
   const withLaterSlotOnly = JSON.stringify({ 1: { inputs: { image: "%reference_image_02%" } } });
   const withLaterNameSlotOnly = JSON.stringify({ 1: { inputs: { image: "%reference_image_name_03%" } } });
   const textOnly = JSON.stringify({ 1: { inputs: { text: "%prompt%" } } });
+  const withReferenceAndNameSlot = JSON.stringify({
+    1: { inputs: { image: "%reference_image%" } },
+    2: { inputs: { image: "%reference_image_name_02%" } },
+  });
   const cases: Array<[backend: string, label: string, expected: boolean, actual: boolean]> = [
     ["pollinations", "Pollinations sends only the prompt", false, takes("pollinations")],
     [
@@ -126,6 +130,12 @@ assert.equal(
     ["swarmui", "a SwarmUI workflow without a slot", false, takes("swarmui", { comfyWorkflow: textOnly })],
     ["swarmui", "a SwarmUI workflow with a slot", true, takes("swarmui", { comfyWorkflow: withReference })],
     ["swarmui", "SwarmUI refuses file-name slots", false, takes("swarmui", { comfyWorkflow: withNumberedName })],
+    [
+      "swarmui",
+      "SwarmUI refuses a file-name slot next to a picture slot",
+      false,
+      takes("swarmui", { comfyWorkflow: withReferenceAndNameSlot }),
+    ],
     [
       "swarmui",
       "a SwarmUI workflow with only a later slot never gets the picture",
@@ -294,6 +304,20 @@ try {
     ["/spicy/api/v1/models/acme/text/text-to-image"],
     "no task is created for a model that would redraw",
   );
+  // A custom picture field is not the model's picture input: the edit is still refused before a task.
+  requests.length = 0;
+  await assert.rejects(
+    generateImage("spicyapi", `${base}/spicy`, "fixture-key", "spicyapi", {
+      prompt: "Close both eyes.",
+      model: "acme/text/text-to-image",
+      referenceImage: picture.toString("base64"),
+      referenceIsCanvas: true,
+      allowLocalUrls: true,
+      imageDefaults: { customParameters: { image_url: "https://images.example.test/other.png" } } as never,
+    }),
+    { message: IMAGE_EDIT_UNSUPPORTED_MESSAGE },
+  );
+  assert.ok(!requests.some((url) => url.includes("createTask")), "no task for a custom picture field");
   // A picture too large to fit SpicyAPI's inline limit, and too broken to shrink, is dropped: the error says so
   // instead of claiming the model can't edit pictures, and no task is made.
   requests.length = 0;

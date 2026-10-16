@@ -495,7 +495,9 @@ export function rulesetContextualItems(
           ...(contextual.skills ? { skills: contextual.skills } : {}),
           ...(contextual.saves ? { saves: contextual.saves } : {}),
         };
-        const effects = rulesetCheckEffects([source], target);
+        // Trained in the skill rolled (1.376), for a change only to those: Natural Explorer.
+        const trained = target?.type === "skill" && rulesetTierAddsProficiency(definition, build.skills?.[target.id]);
+        const effects = rulesetCheckEffects([source], target, trained);
         const leans = effects.modifiers.length + effects.advantage.length + effects.disadvantage.length > 0;
         // A pool effect is narrowed as a condition is: to the skills or saves it names, else any check.
         const narrowedOut =

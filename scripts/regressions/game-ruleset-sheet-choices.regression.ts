@@ -26,6 +26,7 @@ import {
   rulesetCombatHide,
   rulesetCombatOptions,
   rulesetConditionModifiers,
+  rulesetContextualItems,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -299,6 +300,28 @@ try {
 
   // ── Natural Explorer ──
   {
+    // Applied by name (apply=): offered on a check with a skill they are proficient in only.
+    const rangerEntries = definition.catalogs!.find((one) => one.id === "ranger")!.entries;
+    const holder = (skills: Record<string, string>) =>
+      rulesetSheetBuildSchema.parse({
+        abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 16, cha: 10 },
+        skills,
+        fields: { level: 20 },
+        lists: {
+          features: rangerEntries.flatMap((entry) =>
+            rowsFromCatalogEntry("ranger", entry).flatMap((one) => (one.list === "features" ? [one.row] : [])),
+          ),
+        },
+      });
+    const applied = (skills: Record<string, string>) =>
+      rulesetContextualItems(definition, holder(skills), { ranger: rangerEntries }, ["Natural Explorer"], {
+        type: "skill",
+        id: "survival",
+        label: "Survival",
+        ability: "wis",
+      }).map((item) => item.name);
+    assert.deepEqual(applied({ survival: "proficient" }), ["Natural Explorer"], "applied by name");
+    assert.deepEqual(applied({}), [], "not on a skill they are not proficient in");
     const source = { name: "Natural Explorer", modifiers: [explorer] } as never;
     const survival = { type: "skill", id: "survival", label: "Survival", ability: "wis" } as const;
     const proficient = rulesetCheckEffects([source], survival, true);

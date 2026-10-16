@@ -228,6 +228,7 @@ import {
   rulesetUseIsFree,
   rulesetWithFreeUse,
   rulesetAimCells,
+  rulesetNeededComponents,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -2637,7 +2638,12 @@ function takeShape(
     leaveShape(ctx, target, "moved");
     removeCondition(ctx, target, other, "moved");
   }
-  const shaped = rulesetTakeShape(ctx.definition, ctx.state, target, condition, rule, form, ctx.roll);
+  // And what its holder's own conditions and levels say any shape keeps (1.382): Beast Spells.
+  const more = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap(
+    (entry) => entry.shapeKeeps ?? [],
+  );
+  const kept = more.length ? { ...rule, keeps: [...(rule.keeps ?? []), ...more] } : rule;
+  const shaped = rulesetTakeShape(ctx.definition, ctx.state, target, condition, kept, form, ctx.roll);
   if (shaped) ctx.events.push({ type: "shaped", targetId: target.id, condition, form: shaped.name });
 }
 
@@ -8654,7 +8660,11 @@ function loseHiding(hider: RulesetCombatant, byIds: string[]): void {
  * or asking them to save, or anything needing one of the ruleset's `noisy` components (5e's verbal).
  * A fog set down in silence is no giveaway.
  */
-function givesAway(ctx: RulesetCombatContext, action: RulesetCombatAction): "attack" | "noise" | undefined {
+function givesAway(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): "attack" | "noise" | undefined {
   if (
     action.toHit !== undefined ||
     action.autoHit ||
@@ -8666,7 +8676,8 @@ function givesAway(ctx: RulesetCombatContext, action: RulesetCombatAction): "att
     return "attack";
   }
   const noisy = ctx.combat.hiding?.noisy ?? [];
-  return action.components?.some((component) => noisy.includes(component)) ? "noise" : undefined;
+  const needs = rulesetNeededComponents(ctx.definition, actor, action, ctx.state);
+  return needs.some((component) => noisy.includes(component)) ? "noise" : undefined;
 }
 
 /**
@@ -9054,7 +9065,7 @@ function resolveAction(
   if (ctx.combat.readying) (ctx.acted ??= new Set()).add(actor.id);
   // Hiding, and giving it away (1.287): found out once the step is done.
   stirs(ctx, actor, "acted");
-  const giveaway = actor.hiding ? givesAway(ctx, action) : undefined;
+  const giveaway = actor.hiding ? givesAway(ctx, actor, action) : undefined;
   if (giveaway) (ctx.giveaways ??= new Map()).set(actor.id, giveaway);
   const before = new Set(actor.tracked);
   // What it was cast out of, for a condition that harm from there ends (1.278).

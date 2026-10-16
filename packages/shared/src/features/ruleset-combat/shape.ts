@@ -103,13 +103,17 @@ export function rulesetTakeShape(
     if (target[key] === undefined) lacked.push(key);
     else (was as Record<string, unknown>)[key] = structuredClone(target[key]);
   }
-  // What it keeps of its own: actions by id or entry ("catalog/entry", or the entry's own id), saves
-  // and checks by id.
+  // What it keeps of its own: actions by id or entry ("catalog/entry", or the entry's own id), or a
+  // whole catalog ("catalog/*", 1.382), saves and checks by id.
   const keeps = new Set(rule.keeps ?? []);
   const kept = target.actions.filter(
     (one) =>
       keeps.has(one.id) ||
-      (one.entry !== undefined && (keeps.has(one.entry) || keeps.has(one.entry.slice(one.entry.indexOf("/") + 1)))),
+      (one.catalog !== undefined && keeps.has(`${one.catalog}/*`)) ||
+      (one.entry !== undefined &&
+        (keeps.has(one.entry) ||
+          keeps.has(one.entry.slice(one.entry.indexOf("/") + 1)) ||
+          keeps.has(`${one.entry.slice(0, one.entry.indexOf("/"))}/*`))),
   );
   const keptIds = new Set(kept.map((one) => one.id));
   const formActions = built.actions.filter((one) => !keptIds.has(one.id));

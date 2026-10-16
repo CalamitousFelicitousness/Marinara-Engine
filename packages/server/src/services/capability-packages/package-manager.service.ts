@@ -2194,6 +2194,20 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Actions kept in any shape, and components waived (1.382): Beast Spells, Archdruid. */
+function carriesShapeKeeps382(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShapeKeeps382(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.shapeKeeps !== undefined || record.waives !== undefined) return true;
+  if (Array.isArray(plainRecord(record.shape)?.keeps)) {
+    if ((plainRecord(record.shape)!.keeps as unknown[]).some((one) => typeof one === "string" && one.endsWith("/*")))
+      return true;
+  }
+  return featureValues(record).some((one) => carriesShapeKeeps382(one, depth + 1));
+}
+
 /** A rest that gives back one named row's pool, or only while a value off the sheet says so (1.381):
  *  Sorcerous Restoration. */
 function carriesRestRows381(ruleset: unknown): boolean {
@@ -5670,6 +5684,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Kept in any shape, and components waived, 1.382.
+  if (
+    !declaresApi(382) &&
+    (carriesShapeKeeps382(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShapeKeeps382(document)))
+  ) {
+    return "A ruleset whose conditions or levels keep actions in any shape (shapeKeeps) or waive components (waives) requires schemaVersion 2 and capabilityApi 1.382 or newer";
+  }
   // A rest's named row, or a value off the sheet, 1.381.
   if (!declaresApi(381) && carriesRestRows381(ruleset)) {
     return "A ruleset whose rests give back one named row's pool (row) or only while a value off the sheet says so (when) requires schemaVersion 2 and capabilityApi 1.381 or newer";

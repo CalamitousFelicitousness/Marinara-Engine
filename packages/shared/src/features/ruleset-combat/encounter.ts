@@ -934,6 +934,8 @@ function activeLevels(
         ...(level.strikesAgain ? { strikesAgain: level.strikesAgain } : {}),
         ...(level.ignoresHardGround ? { ignoresHardGround: true as const } : {}),
         ...(level.runsAcross ? { runsAcross: true as const } : {}),
+        ...(level.shapeKeeps ? { shapeKeeps: level.shapeKeeps } : {}),
+        ...(level.waives ? { waives: level.waives } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];

@@ -101855,6 +101855,26 @@
                 "type": "boolean",
                 "const": true
               },
+              "shapeKeeps": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "minItems": 1,
+                "maxItems": 24
+              },
+              "waives": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 8
+              },
               "endsWhenSourceDown": {
                 "type": "boolean"
               },
@@ -110612,6 +110632,26 @@
               "runsAcross": {
                 "type": "boolean",
                 "const": true
+              },
+              "shapeKeeps": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "minItems": 1,
+                "maxItems": 24
+              },
+              "waives": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 8
               },
               "defeats": {
                 "type": "boolean",

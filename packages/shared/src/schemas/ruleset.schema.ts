@@ -9240,6 +9240,10 @@ const combatLevelSchema = z
      *  armor or shield is worn. */
     ignoresHardGround: z.literal(true).optional(),
     runsAcross: z.literal(true).optional(),
+    /** As on a condition (Capability API 1.382): what any shape its holder takes keeps of their own
+     *  actions, and the components their uses need none of. */
+    shapeKeeps: z.array(z.string().trim().min(1).max(200)).min(1).max(24).optional(),
+    waives: uniqueIds(8).optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9279,13 +9283,15 @@ const combatLevelSchema = z
       !entry.checkFloor &&
       !entry.strikesAgain &&
       !entry.ignoresHardGround &&
-      !entry.runsAcross
+      !entry.runsAcross &&
+      !entry.shapeKeeps &&
+      !entry.waives
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, a floor under its checks, a strike again, or a way over the ground",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, a floor under its checks, a strike again, a way over the ground, what a shape keeps, or components waived",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9854,6 +9860,13 @@ const combatConditionSchema = z
      *  walls and across liquids without falling during the move. A walk cut short on water sets
      *  them down on the nearest open ground. */
     runsAcross: z.literal(true).optional(),
+    /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
+     *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
+     *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */
+    shapeKeeps: z.array(z.string().trim().min(1).max(200)).min(1).max(24).optional(),
+    /** Its holder's uses need none of these components (Capability API 1.382): what stops a
+     *  component stops nothing they use without it. 5e's Archdruid, verbal and somatic. */
+    waives: uniqueIds(8).optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
@@ -14214,6 +14227,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.light && !combat.sight?.darkness)
         issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
+      componentIssues(def, entry.waives, [...path, "waives"], issue);
       // The action economy it changes (1.76) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];
@@ -14437,6 +14451,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.fellsGrant) fellsGrantIssues(entry.fellsGrant, [...path, "fellsGrant"]);
       notWhileIssues(entry, path);
       if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
+      componentIssues(def, entry.waives, [...path, "waives"], issue);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);

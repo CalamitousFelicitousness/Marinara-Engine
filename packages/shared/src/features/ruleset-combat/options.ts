@@ -2017,7 +2017,9 @@ export function rulesetActionAvailable(
     const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).flatMap(
       (entry) => entry.forbids?.components ?? [],
     );
-    if (action.components.some((component) => stopped.includes(component))) return false;
+    // Only what it still needs once its user's waivers are counted (1.382).
+    if (rulesetNeededComponents(definition, actor, action, state).some((component) => stopped.includes(component)))
+      return false;
   }
   if (action.innate?.coven) {
     const coven = action.innate.coven;
@@ -4094,6 +4096,22 @@ function momentAnswers(
   if (moment.blow && moment.on !== "attacked" && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;
+}
+
+/** The components using this still needs (1.179), less those its user's conditions and levels waive
+ *  (1.382): 5e's Archdruid, verbal and somatic. */
+export function rulesetNeededComponents(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  state?: RulesetEncounterState,
+): string[] {
+  const needs = action.components ?? [];
+  if (!needs.length || !definition.combat) return needs;
+  const waived = new Set(
+    rulesetActiveConditions(definition, definition.combat, actor, state).flatMap((entry) => entry.waives ?? []),
+  );
+  return waived.size ? needs.filter((component) => !waived.has(component)) : needs;
 }
 
 /** Whether what caused a moment is something this `against` answers: from one of its catalogs, or

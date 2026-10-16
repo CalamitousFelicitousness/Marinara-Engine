@@ -8,7 +8,10 @@
  *   - Polymorph on a creature: `upTo.targetLevel` refuses a form above its own number; held by
  *     concentration, the shape ends when it breaks.
  *   - Forms read from a catalog (1.348): `from` with `filters` and `notFilters`.
- *   - Refused shapes; the install gate.
+ *   - Beast Spells and Archdruid (1.382): a level whose `shapeKeeps` names a whole catalog keeps the
+ *     druid's spells in any shape from 18th level, and one whose `waives` names components keeps a
+ *     gag from stopping them at 20th.
+ *   - Refused shapes; the install gates.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -451,6 +454,90 @@ try {
     assert.deepEqual(piperBack.creature, { catalogId: "creatures", entryId: "grave-piper" });
   }
 
+  // ── Beast Spells and Archdruid (1.382) ──
+  {
+    const archdruid = (doc: Record<string, any>) => {
+      doc.combat.components = [
+        { id: "verbal", label: "Verbal" },
+        { id: "somatic", label: "Somatic" },
+      ];
+      doc.sheet.live.conditions.push({ id: "gagged", label: "Gagged" });
+      doc.combat.conditions.push({ condition: "gagged", effects: [], forbids: { components: ["verbal"] } });
+      for (const [id, at] of [
+        ["beast_spells", 18],
+        ["archdruid", 20],
+      ] as const) {
+        doc.sheet.derived.push({
+          id,
+          label: id,
+          op: "stepTable",
+          from: { field: "level" },
+          table: [
+            [0, 0],
+            [at, 1],
+          ],
+        });
+      }
+      doc.combat.levels = [
+        ...(doc.combat.levels ?? []),
+        { derived: "beast_spells", at: 1, shapeKeeps: ["spells/*"] },
+        { derived: "archdruid", at: 1, waives: ["verbal", "somatic"] },
+      ];
+    };
+    const spoken = { ...polymorph, mechanics: { ...polymorph.mechanics, components: ["verbal", "somatic"] } };
+    const definition = parsed(document([wolfOnly, spoken], archdruid));
+    const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+    const shapedAt = (level: number) => {
+      const start = fight(definition, entries, level);
+      const option = optionFor(definition, start, "druid", "Wild Shape");
+      const taken = step(definition, start, {
+        actorId: "druid",
+        optionId: option.id,
+        targetIds: ["druid"],
+        mode: "form-creatures-dire-wolf",
+      });
+      return who(taken.state, "druid");
+    };
+    assert.ok(!shapedAt(17).actions.some((one) => one.label === "Wild Shape"), "only what the shape keeps");
+    assert.ok(
+      shapedAt(18).actions.some((one) => one.label === "Wild Shape"),
+      "every spell of the catalog, from 18th level",
+    );
+    const gagged = (level: number) => {
+      const state = fight(definition, entries, level);
+      who(state, "druid").tracked.push({ condition: "gagged", rounds: null });
+      return rulesetCombatOptions(definition, state, "druid").some((one) => one.label === "Polymorph");
+    };
+    assert.equal(gagged(19), false, "a gag stops a spoken spell");
+    assert.equal(gagged(20), true, "but not one whose words are waived");
+    refused(
+      document([wolfOnly], (doc) => {
+        archdruid(doc);
+        doc.combat.levels.at(-1).waives = ["material"];
+      }),
+      /Unknown component "material"/,
+    );
+    const gate =
+      "A ruleset whose conditions or levels keep actions in any shape (shapeKeeps) or waive components (waives) requires schemaVersion 2 and capabilityApi 1.382 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const withLevels = document([wolfOnly, spoken], archdruid);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(381) as never, withLevels), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(382) as never, withLevels), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(381) as never, document([wolfOnly])), gate);
+  }
+
   // ── Refused shapes ──
   {
     refused(
@@ -583,7 +670,7 @@ try {
   }
 
   console.log(
-    "Shapes: Wild Shape's wolf with the druid's own wisdom, the rest of a blow past it, the way back; Polymorph capped by the piper's own number and ended with concentration.",
+    "Shapes: Wild Shape's wolf with the druid's own wisdom, the rest of a blow past it, the way back; Polymorph capped by the piper's own number and ended with concentration; Beast Spells keeps the spells in shape and Archdruid waives their words.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

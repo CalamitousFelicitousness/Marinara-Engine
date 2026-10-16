@@ -333,6 +333,8 @@ interface RulesetCombatContext {
   ticking?: string;
   /** A strike made inside a window that may still be held where it hits (1.243). */
   nestHit?: true;
+  /** An opportunity attack being resolved (1.377), for what is narrowed to those. */
+  opportunity?: true;
   /** The budget the action being resolved was paid for from, for an answer to its hit (1.248). */
   strikeBudget?: string;
   /** How many uses its user chose to spend on the action being resolved (1.251). */
@@ -8321,8 +8323,10 @@ function opportunityStrike(
   // Held where it hits, like any other attack, for what its maker adds to it or anybody's answer to
   // it (1.243): the walk's window waits behind that one.
   ctx.nestHit = true;
+  ctx.opportunity = true;
   const hold = resolveAction(ctx, striker, strike, [mover]);
   delete ctx.nestHit;
+  delete ctx.opportunity;
   if (!hold) return false;
   const outer = ctx.state.window!;
   outer.waiting.shift();
@@ -9278,6 +9282,13 @@ function clauseReaches(
   return !clause.blow || rulesetBlowKind(ctx.state, actor, target, action) === clause.blow;
 }
 
+/** That `attacker` hit `target` with an attack in this turn (1.377): Multiattack Defense. */
+function noteHitBy(ctx: RulesetCombatContext, target: RulesetCombatant, attacker: RulesetCombatant): void {
+  const at = `${ctx.state.round}:${ctx.state.turn}`;
+  if (target.hitBy?.at !== at) target.hitBy = { at, ids: [] };
+  if (!target.hitBy.ids.includes(attacker.id)) target.hitBy.ids.push(attacker.id);
+}
+
 /** What a change once on each of its holder's own turns (1.376) is counted under: its condition, level
  *  or item, and what it changes. */
 function onceKey(entry: RulesetConditionModifier): string {
@@ -10114,12 +10125,14 @@ function resolveActionBody(
         theirs: oneUseConditions(target, "attacked"),
       };
       landed = outcome !== "miss";
+      if (landed) noteHitBy(ctx, target, actor);
       critical = outcome === "critical";
     } else if (action.toHit !== undefined && !action.autoHit) {
       mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
         state: ctx.state,
         optionId: action.id,
         action,
+        ...(ctx.opportunity ? { opportunity: true } : {}),
       });
       // What the weapon adds against what the target is (1.187).
       const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target, actor);
@@ -10172,6 +10185,7 @@ function resolveActionBody(
         actor.flags.helped = false;
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
         landed = outcome === "hit";
+        if (landed) noteHitBy(ctx, target, actor);
         if (landed) extraDice = thrown.successes - needed;
         if (
           landed &&
@@ -10282,6 +10296,7 @@ function resolveActionBody(
         actor.flags.helped = false;
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
         landed = outcome !== "miss";
+        if (landed) noteHitBy(ctx, target, actor);
         critical = outcome === "critical";
         // A hit on somebody who holds an answer for being hit stops here, before its damage: the
         // window asks them, and the attack picks up from this roll once they have answered. Nothing

@@ -1429,6 +1429,9 @@ export interface RulesetCombatant {
   /** What this combatant's blows did that may happen once a turn, and in which turn (1.187), as
    *  `<round>:<turn>`: a weapon's wound. */
   oncePerTurn?: { at: string; keys: string[] };
+  /** Who hit this combatant with an attack in which turn (1.377), as `<round>:<turn>`: what a
+   *  defense against an attacker that has hit already reads. */
+  hitBy?: { at: string; ids: string[] };
   /** The points a signature action is bought with, when this combatant has any. */
   signature?: { points: number; max: number };
   /** It fights in its lair (1.315): its lair actions are taken, on `lairAt`, losing ties. */

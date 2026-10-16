@@ -2194,6 +2194,18 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Defense against an attacker that has hit already, and attacks-taken on opportunity attacks only
+ *  (1.377): Multiattack Defense, Escape the Horde. */
+function carriesAttackerNarrowing377(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAttackerNarrowing377(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.to === "string" && (record.afterHitBy !== undefined || record.opportunity !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesAttackerNarrowing377(one, depth + 1));
+}
+
 /** Choices on the sheet that changes read, and values off the sheet added to attacks, checks and saves
  *  (1.376): Foe Slayer, Elemental Affinity, Natural Explorer. */
 function carriesSheetChoices376(value: unknown, depth = 0): boolean {
@@ -5612,6 +5624,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Defense against an attacker that has hit, and opportunity attacks only, 1.377.
+  if (
+    !declaresApi(377) &&
+    (carriesAttackerNarrowing377(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttackerNarrowing377(document)))
+  ) {
+    return "A ruleset whose defense changes count only against an attacker that has hit already (afterHitBy) or whose attacks-taken changes count only on opportunity attacks (opportunity) requires schemaVersion 2 and capabilityApi 1.377 or newer";
+  }
   // Choices on the sheet, and values off it added to attacks, checks and saves, 1.376.
   if (
     !declaresApi(376) &&

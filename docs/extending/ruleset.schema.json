@@ -39043,6 +39043,14 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "afterHitBy": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "opportunity": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -58774,6 +58782,14 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "afterHitBy": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "opportunity": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -60092,6 +60108,14 @@
                                 "const": true
                               },
                               "proficient": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "afterHitBy": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "opportunity": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -61600,6 +61624,14 @@
                                       "const": true
                                     },
                                     "proficient": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "afterHitBy": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "opportunity": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -67491,6 +67523,14 @@
                                     "const": true
                                   },
                                   "proficient": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "afterHitBy": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "opportunity": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -80022,6 +80062,14 @@
                                           "const": true
                                         },
                                         "proficient": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "afterHitBy": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "opportunity": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -101033,6 +101081,14 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "afterHitBy": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "opportunity": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "$comment": {}
                   },
                   "required": [
@@ -109141,6 +109197,14 @@
                       "const": true
                     },
                     "proficient": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "afterHitBy": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "opportunity": {
                       "type": "boolean",
                       "const": true
                     },

@@ -8918,10 +8918,19 @@ const combatModifierSchema = z
     /** Only a check with a skill its holder adds their whole proficiency to (Capability API 1.376):
      *  Natural Explorer's doubled proficiency bonus. */
     proficient: z.literal(true).optional(),
+    /** Defense only against an attacker that has already hit its holder with an attack this turn
+     *  (Capability API 1.377): 5e's Multiattack Defense, +4 against a creature's later attacks. */
+    afterHitBy: z.literal(true).optional(),
+    /** Attacks-taken only on an opportunity attack (Capability API 1.377): 5e's Escape the Horde. */
+    opportunity: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (modifier.afterHitBy && modifier.to !== "defense")
+      add("afterHitBy", '"afterHitBy" narrows defense to attackers that have hit already');
+    if (modifier.opportunity && modifier.to !== "attacks-taken")
+      add("opportunity", '"opportunity" narrows attacks-taken to opportunity attacks');
     if (modifier.atTypesIn !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
       add("atTypesIn", '"atTypesIn" narrows the holder\'s own attacks or damage');
     if (modifier.oncePer !== undefined && !(modifier.to === "attacks" && modifier.rescue) && modifier.to !== "damage")

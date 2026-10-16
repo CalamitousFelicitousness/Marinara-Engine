@@ -977,7 +977,12 @@ export function rulesetDefenseAgainst(
   action?: RulesetCombatAction,
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
-  const modifiers = rulesetConditionModifiers(definition, combat, target, "defense", state);
+  const modifiers = rulesetConditionModifiers(definition, combat, target, "defense", state).filter(
+    // Only against an attacker that has hit them already this turn (1.377): Multiattack Defense.
+    ({ modifier }) =>
+      !modifier.afterHitBy ||
+      (!!attacker && target.hitBy?.at === `${state.round}:${state.turn}` && target.hitBy.ids.includes(attacker.id)),
+  );
   const guards = modifiers
     .filter(({ modifier }) => modifier.atLeast === undefined)
     .map(({ condition, level, derived, item, modifier }) => ({
@@ -2876,7 +2881,7 @@ export function rulesetAttackMode(
   target: RulesetCombatant,
   /** Where the two of them stand, which is what the distance rules read. Left out by a fight with
    *  no board, and then none of them says anything. */
-  where?: { state: RulesetEncounterState; optionId: string; action?: RulesetCombatAction },
+  where?: { state: RulesetEncounterState; optionId: string; action?: RulesetCombatAction; opportunity?: true },
 ): RulesetCombatRollMode {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
@@ -2932,6 +2937,8 @@ export function rulesetAttackMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks-taken" || !modifier.mode) continue;
       if (modifier.from && !rulesetTargetIs(definition, actor, modifier.from)) continue;
+      // Opportunity attacks only (1.377): Escape the Horde.
+      if (modifier.opportunity && !where?.opportunity) continue;
       leans.add(modifier.mode);
     }
   }

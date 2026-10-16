@@ -319,6 +319,8 @@ interface RulesetCombatContext {
   blowTypes: Map<string, Set<string>>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
+  /** How many of `events` have been read for who was stirred (1.383). */
+  stirredAt?: number;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
   /** Where further copies of the area were set down (1.178). */
@@ -398,6 +400,7 @@ function begin(
   return {
     ctx,
     finish: () => {
+      noteStirred(ctx);
       for (const target of next.combatants) endImmuneConditions(ctx, target);
       for (const end of ctx.harmEndings.splice(0)) end();
       // What an alteration costs its user's health, once what it changed was cast (1.362).
@@ -3041,6 +3044,45 @@ function endsAway(ctx: RulesetCombatContext, turnEnder?: RulesetCombatant): void
       if (source && entry.endsAway!.unseen && rulesetCanSee(ctx.definition, ctx.state, holder, source)) continue;
       if (holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "spent");
     }
+  }
+}
+
+/** Whoever made an attack at a foe, or took damage, in what this step has done so far (1.383). */
+function noteStirred(ctx: RulesetCombatContext): void {
+  const from = ctx.stirredAt ?? 0;
+  ctx.stirredAt = ctx.events.length;
+  for (const event of ctx.events.slice(from)) {
+    if (event.type === "attack") {
+      const actor = rulesetCombatant(ctx.state, event.actorId);
+      const target = rulesetCombatant(ctx.state, event.targetId);
+      if (actor && target && actor.side !== target.side) actor.stirred = true;
+    } else if (event.type === "damage" && (event.dealt > 0 || event.toTemp > 0)) {
+      const target = rulesetCombatant(ctx.state, event.targetId);
+      if (target) target.stirred = true;
+    }
+  }
+}
+
+/** What ends as its holder ends a turn with nothing done to stir it (1.383): Rage, unless what keeps
+ *  it on says otherwise. Whatever they did is forgotten for the next turn. */
+function endsIdle(ctx: RulesetCombatContext, leaving: RulesetCombatant): void {
+  noteStirred(ctx);
+  const stirred = !!leaving.stirred;
+  delete leaving.stirred;
+  if (stirred) return;
+  for (const entry of [...leaving.tracked]) {
+    const idle = ctx.combat.conditions?.find((rule) => rule.condition === entry.condition)?.endsIdle;
+    if (!idle) continue;
+    if (typeof idle === "object") {
+      const value = rulesetSheetValue(ctx.definition, leaving, idle.unless.value);
+      if (
+        value !== undefined &&
+        (idle.unless.atLeast === undefined || value >= idle.unless.atLeast) &&
+        (idle.unless.atMost === undefined || value <= idle.unless.atMost)
+      )
+        continue;
+    }
+    if (leaving.tracked.includes(entry)) removeCondition(ctx, leaving, entry.condition, "spent");
   }
 }
 
@@ -11346,6 +11388,7 @@ export function advanceRulesetTurn(
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
     endsAway(ctx, leaving);
+    endsIdle(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");
     // The first turn, spent surprised, is over (1.237).
     endSurprise(ctx, leaving);

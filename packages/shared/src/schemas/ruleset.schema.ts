@@ -9867,6 +9867,12 @@ const combatConditionSchema = z
     /** Its holder's uses need none of these components (Capability API 1.382): what stops a
      *  component stops nothing they use without it. 5e's Archdruid, verbal and somatic. */
     waives: uniqueIds(8).optional(),
+    /** It comes off as its holder ends a turn having neither made an attack at a foe nor taken damage
+     *  since their last turn ended (Capability API 1.383): 5e's Rage. `unless` keeps it on while a
+     *  value off its holder's sheet stands within its bounds: Persistent Rage from barbarian 15. */
+    endsIdle: z
+      .union([z.literal(true), z.object({ unless: sheetBoundsSchema("unless", "kept on") }).strict()])
+      .optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
@@ -14228,6 +14234,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
+      if (typeof entry.endsIdle === "object") {
+        const names = rulesetSheetNames(def.sheet, def.items);
+        for (const found of rulesetValueRefIssues(entry.endsIdle.unless.value, names, names.derived)) {
+          issue([...path, "endsIdle", "unless", "value", found.key], found.message);
+        }
+      }
       // The action economy it changes (1.76) is the ruleset's own: budgets it declares, conditions it has.
       entry.budgets?.forEach((change, changeIndex) => {
         const where = [...path, "budgets", changeIndex, "budget"];

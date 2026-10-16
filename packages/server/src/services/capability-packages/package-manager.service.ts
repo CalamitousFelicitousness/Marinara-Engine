@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A condition ended on an idle turn (1.383): Rage, Persistent Rage. */
+function carriesEndsIdle383(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsIdle383(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsIdle !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsIdle383(one, depth + 1));
+}
+
 /** Actions kept in any shape, and components waived (1.382): Beast Spells, Archdruid. */
 function carriesShapeKeeps382(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5684,6 +5694,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ended on an idle turn, 1.383.
+  if (
+    !declaresApi(383) &&
+    (carriesEndsIdle383(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsIdle383(document)))
+  ) {
+    return "A ruleset whose conditions end on an idle turn (endsIdle) requires schemaVersion 2 and capabilityApi 1.383 or newer";
+  }
   // Kept in any shape, and components waived, 1.382.
   if (
     !declaresApi(382) &&

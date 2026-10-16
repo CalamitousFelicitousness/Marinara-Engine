@@ -8846,6 +8846,21 @@ function holderActed(
   for (const entry of ended) {
     if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
   }
+  // And what its rule says attacking or casting ends, however it was put on (1.373): Tranquility,
+  // held from a rest.
+  for (const condition of rulesetCombatConditions(ctx.definition, actor)) {
+    const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
+    if (!ends) continue;
+    // One this very action put on them stays, as above.
+    const held = actor.tracked.filter((entry) => entry.condition === condition);
+    if (before && held.length > 0 && !held.some((entry) => before.has(entry))) continue;
+    if (
+      (ends.attacks && attacks) ||
+      (casts !== undefined && !!ends.casts?.includes(casts) && (!ends.castsAtFoes || reachesFoe()))
+    ) {
+      removeCondition(ctx, actor, condition, "spent");
+    }
+  }
 }
 
 /** Whether a cast reached one of its maker's foes (1.372): aimed at one, or one it harmed, put a
@@ -9527,10 +9542,13 @@ function sanctuaryTargets(
     (action.kind === "block" && !!action.applies?.length);
   if (!harmful || action.area || action.around || targets.length === 0) return targets;
   const rules = ctx.combat.conditions ?? [];
+  // On the holder as tracked, or held on their sheet (1.373): Tranquility, put on by a rest.
   const sanctuaries = (one: RulesetCombatant) =>
-    one.tracked.flatMap((entry) => {
-      const rule = rules.find((candidate) => candidate.condition === entry.condition)?.sanctuary;
-      return rule ? [{ entry, rule }] : [];
+    rulesetCombatConditions(ctx.definition, one).flatMap((condition) => {
+      const rule = rules.find((candidate) => candidate.condition === condition)?.sanctuary;
+      if (!rule) return [];
+      const entry = one.tracked.find((candidate) => candidate.condition === condition);
+      return [{ condition, entry, rule }];
     });
   if (!targets.some((one) => one.id !== actor.id && sanctuaries(one).length > 0)) return targets;
   const out: RulesetCombatant[] = [];
@@ -9540,7 +9558,7 @@ function sanctuaryTargets(
       continue;
     }
     let kept = true;
-    for (const { entry, rule } of sanctuaries(target)) {
+    for (const { condition, entry, rule } of sanctuaries(target)) {
       if (rule.from && !rulesetTargetIs(ctx.definition, actor, rule.from)) continue;
       // Only what it stops (1.372): attacks, and harmful entries cast from its catalogs.
       if (
@@ -9549,12 +9567,16 @@ function sanctuaryTargets(
         !(cast !== undefined && rule.against.casts?.includes(cast))
       )
         continue;
-      if (entry.immune?.includes(actor.id)) continue;
+      const immune = entry ? entry.immune : target.sanctuarySaved?.[condition];
+      if (immune?.includes(actor.id)) continue;
       const difficulty =
-        entry.difficulty ?? (rule.difficulty ? rulesetSheetValue(ctx.definition, target, rule.difficulty) : undefined);
+        entry?.difficulty ?? (rule.difficulty ? rulesetSheetValue(ctx.definition, target, rule.difficulty) : undefined);
       if (difficulty === undefined) continue;
       if (rollSave(ctx, actor, rule.save, Math.trunc(difficulty), target.id)) {
-        if (rule.immuneOnSave) (entry.immune ??= []).push(actor.id);
+        if (rule.immuneOnSave) {
+          if (entry) (entry.immune ??= []).push(actor.id);
+          else (target.sanctuarySaved ??= {})[condition] = [...(target.sanctuarySaved?.[condition] ?? []), actor.id];
+        }
         continue;
       }
       kept = false;

@@ -1559,6 +1559,21 @@ export function applyRulesetSheetOp(
     const back = giveBackLowered(id);
     if (back) changes.push(back.slice(2));
   }
+  // What it puts on as it ends (1.373): Tranquility, on a sheet its `when` holds for.
+  if (rest.puts?.length) {
+    const evaluated = evaluateRulesetSheetLive(definition, build, next, items);
+    for (const put of rest.puts) {
+      if ((next.conditions ?? []).includes(put.condition)) continue;
+      if (put.when) {
+        const value = resolveRulesetValueRef(definition, build, put.when.value, evaluated);
+        if (put.when.atLeast !== undefined && value < put.when.atLeast) continue;
+        if (put.when.atMost !== undefined && value > put.when.atMost) continue;
+      }
+      next.conditions = [...(next.conditions ?? []), put.condition];
+      const label = definition.sheet.live.conditions.find((one) => one.id === put.condition)?.label ?? put.condition;
+      changes.push(`${label} on`);
+    }
+  }
 
   return done(changes.length > 0 ? `${rest.label}: ${changes.join(", ")}` : rest.label);
 }

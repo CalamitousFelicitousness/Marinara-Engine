@@ -2324,6 +2324,14 @@ const restSchema = z
       })
       .strict()
       .default({}),
+    /** Live conditions it puts on as it ends (Capability API 1.373), after `clear`, each only on a
+     *  sheet `when` holds for: 5e's Tranquility, a sanctuary from one long rest to the next. One the
+     *  rest also clears is put back on; one a fight takes off stays off until the next. */
+    puts: z
+      .array(z.object({ condition: sheetId, when: sheetBoundsSchema("when", "met").optional() }).strict())
+      .min(1)
+      .max(8)
+      .optional(),
   })
   .strict();
 
@@ -9923,9 +9931,27 @@ const combatConditionSchema = z
      *  reactions included (`acts`), however it was put on (Capability API 1.311): a ranger's
      *  camouflage for Hide in Plain Sight, made before the fight, gone on the first step. */
     endsWhenHolder: z
-      .object({ moves: z.literal(true).optional(), acts: z.literal(true).optional() })
+      .object({
+        moves: z.literal(true).optional(),
+        acts: z.literal(true).optional(),
+        /** Its holder attacking, or casting from these catalogs, only at a foe with `castsAtFoes`
+         *  (Capability API 1.373): 5e's Tranquility, held from a rest, ends as Sanctuary does. */
+        attacks: z.literal(true).optional(),
+        casts: z
+          .array(sheetId)
+          .min(1)
+          .max(8)
+          .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+          .optional(),
+        castsAtFoes: z.literal(true).optional(),
+      })
       .strict()
-      .refine((ends) => ends.moves || ends.acts, { message: 'Say what ends it: "moves", "acts" or both' })
+      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts, {
+        message: 'Say what ends it: "moves", "acts", "attacks", "casts" or more than one',
+      })
+      .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
+        message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
+      })
       .optional(),
     /** Whoever aims an attack or a harmful entry at its holder, an area aside, first makes this save
      *  (Capability API 1.370): failed, it goes to the nearest other creature it could be aimed at,
@@ -12431,6 +12457,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (!conditions.has(id)) issue(["rests", restIndex, "clear", "conditions", index], `Unknown condition "${id}"`);
       });
     }
+    rest.puts?.forEach((put, index) => {
+      if (!conditions.has(put.condition)) {
+        issue(["rests", restIndex, "puts", index, "condition"], `Unknown condition "${put.condition}"`);
+      }
+      if (put.when) checkRef(put.when.value, ["rests", restIndex, "puts", index, "when", "value"], derivedIds);
+    });
   });
 
   const summary = def.gm.sheetSummary;
@@ -13995,6 +14027,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (ward.difficulty) checkRef(ward.difficulty, [...path, "sanctuary", "difficulty"], derivedIds);
         targetIsIssues(def, ward.from, [...path, "sanctuary", "from"], issue);
         castsIssues(def, ward.against?.casts, [...path, "sanctuary", "against", "casts"], issue);
+      }
+      // What its holder casts to end it (1.373) is cast from the ruleset's own catalogs.
+      if (entry.endsWhenHolder?.casts) {
+        castsIssues(def, entry.endsWhenHolder.casts, [...path, "endsWhenHolder", "casts"], issue);
       }
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {

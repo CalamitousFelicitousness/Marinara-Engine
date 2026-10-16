@@ -2192,6 +2192,22 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 }
 
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
+/** A rest that puts a condition on, and a condition whose rule ends it on its holder's attack or
+ *  cast (1.373): Tranquility. */
+function carriesRestPuts373(ruleset: unknown): boolean {
+  const root = plainRecord(ruleset);
+  const rests = root?.rests;
+  if (Array.isArray(rests) && rests.some((rest) => plainRecord(rest)?.puts !== undefined)) return true;
+  const conditions = plainRecord(root?.combat)?.conditions;
+  return (
+    Array.isArray(conditions) &&
+    conditions.some((rule) => {
+      const ends = plainRecord(plainRecord(rule)?.endsWhenHolder);
+      return !!ends && (ends.attacks !== undefined || ends.casts !== undefined || ends.castsAtFoes !== undefined);
+    })
+  );
+}
+
 /** A cast that ends its caster's condition only when it reaches a foe, and a sanctuary that stops only
  *  some things (1.372): Sanctuary, Nature's Sanctuary. */
 function carriesFoeCasts372(value: unknown, depth = 0): boolean {
@@ -5551,6 +5567,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A rest that puts a condition on, and a rule ended by attacking or casting, 1.373.
+  if (!declaresApi(373) && carriesRestPuts373(ruleset)) {
+    return "A ruleset whose rests put a condition on (puts) or whose conditions' rules end on their holder's attack or cast (endsWhenHolder attacks, casts) requires schemaVersion 2 and capabilityApi 1.373 or newer";
+  }
   // A cast at foes, and what a sanctuary stops, 1.372.
   if (
     !declaresApi(372) &&

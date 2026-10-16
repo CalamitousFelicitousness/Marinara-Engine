@@ -1468,6 +1468,9 @@ export interface RulesetCombatant {
    *  every turn, whosever it is; a "round" rider when the round turns over. */
   ridersSpent?: string[];
   tracked: RulesetTrackedCondition[];
+  /** Who saved against a sanctuary held on its sheet, not tracked (1.373), by condition, free of it
+   *  for the rest of the fight. */
+  sanctuarySaved?: Record<string, string[]>;
   concentrating: {
     actionId: string;
     label: string;

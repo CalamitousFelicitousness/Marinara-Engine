@@ -18,6 +18,7 @@ import {
 import { parseTextualToolCalls, stripTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
   capabilityModelId,
+  impliesProxyThinking,
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
   isGeminiModel,
@@ -892,7 +893,8 @@ export class OpenAIProvider extends BaseLLMProvider {
     const m = capabilityModelId(model);
     if (/^(o1|o3|o4)/.test(m)) return true;
     if (this.isOpenAINoSamplingModel(m)) return true;
-    if (m.startsWith("gpt-5") && reasoningEffort && reasoningEffort !== "none") return true;
+    if (m.startsWith("gpt-5") && ((reasoningEffort && reasoningEffort !== "none") || impliesProxyThinking(model)))
+      return true;
     // Claude adaptive-only models forbid all sampling params (covers reverse proxies).
     if (isClaudeAdaptiveOnlyNoSamplingModel(m)) return true;
     // Argon and the newer Gemini Flash models ignore sampling and reject penalties (OpenRouter, NanoGPT).

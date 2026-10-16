@@ -13,25 +13,38 @@ export interface KnownModel {
   maxOutput: number;
 }
 
-/** Channel tags that proxies put in front of a model id, such as LinkAPI's `[次]`, `[SP]` and `[free]`. */
-const DECORATIVE_MODEL_PREFIX_RE = /^(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）))+\s*/u;
+/** Channel tags that new-api/one-api resellers put in front of a model id, such as `[次]`, `[SP]`, `【限时】`. */
+const MODEL_TAG_PREFIX_RE = /^(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）))+\s*/u;
+/**
+ * Modifiers after a model id: CLIProxyAPI `(high)`/`(8192)`, Claude Code `[1m]`, new-api `@thinking:on` and
+ * Vertex `@20250805`. No catalog id contains brackets or `@`.
+ */
+const MODEL_MODIFIER_SUFFIX_RE = /(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）)|@[^/@]*)+$/u;
 
 /**
- * The id that capability checks read: trimmed, lower case, without a proxy channel tag. `[次]claude-opus-4-6` is
- * checked as `claude-opus-4-6`. Vendor paths (`anthropic/…`) stay, because OpenRouter rules read them. Never send
- * this id to a provider; the request keeps the id the user configured.
+ * The id that capability checks read: trimmed, lower case, without proxy tags or modifiers.
+ * `[次]claude-opus-4-6` and `claude-opus-4-6(high)` are checked as `claude-opus-4-6`. Vendor paths (`anthropic/…`)
+ * stay, because OpenRouter rules read them. Never send this id to a provider; the request keeps the configured id.
  */
 export function capabilityModelId(model: string): string {
-  return model.trim().toLowerCase().replace(DECORATIVE_MODEL_PREFIX_RE, "");
+  return model.trim().toLowerCase().replace(MODEL_TAG_PREFIX_RE, "").replace(MODEL_MODIFIER_SUFFIX_RE, "");
 }
 
 /**
- * Proxy ids such as `claude-opus-4-6-thinking` (new-api, LinkAPI) make the proxy turn thinking on for the request,
- * whatever the request says. Treat them like a thinking request: no sampling and no forced tool choice, which
- * Anthropic rejects while thinking runs. Thinking settings Marinara sends still apply where the proxy keeps them.
+ * Proxy ids that make the proxy turn thinking on whatever the request says: new-api's `-thinking`,
+ * `-thinking-<budget>`, effort tails (`-high`) and `@thinking:<on|budget>`, AiHubMix `-think`, CLIProxyAPI
+ * `(<level|budget>)`. Treat them like a thinking request: no sampling and no forced tool choice, which Anthropic and
+ * GPT-5 reject while reasoning runs. Thinking settings Marinara sends still apply where the proxy keeps them.
  */
 export function impliesProxyThinking(model: string): boolean {
-  return /(?<!-no|-non)-thinking$/u.test(capabilityModelId(model));
+  const raw = model.trim().toLowerCase();
+  const modifier = /@thinking:([^@]*)$/u.exec(raw)?.[1] ?? /\(([^)]*)\)$/u.exec(raw)?.[1];
+  if (modifier !== undefined) return !/^\s*(?:off|none|0)?\s*$/u.test(modifier);
+  const id = capabilityModelId(raw);
+  return (
+    /(?<!-no|-non)-think(?:ing(?:-[1-9]\d*)?)?$/u.test(id) ||
+    /^(?:claude-|gpt-5|o[134])\S*-(?:minimal|low|medium|high|xhigh|max)$/u.test(id)
+  );
 }
 
 const CLAUDE_ADAPTIVE_ONLY_OPUS_RE = /claude-opus-4-(?:[7-9]|\d{2,})/;
@@ -1282,11 +1295,31 @@ const OPENAI_COMPATIBLE_AGGREGATOR_MODELS: KnownModel[] = [
 ];
 
 /**
- * Variant suffixes proxies add to a catalog id (LinkAPI `-thinking` and `-r`, `-nothinking`, `-search`, effort
- * levels). findKnownModel removes them one at a time, and only while the id is still unknown, so a real catalog id
- * that ends the same way (`command-r`) always matches as it is.
+ * Variant suffixes proxies add to a catalog id: thinking switches (new-api `-thinking[-<budget>]`/`-nothinking`,
+ * AiHubMix `-think`/`-nothink`), effort tails (new-api, AiHubMix `gpt-5.4-high`), AiHubMix `-search`, LinkAPI `-r`,
+ * Chutes `-tee`, and date pins (`-20250929`, `-2024-08-06`, `-0731`). findKnownModel removes them one at a time,
+ * and only while the id is still unknown, so a real catalog id that ends the same way (`command-r`,
+ * `gpt-5.1-codex-max`, `grok-4-0709`) always matches as it is.
  */
-const PROXY_MODEL_SUFFIX_RE = /-(?:thinking|nothinking|no-thinking|non-thinking|search|minimal|low|medium|high|r)$/u;
+const PROXY_MODEL_SUFFIX_RE =
+  /-(?:thinking(?:-\d+)?|think|nothinking|nothink|no-thinking|non-thinking|none|minimal|low|medium|high|xhigh|max|search|r|tee|\d{4}-\d{2}-\d{2}|\d{8}|\d{4})$/u;
+
+/**
+ * The catalog form of a proxy or gateway id: no tags or modifiers, no namespace path (OpenRouter, Bifrost and
+ * LiteLLM `vendor/…`, Chutes `deepseek-ai/…`, CLIProxyAPI `provider://…`), no `:variant` (OpenRouter `:free`, NanoGPT
+ * `:thinking`), no Bedrock wrapper (`us.anthropic.…-v1:0`), Vertex date pins as Anthropic's (`@20250805` is
+ * `-20250805`), and hyphenated Claude versions (Poe and OpenRouter `claude-opus-4.6`).
+ */
+function catalogModelId(modelId: string): string {
+  return (
+    capabilityModelId(modelId.trim().replace(/@(\d{8})$/u, "-$1"))
+      .split("/")
+      .pop() ?? ""
+  )
+    .split(":", 1)[0]!
+    .replace(/^(?:[a-z]+\.)?anthropic\.(claude-.+)-v\d+$/u, "$1")
+    .replace(/^(claude-(?:opus|sonnet|haiku|fable|mythos)-\d+)\.(\d+)/u, "$1-$2");
+}
 
 /**
  * Look up a known model by ID across all providers. A proxy id resolves to the catalog model it serves:
@@ -1304,12 +1337,7 @@ export function findKnownModel(provider: APIProvider, modelId: string): KnownMod
       ? OPENAI_COMPATIBLE_AGGREGATOR_MODELS
       : MODEL_LISTS[provider];
   if (!catalog?.length) return undefined;
-  const normalizedId = capabilityModelId(modelId);
-  let id = isClaudeOpus55Model(normalizedId)
-    ? "claude-opus-5-5"
-    : isClaudeSonnet55Model(normalizedId)
-      ? "claude-sonnet-5-5"
-      : (normalizedId.split("/").pop()?.split(":", 1)[0] ?? normalizedId);
+  let id = catalogModelId(modelId);
   for (;;) {
     const known = catalog.find((model) => model.id.toLowerCase() === id);
     const shorter = id.replace(PROXY_MODEL_SUFFIX_RE, "");

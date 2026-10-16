@@ -287,7 +287,7 @@ export function applyAnthropicToolChoice(
     model.includes("mythos") ||
     model === "claude-fable-5-1" ||
     isClaudeStrictRequestModel(model) ||
-    impliesProxyThinking(model)
+    impliesProxyThinking(options.model)
   ) {
     setToolChoiceType("auto");
     return "automatic-only";

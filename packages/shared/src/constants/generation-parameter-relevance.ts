@@ -250,7 +250,8 @@ export function relevantGenerationParameters(context: GenerationParameterContext
 
     // Claude thinking rejects temperature and top_k, so the request drops both (anthropic.provider.ts). A `-thinking`
     // proxy id thinks even with effort off.
-    if (provider === "anthropic" && (effortActive || impliesProxyThinking(model))) hide("temperature", "topK");
+    if (provider === "anthropic" && (effortActive || impliesProxyThinking(String(context.model ?? ""))))
+      hide("temperature", "topK");
 
     if (provider === "openai_chatgpt" && !isOpenAIReasoningModel(model)) hide("reasoningEffort");
 
@@ -278,7 +279,8 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         isOpenAIGpt56Model(model) ||
         model.startsWith("gpt-5.5") ||
         isOpenAIGpt6AlwaysReasoningModel(model) ||
-        ((model.startsWith("gpt-5") || isOpenAIGpt6Model(model)) && effortActive);
+        ((model.startsWith("gpt-5") || isOpenAIGpt6Model(model)) && effortActive) ||
+        (model.startsWith("gpt-5") && impliesProxyThinking(String(context.model ?? "")));
       if (noSampling) hide("temperature", "topP", "frequencyPenalty", "presencePenalty");
 
       // Responses API models never carry penalties. GPT-6 uses it everywhere but OpenRouter.

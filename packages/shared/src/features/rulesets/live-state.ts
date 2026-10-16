@@ -1376,7 +1376,15 @@ export function applyRulesetSheetOp(
 
   const restHealthRule = definition.combat?.health;
   const restHealth = restHealthRule && "pool" in restHealthRule ? restHealthRule.pool : undefined;
+  let restEvaluated: ReturnType<typeof evaluateRulesetSheet> | undefined;
   for (const step of rest.restore) {
+    // Only while a value off the sheet says so (1.381).
+    if (step.when) {
+      restEvaluated ??= evaluateRulesetSheet(definition, build);
+      const value = resolveRulesetValueRef(definition, build, step.when.value, restEvaluated);
+      if (step.when.atLeast !== undefined && value < step.when.atLeast) continue;
+      if (step.when.atMost !== undefined && value > step.when.atMost) continue;
+    }
     const moved = (current: number, max: number, min: number): number => {
       // A string other than these two is a state's value, which a state step below handles.
       if (step.to !== undefined) return step.to === "max" ? max : step.to === "min" ? min : Number(step.to);
@@ -1434,6 +1442,8 @@ export function applyRulesetSheetOp(
       if (step.poolGroup !== undefined) return pool.group === step.poolGroup;
       if (step.listPools === undefined) return false;
       if (pool.listId !== step.listPools) return false;
+      // One row by name (1.381).
+      if (step.row !== undefined && !sameName(pool.label, step.row)) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
     // Shared (1.77): the fraction of the whole group's maximum, handed to its pools in the order the

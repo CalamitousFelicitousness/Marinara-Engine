@@ -2243,6 +2243,11 @@ const restRestoreSchema = z
     /** Row pools of the named list, optionally only rows whose recharge column is one of `recharge`. */
     listPools: sheetId.optional(),
     recharge: z.array(z.string().min(1).max(80)).min(1).max(12).optional(),
+    /** Only the row pool of this name among `listPools` (Capability API 1.381): 5e's Sorcery Points. */
+    row: z.string().trim().min(1).max(80).optional(),
+    /** Given back only while a value off the sheet stands within these bounds (Capability API 1.381):
+     *  5e's Sorcerous Restoration, 4 sorcery points on a short rest from sorcerer 20. */
+    when: sheetBoundsSchema("when", "given back").optional(),
     track: sheetId.optional(),
     /** On a wound track: clear only marks of this kind, leaving the others where they are. */
     kind: sheetId.optional(),
@@ -2282,6 +2287,9 @@ const restRestoreSchema = z
     }
     if ((op.to === undefined) === (op.by === undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A restore step has exactly one of "to" or "by"' });
+    }
+    if (op.row !== undefined && op.listPools === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["row"], message: '"row" only narrows listPools' });
     }
     if (op.recharge && op.listPools === undefined) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recharge"], message: '"recharge" only filters listPools' });
@@ -12567,6 +12575,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "kind"], `"${op.track}" is not a wound track, so it has no kinds`);
         else if (!target.kinds?.some((entry) => entry.id === op.kind)) {
           issue([...path, "kind"], `"${op.track}" declares no kind "${op.kind}"`);
+        }
+      }
+      if (op.when) {
+        const names = rulesetSheetNames(def.sheet, def.items);
+        for (const found of rulesetValueRefIssues(op.when.value, names, names.derived)) {
+          issue([...path, "when", "value", found.key], found.message);
         }
       }
       if (op.listPools !== undefined) {

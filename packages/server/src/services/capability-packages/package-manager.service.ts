@@ -2194,6 +2194,21 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A rest that gives back one named row's pool, or only while a value off the sheet says so (1.381):
+ *  Sorcerous Restoration. */
+function carriesRestRows381(ruleset: unknown): boolean {
+  const rests = plainRecord(ruleset)?.rests;
+  if (!Array.isArray(rests)) return false;
+  return rests.some((rest) => {
+    const restore = plainRecord(rest)?.restore;
+    if (!Array.isArray(restore)) return false;
+    return restore.some((op) => {
+      const step = plainRecord(op);
+      return !!step && (step.row !== undefined || step.when !== undefined);
+    });
+  });
+}
+
 /** A condition ended far OR out of sight, as its holder ends a turn (1.380): Intimidating Presence. */
 function carriesEndsAwayOr380(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5655,6 +5670,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A rest's named row, or a value off the sheet, 1.381.
+  if (!declaresApi(381) && carriesRestRows381(ruleset)) {
+    return "A ruleset whose rests give back one named row's pool (row) or only while a value off the sheet says so (when) requires schemaVersion 2 and capabilityApi 1.381 or newer";
+  }
   // Far or out of sight, 1.380.
   if (
     !declaresApi(380) &&

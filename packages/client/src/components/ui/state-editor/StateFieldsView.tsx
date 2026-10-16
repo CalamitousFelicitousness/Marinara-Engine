@@ -31,28 +31,22 @@ const isContainer = (value: unknown) => Array.isArray(value) || isPlainRecord(va
 const INPUT =
   "w-full min-w-0 rounded-lg bg-[var(--background)] px-2.5 text-sm text-[var(--foreground)] ring-1 ring-[var(--border)] outline-none transition-shadow placeholder:text-[var(--muted-foreground)] focus:ring-2 focus:ring-[var(--ring)]";
 
-/** Long or multi-line text gets a box that grows a little; short text stays one line. */
-const LONG_TEXT = 48;
+/** Text wraps to about 60 characters a line; short text stays one row. */
+const TEXT_LINE = 60;
 
+/**
+ * Always a textarea, so typing past one line or pressing Enter never swaps the element (and drops
+ * focus mid-edit); only its height follows the text.
+ */
 function TextField({ value, onChange, label }: { value: string; onChange: (next: string) => void; label: string }) {
-  if (value.length > LONG_TEXT || value.includes("\n")) {
-    return (
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={label}
-        rows={Math.min(6, Math.max(2, Math.ceil(value.length / 60), value.split("\n").length))}
-        className={cn(INPUT, "resize-y py-1.5 leading-snug")}
-      />
-    );
-  }
+  const rows = Math.min(6, Math.max(1, Math.ceil(value.length / TEXT_LINE), value.split("\n").length));
   return (
-    <input
-      type="text"
+    <textarea
       value={value}
       onChange={(event) => onChange(event.target.value)}
       aria-label={label}
-      className={cn(INPUT, "h-9")}
+      rows={rows}
+      className={cn(INPUT, "block min-h-9 resize-y py-1.5 leading-snug")}
     />
   );
 }

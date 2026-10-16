@@ -623,6 +623,7 @@ function findCurrentCharacterMatch(
   currentCharacters: PresentCharacter[],
   fallbackIndex: number,
   usedCurrent: Set<number>,
+  reportedIds: ReadonlySet<string>,
 ) {
   const id = typeof next.characterId === "string" ? next.characterId.trim() : "";
   if (id) {
@@ -631,15 +632,28 @@ function findCurrentCharacterMatch(
     );
     if (byId >= 0) return { index: byId, matchedByIdentity: true };
   }
+  // Exact IDs own their rows. Names and positions may only claim an unreserved compatible identity.
+  const available = (character: PresentCharacter, index: number) => {
+    const currentId = typeof character.characterId === "string" ? character.characterId.trim() : "";
+    const castId = `${currentId}:cast:${normalizeTextForMatch(character.name)}`;
+    return (
+      !usedCurrent.has(index) &&
+      (!currentId || (!reportedIds.has(currentId) && (!reportedIds.has(castId) || id === castId))) &&
+      (!id || !currentId || id === castId)
+    );
+  };
   const name = normalizeComparableText(next.name);
   if (name) {
     const byName = currentCharacters.findIndex((character, index) => {
-      return !usedCurrent.has(index) && normalizeComparableText(character.name) === name;
+      return available(character, index) && normalizeComparableText(character.name) === name;
     });
     if (byName >= 0) return { index: byName, matchedByIdentity: true };
   }
   return {
-    index: fallbackIndex < currentCharacters.length && !usedCurrent.has(fallbackIndex) ? fallbackIndex : -1,
+    index:
+      fallbackIndex < currentCharacters.length && available(currentCharacters[fallbackIndex]!, fallbackIndex)
+        ? fallbackIndex
+        : -1,
     matchedByIdentity: false,
   };
 }
@@ -1008,30 +1022,14 @@ function mergeCharactersWithLocks(
 ) {
   const current = currentCharacters ?? [];
   const usedCurrent = new Set<number>();
+  const reportedIds = new Set(
+    nextCharacters.map((character) => (typeof character.characterId === "string" ? character.characterId.trim() : "")),
+  );
   const merged = nextCharacters.map((character, index) => {
-    const match = findCurrentCharacterMatch(character, current, index, usedCurrent);
+    const match = findCurrentCharacterMatch(character, current, index, usedCurrent, reportedIds);
     const currentIndex = match.index;
     const currentCharacter = currentIndex >= 0 ? current[currentIndex] : null;
     if (!currentCharacter) return character;
-    const currentId = typeof currentCharacter.characterId === "string" ? currentCharacter.characterId.trim() : "";
-    const nextId = typeof character.characterId === "string" ? character.characterId.trim() : "";
-    // Only the same card's named cast alias may replace an explicit identity (buildTrackerCastCharacterId).
-    if (
-      currentId &&
-      nextId &&
-      nextId !== currentId &&
-      nextId !== `${currentId}:cast:${normalizeTextForMatch(currentCharacter.name)}`
-    ) {
-      return character;
-    }
-    // An explicitly identified row owns its locks, even if a name-only row reaches this match first.
-    if (
-      currentId &&
-      character.characterId !== currentCharacter.characterId &&
-      nextCharacters.some((other) => other.characterId === currentCharacter.characterId)
-    ) {
-      return character;
-    }
     if (
       !match.matchedByIdentity &&
       hasLockWithPrefix(locks, `${characterTrackerLockPrefix(currentCharacter, currentIndex)}.`)
@@ -1043,6 +1041,7 @@ function mergeCharactersWithLocks(
     const next = { ...character };
     // Locks are keyed by the row's id, so a locked row the agent finds by name keeps that id, whether the
     // agent left it out or sent another one, such as a cast id for the same card (#7689).
+    const currentId = typeof currentCharacter.characterId === "string" ? currentCharacter.characterId.trim() : "";
     if (
       currentId &&
       !nextCharacters.some((other) => other.characterId === currentCharacter.characterId) &&

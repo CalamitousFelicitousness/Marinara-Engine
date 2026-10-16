@@ -25,9 +25,14 @@ const corrected = [
 const nameLocks = { [characterTrackerLockKey(corrected[0], 0, "name")]: true };
 
 /** One Character Tracker result applied the way the generate route applies it. */
-function applyTurn(reported: Array<Record<string, unknown>>, previous: PresentCharacter[], fieldLocks = nameLocks) {
+function applyTurn(
+  reported: Array<Record<string, unknown>>,
+  previous: PresentCharacter[],
+  fieldLocks = nameLocks,
+  identityCards = cards,
+) {
   const characters = structuredClone(reported);
-  applyTrackerCharacterCardIdentity(characters, cards, { previousCharacters: previous as never });
+  applyTrackerCharacterCardIdentity(characters, identityCards, { previousCharacters: previous as never });
   preserveTrackerCharacterUiFields(characters, previous as never);
   const state = { presentCharacters: previous, fieldLocks } as unknown as GameState;
   return applyTrackerFieldLocksToGameStatePatch({ presentCharacters: characters }, state)
@@ -122,6 +127,58 @@ assert.deepEqual(
     { characterId: "old-alex", name: "Alex", mood: "Wary" },
   ],
   "an unrelated explicit ID stays distinct, and the old locked row is retained",
+);
+
+// An explicit ID reserves only its own row: a name-only report still finds another eligible namesake.
+const namesakes = [
+  { characterId: "alex-a", name: "Alex", mood: "Calm" },
+  { characterId: "alex-b", name: "Alex", mood: "Wary" },
+] as PresentCharacter[];
+const namesakeLocks = {
+  [characterTrackerLockKey(namesakes[0], 0, "name")]: true,
+  [characterTrackerLockKey(namesakes[1], 1, "mood")]: true,
+};
+for (const ownerId of ["alex-a", buildTrackerCastCharacterId("alex-a", "Alex")]) {
+  for (const explicitFirst of [false, true]) {
+    const reported = [
+      { name: "Alex", mood: "Changed" },
+      { characterId: ownerId, name: "Alex", mood: "Other" },
+    ];
+    const expected = [
+      { characterId: "alex-b", mood: "Wary" },
+      { characterId: "alex-a", mood: "Other" },
+    ];
+    if (explicitFirst) {
+      reported.reverse();
+      expected.reverse();
+    }
+    const nameOnlyThenExplicit = applyTurn(reported, namesakes, namesakeLocks, [
+      { id: "alex-a", name: "Alex" },
+      { id: "alex-b", name: "Alex" },
+    ]);
+    assert.deepEqual(
+      nameOnlyThenExplicit.map(({ characterId, mood }) => ({ characterId, mood })),
+      expected,
+      `the bare row matches the unreserved namesake while ${ownerId} keeps its own row (explicit first: ${explicitFirst})`,
+    );
+  }
+}
+const namesakeCast = applyTurn(
+  [{ characterId: buildTrackerCastCharacterId("alex-b", "Alex"), name: "Alex", mood: "Changed" }],
+  namesakes,
+  namesakeLocks,
+  [
+    { id: "alex-a", name: "Alex" },
+    { id: "alex-b", name: "Alex" },
+  ],
+);
+assert.deepEqual(
+  namesakeCast.map(({ characterId, mood }) => ({ characterId, mood })),
+  [
+    { characterId: "alex-b", mood: "Wary" },
+    { characterId: "alex-a", mood: "Calm" },
+  ],
+  "a named cast alias matches its own namesake and retains the other locked row once",
 );
 
 console.log("tracker character name lock regression passed");

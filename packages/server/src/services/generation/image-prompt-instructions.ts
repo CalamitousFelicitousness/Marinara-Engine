@@ -15,3 +15,19 @@ export function appendImagePromptInstructions(prompt: string, instructions: unkn
 export function appendVideoPromptInstructions(prompt: string, instructions: unknown): string {
   return appendPromptingInstructions(prompt, instructions, "video");
 }
+
+/**
+ * A video connection's instructions that decide the whole video prompt: their format, fields, line breaks and shot
+ * rules replace any the writer's own prompt names. Used by every chat video writer, so each clip follows them.
+ */
+export function appendGoverningVideoPromptInstructions(prompt: string, instructions: unknown): string {
+  const normalizedInstructions = normalizeImagePromptInstructions(instructions);
+  return normalizedInstructions
+    ? `${prompt}\n\n<video_prompting_instructions>\nThese video-backend instructions govern the final video prompt. Follow them exactly. Where they set an output format, fields, line breaks or shot rules, use those instead of any format, length or shot limit named above, and keep their line breaks. They are instructions, not text to copy into the prompt:\n${normalizedInstructions}\n</video_prompting_instructions>`
+    : prompt;
+}
+
+/** The instructions as they would be sent, or "" when there are none. */
+export function normalizeVideoPromptInstructionsText(instructions: unknown): string {
+  return normalizeImagePromptInstructions(instructions) ?? "";
+}

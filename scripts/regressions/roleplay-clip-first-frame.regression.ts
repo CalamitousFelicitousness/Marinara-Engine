@@ -1,6 +1,6 @@
 // Roleplay clips follow the chat's First frame, through the real routes with a fake text model, image service and
 // ComfyUI: with Clips only, the avatar or no picture draws no picture at all; Send Avatar References for videos
-// lets a Prompt only clip start from the avatar; a clip without a picture describes everyone it names, the
+// lets a Prompt only clip start from the avatar; a clip without a picture is written by the Clip Director and describes everyone it names, the
 // user's persona included, and the Avatar first frame starts from whoever is named first.
 import assert from "node:assert/strict";
 import { startRoleplayVideoHarness } from "./fixtures/roleplay-video-harness.js";
@@ -38,7 +38,23 @@ try {
   assert.equal((await h.attachments(roleplay.id, "video")).length, ++clips);
   assert.equal(await latestReplyImages(), 0);
   assert.notEqual(h.lastComfyInputs()?.image, avatarPng.toString("base64"), "Prompt only starts from nothing");
-  assert.match(h.lastComfyInputs()?.text ?? "", /Aster waves slowly[\s\S]*1girl, porch, dusk/u, "motion and scene");
+  // No picture shows the moment, so the Clip Director writes the clip from Illustrator's scene and motion.
+  const clipRequest = requests.director.at(-1) ?? "";
+  assert.match(clipRequest, /No picture of this moment exists/u, "the Clip Director writes it");
+  assert.match(clipRequest, /Requested clip: 1girl, porch, dusk\\nAster waves slowly/u, "with the scene and motion");
+  assert.equal(h.lastComfyInputs()?.text, "Bottles burst across the lab floor", "its prompt is what is sent");
+
+  // The video connection's instructions decide the format: a multi-line answer in their fields reaches the video
+  // model as written, line breaks included, even as plain text instead of JSON.
+  const threeFields = [
+    "integrated_multimodal_description: [Shot 1] Low light on the porch; Aster waves slowly.",
+    "overall_soundscape: Crickets and a creaking swing.",
+    "non_diegetic_music: N/A",
+  ].join("\n");
+  replies.director = { content: threeFields, finishReason: "stop" };
+  await h.generate(roleplay.id, "Aster waves once more.");
+  assert.equal((await h.attachments(roleplay.id, "video")).length, ++clips);
+  assert.equal(h.lastComfyInputs()?.text, threeFields, "the instructed format arrives intact");
 
   await h.saveChatSettings(roleplay.id, { sceneVideoFirstFrame: "avatar" });
   await h.generate(roleplay.id, "Aster smiles again.");

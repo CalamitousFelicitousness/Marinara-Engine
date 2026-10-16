@@ -41,7 +41,7 @@ import {
   handleConversationSelfieCommand,
   resolveConversationSelfieRequestedNames,
 } from "./conversation-selfie-command-runtime.js";
-import { appendVideoPromptInstructions } from "./image-prompt-instructions.js";
+import { appendGoverningVideoPromptInstructions } from "./image-prompt-instructions.js";
 import { resolveIllustratorPromptRuntime, type IllustratorPromptConnection } from "./illustrator-prompt-runtime.js";
 
 export interface ConversationVideoPreview {
@@ -189,7 +189,7 @@ export async function generateConversationVideo(args: {
       );
     }
     const request = parts.join("\n\n");
-    const user = appendVideoPromptInstructions(request, videoConn.videoPromptInstructions);
+    const user = appendGoverningVideoPromptInstructions(request, videoConn.videoPromptInstructions);
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] prompt-builder system:\n%s", system);
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] prompt-builder user:\n%s", user);
     const result = await promptRuntime.provider.chatComplete(

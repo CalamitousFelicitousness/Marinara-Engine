@@ -2952,16 +2952,20 @@ function buildAgentMessages(
   if (generatedVideos) {
     // Generated Videos: the picture can become a short clip when the agent decides motion adds to the moment.
     finalParts.push("\n<optional_video>");
-    finalParts.push(
-      generatedVideos.clipsOnly === true
-        ? 'This chat shows short video clips instead of pictures. When you generate, "prompt" describes the scene the clip starts from, and always add "videoPrompt": "<what moves and how the camera moves, in one or two present-tense sentences>" to your JSON.'
-        : 'When you generate a picture and a few seconds of motion would genuinely add to this moment, you may also add "generateVideo": true and "videoPrompt": "<what moves and how the camera moves, starting from your picture, in one or two present-tense sentences>" to your JSON. A picture stays still unless motion is the point of the moment (action, violence, a chase, dancing, something breaking).',
-    );
     const videoInstructions =
       typeof generatedVideos.instructions === "string" ? generatedVideos.instructions.trim() : "";
+    // With the video connection's instructions, they decide what videoPrompt looks like; otherwise a short line.
+    const videoPromptShape = videoInstructions
+      ? "<the provider-ready video prompt, written exactly as the video-backend instructions below say>"
+      : "<what moves and how the camera moves, in one or two present-tense sentences>";
+    finalParts.push(
+      generatedVideos.clipsOnly === true
+        ? `This chat shows short video clips instead of pictures. When you generate, "prompt" describes the scene the clip starts from, and always add "videoPrompt": "${videoPromptShape}" to your JSON.`
+        : `When you generate a picture and a few seconds of motion would genuinely add to this moment, you may also add "generateVideo": true and "videoPrompt": "${videoPromptShape}" to your JSON, starting from your picture. A picture stays still unless motion is the point of the moment (action, violence, a chase, dancing, something breaking).`,
+    );
     if (videoInstructions) {
       finalParts.push(
-        "Apply these video-backend instructions when writing videoPrompt. They are instructions, not text to copy into it:",
+        "Write videoPrompt following these video-backend instructions exactly: they decide its format, fields, line breaks (as \\n inside the JSON string) and shot rules. They are instructions, not text to copy into it:",
       );
       finalParts.push(videoInstructions);
     }

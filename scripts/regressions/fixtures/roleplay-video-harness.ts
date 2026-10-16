@@ -75,10 +75,13 @@ export async function startRoleplayVideoHarness(name: string) {
       main: "",
       agent: { shouldGenerate: false } as Record<string, unknown>,
       planner: { prompt: "Aster by the rainy window" } as Record<string, unknown>,
+      /** Set to make the clip director answer differently once (for example out of budget). */
+      director: null as { content: string; finishReason: string } | null,
     };
     const requests = {
       planner: [] as string[],
       director: [] as string[],
+      directorMaxTokens: [] as number[],
       reply: [] as string[],
       agent: [] as string[],
       comfy: [] as string[],
@@ -117,6 +120,14 @@ export async function startRoleplayVideoHarness(name: string) {
       let content = replies.main;
       if (messages.includes("<source_exchange>")) {
         requests.director.push(messages);
+        requests.directorMaxTokens.push(Number(JSON.parse(body).max_tokens ?? JSON.parse(body).max_completion_tokens));
+        if (replies.director) {
+          const once = replies.director;
+          replies.director = null;
+          return json({
+            choices: [{ message: { role: "assistant", content: once.content }, finish_reason: once.finishReason }],
+          });
+        }
         content = JSON.stringify({ narrationBeat: "Bottles burst across the lab floor" });
       } else if (messages.includes("manual_gallery_illustration_request")) {
         requests.planner.push(messages);

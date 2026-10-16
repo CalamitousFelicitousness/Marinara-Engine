@@ -1,7 +1,11 @@
-import { clipVerbatimVideoSource, compactVideoPromptText } from "./prompt-context.js";
+import { clipVerbatimVideoSource } from "./prompt-context.js";
 import type { PromptOverridesStorage } from "../storage/prompt-overrides.storage.js";
+import { tryParseJsonRecord } from "../../lib/json-repair.js";
 import { loadPrompt, ROLEPLAY_CLIP_DIRECTOR, ROLEPLAY_GALLERY_VIDEO_DIRECTOR } from "../prompt-overrides/index.js";
-import { appendVideoPromptInstructions } from "../generation/image-prompt-instructions.js";
+import {
+  appendGoverningVideoPromptInstructions,
+  normalizeVideoPromptInstructionsText,
+} from "../generation/image-prompt-instructions.js";
 
 const ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH = 6_000;
 
@@ -33,14 +37,16 @@ export function buildRoleplayVideoDirectionUserPrompt(ctx: RoleplayVideoDirectio
     referenceImagePrompt
       ? `<first_frame_generation_context>\n${referenceImagePrompt}\n</first_frame_generation_context>`
       : "",
-    ctx.withoutPicture
-      ? "Write one duration-aware narrationBeat that describes the scene and its action."
-      : "Write one duration-aware narrationBeat. Use the first-frame generation context only to understand the starting pose and scene; do not repeat it in the output.",
+    normalizeVideoPromptInstructionsText(ctx.videoPromptInstructions)
+      ? "Write the clip's video prompt exactly as the video prompting instructions below say; it may be returned as plain text instead of JSON."
+      : ctx.withoutPicture
+        ? "Write one duration-aware narrationBeat that describes the scene and its action."
+        : "Write one duration-aware narrationBeat. Use the first-frame generation context only to understand the starting pose and scene; do not repeat it in the output.",
   ]
     .filter(Boolean)
     .join("\n\n");
   // Next to the request, so they still apply when the director's system prompt is overridden.
-  return appendVideoPromptInstructions(prompt, ctx.videoPromptInstructions);
+  return appendGoverningVideoPromptInstructions(prompt, ctx.videoPromptInstructions);
 }
 
 export async function buildRoleplayVideoDirectionMessages(
@@ -81,12 +87,21 @@ export function resolveRoleplayVideoDirection(value: unknown, maxLength: number 
       narrationBeat = "";
     }
   } catch {
-    narrationBeat = unwrapped.replace(/^narration\s*beat\s*:\s*/iu, "");
+    // A JSON answer with a slip (an unescaped quote) is repaired; plain text, such as a format the video
+    // connection's instructions ask for, is used as written.
+    const repaired = unwrapped.startsWith("{") ? tryParseJsonRecord(unwrapped)?.narrationBeat : undefined;
+    narrationBeat = typeof repaired === "string" ? repaired : unwrapped.replace(/^narration\s*beat\s*:\s*/iu, "");
   }
-  return compactVideoPromptText(
-    narrationBeat,
+  const maxChars =
     maxLength && maxLength > 0
       ? Math.min(maxLength, ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH)
-      : ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH,
-  );
+      : ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH;
+  // Line breaks stay: a format the video connection's instructions ask for (one field per line) must survive.
+  const tidy = narrationBeat
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/gu, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+  return tidy.length <= maxChars ? tidy : `${tidy.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }

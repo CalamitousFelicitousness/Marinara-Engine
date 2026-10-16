@@ -66,6 +66,7 @@ let illustratorReply: Record<string, unknown> = {
   videoPrompt: "The lantern light flickers as Aster turns",
 };
 const videoWriterRequests: string[] = [];
+const directorRequests: string[] = [];
 const agentRequests: string[] = [];
 const comfyPrompts: string[] = [];
 const provider = createServer(async (request, response) => {
@@ -103,7 +104,11 @@ const provider = createServer(async (request, response) => {
   if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
   const messages = JSON.stringify(JSON.parse(body).messages ?? []);
   let content = mainReply;
-  if (messages.includes("AGENT_WRITER")) {
+  if (messages.includes("<source_exchange>")) {
+    // A Roleplay video director writing a clip's prompt.
+    directorRequests.push(messages);
+    content = JSON.stringify({ narrationBeat: "Lantern light sways as the scene moves" });
+  } else if (messages.includes("AGENT_WRITER")) {
     agentRequests.push(messages);
     content = JSON.stringify(illustratorReply);
   } else if (messages.includes("video prompt writer")) {
@@ -259,6 +264,8 @@ try {
     agentRequests.at(-1) ?? "",
     /<optional_video>[\s\S]*?generateVideo[\s\S]*?Describe one slow camera move\.\\n<\/optional_video>/u,
   );
+  // The video connection's instructions decide what videoPrompt looks like.
+  assert.match(agentRequests.at(-1) ?? "", /written exactly as the video-backend instructions below say/u);
   const roleplayVideos = await videoAttachments(roleplay.id);
   assert.equal(roleplayVideos.length, 1, JSON.stringify(roleplayVideos));
   const lastAssistant = (await chats.listMessages(roleplay.id))
@@ -316,8 +323,14 @@ try {
   const clipOnly = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
   assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === clipOnly?.id).length, 1);
   assert.equal((await imagesOn(clipOnly?.id)).length, 0, "the picture is only the clip's first frame");
-  // No motion was written, so the required clip moves from the picture's own scene, not a generic line.
-  assert.match(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.text, /^1girl, lantern, rain/u);
+  // No motion was written, so the Gallery animation director writes the required clip from the picture, to the
+  // video connection's instructions, instead of a generic line.
+  assert.match(directorRequests.at(-1) ?? "", /<first_frame_generation_context>\\n1girl, lantern, rain/u);
+  assert.match(directorRequests.at(-1) ?? "", /<video_prompting_instructions>[\s\S]*Describe one slow camera move\./u);
+  assert.equal(
+    JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.text,
+    "Lantern light sways as the scene moves",
+  );
   assert.equal(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.image, png.toString("base64"));
 
   // Clips only, clip fails: the picture is shown instead.
@@ -425,6 +438,8 @@ try {
   assert.doesNotMatch(String(sender?.content), /\[video/u, "the command tag is hidden");
   assert.match(body, /"type":"video"/u);
   assert.match(videoWriterRequests.at(-1) ?? "", /Context for the video message: waving from the bus/u);
+  // Its instructions govern the format of every Conversation clip too.
+  assert.match(videoWriterRequests.at(-1) ?? "", /These video-backend instructions govern the final video prompt/u);
 
   // A bare [video] gives the writer the recent conversation, as /video does: the user's request and the reply.
   mainReply = "Here are the pinkish haloarchaea under my microscope! [video]";

@@ -754,10 +754,16 @@ import { handleConversationScheduleCommand } from "../services/generation/conver
 import { handleConversationCrossPostCommand } from "../services/generation/conversation-cross-post-command-runtime.js";
 import { handleHapticCommand } from "../services/generation/haptic-command-runtime.js";
 import { handleConversationSelfieCommand } from "../services/generation/conversation-selfie-command-runtime.js";
-import { startConversationVideoCommand } from "../services/generation/conversation-video-runtime.js";
+import {
+  loadIllustratorContextSize,
+  startConversationVideoCommand,
+} from "../services/generation/conversation-video-runtime.js";
+import { writeRoleplayClipDirection } from "../services/video/roleplay-clip-writer.js";
+import { formatRecentVideoContext } from "../services/video/prompt-context.js";
 import {
   animateGalleryImage,
   generateRoleplayClip,
+  resolveChatVideoSetup,
   roleplayVideoFirstFrame,
 } from "../services/video/chat-video-generation.js";
 import {
@@ -4715,6 +4721,33 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             avatar: base64 ? { base64, name: cast.referenceNames[index] ?? "" } : null,
           };
         };
+        // A Roleplay clip's video prompt, written to the video connection's Video Prompting Instructions from the
+        // recent messages up to its reply: the Clip Director for a clip with no picture of its own, the Gallery
+        // animation director to continue a picture. `request` is what the clip should show (a scene, a motion).
+        const writeClipPrompt = async (opts: {
+          messageId: string;
+          request: string;
+          withoutPicture: boolean;
+          referenceImagePrompt?: string;
+        }) =>
+          writeRoleplayClipDirection(app.db, {
+            chat,
+            meta: chatMeta,
+            setup: await resolveChatVideoSetup(app.db, chatMeta),
+            sourceExchange: [
+              opts.request ? `Requested clip: ${opts.request}` : "",
+              formatRecentVideoContext(await chats.listMessages(input.chatId), {
+                count: await loadIllustratorContextSize(app.db),
+                endMessageId: opts.messageId,
+              }),
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            referenceImagePrompt: opts.referenceImagePrompt,
+            characterNames: charInfo.map((character) => character.name),
+            withoutPicture: opts.withoutPicture,
+            debugMode: input.debugMode,
+          });
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -13828,8 +13861,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     (async () => {
                       try {
                         const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
-                        // Without a picture, the clip needs the scene as well as the motion.
-                        const prompt = [motion, imagePrompt].filter(Boolean).join("\n\n");
+                        // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
+                        // to the video connection's instructions.
+                        const prompt = await writeClipPrompt({
+                          messageId,
+                          request: [imagePrompt, motion].filter(Boolean).join("\n"),
+                          withoutPicture: true,
+                        });
                         const cast = await resolveClipCast(illCharacters, prompt, clipOnlyFrame !== "none");
                         const video = await generateRoleplayClip(app.db, {
                           chatId: input.chatId,
@@ -14247,8 +14285,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   chatId: input.chatId,
                                   chatMeta,
                                   galleryImageId: firstGalleryImageId,
-                                  // A required clip (Clips only) with no motion written moves from the picture's own scene.
-                                  motionPrompt: writtenMotion || imagePrompt,
+                                  // Illustrator's videoPrompt was written to the video connection's instructions; a
+                                  // required clip (Clips only) without one gets it from the Gallery animation director.
+                                  motionPrompt:
+                                    writtenMotion ||
+                                    (await writeClipPrompt({
+                                      messageId,
+                                      request: "",
+                                      withoutPicture: false,
+                                      referenceImagePrompt: imagePrompt,
+                                    })),
                                   appearanceBlock,
                                   queue: true,
                                   debugMode: input.debugMode,
@@ -14256,10 +14302,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                               : await generateRoleplayClip(app.db, {
                                   chatId: input.chatId,
                                   chatMeta,
-                                  // Without the picture, the clip needs the scene as well as the motion.
-                                  prompt: [writtenMotion, typeof illData.prompt === "string" ? illData.prompt : ""]
-                                    .filter(Boolean)
-                                    .join("\n\n"),
+                                  // No picture starts this clip, so the Clip Director writes the scene and motion to the
+                                  // video connection's instructions.
+                                  prompt: await writeClipPrompt({
+                                    messageId,
+                                    request: [typeof illData.prompt === "string" ? illData.prompt : "", writtenMotion]
+                                      .filter(Boolean)
+                                      .join("\n"),
+                                    withoutPicture: true,
+                                  }),
                                   firstFrame: videoFirstFrame,
                                   // The same characters (and persona) the picture showed; its appearance lines too.
                                   avatar:

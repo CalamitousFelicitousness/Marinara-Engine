@@ -1021,6 +1021,16 @@ function mergeCharactersWithLocks(
     }
     usedCurrent.add(currentIndex);
     const next = { ...character };
+    // Locks are keyed by the row's id, so a locked row the agent names without it keeps that id (#7689).
+    const currentId = typeof currentCharacter.characterId === "string" ? currentCharacter.characterId.trim() : "";
+    if (
+      currentId &&
+      !(typeof next.characterId === "string" && next.characterId.trim()) &&
+      !nextCharacters.some((other) => other.characterId === currentCharacter.characterId) &&
+      hasLockWithPrefix(locks, `${characterTrackerLockPrefix(currentCharacter, currentIndex)}.`)
+    ) {
+      next.characterId = currentCharacter.characterId;
+    }
     for (const field of ["emoji", "name", "mood", "appearance", "outfit", "thoughts"] as const) {
       if (isTrackerFieldLocked(locks, characterTrackerLockKey(currentCharacter, currentIndex, field))) {
         next[field] = currentCharacter[field] as never;

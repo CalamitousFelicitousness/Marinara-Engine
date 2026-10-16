@@ -265,7 +265,9 @@ export function createCheckpointService(db: DB) {
           snapshotData: JSON.stringify(capturedGameSnapshot),
           spatialSnapshotData: capturedSpatialSnapshot ? JSON.stringify(capturedSpatialSnapshot) : null,
           engineStateData: capturedEngineStates.length > 0 ? JSON.stringify(capturedEngineStates) : null,
-          gameMetadataData: capturedGameMetadata ? JSON.stringify(capturedGameMetadata) : null,
+          // `{}` when the game had none of the keys yet, so a load still clears what came later;
+          // null stays reserved for checkpoints from before this field.
+          gameMetadataData: JSON.stringify(capturedGameMetadata ?? {}),
           messageId: input.messageId,
           label: input.label,
           triggerType: input.triggerType,

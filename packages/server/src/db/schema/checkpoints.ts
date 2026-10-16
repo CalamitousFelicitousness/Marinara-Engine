@@ -21,7 +21,7 @@ export const gameCheckpoints = fileTable("game_checkpoints", {
   engineStateData: text("engine_state_data"),
   /** Immutable JSON object of the game's own chat-metadata keys at capture time (party cards, NPCs,
    *  journal, inventory, …; see CHECKPOINT_GAME_METADATA_KEYS), so a load rewinds them too (#7742).
-   *  Null on checkpoints from before this field. */
+   *  `{}` when the game had none of them yet; null on checkpoints from before this field. */
   gameMetadataData: text("game_metadata_data"),
   /** FK to messages.id — the message this checkpoint was taken at */
   messageId: text("message_id").notNull(),

@@ -199,6 +199,18 @@ try {
     );
   }
 
+  // ── Part 2c: a checkpoint taken before the game had any of the keys still clears them ──
+  {
+    const { chatId, snapshot } = await seedGameChat("checkpoint empty capture", { gameSystemPrompt: "keep" });
+    const checkpointId = await createCheckpoint(chatId, snapshot);
+    const [row] = await db.select().from(gameCheckpoints).where(eq(gameCheckpoints.id, checkpointId));
+    assert.equal(row?.gameMetadataData, "{}", "an empty capture is stored as {}, not as a legacy null");
+    await chats.patchMetadata(chatId, { gameJournal: { entries: ["after the save"] } });
+
+    await loadCheckpoint(chatId, checkpointId);
+    assert.equal((await metadataOf(chatId)).gameJournal, null, "a key added after an empty capture is cleared");
+  }
+
   // ── Part 3: a checkpoint from before the field loads as it did ──
   {
     const { chatId, snapshot } = await seedGameChat("legacy checkpoint", { gameMorale: 50 });

@@ -13,13 +13,38 @@ export interface KnownModel {
   maxOutput: number;
 }
 
+const BRACKET_PAIRS: Record<string, string> = { "[": "]", "【": "】", "(": ")", "（": "）" };
+
 /** Channel tags that new-api/one-api resellers put in front of a model id, such as `[次]`, `[SP]`, `【限时】`. */
-const MODEL_TAG_PREFIX_RE = /^(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）))+\s*/u;
+function stripTagPrefix(id: string): string {
+  let s = id.trimStart();
+  for (let close = BRACKET_PAIRS[s[0] ?? ""]; close; close = BRACKET_PAIRS[s[0] ?? ""]) {
+    const end = s.indexOf(close);
+    if (end < 0) break;
+    s = s.slice(end + 1).trimStart();
+  }
+  return s;
+}
+
 /**
  * Modifiers after a model id: CLIProxyAPI `(high)`/`(8192)`, Claude Code `[1m]`, new-api `@thinking:on` and
- * Vertex `@20250805`. No catalog id contains brackets or `@`.
+ * Vertex `@20250805`. No catalog id contains brackets or `@`. Linear scans, because ids are user input.
  */
-const MODEL_MODIFIER_SUFFIX_RE = /(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）)|@[^/@]*)+$/u;
+function stripModifierSuffix(id: string): string {
+  let s = id;
+  for (;;) {
+    const t = s.trimEnd();
+    const open = Object.keys(BRACKET_PAIRS).find((o) => t.endsWith(BRACKET_PAIRS[o]!));
+    const start = open ? t.lastIndexOf(open) : -1;
+    if (start >= 0) {
+      s = t.slice(0, start);
+      continue;
+    }
+    const at = s.lastIndexOf("@");
+    if (at < 0 || s.indexOf("/", at) >= 0) return s;
+    s = s.slice(0, at);
+  }
+}
 
 /**
  * The id that capability checks read: trimmed, lower case, without proxy tags or modifiers.
@@ -27,7 +52,7 @@ const MODEL_MODIFIER_SUFFIX_RE = /(?:\s*(?:\[[^\]]*\]|【[^】]*】|\([^)]*\)|�
  * stay, because OpenRouter rules read them. Never send this id to a provider; the request keeps the configured id.
  */
 export function capabilityModelId(model: string): string {
-  return model.trim().toLowerCase().replace(MODEL_TAG_PREFIX_RE, "").replace(MODEL_MODIFIER_SUFFIX_RE, "");
+  return stripModifierSuffix(stripTagPrefix(model.trim().toLowerCase()));
 }
 
 /**
@@ -38,8 +63,15 @@ export function capabilityModelId(model: string): string {
  */
 export function impliesProxyThinking(model: string): boolean {
   const raw = model.trim().toLowerCase();
-  const modifier = /@thinking:([^@]*)$/u.exec(raw)?.[1] ?? /\(([^)]*)\)$/u.exec(raw)?.[1];
-  if (modifier !== undefined) return !/^\s*(?:off|none|0)?\s*$/u.test(modifier);
+  const at = raw.lastIndexOf("@thinking:");
+  const open = raw.lastIndexOf("(");
+  const modifier =
+    at >= 0 && !raw.includes("@", at + 1)
+      ? raw.slice(at + 10)
+      : raw.endsWith(")") && open >= 0 && !raw.slice(open + 1, -1).includes(")")
+        ? raw.slice(open + 1, -1)
+        : undefined;
+  if (modifier !== undefined) return !["", "off", "none", "0"].includes(modifier.trim());
   const id = capabilityModelId(raw);
   return (
     /(?<!-no|-non)-think(?:ing(?:-[1-9]\d*)?)?$/u.test(id) ||

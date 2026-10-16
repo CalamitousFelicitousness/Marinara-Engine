@@ -546,6 +546,7 @@ export class AnthropicProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    if (!isAdaptiveOnly && impliesProxyThinking(options.model)) stripAnthropicSamplingParameters(body);
     if (isAdaptiveOnly) {
       stripAnthropicSamplingParameters(body);
       if (
@@ -929,6 +930,9 @@ export class AnthropicProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    if (!isAdaptiveOnly && !suppressModelParameters && impliesProxyThinking(options.model)) {
+      stripAnthropicSamplingParameters(body);
+    }
     if (isAdaptiveOnly && !suppressModelParameters) {
       stripAnthropicSamplingParameters(body);
       if (

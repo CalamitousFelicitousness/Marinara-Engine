@@ -335,13 +335,14 @@ function readMacroVariable(map: Record<string, string> | undefined, name: string
 
 /**
  * `{{reasoning}}`, or undefined when a preset or chat variable of that name owns it. Presets made before the macro
- * existed may define their own `reasoning` variable, so the variable keeps the name.
+ * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
+ * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
  */
-function readReasoningMacro(ctx: MacroContext): string | undefined {
+function readReasoningMacro(ctx: MacroContext, name: string): string | undefined {
   if (
-    readMacroVariable(ctx.variables, "reasoning") !== undefined ||
-    ctx.deferredPresetVariableNames?.has("reasoning") ||
-    readMacroVariable(ctx.localVariables, "reasoning") !== undefined
+    readMacroVariable(ctx.variables, name) !== undefined ||
+    ctx.deferredPresetVariableNames?.has(name) ||
+    readMacroVariable(ctx.localVariables, name) !== undefined
   ) {
     return undefined;
   }
@@ -1362,9 +1363,10 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
     case "model":
       return ctx.model ?? "";
     case "reasoning": {
-      const reasoning = readReasoningMacro(ctx);
+      const name = token.replace(/^@/, "");
+      const reasoning = readReasoningMacro(ctx, name);
       if (reasoning !== undefined) return reasoning;
-      return readMacroVariable(ctx.variables, token) ?? readMacroVariable(ctx.localVariables, token) ?? "";
+      return readMacroVariable(ctx.variables, name) ?? readMacroVariable(ctx.localVariables, name) ?? "";
     }
     case "chatid":
       return ctx.chatId ?? "";
@@ -3334,7 +3336,7 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   );
   result = result.replace(/\{\{input\}\}/gi, ctx.lastInput ?? "");
   result = result.replace(/\{\{model\}\}/gi, ctx.model ?? "");
-  result = result.replace(/\{\{reasoning\}\}/gi, (match) => readReasoningMacro(ctx) ?? match);
+  result = result.replace(/\{\{(reasoning)\}\}/gi, (match, name: string) => readReasoningMacro(ctx, name) ?? match);
   result = result.replace(/\{\{chatId\}\}/gi, ctx.chatId ?? "");
   result = result.replace(/\{\{lastGenerationType\}\}/gi, ctx.lastGenerationType ?? "");
   result = result.replace(/\{\{idle_duration\}\}/gi, ctx.idleDuration ?? "");

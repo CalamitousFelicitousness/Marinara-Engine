@@ -25,6 +25,15 @@ assert.equal(resolveMacros('{{#if {{model}} == "claude-opus-5-5"}}exact{{/if}}',
 // A preset or chat variable named `reasoning` predates the macro and keeps the name.
 assert.equal(resolveMacros("{{reasoning}}", ctx({ reasoning: "high", variables: { reasoning: "yes" } })), "yes");
 assert.equal(resolveMacros(cot, ctx({ reasoning: "high", localVariables: { reasoning: "no" } })), "Answer directly.");
+// The macro matches any case, but a variable owns only its exact spelling, as in the catch-all pass.
+const ownsCapital = ctx({ reasoning: "high", variables: { Reasoning: "x" } });
+assert.equal(resolveMacros("{{Reasoning}}|{{reasoning}}", ownsCapital), "x|high");
+assert.equal(resolveMacros('{{#if Reasoning == "x"}}own{{/if}}', ownsCapital), "own");
+assert.equal(resolveMacros('{{#if @reasoning == "yes"}}own{{/if}}', ctx({ variables: { reasoning: "yes" } })), "own");
+// A preset value still pending defers the block and the tag rather than deciding from the request's level.
+const pending = ctx({ reasoning: "high", deferredPresetVariableNames: new Set(["reasoning"]) });
+assert.equal(resolveMacros("{{reasoning}}", pending), "{{reasoning}}");
+assert.ok(resolveMacros(cot, pending).includes("MARINARA_DEFERRED_RELOCATION_IF"));
 
 const level = (args: Partial<Parameters<typeof resolveReasoningMacroValue>[0]> = {}) =>
   resolveReasoningMacroValue({

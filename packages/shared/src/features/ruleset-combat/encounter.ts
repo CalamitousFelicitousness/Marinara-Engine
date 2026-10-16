@@ -3804,6 +3804,16 @@ function sheetCombatant(
         }
         // Healing at its most (1.362): Supreme Healing.
         if (amend.maxHeal && action.heal) action.healsMax = true;
+        // More to each it heals, and its user's own (1.368): Disciple of Life, Blessed Healer.
+        for (const key of ["healAdd", "healsSelf"] as const) {
+          const adds = amend[key];
+          if (!adds || !action.heal) continue;
+          (action[key] ??= []).push({
+            flat: adds.add ? Math.round(resolveRulesetValueRef(definition, build, adds.add, evaluated)) : 0,
+            perLevel: adds.perLevel ?? 0,
+            fromLevel: adds.fromLevel ?? 0,
+          });
+        }
         // More of its own type on a hit (1.306): Lifedrinker.
         if (amend.damagePlus && action.damage) {
           const added = Math.round(resolveRulesetValueRef(definition, build, amend.damagePlus.add, evaluated));

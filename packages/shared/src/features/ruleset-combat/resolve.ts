@@ -230,6 +230,7 @@ import type {
   RulesetFallResume,
   RulesetBlowKind,
   RulesetCombatAction,
+  RulesetCombatHealAdd,
   RulesetCombatCharge,
   RulesetCombatMove,
   RulesetCombatDamageClause,
@@ -9548,6 +9549,16 @@ function resolveActionBody(
       : action.heal;
   // At its most (1.362): Supreme Healing.
   const heal = action.healsMax && healing ? () => maxAmount(healing, extra) : once(healing);
+  // More to each it heals, and its user's own once when it heals somebody else (1.368), by the
+  // level it is paid at: Disciple of Life, Blessed Healer.
+  const paidLevel = action.healAdd || action.healsSelf ? rulesetPaidLevel(ctx.definition, actor, action, payWith) : 0;
+  const healMore = (adds: RulesetCombatHealAdd[] | undefined) =>
+    (adds ?? []).reduce(
+      (total, add) => (paidLevel < add.fromLevel ? total : total + add.flat + add.perLevel * paidLevel),
+      0,
+    );
+  const healAdded = healMore(action.healAdd);
+  let healsSelf = action.healsSelf ? healMore(action.healsSelf) : 0;
   const temporary = once(action.temporary);
   const restore = once(action.restore?.amount);
 
@@ -10471,10 +10482,14 @@ function resolveActionBody(
       dealHeal(ctx, target, {
         sourceId: actor.id,
         rolls: rolled.rolls,
-        flat: rolled.flat,
-        amount: rolled.total,
+        flat: rolled.flat + healAdded,
+        amount: rolled.total + healAdded,
         magical: magicalAction(action),
       });
+      if (healsSelf > 0 && target.id !== actor.id) {
+        dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: healsSelf, amount: healsSelf, magical: true });
+        healsSelf = 0;
+      }
     }
     if (temporary) {
       const rolled = temporary();

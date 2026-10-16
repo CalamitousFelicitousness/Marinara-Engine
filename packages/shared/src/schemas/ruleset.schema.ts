@@ -4200,6 +4200,19 @@ export interface RulesetCatalogWhere {
   filter: string;
   equals: string | number;
 }
+/** Healing an amend adds (Capability API 1.368): a value off the sheet, and so much for each level
+ *  the entry is paid at, from `fromLevel` up (below it, nothing). */
+const amendHealSchema = z
+  .object({
+    add: rulesetValueRefSchema.optional(),
+    perLevel: z.number().int().min(1).max(20).optional(),
+    fromLevel: z.number().int().min(0).max(20).optional(),
+  })
+  .strict()
+  .refine((heal) => heal.add !== undefined || heal.perLevel !== undefined, {
+    message: 'Healing an amend adds is an "add", a "perLevel" or both',
+  });
+
 export const catalogWhereSchema: z.ZodType<RulesetCatalogWhere, z.ZodTypeDef, unknown> = z
   .object({ filter: sheetId, equals: z.union([z.string().trim().min(1).max(80), z.number().finite()]) })
   .strict();
@@ -4963,6 +4976,13 @@ const catalogMechanicsObject = z
             /** Its healing at its most, every die at its top face (Capability API 1.362): Supreme
              *  Healing. */
             maxHeal: z.literal(true).optional(),
+            /** More healing to every creature it heals (Capability API 1.368): `add` off the sheet
+             *  plus `perLevel` for each level it is paid at, from `fromLevel` up. 5e's Disciple of
+             *  Life, 2 + the spell's level from 1st. */
+            healAdd: amendHealSchema.optional(),
+            /** Its user heals as much themself, once a use, when it heals somebody else (Capability API
+             *  1.368): 5e's Blessed Healer. */
+            healsSelf: amendHealSchema.optional(),
             /** More damage of its own type on a hit (Capability API 1.306), at least `atLeast`:
              *  Lifedrinker's necrotic equal to the Charisma modifier, minimum 1. */
             damagePlus: z
@@ -4988,12 +5008,14 @@ const catalogMechanicsObject = z
               amend.damageOnce !== undefined ||
               amend.halfOnSave !== undefined ||
               amend.maxHeal !== undefined ||
+              amend.healAdd !== undefined ||
+              amend.healsSelf !== undefined ||
               amend.range !== undefined ||
               amend.push !== undefined ||
               amend.strikes !== undefined,
             {
               message:
-                'An amend changes something: "damageAdd", "damagePlus", "damageOnce", "halfOnSave", "maxHeal", "range", "push" or "strikes"',
+                'An amend changes something: "damageAdd", "damagePlus", "damageOnce", "halfOnSave", "maxHeal", "healAdd", "healsSelf", "range", "push" or "strikes"',
             },
           )
           .refine((amend) => (amend.entry === undefined) !== (amend.catalogs === undefined), {
@@ -17904,6 +17926,16 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", key, "die", "from", refIssue.key], refIssue.message);
       }
     }
+    // Healing an amend adds (1.368) reads the sheet the same way.
+    mechanics?.amends?.forEach((amend, amendIndex) => {
+      for (const key of ["healAdd", "healsSelf"] as const) {
+        const ref = amend[key]?.add;
+        if (!ref) continue;
+        for (const refIssue of rulesetValueRefIssues(ref, names, names.derived, false)) {
+          add([index, "mechanics", "amends", amendIndex, key, "add", refIssue.key], refIssue.message);
+        }
+      }
+    });
   });
   return issues;
 }

@@ -782,6 +782,10 @@ export interface RulesetCombatAction {
   };
   /** Its healing at its most (1.362): Supreme Healing. */
   healsMax?: true;
+  /** More healing to each it heals, and its user's own when it heals somebody else (1.368):
+   *  Disciple of Life, Blessed Healer. `flat` is read off the sheet already. */
+  healAdd?: RulesetCombatHealAdd[];
+  healsSelf?: RulesetCombatHealAdd[];
   /** Added to one damage roll of each use (1.361): Empowered Evocation. */
   damageOnce?: number;
   /** A miss deals half its damage, and nothing else it does on a hit (1.255). */
@@ -1347,6 +1351,13 @@ export interface RulesetTrackedCondition {
   /** The temporary points it last gave that its holder still had the most of (1.274), lost as it
    *  ends where its rule says so. */
   gaveTemp?: number;
+}
+
+/** Healing an amend adds (1.368), its sheet value read as the fight began. */
+export interface RulesetCombatHealAdd {
+  flat: number;
+  perLevel: number;
+  fromLevel: number;
 }
 
 export interface RulesetCombatant {

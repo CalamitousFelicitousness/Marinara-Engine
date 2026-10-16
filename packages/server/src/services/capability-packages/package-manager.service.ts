@@ -2191,6 +2191,23 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
   );
 }
 
+/** Healing an amend adds to each it heals, or to its user when it heals somebody else (1.368):
+ *  Disciple of Life, Blessed Healer. */
+function carriesHealAmend368(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealAmend368(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.amends) &&
+    record.amends.some(
+      (amend) => plainRecord(plainRecord(amend)?.healAdd) || plainRecord(plainRecord(amend)?.healsSelf),
+    )
+  )
+    return true;
+  return featureValues(record).some((one) => carriesHealAmend368(one, depth + 1));
+}
+
 /** A catalog entry's long range, and a caught missile thrown back with a die off the sheet (1.367):
  *  Deflect Missiles' throw back as a monk weapon. */
 function carriesLongThrow367(value: unknown, depth = 0): boolean {
@@ -5495,6 +5512,14 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // Healing amends, 1.368.
+  if (
+    !declaresApi(368) &&
+    (carriesHealAmend368(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealAmend368(document)))
+  ) {
+    return "A ruleset whose entries amend the healing of others (healAdd) or heal their user as they heal somebody else (healsSelf) requires schemaVersion 2 and capabilityApi 1.368 or newer";
+  }
   // A long range on a catalog entry, and a thrown back die, 1.367.
   if (
     !declaresApi(367) &&

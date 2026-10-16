@@ -991,15 +991,21 @@ const abilitySchema = z
      *  `min` and `max`, and shown read-only. A Blades attribute is its marked actions; GURPS
      *  Perception is IQ plus what was bought. No derived value, cap or proficiency may read it. */
     value: z.array(rulesetValueRefSchema).min(1).max(8).optional(),
+    /** Added to a check made with this ability alone, outside any skill (Capability API 1.366): 5e's
+     *  Jack of All Trades on a raw Strength check. Like a cap, it reads no skill or save. */
+    checkAdd: rulesetValueRefSchema.optional(),
   })
   .strict();
 
 /** What a check on a skill or save does when the character has no training in it (its tier is the
  *  first one): roll as usual, roll one step harder (a pool's per-die target goes up one), not be
- *  rolled at all, or add `by` to its number (dice on a pool, a flat amount on a sum). */
+ *  rolled at all, or add `by` to its number (dice on a pool, a flat amount on a sum), or add a value
+ *  off the sheet, `add` (Capability API 1.366): 5e's Jack of All Trades, half the proficiency bonus
+ *  from 2nd bard level. Like a cap, it reads no skill or save. */
 const untrainedSchema = z.union([
   z.enum(["normal", "harder", "refuse"]),
   z.object({ by: z.number().int().min(-20).max(20) }).strict(),
+  z.object({ add: rulesetValueRefSchema }).strict(),
 ]);
 export type RulesetUntrained = z.infer<typeof untrainedSchema>;
 
@@ -10441,7 +10447,7 @@ const combatObjectSchema = z
       .optional(),
     conditions: z.array(combatConditionSchema).max(RULESET_CONDITIONS_MAX).optional(),
     /** Levels of live tracks that count as conditions while the track is high enough. */
-    levels: z.array(combatLevelSchema).max(20).optional(),
+    levels: z.array(combatLevelSchema).max(40).optional(),
     /** Every row adds comma-separated harm or condition words from this column (Capability API
      *  1.132). A damage word may say `except` and the tags that get through it. */
     sheetHides: z
@@ -12085,6 +12091,34 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
     }
     void columns;
+  });
+
+  // What untrained adds, and what an ability check adds (1.366), feed a skill's or check's own
+  // number exactly as a cap does: they read no skill or save, nor does any derived value up to theirs.
+  const readsNoSkill = (ref: RulesetValueRef, path: (string | number)[], what: string) => {
+    checkRef(ref, path, derivedIds);
+    if (ref.skillMod !== undefined || ref.saveMod !== undefined)
+      issue(path, `${what} cannot read a skill or save modifier`);
+    if (ref.derived === undefined) return;
+    const end = sheet.derived.findIndex((derived) => derived.id === ref.derived);
+    sheet.derived.slice(0, end + 1).forEach((derived, derivedIndex) => {
+      if (refsOf(derived).some((one) => one.skillMod !== undefined || one.saveMod !== undefined)) {
+        issue(
+          ["sheet", "derived", derivedIndex],
+          `"${derived.id}" feeds ${what} and cannot read a skill or save modifier`,
+        );
+      }
+    });
+  };
+  for (const key of ["skills", "saves", "sections"] as const) {
+    (sheet[key] as ReadonlyArray<{ untrained?: RulesetUntrained }>).forEach((entry, index) => {
+      if (typeof entry.untrained === "object" && "add" in entry.untrained)
+        readsNoSkill(entry.untrained.add, ["sheet", key, index, "untrained", "add"], "What untrained adds");
+    });
+  }
+  sheet.abilities.forEach((ability, index) => {
+    if (ability.checkAdd)
+      readsNoSkill(ability.checkAdd, ["sheet", "abilities", index, "checkAdd"], "An ability check's add");
   });
 
   // A skill or save's cap feeds that skill's own number, so like the proficiency bonus it cannot

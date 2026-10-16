@@ -231,6 +231,8 @@ export interface EvaluatedRulesetSheet {
    *  caps again, so swapping an ability can never lift a check past its cap. */
   skillCaps: Record<string, { cap: number; uncapped: number }>;
   saveCaps: Record<string, { cap: number; uncapped: number }>;
+  /** What a check made with each ability alone adds (1.366), for the abilities that declare one. */
+  abilityCheckAdds?: Record<string, number>;
   /** The live state this sheet was worked out with, so a reference resolved against it later (a
    *  modifier off the sheet, a spend's limit, a fight's defense) reads the same values. */
   live?: RulesetSheetLiveValues;
@@ -537,7 +539,7 @@ export function evaluateRulesetSheet(
     const trained = roundRulesetNumber(tier.multiplier * readProficiencyBonus(), tier.round) + tier.flat;
     // Untrained, the ruleset may add to or take from the number itself, before any cap holds it.
     const rule = tier.id === firstTier.id ? rulesetUntrainedRule(definition, entry) : "normal";
-    const untrainedBy = typeof rule === "object" ? rule.by : 0;
+    const untrainedBy = typeof rule === "object" ? ("add" in rule ? Math.floor(resolveRef(rule.add)) : rule.by) : 0;
     const uncapped =
       (entry.ability ? (abilityMods[entry.ability] ?? 0) : 0) +
       trained +
@@ -623,6 +625,10 @@ export function evaluateRulesetSheet(
     saveTiers[save.id] = tierById.has(build.saves?.[save.id] ?? "") ? build.saves[save.id]! : firstTier.id;
     saveMods[save.id] = trainedModifier(save, build.saves, saveCaps);
   }
+  // What a check with an ability alone adds (1.366): Jack of All Trades on a raw Strength check.
+  const abilityCheckAdds: Record<string, number> = {};
+  for (const ability of sheet.abilities)
+    if (ability.checkAdd) abilityCheckAdds[ability.id] = Math.floor(resolveRef(ability.checkAdd));
   // A row that is a check of its own (1.161): its rating, with its ability the way a skill adds one.
   for (const row of rulesetRowChecks(definition, build))
     skillMods[row.key] = (row.ability ? (abilityMods[row.ability] ?? 0) : 0) + row.rating;
@@ -639,6 +645,7 @@ export function evaluateRulesetSheet(
     numbers,
     skillCaps,
     saveCaps,
+    ...(Object.keys(abilityCheckAdds).length ? { abilityCheckAdds } : {}),
     ...(live ? { live } : {}),
   };
 }
@@ -879,9 +886,12 @@ export function matchRulesetCheckTarget(
 export function rulesetCheckModifier(evaluated: EvaluatedRulesetSheet, target: RulesetCheckTarget | null): number {
   if (!target) return 0;
   if (target.type === "ability") {
-    // Two abilities rolled together are simply both of them.
-    const second = target.withAbility ? (evaluated.abilityMods[target.withAbility] ?? 0) : 0;
-    return (evaluated.abilityMods[target.id] ?? 0) + second;
+    // Two abilities rolled together are simply both of them, each with what its check adds (1.366).
+    const adds = evaluated.abilityCheckAdds;
+    const second = target.withAbility
+      ? (evaluated.abilityMods[target.withAbility] ?? 0) + (adds?.[target.withAbility] ?? 0)
+      : 0;
+    return (evaluated.abilityMods[target.id] ?? 0) + (adds?.[target.id] ?? 0) + second;
   }
   const own = target.type === "skill" ? evaluated.skillMods[target.id] : evaluated.saveMods[target.id];
   const base = own ?? 0;

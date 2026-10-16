@@ -957,7 +957,9 @@ function renderRulesetKindCheckLine(
       : rule === "harder"
         ? "one step harder"
         : typeof rule === "object"
-          ? `${rule.by > 0 ? "+" : ""}${rule.by}${resolution.kind !== "dice-sum" ? (Math.abs(rule.by) === 1 ? " die" : " dice") : ""}`
+          ? "add" in rule
+            ? "adds a value off the sheet"
+            : `${rule.by > 0 ? "+" : ""}${rule.by}${resolution.kind !== "dice-sum" ? (Math.abs(rule.by) === 1 ? " die" : " dice") : ""}`
           : "";
   const untrainedItems = [
     ...ruleset.sheet.sections.flatMap((section) =>

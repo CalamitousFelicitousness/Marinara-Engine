@@ -2179,6 +2179,24 @@ function carriesAttackGates343(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAttackGates343(one, depth + 1));
 }
 
+/** What an untrained skill or save adds off the sheet, or an ability check (1.366): Jack of All
+ *  Trades, Remarkable Athlete. Read off the sheet's own abilities, skills, saves and sections. */
+function carriesUntrainedAdd366(ruleset: unknown): boolean {
+  const sheet = plainRecord(plainRecord(ruleset)?.sheet);
+  if (!sheet) return false;
+  const entries = (key: string) => (Array.isArray(sheet[key]) ? (sheet[key] as unknown[]) : []);
+  if (entries("abilities").some((one) => plainRecord(plainRecord(one)?.checkAdd))) return true;
+  return ["skills", "saves", "sections"].some((key) =>
+    entries(key).some((one) => plainRecord(plainRecord(plainRecord(one)?.untrained)?.add)),
+  );
+}
+
+/** More than 20 combat levels (1.366 raised the cap to 40). */
+function carriesManyLevels366(ruleset: unknown): boolean {
+  const levels = plainRecord(plainRecord(ruleset)?.combat)?.levels;
+  return Array.isArray(levels) && levels.length > 20;
+}
+
 /** A floor under its holder's checks (1.365): Reliable Talent, Indomitable Might. */
 function carriesCheckFloor365(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5465,6 +5483,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What untrained adds off the sheet, and an ability check's add, 1.366.
+  if (!declaresApi(366) && carriesUntrainedAdd366(ruleset)) {
+    return "A ruleset whose untrained skills or saves add a value off the sheet (untrained add) or whose abilities add to their checks (checkAdd) requires schemaVersion 2 and capabilityApi 1.366 or newer";
+  }
+  if (!declaresApi(366) && carriesManyLevels366(ruleset)) {
+    return "A ruleset with more than 20 combat levels requires schemaVersion 2 and capabilityApi 1.366 or newer";
+  }
   // A floor under checks, 1.365.
   if (
     !declaresApi(365) &&

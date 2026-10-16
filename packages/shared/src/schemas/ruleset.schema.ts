@@ -3683,6 +3683,7 @@ const catalogDurationSchema = z.union([
 export interface RulesetHolderEnding {
   attacks?: true;
   casts?: string[];
+  castsAtFoes?: true;
   moves?: true;
   acts?: true;
   uses?: string[];
@@ -3696,6 +3697,10 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
       .max(8)
       .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
       .optional(),
+    /** Only a cast of those that reaches one of its holder's foes ends it (Capability API 1.372): one
+     *  aimed at a foe, or an area or a harm that catches one. 5e's Sanctuary ends on a spell that
+     *  affects an enemy, not on Cure Wounds cast on a friend. */
+    castsAtFoes: z.literal(true).optional(),
     /** Its holder moving (Capability API 1.303): 5e's One with Shadows. */
     moves: z.literal(true).optional(),
     /** Its holder taking any action or reaction after the one that put it on (Capability API 1.303). */
@@ -3712,6 +3717,9 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
   .strict()
   .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses, {
     message: "Say what ends it: attacking, casting, moving, acting or using one of its actions",
+  })
+  .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
+    message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
   });
 
 /** Who passes a save without rolling, and what else it counts as being against (1.181). */
@@ -9930,6 +9938,24 @@ const combatConditionSchema = z
         difficulty: rulesetValueRefSchema.optional(),
         from: targetIsSchema.optional(),
         immuneOnSave: z.literal(true).optional(),
+        /** What it stops (Capability API 1.372), rather than every harmful entry: attacks, and harmful
+         *  entries cast from these catalogs. 5e's Sanctuary stops attacks and harmful spells, Nature's
+         *  Sanctuary only attacks. */
+        against: z
+          .object({
+            attacks: z.literal(true).optional(),
+            casts: z
+              .array(sheetId)
+              .min(1)
+              .max(8)
+              .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+              .optional(),
+          })
+          .strict()
+          .refine((against) => against.attacks || against.casts, {
+            message: 'Say what it stops: "attacks", harmful entries it "casts" or both',
+          })
+          .optional(),
       })
       .strict()
       .optional(),
@@ -13968,6 +13994,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "sanctuary", "save"], `Unknown save "${ward.save}"`);
         if (ward.difficulty) checkRef(ward.difficulty, [...path, "sanctuary", "difficulty"], derivedIds);
         targetIsIssues(def, ward.from, [...path, "sanctuary", "from"], issue);
+        castsIssues(def, ward.against?.casts, [...path, "sanctuary", "against", "casts"], issue);
       }
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {

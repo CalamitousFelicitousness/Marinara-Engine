@@ -2192,6 +2192,18 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 }
 
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
+/** A cast that ends its caster's condition only when it reaches a foe, and a sanctuary that stops only
+ *  some things (1.372): Sanctuary, Nature's Sanctuary. */
+function carriesFoeCasts372(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFoeCasts372(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.endsWhenHolder)?.castsAtFoes !== undefined) return true;
+  if (plainRecord(plainRecord(record.sanctuary)?.against)) return true;
+  return featureValues(record).some((one) => carriesFoeCasts372(one, depth + 1));
+}
+
 function carriesEndsSpells371(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesEndsSpells371(one, depth + 1));
@@ -5539,7 +5551,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
-  // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // A cast at foes, and what a sanctuary stops, 1.372.
+  if (
+    !declaresApi(372) &&
+    (carriesFoeCasts372(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFoeCasts372(document)))
+  ) {
+    return "A ruleset whose conditions end only on a cast that reaches a foe (castsAtFoes) or whose sanctuaries stop only attacks or casts (sanctuary.against) requires schemaVersion 2 and capabilityApi 1.372 or newer";
+  }
   // Ending what a catalog's entries put on, 1.371.
   if (
     !declaresApi(371) &&
@@ -5576,6 +5595,7 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose catalog entries carry a long range (longRange) or throw a caught missile back with a die of their own (throwsCaught die) requires schemaVersion 2 and capabilityApi 1.367 or newer";
   }
+  // What untrained adds off the sheet, and an ability check's add, 1.366.
   if (!declaresApi(366) && carriesUntrainedAdd366(ruleset)) {
     return "A ruleset whose untrained skills or saves add a value off the sheet (untrained add) or whose abilities add to their checks (checkAdd) requires schemaVersion 2 and capabilityApi 1.366 or newer";
   }

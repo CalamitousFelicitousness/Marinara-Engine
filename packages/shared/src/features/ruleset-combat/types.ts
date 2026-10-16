@@ -152,7 +152,14 @@ export interface RulesetCombatApplies {
   saveEnds?: RulesetCombatSaveEnds;
   endsAfter?: RulesetConditionEnding;
   /** It comes off once its holder attacks, or casts from one of these catalogs (1.180). */
-  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
+  endsWhenHolder?: {
+    attacks?: true;
+    casts?: string[];
+    castsAtFoes?: true;
+    moves?: true;
+    acts?: true;
+    uses?: string[];
+  };
   /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
    *  their sight (1.310): Eyebite's panic. */
   endsAway?: { beyond: number; unseen?: true };
@@ -1319,7 +1326,14 @@ export interface RulesetTrackedCondition {
   /** What takes it off after one use, whatever its clock says. */
   endsAfter?: RulesetConditionEnding;
   /** What its holder does that takes it off (1.180): attacking, or casting from these catalogs. */
-  endsWhenHolder?: { attacks?: true; casts?: string[]; moves?: true; acts?: true; uses?: string[] };
+  endsWhenHolder?: {
+    attacks?: true;
+    casts?: string[];
+    castsAtFoes?: true;
+    moves?: true;
+    acts?: true;
+    uses?: string[];
+  };
   /** How far from its putter, and out of their sight, takes it off (1.310). */
   endsAway?: { beyond: number; unseen?: true };
   /** The difficulty the repeated save is rolled against: the one that applied it. */

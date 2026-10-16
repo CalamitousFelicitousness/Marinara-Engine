@@ -2276,6 +2276,7 @@ function applyConditionId(
           endsWhenHolder: {
             ...(applies.endsWhenHolder.attacks ? { attacks: true as const } : {}),
             ...(applies.endsWhenHolder.casts ? { casts: [...applies.endsWhenHolder.casts] } : {}),
+            ...(applies.endsWhenHolder.castsAtFoes ? { castsAtFoes: true as const } : {}),
             ...(applies.endsWhenHolder.moves ? { moves: true as const } : {}),
             ...(applies.endsWhenHolder.acts ? { acts: true as const } : {}),
             ...(applies.endsWhenHolder.uses ? { uses: [...applies.endsWhenHolder.uses] } : {}),
@@ -6357,7 +6358,7 @@ function takeReaction(
   if (cancelSave && !rollSave(ctx, taking, cancelSave.save, cancelSave.dc, trigger.sourceId)) {
     // A reaction is acting too (1.308): One with Shadows ends on it, as on one resolved in full.
     stirs(ctx, taking, "acted");
-    holderActed(ctx, taking, action);
+    holderActed(ctx, taking, action, undefined, { targets, from: ctx.events.length });
     goOn(definition, combat, ctx);
     noteOutcome(ctx);
     return finish();
@@ -6424,7 +6425,7 @@ function takeReaction(
     });
     // A reaction is acting too (1.308): One with Shadows ends on it, as on one resolved in full.
     stirs(ctx, taking, "acted");
-    holderActed(ctx, taking, action);
+    holderActed(ctx, taking, action, undefined, { targets: workingTargets, from: ctx.events.length });
     answered();
     noteOutcome(ctx);
     return finish();
@@ -6457,7 +6458,7 @@ function takeReaction(
     });
     // A reaction is acting too (1.308): One with Shadows ends on it, as on one resolved in full.
     stirs(ctx, taking, "acted");
-    holderActed(ctx, taking, action);
+    holderActed(ctx, taking, action, undefined, { targets: workingTargets, from: ctx.events.length });
     answered();
     noteOutcome(ctx);
     return finish();
@@ -6468,7 +6469,7 @@ function takeReaction(
     const strike = rulesetOpportunityAttack(taking);
     const at = workingTargets[0];
     stirs(ctx, taking, "acted");
-    holderActed(ctx, taking, action);
+    holderActed(ctx, taking, action, undefined, { targets: workingTargets, from: ctx.events.length });
     if (strike && at && !at.defeated) {
       ctx.events.push({
         type: "opportunity",
@@ -6490,7 +6491,7 @@ function takeReaction(
     const attacker = rulesetCombatant(ctx.state, trigger.sourceId);
     const attack = attacker?.actions.find((one) => one.id === trigger.optionId);
     stirs(ctx, taking, "acted");
-    holderActed(ctx, taking, action);
+    holderActed(ctx, taking, action, undefined, { targets: workingTargets, from: ctx.events.length });
     const at = workingTargets[0];
     if (attacker && attack && at) {
       ctx.events.push({ type: "added", actorId: taking.id, targetId: at.id, label: action.label, to: attack.label });
@@ -7783,7 +7784,8 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   if (!actor || !action) return;
   if (resume.cancelled || !rulesetCombatStanding(actor)) {
     // A spell called off was cast all the same (1.180).
-    if (resume.cancelled && !resume.summon) holderActed(ctx, actor, action);
+    if (resume.cancelled && !resume.summon)
+      holderActed(ctx, actor, action, undefined, { targets: [], from: ctx.events.length });
     endActionConditions(ctx);
     return;
   }
@@ -8822,21 +8824,48 @@ function holderActed(
   action: RulesetCombatAction,
   /** What they held before it: one it put on them itself (Invisibility cast on oneself) stays. */
   before?: ReadonlySet<RulesetTrackedCondition>,
+  /** Whom it was aimed at, and where in the step's events it began, for a cast that ends it only
+   *  when it reaches a foe (1.372). Unknown, a cast counts as reaching one. */
+  reached?: { targets: readonly RulesetCombatant[]; from: number },
 ): void {
   if (ctx.byZone) return;
   const attacks = rulesetIsAttack(action);
   const casts = action.catalog ?? action.casts;
+  let atFoes: boolean | undefined;
+  const reachesFoe = () => (atFoes ??= !reached || castReachesFoe(ctx, actor, reached.targets, reached.from));
   const ended = actor.tracked.filter(
     (entry) =>
       (!before || before.has(entry)) &&
       ((entry.endsWhenHolder?.attacks && attacks) ||
-        (casts !== undefined && !!entry.endsWhenHolder?.casts?.includes(casts)) ||
+        (casts !== undefined &&
+          !!entry.endsWhenHolder?.casts?.includes(casts) &&
+          (!entry.endsWhenHolder.castsAtFoes || reachesFoe())) ||
         // One of its holder's own actions or entries by name (1.307): a quasit's Scare.
         !!entry.endsWhenHolder?.uses?.some((used) => used === action.id || used === action.entry)),
   );
   for (const entry of ended) {
     if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
   }
+}
+
+/** Whether a cast reached one of its maker's foes (1.372): aimed at one, or one it harmed, put a
+ *  condition on or made save as its area or its harm caught them. */
+function castReachesFoe(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  targets: readonly RulesetCombatant[],
+  from: number,
+): boolean {
+  const foe = (id: string | undefined) => {
+    const one = id === undefined ? undefined : rulesetCombatant(ctx.state, id);
+    return !!one && one.id !== actor.id && one.side !== actor.side;
+  };
+  if (targets.some((one) => foe(one.id))) return true;
+  return ctx.events.slice(from).some((event) => {
+    if (event.type === "damage" || event.type === "condition") return foe(event.targetId);
+    if (event.type === "save") return foe(event.actorId);
+    return false;
+  });
 }
 
 function resolveAction(
@@ -8853,6 +8882,8 @@ function resolveAction(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
+  // Where its events begin, for a cast that ends a condition only when it reaches a foe (1.372).
+  const reachedFrom = ctx.events.length;
   // What shakes surprise off, taken first (1.237): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   // Its light lit or put out (1.296), and nothing else: what it shows is asked as the step ends.
@@ -8916,7 +8947,7 @@ function resolveAction(
   // Gone once the rest is done (1.276).
   if (!result && action.teleport && ctx.teleport) teleport(ctx, actor, action);
   // Finished, rather than held for an answer to one of its rolls (1.180).
-  if (!result) holderActed(ctx, actor, action, before);
+  if (!result) holderActed(ctx, actor, action, before, { targets, from: reachedFrom });
   if (!result && action.endsCondition) endOwnCondition(ctx, actor, action.endsCondition);
   return result;
 }
@@ -9486,8 +9517,10 @@ function sanctuaryTargets(
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
 ): RulesetCombatant[] {
+  const attack = rulesetIsAttack(action);
+  const cast = action.catalog ?? action.casts;
   const harmful =
-    rulesetIsAttack(action) ||
+    attack ||
     !!action.harmful ||
     !!action.damage ||
     !!action.save ||
@@ -9509,6 +9542,13 @@ function sanctuaryTargets(
     let kept = true;
     for (const { entry, rule } of sanctuaries(target)) {
       if (rule.from && !rulesetTargetIs(ctx.definition, actor, rule.from)) continue;
+      // Only what it stops (1.372): attacks, and harmful entries cast from its catalogs.
+      if (
+        rule.against &&
+        !(rule.against.attacks && attack) &&
+        !(cast !== undefined && rule.against.casts?.includes(cast))
+      )
+        continue;
       if (entry.immune?.includes(actor.id)) continue;
       const difficulty =
         entry.difficulty ?? (rule.difficulty ? rulesetSheetValue(ctx.definition, target, rule.difficulty) : undefined);

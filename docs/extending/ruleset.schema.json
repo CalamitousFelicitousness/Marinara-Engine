@@ -45273,6 +45273,10 @@
                                 "minItems": 1,
                                 "maxItems": 8
                               },
+                              "castsAtFoes": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "moves": {
                                 "type": "boolean",
                                 "const": true
@@ -46303,6 +46307,10 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 8
+                              },
+                              "castsAtFoes": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "moves": {
                                 "type": "boolean",
@@ -50983,6 +50991,10 @@
                                       "minItems": 1,
                                       "maxItems": 8
                                     },
+                                    "castsAtFoes": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "moves": {
                                       "type": "boolean",
                                       "const": true
@@ -52325,6 +52337,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "castsAtFoes": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "moves": {
                                           "type": "boolean",
@@ -56079,6 +56095,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "castsAtFoes": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "moves": {
                                           "type": "boolean",
@@ -64253,6 +64273,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "castsAtFoes": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "moves": {
                                           "type": "boolean",
@@ -73364,6 +73388,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "castsAtFoes": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "moves": {
                                     "type": "boolean",
                                     "const": true
@@ -74394,6 +74422,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "castsAtFoes": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "moves": {
                                     "type": "boolean",
@@ -85849,6 +85881,10 @@
                                           "minItems": 1,
                                           "maxItems": 8
                                         },
+                                        "castsAtFoes": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "moves": {
                                           "type": "boolean",
                                           "const": true
@@ -86879,6 +86915,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "castsAtFoes": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "moves": {
                                           "type": "boolean",
@@ -102668,6 +102708,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "castsAtFoes": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "moves": {
                               "type": "boolean",
                               "const": true
@@ -104160,6 +104204,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "castsAtFoes": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "moves": {
                                     "type": "boolean",
                                     "const": true
@@ -105211,6 +105259,10 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "castsAtFoes": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "moves": {
                                         "type": "boolean",
@@ -106540,6 +106592,27 @@
                     "type": "boolean",
                     "const": true
                   },
+                  "against": {
+                    "type": "object",
+                    "properties": {
+                      "attacks": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "casts": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -106723,6 +106796,10 @@
                               },
                               "minItems": 1,
                               "maxItems": 8
+                            },
+                            "castsAtFoes": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "moves": {
                               "type": "boolean",

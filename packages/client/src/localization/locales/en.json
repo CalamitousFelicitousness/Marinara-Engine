@@ -14252,7 +14252,7 @@
   "ui.trackerPanel.trackersidebarheader.exitTrackerHideMode": "Exit tracker hide mode",
   "ui.trackerPanel.trackersidebarheader.exitTrackerLockMode": "Exit tracker lock mode",
   "ui.trackerPanel.trackersidebarheader.left": "left",
-  "ui.trackerPanel.trackersidebarheader.openStateEditor": "Edit raw game state",
+  "ui.trackerPanel.trackersidebarheader.openStateEditor": "Open in State Editor",
   "ui.trackerPanel.trackersidebarheader.openTrackerSettings": "Open tracker settings",
   "ui.trackerPanel.trackersidebarheader.panelAnchoredValue1ClickToAnchorValue2": "Panel anchored {{value1}}. Click to anchor {{value2}}.",
   "ui.trackerPanel.trackersidebarheader.right": "right",

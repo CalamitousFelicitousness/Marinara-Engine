@@ -3488,6 +3488,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           resolveCharacterMacroData,
           resolvePromptIdleDuration,
           setLorebookEntryCounts,
+          normalizeChatMacroVariables,
         } = await import("../services/prompt/index.js");
         const { parsePresetParameters } = await import("../services/prompt/assembler.js");
         const { resolveReasoningMacroValue } = await import("../services/generation/provider-generation-runtime.js");
@@ -3587,6 +3588,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             ? await connections.getById(chat.connectionId)
             : await connections.getDefault();
           // Generation counts the preset's level only where the preset assembles the prompt.
+          const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
           const promptReasoning = connection
             ? resolveReasoningMacroValue({
                 connection,
@@ -3603,6 +3605,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             db: app.db,
             model: connection?.model,
             reasoning: promptReasoning,
+            // Chat variables win over built-in macros of the same name, as in generation.
+            localVariables: chatMacroVariables,
             characterIds: assistantCharacterIds,
             groupCharacterIds: assistantCharacterIds,
             personaName,
@@ -3919,6 +3923,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             db: app.db,
             model: connection?.model,
             reasoning: promptReasoning,
+            localVariables: chatMacroVariables,
             preset: preset as any,
             sections: sections as any,
             groups: groups as any,

@@ -20,7 +20,7 @@ import {
 } from "@marinara-engine/shared";
 import type { ExportEnvelope } from "@marinara-engine/shared";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
-import { assemblePrompt, type AssemblerInput } from "../services/prompt/index.js";
+import { assemblePrompt, normalizeChatMacroVariables, type AssemblerInput } from "../services/prompt/index.js";
 import { parsePresetParameters } from "../services/prompt/assembler.js";
 import { resolveReasoningMacroValue } from "../services/generation/provider-generation-runtime.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
@@ -558,6 +558,8 @@ export async function promptsRoutes(app: FastifyInstance) {
       groups: groups as any,
       choiceBlocks: choiceBlocks as any,
       chatChoices: choices ?? {},
+      // Chat variables win over built-in macros of the same name, as in generation.
+      localVariables: normalizeChatMacroVariables(chatMeta.macroVariables),
       chatId,
       characterIds,
       lorebookCharacterIds,

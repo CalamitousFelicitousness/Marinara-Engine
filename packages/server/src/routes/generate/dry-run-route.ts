@@ -1105,8 +1105,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       return pending;
     };
     const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
-    // Same base level as the parameters this preview reports below: the preset's when it assembles the prompt or
-    // sets one for Conversation and Game, otherwise none.
+    // Same base level as the parameters this preview reports below: the preset's when it assembles the prompt (not
+    // with promptParts) or, in Conversation and Game, always; otherwise none.
     const presetUsesModeParameters = chatMode === "conversation" || chatMode === "game";
     const promptReasoning = resolveReasoningMacroValue({
       connection: conn,
@@ -1114,11 +1114,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       isSceneChat: false,
       chatParameters: chatMeta.chatParameters,
       baseReasoningEffort:
-        promptParts || !effectivePresetId || !effectivePreset
+        !effectivePresetId || !effectivePreset
           ? reasoningEffort
           : presetUsesModeParameters
             ? (parseStoredGenerationParameters(effectivePreset.parameters)?.reasoningEffort ?? reasoningEffort)
-            : (parsePresetParameters(effectivePreset.parameters).reasoningEffort ?? null),
+            : promptParts
+              ? reasoningEffort
+              : (parsePresetParameters(effectivePreset.parameters).reasoningEffort ?? null),
     });
     const promptMacroContext = await buildPromptMacroContext({
       db: app.db,

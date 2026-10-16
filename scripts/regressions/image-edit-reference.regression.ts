@@ -41,6 +41,9 @@ assert.equal(
     imageConnectionTakesReferencePicture({ source: serviceHint || model, baseUrl, serviceHint, model, comfyWorkflow });
   const withReference = JSON.stringify({ 1: { inputs: { image: "%reference_image%" } } });
   const withNumberedName = JSON.stringify({ 1: { inputs: { image: "%reference_image_name_01%" } } });
+  // An edit sends one picture, into %reference_image% or the _01 slot only.
+  const withLaterSlotOnly = JSON.stringify({ 1: { inputs: { image: "%reference_image_02%" } } });
+  const withLaterNameSlotOnly = JSON.stringify({ 1: { inputs: { image: "%reference_image_name_03%" } } });
   const textOnly = JSON.stringify({ 1: { inputs: { text: "%prompt%" } } });
   const cases: Array<[backend: string, label: string, expected: boolean, actual: boolean]> = [
     ["pollinations", "Pollinations sends only the prompt", false, takes("pollinations")],
@@ -103,16 +106,40 @@ assert.equal(
     ["comfyui", "a ComfyUI workflow without a slot", false, takes("comfyui", { comfyWorkflow: textOnly })],
     ["comfyui", "a ComfyUI workflow with a slot", true, takes("comfyui", { comfyWorkflow: withReference })],
     ["comfyui", "a numbered ComfyUI file slot", true, takes("comfyui", { comfyWorkflow: withNumberedName })],
+    [
+      "comfyui",
+      "a ComfyUI workflow with only a later slot never gets the picture",
+      false,
+      takes("comfyui", { comfyWorkflow: withLaterSlotOnly }),
+    ],
+    [
+      "comfyui",
+      "a ComfyUI workflow with only a later file slot never gets the picture",
+      false,
+      takes("comfyui", { comfyWorkflow: withLaterNameSlotOnly }),
+    ],
     ["swarmui", "SwarmUI prompt images", true, takes("swarmui")],
     ["swarmui", "a SwarmUI workflow without a slot", false, takes("swarmui", { comfyWorkflow: textOnly })],
     ["swarmui", "a SwarmUI workflow with a slot", true, takes("swarmui", { comfyWorkflow: withReference })],
     ["swarmui", "SwarmUI refuses file-name slots", false, takes("swarmui", { comfyWorkflow: withNumberedName })],
+    [
+      "swarmui",
+      "a SwarmUI workflow with only a later slot never gets the picture",
+      false,
+      takes("swarmui", { comfyWorkflow: withLaterSlotOnly }),
+    ],
     ["runpod_comfyui", "a RunPod workflow without a slot", false, takes("runpod_comfyui", { comfyWorkflow: textOnly })],
     [
       "runpod_comfyui",
       "a RunPod workflow with a slot",
       true,
       takes("runpod_comfyui", { comfyWorkflow: withReference }),
+    ],
+    [
+      "runpod_comfyui",
+      "a RunPod workflow with only a later slot never gets the picture",
+      false,
+      takes("runpod_comfyui", { comfyWorkflow: withLaterSlotOnly }),
     ],
   ];
   for (const [, label, expected, actual] of cases) assert.equal(actual, expected, label);

@@ -50,6 +50,7 @@ import {
   currentRulesetActor,
   rulesetActedThisRound,
   rulesetActiveConditions,
+  rulesetChosenKind,
   rulesetWardsOn,
   rulesetTargetHasSenses,
   rulesetTargetIs,
@@ -2123,7 +2124,7 @@ function forecastFor(
         undefined,
         undefined,
         action.ability,
-      ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action)),
+      ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action, definition)),
     );
     // What the weapon adds against what the target is (1.187), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
@@ -2204,12 +2205,20 @@ export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
 /** Whether a change to attacks narrowed to a kind of blow (1.247) reaches this one: a weapon's or a
  *  spell's, struck in reach or from afar. Nothing narrowed reaches a roll it cannot read. */
 export function rulesetAttackModifierReaches(
-  modifier: { attacks?: "weapon" | "spell" | "any"; blow?: "melee" | "ranged" },
+  modifier: { attacks?: "weapon" | "spell" | "any"; blow?: "melee" | "ranged"; atTypesIn?: string[] },
   state: RulesetEncounterState | undefined,
   actor: RulesetCombatant,
   target: RulesetCombatant | undefined,
   action: RulesetCombatAction | undefined,
+  /** Read for a change narrowed to what the holder's sheet chose (1.376); without it, none reaches. */
+  definition?: RulesetDefinition,
 ): boolean {
+  // Only at a target of a kind the holder's sheet chose (1.376): Foe Slayer's favored enemies.
+  if (
+    modifier.atTypesIn &&
+    (!definition || !target || !rulesetChosenKind(definition, actor, modifier.atTypesIn, target))
+  )
+    return false;
   if (modifier.attacks && modifier.attacks !== "any") {
     if (!action || modifier.attacks !== (rulesetWeaponBlow(action) ? "weapon" : "spell")) return false;
   }
@@ -2240,6 +2249,9 @@ export function rulesetDamageModifiers(
         return false;
       if (modifier.blow && modifier.blow !== rulesetBlowKind(state, actor, target ?? actor, action)) return false;
       if (modifier.ability && modifier.ability !== action.ability) return false;
+      // At a kind the holder's sheet chose (1.376).
+      if (modifier.atTypesIn && (!target || !rulesetChosenKind(definition, actor, modifier.atTypesIn, target)))
+        return false;
       return (
         !modifier.fromSource ||
         (!item &&
@@ -2907,7 +2919,7 @@ export function rulesetAttackMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks" || !modifier.mode) continue;
       if (!rulesetAbilityNarrowing(modifier, "attacks", ability)) continue;
-      if (!rulesetAttackModifierReaches(modifier, where?.state, actor, target, blow)) continue;
+      if (!rulesetAttackModifierReaches(modifier, where?.state, actor, target, blow, definition)) continue;
       if (
         modifier.atSource &&
         !actor.tracked.some((one) => one.condition === entry.condition && one.source === target.id)

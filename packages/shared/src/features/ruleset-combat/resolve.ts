@@ -1704,6 +1704,7 @@ function throwSave(
     const bonuses = rollBonuses(
       ctx,
       rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
+      combatant,
     );
     const needed = Math.max(1, difficulty);
     const thrown = throwPool(ctx, combatant, modifier + bonusTotal(bonuses), mode);
@@ -1741,6 +1742,7 @@ function throwSave(
   const bonuses = rollBonuses(
     ctx,
     rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
+    combatant,
   );
   // Short of it, what is held back until then (1.249): Bardic Inspiration, Resistance.
   bonuses.push(
@@ -1853,7 +1855,7 @@ function passesGate(
   if (rulesetCombatIsPool(ctx.combat)) {
     // The check's number is its pool, and its difficulty the successes it needs: never fewer than
     // one, nor more than the ruleset's pool can count, as the Use button holds it.
-    const bonuses = rollBonuses(ctx, modifiers);
+    const bonuses = rollBonuses(ctx, modifiers, actor);
     const resolution = ctx.definition.resolution;
     const most = resolution.kind === "dice-pool" ? rulesetPoolMaxSuccesses(resolution) : Infinity;
     const needed = Math.min(most, Math.max(1, gate.difficulty));
@@ -1879,7 +1881,7 @@ function passesGate(
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
-  const bonuses = rollBonuses(ctx, modifiers);
+  const bonuses = rollBonuses(ctx, modifiers, actor);
   bonuses.push(
     ...rescueBonuses(
       ctx,
@@ -1950,12 +1952,21 @@ function poolRecord(thrown: RulesetCombatPoolThrow & { penalty: number }): Rules
 
 /** What conditions add to one roll, each rolled now: a flat number as it is, dice thrown (and taken
  *  away where the modifier says `minus`). */
-function rollBonuses(ctx: RulesetCombatContext, modifiers: RulesetConditionModifier[]): RulesetConditionBonus[] {
+function rollBonuses(
+  ctx: RulesetCombatContext,
+  modifiers: RulesetConditionModifier[],
+  /** Whose sheet a value it adds is read off (1.376). */
+  holder?: RulesetCombatant,
+): RulesetConditionBonus[] {
   return modifiers.map(({ condition, level, derived, item, modifier }) => {
     let value = modifier.flat ?? 0;
     const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
     const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : undefined;
     if (dice && rolls) value += (modifier.minus ? -1 : 1) * (sumOf(rolls) + dice.flat);
+    // A value off the holder's sheet (1.376): Foe Slayer's Wisdom modifier, Natural Explorer's
+    // proficiency bonus.
+    if (modifier.add && holder)
+      value += (modifier.minus ? -1 : 1) * (rulesetHolderValue(ctx.definition, holder, modifier.add) ?? 0);
     return {
       condition,
       ...(level !== undefined ? { level } : {}),
@@ -1986,7 +1997,14 @@ function rescueBonuses(
   save?: string,
 ): RulesetConditionBonus[] {
   if (short <= 0) return [];
-  const rescue = rescues.find(({ modifier }) => rescueMost(modifier) >= short);
+  const rescue = rescues.find(
+    (one) =>
+      rescueMost(one.modifier) +
+        (one.modifier.add ? (rulesetHolderValue(ctx.definition, combatant, one.modifier.add) ?? 0) : 0) >=
+        short &&
+      // Once on each of its holder's own turns (1.376): Foe Slayer.
+      (!one.modifier.oncePer || oncePerTurnLeft(ctx, combatant, one)),
+  );
   if (!rescue) {
     // None given them, a die of their own from one of their entries (1.256): Peerless Skill, Dark
     // One's Own Luck. Only one whose most could make up the difference is spent.
@@ -2006,7 +2024,12 @@ function rescueBonuses(
     const rolls = rollRulesetDice(ctx.roll, amount.count, amount.sides);
     return [{ condition: own.label, entry: true, value: sumOf(rolls) + amount.flat, rolls, rescue: true }];
   }
-  const bonuses = rollBonuses(ctx, [rescue]).map((bonus) => ({ ...bonus, rescue: true as const }));
+  const bonuses = rollBonuses(ctx, [rescue], combatant).map((bonus) => ({ ...bonus, rescue: true as const }));
+  // Once a turn, it is that turn's, and the condition stays (1.376).
+  if (rescue.modifier.oncePer) {
+    spendOncePerTurn(ctx, combatant, onceKey(rescue));
+    return bonuses;
+  }
   // A level's or an item's stays: only a condition put on the holder is spent.
   if (rescue.level === undefined && !rescue.item && !rescue.derived) {
     if (combatant.tracked.some((entry) => entry.condition === rescue.condition)) {
@@ -5589,7 +5612,7 @@ function throwCheck(
   const checkModifiers = () =>
     rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, skill, undefined, ability);
   if (rulesetCombatIsPool(ctx.combat)) {
-    const bonuses = rollBonuses(ctx, checkModifiers());
+    const bonuses = rollBonuses(ctx, checkModifiers(), who);
     const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
     return {
       check,
@@ -5612,7 +5635,7 @@ function throwCheck(
   // Floors under the check (1.365): Reliable Talent lifts a single die, Indomitable Might the total.
   const floors = checkFloors(ctx, who, skill, ability);
   const kept = count === 1 && floors.face !== undefined ? Math.max(thrown, floors.face) : thrown;
-  const bonuses = rollBonuses(ctx, checkModifiers());
+  const bonuses = rollBonuses(ctx, checkModifiers(), who);
   return {
     check,
     rolls: second ? [...first, ...second] : first,
@@ -6631,6 +6654,7 @@ function levelCheck(
   const bonuses = rollBonuses(
     ctx,
     rulesetConditionModifiers(ctx.definition, ctx.combat, answering, "checks", ctx.state),
+    answering,
   );
   const difficulty = above.dc + level;
   bonuses.push(
@@ -9254,6 +9278,24 @@ function clauseReaches(
   return !clause.blow || rulesetBlowKind(ctx.state, actor, target, action) === clause.blow;
 }
 
+/** What a change once on each of its holder's own turns (1.376) is counted under: its condition, level
+ *  or item, and what it changes. */
+function onceKey(entry: RulesetConditionModifier): string {
+  return `once:${entry.item ? "item" : entry.level !== undefined ? `level${entry.level}` : "condition"}:${entry.condition}`;
+}
+
+/** Whether a change once on each of its holder's own turns (1.376) is still to be had: their own turn,
+ *  and not had in it. Nothing is spent. */
+function oncePerTurnLeft(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetConditionModifier,
+): boolean {
+  if (!rulesetOnOwnTurn(ctx.state, holder)) return false;
+  const at = `${ctx.state.round}:${ctx.state.turn}`;
+  return holder.oncePerTurn?.at !== at || !holder.oncePerTurn.keys.includes(onceKey(entry));
+}
+
 /** Whether something its maker may do once a turn is still to be done in this one, noting it done
  *  when it is (1.187). Any turn counts, the maker's own or anybody else's. */
 function spendOncePerTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, key: string): boolean {
@@ -10101,7 +10143,10 @@ function resolveActionBody(
             undefined,
             undefined,
             action.ability,
-          ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
+          ).filter(({ modifier }) =>
+            rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action, ctx.definition),
+          ),
+          actor,
         );
         const thrown = throwPool(ctx, actor, toHit + bonusTotal(bonuses), mode, action.target);
         const needed = Math.max(1, guarded.defense);
@@ -10171,7 +10216,10 @@ function resolveActionBody(
             undefined,
             undefined,
             action.ability,
-          ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
+          ).filter(({ modifier }) =>
+            rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action, ctx.definition),
+          ),
+          actor,
         );
         // Short of it, what is held back until then (1.249), never for a natural miss.
         if (!(single && kept === 1 && naturals.min === "miss")) {
@@ -10190,7 +10238,9 @@ function resolveActionBody(
                 undefined,
                 action.ability,
                 true,
-              ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
+              ).filter(({ modifier }) =>
+                rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action, ctx.definition),
+              ),
               guarded.defense - (kept + toHit + bonusTotal(bonuses)),
             ),
           );
@@ -10432,7 +10482,31 @@ function resolveActionBody(
     // A damage-only save is tested once for this holder and blow, including clauses and riders (1.129).
     const damageSaves = new Set<RulesetTrackedCondition>();
     const takenModifiers = rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true);
-    const modifiers = [...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target), ...takenModifiers];
+    const modifiers = [
+      ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target),
+      // A change held back for the attack roll that it hit without, on its damage instead (1.376):
+      // Foe Slayer.
+      ...(action.toHit !== undefined && !action.autoHit && !action.save
+        ? rulesetConditionModifiers(
+            ctx.definition,
+            ctx.combat,
+            actor,
+            "attacks",
+            ctx.state,
+            undefined,
+            undefined,
+            action.ability,
+            true,
+          )
+            .filter(
+              ({ modifier }) =>
+                modifier.orDamage &&
+                rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action, ctx.definition),
+            )
+            .map((entry) => ({ ...entry, modifier: { ...entry.modifier, to: "damage" as const } }))
+        : []),
+      ...takenModifiers,
+    ];
     const parts: RulesetDamageInput[] = [];
     // What the blow's draining clauses dealt, which its maker gains as temporary points (1.187).
     let drained = 0;
@@ -10724,6 +10798,11 @@ function resolveActionBody(
               ? parseRulesetCombatDice(modifier.dice)
               : null;
         if (!dice && modifier.flat === undefined && modifier.add === undefined) continue;
+        // Once on each of its holder's own turns (1.376), spent by the first blow it adds to.
+        if (modifier.oncePer && !takenModifiers.includes(one)) {
+          if (!oncePerTurnLeft(ctx, actor, one)) continue;
+          spendOncePerTurn(ctx, actor, onceKey(one));
+        }
         if (modifier.minus && takenModifiers.includes(one)) lessened = true;
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);

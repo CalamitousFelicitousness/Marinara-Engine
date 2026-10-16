@@ -5042,6 +5042,10 @@ const catalogMechanicsObject = z
              *  `where` reads so: Empowered Evocation's wizard evocation spells. */
             catalogs: z.array(sheetId).min(1).max(8).optional(),
             where: catalogWhereSchema.optional(),
+            /** Only an entry dealing damage of the type this text or enum field of the holder's sheet
+             *  names (Capability API 1.376), its own or a clause's: 5e's Elemental Affinity, the
+             *  Charisma modifier on a spell of the draconic ancestry's type. */
+            damageTypeIn: sheetId.optional(),
             damageAdd: rulesetValueRefSchema.optional(),
             /** Added to one damage roll of each use (Capability API 1.361): every target of a roll
              *  they all take, the first of an entry that rolls for each. Empowered Evocation's
@@ -8899,10 +8903,32 @@ const combatModifierSchema = z
     /** Damage taken from a fall only, and no other (Capability API 1.360): Slow Fall's five times
      *  the monk's level. A condition whose modifier lessens a fall is spent by it. */
     falls: z.literal(true).optional(),
+    /** Only against a target whose creature type or tag one of these text or enum fields of the
+     *  holder's sheet names, comma-separated words read without case (Capability API 1.376): 5e's
+     *  Foe Slayer against the favored enemies the ranger chose. The holder's own attacks and damage
+     *  only. */
+    atTypesIn: z.array(sheetId).min(1).max(6).optional(),
+    /** Once on each of its holder's own turns (Capability API 1.376): Foe Slayer. A change held back
+     *  for a roll that falls short (`rescue`) is then never spent with its condition. */
+    oncePer: z.literal("own-turn").optional(),
+    /** A change to attacks held back for a roll that falls short (`rescue`) that goes on the blow's
+     *  damage instead when the attack hits without it (Capability API 1.376): Foe Slayer's Wisdom
+     *  modifier to the attack roll or the damage roll. */
+    orDamage: z.literal(true).optional(),
+    /** Only a check with a skill its holder adds their whole proficiency to (Capability API 1.376):
+     *  Natural Explorer's doubled proficiency bonus. */
+    proficient: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (modifier.atTypesIn !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
+      add("atTypesIn", '"atTypesIn" narrows the holder\'s own attacks or damage');
+    if (modifier.oncePer !== undefined && !(modifier.to === "attacks" && modifier.rescue) && modifier.to !== "damage")
+      add("oncePer", '"oncePer" counts the damage the holder deals, or a change to attacks held back ("rescue")');
+    if (modifier.orDamage && (modifier.to !== "attacks" || !modifier.rescue))
+      add("orDamage", '"orDamage" moves a held-back change to attacks ("rescue") onto the damage');
+    if (modifier.proficient && modifier.to !== "checks") add("proficient", '"proficient" narrows checks');
     if (modifier.atLeast !== undefined) {
       if (modifier.to !== "defense") add("atLeast", '"atLeast" is a floor under defense only');
       if (
@@ -8988,7 +9014,14 @@ const combatModifierSchema = z
     }
     if (modifier.minus && modifier.dice === undefined && modifier.add === undefined)
       add("minus", '"minus" takes dice away, or a value off the sheet, so it needs "dice" or "add"');
-    if (modifier.add !== undefined && !damage) add("add", '"add" changes damage dealt or taken only');
+    if (
+      modifier.add !== undefined &&
+      !damage &&
+      modifier.to !== "attacks" &&
+      modifier.to !== "checks" &&
+      modifier.to !== "saves"
+    )
+      add("add", '"add" changes damage dealt or taken, attacks, checks or saves only');
     if (modifier.falls) {
       if (modifier.to !== "damage-taken") add("falls", '"falls" narrows damage taken only');
       for (const key of ["attacks", "blow", "ability", "fromSource", "times"] as const) {
@@ -9007,14 +9040,14 @@ const combatModifierSchema = z
     if (
       modifier.rescue &&
       ((modifier.to !== "attacks" && modifier.to !== "saves" && modifier.to !== "checks") ||
-        (modifier.flat === undefined && modifier.dice === undefined) ||
+        (modifier.flat === undefined && modifier.dice === undefined && modifier.add === undefined) ||
         (modifier.flat !== undefined && modifier.flat < 0) ||
         modifier.minus ||
         modifier.mode !== undefined)
     ) {
       add(
         "rescue",
-        '"rescue" adds dice or a positive flat number to the holder\'s own attack, save or check, and nothing else',
+        '"rescue" adds dice or a positive flat number, or a value off the sheet, to the holder\'s own attack, save or check, and nothing else',
       );
     }
     if (modifier.to === "health-max" && (modifier.times !== 0.5 || modifier.flat !== undefined)) {
@@ -9623,6 +9656,10 @@ const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.132), as on a creature. */
     resist: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
+    /** Harm halved of whatever kinds these text or enum fields of the holder's sheet name,
+     *  comma-separated (Capability API 1.376): 5e's Elemental Affinity, resistance to the damage type
+     *  of the sorcerer's draconic ancestry. A holder with no sheet resists nothing by it. */
+    resistIn: z.array(sheetId).min(1).max(4).optional(),
     vulnerable: z.array(promptSafeText(40)).min(1).max(30).optional(),
     immune: z.array(creatureHideEntrySchema).min(1).max(30).optional(),
     conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
@@ -14065,6 +14102,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         targetIsIssues(def, ward.from, [...path, "sanctuary", "from"], issue);
         castsIssues(def, ward.against?.casts, [...path, "sanctuary", "against", "casts"], issue);
       }
+      // Harm its holder's sheet chose (1.376): a text or enum field each.
+      entry.resistIn?.forEach((id, index) => {
+        const found = choiceFieldIssue(def, id);
+        if (found) issue([...path, "resistIn", index], found);
+      });
       // What its holder casts to end it (1.373) is cast from the ruleset's own catalogs.
       if (entry.endsWhenHolder?.casts) {
         castsIssues(def, entry.endsWhenHolder.casts, [...path, "endsWhenHolder", "casts"], issue);
@@ -15873,6 +15915,7 @@ function effectNameIssues(
       from?: RulesetTargetIs;
       atLeast?: number | RulesetValueRef;
       add?: RulesetValueRef;
+      atTypesIn?: string[];
     }>;
   },
   skills: ReadonlySet<string>,
@@ -15908,6 +15951,11 @@ function effectNameIssues(
     if (modifier.ability !== undefined && !abilities.has(modifier.ability)) {
       add([...at, "modifiers", index, "ability"], `Unknown ability "${modifier.ability}"`);
     }
+    // The sheet's own choices it reads (1.376): a text or enum field each.
+    modifier.atTypesIn?.forEach((id, fieldIndex) => {
+      const issue = choiceFieldIssue(definition, id);
+      if (issue) add([...at, "modifiers", index, "atTypesIn", fieldIndex], issue);
+    });
     each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
     each(modifier.abilities, abilities, [...at, "modifiers", index, "abilities"], "ability");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
@@ -15929,6 +15977,16 @@ function effectNameIssues(
       );
     }
   });
+}
+
+/** Why a sheet field cannot hold a choice the Engine reads by its words (1.376), or null when it can:
+ *  a text or enum field the sheet has. */
+function choiceFieldIssue(definition: RulesetDefinition, id: string): string | null {
+  const field = definition.sheet.fields.find((one) => one.id === id);
+  if (!field) return `Unknown field "${id}"`;
+  return field.type === "text" || field.type === "enum"
+    ? null
+    : `"${id}" is a ${field.type} field; a choice is text or enum`;
 }
 
 /** Why a fake cannot pass for its target (Capability API 1.79), or null when it can: the target is
@@ -17975,6 +18033,11 @@ export function rulesetCatalogEntryIssues(
           [index, "mechanics", "amends", amendIndex],
           'A range or a push is measured in cells, so the combat block declares "distance" too',
         );
+      // The sheet's own choice of damage type (1.376): a text or enum field.
+      if (amend.damageTypeIn !== undefined) {
+        const found = choiceFieldIssue(definition, amend.damageTypeIn);
+        if (found) add([index, "mechanics", "amends", amendIndex, "damageTypeIn"], found);
+      }
       // Catalogs by name, and a filter they declare (1.361).
       amend.catalogs?.forEach((id, catalogIndex) => {
         const catalog = definition.catalogs?.find((one) => one.id === id);

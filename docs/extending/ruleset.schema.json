@@ -39021,6 +39021,28 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "atTypesIn": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 6
+                              },
+                              "oncePer": {
+                                "type": "string",
+                                "const": "own-turn"
+                              },
+                              "orDamage": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "proficient": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -42302,6 +42324,11 @@
                               "equals"
                             ],
                             "additionalProperties": false
+                          },
+                          "damageTypeIn": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
                           },
                           "damageAdd": {
                             "type": "object",
@@ -58725,6 +58752,28 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "atTypesIn": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 6
+                              },
+                              "oncePer": {
+                                "type": "string",
+                                "const": "own-turn"
+                              },
+                              "orDamage": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "proficient": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -60021,6 +60070,28 @@
                                 }
                               },
                               "falls": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "atTypesIn": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 6
+                              },
+                              "oncePer": {
+                                "type": "string",
+                                "const": "own-turn"
+                              },
+                              "orDamage": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "proficient": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -61507,6 +61578,28 @@
                                       }
                                     },
                                     "falls": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "atTypesIn": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 6
+                                    },
+                                    "oncePer": {
+                                      "type": "string",
+                                      "const": "own-turn"
+                                    },
+                                    "orDamage": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "proficient": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -67379,6 +67472,28 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "atTypesIn": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 6
+                                  },
+                                  "oncePer": {
+                                    "type": "string",
+                                    "const": "own-turn"
+                                  },
+                                  "orDamage": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "proficient": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -70459,6 +70574,11 @@
                                   "equals"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "damageTypeIn": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "damageAdd": {
                                 "type": "object",
@@ -79883,6 +80003,28 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "atTypesIn": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 6
+                                        },
+                                        "oncePer": {
+                                          "type": "string",
+                                          "const": "own-turn"
+                                        },
+                                        "orDamage": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "proficient": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -82963,6 +83105,11 @@
                                         "equals"
                                       ],
                                       "additionalProperties": false
+                                    },
+                                    "damageTypeIn": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
                                     },
                                     "damageAdd": {
                                       "type": "object",
@@ -99878,6 +100025,16 @@
                 "minItems": 1,
                 "maxItems": 30
               },
+              "resistIn": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              },
               "vulnerable": {
                 "type": "array",
                 "items": {
@@ -100851,6 +101008,28 @@
                       }
                     },
                     "falls": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "atTypesIn": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 6
+                    },
+                    "oncePer": {
+                      "type": "string",
+                      "const": "own-turn"
+                    },
+                    "orDamage": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "proficient": {
                       "type": "boolean",
                       "const": true
                     },
@@ -108940,6 +109119,28 @@
                       }
                     },
                     "falls": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "atTypesIn": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 6
+                    },
+                    "oncePer": {
+                      "type": "string",
+                      "const": "own-turn"
+                    },
+                    "orDamage": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "proficient": {
                       "type": "boolean",
                       "const": true
                     },

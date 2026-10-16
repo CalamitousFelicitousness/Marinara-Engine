@@ -2194,6 +2194,27 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Choices on the sheet that changes read, and values off the sheet added to attacks, checks and saves
+ *  (1.376): Foe Slayer, Elemental Affinity, Natural Explorer. */
+function carriesSheetChoices376(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSheetChoices376(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.resistIn !== undefined || record.damageTypeIn !== undefined) return true;
+  if (typeof record.to === "string") {
+    if (
+      record.atTypesIn !== undefined ||
+      record.oncePer !== undefined ||
+      record.orDamage !== undefined ||
+      record.proficient !== undefined
+    )
+      return true;
+    if (record.add !== undefined && ["attacks", "checks", "saves"].includes(record.to)) return true;
+  }
+  return featureValues(record).some((one) => carriesSheetChoices376(one, depth + 1));
+}
+
 function carriesAreaStrikes375(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesAreaStrikes375(one, depth + 1));
@@ -5591,6 +5612,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Choices on the sheet, and values off it added to attacks, checks and saves, 1.376.
+  if (
+    !declaresApi(376) &&
+    (carriesSheetChoices376(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSheetChoices376(document)))
+  ) {
+    return "A ruleset whose changes read choices on the sheet (atTypesIn, resistIn, damageTypeIn), come once a turn or onto damage (oncePer, orDamage), narrow to proficient checks (proficient) or add a value off the sheet to attacks, checks or saves (add) requires schemaVersion 2 and capabilityApi 1.376 or newer";
+  }
   // Weapon strikes over an area, and a strike again, 1.375.
   if (
     !declaresApi(375) &&

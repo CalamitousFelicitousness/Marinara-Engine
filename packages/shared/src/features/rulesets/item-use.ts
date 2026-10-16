@@ -24,6 +24,7 @@ import {
   rulesetCheckRollMode,
   rulesetCheckSources,
   rulesetItemGateCheck,
+  rulesetTierAddsProficiency,
 } from "./check-effects.js";
 import type { RulesetItemBookEntry } from "./item-book.js";
 import { rulesetItemFacts, rulesetItemGateDifficulty, rulesetItemUseDoes, rulesetSheetItems } from "./item-book.js";
@@ -343,11 +344,24 @@ function rollGateOutsideFight(
   roll: (sides: number) => number,
 ): Omit<NonNullable<RulesetItemUseSaid["gate"]>, "check"> {
   const resolution = definition.resolution;
-  const effects = rulesetCheckEffects(rulesetCheckSources(definition, user.build, user.live, held), ask.target);
+  // The sheet as it stands, for what a change reads off it (1.376).
+  const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live, held);
+  const trained =
+    ask.target?.type === "skill" && rulesetTierAddsProficiency(definition, evaluated.skillTiers[ask.target.id]);
+  const effects = rulesetCheckEffects(
+    rulesetCheckSources(definition, user.build, user.live, held),
+    ask.target,
+    trained,
+  );
   const penalty = resolution.penaltyFrom
     ? readRulesetWoundPenalty(definition, user.build, user.live, resolution.penaltyFrom)
     : 0;
-  const modifier = ask.modifier + penalty + rollRulesetCheckModifiers(effects.modifiers, roll).total;
+  const modifier =
+    ask.modifier +
+    penalty +
+    rollRulesetCheckModifiers(effects.modifiers, roll, (ref) =>
+      resolveRulesetValueRef(definition, user.build, ref, evaluated),
+    ).total;
   if (resolution.kind === "dice-pool") {
     const required = Math.min(rulesetPoolMaxSuccesses(resolution), Math.max(1, ask.difficulty));
     const rolled = rollDicePoolCheck(definition, { modifier, required, isSave: false }, roll);

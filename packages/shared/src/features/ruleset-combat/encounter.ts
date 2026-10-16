@@ -49,6 +49,7 @@ import {
   rulesetItemGateCheck,
   rulesetItemSources,
   rulesetSheetHideSources,
+  rulesetTierAddsProficiency,
   type RulesetCheckSource,
 } from "../rulesets/check-effects.js";
 import { rulesetItemGateDifficulty, rulesetItemGateLabel } from "../rulesets/item-book.js";
@@ -684,6 +685,46 @@ export function rulesetCreatureKind(
   return { ...(type !== undefined ? { type } : {}), tags: [] };
 }
 
+/** The words these text or enum fields of a holder's sheet hold (1.376), comma-separated, trimmed and
+ *  lowercased: the favored enemies a ranger chose, a sorcerer's ancestry damage type. A holder with no
+ *  sheet chose nothing. */
+export function rulesetSheetChoices(combatant: RulesetCombatant, fields: readonly string[] | undefined): string[] {
+  const read = combatant.sheet?.build.fields;
+  if (!read || !fields?.length) return [];
+  return fields.flatMap((id) => {
+    const value = read[id];
+    return typeof value === "string"
+      ? value
+          .split(",")
+          .map((word) => word.trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+  });
+}
+
+/** Whether a combatant's type or one of its tags is among a holder's chosen words (1.376), by id or by
+ *  the type's label, without case: Foe Slayer's favored enemies. */
+export function rulesetChosenKind(
+  definition: RulesetDefinition,
+  holder: RulesetCombatant,
+  fields: readonly string[] | undefined,
+  combatant: RulesetCombatant,
+): boolean {
+  const chosen = new Set(rulesetSheetChoices(holder, fields));
+  if (chosen.size === 0) return false;
+  const kind = rulesetCreatureKind(definition, combatant);
+  const label = definition.combat?.creatureTypes?.types.find((one) => one.id === kind.type)?.label;
+  return (
+    (kind.type !== undefined && chosen.has(kind.type.toLowerCase())) ||
+    (label !== undefined && chosen.has(label.toLowerCase())) ||
+    kind.tags.some(
+      (tag) =>
+        chosen.has(tag.toLowerCase()) ||
+        chosen.has((definition.combat?.creatureTypes?.tags?.find((one) => one.id === tag)?.label ?? tag).toLowerCase()),
+    )
+  );
+}
+
 /** Whether a combatant is what a target test asks (1.168): any of its types or tags. No test passes. */
 export function rulesetTargetIs(
   definition: RulesetDefinition,
@@ -798,7 +839,12 @@ export function rulesetCombatHide(
     : heldSources(definition, combatant);
   const all = [...sources, ...(combatant.sheet ? rulesetSheetHideSources(definition, combatant.sheet.build) : [])];
   return {
-    resist: [...(combatant.block?.resist ?? []), ...all.flatMap((source) => source.resist ?? [])],
+    resist: [
+      ...(combatant.block?.resist ?? []),
+      ...all.flatMap((source) => source.resist ?? []),
+      // What the holder's sheet chose (1.376): Elemental Affinity's ancestry type.
+      ...all.flatMap((source) => ("resistIn" in source ? rulesetSheetChoices(combatant, source.resistIn) : [])),
+    ],
     vulnerable: [...(combatant.block?.vulnerable ?? []), ...all.flatMap((source) => source.vulnerable ?? [])],
     immune: [...(combatant.block?.immune ?? []), ...all.flatMap((source) => source.immune ?? [])],
     conditionImmunities: [
@@ -950,6 +996,8 @@ export function rulesetConditionModifiers(
           return false;
         const skills = modifier.skills ?? entry.skills;
         if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
+        // Only a skill its holder adds their whole proficiency to (1.376): Natural Explorer.
+        if (modifier.proficient && !rulesetTrainedIn(definition, combatant, save)) return false;
         if (!rulesetAbilityNarrowing(modifier, to, ability)) return false;
         const saves = modifier.saves ?? entry.saves;
         return !(to === "saves" && save !== undefined && saves && !saves.includes(save));
@@ -962,6 +1010,19 @@ export function rulesetConditionModifiers(
         modifier,
       }));
   });
+}
+
+/** Whether a combatant adds their whole proficiency to this skill (1.376): one with a sheet, trained in
+ *  it. A creature with no sheet, and a check with no skill, are not. */
+function rulesetTrainedIn(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  skill: string | undefined,
+): boolean {
+  const sheet = combatant.sheet;
+  if (!sheet || skill === undefined) return false;
+  const tier = evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items).skillTiers[skill];
+  return rulesetTierAddsProficiency(definition, tier);
 }
 
 /** What those conditions DO, as the closed effect list. */
@@ -3815,6 +3876,13 @@ function sheetCombatant(
   // Since 1.361 also every entry of catalogs a filter reads so: Empowered Evocation, Potent Cantrip.
   const amends = held.flatMap((mechanics) => mechanics.amends ?? []);
   const amended = (amend: (typeof amends)[number], action: RulesetCombatAction) => {
+    // Only of the damage type the sheet chose (1.376): Elemental Affinity.
+    if (amend.damageTypeIn !== undefined) {
+      const chosen = build.fields?.[amend.damageTypeIn];
+      const wanted = typeof chosen === "string" ? chosen.trim().toLowerCase() : "";
+      const types = [action.damage?.type, ...(action.damage?.plus ?? []).map((one) => one.type)];
+      if (!wanted || !types.some((type) => type?.trim().toLowerCase() === wanted)) return false;
+    }
     if (amend.entry !== undefined) return action.entry === amend.entry;
     const ref = action.entry;
     if (!ref || !amend.catalogs?.includes(ref.slice(0, ref.indexOf("/")))) return false;

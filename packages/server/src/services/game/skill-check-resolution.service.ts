@@ -797,7 +797,9 @@ export function rulesetCheckEffectsFor(
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const sources = rulesetCheckSources(ruleset.definition, build, ruleset.live[key], ruleset.items.get(key));
-  return rulesetCheckEffects([...sources, ...applied], target);
+  // Whether they add their whole proficiency to its skill (1.376), for a change narrowed to that.
+  const tier = target?.type === "skill" ? ruleset.sheets.get(key)?.skillTiers[target.id] : undefined;
+  return rulesetCheckEffects([...sources, ...applied], target, rulesetTierAddsProficiency(ruleset.definition, tier));
 }
 
 /** What the Game Master's `apply=` names mean for this roller and this check (1.156). */
@@ -1140,7 +1142,9 @@ function resolveRulesetSkillCheck(
   // The injected d20 (tests, the sighted pool) stands in only where a d20 is what is rolled.
   const rollDie = (sides: number) => (sides === 20 && rollD20 ? rollD20() : rollDieSecurely(sides));
   // The effects' own dice are never the check's: the sighted pool spent its d20s for the check alone.
-  const boost = rollRulesetCheckModifiers(effects.modifiers, rollDieSecurely).total;
+  const boost = rollRulesetCheckModifiers(effects.modifiers, rollDieSecurely, (ref) =>
+    rulesetCheckValueFor(ruleset, ref, request.who),
+  ).total;
   // Named when it changed anything this ruleset reads: a number, or a lean where it rolls twice.
   const leans = resolution.kind === "dice-sum" && resolution.advantage;
   const from = [

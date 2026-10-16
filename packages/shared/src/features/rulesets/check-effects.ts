@@ -16,6 +16,7 @@ import type {
   RulesetDefinition,
   RulesetItemUse,
   RulesetSheetBuild,
+  RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import { evaluateRulesetSheetLive, readRulesetLive, rulesetEntryNamed } from "./live-state.js";
@@ -263,6 +264,9 @@ export function rulesetTierAddsProficiency(definition: RulesetDefinition, tier: 
 export function rulesetCheckEffects(
   sources: readonly RulesetCheckSource[],
   target: RulesetCheckTarget | null,
+  /** Whether the roller adds their whole proficiency to this check's skill (1.376), for a change
+   *  narrowed to such checks: Natural Explorer. */
+  trained = false,
 ): RulesetCheckEffects {
   const found: RulesetCheckEffects = { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const lean = (side: "advantage" | "disadvantage", from: string) => {
@@ -303,8 +307,9 @@ export function rulesetCheckEffects(
             about(modifier.skills ?? source.skills, skill) &&
             about(modifier.abilities, ability);
       if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
+      if (modifier.proficient && (skill === undefined || !trained)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
-      if (modifier.flat !== undefined || modifier.dice !== undefined) {
+      if (modifier.flat !== undefined || modifier.dice !== undefined || modifier.add !== undefined) {
         found.modifiers.push({ from: source.name, modifier });
       }
     }
@@ -328,11 +333,15 @@ export function rulesetCheckRollMode(
 export function rollRulesetCheckModifiers(
   modifiers: RulesetCheckEffects["modifiers"],
   rollDie: (sides: number) => number,
+  /** A value off the roller's sheet (1.376), for a change that adds one; without it, such adds
+   *  nothing. */
+  read?: (ref: RulesetValueRef) => number | undefined,
 ): { total: number; rolls: number[] } {
   let total = 0;
   const rolls: number[] = [];
   for (const { modifier } of modifiers) {
     total += modifier.flat ?? 0;
+    if (modifier.add && read) total += (modifier.minus ? -1 : 1) * Math.trunc(read(modifier.add) ?? 0);
     const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
     if (!dice) continue;
     let rolled = dice.flat;

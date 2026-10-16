@@ -256,7 +256,10 @@ try {
       document((doc) => {
         doc.combat.conditions.at(-1).modifiers = [modifier];
       });
-    refused(withModifier({ to: "attacks", add: { const: 2 } }), /"add" changes damage dealt or taken only/);
+    refused(
+      withModifier({ to: "speed", add: { const: 2 } }),
+      /"add" changes damage dealt or taken, attacks, checks or saves only/,
+    );
     refused(withModifier({ to: "damage", falls: true, flat: -2 }), /"falls" narrows damage taken only/);
     refused(withModifier({ to: "damage-taken", falls: true, blow: "ranged", flat: -2 }), /"falls" goes without "blow"/);
     refused(withModifier({ to: "damage-taken", add: { derived: "nothing_here" } }), /nothing_here/);

@@ -44,9 +44,13 @@ const NETWORK_ERROR_CODES = new Set([
   "EHOSTUNREACH",
   "EPIPE",
   "UND_ERR_SOCKET",
-  "UND_ERR_CONNECT_TIMEOUT",
 ]);
-const TIMEOUT_ERROR_CODES = new Set(["ETIMEDOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
+const TIMEOUT_ERROR_CODES = new Set([
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
 
 /**
  * Sorts a primary failure into the short reason the fallback toast names (#7697).

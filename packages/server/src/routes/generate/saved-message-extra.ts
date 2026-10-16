@@ -15,6 +15,8 @@ export function buildGenerationInfoExtra(o: {
   gameToolPlan: { usage?: LLMUsage | null } | null | undefined;
   gameToolConnection: { id: string; model: string; provider: string } | null | undefined;
   generationProviderOrigin: { model: string; provider: string; fallback?: GenerationFallbackNotice };
+  /** A continuation keeps the fallback that wrote the existing part of its swipe. */
+  continuedFallback?: GenerationFallbackNotice | null;
   temperature: number | undefined;
   effectiveMaxTokensForSend: number | undefined;
   suppressModelParameters: boolean;
@@ -49,6 +51,7 @@ export function buildGenerationInfoExtra(o: {
     gameToolPlan,
     gameToolConnection,
     generationProviderOrigin,
+    continuedFallback,
     temperature,
     effectiveMaxTokensForSend,
     suppressModelParameters,
@@ -76,6 +79,7 @@ export function buildGenerationInfoExtra(o: {
     encryptedReasoningItems,
     contextInjections,
   } = o;
+  const fallback = generationProviderOrigin.fallback ?? continuedFallback;
   const extraUpdate: Record<string, unknown> = {
     ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),
     // Set, or cleared on a regeneration at a place a tag named.
@@ -119,8 +123,8 @@ export function buildGenerationInfoExtra(o: {
       reasoningDurationMs,
       finishReason: finishReason ?? null,
       contextFit: lastContextFit ?? null,
-      // generationInfo is replaced whole, so a reply without a fallback leaves no stale one behind.
-      ...(generationProviderOrigin.fallback ? { fallback: generationProviderOrigin.fallback } : {}),
+      // A fresh reply clears the prior swipe's notice; a continuation keeps it with the retained text.
+      ...(fallback ? { fallback } : {}),
     },
   };
   if (fullThinking) extraUpdate.thinking = fullThinking;

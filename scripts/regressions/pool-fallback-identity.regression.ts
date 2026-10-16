@@ -106,6 +106,12 @@ for (const [error, expected] of [
   [new LLMHttpError("down", { status: 503 }), { reason: "server", status: 503 }],
   [new LLMHttpError("bad request", { status: 400 }), { reason: "error", status: 400 }],
   [networkFailure, { reason: "network" }],
+  [
+    new TypeError("fetch failed", {
+      cause: Object.assign(new Error("connect timed out"), { code: "UND_ERR_CONNECT_TIMEOUT" }),
+    }),
+    { reason: "timeout" },
+  ],
   [Object.assign(new Error("timed out"), { name: "TimeoutError" }), { reason: "timeout" }],
   [new Error("something else"), { reason: "error" }],
 ] as const) {
@@ -113,14 +119,15 @@ for (const [error, expected] of [
 }
 
 // The reply keeps the notice, so its model label and Peek can show the failed pick later.
-const savedInfo = (fallback?: GenerationFallbackNotice) =>
+const savedInfo = (fallback?: GenerationFallbackNotice, continuedFallback?: GenerationFallbackNotice) =>
   buildGenerationInfoExtra({
     chatMode: "roleplay",
     gameOutcomeNarrationFailed: false,
     marketWorldPlace: undefined,
     gameToolPlan: null,
     gameToolConnection: null,
-    generationProviderOrigin: { model: "backup-model", provider: "custom", fallback },
+    generationProviderOrigin: { model: "current-model", provider: "openai", fallback },
+    continuedFallback,
     temperature: undefined,
     effectiveMaxTokensForSend: undefined,
     suppressModelParameters: false,
@@ -150,6 +157,11 @@ const savedInfo = (fallback?: GenerationFallbackNotice) =>
   }).generationInfo as Record<string, unknown>;
 assert.deepEqual(savedInfo(authNotice).fallback, authNotice);
 assert.equal("fallback" in savedInfo(), false, "a reply the chosen connection wrote keeps no fallback");
+assert.deepEqual(savedInfo(undefined, authNotice).fallback, authNotice, "a continuation keeps the prior fallback");
+assert.equal(savedInfo(undefined, authNotice).model, "current-model", "the continuation keeps its new model");
+assert.equal(savedInfo(undefined, authNotice).provider, "openai", "the continuation keeps its new provider");
+const newerNotice = { ...authNotice, model: "newer-backup" };
+assert.deepEqual(savedInfo(newerNotice, authNotice).fallback, newerNotice, "a new fallback replaces the prior notice");
 
 // The main reply's route passes the pick's name and stores the notice with the reply.
 const runtimeSource = readFileSync(
@@ -163,6 +175,18 @@ const routeSource = readFileSync(
 );
 assert.match(routeSource, /mainFallbackNotice = notice;\s*return onFallback\(notice\);/u);
 assert.match(routeSource, /\{ model: origin\.model, provider: origin\.provider, fallback: mainFallbackNotice \}/u);
+assert.match(
+  routeSource,
+  /continuedFallback: input\.continueMessageId\s*\? \(parseExtra\(savedMsg\.extra\)\.generationInfo as GenerationInfo \| undefined\)\?\.fallback\s*: undefined/u,
+);
+assert.match(
+  routeSource,
+  /if \(generationProviderOrigin\.fallback\) everyPart\.generationInfo = generationProviderOrigin;/u,
+);
+assert.match(
+  routeSource,
+  /replyParts\.slice\(0, -1\)\.entries\(\)[\s\S]*?updateMessageExtraForSwipe\(part\.message\.id, 0, \{\s*\.\.\.everyPart,/u,
+);
 
 // The saved reply's note says both, in plain words.
 const failedOver = "Pool A (pool-model) failed (key rejected); answered with Backup (backup-model).";

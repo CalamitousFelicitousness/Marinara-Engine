@@ -837,7 +837,7 @@ import {
   type GameDicePoolTarget,
 } from "../services/game/dice-pool.service.js";
 import { createGameDicePoolsStorage } from "../services/storage/game-dice-pools.storage.js";
-import type { GameDiceTurnNotice, GenerationFallbackNotice } from "@marinara-engine/shared";
+import type { GameDiceTurnNotice, GenerationFallbackNotice, GenerationInfo } from "@marinara-engine/shared";
 import {
   applyMapUpdateCommand,
   getGameMapsFromMeta,
@@ -10678,6 +10678,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               gameToolPlan,
               gameToolConnection,
               generationProviderOrigin,
+              continuedFallback: input.continueMessageId
+                ? (parseExtra(savedMsg.extra).generationInfo as GenerationInfo | undefined)?.fallback
+                : undefined,
               temperature,
               effectiveMaxTokensForSend,
               suppressModelParameters,
@@ -10868,7 +10871,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : message;
             if (replyParts) {
               // The reasoning and the memory preparation belong to the first part, whose prompt produced them.
-              // Generation info, the prompt cache and everything that ends the turn stay with the last part.
+              // Usage, the prompt cache and everything that ends the turn stay with the last part.
               // Each part keeps what regenerating it replays. Gemini parts hold the whole reply's text, so a
               // split reply keeps none: replayed with one part, they would show the others to its readers.
               const firstPartKeys = [
@@ -10881,6 +10884,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const pick = (keys: string[]) =>
                 Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
               const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              // Every fallback-written part keeps its identity, without duplicating the turn's usage.
+              if (generationProviderOrigin.fallback) everyPart.generationInfo = generationProviderOrigin;
               for (const [index, part] of replyParts.slice(0, -1).entries()) {
                 const savedPart = await chats.updateMessageExtraForSwipe(part.message.id, 0, {
                   ...everyPart,

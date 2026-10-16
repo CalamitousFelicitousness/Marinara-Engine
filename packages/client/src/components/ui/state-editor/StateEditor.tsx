@@ -157,8 +157,9 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
   const openSection = (sectionId: string, target?: { line: number; path: StateEditorPath }) => {
     setActiveSectionId(sectionId);
     setView("section");
-    setPendingLine(target?.line ?? null);
-    setFocusPath(target?.path ?? null);
+    // Only the open view consumes its target; a leftover one would jump later, on the next view switch.
+    setPendingLine(mode === "json" ? (target?.line ?? null) : null);
+    setFocusPath(mode === "fields" ? (target?.path ?? null) : null);
   };
 
   const openResult = (result: StateSearchResult) => openSection(result.sectionId, result);

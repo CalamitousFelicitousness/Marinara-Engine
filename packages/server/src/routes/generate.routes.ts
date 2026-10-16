@@ -14221,13 +14221,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       // Generated Videos: Illustrator chose to animate its picture, or the chat makes clips only.
                       // The clip joins the same message when it is ready.
                       const videoMode = normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode);
+                      const writtenMotion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
+                      // A clip the writer chose without saying how it moves is skipped: with Pictures and clips the
+                      // clip is optional, and a paid clip with nothing to direct it shows nothing of the moment.
                       const wantsVideo =
-                        clipsOnly || (videoMode === "pictures_and_clips" && illData.generateVideo === true);
+                        clipsOnly ||
+                        (videoMode === "pictures_and_clips" && illData.generateVideo === true && !!writtenMotion);
                       // Every clip starts from the chat's First frame.
                       const videoFirstFrame = roleplayVideoFirstFrame(chatMeta, true, true);
-                      const videoPrompt =
-                        (typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "") ||
-                        "Subtle, natural motion brings the moment to life while the camera slowly pushes in.";
                       const showPicturesInstead = async () => {
                         // One picture that can't be added doesn't hold back the others.
                         for (const show of pictureShows.splice(0)) {
@@ -14246,7 +14247,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   chatId: input.chatId,
                                   chatMeta,
                                   galleryImageId: firstGalleryImageId,
-                                  motionPrompt: videoPrompt,
+                                  // A required clip (Clips only) with no motion written moves from the picture's own scene.
+                                  motionPrompt: writtenMotion || imagePrompt,
                                   appearanceBlock,
                                   queue: true,
                                   debugMode: input.debugMode,
@@ -14255,7 +14257,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   chatId: input.chatId,
                                   chatMeta,
                                   // Without the picture, the clip needs the scene as well as the motion.
-                                  prompt: [videoPrompt, typeof illData.prompt === "string" ? illData.prompt : ""]
+                                  prompt: [writtenMotion, typeof illData.prompt === "string" ? illData.prompt : ""]
                                     .filter(Boolean)
                                     .join("\n\n"),
                                   firstFrame: videoFirstFrame,

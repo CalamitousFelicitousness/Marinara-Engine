@@ -279,6 +279,14 @@ try {
       });
   assert.equal((await imagesOn(lastAssistant?.id)).length, 1, "the picture is shown with its clip");
 
+  // Pictures and clips, a clip chosen without saying how it moves: no clip is paid for, and the picture stays.
+  const clipsBeforeNoMotion = comfyPrompts.length;
+  illustratorReply = { shouldGenerate: true, prompt: "1girl, lantern, rain", generateVideo: true };
+  await generate(roleplay.id, "Aster shakes off the rain.");
+  const noMotion = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
+  assert.equal(comfyPrompts.length, clipsBeforeNoMotion, "no clip without a motion prompt");
+  assert.equal((await imagesOn(noMotion?.id)).length, 1, "the picture is shown");
+
   // Clips only with no First frame chosen: no picture is drawn; the clip is written from the scene alone.
   await saveChatSettings(roleplay.id, { ...roleplayMeta, illustratorVideoMode: "clips_only" });
   illustratorReply = {
@@ -308,6 +316,8 @@ try {
   const clipOnly = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
   assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === clipOnly?.id).length, 1);
   assert.equal((await imagesOn(clipOnly?.id)).length, 0, "the picture is only the clip's first frame");
+  // No motion was written, so the required clip moves from the picture's own scene, not a generic line.
+  assert.match(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.text, /^1girl, lantern, rain/u);
   assert.equal(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.image, png.toString("base64"));
 
   // Clips only, clip fails: the picture is shown instead.

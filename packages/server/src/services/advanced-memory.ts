@@ -751,6 +751,8 @@ type Selection = { messages: readonly AdvancedMemoryMessage[]; ids: Set<string> 
 type MessageLookup = { indexes: Map<string, number>; selections: Map<string, Selection> };
 // Each message's position and what each view selects, made once per context and message list rather than once
 // per stored record: checking or rendering every record of a long archive must not rescan the chat each time (#7702).
+// ponytail: valid while nothing changes a context's settings or a message list in place (nothing does: a change
+// makes a new context or list); if something ever must, key these on a revision instead of the object.
 const messageLookups = new WeakMap<Context, WeakMap<readonly AdvancedMemoryMessage[], MessageLookup>>();
 function messageLookup(ctx: Context, source: readonly AdvancedMemoryMessage[]): MessageLookup {
   const lookups = messageLookups.get(ctx) ?? new WeakMap<readonly AdvancedMemoryMessage[], MessageLookup>();

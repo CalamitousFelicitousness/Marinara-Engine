@@ -10,7 +10,12 @@ const APP_VERSION = (
 ).version;
 
 test.beforeEach(async ({ page }) => {
-  await seedUIState(page, { hasCompletedOnboarding: true, chatHelpSeenModes: ["conversation", "roleplay", "game"] });
+  await seedUIState(page, {
+    hasCompletedOnboarding: true,
+    chatHelpSeenModes: ["conversation", "roleplay", "game"],
+    sidebarOpen: false,
+    rightPanelOpen: false,
+  });
   await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), APP_VERSION);
 });
 

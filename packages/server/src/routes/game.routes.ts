@@ -187,6 +187,7 @@ import {
 } from "../services/game/npc-avatar-utils.js";
 import {
   buildCheckpointGameMetadataRestore,
+  readCheckpointCharacterIds,
   createCheckpointService,
   type CapturedEngineState,
   type CheckpointTrigger,
@@ -16634,21 +16635,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
       ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
     });
-    if (restoresGameMetadata && Array.isArray(capturedGameMetadata.gamePartyCharacterIds)) {
-      // The chat's characterIds column mirrors the library members of the party, and session start
-      // trusts it over gamePartyCharacterIds. So it is rewound in the same queued write, or a member
-      // recruited after the save would come back at the next session.
-      await chats.patchMetadataWithCharacterIds(input.chatId, (current) => {
-        const metadata = restorePatch(current);
-        const characterIds = Array.from(
-          new Set(
-            (metadata.gamePartyCharacterIds as unknown[]).filter(
-              (id): id is string => typeof id === "string" && id.trim().length > 0 && !isPartyNpcId(id),
-            ),
-          ),
-        );
-        return { metadata, characterIds };
-      });
+    // The chat's characterIds column holds the party's library members, and session start trusts it
+    // over gamePartyCharacterIds. So the load puts back the list it had at the save, in the same
+    // queued write, or a member recruited after the save would come back at the next session.
+    const capturedCharacterIds = parseJsonField<unknown>(cp.chatCharacterIdsData, null);
+    if (restoresGameMetadata && Array.isArray(capturedCharacterIds)) {
+      await chats.patchMetadataWithCharacterIds(input.chatId, (current) => ({
+        metadata: restorePatch(current),
+        characterIds: readCheckpointCharacterIds(capturedCharacterIds),
+      }));
     } else if (cp.gameState || restoresGameMetadata) {
       await chats.patchMetadata(input.chatId, restorePatch);
     }

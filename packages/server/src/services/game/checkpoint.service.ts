@@ -53,6 +53,7 @@ export interface StoredCheckpointRow extends CheckpointRow {
   spatialSnapshotData: string | null;
   engineStateData: string | null;
   gameMetadataData: string | null;
+  chatCharacterIdsData: string | null;
 }
 
 /** One captured game_engine_state blob inside a checkpoint's engineStateData array (#5102). */
@@ -90,6 +91,20 @@ export const CHECKPOINT_GAME_METADATA_KEYS = [
   "gameWeather",
   "gameMorale",
 ] as const;
+
+/** A chat's characterIds column (a JSON string or an array) as a clean list of unique ids. */
+export function readCheckpointCharacterIds(raw: unknown): string[] {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((id): id is string => typeof id === "string" && id.trim().length > 0)));
+}
 
 /** The allow-listed keys present in `metadata`, copied by value. Null when none are. */
 export function captureCheckpointGameMetadata(metadata: Record<string, unknown>): Record<string, unknown> | null {
@@ -268,6 +283,7 @@ export function createCheckpointService(db: DB) {
           // `{}` when the game had none of the keys yet, so a load still clears what came later;
           // null stays reserved for checkpoints from before this field.
           gameMetadataData: JSON.stringify(capturedGameMetadata ?? {}),
+          chatCharacterIdsData: chat ? JSON.stringify(readCheckpointCharacterIds(chat.characterIds)) : null,
           messageId: input.messageId,
           label: input.label,
           triggerType: input.triggerType,
@@ -310,7 +326,7 @@ export function createCheckpointService(db: DB) {
         .where(eq(gameCheckpoints.chatId, chatId))
         .orderBy(desc(gameCheckpoints.createdAt));
       // The projection already omits every blob column (snapshotData, spatialSnapshotData,
-      // engineStateData, gameMetadataData), so the rows are list-shaped as-is — no post-strip needed.
+      // engineStateData, gameMetadataData, chatCharacterIdsData), so the rows are list-shaped as-is.
       return rows as CheckpointRow[];
     },
 

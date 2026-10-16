@@ -9,8 +9,9 @@
 //      inventory's turn record.
 //   2) End-to-end: create → change metadata → POST /game/checkpoint/load → keys are back, settings
 //      and keys outside the allow-list are untouched.
-//   2b) The chat's characterIds mirror of the party is rewound with gamePartyCharacterIds, so a
-//      member recruited after the save does not come back at the next session start.
+//   2b) The chat's characterIds column (the party's library members) is rewound with the metadata,
+//      so a member recruited after the save does not come back at the next session start. 2d: also
+//      when the save had no gamePartyCharacterIds yet.
 //   3) A checkpoint from before the field (gameMetadataData null) loads as it always did.
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -209,6 +210,27 @@ try {
 
     await loadCheckpoint(chatId, checkpointId);
     assert.equal((await metadataOf(chatId)).gameJournal, null, "a key added after an empty capture is cleared");
+  }
+
+  // ── Part 2d: a save without gamePartyCharacterIds still rewinds characterIds ──
+  {
+    const { chatId, snapshot } = await seedGameChat("checkpoint party column only", { gameMorale: 50 });
+    await chats.patchMetadataWithCharacterIds(chatId, () => ({ metadata: {}, characterIds: ["char-luna"] }));
+    const checkpointId = await createCheckpoint(chatId, snapshot);
+
+    await chats.patchMetadataWithCharacterIds(chatId, () => ({
+      metadata: { gamePartyCharacterIds: ["char-luna", "char-mira"] },
+      characterIds: ["char-luna", "char-mira"],
+    }));
+
+    await loadCheckpoint(chatId, checkpointId);
+    const chat = await chats.getById(chatId);
+    assert.equal((await metadataOf(chatId)).gamePartyCharacterIds, null, "the later party list is cleared");
+    assert.deepEqual(
+      JSON.parse(chat!.characterIds as unknown as string),
+      ["char-luna"],
+      "the chat's characters go back to the save, even with no party list in it",
+    );
   }
 
   // ── Part 3: a checkpoint from before the field loads as it did ──

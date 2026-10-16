@@ -205,6 +205,16 @@ try {
   await chats.patchMetadata(chat.id, { groupChatMode: "individual" });
   const individual = await run([bob.id], { forCharacterId: bob.id });
   await run([bob.id], {}, individual.id);
+  // One Expression Engine call per Individual turn; each reply keeps its own character's expression (#7712).
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "sequential" });
+  const turnLast = await run([alice.id, bob.id]);
+  const [aliceReply, bobReply] = (await chats.listMessages(chat.id)).slice(-2);
+  assert(aliceReply && bobReply);
+  assert.deepEqual([aliceReply.characterId, bobReply.id], [alice.id, turnLast.id]);
+  const aliceExtra = JSON.parse(aliceReply.extra);
+  assert.deepEqual(aliceExtra.spriteExpressions, { [alice.id]: "happy" }, "an earlier reply has its own expression");
+  assert.equal(aliceExtra.expressionSpriteIds, undefined, "the turn's sprite list stays on its last reply");
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "manual" });
   await chats.update(chat.id, { characterIds: [alice.id] });
   await chats.patchMetadata(chat.id, { groupChatMode: "merged" });
   await run([alice.id]);

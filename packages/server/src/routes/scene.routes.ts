@@ -14,6 +14,7 @@ import { readdirSync, existsSync } from "fs";
 import { join, extname } from "path";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createChatPresetsStorage } from "../services/storage/chat-presets.storage.js";
+import { parseExtra } from "../services/generation/prompt-attachments.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
@@ -649,6 +650,17 @@ export async function sceneRoutes(app: FastifyInstance) {
         role: "narrator",
         characterId: null,
         content: plan.participationGuide,
+        // Marked so a scene fork can leave out exactly this guide.
+        extra: { sceneParticipationGuide: true },
+      });
+    }
+    // The scene description is narration, so the narrator posts it; the opening message stays the character's own.
+    if (plan.description) {
+      await chats.createMessage({
+        chatId: sceneChat.id,
+        role: "narrator",
+        characterId: null,
+        content: plan.description,
       });
     }
 
@@ -657,12 +669,11 @@ export async function sceneRoutes(app: FastifyInstance) {
       initiatorCharId && finalParticipantIds.includes(initiatorCharId)
         ? initiatorCharId
         : (finalParticipantIds[0] ?? null);
-    const firstMsgParts = [plan.description, "", plan.firstMessage].filter(Boolean);
     await chats.createMessage({
       chatId: sceneChat.id,
       role: "assistant",
       characterId: firstMsgCharId,
-      content: firstMsgParts.join("\n"),
+      content: plan.firstMessage,
     });
 
     return {
@@ -997,6 +1008,8 @@ export async function sceneRoutes(app: FastifyInstance) {
       }
 
       let skippedParticipationGuide = false;
+      // Newer scenes mark their guide; older ones wrote it as the first narrator message.
+      const guideIsMarked = sceneMessages.some((msg) => parseExtra(msg.extra).sceneParticipationGuide === true);
       const copiedCount = upToMessageId
         ? sceneMessages.findIndex((msg) => msg.id === upToMessageId) + 1
         : sceneMessages.length;
@@ -1004,7 +1017,10 @@ export async function sceneRoutes(app: FastifyInstance) {
         sceneMessages.slice(0, copiedCount).map((msg) => msg.id),
       );
       for (const msg of sceneMessages) {
-        if (!includeParticipationGuide && !skippedParticipationGuide && msg.role === "narrator") {
+        const isParticipationGuide =
+          msg.role === "narrator" &&
+          (guideIsMarked ? parseExtra(msg.extra).sceneParticipationGuide === true : !skippedParticipationGuide);
+        if (!includeParticipationGuide && !skippedParticipationGuide && isParticipationGuide) {
           // /scene/create writes the generated participation guide as the first
           // narrator message; this option skips only that generated guide.
           skippedParticipationGuide = true;
@@ -1214,6 +1230,8 @@ export async function sceneRoutes(app: FastifyInstance) {
           `- The "description" IS shown. Keep it atmospheric but don't spoil the plot.`,
           `- The "background" must be an EXACT filename from the available backgrounds list (case-sensitive, including extension). If no background fits, set it to null. Do NOT invent or modify filenames.`,
           `- The "firstMessage" should be written in character, not as a narrator. Make it engaging.`,
+          `- In "firstMessage", put anything a character says aloud in double quotes ("..."); narration, actions and inner thoughts stay outside quotes, so speech is never mistaken for thought. Scene writing instructions that set a different dialogue style take precedence.`,
+          `- "description" is narration shown before the opening message, posted separately; do not repeat it in "firstMessage".`,
           ...(openerName
             ? [
                 `- "firstMessage" is posted by ${openerName}. Write it only as ${openerName}: ${openerName}'s own actions, dialogue and thoughts (in first person, "I" is ${openerName}). Other characters appear only as ${openerName} sees and hears them; never narrate as another character.`,

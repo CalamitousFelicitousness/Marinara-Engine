@@ -171,6 +171,7 @@ try {
     .join("\n");
   assert.match(openerPrompt, /<opening_character>Bob<\/opening_character>/u, "the planner knows who opens");
   assert.match(openerPrompt, /"firstMessage" is posted by Bob\. Write it only as Bob/u);
+  assert.match(openerPrompt, /says aloud in double quotes/u, "spoken words are quoted");
   // Without chosen participants, a cast the model picks always keeps the opening character.
   providerContent = JSON.stringify({ ...plan, characterIds: [ids[0]] });
   const castPlan = await api("POST", "/api/scene/plan", {
@@ -209,6 +210,33 @@ try {
   assert.equal(scene.personaId, persona.id);
   const messages = await api("GET", `/api/chats/${scene.id}/messages`);
   assert.equal(messages.at(-1).characterId, ids[0], "An excluded initiator cannot author the Scene opening");
+  // The opening is only the character's own message; the description is narration, posted by the narrator.
+  assert.equal(messages.at(-1).content, "Welcome.", "the description is not glued onto the opening");
+  const narration = messages.filter((message: { role: string }) => message.role === "narrator");
+  assert.deepEqual(
+    narration.map((message: { content: string }) => message.content),
+    ["Explore the library.", "A library."],
+    "the guide, then the description",
+  );
+  const guideExtra = typeof narration[0].extra === "string" ? JSON.parse(narration[0].extra) : narration[0].extra;
+  assert.equal(guideExtra?.sceneParticipationGuide, true, "the guide is marked so a fork can leave out only it");
+  // A copy without the guide leaves out only the guide: the description and the opening stay.
+  const fork = await api("POST", "/api/scene/fork", {
+    sceneChatId: scene.id,
+    mode: "clone",
+    includeParticipationGuide: false,
+  });
+  const forkMessages = await api("GET", `/api/chats/${fork.chatId}/messages`);
+  assert.deepEqual(
+    forkMessages
+      .filter((message: { role: string }) => message.role !== "system")
+      .map((message: { content: string }) => message.content)
+      .filter(
+        (content: string) => content === "A library." || content === "Welcome." || content === "Explore the library.",
+      ),
+    ["A library.", "Welcome."],
+    "only the guide is left out",
+  );
   const store = createChatsStorage(app.db);
   const chars = createCharactersStorage(app.db);
   const meta = (await api("GET", `/api/chats/${origin.id}`)).metadata;

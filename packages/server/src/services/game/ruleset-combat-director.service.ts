@@ -1202,7 +1202,8 @@ export function rulesetWindowTargetOf(
     trigger.kind !== "harmed" &&
     trigger.kind !== "used" &&
     trigger.kind !== "turn-start" &&
-    trigger.kind !== "caught"
+    trigger.kind !== "caught" &&
+    trigger.kind !== "attacked"
   ) {
     return undefined;
   }

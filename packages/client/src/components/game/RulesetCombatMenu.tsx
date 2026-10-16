@@ -90,6 +90,7 @@ const WINDOW_PROMPTS = {
   "turn-start": "TurnStart",
   used: "Used",
   caught: "Caught",
+  attacked: "Attacked",
   signature: "Between",
   reaction: "Leaving",
 } as const;

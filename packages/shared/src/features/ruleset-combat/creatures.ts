@@ -67,6 +67,8 @@ export function rulesetReactionAnswers(
     ...(moment.names ? { names: [...moment.names] } : {}),
     ...(moment.budget ? { budget: moment.budget } : {}),
     ...(moment.freeSlot ? { freeSlot: moment.freeSlot } : {}),
+    ...(moment.missed ? { missed: true as const } : {}),
+    ...(moment.sourceIs ? { sourceIs: structuredClone(moment.sourceIs) } : {}),
   });
   return {
     ...narrowing(reaction),

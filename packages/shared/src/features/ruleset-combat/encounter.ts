@@ -2504,6 +2504,11 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   if (mechanics.kind === "utility" && (mechanics.zone || mechanics.clears) && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
+  // A strike back, or a missed attack sent on (1.369), is at somebody: whoever caused it, or the one
+  // its holder picks.
+  if (mechanics.kind === "utility" && (mechanics.strikesWith || mechanics.redirects)) {
+    return { side: mechanics.targets ?? (mechanics.redirects ? "any" : "enemy"), count: 1 };
+  }
   if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
   if (mechanics.kind === "utility") {
     return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
@@ -2629,7 +2634,10 @@ function mechanicsAction(
     !mechanics.conjures &&
     !mechanics.teleport &&
     // Calling creatures (1.344) is something to resolve: Conjure Animals.
-    !mechanics.calls
+    !mechanics.calls &&
+    // So is a strike back, or a missed attack sent on (1.369).
+    !mechanics.strikesWith &&
+    !mechanics.redirects
   ) {
     return null;
   }
@@ -2731,6 +2739,9 @@ function mechanicsAction(
   // Its damage joins its holder's own blow that just hit (1.241).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
   // Throws back what its holder just caught (1.363): Deflect Missiles, the missile's own damage.
+  // A strike of its holder's own, or a missed attack sent elsewhere (1.369).
+  if (mechanics.strikesWith && moment) action.strikesWith = mechanics.strikesWith;
+  if (mechanics.redirects && moment) action.redirects = true;
   // Or one die off the sheet where it is the better (1.367): Martial Arts' die.
   if (mechanics.throwsCaught && moment) {
     const die = mechanics.throwsCaught === true ? undefined : mechanics.throwsCaught.die;

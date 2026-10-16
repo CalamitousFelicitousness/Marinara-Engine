@@ -2191,6 +2191,18 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
   );
 }
 
+/** An attack that is over as a moment, a source test, a holder's own strike as an answer, and a
+ *  missed attack sent elsewhere (1.369): Retaliation, Giant Killer, Stand Against the Tide. */
+function carriesAttackedAnswer369(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAttackedAnswer369(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.on === "attacked" || record.missed === true || plainRecord(record.sourceIs)) return true;
+  if (record.strikesWith !== undefined || record.redirects === true) return true;
+  return featureValues(record).some((one) => carriesAttackedAnswer369(one, depth + 1));
+}
+
 /** Healing an amend adds to each it heals, or to its user when it heals somebody else (1.368):
  *  Disciple of Life, Blessed Healer. */
 function carriesHealAmend368(value: unknown, depth = 0): boolean {
@@ -5512,6 +5524,14 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // An attacked moment and the answers to it, 1.369.
+  if (
+    !declaresApi(369) &&
+    (carriesAttackedAnswer369(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttackedAnswer369(document)))
+  ) {
+    return "A ruleset whose reactions answer an attack that is over (on attacked, missed), test whoever caused their moment (sourceIs), strike with their holder's own weapon (strikesWith) or send a missed attack elsewhere (redirects) requires schemaVersion 2 and capabilityApi 1.369 or newer";
+  }
   // Healing amends, 1.368.
   if (
     !declaresApi(368) &&

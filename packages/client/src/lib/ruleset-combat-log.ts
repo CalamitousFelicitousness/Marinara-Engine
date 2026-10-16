@@ -266,6 +266,7 @@ const WINDOW_LINES = {
   "turn-start": "windowTurnStart",
   used: "windowUsed",
   caught: "windowCaught",
+  attacked: "windowAttacked",
 } as const;
 
 /**

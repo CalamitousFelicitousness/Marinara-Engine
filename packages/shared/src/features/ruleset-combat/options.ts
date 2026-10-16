@@ -3876,6 +3876,9 @@ export function rulesetWindowOptions(
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
     ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
+    ...(trigger.kind === "attacked"
+      ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
+      : {}),
   };
   // A hit's maker answers it once with each thing they hold (1.241).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
@@ -3947,7 +3950,8 @@ export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReact
     trigger.kind === "used" ||
     trigger.kind === "falls" ||
     trigger.kind === "turn-start" ||
-    trigger.kind === "caught"
+    trigger.kind === "caught" ||
+    trigger.kind === "attacked"
     ? trigger.kind
     : null;
 }
@@ -3973,13 +3977,19 @@ function momentAnswers(
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
   // Only the one who caught it throws it back (1.363).
   if (moment.on === "caught" && !(cause.targetIds ?? []).includes(holder.id)) return false;
+  // Only the ones an attack was made at, and missed if it says so (1.369).
+  if (moment.on === "attacked") {
+    if (!(cause.targetIds ?? []).includes(holder.id)) return false;
+    if (moment.missed && !(cause.missedIds ?? []).includes(holder.id)) return false;
+    if (moment.blow && cause.blows?.[holder.id] !== moment.blow) return false;
+  }
   if (moment.weapon && !cause.weapon) return false;
   if (moment.names && !(cause.attack !== undefined && rulesetAttackNamed(cause.attack, moment.names))) return false;
   // Only a strike paid for from its budget (1.248): Open Hand Technique, on Flurry of Blows.
   if (moment.budget && cause.budget !== moment.budget) return false;
   // Only a hit with its own item (1.273): charges spent on the staff that struck.
   if (moment.item !== undefined && cause.item !== moment.item) return false;
-  if (moment.blow && cause.blow !== moment.blow) return false;
+  if (moment.blow && moment.on !== "attacked" && cause.blow !== moment.blow) return false;
   if (moment.seesSource && !rulesetSees(state, holder, rulesetCombatant(state, sourceId))) return false;
   return true;
 }
@@ -4009,7 +4019,14 @@ export function rulesetReactionTarget(
   sourceId: string,
   cause: RulesetMomentCause,
 ): string | undefined {
-  if (moment === "turn-start" || moment === "falls" || moment === "used" || moment === "caught") return sourceId;
+  if (
+    moment === "turn-start" ||
+    moment === "falls" ||
+    moment === "used" ||
+    moment === "caught" ||
+    moment === "attacked"
+  )
+    return sourceId;
   return [action.reaction!, ...(action.reaction?.also ?? [])].flatMap((one) => {
     if (one.on !== moment || !momentAnswers(state, holder, sourceId, one, cause)) return [];
     // Its holder's own blow is about whoever it hit (1.241).
@@ -4044,6 +4061,44 @@ export function rulesetFallTargets(
         rulesetCombatantDistance(state, actor, rulesetCombatant(state, a)!) -
         rulesetCombatantDistance(state, actor, rulesetCombatant(state, b)!),
     );
+}
+
+/** Whether whoever caused a moment is what a reaction's `sourceIs` says (1.369). */
+function sourceIsOf(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  sourceId: string,
+  test: RulesetTargetIs,
+): boolean {
+  const source = rulesetCombatant(state, sourceId);
+  return !!source && rulesetTargetIs(definition, source, test);
+}
+
+/** Who a missed attack may be sent to instead (1.369): anybody its maker could make it at, other than
+ *  its maker and the one it missed, as the menu would let them. */
+export function rulesetRedirectTargets(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  sourceId: string,
+  optionId: string | undefined,
+): string[] {
+  const attacker = rulesetCombatant(state, sourceId);
+  const attack = attacker?.actions.find((one) => one.id === optionId);
+  if (!attacker || !attack || !rulesetCombatStanding(attacker)) return [];
+  return state.combatants
+    .filter(
+      (one) =>
+        one.id !== attacker.id &&
+        one.id !== holder.id &&
+        !one.defeated &&
+        rulesetCombatStanding(one) &&
+        (attack.reach === undefined && !attack.range
+          ? rulesetCombatantDistance(state, attacker, one) <= 1
+          : attack.range
+            ? rulesetCombatantDistance(state, attacker, one) <= (attack.range.long ?? attack.range.normal)
+            : rulesetCombatantDistance(state, attacker, one) <= (attack.reach ?? 1)),
+    )
+    .map((one) => one.id);
 }
 
 /** Whether a holder has one of a slot free (1.363): a hand to catch a missile in. What it has let
@@ -4087,12 +4142,18 @@ export function rulesetReactionsAt(
           one.on === moment &&
           momentAnswers(state, actor, sourceId, one, cause) &&
           // A hand free to catch it in (1.363).
-          (!one.freeSlot || rulesetSlotFree(definition, actor, one.freeSlot)),
+          (!one.freeSlot || rulesetSlotFree(definition, actor, one.freeSlot)) &&
+          // Whoever caused it is what it says (1.369): Giant Killer's Large or larger.
+          (!one.sourceIs || sourceIsOf(definition, state, sourceId, one.sourceIs)),
       )
     )
       return false;
     const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);
     if ((moment === "aimed" || moment === "hit") && !target) return false;
+    // A strike of its own to make (1.369), and somebody else for a missed attack to go to.
+    if (action.strikesWith && !rulesetOpportunityAttack(actor)) return false;
+    if (action.redirects && rulesetRedirectTargets(state, actor, sourceId, cause.attackOption).length === 0)
+      return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
     // A bystander's distance is to the creature it protects. An explicit range still limits the
     // answer, but an omitted range does not invent a melee reach to a distant attacker.

@@ -753,6 +753,10 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
+  /** Its holder's best melee strike at whoever caused its moment (1.369): Retaliation. */
+  strikesWith?: "melee";
+  /** Whoever missed its holder attacks the one its holder picks instead (1.369). */
+  redirects?: true;
   /** Throws back the missile its holder just caught, with that missile's damage (1.363), or one die
    *  of `sides` where that is the better (1.367): Martial Arts' die. */
   throwsCaught?: true | { sides: number };
@@ -912,6 +916,10 @@ export interface RulesetCombatAction {
     item?: number;
     /** Only while its holder's worn items leave one of this slot free (1.363). */
     freeSlot?: string;
+    /** Only an attack that missed its holder (1.369). */
+    missed?: true;
+    /** Only when whoever caused it is this (1.369). */
+    sourceIs?: RulesetTargetIs;
     /** It stops only what was paid for no higher up its pool family than this was (1.116). */
     upTo?: "paid";
     /** Above that, a check, read once as the fight began, against `dc` plus the level of what it
@@ -1804,6 +1812,19 @@ export type RulesetWindowTrigger =
       entry?: string;
       damage: { count: number; sides: number; type?: string };
     }
+  /** An attack that is over, hit or missed (1.369): only the ones it attacked answer, `missedIds`
+   *  the ones it missed, and `optionId` the attack, for an answer that sends it elsewhere. */
+  | {
+      kind: "attacked";
+      targetIds: string[];
+      missedIds: string[];
+      blows: Record<string, RulesetBlowKind>;
+      sourceId: string;
+      optionId: string;
+      label: string;
+      catalog?: string;
+      entry?: string;
+    }
   /** What somebody readied waits for has happened (1.288): `sourceId` came where it can be reached
    *  (`comes`, before the rest of their walk) or has just used something (`acts`). */
   | { kind: "readied"; sourceId: string; on: RulesetReadyOn };
@@ -1812,7 +1833,8 @@ export type RulesetWindowTrigger =
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
  *  roll has hit the holder and before its damage, `harmed` is after something has hurt them, and
  *  `falls` is before a falling creature lands, and `turn-start` before its creature acts (1.131). */
-export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught";
+export type RulesetReactionMoment =
+  "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught" | "attacked";
 
 /** A blow struck in reach (`melee`) or from afar (`ranged`), as a reaction that answers only one
  *  of them reads it (1.118). */
@@ -1838,6 +1860,17 @@ export interface RulesetReactionAlso {
   item?: number;
   /** Only while its holder's worn items leave one of this slot free (1.363). */
   freeSlot?: string;
+  /** Only an attack that missed its holder (1.369). */
+  missed?: true;
+  /** Only when whoever caused it is this (1.369). */
+  sourceIs?: RulesetTargetIs;
+}
+
+/** Who a use attacked, hit or missed, the ones it missed, and the kind of blow each was (1.369). */
+export interface RulesetAttackedRecord {
+  targetIds: string[];
+  missedIds: string[];
+  blows: Record<string, RulesetBlowKind>;
 }
 
 /** What caused a moment, as far as a reaction narrows what it answers: the catalog and entry behind
@@ -1856,6 +1889,11 @@ export interface RulesetMomentCause {
   budget?: string;
   /** The place in its maker's items of the item it was struck with (1.273). */
   item?: number;
+  /** Of an attack that is over (1.369): the ones it missed, and the kind of blow each was. */
+  missedIds?: string[];
+  blows?: Record<string, RulesetBlowKind>;
+  /** The attack's own option, for an answer that sends it elsewhere (1.369). */
+  attackOption?: string;
 }
 
 /** What opens a moment for one reaction: an action from an entry of one of `catalogs`, or one of
@@ -1970,6 +2008,8 @@ export interface RulesetHeldAttack {
   mine: string[];
   /** Whoever the action had already hurt before it was held, for the moment after it. */
   hurt: string[];
+  /** Whoever it had already attacked before it was held, hit or missed (1.369). */
+  attacked?: RulesetAttackedRecord;
   /** What its maker added to the blow while it was held (1.241): Divine Smite. */
   adds?: RulesetHeldAddition[];
   /** The one target every attack of its sequence before this part hit, or false once one missed

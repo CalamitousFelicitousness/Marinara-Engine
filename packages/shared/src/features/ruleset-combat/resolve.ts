@@ -197,6 +197,7 @@ import {
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
+  rulesetRedirectTargets,
   rulesetHitItem,
   rulesetFallTargets,
   rulesetReactionsAt,
@@ -231,6 +232,7 @@ import type {
   RulesetBlowKind,
   RulesetCombatAction,
   RulesetCombatHealAdd,
+  RulesetAttackedRecord,
   RulesetCombatCharge,
   RulesetCombatMove,
   RulesetCombatDamageClause,
@@ -350,6 +352,8 @@ interface RulesetCombatContext {
   }>;
   /** Who just caught a weapon's missile, and its damage, for the moment that opens after (1.363). */
   caught?: { targetIds: string[]; damage: { count: number; sides: number; type?: string } };
+  /** Who the use being resolved attacked, hit or missed (1.369), for the moment once it is over. */
+  attacked?: RulesetAttackedRecord;
 }
 
 /** Set while a legendary cast (1.284) resolves as its maker's turn would, so each step begun inside
@@ -6255,7 +6259,8 @@ function takeReaction(
     trigger.kind !== "used" &&
     trigger.kind !== "falls" &&
     trigger.kind !== "turn-start" &&
-    trigger.kind !== "caught"
+    trigger.kind !== "caught" &&
+    trigger.kind !== "attacked"
   ) {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
@@ -6280,10 +6285,22 @@ function takeReaction(
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
     ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
+    ...(trigger.kind === "attacked"
+      ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
+      : {}),
   });
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
-  if (trigger.kind === "falls" && declared.targets.count > 1) {
+  // Sent to the one its holder picks (1.369): Stand Against the Tide.
+  if (declared.redirects) {
+    const open =
+      trigger.kind === "attacked" ? rulesetRedirectTargets(state, actor, trigger.sourceId, trigger.optionId) : [];
+    const picked = choice.targetIds[0];
+    targets =
+      choice.targetIds.length === 1 && picked && open.includes(picked)
+        ? [rulesetCombatant(state, picked)!]
+        : "bad-target";
+  } else if (trigger.kind === "falls" && declared.targets.count > 1) {
     const fallers = rulesetFallTargets(definition, state, actor, declared);
     const picked = choice.targetIds.length ? choice.targetIds : fallers.slice(0, declared.targets.count);
     targets =
@@ -6437,6 +6454,44 @@ function takeReaction(
     // A reaction is acting too (1.308): One with Shadows ends on it, as on one resolved in full.
     stirs(ctx, taking, "acted");
     holderActed(ctx, taking, action);
+    answered();
+    noteOutcome(ctx);
+    return finish();
+  }
+  // Its holder's own best melee strike at whoever caused it (1.369), made as an opportunity attack
+  // is: Retaliation, Giant Killer.
+  if (action.strikesWith) {
+    const strike = rulesetOpportunityAttack(taking);
+    const at = workingTargets[0];
+    stirs(ctx, taking, "acted");
+    holderActed(ctx, taking, action);
+    if (strike && at && !at.defeated) {
+      ctx.events.push({
+        type: "opportunity",
+        actorId: taking.id,
+        targetId: at.id,
+        label: strike.label,
+        budget: budget ?? "",
+      });
+      countAttack(ctx, taking);
+      spendAvailability(ctx, taking, strike);
+      resolveAction(ctx, taking, strike, [at]);
+    }
+    answered();
+    noteOutcome(ctx);
+    return finish();
+  }
+  // Whoever missed makes that attack again at the one its holder picked (1.369).
+  if (action.redirects && trigger.kind === "attacked") {
+    const attacker = rulesetCombatant(ctx.state, trigger.sourceId);
+    const attack = attacker?.actions.find((one) => one.id === trigger.optionId);
+    stirs(ctx, taking, "acted");
+    holderActed(ctx, taking, action);
+    const at = workingTargets[0];
+    if (attacker && attack && at) {
+      ctx.events.push({ type: "added", actorId: taking.id, targetId: at.id, label: action.label, to: attack.label });
+      resolveAction(ctx, attacker, attack, [at]);
+    }
     answered();
     noteOutcome(ctx);
     return finish();
@@ -7621,7 +7676,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" | "falls" | "turn-start" | "caught" }>,
+  trigger: Extract<
+    RulesetWindowTrigger,
+    { kind: "aimed" | "harmed" | "used" | "falls" | "turn-start" | "caught" | "attacked" }
+  >,
   candidates: readonly RulesetCombatant[],
   resume?: RulesetWindowResume,
 ): boolean {
@@ -7651,6 +7709,9 @@ function openMoment(
             : {}),
           ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
           ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
+          ...(trigger.kind === "attacked"
+            ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
+            : {}),
         }).length > 0,
     )
     .map((one) => one.id);
@@ -7941,6 +8002,9 @@ function harmedBy(
   else delete ctx.reaping;
   let hold: RulesetHitHold | null;
   delete ctx.caught;
+  // Whoever it attacked before it was held (1.369), and whoever it attacks now.
+  if (resume.held?.attacked) ctx.attacked = structuredClone(resume.held.attacked);
+  else delete ctx.attacked;
   try {
     hold = resolve();
   } finally {
@@ -8003,7 +8067,33 @@ function harmedBy(
       caught.targetIds.map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
-  if (!waiting && !catching) finishSummon(ctx, actor, action, resume);
+  // An attack over, hit or missed (1.369), asked of whoever it was made at once nothing else was.
+  const attacked = ctx.attacked as RulesetCombatContext["attacked"];
+  delete ctx.attacked;
+  const attacking =
+    !waiting &&
+    !catching &&
+    !resume.outer &&
+    !!attacked &&
+    attacked.targetIds.length > 0 &&
+    rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+    openMoment(
+      ctx,
+      {
+        kind: "attacked",
+        targetIds: attacked.targetIds,
+        missedIds: attacked.missedIds,
+        blows: attacked.blows,
+        sourceId: actor.id,
+        optionId: action.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+        ...(action.entry ? { entry: action.entry } : {}),
+      },
+      attacked.targetIds.map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
+      action.summons || action.zone ? { ...resume, resolved: true } : undefined,
+    );
+  if (!waiting && !catching && !attacking) finishSummon(ctx, actor, action, resume);
 }
 
 /** The window for an attack held where one of its rolls hit, picked up from that roll once everybody
@@ -8037,7 +8127,7 @@ function openHitWindow(
       defense: held.roll.defense,
     },
     waiting: hitAnswers(ctx, actor, rulesetCombatant(ctx.state, held.targetId)!, striking),
-    resume: { ...base, held: { ...held, hurt } },
+    resume: { ...base, held: { ...held, hurt, ...(ctx.attacked ? { attacked: structuredClone(ctx.attacked) } : {}) } },
   });
 }
 
@@ -9835,6 +9925,13 @@ function resolveActionBody(
           };
         }
       }
+    }
+    // Attacked, hit or missed (1.369), for the moment asked once the use is over.
+    if ((held && target.id === held.targetId) || (action.toHit !== undefined && !action.autoHit)) {
+      const record = (ctx.attacked ??= { targetIds: [], missedIds: [], blows: {} });
+      if (!record.targetIds.includes(target.id)) record.targetIds.push(target.id);
+      if (!landed && !record.missedIds.includes(target.id)) record.missedIds.push(target.id);
+      record.blows[target.id] = rulesetBlowKind(ctx.state, actor, target, action);
     }
     if (!landed) {
       // Half its damage on a miss, and nothing else it does on a hit (1.255): Acid Arrow.

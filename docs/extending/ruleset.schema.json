@@ -39295,6 +39295,14 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "strikesWith": {
+                      "type": "string",
+                      "const": "melee"
+                    },
+                    "redirects": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "throwsCaught": {
                       "anyOf": [
                         {
@@ -44096,7 +44104,8 @@
                                 "used",
                                 "falls",
                                 "turn-start",
-                                "caught"
+                                "caught",
+                                "attacked"
                               ]
                             },
                             "at": {
@@ -44158,6 +44167,47 @@
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "missed": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "sourceIs": {
+                              "type": "object",
+                              "properties": {
+                                "types": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 20
+                                },
+                                "tags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 20
+                                },
+                                "upToSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeastSize": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
                             },
                             "cancels": {
                               "type": "boolean",
@@ -44235,7 +44285,8 @@
                                       "used",
                                       "falls",
                                       "turn-start",
-                                      "caught"
+                                      "caught",
+                                      "attacked"
                                     ]
                                   },
                                   "against": {
@@ -44325,6 +44376,47 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "missed": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "sourceIs": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -52948,7 +53040,8 @@
                                   "used",
                                   "falls",
                                   "turn-start",
-                                  "caught"
+                                  "caught",
+                                  "attacked"
                                 ]
                               },
                               "at": {
@@ -53010,6 +53103,47 @@
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "missed": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "sourceIs": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "cancels": {
                                 "type": "boolean",
@@ -53087,7 +53221,8 @@
                                         "used",
                                         "falls",
                                         "turn-start",
-                                        "caught"
+                                        "caught",
+                                        "attacked"
                                       ]
                                     },
                                     "against": {
@@ -53177,6 +53312,47 @@
                                       "type": "string",
                                       "maxLength": 40,
                                       "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "missed": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "sourceIs": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
                                     },
                                     "$comment": {}
                                   },
@@ -67209,6 +67385,14 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "strikesWith": {
+                          "type": "string",
+                          "const": "melee"
+                        },
+                        "redirects": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "throwsCaught": {
                           "anyOf": [
                             {
@@ -71778,7 +71962,8 @@
                                     "used",
                                     "falls",
                                     "turn-start",
-                                    "caught"
+                                    "caught",
+                                    "attacked"
                                   ]
                                 },
                                 "at": {
@@ -71840,6 +72025,47 @@
                                   "type": "string",
                                   "maxLength": 40,
                                   "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "missed": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "sourceIs": {
+                                  "type": "object",
+                                  "properties": {
+                                    "types": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "tags": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
                                 },
                                 "cancels": {
                                   "type": "boolean",
@@ -71917,7 +72143,8 @@
                                           "used",
                                           "falls",
                                           "turn-start",
-                                          "caught"
+                                          "caught",
+                                          "attacked"
                                         ]
                                       },
                                       "against": {
@@ -72007,6 +72234,47 @@
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "missed": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "sourceIs": {
+                                        "type": "object",
+                                        "properties": {
+                                          "types": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "tags": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
                                       },
                                       "$comment": {}
                                     },
@@ -79369,6 +79637,14 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "strikesWith": {
+                                "type": "string",
+                                "const": "melee"
+                              },
+                              "redirects": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "throwsCaught": {
                                 "anyOf": [
                                   {
@@ -83938,7 +84214,8 @@
                                           "used",
                                           "falls",
                                           "turn-start",
-                                          "caught"
+                                          "caught",
+                                          "attacked"
                                         ]
                                       },
                                       "at": {
@@ -84000,6 +84277,47 @@
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "missed": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "sourceIs": {
+                                        "type": "object",
+                                        "properties": {
+                                          "types": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "tags": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
                                       },
                                       "cancels": {
                                         "type": "boolean",
@@ -84077,7 +84395,8 @@
                                                 "used",
                                                 "falls",
                                                 "turn-start",
-                                                "caught"
+                                                "caught",
+                                                "attacked"
                                               ]
                                             },
                                             "against": {
@@ -84167,6 +84486,47 @@
                                               "type": "string",
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "missed": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
+                                            "sourceIs": {
+                                              "type": "object",
+                                              "properties": {
+                                                "types": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 20
+                                                },
+                                                "tags": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 20
+                                                },
+                                                "upToSize": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "atLeastSize": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "additionalProperties": false
                                             },
                                             "$comment": {}
                                           },

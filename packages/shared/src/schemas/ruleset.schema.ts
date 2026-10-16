@@ -3192,6 +3192,13 @@ const rulesetMomentNarrowing = {
   /** Only while its holder's worn items leave one of this item slot free (Capability API 1.363):
    *  Deflect Missiles' catch, "you have at least one hand free". */
   freeSlot: sheetId.optional(),
+  /** On an `"attacked"` moment (Capability API 1.369), only an attack that missed its holder: Stand
+   *  Against the Tide. */
+  missed: z.literal(true).optional(),
+  /** Only when whoever caused it is this (Capability API 1.369), as a target test reads it: Giant
+   *  Killer's Large or larger creature. */
+  // Declared further down, with the other target tests.
+  sourceIs: z.lazy(() => targetIsSchema).optional(),
 };
 const blowOnlyOnHit = (
   moment: {
@@ -3203,15 +3210,31 @@ const blowOnlyOnHit = (
     budget?: string;
     for?: string;
     within?: number;
+    missed?: true;
+    sourceIs?: RulesetTargetIs;
   },
   ctx: z.RefinementCtx,
   path: (string | number)[],
 ) => {
-  if (moment.blow && moment.on !== "hit") {
+  if (moment.blow && moment.on !== "hit" && moment.on !== "attacked") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [...path, "blow"],
-      message: '"blow" says what kind of hit opens the moment, so it is on a "hit" moment',
+      message: '"blow" says what kind of attack opens the moment, so it is on a "hit" or "attacked" moment',
+    });
+  }
+  if (moment.missed && moment.on !== "attacked") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, "missed"],
+      message: '"missed" narrows an attack that is over, so it is on an "attacked" moment',
+    });
+  }
+  if (moment.sourceIs && (moment.on === "falls" || moment.on === "turn-start")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, "sourceIs"],
+      message: `A "${moment.on}" moment has nobody else behind it for "sourceIs" to test`,
     });
   }
   for (const key of ["by", "weapon", "names", "budget"] as const) {
@@ -3234,7 +3257,7 @@ const blowOnlyOnHit = (
 
 const rulesetReactionMomentBase = z
   .object({
-    on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught"]),
+    on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught", "attacked"]),
     at: z.enum(["source", "chosen", "target"]).default("source"),
     ...rulesetMomentNarrowing,
     /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
@@ -3253,7 +3276,7 @@ const rulesetReactionMomentBase = z
       .array(
         z
           .object({
-            on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught"]),
+            on: z.enum(["aimed", "hit", "harmed", "used", "falls", "turn-start", "caught", "attacked"]),
             against: rulesetReactionAgainstSchema.optional(),
             ...rulesetMomentNarrowing,
           })
@@ -3283,7 +3306,8 @@ const rulesetReactionMomentBase = z
         reaction.on === "hit" ||
         reaction.on === "falls" ||
         reaction.on === "turn-start" ||
-        reaction.on === "caught")
+        reaction.on === "caught" ||
+        reaction.on === "attacked")
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -4819,6 +4843,14 @@ const catalogMechanicsObject = z
     /** Taken as a `"caught"` moment opens (Capability API 1.363), its attack deals the dice and the
      *  type of the blow it caught in place of its own: Deflect Missiles' throw back, with the
      *  entry's own ability, proficiency and range. */
+    /** Taken as its moment opens (Capability API 1.369), it is its holder's own best melee weapon
+     *  strike at whoever caused it, made as an opportunity attack is: 5e's Retaliation, Giant
+     *  Killer. */
+    strikesWith: z.literal("melee").optional(),
+    /** Taken at an `"attacked"` moment that `missed` its holder (Capability API 1.369), whoever
+     *  attacked makes that same attack again at the creature its holder picks, never themself:
+     *  Stand Against the Tide. */
+    redirects: z.literal(true).optional(),
     throwsCaught: z
       .union([
         z.literal(true),
@@ -5624,6 +5656,24 @@ const catalogMechanicsSchema: z.ZodType<
         code: z.ZodIssueCode.custom,
         path: ["lowersRoll"],
         message: '"lowersRoll" is taken as somebody else\'s attack hits: reaction "hit" without "by" or "also"',
+      });
+    }
+  }
+  for (const key of ["strikesWith", "redirects"] as const) {
+    if (mechanics[key] === undefined) continue;
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    const fits =
+      key === "redirects"
+        ? moment?.on === "attacked" && moment.missed === true && moment.at === "chosen"
+        : moment !== undefined && moment.on !== "falls" && moment.on !== "turn-start" && moment.at !== "chosen";
+    if (!fits || mechanics.amount || mechanics.attackRoll) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message:
+          key === "redirects"
+            ? '"redirects" is taken at an "attacked" moment that "missed" its holder, "at": "chosen", and deals nothing of its own'
+            : '"strikesWith" is a reaction aimed back at whoever caused its moment, and deals nothing of its own',
       });
     }
   }
@@ -17679,6 +17729,18 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics) cureIssues(definition, mechanics, [index, "mechanics"], add);
     targetIsIssues(definition, mechanics?.ends?.from, [index, "mechanics", "ends", "from"], add);
+    // Whoever caused a reaction's moment (1.369).
+    if (typeof mechanics?.reaction === "object") {
+      const reaction = mechanics.reaction;
+      [reaction, ...(reaction.also ?? [])].forEach((moment, at) =>
+        targetIsIssues(
+          definition,
+          moment.sourceIs,
+          [index, "mechanics", "reaction", ...(at === 0 ? [] : ["also", at - 1]), "sourceIs"],
+          add,
+        ),
+      );
+    }
     if (mechanics?.dismisses && mechanics.dismisses !== true) {
       targetIsIssues(definition, mechanics.dismisses.gone, [index, "mechanics", "dismisses", "gone"], add);
     }

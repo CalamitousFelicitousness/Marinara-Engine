@@ -5,6 +5,7 @@ import { useState, useMemo } from "react";
 import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { generationLevelLabel } from "../../lib/generation-level-label";
+import { describeGenerationFallback } from "../../lib/generation-fallback-notice";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
   NEUTRAL_PANEL_HEADER,
@@ -62,6 +63,7 @@ interface GenerationInfo {
   durationMs?: number | null;
   finishReason?: string | null;
   parameterTrace?: ParameterTrace | null;
+  fallback?: unknown;
 }
 
 interface PeekPromptModalProps {
@@ -775,6 +777,7 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
   const totalTokens = useMemo(() => estimateTokens(data.messages.map((m) => m.content).join("")), [data.messages]);
 
   const gen = data.generationInfo;
+  const fallbackNote = describeGenerationFallback(gen?.fallback);
   const planner = data.gameToolPlanning;
   const params = data.parameters as Record<string, unknown> | null;
 
@@ -966,6 +969,7 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
                   )}
                 </span>
               </div>
+              {fallbackNote && <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{fallbackNote}</p>}
               {gen?.tokensLastRequestInput != null && (
                 <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
                   {localizeUi("ui.chat.peekpromptmodal.lastRequestInput", {

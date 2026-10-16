@@ -1,5 +1,6 @@
 import {
   DEFAULT_GENERATION_PARAMS,
+  capabilityModelId,
   chatOverridesAsStoredParameters,
   effectiveChatParameterOverrides,
   isClaudeAdaptiveOnlyNoSamplingModel,
@@ -46,6 +47,7 @@ import {
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
 
 type GenerationConnection = {
+  name?: string | null;
   provider: string;
   model: string;
   apiKey: string;
@@ -277,7 +279,7 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
     if (runtime.maxTokens !== maxTokensBeforeCap) labelLayer("model rule", ["maxTokens"]);
   }
 
-  const modelLower = (args.connection.model ?? "").toLowerCase();
+  const modelLower = capabilityModelId(args.connection.model ?? "");
   const providerLower = (args.connection.provider ?? "").toLowerCase();
   const isCodex = providerLower === "openai_chatgpt";
   // chatParams carries no sampling values; a chat's chosen level arrives through chatOverrideParams.
@@ -345,6 +347,33 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
   };
 }
 
+/**
+ * The level `{{reasoning}}` reads: what this request asks the model for (`low` to `max`), or `off` when thinking stays
+ * off. Macros resolve while the prompt is built, before the request's parameters are, so this runs the same layering
+ * early from the base level (the preset's, or the default without one).
+ */
+export function resolveReasoningMacroValue(
+  args: Pick<
+    GenerationParameterRuntimeArgs,
+    "connection" | "chatMode" | "isSceneChat" | "chatParameters" | "chatParameterOverrides" | "gameSetupParameters"
+  > & {
+    baseReasoningEffort: GenerationParameterValues["reasoningEffort"] | undefined;
+  },
+): string {
+  const { baseReasoningEffort, ...layers } = args;
+  const { resolvedEffort } = resolveGenerationParameterRuntime({
+    ...layers,
+    managedParameterDefinitions: [],
+    modelAccessPolicy: { suppressModelParameters: false },
+    initial: {
+      ...defaultGenerationParameterValues(),
+      reasoningEffort: baseReasoningEffort,
+      effectiveMaxContext: undefined,
+    },
+  });
+  return resolvedEffort ?? "off";
+}
+
 export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
   const parameters = resolveGenerationParameterRuntime(args);
   const primaryProvider =
@@ -374,6 +403,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     primary: primaryProvider,
     wrapProvider: args.wrapProvider,
     primaryConnectionId: args.connectionId,
+    primaryConnectionName: args.connection.name,
     fallbackConnection: args.fallbackConnection,
     fallbackBaseUrl: args.fallbackBaseUrl ?? "",
     category: "main",

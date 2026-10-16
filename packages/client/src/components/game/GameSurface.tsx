@@ -6791,7 +6791,7 @@ function GameSurfaceComponent({
       onIllustrateWithAgent: handleIllustrateWithAgent,
       onGenerateStoryboard: handleGenerateTurnStoryboard,
       onViewStoryboard: showStoryboardViewerAction ? handleViewStoryboardFromGallery : undefined,
-      onGenerateVideo: handleGenerateSceneVideo,
+      onGenerateVideo: () => handleGenerateSceneVideo(),
       onAnimateImage: handleAnimateGalleryImage,
       onGenerateBackground: handleManualSceneBackground,
     }),

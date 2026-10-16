@@ -30,6 +30,7 @@ import { useChatGalleryFilenameIndex } from "../../hooks/use-characters";
 import type { CharacterMap, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "./message-selection-styles";
 import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./GenerationReplayDetailsModal";
+import { GenerationFallbackMarker } from "./GenerationFallbackMarker";
 import {
   HiddenFromAIConversationButton,
   ConversationMessageLightbox,
@@ -1178,11 +1179,15 @@ export const ConversationMessage = memo(function ConversationMessage({
       <ConversationSceneInvitation chatId={message.chatId} request={extra.sceneRequest} />
     ) : null;
 
+  // Conversation replies show no model label, so the marker gets its own line under the reply (#7697).
+  const fallback = isUser ? null : extra.generationInfo?.fallback;
+
   // ── Grouped multi-speaker layout ──
   if (groupedLayoutActive) {
     return (
       <>
         <ConversationMessageGrouped ctx={ctx} msgRef={msgRef} reactionRow={reactionRow} />
+        <GenerationFallbackMarker fallback={fallback} className="flex w-fit px-4" />
         {replyCheckup && <div className="px-4">{replyCheckup}</div>}
         {sceneInvitation}
         {modals}
@@ -1236,6 +1241,7 @@ export const ConversationMessage = memo(function ConversationMessage({
         </div>
         <div className="px-4">
           <MessageMarkIndicators message={message} className="px-1" />
+          <GenerationFallbackMarker fallback={fallback} className="flex w-fit px-1" />
           {!isUser && replyCheckup && <div className="px-1">{replyCheckup}</div>}
           {isUser && failedReply && (
             <p className="mari-send-failed" role="alert" title={failedReplyReason}>

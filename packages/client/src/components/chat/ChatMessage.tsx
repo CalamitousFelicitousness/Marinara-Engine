@@ -137,6 +137,7 @@ import {
   MESSAGE_SELECTION_SURFACE_CLASS,
 } from "./message-selection-styles";
 import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./GenerationReplayDetailsModal";
+import { GenerationFallbackMarker } from "./GenerationFallbackMarker";
 import type { ChatImage } from "../../hooks/use-gallery";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
@@ -2581,6 +2582,8 @@ export const ChatMessage = memo(function ChatMessage({
     }
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [genInfo, showModelName, showTokenUsage, localizeUi]);
+  // Shown with the model name and token usage settings off too (#7697).
+  const fallbackMarker = isUser ? null : <GenerationFallbackMarker fallback={extra.generationInfo?.fallback} />;
   // useLayoutEffect runs after DOM mutation but before browser paint — prevents visible scroll jump
   useLayoutEffect(() => {
     // Restore scroll position saved before the state change
@@ -4185,6 +4188,7 @@ export const ChatMessage = memo(function ChatMessage({
                     {genLabel}
                   </span>
                 )}
+                {fallbackMarker}
                 {(showRoleplayAvatarPanel || hideRoleplayAvatars) &&
                   (showActions || showMessageNumbers) &&
                   messageIndex != null && (
@@ -4891,6 +4895,7 @@ export const ChatMessage = memo(function ChatMessage({
                   {genLabel}
                 </span>
               )}
+              {fallbackMarker}
             </div>
           )}
 

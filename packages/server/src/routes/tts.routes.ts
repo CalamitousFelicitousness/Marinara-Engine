@@ -1757,6 +1757,8 @@ export async function ttsRoutes(app: FastifyInstance) {
         headers: speechRequest.headers,
         body: speechRequest.body,
         signal: AbortSignal.any([clientGone.signal, AbortSignal.timeout(timeoutMs)]),
+        // undici otherwise stops waiting after 300 s, whatever the limit above says.
+        agentOptions: { headersTimeout: timeoutMs, bodyTimeout: timeoutMs },
         policy: ttsUrlPolicy(),
         maxResponseBytes: MAX_TTS_AUDIO_BYTES,
         decodeCompressedResponse: speechRequest.decodeCompressedResponse,

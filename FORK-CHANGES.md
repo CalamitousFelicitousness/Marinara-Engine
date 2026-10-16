@@ -1530,6 +1530,28 @@ and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
 
+### Sync with upstream, 2026-10-16
+
+126 upstream commits (24 PRs), merge base `c7a34b8cf`, through `f4a0a7722`. v2.5.0 and storage
+format 7 on both sides. 183 upstream-changed files, 51 overlapping fork changes, 17 conflicts.
+
+- **TTS request timeout (#7711).** Built on both sides; the fork's `timeoutMs` stays, upstream's
+  card and connection fields are dropped. See "TTS honours a configured timeout".
+- **`{{reasoning}}` (#7705).** `resolveReasoningMacroValue` runs on `resolveGenerationParameterRuntime`
+  with `chatParameterOverrides` and game setup parameters, and takes the preset's level only where
+  `usesPresetAssembly` holds. Its four callers keep `buildChatMacroContext`.
+- **Video notes (#7651).** `formatSentVideoNotes` sits beside `describeAttachmentsForNonUserTurn`,
+  which replaces upstream's `[Sent a photo]` line.
+
+Losses with no conflict marker, fixed in the merge: `chats.routes.ts` destructured
+`normalizeChatMacroVariables` twice and passed `localVariables` twice to `assemblePrompt`; both
+sides had added them.
+
+`package.json#pnpm` is unchanged. `reasoning-macro` seeds the chat's Off as a
+`chatParameterOverrides` Override instead of legacy `chatParameters`.
+
+Regression suite after the merge: 953/961. The eight failures are the same eight as on 2026-10-15.
+
 ### Sync with upstream, 2026-10-15
 
 2479 upstream commits (153 PRs) over six days, merge base `f17f1c1f6`, through `c7a34b8cf`. v2.5.0
@@ -2122,6 +2144,12 @@ fires `close` about a millisecond into the handler and would abort every synthes
 empirically rather than from the docs, because the two differ only under a real socket:
 `app.inject` has none, so an inject-only test cannot tell them apart. The regression therefore
 drives a real listener for that case.
+
+The provider fetch passes the same budget to undici as `headersTimeout` and `bodyTimeout`. undici's
+own 300 s reply cap otherwise ends any longer request as "unreachable" before `TTS_TIMEOUT_MS_MAX`.
+Upstream added a parallel setting for #7711 (`requestTimeoutMs` on the TTS card, `audioTimeoutMs` on
+each audio connection, 10 to 3600 s); the fork keeps `timeoutMs` and took only this transport fix.
+`scripts/regressions/tts-request-timeout.regression.ts` is upstream's lane re-seeded with `timeoutMs`.
 
 `/speak` failures carry a `code` of `timeout`, `unreachable`, or `provider_error` beside the
 existing `error` string, so the client can branch without matching English prose. A disconnect

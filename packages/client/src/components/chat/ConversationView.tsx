@@ -99,6 +99,7 @@ interface ConversationViewProps {
   onPeekPrompt: (messageId?: string) => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
+  onGenerateVideo?: (characterId?: string) => void | Promise<void>;
   lastAssistantMessageId: string | null;
   onOpenSettings: (event?: ReactMouseEvent<HTMLElement>, options?: { initialSection?: "autonomous" | null }) => void;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
@@ -404,6 +405,7 @@ export function ConversationView({
   onPeekPrompt,
   onIllustrate,
   onGenerateSelfie,
+  onGenerateVideo,
   lastAssistantMessageId,
   onOpenSettings,
   onOpenScheduleEditor,
@@ -1659,6 +1661,7 @@ export function ConversationView({
         onPeekPrompt={onPeekPrompt}
         onIllustrate={onIllustrate}
         onGenerateSelfie={onGenerateSelfie}
+        onGenerateVideo={onGenerateVideo}
       />
     </div>
   );

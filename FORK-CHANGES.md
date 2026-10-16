@@ -3107,6 +3107,10 @@ runner's `--filter`. Upstream replaced the per-script `regression:*` aliases wit
 recursively on a 30-second-per-file budget, so plain `pnpm regression` picks the script up with no
 registration at all; only the focused prompt lane needs the explicit filter.
 
+`scripts/run-regressions.mjs` prefixes each file's START and result lines with `[n/total]`, since a
+full run is 900+ files with no other progress indicator. Per-file output lines keep the bare
+`[path]` prefix. Patches an upstream file.
+
 `pnpm check` keeps the fork's `dev-ports:check` guard ahead of upstream's `format:check`. Patches
 `package.json`, which upstream edits constantly; re-check both after every sync.
 

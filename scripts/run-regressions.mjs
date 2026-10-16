@@ -157,11 +157,11 @@ function regressionEnvironment(scratchDir) {
   };
 }
 
-function runRegression(relativePath) {
+function runRegression(relativePath, position) {
   const { args, command, cwd } = commandFor(relativePath);
   const timeoutMs = regressionTimeoutMs(relativePath);
   const startedAt = Date.now();
-  process.stdout.write(`[${relativePath}] START\n`);
+  process.stdout.write(`${position} [${relativePath}] START\n`);
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'marinara-regression-'));
 
   return new Promise((resolve) => {
@@ -227,9 +227,10 @@ async function main() {
   }
 
   const results = [];
-  for (const file of selected) {
+  for (const [index, file] of selected.entries()) {
     if (interruption) return;
-    const result = await runRegression(file);
+    const position = `[${index + 1}/${selected.length}]`;
+    const result = await runRegression(file, position);
     results.push({ file, ...result });
     if (interruption) return;
     const detail = result.status === 'failed'
@@ -237,7 +238,7 @@ async function main() {
       : result.status === 'start-error'
         ? ` (${result.error.message})`
         : '';
-    process.stdout.write(`[${file}] ${result.status.toUpperCase()} (${result.durationMs}ms)${detail}\n`);
+    process.stdout.write(`${position} [${file}] ${result.status.toUpperCase()} (${result.durationMs}ms)${detail}\n`);
   }
 
   const failed = results.filter((result) => result.status !== 'passed');

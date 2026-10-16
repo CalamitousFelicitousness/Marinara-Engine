@@ -159,6 +159,7 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
           sections={sections}
           onSave={save}
           onDirtyChange={handleDirtyChange}
+          reviewSubtitle={(count) => localizeUi("ui.stateEditor.gameState.reviewSubtitle", { count })}
           notice={
             turnMovedOn ? (
               <div

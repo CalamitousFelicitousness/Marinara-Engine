@@ -31,6 +31,8 @@ interface StateEditorProps {
   notice?: ReactNode;
   /** Lets the host guard closing while drafts are unsaved. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Says where the review's changes will land; defaults to a plain count. */
+  reviewSubtitle?: (count: number) => string;
 }
 
 type StateEditorView = "section" | "results" | "review";
@@ -61,7 +63,7 @@ function revealTextareaLine(textarea: HTMLTextAreaElement, line: number) {
   textarea.scrollTop = Math.max(0, index * lineHeight - textarea.clientHeight / 3);
 }
 
-export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEditorProps) {
+export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSubtitle }: StateEditorProps) {
   const { t: localizeUi } = useUiTranslation();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [activeSectionId, setActiveSectionId] = useState(sections[0]?.id ?? "");
@@ -341,7 +343,7 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEd
       <div>
         <h3 className="text-sm font-semibold text-[var(--foreground)]">{localizeUi("ui.stateEditor.review.title")}</h3>
         <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-          {localizeUi("ui.stateEditor.review.subtitle", { count: changes.length })}
+          {reviewSubtitle?.(changes.length) ?? localizeUi("ui.stateEditor.review.subtitle", { count: changes.length })}
         </p>
       </div>
       {changes.map((change) => {
@@ -415,21 +417,24 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEd
       </div>
 
       <div className="flex min-h-0 flex-1 max-md:flex-col">
-        <nav
-          aria-label={localizeUi("ui.stateEditor.sections.title")}
-          className="shrink-0 border-[var(--border)]/60 max-md:border-b md:w-52 md:overflow-y-auto md:border-r"
-        >
-          <div className="hidden items-center justify-between px-4 pt-3 pb-1.5 text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)] md:flex">
-            <span>{localizeUi("ui.stateEditor.sections.title")}</span>
-            <span className="tabular-nums">{sections.length}</span>
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto px-4 py-2 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-            {sections.map((section) => sectionNavItem(section, true))}
-          </div>
-          <div className="hidden flex-col gap-0.5 px-2 pb-3 md:flex">
-            {sections.map((section) => sectionNavItem(section, false))}
-          </div>
-        </nav>
+        {/* A single-section source (chat variables) has nothing to pick between. */}
+        {sections.length > 1 ? (
+          <nav
+            aria-label={localizeUi("ui.stateEditor.sections.title")}
+            className="shrink-0 border-[var(--border)]/60 max-md:border-b md:w-52 md:overflow-y-auto md:border-r"
+          >
+            <div className="hidden items-center justify-between px-4 pt-3 pb-1.5 text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)] md:flex">
+              <span>{localizeUi("ui.stateEditor.sections.title")}</span>
+              <span className="tabular-nums">{sections.length}</span>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto px-4 py-2 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+              {sections.map((section) => sectionNavItem(section, true))}
+            </div>
+            <div className="hidden flex-col gap-0.5 px-2 pb-3 md:flex">
+              {sections.map((section) => sectionNavItem(section, false))}
+            </div>
+          </nav>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
           {view === "review" ? renderReview() : view === "results" ? renderResults() : renderSection()}
         </div>

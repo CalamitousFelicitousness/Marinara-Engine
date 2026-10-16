@@ -15,6 +15,10 @@ import {
   buildGameStateEditorSections,
   GAME_STATE_EDITOR_SECTION_IDS,
 } from "../../packages/client/src/lib/state-editor/game-state-editor-source.js";
+import {
+  buildChatVariablesEditorPatch,
+  readChatVariables,
+} from "../../packages/client/src/lib/state-editor/chat-variables-editor-source.js";
 import type { StateEditorSection } from "../../packages/client/src/lib/state-editor/state-editor.types.js";
 
 // ── layout ──
@@ -147,5 +151,47 @@ assert.deepEqual(scene.patch, { location: "Docks", worldCustomFields: [] }, "onl
 const rejected = buildGameStateEditorPatch(gameState, [{ sectionId: "quest", value: { not: "an array" } }]);
 assert.ok("error" in rejected);
 assert.equal(rejected.sectionId, "quest", "a slice's validation error names its section");
+
+// ── chat variables ──
+
+assert.deepEqual(
+  readChatVariables(JSON.stringify({ macroVariables: { char1: "Mary", count: 3 } })),
+  { char1: "Mary" },
+  "string metadata parses and non-string values are skipped",
+);
+assert.deepEqual(readChatVariables({ macroVariables: ["no"] }), {});
+
+const opened = { char1: "Mary", "story.day": "3", mood: "calm" };
+// A generation set {{setvar::weather}} after the editor opened.
+const savedNow = { ...opened, weather: "rain" };
+const varsPatch = buildChatVariablesEditorPatch(savedNow, opened, {
+  char1: "Anne",
+  "story.day": "3",
+  hero: "Gwen",
+});
+assert.ok("patch" in varsPatch);
+assert.deepEqual(
+  { ...varsPatch.patch },
+  { char1: "Anne", hero: "Gwen", mood: null },
+  "only edits, additions and removals are sent; a value set elsewhere meanwhile is left alone",
+);
+assert.deepEqual(
+  { ...(buildChatVariablesEditorPatch(opened, opened, { ...opened, "story.day": "4" }) as { patch: object }).patch },
+  { "story.day": "4" },
+  "a stored loose name ({{setvar}} spelling) stays editable",
+);
+const issueOf = (draft: unknown) => {
+  const result = buildChatVariablesEditorPatch(opened, opened, draft);
+  return "issue" in result ? result.issue : null;
+};
+assert.deepEqual(issueOf(["x"]), { kind: "notObject" });
+assert.deepEqual(issueOf({ ...opened, n: 4 }), { kind: "notString", name: "n" });
+assert.deepEqual(issueOf({ "new.name": "x" }), { kind: "name", name: "new.name", issue: "format" });
+assert.deepEqual(issueOf({ " padded": "x" }), { kind: "name", name: " padded", issue: "format" });
+assert.deepEqual(issueOf({ user: "x" }), { kind: "name", name: "user", issue: "reserved" });
+assert.deepEqual(issueOf({ big: "x".repeat(10_001) }), { kind: "tooLong", name: "big" });
+assert.deepEqual(issueOf(Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`v${i}`, "x"]))), {
+  kind: "tooMany",
+});
 
 console.log("state-editor regression passed");

@@ -366,7 +366,10 @@ async function resolveVideoCharacterIds(
   return Array.from(new Set([args.characterId, ...resolution.characterIds, ...(personaId ? [personaId] : [])]));
 }
 
-const QUOTED_SPEECH_RE = /"[^"\n]*"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb/gu;
+// Double quotes, curly quotes and guillemets, on one line. A single quote opens only after a non-letter and closes
+// only before one, so "Lena's" and "dogs'" are not quotes, while 'I'm here, Bob' is skipped whole.
+const QUOTED_SPEECH_RE =
+  /"[^"\n]*"|\u201c[^\u201d\n]*\u201d|\u00ab[^\u00bb\n]*\u00bb|(?<![\p{L}\p{N}])['\u2018](?:[^'\u2018\u2019\n]|(?<=\p{L})['\u2019](?=\p{L}))*['\u2019](?![\p{L}\p{N}])/gu;
 
 function withoutQuotedSpeech(text: string): string {
   return text.replace(QUOTED_SPEECH_RE, " ");
@@ -394,7 +397,7 @@ function namesMentionedByPart(text: string, members: Array<{ id: string | null; 
           .normalize("NFKC")
           .toLowerCase()
           .split(/[^\p{L}\p{N}]+/u)
-          .filter((token) => token.length >= 3 && !NAME_STOPWORDS.has(token)),
+          .filter((token) => token.length >= 2 && !NAME_STOPWORDS.has(token)),
       ),
     ],
   }));

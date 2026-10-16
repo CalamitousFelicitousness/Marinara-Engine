@@ -88,12 +88,12 @@ try {
     apiKey: "",
   });
   const characters = createCharactersStorage(db);
-  const [aster, bob, carol, lena, turner] = await Promise.all(
-    ["Aster", "Bob", "Carol Kowalski", "Dr. Lena Kowalski", "Will Turner"].map((name) =>
+  const [aster, bob, carol, lena, turner, al] = await Promise.all(
+    ["Aster", "Bob", "Carol Kowalski", "Dr. Lena Kowalski", "Will Turner", "Al Rivers"].map((name) =>
       characters.create(characterDataSchema.parse({ name })),
     ),
   );
-  assert.ok(aster && bob && carol && lena && turner);
+  assert.ok(aster && bob && carol && lena && turner && al);
   const jamie = await characters.createPersona("Jamie", "The player.");
   assert.ok(jamie);
 
@@ -101,7 +101,7 @@ try {
   const group = await chats.create({
     name: "Group",
     mode: "conversation",
-    characterIds: [aster.id, bob.id, carol.id, lena.id, turner.id],
+    characterIds: [aster.id, bob.id, carol.id, lena.id, turner.id, al.id],
     connectionId: text.id,
     personaId: jamie.id,
   });
@@ -200,6 +200,11 @@ try {
   assert.ok(!(await clipIds(turner.id)).includes(lowercaseClip), "a lowercase word is not a name");
   const capitalClip = await sendClip("Aster laughs as Will joins in");
   assert.ok((await clipIds(turner.id)).includes(capitalClip), "a capitalised name part is");
+  const singleQuoted = await sendClip("Aster grins and says 'I'm here, Bob!' while Lena's hat falls");
+  assert.ok(!(await clipIds(bob.id)).includes(singleQuoted), "a name inside single-quoted speech names no one");
+  assert.ok((await clipIds(lena.id)).includes(singleQuoted), "a possessive is not a quote");
+  const twoLetter = await sendClip("Aster and Al share a milkshake");
+  assert.ok((await clipIds(al.id)).includes(twoLetter), "a two-letter first name counts");
   const bobLowercase = await sendClip("Aster smiles, a bob of hair swaying");
   assert.ok(!(await clipIds(bob.id)).includes(bobLowercase), "a one-word name in lowercase is not a name either");
 

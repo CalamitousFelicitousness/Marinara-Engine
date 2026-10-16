@@ -2618,6 +2618,7 @@
   "game.ruleset.catalog.mechanics.perStep": "{{amount}} more for each step of extra cost",
   "game.ruleset.catalog.mechanics.plus": "plus {{amount}} {{type}}",
   "game.ruleset.catalog.mechanics.range": "range {{distance}}",
+  "game.ruleset.catalog.mechanics.rangeLong": "range {{distance}}, {{long}} long",
   "game.ruleset.catalog.mechanics.reaction": "reaction",
   "game.ruleset.catalog.mechanics.revives_one": "revives one dead no longer than {{count}} round at {{amount}}",
   "game.ruleset.catalog.mechanics.revives_other": "revives one dead no longer than {{count}} rounds at {{amount}}",

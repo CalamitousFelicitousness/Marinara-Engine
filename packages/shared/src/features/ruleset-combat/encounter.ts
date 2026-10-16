@@ -2731,7 +2731,12 @@ function mechanicsAction(
   // Its damage joins its holder's own blow that just hit (1.241).
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
   // Throws back what its holder just caught (1.363): Deflect Missiles, the missile's own damage.
-  if (mechanics.throwsCaught && moment) action.throwsCaught = true;
+  // Or one die off the sheet where it is the better (1.367): Martial Arts' die.
+  if (mechanics.throwsCaught && moment) {
+    const die = mechanics.throwsCaught === true ? undefined : mechanics.throwsCaught.die;
+    const sides = die ? Math.trunc(lookupStepTable(die.table, resolve(die.from))) : 0;
+    action.throwsCaught = sides >= 2 ? { sides } : true;
+  }
   // Dice off somebody else's roll that hit (1.250): Cutting Words, its die sized by a level.
   // As many uses as its user chooses, healing that many times over (1.251): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;
@@ -2974,7 +2979,12 @@ function mechanicsAction(
   // A shape keeps its range even at zero, because there the number says how far off it may be aimed.
   if (perCell !== undefined) {
     if (mechanics.range === 0 && !mechanics.area) action.reach = 1;
-    else if (mechanics.range !== undefined) action.range = { normal: rulesetInCells(mechanics.range, perCell) };
+    else if (mechanics.range !== undefined) {
+      const normal = rulesetInCells(mechanics.range, perCell);
+      // As far again beyond it, made harder as `combat.ranged` says (1.367).
+      const long = mechanics.longRange !== undefined ? rulesetInCells(mechanics.longRange, perCell) : undefined;
+      action.range = { normal, ...(long !== undefined && long > normal ? { long } : {}) };
+    }
     if (mechanics.area && !mechanics.area.around) {
       action.area = {
         shape: mechanics.area.shape,

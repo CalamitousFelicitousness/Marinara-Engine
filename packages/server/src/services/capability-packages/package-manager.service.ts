@@ -2191,6 +2191,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
   );
 }
 
+/** A catalog entry's long range, and a caught missile thrown back with a die off the sheet (1.367):
+ *  Deflect Missiles' throw back as a monk weapon. */
+function carriesLongThrow367(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLongThrow367(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.longRange === "number" || plainRecord(record.throwsCaught)) return true;
+  return featureValues(record).some((one) => carriesLongThrow367(one, depth + 1));
+}
+
 /** More than 20 combat levels (1.366 raised the cap to 40). */
 function carriesManyLevels366(ruleset: unknown): boolean {
   const levels = plainRecord(plainRecord(ruleset)?.combat)?.levels;
@@ -5484,6 +5495,14 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // A long range on a catalog entry, and a thrown back die, 1.367.
+  if (
+    !declaresApi(367) &&
+    (carriesLongThrow367(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLongThrow367(document)))
+  ) {
+    return "A ruleset whose catalog entries carry a long range (longRange) or throw a caught missile back with a die of their own (throwsCaught die) requires schemaVersion 2 and capabilityApi 1.367 or newer";
+  }
   if (!declaresApi(366) && carriesUntrainedAdd366(ruleset)) {
     return "A ruleset whose untrained skills or saves add a value off the sheet (untrained add) or whose abilities add to their checks (checkAdd) requires schemaVersion 2 and capabilityApi 1.366 or newer";
   }

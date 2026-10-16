@@ -753,8 +753,9 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
-  /** Throws back the missile its holder just caught, with that missile's damage (1.363). */
-  throwsCaught?: true;
+  /** Throws back the missile its holder just caught, with that missile's damage (1.363), or one die
+   *  of `sides` where that is the better (1.367): Martial Arts' die. */
+  throwsCaught?: true | { sides: number };
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
   lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.251). */

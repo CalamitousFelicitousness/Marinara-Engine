@@ -4750,6 +4750,9 @@ const catalogMechanicsObject = z
     maxAgainst: targetIsSchema.optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
+    /** How far it still carries beyond `range`, in the same unit (Capability API 1.367), made harder
+     *  as `combat.ranged` says: Deflect Missiles' throw back, 20 feet and 60 long. */
+    longRange: z.number().finite().gt(0).max(10000).optional(),
     area: catalogAreaSchema.optional(),
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
@@ -4803,7 +4806,23 @@ const catalogMechanicsObject = z
     /** Taken as a `"caught"` moment opens (Capability API 1.363), its attack deals the dice and the
      *  type of the blow it caught in place of its own: Deflect Missiles' throw back, with the
      *  entry's own ability, proficiency and range. */
-    throwsCaught: z.literal(true).optional(),
+    throwsCaught: z
+      .union([
+        z.literal(true),
+        /** One `die` sized by a value off the sheet in place of the caught dice where it is the
+         *  better (Capability API 1.367): the missile counts as a monk weapon, so Martial Arts' die. */
+        z
+          .object({
+            die: z
+              .object({
+                from: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+                table: stepTableSchema,
+              })
+              .strict(),
+          })
+          .strict(),
+      ])
+      .optional(),
     /** Taken as somebody else's attack hits (a `"hit"` reaction without `"by"`), this many dice come
      *  off the roll before it is checked again (Capability API 1.250): 5e's Cutting Words, a bardic
      *  inspiration die, sized by the bard's level with `die` as Martial Arts' is. */
@@ -5585,6 +5604,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: '"lowersRoll" is taken as somebody else\'s attack hits: reaction "hit" without "by" or "also"',
       });
     }
+  }
+  if (mechanics.longRange !== undefined && !(mechanics.range !== undefined && mechanics.longRange > mechanics.range)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["longRange"],
+      message: '"longRange" is further than a "range" above 0',
+    });
   }
   if (mechanics.throwsCaught) {
     const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
@@ -17865,6 +17891,17 @@ export function rulesetCatalogEntryIssues(
       // value is fair game.
       for (const refIssue of rulesetValueRefIssues(mechanics.scales.from, names, names.derived, false)) {
         add([index, "mechanics", "scales", "from", refIssue.key], refIssue.message);
+      }
+    }
+    // A die sized off the sheet (1.250, 1.367) reads it as a scaled amount does.
+    const dies = [
+      ["lowersRoll", mechanics?.lowersRoll?.die],
+      ["throwsCaught", typeof mechanics?.throwsCaught === "object" ? mechanics.throwsCaught.die : undefined],
+    ] as const;
+    for (const [key, die] of dies) {
+      if (!die) continue;
+      for (const refIssue of rulesetValueRefIssues(die.from, names, names.derived, false)) {
+        add([index, "mechanics", key, "die", "from", refIssue.key], refIssue.message);
       }
     }
   });

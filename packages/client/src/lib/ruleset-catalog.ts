@@ -558,7 +558,12 @@ export function formatCatalogMechanics(
     parts.push(
       mechanics.range === 0
         ? t("game.ruleset.catalog.mechanics.selfOrTouch")
-        : t("game.ruleset.catalog.mechanics.range", { distance: distance(mechanics.range) }),
+        : mechanics.longRange !== undefined
+          ? t("game.ruleset.catalog.mechanics.rangeLong", {
+              distance: distance(mechanics.range),
+              long: distance(mechanics.longRange),
+            })
+          : t("game.ruleset.catalog.mechanics.range", { distance: distance(mechanics.range) }),
     );
   }
   if (mechanics.area) {

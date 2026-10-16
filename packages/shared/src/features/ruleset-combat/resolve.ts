@@ -6440,15 +6440,21 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.363).
+  // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.363),
+  // or one die of its own where that is the better on average (1.367): Martial Arts' die.
+  const caughtDice = (() => {
+    if (!action.throwsCaught || trigger.kind !== "caught") return undefined;
+    const own = typeof action.throwsCaught === "object" ? action.throwsCaught.sides : 0;
+    const { count, sides } = trigger.damage;
+    return own > 0 && own + 1 > count * (sides + 1) ? { count: 1, sides: own } : { count, sides };
+  })();
   const thrown =
-    action.throwsCaught && trigger.kind === "caught" && action.damage
+    caughtDice && trigger.kind === "caught" && action.damage
       ? {
           ...action,
           damage: {
             ...structuredClone(action.damage),
-            count: trigger.damage.count,
-            sides: trigger.damage.sides,
+            ...caughtDice,
             ...(trigger.damage.type ? { type: trigger.damage.type } : {}),
           },
         }

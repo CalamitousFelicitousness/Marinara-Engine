@@ -157,7 +157,13 @@ try {
     "the starred profile's writing rules reach the planner",
   );
 
-  // The opening message is credited to the initiator, so the planner writes it in their voice.
+  // In Individual group mode the opening is credited to the initiator, so the planner writes it in their voice.
+  const individualProfile = await api("POST", "/api/chat-presets", {
+    name: "Individual scenes",
+    mode: "roleplay",
+    settings: { metadata: { groupChatMode: "individual" } },
+  });
+  await api("POST", `/api/chat-presets/${individualProfile.id}/set-active`);
   await api("POST", "/api/scene/plan", {
     chatId: origin.id,
     connectionId: conn.id,
@@ -172,6 +178,27 @@ try {
   assert.match(openerPrompt, /<opening_character>Bob<\/opening_character>/u, "the planner knows who opens");
   assert.match(openerPrompt, /"firstMessage" is posted by Bob\. Write it only as Bob/u);
   assert.match(openerPrompt, /says aloud in double quotes/u, "spoken words are quoted");
+  // In merged group mode one narrating voice tells the scene, so the opening is written that way.
+  const mergedProfile = await api("POST", "/api/chat-presets", {
+    name: "Merged scenes",
+    mode: "roleplay",
+    settings: { metadata: { groupChatMode: "merged" } },
+  });
+  await api("POST", `/api/chat-presets/${mergedProfile.id}/set-active`);
+  await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: selected,
+    initiatorCharId: ids[1],
+  });
+  const mergedPrompt = requests
+    .at(-1)!
+    .messages.map((m) => m.content)
+    .join("\n");
+  assert.match(mergedPrompt, /told by one narrating voice for every character/u, "merged: narrated opening");
+  assert.doesNotMatch(mergedPrompt, /Write it only as Bob/u);
+  await api("POST", `/api/chat-presets/${individualProfile.id}/set-active`);
   // Without chosen participants, a cast the model picks always keeps the opening character.
   providerContent = JSON.stringify({ ...plan, characterIds: [ids[0]] });
   const castPlan = await api("POST", "/api/scene/plan", {

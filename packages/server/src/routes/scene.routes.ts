@@ -26,7 +26,7 @@ import { createReplyFallbackNotifier } from "./generate/fallback-notification.js
 import { stripConversationPromptTimestamps } from "../services/conversation/transcript-sanitize.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import type { ChatCompletionResult, ChatMessage } from "../services/llm/base-provider.js";
-import { localAuthProviderBaseUrl, parseChoiceOptions } from "@marinara-engine/shared";
+import { localAuthProviderBaseUrl, normalizeGroupChatMode, parseChoiceOptions } from "@marinara-engine/shared";
 import type {
   SceneCreateRequest,
   SceneCreateResponse,
@@ -1146,7 +1146,18 @@ export async function sceneRoutes(app: FastifyInstance) {
     }
     const openerId =
       requestedInitiator && characterIds.includes(requestedInitiator) ? requestedInitiator : (characterIds[0] ?? null);
-    const openerName = openerId ? await getCharacterName(chars, openerId) : "";
+    // The group mode the scene chat will have (the starred Roleplay profile's, else the merged default). In
+    // Individual mode each character posts for themselves, so the opening is the opener's own; in merged mode one
+    // narrating voice speaks for everyone, so the opening is written that way.
+    const starredGroupProfile = await createChatPresetsStorage(app.db).getActive("roleplay");
+    const mergedGroupScene =
+      characterIds.length > 1 &&
+      normalizeGroupChatMode(
+        starredGroupProfile && !starredGroupProfile.isDefault
+          ? starredGroupProfile.settings.metadata?.groupChatMode
+          : undefined,
+      ) === "merged";
+    const openerName = openerId && !mergedGroupScene ? await getCharacterName(chars, openerId) : "";
     const characterCtx = await buildCharacterContext(chars, characterIds);
     const { personaName, personaCtx } = await buildPersonaContext(
       chars,
@@ -1229,7 +1240,9 @@ export async function sceneRoutes(app: FastifyInstance) {
           `- The "scenario" is HIDDEN from the user. Use it to plan surprises, twists, and dramatic beats.`,
           `- The "description" IS shown. Keep it atmospheric but don't spoil the plot.`,
           `- The "background" must be an EXACT filename from the available backgrounds list (case-sensitive, including extension). If no background fits, set it to null. Do NOT invent or modify filenames.`,
-          `- The "firstMessage" should be written in character, not as a narrator. Make it engaging.`,
+          mergedGroupScene
+            ? `- This group scene is told by one narrating voice for every character (merged group mode). Write "firstMessage" as that narration in the chosen POV, giving each character present their own actions and quoted dialogue. Make it engaging.`
+            : `- The "firstMessage" should be written in character, not as a narrator. Make it engaging.`,
           `- In "firstMessage", put anything a character says aloud in double quotes ("..."); narration, actions and inner thoughts stay outside quotes, so speech is never mistaken for thought. Scene writing instructions that set a different dialogue style take precedence.`,
           `- "description" is narration shown before the opening message, posted separately; do not repeat it in "firstMessage".`,
           ...(openerName

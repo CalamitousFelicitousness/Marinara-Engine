@@ -100,6 +100,7 @@ import {
   rulesetLineOfSight,
   rulesetSees,
   rulesetOpportunityAttack,
+  rulesetBestWeapon,
   rulesetGapFrom,
   rulesetPositionOf,
   rulesetReachableCells,
@@ -495,8 +496,13 @@ export function rulesetOptionReach(
     // goes off where it is set down, while a cone or a line is aimed within its own size, because
     // there the cell only says which way it points.
     const carried = action.range?.long ?? action.range?.normal;
-    // A box with none sits against its maker (1.177), the cell beside them its near corner.
-    const max = carried ?? (action.area.shape === "burst" ? 0 : action.area.shape === "box" ? 1 : action.area.size);
+    // A box with none sits against its maker (1.177), the cell beside them its near corner. Weapon
+    // strikes over an area (1.375) go as far as the weapon carries: Volley.
+    const shot = action.strikesWith === "ranged" ? rulesetBestWeapon(actor, "ranged")?.range : undefined;
+    const max =
+      carried ??
+      (shot ? (shot.long ?? shot.normal) : undefined) ??
+      (action.area.shape === "burst" ? 0 : action.area.shape === "box" ? 1 : action.area.size);
     // Only a shape with a distance of its own is SHOT: one that comes off the actor, a breath or a
     // burst set down where they stand, is not made harder by a foe at their elbow.
     return { max, normal: action.range?.normal ?? max, shot: !!action.range, swing: 0 };
@@ -1807,6 +1813,16 @@ export function rulesetOptionTargets(
         (combatant) =>
           ignoreRange || rulesetTargetRefusal(state, actor.id, option.id, combatant.id, option.range) === null,
       )
+      // A strike again (1.375): somebody else, near whom the first was at.
+      .filter((combatant) => {
+        const again = actionOf(actor, option.id)?.strikeAgain;
+        if (!again) return true;
+        if (combatant.id === again.targetId) return false;
+        const first = rulesetCombatant(state, again.targetId);
+        return (
+          !positioned(state) || !first || !rulesetPositionOf(first) || rulesetGap(first, combatant) <= again.within
+        );
+      })
       .map((combatant) => combatant.id)
   );
 }

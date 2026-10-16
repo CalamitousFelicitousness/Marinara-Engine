@@ -2192,6 +2192,19 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 }
 
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
+/** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
+ *  Volley, Horde Breaker. */
+function carriesAreaStrikes375(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAreaStrikes375(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.strikesWith !== undefined && (record.strikesWith !== "melee" || record.reaction === undefined))
+    return true;
+  if (plainRecord(record.strikesAgain)) return true;
+  return featureValues(record).some((one) => carriesAreaStrikes375(one, depth + 1));
+}
+
 /** Ending a picked spell, or a lasting area (1.374): Cleansing Touch, Dispel Magic on a wall. */
 function carriesEndsChoice374(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5578,6 +5591,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Weapon strikes over an area, and a strike again, 1.375.
+  if (
+    !declaresApi(375) &&
+    (carriesAreaStrikes375(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAreaStrikes375(document)))
+  ) {
+    return "A ruleset whose entries strike with a weapon over an area (strikesWith with an area) or whose conditions or levels give a strike again near the first (strikesAgain) requires schemaVersion 2 and capabilityApi 1.375 or newer";
+  }
   // Ending a picked spell, or a lasting area, 1.374.
   if (
     !declaresApi(374) &&

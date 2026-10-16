@@ -772,7 +772,10 @@ export interface RulesetCombatAction {
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
   /** Its holder's best melee strike at whoever caused its moment (1.369): Retaliation. */
-  strikesWith?: "melee";
+  strikesWith?: "melee" | "ranged";
+  /** A strike again for nothing (1.375), at somebody other than `targetId` and within `within` cells
+   *  of them: Horde Breaker's. */
+  strikeAgain?: { targetId: string; within: number };
   /** Whoever missed its holder attacks the one its holder picks instead (1.369). */
   redirects?: true;
   /** Throws back the missile its holder just caught, with that missile's damage (1.363), or one die
@@ -1532,6 +1535,8 @@ export interface RulesetCombatant {
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
      *  its uses and recharge were spent with what came first. */
     followUps?: Array<{ id: string; paid?: true }>;
+    /** A strike again was made this turn (1.375): Horde Breaker, once a turn. */
+    struckAgain?: true;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */

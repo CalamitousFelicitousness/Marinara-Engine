@@ -39512,7 +39512,10 @@
                     },
                     "strikesWith": {
                       "type": "string",
-                      "const": "melee"
+                      "enum": [
+                        "melee",
+                        "ranged"
+                      ]
                     },
                     "redirects": {
                       "type": "boolean",
@@ -67867,7 +67870,10 @@
                         },
                         "strikesWith": {
                           "type": "string",
-                          "const": "melee"
+                          "enum": [
+                            "melee",
+                            "ranged"
+                          ]
                         },
                         "redirects": {
                           "type": "boolean",
@@ -80368,7 +80374,10 @@
                               },
                               "strikesWith": {
                                 "type": "string",
-                                "const": "melee"
+                                "enum": [
+                                  "melee",
+                                  "ranged"
+                                ]
                               },
                               "redirects": {
                                 "type": "boolean",
@@ -102647,6 +102656,21 @@
                 },
                 "additionalProperties": false
               },
+              "strikesAgain": {
+                "type": "object",
+                "properties": {
+                  "within": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "within"
+                ],
+                "additionalProperties": false
+              },
               "temporary": {
                 "type": "object",
                 "properties": {
@@ -109978,6 +110002,21 @@
                   },
                   "$comment": {}
                 },
+                "additionalProperties": false
+              },
+              "strikesAgain": {
+                "type": "object",
+                "properties": {
+                  "within": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "within"
+                ],
                 "additionalProperties": false
               },
               "defeats": {

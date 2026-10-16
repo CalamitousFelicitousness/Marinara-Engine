@@ -34,6 +34,7 @@ import {
   rulesetModedAction,
   rulesetItemChargesLeft,
   spendRulesetShots,
+  rulesetShotsAvailable,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
@@ -118,6 +119,7 @@ import {
   rulesetCellEnterCost,
   rulesetMoveStep,
   rulesetOpportunityAttack,
+  rulesetBestWeapon,
   rulesetGapFrom,
   rulesetPositionOf,
   rulesetPathCells,
@@ -5104,6 +5106,10 @@ function applyChoice(
       ...(action.pairedWith?.includes(action.followUp) ? { paid: true as const } : {}),
     });
   }
+  // A strike again made (1.375): once a turn. One offered after a weapon attack at one creature, the
+  // same weapon at another near them, for nothing: Horde Breaker.
+  if (action.strikeAgain) working.flags.struckAgain = true;
+  else offerStrikeAgain(ctx, working, action, workingTargets);
   // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
   // asked about a use that never happened.
   if (action.itemUse?.gate && !passesGate(ctx, working, action, action.itemUse.gate)) {
@@ -9489,6 +9495,36 @@ function endSpellZone(
   else endZones(ctx, caster, zone.actionId);
 }
 
+/** After a weapon attack at one creature on its maker's own turn, the same weapon at another within
+ *  reach of them, once a turn (1.375): Horde Breaker. Made as an action of its own, offered as a
+ *  follow-up for nothing until the turn ends. */
+function offerStrikeAgain(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: readonly RulesetCombatant[],
+): void {
+  if (actor.flags.struckAgain || targets.length !== 1 || !rulesetOnOwnTurn(ctx.state, actor)) return;
+  if (!rulesetIsAttack(action) || action.toHit === undefined || action.area || action.catalog || action.casts) return;
+  if (action.itemUse || action.sequence || action.targets.count !== 1) return;
+  const rule = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).find((one) => one.strikesAgain);
+  if (!rule?.strikesAgain) return;
+  const id = `${action.id}@again`;
+  const label = ctx.definition.sheet.live.conditions.find((one) => one.id === rule.condition)?.label ?? rule.condition;
+  const { followUp: _followUp, pairedWith: _paired, ...rest } = action;
+  actor.actions = actor.actions.filter((one) => !one.strikeAgain);
+  actor.actions.push({
+    ...structuredClone(rest),
+    id,
+    label: `${action.label} (${label})`,
+    strikeAgain: {
+      targetId: targets[0]!.id,
+      within: rulesetInCells(rule.strikesAgain.within, ctx.combat.distance?.perCell ?? 1),
+    },
+  });
+  actor.flags.followUps = [...(actor.flags.followUps ?? []).filter((one) => one.id !== id), { id, paid: true }];
+}
+
 /** Every point of health, temporary ones too, gone at once. */
 function emptyHealth(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const before = healthOf(ctx, target);
@@ -9718,6 +9754,20 @@ function resolveActionBody(
   // Aimed at a lasting area rather than a creature (1.374): Dispel Magic on a wall.
   if (action.endsSpells && ctx.dispel && !held) {
     endSpellZone(ctx, actor, action, rulesetPaidLevel(ctx.definition, actor, action, payWith));
+  }
+  // Its user's weapon at each creature its area catches (1.375), a roll and a shot for each:
+  // Whirlwind Attack, Volley. Its own side only when it says "any".
+  if (action.strikesWith && !action.reaction && !held) {
+    const weapon = rulesetBestWeapon(actor, action.strikesWith);
+    for (const target of targets) {
+      if (!weapon || target.id === actor.id || target.defeated) continue;
+      if (target.side === actor.side && action.targets.side !== "any") continue;
+      if (!rulesetShotsAvailable(actor, weapon)) break;
+      ctx.events.push({ type: "added", actorId: actor.id, targetId: target.id, label: action.label, to: weapon.label });
+      spendAvailability(ctx, actor, weapon);
+      resolveAction(ctx, actor, weapon, [target]);
+    }
+    return null;
   }
   // A blow after a straight run at its one target carries the charge (1.186), read again as a held
   // blow picks up, since the run is still the one this turn walked.

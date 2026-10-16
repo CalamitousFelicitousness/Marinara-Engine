@@ -649,10 +649,19 @@ function coneCells(
  *  rather than carries. Something thrown counts, because a thrown weapon is still swung in hand.
  *  Null when it has nothing to strike a passer-by with. */
 export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCombatAction | null {
+  return rulesetBestWeapon(combatant, "melee");
+}
+
+/** Its best weapon strike of the kind (1.375): one that reaches for "melee", one that carries for
+ *  "ranged", with the same bookkeeping an opportunity attack keeps. */
+export function rulesetBestWeapon(combatant: RulesetCombatant, kind: "melee" | "ranged"): RulesetCombatAction | null {
   let best: RulesetCombatAction | null = null;
   let most = -1;
   for (const action of combatant.actions) {
-    if (action.reach === undefined && action.range) continue;
+    if (kind === "melee" ? action.reach === undefined && action.range : !action.range || action.toHit === undefined)
+      continue;
+    // Nor a strike again (1.375); and a shot is a weapon's, not a spell's.
+    if (action.strikeAgain || (kind === "ranged" && (action.catalog || action.casts))) continue;
     if (action.area || action.signature || action.sequence || !action.damage) continue;
     // The same bookkeeping the menu keeps: a strike that has run out of uses, or is waiting for its
     // dice, is not one to be made in passing either. (Written out rather than imported, because the

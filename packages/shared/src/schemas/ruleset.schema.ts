@@ -4861,8 +4861,10 @@ const catalogMechanicsObject = z
      *  entry's own ability, proficiency and range. */
     /** Taken as its moment opens (Capability API 1.369), it is its holder's own best melee weapon
      *  strike at whoever caused it, made as an opportunity attack is: 5e's Retaliation, Giant
-     *  Killer. */
-    strikesWith: z.literal("melee").optional(),
+     *  Killer. On an entry with an `area` and no reaction (Capability API 1.375), its user's best
+     *  melee or `"ranged"` weapon strikes each creature the area catches, a roll and a shot for
+     *  each, a ranged area as far off as the weapon carries: Whirlwind Attack, Volley. */
+    strikesWith: z.enum(["melee", "ranged"]).optional(),
     /** Taken at an `"attacked"` moment that `missed` its holder (Capability API 1.369), whoever
      *  attacked makes that same attack again at the creature its holder picks, never themself:
      *  Stand Against the Tide. */
@@ -5708,7 +5710,13 @@ const catalogMechanicsSchema: z.ZodType<
     const fits =
       key === "redirects"
         ? moment?.on === "attacked" && moment.missed === true && moment.at === "chosen"
-        : moment !== undefined && moment.on !== "falls" && moment.on !== "turn-start" && moment.at !== "chosen";
+        : moment !== undefined
+          ? moment.on !== "falls" &&
+            moment.on !== "turn-start" &&
+            moment.at !== "chosen" &&
+            mechanics.strikesWith === "melee"
+          : // Weapon strikes over an area (1.375): Whirlwind Attack, Volley.
+            !mechanics.reaction && !!mechanics.area && mechanics.kind === "utility" && !mechanics.zone;
     if (!fits || mechanics.amount || mechanics.attackRoll) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -5716,7 +5724,7 @@ const catalogMechanicsSchema: z.ZodType<
         message:
           key === "redirects"
             ? '"redirects" is taken at an "attacked" moment that "missed" its holder, "at": "chosen", and deals nothing of its own'
-            : '"strikesWith" is a reaction aimed back at whoever caused its moment, and deals nothing of its own',
+            : '"strikesWith" is a reaction aimed back at whoever caused its moment with a melee weapon, or a utility with an area its weapon strikes over, and deals nothing of its own',
       });
     }
   }
@@ -9131,6 +9139,13 @@ const combatLevelSchema = z
      *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
     whenSeen: z.literal(true).optional(),
     checkFloor: checkFloorSchema.optional(),
+    /** Once on each of its holder's turns, after a weapon attack at one creature, the same weapon may
+     *  strike another within `within` of it, for nothing (Capability API 1.375): 5e's Horde
+     *  Breaker. */
+    strikesAgain: z
+      .object({ within: z.number().finite().gt(0).max(10000) })
+      .strict()
+      .optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9167,13 +9182,14 @@ const combatLevelSchema = z
       !entry.hangsOn &&
       !entry.rerollsFace &&
       !entry.fellsGrant &&
-      !entry.checkFloor
+      !entry.checkFloor &&
+      !entry.strikesAgain
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, or a floor under its checks",
+          "A level does something: effects, modifiers, saves it fails, defeating its holder, harm or conditions it keeps off, health it regains or keeps, a face it rolls again, points as a foe drops, a floor under its checks, or a strike again",
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
@@ -9882,6 +9898,13 @@ const combatConditionSchema = z
      *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
     whenSeen: z.literal(true).optional(),
     checkFloor: checkFloorSchema.optional(),
+    /** Once on each of its holder's turns, after a weapon attack at one creature, the same weapon may
+     *  strike another within `within` of it, for nothing (Capability API 1.375): 5e's Horde
+     *  Breaker. */
+    strikesAgain: z
+      .object({ within: z.number().finite().gt(0).max(10000) })
+      .strict()
+      .optional(),
     /** Temporary points its holder gains as each of their turns starts or ends (Capability API
      *  1.274), lost as it ends where it says so: 5e's Heroism. */
     temporary: conditionTemporarySchema.optional(),

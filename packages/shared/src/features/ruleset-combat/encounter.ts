@@ -885,6 +885,7 @@ function activeLevels(
         ...(level.notWhile ? { notWhile: level.notWhile } : {}),
         ...(level.whenSeen ? { whenSeen: true as const } : {}),
         ...(level.checkFloor ? { checkFloor: level.checkFloor } : {}),
+        ...(level.strikesAgain ? { strikesAgain: level.strikesAgain } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -2512,7 +2513,9 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // A strike back, or a missed attack sent on (1.369), is at somebody: whoever caused it, or the one
   // its holder picks.
   if (mechanics.kind === "utility" && (mechanics.strikesWith || mechanics.redirects)) {
-    return { side: mechanics.targets ?? (mechanics.redirects ? "any" : "enemy"), count: 1 };
+    // Over an area off a board (1.375), as many as it names: Volley.
+    const count = mechanics.area ? Math.max(1, mechanics.targetCount ?? 1) : 1;
+    return { side: mechanics.targets ?? (mechanics.redirects ? "any" : "enemy"), count };
   }
   if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
   if (mechanics.kind === "utility") {
@@ -2750,7 +2753,8 @@ function mechanicsAction(
   if (mechanics.addsToBlow && moment) action.addsToBlow = true;
   // Throws back what its holder just caught (1.363): Deflect Missiles, the missile's own damage.
   // A strike of its holder's own, or a missed attack sent elsewhere (1.369).
-  if (mechanics.strikesWith && moment) action.strikesWith = mechanics.strikesWith;
+  // Or strikes over an area (1.375): Whirlwind Attack, Volley.
+  if (mechanics.strikesWith && (moment || mechanics.area)) action.strikesWith = mechanics.strikesWith;
   if (mechanics.redirects && moment) action.redirects = true;
   // Or one die off the sheet where it is the better (1.367): Martial Arts' die.
   if (mechanics.throwsCaught && moment) {

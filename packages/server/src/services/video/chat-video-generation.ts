@@ -67,6 +67,8 @@ export async function generateAndSaveChatVideo(
     referenceImage?: VideoReferenceImage;
     sourceTag: string | null;
     sourcePath: string | null;
+    /** The characters the clip shows, for their galleries; omit to leave it in every chat character's. */
+    characterIds?: string[];
     queue?: boolean;
     signal?: AbortSignal;
     debugMode?: boolean;
@@ -104,6 +106,7 @@ export async function generateAndSaveChatVideo(
       model: runtime.model,
       durationSeconds,
       aspectRatio,
+      characterIds: args.characterIds,
     });
     if (!row) throw new Error("Video metadata could not be saved");
     savedFilePath = null;

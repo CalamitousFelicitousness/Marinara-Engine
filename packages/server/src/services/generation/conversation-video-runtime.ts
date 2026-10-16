@@ -12,7 +12,12 @@ import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { removeCopiedPromptGuidance } from "../image/image-prompt-compiler.js";
 import { resolveGalleryImagePath } from "../image/gallery-image-path.js";
-import { readPreferredCharacterReferenceImage } from "../image/illustrator-references.js";
+import {
+  NAME_STOPWORDS,
+  readPreferredCharacterReferenceImage,
+  resolveIllustratorCharacterReferences,
+  type IllustratorPersonaReference,
+} from "../image/illustrator-references.js";
 import { CONVERSATION_VIDEO, loadPrompt } from "../prompt-overrides/index.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
@@ -31,7 +36,10 @@ import { createAgentsStorage } from "../storage/agents.storage.js";
 import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveSceneVideoPrompt } from "../video/scene-video-prompt-review.js";
 import { resolveBaseUrl } from "./connection-base-url.js";
-import { handleConversationSelfieCommand } from "./conversation-selfie-command-runtime.js";
+import {
+  handleConversationSelfieCommand,
+  resolveConversationSelfieRequestedNames,
+} from "./conversation-selfie-command-runtime.js";
 import { appendVideoPromptInstructions } from "./image-prompt-instructions.js";
 import { resolveIllustratorPromptRuntime, type IllustratorPromptConnection } from "./illustrator-prompt-runtime.js";
 
@@ -90,6 +98,8 @@ export async function generateConversationVideo(args: {
   characterId: string;
   /** Every character in the chat, for the selfie first frame. */
   charInfo: PromptCharacter[];
+  /** The chat's persona: a clip that names it is filed in the persona's gallery too. */
+  persona?: IllustratorPersonaReference | null;
   /** The chat's own text connection (null for the built-in local model); the Prompt Model override wins. */
   promptConnection: IllustratorPromptConnection | null;
   promptConnectionId: string | null;
@@ -240,6 +250,12 @@ export async function generateConversationVideo(args: {
       : await takeSelfieFrame(selfieArgs, plan.avatarFallback, () =>
           readAvatarFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null }),
         );
+  const characterIds = await resolveVideoCharacterIds({
+    ...args,
+    characterName,
+    prompt,
+    picturePrompt: plan.kind === "gallery" ? plan.picturePrompt : undefined,
+  });
 
   const video = await generateAndSaveChatVideo(args.db, setup, {
     chatId: args.chatId,
@@ -247,6 +263,7 @@ export async function generateConversationVideo(args: {
     referenceImage: firstFrame.image,
     sourceTag: firstFrame.tag,
     sourcePath: firstFrame.path,
+    characterIds,
     queue: args.queue,
     signal: args.signal,
     debugMode: args.debugMode,
@@ -303,6 +320,96 @@ async function readAvatarFrame(
     );
   }
   return { kind: "avatar", image: reference, tag: `avatar:${args.characterId}`, path: null };
+}
+
+/** The same character matching a selfie uses to file itself into character galleries. */
+async function resolveVideoCharacterIds(
+  args: Parameters<typeof generateConversationVideo>[0] & {
+    characterName: string;
+    prompt: string;
+    picturePrompt?: string;
+  },
+): Promise<string[]> {
+  // What people say in the clip names no one it shows ("Hey Jamie!"), and an animated picture keeps its characters.
+  const context = [args.context, args.picturePrompt].map((text) => withoutQuotedSpeech(text ?? "")).join("\n");
+  const prompt = withoutQuotedSpeech(args.prompt);
+  const mentioned = namesMentionedByPart(
+    [context, prompt].join("\n"),
+    [...args.charInfo, ...(args.persona ? [args.persona] : [])].map(({ id, name }) => ({ id, name })),
+  );
+  const resolution = await resolveIllustratorCharacterReferences({
+    charactersStore: createCharactersStorage(args.db),
+    chatCharacters: args.charInfo.map((character) => ({
+      id: character.id,
+      name: character.name,
+      avatarPath: character.avatarPath,
+      appearance: character.appearance,
+    })),
+    persona: null,
+    requestedNames: [
+      ...resolveConversationSelfieRequestedNames({
+        speakerName: args.characterName,
+        chatCharacters: args.charInfo,
+        commandContext: context,
+        imagePrompt: prompt,
+      }),
+      ...args.charInfo.filter((character) => mentioned.has(character.id)).map((character) => character.name),
+    ],
+    // Names are matched above, by capitalised word, so a lowercase "rose" or "hazel" is not taken for a character.
+    promptText: args.characterName,
+    fallbackToChatCharacters: false,
+    includeReferenceImages: false,
+    maxReferences: 12,
+  });
+  // The persona is listed only when the clip names it, so it reaches the persona's gallery only when it is in it.
+  const personaId = args.persona?.id && mentioned.has(args.persona.id) ? args.persona.id : null;
+  return Array.from(new Set([args.characterId, ...resolution.characterIds, ...(personaId ? [personaId] : [])]));
+}
+
+// Double quotes, curly quotes, guillemets and single quotes. A quote may wrap onto the next line but never crosses
+// a blank line, so a stray quote mark (5'10") can't hide a whole paragraph of narration. A single quote opens only
+// after a non-letter and closes only before one, so "Lena's" and "dogs'" are not quotes, while 'I'm here, Bob' is
+// skipped whole.
+const QUOTED_SPEECH_RE =
+  /"(?:[^"\n]|\n(?!\s*\n))*"|\u201c(?:[^\u201d\n]|\n(?!\s*\n))*\u201d|\u00ab(?:[^\u00bb\n]|\n(?!\s*\n))*\u00bb|(?<![\p{L}\p{N}])['\u2018](?:[^'\u2018\u2019\n]|\n(?!\s*\n)|(?<=\p{L})['\u2019](?=\p{L}))*['\u2019](?![\p{L}\p{N}])/gu;
+
+function withoutQuotedSpeech(text: string): string {
+  return text.replace(QUOTED_SPEECH_RE, " ");
+}
+
+/**
+ * The chat members (characters and persona) a clip's text names by a part of their name no one else in the chat
+ * shares: "Lena" for "Dr. Lena Kowalski". Video prompts usually call people by first name, while the shared
+ * matcher only takes a full name, which stays the rule for pictures. A part counts only when written with a
+ * capital (or in a script without capitals), so "hazel eyes" or "the snow" name no one.
+ */
+function namesMentionedByPart(text: string, members: Array<{ id: string | null; name: string }>): Set<string | null> {
+  const capitalised = new Set(
+    text
+      .normalize("NFKC")
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word !== word.toLowerCase() || word === word.toUpperCase())
+      .map((word) => word.toLowerCase()),
+  );
+  const parts = members.map(({ id, name }) => ({
+    id,
+    tokens: [
+      ...new Set(
+        name
+          .normalize("NFKC")
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((token) => token.length >= 2 && !NAME_STOPWORDS.has(token)),
+      ),
+    ],
+  }));
+  const owners = new Map<string, number>();
+  for (const { tokens } of parts) for (const token of tokens) owners.set(token, (owners.get(token) ?? 0) + 1);
+  return new Set(
+    parts
+      .filter(({ tokens }) => tokens.some((token) => owners.get(token) === 1 && capitalised.has(token)))
+      .map(({ id }) => id),
+  );
 }
 
 type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };

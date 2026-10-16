@@ -98,7 +98,9 @@ const networkFailure = new TypeError("fetch failed", {
 for (const [error, expected] of [
   [new LLMHttpError("slow down", { status: 429 }), { reason: "rate_limit", status: 429 }],
   [new LLMHttpError("throttled", { status: 503, retryAfterMs: 1000 }), { reason: "rate_limit", status: 503 }],
-  [new LLMHttpError("forbidden", { status: 403 }), { reason: "auth", status: 403 }],
+  // A 403 can be moderation or region, and a 529 is the provider overloaded: neither blames the key.
+  [new LLMHttpError("flagged", { status: 403 }), { reason: "error", status: 403 }],
+  [new LLMHttpError("overloaded", { status: 529 }), { reason: "server", status: 529 }],
   [new LLMHttpError("no such model", { status: 404 }), { reason: "not_found", status: 404 }],
   [new LLMHttpError("gateway timeout", { status: 504 }), { reason: "timeout", status: 504 }],
   [new LLMHttpError("down", { status: 503 }), { reason: "server", status: 503 }],
@@ -162,7 +164,7 @@ const routeSource = readFileSync(
 assert.match(routeSource, /mainFallbackNotice = notice;\s*return onFallback\(notice\);/u);
 assert.match(routeSource, /\{ model: origin\.model, provider: origin\.provider, fallback: mainFallbackNotice \}/u);
 
-// The toast and the reply's note say both, in plain words.
+// The saved reply's note says both, in plain words.
 const failedOver = "Pool A (pool-model) failed (key rejected); answered with Backup (backup-model).";
 assert.equal(describeGenerationFallback(authNotice), failedOver);
 assert.equal(
@@ -175,7 +177,8 @@ toast.dismiss();
 showGenerationFallbackToast(authNotice);
 const shown = toast.getToasts().at(-1) as { title?: unknown; description?: unknown } | undefined;
 assert.equal(shown?.title, "Main switched to Backup (backup-model).");
-assert.equal(shown?.description, failedOver);
+// The toast comes before the fallback's request, which can fail too, so it never says the fallback answered.
+assert.equal(shown?.description, "Pool A (pool-model) failed (key rejected).");
 
 // A notice that does not name the failed connection keeps the old wording.
 showGenerationFallbackToast({ category: "illustrator", connectionName: "Images", model: "img-1" });

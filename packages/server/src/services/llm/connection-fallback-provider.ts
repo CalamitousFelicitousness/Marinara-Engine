@@ -56,8 +56,11 @@ const TIMEOUT_ERROR_CODES = new Set(["ETIMEDOUT", "UND_ERR_HEADERS_TIMEOUT", "UN
 export function describeFallbackFailure(error: unknown): FallbackFailure {
   if (error instanceof LLMHttpError) {
     const { status } = error;
+    // Anthropic's 529 means the provider is overloaded, not that this key hit its limit.
+    if (status === 529) return { reason: "server", status };
     if (isRateLimitError(error)) return { reason: "rate_limit", status };
-    if (status === 401 || status === 403) return { reason: "auth", status };
+    // Only 401 says the key was refused: a 403 can also be moderation or an unsupported region.
+    if (status === 401) return { reason: "auth", status };
     if (status === 404) return { reason: "not_found", status };
     if (status === 408 || status === 504) return { reason: "timeout", status };
     return { reason: status >= 500 ? "server" : "error", status };

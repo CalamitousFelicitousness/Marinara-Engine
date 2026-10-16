@@ -78,33 +78,39 @@ function reasonLabel(reason: unknown, status: unknown): string {
   }
 }
 
+/** The connection that failed and why, or null when the notice does not say which one failed. */
+function failedParts(notice: GenerationFallbackNotice | null): { failed: string; reason: string } | null {
+  const failed = readNotice<FailedConnection>(notice?.failed);
+  if (!failed) return null;
+  const failedLabel =
+    connectionLabel(readNoticeText(failed.connectionName), failed.model) ?? readNoticeText(failed.connectionId);
+  return failedLabel ? { failed: failedLabel, reason: reasonLabel(failed.reason, failed.status) } : null;
+}
+
 /**
- * Names the connection that failed and the fallback that answered (#7697), or null when the
- * notice does not say which connection failed.
+ * Names the connection that failed and the fallback that wrote a saved reply (#7697), or null when
+ * the notice does not say which connection failed.
  */
 export function describeGenerationFallback(raw: unknown): string | null {
   const notice = readNotice<GenerationFallbackNotice>(raw);
-  const failed = readNotice<FailedConnection>(notice?.failed);
-  if (!notice || !failed) return null;
-  const failedLabel =
-    connectionLabel(readNoticeText(failed.connectionName), failed.model) ?? readNoticeText(failed.connectionId);
-  if (!failedLabel) return null;
-  return translate("generation.fallback.failedOver", {
-    failed: failedLabel,
-    reason: reasonLabel(failed.reason, failed.status),
-    fallback: fallbackLabel(notice),
-  });
+  const parts = failedParts(notice);
+  if (!notice || !parts) return null;
+  return translate("generation.fallback.failedOver", { ...parts, fallback: fallbackLabel(notice) });
 }
 
 export function showGenerationFallbackToast(raw: unknown): void {
   const notice = readNotice<GenerationFallbackNotice>(raw) ?? {};
+  // The toast comes before the fallback has answered, so it says only what failed; the title names the switch.
+  const parts = failedParts(notice);
   toast.info(
     translate("generation.fallback.switched", {
       category: categoryLabel(notice.category),
       connection: fallbackLabel(notice),
     }),
     {
-      description: describeGenerationFallback(notice) ?? translate("generation.fallback.description"),
+      description: parts
+        ? translate("generation.fallback.failed", parts)
+        : translate("generation.fallback.description"),
       duration: 10_000,
     },
   );

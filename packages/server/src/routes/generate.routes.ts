@@ -12528,9 +12528,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   for (const [characterId, target] of individualReplyTargets) {
                     const expression = exprMap[characterId];
                     if (!expression || target.messageId === messageId) continue;
-                    await chats.updateMessageExtraForSwipe(target.messageId, target.swipeIndex, {
-                      spriteExpressions: { [characterId]: expression },
-                    });
+                    try {
+                      await chats.updateMessageExtraForSwipe(target.messageId, target.swipeIndex, {
+                        spriteExpressions: { [characterId]: expression },
+                      });
+                    } catch (err) {
+                      logger.warn(err, "[generate] Could not save the expression on reply %s", target.messageId);
+                    }
                   }
                   if (Object.keys(personaExprMap).length > 0) {
                     const personaMessageId =

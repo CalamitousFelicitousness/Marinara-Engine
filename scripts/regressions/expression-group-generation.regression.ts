@@ -210,7 +210,7 @@ try {
   const turnLast = await run([alice.id, bob.id]);
   const [aliceReply, bobReply] = (await chats.listMessages(chat.id)).slice(-2);
   assert(aliceReply && bobReply);
-  assert.deepEqual([aliceReply.characterId, bobReply.id], [alice.id, turnLast.id]);
+  assert.deepEqual([aliceReply.characterId, bobReply.characterId, bobReply.id], [alice.id, bob.id, turnLast.id]);
   const aliceExtra = JSON.parse(aliceReply.extra);
   assert.deepEqual(aliceExtra.spriteExpressions, { [alice.id]: "happy" }, "an earlier reply has its own expression");
   assert.equal(aliceExtra.expressionSpriteIds, undefined, "the turn's sprite list stays on its last reply");

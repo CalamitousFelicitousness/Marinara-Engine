@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AlertTriangle, ArrowLeft, ArrowRight, ChevronRight, Loader2, RotateCcw, Search, Wand2, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { UnifiedLineDiff } from "../../chat/MariUnifiedDiff";
+import { StateJsonField } from "./StateJsonField";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { cn } from "../../../lib/utils";
 import {
@@ -70,7 +71,6 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEd
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingLine, setPendingLine] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const lineNumbersRef = useRef<HTMLPreElement>(null);
 
   const layouts = useMemo(() => {
     const map = new Map<string, StateJsonLayout>();
@@ -109,15 +109,10 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEd
   const activeSection = sections.find((section) => section.id === activeSectionId) ?? sections[0];
   const activeStatus = activeSection ? statuses.get(activeSection.id) : undefined;
   const activeText = activeSection ? (drafts[activeSection.id] ?? layouts.get(activeSection.id)?.text ?? "") : "";
-  const lineNumbers = useMemo(
-    () => Array.from({ length: Math.max(1, activeText.split("\n").length) }, (_, i) => String(i + 1)).join("\n"),
-    [activeText],
-  );
 
   useEffect(() => {
     if (pendingLine === null || view !== "section" || !textareaRef.current) return;
     revealTextareaLine(textareaRef.current, pendingLine);
-    if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
     setPendingLine(null);
   }, [pendingLine, view, activeSectionId]);
 
@@ -329,37 +324,14 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange }: StateEd
             <span className="min-w-0 break-words">{activeStatus.error}</span>
           </div>
         ) : null}
-        <div
-          className={cn(
-            "grid min-h-[16rem] flex-1 grid-cols-[2.75rem_minmax(0,1fr)] overflow-hidden rounded-lg bg-[var(--background)] ring-1 focus-within:ring-2",
-            activeStatus?.kind === "invalid"
-              ? "ring-[var(--destructive)]/50 focus-within:ring-[var(--destructive)]/70"
-              : "ring-[var(--border)] focus-within:ring-[var(--ring)]",
-          )}
-        >
-          <pre
-            ref={lineNumbersRef}
-            aria-hidden="true"
-            // Touch devices bump textareas to 1rem (no iOS zoom); the gutter follows so the numbers stay on their lines.
-            className="select-none overflow-hidden border-r border-[var(--border)]/60 bg-[var(--secondary)]/40 px-2 py-2 text-right font-mono text-xs leading-relaxed text-[var(--muted-foreground)]/70 [@media(pointer:coarse)]:text-base"
-          >
-            {lineNumbers}
-          </pre>
-          <textarea
-            ref={textareaRef}
-            value={activeText}
-            onChange={(event) => setDraft(activeSection.id, event.target.value)}
-            onScroll={(event) => {
-              if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
-            }}
-            wrap="off"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            aria-label={localizeUi("ui.stateEditor.editor.ariaLabel", { section: activeSection.label })}
-            className="h-full min-h-[16rem] w-full resize-none border-0 bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-[var(--foreground)] outline-none selection:bg-[var(--primary)]/30"
-          />
-        </div>
+        <StateJsonField
+          value={activeText}
+          onChange={(text) => setDraft(activeSection.id, text)}
+          ariaLabel={localizeUi("ui.stateEditor.editor.ariaLabel", { section: activeSection.label })}
+          invalid={activeStatus?.kind === "invalid"}
+          textareaRef={textareaRef}
+          className="min-h-[16rem] flex-1"
+        />
       </div>
     );
   };

@@ -6733,6 +6733,7 @@
   "ui.chat.agentsuitemodal.noStoredMemoryForThisAgentInThisChat": "No stored memory for this agent in this chat.",
   "ui.chat.agentsuitemodal.noStoredOutputsFromThisAgentInThisChat": "No stored outputs from this agent in this chat.",
   "ui.chat.agentsuitemodal.noTrackerDataRecordedForThisChatYet": "No tracker data recorded for this chat yet.",
+  "ui.chat.agentsuitemodal.openStateEditor": "Open in State Editor",
   "ui.chat.agentsuitemodal.recentEvents": "Recent Events",
   "ui.chat.agentsuitemodal.recentOutputs": "Recent Outputs",
   "ui.chat.agentsuitemodal.revealSpoilers": "Reveal spoilers",

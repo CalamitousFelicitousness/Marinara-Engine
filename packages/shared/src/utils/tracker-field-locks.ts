@@ -17,6 +17,7 @@ import {
 } from "../constants/tracker-custom-field-icons.js";
 import { excludeInventoryTrackerCarriedDuplicates } from "./inventory-tracker-rows.js";
 import { isTrackerRowsUpdate, resolveTrackerRowsUpdate } from "./tracker-updates.js";
+import { normalizeTextForMatch } from "./text-matching.js";
 
 type WorldTrackerField = "date" | "time" | "location" | "weather" | "temperature";
 type TextCharacterField = "emoji" | "name" | "mood" | "appearance" | "outfit" | "thoughts";
@@ -1012,6 +1013,25 @@ function mergeCharactersWithLocks(
     const currentIndex = match.index;
     const currentCharacter = currentIndex >= 0 ? current[currentIndex] : null;
     if (!currentCharacter) return character;
+    const currentId = typeof currentCharacter.characterId === "string" ? currentCharacter.characterId.trim() : "";
+    const nextId = typeof character.characterId === "string" ? character.characterId.trim() : "";
+    // Only the same card's named cast alias may replace an explicit identity (buildTrackerCastCharacterId).
+    if (
+      currentId &&
+      nextId &&
+      nextId !== currentId &&
+      nextId !== `${currentId}:cast:${normalizeTextForMatch(currentCharacter.name)}`
+    ) {
+      return character;
+    }
+    // An explicitly identified row owns its locks, even if a name-only row reaches this match first.
+    if (
+      currentId &&
+      character.characterId !== currentCharacter.characterId &&
+      nextCharacters.some((other) => other.characterId === currentCharacter.characterId)
+    ) {
+      return character;
+    }
     if (
       !match.matchedByIdentity &&
       hasLockWithPrefix(locks, `${characterTrackerLockPrefix(currentCharacter, currentIndex)}.`)
@@ -1021,11 +1041,10 @@ function mergeCharactersWithLocks(
     }
     usedCurrent.add(currentIndex);
     const next = { ...character };
-    // Locks are keyed by the row's id, so a locked row the agent names without it keeps that id (#7689).
-    const currentId = typeof currentCharacter.characterId === "string" ? currentCharacter.characterId.trim() : "";
+    // Locks are keyed by the row's id, so a locked row the agent finds by name keeps that id, whether the
+    // agent left it out or sent another one, such as a cast id for the same card (#7689).
     if (
       currentId &&
-      !(typeof next.characterId === "string" && next.characterId.trim()) &&
       !nextCharacters.some((other) => other.characterId === currentCharacter.characterId) &&
       hasLockWithPrefix(locks, `${characterTrackerLockPrefix(currentCharacter, currentIndex)}.`)
     ) {

@@ -1,4 +1,5 @@
 // #7661: profile export redacts agent credentials but keeps token-count settings such as Max Output Tokens.
+// #7657: the Narrative Director's Secret Plot settings export too, while a Secret Plot API key stays blank.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,26 +37,34 @@ try {
     bearer: "fixture-bearer",
     apiKeyEncrypted: "fixture-encrypted-key",
     secretPlotToken: "fixture-secret-plot-token",
+    secretPlotApiKey: "fixture-secret-plot-api-key",
   };
-  const [row] = sanitizeProfileTableRows("agent_configs", [
-    {
-      id: "agent-1",
-      type: "director",
-      settings: JSON.stringify({ ...kept, ...credentials, nested: [{ maxTokens: 300, authToken: "fixture-nested" }] }),
-    },
-  ]);
-  const settings = row!.settings as Record<string, unknown>;
+  const stored = {
+    ...kept,
+    ...credentials,
+    nested: [{ maxTokens: 300, authToken: "fixture-nested" }],
+    spotify: { spotifyAccessToken: "fixture-nested-object-token" },
+  };
 
-  for (const [key, value] of Object.entries(kept)) {
-    assert.deepEqual(settings[key], value, `${key} is a setting, not a credential, and must survive export`);
-  }
-  for (const key of Object.keys(credentials)) {
-    assert.equal(settings[key], null, `${key} is a credential and must be blanked on export`);
-  }
-  assert.deepEqual(settings.nested, [{ maxTokens: 300, authToken: null }]);
-  assert.ok(!JSON.stringify(row).includes("fixture-"), "no credential value may reach the export");
+  // Stored rows hold settings as JSON text; an already-parsed object must export the same way.
+  for (const storedSettings of [JSON.stringify(stored), stored]) {
+    const [row] = sanitizeProfileTableRows("agent_configs", [
+      { id: "agent-1", type: "director", settings: storedSettings },
+    ]);
+    const settings = row!.settings as Record<string, unknown>;
 
-  console.info("Profile export blanks agent credentials and keeps token-count settings.");
+    for (const [key, value] of Object.entries(kept)) {
+      assert.deepEqual(settings[key], value, `${key} is a setting, not a credential, and must survive export`);
+    }
+    for (const key of Object.keys(credentials)) {
+      assert.equal(settings[key], null, `${key} is a credential and must be blanked on export`);
+    }
+    assert.deepEqual(settings.nested, [{ maxTokens: 300, authToken: null }]);
+    assert.deepEqual(settings.spotify, { spotifyAccessToken: null });
+    assert.ok(!JSON.stringify(row).includes("fixture-"), "no credential value may reach the export");
+  }
+
+  console.info("Profile export blanks agent credentials and keeps token-count and Secret Plot settings.");
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }

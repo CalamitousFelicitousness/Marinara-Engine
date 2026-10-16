@@ -2181,6 +2181,8 @@ function applyConditionId(
     level?: number;
     /** The steps above its base cost that spell was paid at (1.300). */
     steps?: number;
+    /** The catalog of the entry that put it on (1.371), for what ends a spell's conditions. */
+    catalog?: string;
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
@@ -2307,6 +2309,7 @@ function applyConditionId(
     ...(extra.value !== undefined ? { value: extra.value } : {}),
     ...(extra.level !== undefined ? { level: extra.level } : {}),
     ...(extra.steps !== undefined ? { steps: extra.steps } : {}),
+    ...(extra.catalog ? { catalog: extra.catalog } : {}),
   });
   ctx.events.push(
     stacks !== undefined
@@ -3959,7 +3962,7 @@ function finishSummon(
 function endConcentration(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
-  reason: "replaced" | "damage" | "down" | "zone" | "spent",
+  reason: "replaced" | "damage" | "down" | "zone" | "spent" | "dispelled",
 ): void {
   const held = actor.concentrating;
   if (!held) return;
@@ -6550,12 +6553,26 @@ function reachesHeld(
     label: theirs.label,
     level,
     reach,
+    success: false,
   };
   const above = reaction.above;
   if (!above || rulesetCombatIsPool(ctx.combat)) {
-    ctx.events.push({ ...said, success: false });
+    ctx.events.push(said);
     return false;
   }
+  return levelCheck(ctx, answering, action.label, above, level, said);
+}
+
+/** A check against `dc` plus a level (1.116), for what reaches past it: Counterspell above its own
+ *  level, Dispel Magic past its own (1.371). Said as a counter event, made or not. */
+function levelCheck(
+  ctx: RulesetCombatContext,
+  answering: RulesetCombatant,
+  label: string,
+  above: { modifier: number; dc: number },
+  level: number,
+  said: Extract<RulesetCombatEvent, { type: "counter" }>,
+): boolean {
   const mode = rulesetCheckMode(ctx.definition, ctx.combat, answering, ctx.state);
   const dice = ctx.combat.attackRoll!.dice;
   const first = throwOwnDice(ctx, answering, "checks", dice.count, dice.sides);
@@ -6592,7 +6609,7 @@ function reachesHeld(
   let total = kept + above.modifier + bonusTotal(bonuses);
   // Made, dice off it from the caster's side where that could fail it (1.257): Cutting Words.
   if (total >= difficulty) {
-    total -= lowerRoll(ctx, answering, "checks", action.label, total, (most) => total - most < difficulty);
+    total -= lowerRoll(ctx, answering, "checks", label, total, (most) => total - most < difficulty);
   }
   const success =
     total >= difficulty ||
@@ -9294,6 +9311,59 @@ function endConditionsOf(
   }
 }
 
+/**
+ * What a catalog's entries put on a creature, ended (1.371): the highest level first, as many as
+ * `count` says. One within `upTo` (the level it is paid at, or a number) simply ends; one above it
+ * ends on a check against `above.dc` plus its level; with neither, every one does. Held by its
+ * caster's concentration, the whole of that spell ends with it.
+ */
+function endSpellsOn(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  paid: number,
+): void {
+  const ends = action.endsSpells!;
+  const reach = ends.upTo === "paid" ? paid : ends.upTo;
+  const found = target.tracked
+    .filter((entry) => entry.catalog !== undefined && ends.catalogs.includes(entry.catalog) && !entry.kept)
+    .sort((a, b) => (b.level ?? 0) - (a.level ?? 0));
+  let left = ends.count ?? found.length;
+  const done = new Set<RulesetTrackedCondition>();
+  for (const entry of found) {
+    if (left <= 0) break;
+    if (done.has(entry) || !target.tracked.includes(entry)) continue;
+    const level = entry.level ?? 0;
+    if (reach !== undefined && level > reach) {
+      const label =
+        ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+      const said = {
+        type: "counter" as const,
+        actorId: actor.id,
+        targetId: target.id,
+        label,
+        level,
+        reach,
+        success: false,
+      };
+      if (!ends.above || rulesetCombatIsPool(ctx.combat)) {
+        ctx.events.push(said);
+        continue;
+      }
+      if (!levelCheck(ctx, actor, action.label, ends.above, level, said)) continue;
+    }
+    left--;
+    const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+    if (entry.concentration && source?.concentrating) {
+      for (const one of ctx.state.combatants.flatMap((who) => who.tracked))
+        if (one.concentration && one.source === source.id) done.add(one);
+      endConcentration(ctx, source, "dispelled");
+    } else removeCondition(ctx, target, entry.condition, "cured");
+    done.add(entry);
+  }
+}
+
 /** Every point of health, temporary ones too, gone at once. */
 function emptyHealth(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const before = healthOf(ctx, target);
@@ -10647,6 +10717,9 @@ function resolveActionBody(
     const cureUnseals = action.cureOneOf ? picked?.unseals : action.unseals;
     if (cureEnds)
       endConditionsOf(ctx, action, target, cureEnds, rulesetPaidLevel(ctx.definition, actor, action, payWith));
+    // What a catalog's entries put on them, ended (1.371): Dispel Magic, Cleansing Touch.
+    if (action.endsSpells)
+      endSpellsOn(ctx, actor, action, target, rulesetPaidLevel(ctx.definition, actor, action, payWith));
     if (heal) {
       const rolled = heal();
       dealHeal(ctx, target, {
@@ -10705,6 +10778,8 @@ function resolveActionBody(
               : {}),
           // And how far above its base cost (1.300): what an action the condition gives grows by.
           ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
+          // What put it on, for an entry that ends what a catalog's entries put on (1.371).
+          ...(action.catalog ? { catalog: action.catalog } : {}),
           // What it harms with grows with the higher cost it was put on with (1.255): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
             ? { harmsMore: harmsPerSteps(applies.harmsPerCostStep, steps) }

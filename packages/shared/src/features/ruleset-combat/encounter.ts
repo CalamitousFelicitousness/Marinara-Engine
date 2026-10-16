@@ -2497,7 +2497,12 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // pointed at whom it cures, an ally unless it says otherwise.
   // Moving a track or giving back sealed health is one too (1.201).
   const cures =
-    !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
+    !!mechanics.ends ||
+    !!mechanics.endsSpells ||
+    !!mechanics.stabilizes ||
+    !!mechanics.revives ||
+    !!mechanics.tracks ||
+    !!mechanics.unseals;
   // One that leaves an area standing (1.178: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
   // So is one that clears growth from an area (1.318): Prune, a pair of shears.
@@ -2613,7 +2618,12 @@ function mechanicsAction(
   // Taking a condition off, steadying the dying or bringing back the dead is something to resolve.
   // Moving a track or giving back sealed health is one too (1.201).
   const cures =
-    !!mechanics.ends || !!mechanics.stabilizes || !!mechanics.revives || !!mechanics.tracks || !!mechanics.unseals;
+    !!mechanics.ends ||
+    !!mechanics.endsSpells ||
+    !!mechanics.stabilizes ||
+    !!mechanics.revives ||
+    !!mechanics.tracks ||
+    !!mechanics.unseals;
   // And so is leaving an area standing that only hides or blocks (1.178).
   const places = !!mechanics.zone && !!mechanics.area;
   // Clearing growth from an area is as well (1.318).
@@ -2880,6 +2890,16 @@ function mechanicsAction(
     };
   }
   // Used, it ends a condition on its user (1.236): the spell that gave it.
+  // What a catalog's entries put on, ended (1.371): Dispel Magic, its check read off the sheet now.
+  if (mechanics.endsSpells) {
+    const ends = mechanics.endsSpells;
+    action.endsSpells = {
+      catalogs: [...ends.catalogs],
+      ...(ends.count !== undefined ? { count: ends.count } : {}),
+      ...(ends.upTo !== undefined ? { upTo: ends.upTo } : {}),
+      ...(ends.above ? { above: { modifier: Math.trunc(resolve(ends.above.check)), dc: ends.above.dc } } : {}),
+    };
+  }
   if (mechanics.endsCondition) action.endsCondition = mechanics.endsCondition;
   // Made again while concentrated on (1.310): Vampiric Touch.
   if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };

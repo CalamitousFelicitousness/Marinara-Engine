@@ -4924,6 +4924,27 @@ const catalogMechanicsObject = z
      *  the order named (Capability API 1.176): 5e's Lesser Restoration ends one of blinded, deafened,
      *  paralyzed or poisoned. */
     ends: catalogEndsSchema.optional(),
+    /** Ends what entries of these catalogs put on its target (Capability API 1.371), the highest level
+     *  first and `count` of them at most: within `upTo` (`"paid"`, the level it is paid at, or a
+     *  number) outright, above it on a check of `above.check` against `above.dc` plus its level.
+     *  5e's Dispel Magic, `{"catalogs": ["spells"], "upTo": "paid", "above": {...}}`; Cleansing
+     *  Touch, one spell. */
+    endsSpells: z
+      .object({
+        catalogs: z.array(sheetId).min(1).max(8),
+        count: z.number().int().min(1).max(16).optional(),
+        upTo: z.union([z.literal("paid"), z.number().int().min(0).max(20)]).optional(),
+        above: z
+          .object({ check: rulesetValueRefSchema, dc: z.number().int().min(0).max(1000) })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .refine((ends) => !ends.above || ends.upTo !== undefined, {
+        message: '"above" is a check past "upTo", so it goes with "upTo"',
+        path: ["above"],
+      })
+      .optional(),
     /** Used, it ends this condition on its user (Capability API 1.236), with the concentration that
      *  holds it when that is theirs: Dispel Evil and Good's Break Enchantment and Dismissal end the
      *  spell. */
@@ -17751,6 +17772,11 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics) cureIssues(definition, mechanics, [index, "mechanics"], add);
     targetIsIssues(definition, mechanics?.ends?.from, [index, "mechanics", "ends", "from"], add);
+    // What ends a catalog's entries' conditions (1.371) names catalogs there are, and reads the sheet.
+    mechanics?.endsSpells?.catalogs.forEach((id, at) => {
+      if (!definition.catalogs?.some((one) => one.id === id))
+        add([index, "mechanics", "endsSpells", "catalogs", at], `Unknown catalog "${id}"`);
+    });
     // Whoever caused a reaction's moment (1.369).
     if (typeof mechanics?.reaction === "object") {
       const reaction = mechanics.reaction;
@@ -18004,6 +18030,11 @@ export function rulesetCatalogEntryIssues(
       ["lowersRoll", mechanics?.lowersRoll?.die],
       ["throwsCaught", typeof mechanics?.throwsCaught === "object" ? mechanics.throwsCaught.die : undefined],
     ] as const;
+    if (mechanics?.endsSpells?.above) {
+      for (const refIssue of rulesetValueRefIssues(mechanics.endsSpells.above.check, names, names.derived, false)) {
+        add([index, "mechanics", "endsSpells", "above", "check", refIssue.key], refIssue.message);
+      }
+    }
     for (const [key, die] of dies) {
       if (!die) continue;
       for (const refIssue of rulesetValueRefIssues(die.from, names, names.derived, false)) {

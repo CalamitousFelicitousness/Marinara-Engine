@@ -2191,6 +2191,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
   );
 }
 
+/** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
+function carriesEndsSpells371(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsSpells371(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.endsSpells)) return true;
+  return featureValues(record).some((one) => carriesEndsSpells371(one, depth + 1));
+}
+
 /** A sanctuary on a condition (1.370): Sanctuary, Tranquility, Nature's Sanctuary. */
 function carriesSanctuary370(ruleset: unknown): boolean {
   const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
@@ -5530,6 +5540,14 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // What untrained adds off the sheet, and an ability check's add, 1.366.
+  // Ending what a catalog's entries put on, 1.371.
+  if (
+    !declaresApi(371) &&
+    (carriesEndsSpells371(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsSpells371(document)))
+  ) {
+    return "A ruleset whose entries end what a catalog's entries put on (endsSpells) requires schemaVersion 2 and capabilityApi 1.371 or newer";
+  }
   // A sanctuary, 1.370.
   if (!declaresApi(370) && carriesSanctuary370(ruleset)) {
     return "A ruleset whose conditions keep attacks off their holder behind a save (sanctuary) requires schemaVersion 2 and capabilityApi 1.370 or newer";

@@ -716,6 +716,13 @@ export interface RulesetCombatAction {
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.176); with
    *  `from`, only what a creature that is that put on (1.236). */
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
+  /** Ends what this catalog's entries put on its target (1.371): Dispel Magic, Cleansing Touch. */
+  endsSpells?: {
+    catalogs: string[];
+    count?: number;
+    upTo?: "paid" | number;
+    above?: { modifier: number; dc: number };
+  };
   /** Offered only while its user holds this condition, which gave it to them (1.236). */
   whileHolds?: string;
   /** What it adds for each step of the cost the condition giving it was put on with (1.300), once
@@ -1295,6 +1302,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** The catalog of the entry that put it on (1.371): a spell's, for Dispel Magic. */
+  catalog?: string;
   /** Who saved against its sanctuary and is free of it for the rest of the fight (1.370). */
   immune?: string[];
   /** Removed once the action that opened its window finishes (1.131). */
@@ -2649,7 +2658,7 @@ export type RulesetCombatEvent =
       label: string;
       state: "started" | "kept" | "ended";
       /** `zone`: a zone that breaks concentration caught them and they failed the save (1.174). */
-      reason?: "replaced" | "damage" | "down" | "zone" | "spent";
+      reason?: "replaced" | "damage" | "down" | "zone" | "spent" | "dispelled";
     }
   | {
       type: "standard";

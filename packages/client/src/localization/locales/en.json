@@ -14124,6 +14124,8 @@
   "ui.stateEditor.gameState.sections.quest.label": "Active Quests",
   "ui.stateEditor.gameState.sections.worldState.description": "Date, time, location, weather and temperature of the current scene.",
   "ui.stateEditor.gameState.sections.worldState.label": "Scene",
+  "ui.stateEditor.gameState.sectionsChanged": "The tracker updated {{sections}} on this turn while you were editing.",
+  "ui.stateEditor.gameState.sectionsChangedNotice": "The tracker updated this turn while you were editing, and saving your sections would undo that. Reload to see its changes; your drafts will be discarded.",
   "ui.stateEditor.gameState.snapshot.chatLevel": "Editing the chat-wide game state (not tied to a message yet).",
   "ui.stateEditor.gameState.snapshot.editing": "Editing",
   "ui.stateEditor.gameState.snapshot.latest": "Latest",

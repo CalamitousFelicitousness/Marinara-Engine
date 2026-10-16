@@ -5,6 +5,7 @@
 // ──────────────────────────────────────────────
 import type { GameState } from "@marinara-engine/shared";
 import { AGENT_SUITE_TRACKER_SLICES } from "../agent-suite-tracker-slices";
+import { stateValuesEqual } from "./state-editor-json";
 import type { StateEditorChange, StateEditorSection } from "./state-editor.types";
 
 /** Section order in the editor: the scene first, then who is in it, then the player's things. */
@@ -54,4 +55,21 @@ export function buildGameStateEditorPatch(
     working = { ...working, ...slicePatch } as GameState;
   }
   return { patch };
+}
+
+/**
+ * The changed sections whose saved value moved since the editor opened (a tracker agent can still be
+ * writing to the same turn). A section saves as a whole, so saving those would undo that update.
+ */
+export function findGameStateSectionsChangedSince(
+  baseline: GameState,
+  fresh: GameState,
+  changes: StateEditorChange[],
+): string[] {
+  return changes
+    .map((change) => change.sectionId)
+    .filter((id) => {
+      const slice = AGENT_SUITE_TRACKER_SLICES[id];
+      return slice ? !stateValuesEqual(slice.getValue(baseline), slice.getValue(fresh)) : false;
+    });
 }

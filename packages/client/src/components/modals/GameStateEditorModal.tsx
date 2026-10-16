@@ -15,6 +15,7 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import {
   buildGameStateEditorPatch,
   buildGameStateEditorSections,
+  findGameStateSectionsChangedSince,
 } from "../../lib/state-editor/game-state-editor-source";
 import type { StateEditorChange } from "../../lib/state-editor/state-editor.types";
 import { chatKeys } from "../../hooks/use-chats";
@@ -150,8 +151,12 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
     enabled: open && !!chatId,
     staleTime: 0,
     gcTime: 0,
+    // The loaded snapshot is the drafts' baseline: only Reload or a save may replace it.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
-  const [turnMovedOn, setTurnMovedOn] = useState(false);
+  /** Why the open snapshot can't be saved over: another turn is current, or a section moved underneath. */
+  const [stale, setStale] = useState<"turn" | "sections" | null>(null);
   const [editorKey, setEditorKey] = useState(0);
   const dirtyRef = useRef(false);
 
@@ -185,7 +190,7 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
   }, [localizeUi, onClose]);
 
   const reload = useCallback(async () => {
-    setTurnMovedOn(false);
+    setStale(null);
     dirtyRef.current = false;
     setEditorKey((key) => key + 1);
     await gameStateQuery.refetch();
@@ -197,8 +202,14 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
       // Build the patch from a fresh copy so concurrent tracker or agent updates to other fields survive.
       const fresh = await fetchFreshGameState(chatId);
       if (!fresh || !sameTurn(fresh, snapshot)) {
-        setTurnMovedOn(true);
+        setStale("turn");
         throw new Error(localizeUi("ui.stateEditor.gameState.turnMovedOn"));
+      }
+      const moved = findGameStateSectionsChangedSince(snapshot, fresh, changes);
+      if (moved.length > 0) {
+        setStale("sections");
+        const labels = moved.map((id) => sections.find((item) => item.id === id)?.label ?? id);
+        throw new Error(localizeUi("ui.stateEditor.gameState.sectionsChanged", { sections: labels.join(", ") }));
       }
       const result = buildGameStateEditorPatch(fresh, changes);
       if ("error" in result) {
@@ -266,13 +277,19 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
           notice={
             <div className="flex flex-col gap-2">
               <SnapshotLabel chatId={chatId} snapshot={snapshot} />
-              {turnMovedOn ? (
+              {stale ? (
                 <div
                   role="alert"
                   className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-[var(--marinara-app-accent-static)]/10 px-3 py-2 text-xs text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/30"
                 >
                   <AlertTriangle size="0.875rem" className="shrink-0" />
-                  <span className="min-w-0 flex-1">{localizeUi("ui.stateEditor.gameState.turnMovedOnNotice")}</span>
+                  <span className="min-w-0 flex-1">
+                    {localizeUi(
+                      stale === "turn"
+                        ? "ui.stateEditor.gameState.turnMovedOnNotice"
+                        : "ui.stateEditor.gameState.sectionsChangedNotice",
+                    )}
+                  </span>
                   <button
                     type="button"
                     onClick={() => void reload()}

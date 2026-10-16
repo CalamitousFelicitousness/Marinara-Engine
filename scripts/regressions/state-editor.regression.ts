@@ -13,6 +13,7 @@ import {
 import {
   buildGameStateEditorPatch,
   buildGameStateEditorSections,
+  findGameStateSectionsChangedSince,
   GAME_STATE_EDITOR_SECTION_IDS,
 } from "../../packages/client/src/lib/state-editor/game-state-editor-source.js";
 import {
@@ -151,6 +152,16 @@ assert.deepEqual(scene.patch, { location: "Docks", worldCustomFields: [] }, "onl
 const rejected = buildGameStateEditorPatch(gameState, [{ sectionId: "quest", value: { not: "an array" } }]);
 assert.ok("error" in rejected);
 assert.equal(rejected.sectionId, "quest", "a slice's validation error names its section");
+
+const agentUpdated = { ...gameState, location: "Lighthouse" } as GameState;
+assert.deepEqual(
+  findGameStateSectionsChangedSince(gameState, agentUpdated, [
+    { sectionId: "world-state", value: { location: "Docks", worldCustomFields: [] } },
+    { sectionId: "quest", value: quests },
+  ]),
+  ["world-state"],
+  "a section the tracker updated on the same turn blocks the save; untouched ones don't",
+);
 
 // ── chat variables ──
 

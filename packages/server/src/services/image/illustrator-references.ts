@@ -152,7 +152,29 @@ export function suppressesReferencePromptLine(
 
 const MAX_ILLUSTRATOR_REFERENCE_IMAGES = 6;
 const MAX_ILLUSTRATOR_APPEARANCE_CHARS = 1400;
-const NAME_STOPWORDS = new Set(["the", "a", "an", "il", "la", "le", "de", "van", "von", "dr", "mr", "ms"]);
+export const NAME_STOPWORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "il",
+  "la",
+  "le",
+  "de",
+  "van",
+  "von",
+  "dr",
+  "mr",
+  "mrs",
+  "ms",
+  "miss",
+  "prof",
+  "sir",
+  "lady",
+  "lord",
+  "captain",
+  "doctor",
+  "professor",
+]);
 
 export const ILLUSTRATOR_TEXT_NEGATIVE_PROMPT =
   "dialogue boxes, speech bubbles, word balloons, captions, narration boxes, text boxes, manga sound effect text, SFX lettering, readable text, letters, subtitles, watermark, logo, signature";

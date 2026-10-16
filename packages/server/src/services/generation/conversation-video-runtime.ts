@@ -13,6 +13,7 @@ import { logger, logDebugOverride } from "../../lib/logger.js";
 import { removeCopiedPromptGuidance } from "../image/image-prompt-compiler.js";
 import { resolveGalleryImagePath } from "../image/gallery-image-path.js";
 import {
+  NAME_STOPWORDS,
   readPreferredCharacterReferenceImage,
   resolveIllustratorCharacterReferences,
   type IllustratorPersonaReference,
@@ -55,8 +56,6 @@ export interface ConversationVideoPreview {
 export interface ConversationVideoResult {
   video: GeneratedSceneVideo;
   characterName: string;
-  /** The characters the clip shows: the sender, plus anyone it names or a group request includes. */
-  characterIds: string[];
   /** What the clip started from. */
   firstFrame: "gallery" | "selfie" | "avatar" | "none";
 }
@@ -251,7 +250,12 @@ export async function generateConversationVideo(args: {
       : await takeSelfieFrame(selfieArgs, plan.avatarFallback, () =>
           readAvatarFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null }),
         );
-  const characterIds = await resolveVideoCharacterIds({ ...args, characterName, prompt });
+  const characterIds = await resolveVideoCharacterIds({
+    ...args,
+    characterName,
+    prompt,
+    picturePrompt: plan.kind === "gallery" ? plan.picturePrompt : undefined,
+  });
 
   const video = await generateAndSaveChatVideo(args.db, setup, {
     chatId: args.chatId,
@@ -265,7 +269,7 @@ export async function generateConversationVideo(args: {
     debugMode: args.debugMode,
   });
   logger.info("[conversation/video] %s sent video %s in chat %s", characterName, video.id, args.chatId);
-  return { video, characterName, characterIds, firstFrame: firstFrame.kind };
+  return { video, characterName, firstFrame: firstFrame.kind };
 }
 
 async function planFirstFrame(
@@ -320,19 +324,27 @@ async function readAvatarFrame(
 
 /** The same character matching a selfie uses to file itself into character galleries. */
 async function resolveVideoCharacterIds(
-  args: Parameters<typeof generateConversationVideo>[0] & { characterName: string; prompt: string },
+  args: Parameters<typeof generateConversationVideo>[0] & {
+    characterName: string;
+    prompt: string;
+    picturePrompt?: string;
+  },
 ): Promise<string[]> {
+  // What people say in the clip names no one it shows ("Hey Jamie!"), and an animated picture keeps its characters.
+  const context = withoutQuotedSpeech([args.context ?? "", args.picturePrompt ?? ""].join("\n"));
+  const prompt = withoutQuotedSpeech(args.prompt);
+  const mentioned = namesMentionedByPart(
+    [context, prompt].join("\n"),
+    [...args.charInfo, ...(args.persona ? [args.persona] : [])].map(({ id, name }) => ({ id, name })),
+  );
   const requestedNames = [
     ...resolveConversationSelfieRequestedNames({
       speakerName: args.characterName,
       chatCharacters: args.charInfo,
-      commandContext: args.context,
-      imagePrompt: args.prompt,
+      commandContext: context,
+      imagePrompt: prompt,
     }),
-    ...namesMentionedByPart([args.context ?? "", args.prompt].join("\n"), [
-      ...args.charInfo.map((character) => character.name),
-      ...(args.persona ? [args.persona.name] : []),
-    ]),
+    ...args.charInfo.filter((character) => mentioned.has(character.id)).map((character) => character.name),
   ];
   const resolution = await resolveIllustratorCharacterReferences({
     charactersStore: createCharactersStorage(args.db),
@@ -344,48 +356,55 @@ async function resolveVideoCharacterIds(
     })),
     persona: args.persona ?? null,
     requestedNames,
-    promptText: [args.characterName, args.context ?? "", args.prompt].join("\n"),
+    promptText: [args.characterName, context, prompt].join("\n"),
     fallbackToChatCharacters: false,
     includeReferenceImages: false,
     maxReferences: 12,
   });
-  // The persona is listed too when the clip names it, so it reaches the persona's gallery only when it is in it.
-  return Array.from(
-    new Set([args.characterId, ...resolution.characterIds, ...(resolution.personaId ? [resolution.personaId] : [])]),
-  );
+  // The persona is listed only when the clip names it, so it reaches the persona's gallery only when it is in it.
+  const personaId = resolution.personaId ?? (args.persona?.id && mentioned.has(args.persona.id) ? args.persona.id : null);
+  return Array.from(new Set([args.characterId, ...resolution.characterIds, ...(personaId ? [personaId] : [])]));
 }
 
-const NAME_TITLES = new Set(["dr", "mr", "mrs", "ms", "miss", "prof", "sir", "lady", "lord", "the"]);
+const QUOTED_SPEECH_RE = /"[^"]*"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb/gu;
+
+function withoutQuotedSpeech(text: string): string {
+  return text.replace(QUOTED_SPEECH_RE, " ");
+}
 
 /**
  * The chat members (characters and persona) a clip's text names by a part of their name no one else in the chat
  * shares: "Lena" for "Dr. Lena Kowalski". Video prompts usually call people by first name, while the shared
- * matcher only takes a full name, which stays the rule for pictures.
+ * matcher only takes a full name, which stays the rule for pictures. A part counts only when written with a
+ * capital, so "hazel eyes" or "the snow" name no one.
  */
-function namesMentionedByPart(text: string, names: string[]): string[] {
-  const words = new Set(
+function namesMentionedByPart(text: string, members: Array<{ id: string | null; name: string }>): Set<string | null> {
+  const capitalised = new Set(
     text
       .normalize("NFKC")
-      .toLowerCase()
-      .split(/[^\p{L}\p{N}']+/u),
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word !== word.toLowerCase())
+      .map((word) => word.toLowerCase()),
   );
-  const parts = names.map((name) => ({
-    name,
+  const parts = members.map(({ id, name }) => ({
+    id,
     tokens: [
       ...new Set(
         name
           .normalize("NFKC")
           .toLowerCase()
-          .split(/[^\p{L}\p{N}']+/u)
-          .filter((token) => token.length >= 3 && !NAME_TITLES.has(token)),
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((token) => token.length >= 3 && !NAME_STOPWORDS.has(token)),
       ),
     ],
   }));
   const owners = new Map<string, number>();
   for (const { tokens } of parts) for (const token of tokens) owners.set(token, (owners.get(token) ?? 0) + 1);
-  return parts
-    .filter(({ tokens }) => tokens.some((token) => owners.get(token) === 1 && words.has(token)))
-    .map(({ name }) => name);
+  return new Set(
+    parts
+      .filter(({ tokens }) => tokens.some((token) => owners.get(token) === 1 && capitalised.has(token)))
+      .map(({ id }) => id),
+  );
 }
 
 type SelfieArgs = Parameters<typeof generateConversationVideo>[0] & { selfieContext: string };

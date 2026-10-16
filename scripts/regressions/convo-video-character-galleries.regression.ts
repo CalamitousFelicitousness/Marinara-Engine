@@ -88,12 +88,12 @@ try {
     apiKey: "",
   });
   const characters = createCharactersStorage(db);
-  const [aster, bob, carol, lena] = await Promise.all(
-    ["Aster", "Bob", "Carol Kowalski", "Dr. Lena Kowalski"].map((name) =>
+  const [aster, bob, carol, lena, turner] = await Promise.all(
+    ["Aster", "Bob", "Carol Kowalski", "Dr. Lena Kowalski", "Will Turner"].map((name) =>
       characters.create(characterDataSchema.parse({ name })),
     ),
   );
-  assert.ok(aster && bob && carol && lena);
+  assert.ok(aster && bob && carol && lena && turner);
   const jamie = await characters.createPersona("Jamie", "The player.");
   assert.ok(jamie);
 
@@ -101,7 +101,7 @@ try {
   const group = await chats.create({
     name: "Group",
     mode: "conversation",
-    characterIds: [aster.id, bob.id, carol.id, lena.id],
+    characterIds: [aster.id, bob.id, carol.id, lena.id, turner.id],
     connectionId: text.id,
     personaId: jamie.id,
   });
@@ -184,6 +184,22 @@ try {
   const surnameClip = await sendClip("Aster dances while Kowalski watches");
   assert.ok(!(await clipIds(lena.id)).includes(surnameClip), "a shared surname names no one");
   assert.ok(!(await clipIds(carol.id)).includes(surnameClip));
+
+  // Possessives name their owner; lowercase everyday words and spoken lines name no one.
+  const possessiveClip = await sendClip("Aster dances with Lena's arm around her");
+  assert.ok((await clipIds(lena.id)).includes(possessiveClip), "a possessive names its owner");
+  const speechClip = await sendClip('Aster waves and says "Hey Jamie, Bob says hi!"');
+  assert.ok(!(await clipIds(bob.id)).includes(speechClip), "a name inside quoted speech names no one");
+  assert.ok(
+    !(await app.inject({ method: "GET", url: `/api/characters/personas/${jamie.id}/gallery/clips` }))
+      .json<{ clips: Array<{ id: string }> }>()
+      .clips.some((clip) => clip.id === speechClip),
+    "nor the persona",
+  );
+  const lowercaseClip = await sendClip("Aster smiles, her will to dance clear");
+  assert.ok(!(await clipIds(turner.id)).includes(lowercaseClip), "a lowercase word is not a name");
+  const capitalClip = await sendClip("Aster laughs as Will joins in");
+  assert.ok((await clipIds(turner.id)).includes(capitalClip), "a capitalised name part is");
   console.log("convo-video-character-galleries regression passed");
 } finally {
   await app.close();

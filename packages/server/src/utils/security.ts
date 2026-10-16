@@ -398,7 +398,8 @@ function createDispatcher(hostname: string, options: AgentOptions): Dispatcher {
     Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy);
   if (!envProxy || isLoopbackHostname(hostname)) return new Agent(options);
   // A proxied request tunnels through the proxy, which looks up the name itself, so `connect` only reaches NO_PROXY
-  // hosts. Keep its keepalive on the socket to the proxy.
+  // hosts. The address check still runs first, but cannot pin what the proxy connects to (the same as Node's own
+  // fetch), because local DNS behind a proxy may be filtered. Keep the keepalive on the socket to the proxy.
   const keepAliveInitialDelay =
     typeof options?.connect === "object" ? options.connect.keepAliveInitialDelay : undefined;
   return new EnvHttpProxyAgent({

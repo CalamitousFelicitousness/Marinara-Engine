@@ -1193,11 +1193,13 @@ export function ChatGallery({
                 <Film size="1.5rem" className="opacity-40" />
                 <p className="text-xs">{localizeUi("ui.chat.chatgallery.noVideosYet")}</p>
                 <p className="text-[0.625rem] opacity-60">
-                  {mode === "conversation"
-                    ? localizeUi("ui.chat.chatgallery.sendOrAnimateVideoMessagesToFillThisTab")
-                    : onGenerateVideo || onAnimateImage
-                      ? localizeUi("ui.chat.chatgallery.generateOrAnimateSceneVideosToFillThisTab")
-                      : localizeUi("ui.chat.chatgallery.generatedSceneVideosWillAppearHere")}
+                  {onGenerateVideo || onAnimateImage
+                    ? localizeUi(
+                        mode === "conversation"
+                          ? "ui.chat.chatgallery.sendOrAnimateVideoMessagesToFillThisTab"
+                          : "ui.chat.chatgallery.generateOrAnimateSceneVideosToFillThisTab",
+                      )
+                    : localizeUi("ui.chat.chatgallery.generatedSceneVideosWillAppearHere")}
                 </p>
               </div>
             )}

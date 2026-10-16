@@ -14,7 +14,10 @@ import {
   supportsXhighReasoningEffort,
 } from "../../packages/shared/src/constants/model-lists.js";
 import { relevantGenerationParameters } from "../../packages/shared/src/constants/generation-parameter-relevance.js";
-import { AnthropicProvider } from "../../packages/server/src/services/llm/providers/anthropic.provider.js";
+import {
+  AnthropicProvider,
+  supportsAnthropicThinkingDisable,
+} from "../../packages/server/src/services/llm/providers/anthropic.provider.js";
 import type { APIProvider } from "../../packages/shared/src/types/connection.js";
 
 // Proxy and gateway ids on their native provider must get the catalog model's capabilities, while the request keeps
@@ -123,6 +126,14 @@ try {
     assert.equal(capabilityModelId(" Anthropic/Claude-Opus-4-6 "), "anthropic/claude-opus-4-6");
     assert.equal(capabilityModelId("[次][SP]claude-opus-4-6"), "claude-opus-4-6");
     assert.equal(capabilityModelId("claude-opus-4-6@thinking:on@effort:high"), "claude-opus-4-6");
+    assert.equal(capabilityModelId("claude-opus-4-6 (high)"), "claude-opus-4-6");
+    assert.equal(capabilityModelId("claude-opus-5-5 [1m]"), "claude-opus-5-5");
+    assert.equal(supportsAnthropicThinkingDisable("claude-opus-5[1m]"), true);
+    // Crafted 100k-character ids (connections can be imported) must not stall the scans.
+    const started = performance.now();
+    findKnownModel("custom", "x" + "-1234".repeat(20_000));
+    capabilityModelId("x" + ")@".repeat(50_000));
+    assert.ok(performance.now() - started < 1000, "long ids resolve quickly");
     assert.equal(capabilityModelId("@cf/meta/llama-3-8b"), "@cf/meta/llama-3-8b");
     for (const id of [
       "claude-opus-4-6-nothinking",
@@ -132,6 +143,7 @@ try {
       "claude-opus-4-6-thinking-0",
       "claude-opus-4-6@thinking:off",
       "claude-sonnet-4.5(none)",
+      "claude-sonnet-4-5(free)",
       "claude-opus-4-6()",
       "claude-opus-4-6[1m]",
       "gemini-2.0-flash-thinking-exp",
@@ -230,6 +242,11 @@ try {
     assert.equal(body.thinking, undefined);
     assert.deepEqual(body.tool_choice, { type: "auto" });
     for (const sampler of ["temperature", "top_k", "top_p"]) assert.equal(sampler in body, false, sampler);
+
+    // Custom parameters cannot bring a sampler back for a thinking id.
+    await anthropic.chatComplete([{ role: "user", content: "Hi" }], { ...base, customParameters: { temperature: 0.2 } });
+    body = requests.at(-1)!;
+    assert.equal("temperature" in body, false, "custom temperature");
 
     // A tagged id without a thinking suffix keeps its samplers when effort is off.
     await anthropic.chatComplete([{ role: "user", content: "Hi" }], { ...base, model: "[SP]claude-opus-4-6" });

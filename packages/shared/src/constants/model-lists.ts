@@ -31,19 +31,20 @@ function stripTagPrefix(id: string): string {
  * Vertex `@20250805`. No catalog id contains brackets or `@`. Linear scans, because ids are user input.
  */
 function stripModifierSuffix(id: string): string {
-  let s = id;
-  for (;;) {
-    const t = s.trimEnd();
+  let t = id.trimEnd();
+  // Proxies add one or two suffixes; the cap keeps a crafted imported id from looping once per character.
+  for (let pass = 0; pass < 4; pass++) {
     const open = Object.keys(BRACKET_PAIRS).find((o) => t.endsWith(BRACKET_PAIRS[o]!));
     const start = open ? t.lastIndexOf(open) : -1;
     if (start >= 0) {
-      s = t.slice(0, start);
+      t = t.slice(0, start).trimEnd();
       continue;
     }
-    const at = s.lastIndexOf("@");
-    if (at < 0 || s.indexOf("/", at) >= 0) return s;
-    s = s.slice(0, at);
+    const at = t.lastIndexOf("@");
+    if (at < 0 || t.indexOf("/", at) >= 0) break;
+    t = t.slice(0, at);
   }
+  return t;
 }
 
 /**
@@ -64,14 +65,12 @@ export function capabilityModelId(model: string): string {
 export function impliesProxyThinking(model: string): boolean {
   const raw = model.trim().toLowerCase();
   const at = raw.lastIndexOf("@thinking:");
+  if (at >= 0 && !raw.includes("@", at + 1)) return !["", "off", "none", "0"].includes(raw.slice(at + 10).trim());
   const open = raw.lastIndexOf("(");
-  const modifier =
-    at >= 0 && !raw.includes("@", at + 1)
-      ? raw.slice(at + 10)
-      : raw.endsWith(")") && open >= 0 && !raw.slice(open + 1, -1).includes(")")
-        ? raw.slice(open + 1, -1)
-        : undefined;
-  if (modifier !== undefined) return !["", "off", "none", "0"].includes(modifier.trim());
+  // A trailing `(…)` is a thinking level or budget; anything else, such as `(free)`, is a plain label.
+  if (raw.endsWith(")") && open >= 0 && !raw.slice(open + 1, -1).includes(")")) {
+    return /^(?:minimal|low|medium|high|xhigh|max|auto|[1-9]\d*)$/u.test(raw.slice(open + 1, -1).trim());
+  }
   const id = capabilityModelId(raw);
   return (
     /(?<!-no|-non)-think(?:ing(?:-[1-9]\d*)?)?$/u.test(id) ||
@@ -1370,10 +1369,11 @@ export function findKnownModel(provider: APIProvider, modelId: string): KnownMod
       : MODEL_LISTS[provider];
   if (!catalog?.length) return undefined;
   let id = catalogModelId(modelId);
-  for (;;) {
+  // At most 4 suffix passes: a crafted imported id must not loop once per character.
+  for (let pass = 0; ; pass++) {
     const known = catalog.find((model) => model.id.toLowerCase() === id);
     const shorter = id.replace(PROXY_MODEL_SUFFIX_RE, "");
-    if (known || shorter === id) return known;
+    if (known || shorter === id || pass === 4) return known;
     id = shorter;
   }
 }

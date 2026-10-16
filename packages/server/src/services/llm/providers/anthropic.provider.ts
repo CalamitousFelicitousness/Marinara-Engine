@@ -113,7 +113,7 @@ function isAnthropicThinkingBlock(block: AnthropicContentBlock): boolean {
 }
 
 export function supportsAnthropicThinkingDisable(model: string): boolean {
-  return !isClaudeOpus55Model(model) && /claude-(?:opus|sonnet)-5(?:$|[-.])/u.test(model.toLowerCase());
+  return !isClaudeOpus55Model(model) && /claude-(?:opus|sonnet)-5(?:$|[-.])/u.test(capabilityModelId(model));
 }
 
 function normalizeStrictClaudeParameters(

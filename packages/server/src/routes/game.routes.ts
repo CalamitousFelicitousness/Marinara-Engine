@@ -16645,7 +16645,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         characterIds: readCheckpointCharacterIds(capturedCharacterIds),
       }));
     } else if (cp.gameState || restoresGameMetadata) {
-      await chats.patchMetadata(input.chatId, restorePatch);
+      await chats.patchMetadata(input.chatId, (current) => ({ ...restorePatch(current) }));
     }
 
     return { ok: true, messageId: restoreMsg.id };

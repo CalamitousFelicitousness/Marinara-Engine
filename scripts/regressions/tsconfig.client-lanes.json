@@ -5,8 +5,12 @@
     "declaration": false,
     "declarationMap": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"],
-    "typeRoots": ["../../node_modules/@types", "../../packages/server/node_modules/@types"],
+    "types": ["node", "vite/client"],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../packages/server/node_modules/@types",
+      "../../packages/client/node_modules"
+    ],
     "paths": {
       "@marinara-engine/shared": ["../../packages/shared/src/index.ts"]
     }

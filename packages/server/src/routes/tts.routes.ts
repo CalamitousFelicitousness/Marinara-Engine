@@ -1749,6 +1749,8 @@ export async function ttsRoutes(app: FastifyInstance) {
                     ...(speechInstructions ? { instructions: speechInstructions } : {}),
                   }),
         signal: AbortSignal.timeout(cfg.requestTimeoutMs),
+        // undici otherwise stops waiting after 300 s, whatever the limit above says.
+        agentOptions: { headersTimeout: cfg.requestTimeoutMs, bodyTimeout: cfg.requestTimeoutMs },
         policy: {
           allowLocal: allowLocalTtsUrl(cfg),
           allowedProtocols: ["https:", "http:"],

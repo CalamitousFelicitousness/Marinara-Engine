@@ -39,6 +39,12 @@ AbortSignal.timeout = (ms: number) => {
   requestedTimeouts.push(ms);
   return realTimeout(ms / 200);
 };
+// undici stops waiting for a reply after its own 300 s unless the request says otherwise, so a limit above
+// that was cut off and reported as an unreachable server. Here that cap is 500 ms, shorter than the voice server.
+const { Agent, getGlobalDispatcher, setGlobalDispatcher } = requireServer("undici");
+const previousDispatcher = getGlobalDispatcher();
+const shortTransport = new Agent({ headersTimeout: 500, bodyTimeout: 500 });
+setGlobalDispatcher(shortTransport);
 
 process.env.TTS_LOCAL_URLS_ENABLED = "true";
 const provider = createServer(async (request, response) => {
@@ -161,6 +167,8 @@ try {
 } finally {
   globalThis.fetch = realFetch;
   AbortSignal.timeout = realTimeout;
+  setGlobalDispatcher(previousDispatcher);
+  await shortTransport.close();
   try {
     await app?.close();
   } finally {

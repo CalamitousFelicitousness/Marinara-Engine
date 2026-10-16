@@ -824,6 +824,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
     ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
     ["averted", say({ type: "averted", actorId: "brenna", holderId: "lurker" })],
+    ["sanctuary", say({ type: "sanctuary", actorId: "lurker", holderId: "brenna", label: "Gore" })],
     [
       "section",
       say({
@@ -1263,6 +1264,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("letFall"), "Brenna drops Mace, Shield (Incapacitated).");
   assert.equal(printed.get("pickedUp"), "Brenna picks up Mace.");
   assert.equal(printed.get("averted"), "Brenna averts their eyes from Thorn Lurker.");
+  assert.equal(printed.get("sanctuary"), "Thorn Lurker is turned from Brenna by a sanctuary, and Gore is lost.");
+  assert.equal(
+    say({ type: "sanctuary", actorId: "lurker", holderId: "brenna", label: "Gore", to: "corwin" }),
+    "Thorn Lurker is turned from Brenna by a sanctuary and makes Gore at Corwin.",
+  );
   assert.equal(
     say({ type: "averted", actorId: "brenna", holderId: "lurker", back: true }),
     "Brenna looks at Thorn Lurker again.",

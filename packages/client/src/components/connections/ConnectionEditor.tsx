@@ -2558,7 +2558,9 @@ export function ConnectionEditor() {
                 </p>
               </label>
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-[var(--muted-foreground)]">{t("tts.requestTimeout")}</span>
+                <span className="block text-xs font-medium text-[var(--muted-foreground)]">
+                  {t("tts.requestTimeout")}
+                </span>
                 <DraftNumberInput
                   ariaLabel={t("tts.requestTimeout")}
                   min={TTS_REQUEST_TIMEOUT_MS.min / 1000}

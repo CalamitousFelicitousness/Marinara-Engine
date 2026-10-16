@@ -54,7 +54,7 @@ The official server uses `http://localhost:8000` by default. Leave the **Base UR
 
 By default, Marinara waits up to 60 seconds for each spoken line. A voice server on your own computer, especially a laptop, can need longer for a long line. To wait longer, raise **Request timeout (seconds)** below **Model** in the card. You can set 10 to 3,600 seconds.
 
-An audio connection has its own **Request timeout (seconds)** field, below **Default Voice** in the connection editor. When chats speak through an audio connection, they use that connection's limit. The card's limit covers its own setup and its **Preview** button.
+An audio connection has its own **Request timeout (seconds)** field, below **Default Voice** in the connection editor. When chats speak through an audio connection, they use that connection's limit. The card's limit covers speech from the card's own settings, including its **Preview** button.
 
 If a line takes too long, the error says how many seconds Marinara waited and which setting to raise.
 

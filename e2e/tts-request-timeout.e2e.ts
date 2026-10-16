@@ -77,6 +77,7 @@ test("Request timeout saves on the Text to Speech card and on an audio connectio
     await expect
       .poll(async () => (await (await request.get(`/api/connections/${id}`)).json()).audioTimeoutMs)
       .toBe(240_000);
+    await expect(page.locator(".mari-editor-shell").getByText("Unsaved", { exact: true })).toBeHidden();
     await capture("audio-connection-request-timeout");
     await expect(await openConnection()).toHaveValue("240");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

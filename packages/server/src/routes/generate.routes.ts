@@ -837,7 +837,7 @@ import {
   type GameDicePoolTarget,
 } from "../services/game/dice-pool.service.js";
 import { createGameDicePoolsStorage } from "../services/storage/game-dice-pools.storage.js";
-import type { GameDiceTurnNotice } from "@marinara-engine/shared";
+import type { GameDiceTurnNotice, GenerationFallbackNotice } from "@marinara-engine/shared";
 import {
   applyMapUpdateCommand,
   getGameMapsFromMeta,
@@ -2616,6 +2616,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             conn.defaultParameters,
           ),
           primaryConnectionId: connId ?? conn.id,
+          primaryConnectionName: conn.name,
           fallbackConnection: mainFallbackConnection,
           fallbackBaseUrl: mainFallbackBaseUrl,
           category: "main",
@@ -4440,10 +4441,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           });
         }
 
-        let generationProviderOrigin: { model: string; provider: string } = {
+        let generationProviderOrigin: { model: string; provider: string; fallback?: GenerationFallbackNotice } = {
           model: conn.model,
           provider: conn.provider,
         };
+        // The reply keeps which connection failed before the fallback wrote it (#7697).
+        let mainFallbackNotice: GenerationFallbackNotice | undefined;
         const lorebookReferenceImages = new Set<string>();
         const lorebookImageNotices = new Set<LorebookImageNotice>();
         const notifyLorebookImages = (code: LorebookImageNotice) => {
@@ -4464,11 +4467,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           baseUrl,
           fallbackConnection: mainFallbackConnection,
           fallbackBaseUrl: mainFallbackBaseUrl,
-          onFallback,
+          onFallback: (notice) => {
+            mainFallbackNotice = notice;
+            return onFallback(notice);
+          },
           onProviderUsed: (origin) => {
             generationProviderOrigin =
               origin.kind === "fallback"
-                ? { model: origin.model, provider: origin.provider }
+                ? { model: origin.model, provider: origin.provider, fallback: mainFallbackNotice }
                 : { model: conn.model, provider: conn.provider };
           },
           chatMode,

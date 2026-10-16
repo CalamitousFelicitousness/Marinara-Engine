@@ -34,6 +34,7 @@ import {
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
 
 type GenerationConnection = {
+  name?: string | null;
   provider: string;
   model: string;
   apiKey: string;
@@ -323,6 +324,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     primary: primaryProvider,
     wrapProvider: args.wrapProvider,
     primaryConnectionId: args.connectionId,
+    primaryConnectionName: args.connection.name,
     fallbackConnection: args.fallbackConnection,
     fallbackBaseUrl: args.fallbackBaseUrl ?? "",
     category: "main",

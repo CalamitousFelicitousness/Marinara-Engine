@@ -1,3 +1,4 @@
+import type { GenerationFallbackNotice } from "@marinara-engine/shared";
 import type { LLMUsage } from "../../services/llm/base-provider.js";
 import { getVisibleCompletionTokens } from "../../services/generation/generation-text-utils.js";
 import { GAME_MARKET_PLACE_EXTRA } from "../../services/game/game-market.service.js";
@@ -13,7 +14,7 @@ export function buildGenerationInfoExtra(o: {
   marketWorldPlace: string | null | undefined;
   gameToolPlan: { usage?: LLMUsage | null } | null | undefined;
   gameToolConnection: { id: string; model: string; provider: string } | null | undefined;
-  generationProviderOrigin: { model: string; provider: string };
+  generationProviderOrigin: { model: string; provider: string; fallback?: GenerationFallbackNotice };
   temperature: number | undefined;
   effectiveMaxTokensForSend: number | undefined;
   suppressModelParameters: boolean;
@@ -118,6 +119,8 @@ export function buildGenerationInfoExtra(o: {
       reasoningDurationMs,
       finishReason: finishReason ?? null,
       contextFit: lastContextFit ?? null,
+      // generationInfo is replaced whole, so a reply without a fallback leaves no stale one behind.
+      ...(generationProviderOrigin.fallback ? { fallback: generationProviderOrigin.fallback } : {}),
     },
   };
   if (fullThinking) extraUpdate.thinking = fullThinking;

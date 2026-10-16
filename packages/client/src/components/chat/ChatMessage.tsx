@@ -115,6 +115,7 @@ import {
   sanitizeChatHtml,
 } from "../../lib/chat-html";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
+import { describeGenerationFallback } from "../../lib/generation-fallback-notice";
 import { CHARACTER_COLOR_CLASS, FALLBACK_DIALOGUE_CLASS } from "../../lib/chat-widget-colors";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
@@ -2513,6 +2514,9 @@ export const ChatMessage = memo(function ChatMessage({
     }
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [genInfo, showModelName, showTokenUsage, localizeUi]);
+  // Hovering the model shows which connection failed before the fallback wrote this reply (#7697).
+  const fallbackNote = genLabel ? describeGenerationFallback(genInfo?.fallback) : null;
+  const genTitle = fallbackNote ? `${genLabel}\n${fallbackNote}` : (genLabel ?? undefined);
   // useLayoutEffect runs after DOM mutation but before browser paint — prevents visible scroll jump
   useLayoutEffect(() => {
     // Restore scroll position saved before the state change
@@ -3952,7 +3956,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </span>
                 <span className="text-[0.625rem] text-white/30">{formatTime(message.createdAt)}</span>
                 {genLabel && (
-                  <span className="text-[0.5625rem] text-white/25 italic truncate max-w-[15.625rem]" title={genLabel}>
+                  <span className="text-[0.5625rem] text-white/25 italic truncate max-w-[15.625rem]" title={genTitle}>
                     {genLabel}
                   </span>
                 )}
@@ -4567,7 +4571,7 @@ export const ChatMessage = memo(function ChatMessage({
               {genLabel && (
                 <span
                   className="text-[0.5625rem] text-[var(--muted-foreground)]/40 italic truncate max-w-[15.625rem]"
-                  title={genLabel}
+                  title={genTitle}
                 >
                   {genLabel}
                 </span>

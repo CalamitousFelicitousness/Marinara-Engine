@@ -197,7 +197,10 @@ import {
   materializeAssistantSpatialState,
 } from "../services/spatial-context/state-resolution.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
-import { writeManualIllustratorPromptPlan } from "../services/generation/illustrator-manual-prompt-generation.js";
+import {
+  buildManualIllustratorCharacterPromptInstruction,
+  writeManualIllustratorPromptPlan,
+} from "../services/generation/illustrator-manual-prompt-generation.js";
 import {
   isRoleplayCommandEnabled,
   isRoleplayCommandAllowed,
@@ -12348,6 +12351,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     typeof agentContext.memory._illustratorImageStyleInstruction === "string"
                       ? agentContext.memory._illustratorImageStyleInstruction
                       : undefined,
+                  // Same NovelAI caption rules and appearance reference as the Illustration button.
+                  characterPromptInstruction: buildManualIllustratorCharacterPromptInstruction(
+                    context,
+                    typeof agentContext.memory._illustratorCharacterPromptInstruction === "string"
+                      ? agentContext.memory._illustratorCharacterPromptInstruction
+                      : undefined,
+                    agentContext.memory._illustratorCaptionAppearanceReference === true,
+                  ),
                 });
                 result = {
                   agentId: agent.id,

@@ -7516,6 +7516,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
         const generatedExpressionTargetIds = new Set<string>();
+        // Each Individual group reply, so it can carry its own character's expression (#7712).
+        const individualReplyTargets = new Map<string, { messageId: string; swipeIndex: number }>();
         const recordExpressionTarget = (savedMsg: any, fallbackCharacterId: string | null) => {
           const savedRole =
             typeof savedMsg?.role === "string" ? savedMsg.role : input.impersonate ? "user" : "assistant";
@@ -11260,6 +11262,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               allResponseSegments.push({ characterId: charId, characterName: charName, content: part.content });
             }
             recordExpressionTarget(genResult.savedMsg, charId);
+            if (typeof genResult.savedMsg?.id === "string")
+              individualReplyTargets.set(charId, {
+                messageId: genResult.savedMsg.id,
+                swipeIndex: genResult.savedSwipeIndex ?? genResult.savedMsg.activeSwipeIndex ?? 0,
+              });
             for (const cmd of genResult.commands) {
               collectedCommands.push({
                 command: cmd,
@@ -12522,6 +12529,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     ...(Object.keys(exprMap).length > 0 ? { spriteExpressions: exprMap } : {}),
                     expressionSpriteIds: persistedExpressions.map((entry) => entry.characterId),
                   });
+                  // The last reply keeps the whole turn's map, which marks the turn's sprites active (#6024).
+                  // Earlier Individual replies also get their own character's expression (#7712), marked as part
+                  // of a turn so the client never reads one as a whole finished turn.
+                  for (const [characterId, target] of individualReplyTargets) {
+                    const expression = exprMap[characterId];
+                    if (!expression || target.messageId === messageId) continue;
+                    try {
+                      await chats.updateMessageExtraForSwipe(target.messageId, target.swipeIndex, {
+                        spriteExpressions: { [characterId]: expression },
+                        expressionTurnPart: true,
+                      });
+                    } catch (err) {
+                      logger.warn(err, "[generate] Could not save the expression on reply %s", target.messageId);
+                    }
+                  }
                   if (Object.keys(personaExprMap).length > 0) {
                     const personaMessageId =
                       currentTurnUserMessageId ?? (await findLastUserMessageIdBefore(chats, input.chatId, messageId));

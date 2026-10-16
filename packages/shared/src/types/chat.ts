@@ -978,6 +978,8 @@ export interface MessageExtra {
   referencedCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
+  /** An earlier Individual group reply: its `spriteExpressions` hold only its own character, not the whole turn. */
+  expressionTurnPart?: boolean;
   /** Per-swipe CYOA choices from the CYOA Choices agent */
   cyoaChoices?: Array<{ label: string; text: string }> | null;
   /** Presentation-only Game Mode cues retained so completed turns can be replayed without rerunning scene analysis. */

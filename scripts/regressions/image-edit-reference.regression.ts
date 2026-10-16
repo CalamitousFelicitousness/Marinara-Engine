@@ -106,6 +106,7 @@ assert.equal(
     ["swarmui", "SwarmUI prompt images", true, takes("swarmui")],
     ["swarmui", "a SwarmUI workflow without a slot", false, takes("swarmui", { comfyWorkflow: textOnly })],
     ["swarmui", "a SwarmUI workflow with a slot", true, takes("swarmui", { comfyWorkflow: withReference })],
+    ["swarmui", "SwarmUI refuses file-name slots", false, takes("swarmui", { comfyWorkflow: withNumberedName })],
     ["runpod_comfyui", "a RunPod workflow without a slot", false, takes("runpod_comfyui", { comfyWorkflow: textOnly })],
     [
       "runpod_comfyui",

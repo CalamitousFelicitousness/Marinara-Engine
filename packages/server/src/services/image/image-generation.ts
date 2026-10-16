@@ -222,7 +222,10 @@ const REFERENCE_PICTURE_SUPPORT: Readonly<Record<string, boolean | ((target: Ref
   atlas: ({ model }) => atlasCloudImageModelTakesReference(model),
   // ComfyUI's built-in workflow is text-to-image; a workflow needs a reference placeholder.
   comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
-  swarmui: ({ comfyWorkflow }) => !comfyWorkflow.trim() || comfyWorkflowTakesReference(comfyWorkflow),
+  // SwarmUI takes pictures as prompt images, or in a workflow through %reference_image% only
+  // (buildSwarmUiGenerationBody refuses file-name slots).
+  swarmui: ({ comfyWorkflow }) =>
+    !comfyWorkflow.trim() || comfyWorkflowTakesReference(comfyWorkflow, ["reference_image"]),
   automatic1111: true,
   runpod_comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
   gemini_image: true,

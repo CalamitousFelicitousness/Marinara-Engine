@@ -128,6 +128,7 @@ try {
     assert.equal(capabilityModelId("claude-opus-4-6@thinking:on@effort:high"), "claude-opus-4-6");
     assert.equal(capabilityModelId("claude-opus-4-6 (high)"), "claude-opus-4-6");
     assert.equal(capabilityModelId("claude-opus-5-5 [1m]"), "claude-opus-5-5");
+    assert.equal(capabilityModelId("claude-opus-5-5 @thinking:high"), "claude-opus-5-5");
     assert.equal(supportsAnthropicThinkingDisable("claude-opus-5[1m]"), true);
     // Crafted 100k-character ids (connections can be imported) must not stall the scans.
     const started = performance.now();
@@ -144,6 +145,7 @@ try {
       "claude-opus-4-6@thinking:off",
       "claude-sonnet-4.5(none)",
       "claude-sonnet-4-5(free)",
+      "claude-sonnet-4-5(none)[free]",
       "claude-opus-4-6()",
       "claude-opus-4-6[1m]",
       "gemini-2.0-flash-thinking-exp",
@@ -159,6 +161,8 @@ try {
       "claude-opus-4-6-high",
       "claude-opus-4-6@thinking:16000",
       "claude-sonnet-4.5(high)",
+      "claude-sonnet-4-5(high)[free]",
+      "claude-opus-4-6@thinking:on[1m]",
       "gpt-5.4-high",
       "o3-mini-high",
     ]) {
@@ -244,7 +248,10 @@ try {
     for (const sampler of ["temperature", "top_k", "top_p"]) assert.equal(sampler in body, false, sampler);
 
     // Custom parameters cannot bring a sampler back for a thinking id.
-    await anthropic.chatComplete([{ role: "user", content: "Hi" }], { ...base, customParameters: { temperature: 0.2 } });
+    await anthropic.chatComplete([{ role: "user", content: "Hi" }], {
+      ...base,
+      customParameters: { temperature: 0.2 },
+    });
     body = requests.at(-1)!;
     assert.equal("temperature" in body, false, "custom temperature");
 

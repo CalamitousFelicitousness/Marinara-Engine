@@ -42,7 +42,7 @@ function stripModifierSuffix(id: string): string {
     }
     const at = t.lastIndexOf("@");
     if (at < 0 || t.indexOf("/", at) >= 0) break;
-    t = t.slice(0, at);
+    t = t.slice(0, at).trimEnd();
   }
   return t;
 }
@@ -63,13 +63,28 @@ export function capabilityModelId(model: string): string {
  * GPT-5 reject while reasoning runs. Thinking settings Marinara sends still apply where the proxy keeps them.
  */
 export function impliesProxyThinking(model: string): boolean {
-  const raw = model.trim().toLowerCase();
-  const at = raw.lastIndexOf("@thinking:");
-  if (at >= 0 && !raw.includes("@", at + 1)) return !["", "off", "none", "0"].includes(raw.slice(at + 10).trim());
-  const open = raw.lastIndexOf("(");
-  // A trailing `(…)` is a thinking level or budget; anything else, such as `(free)`, is a plain label.
-  if (raw.endsWith(")") && open >= 0 && !raw.slice(open + 1, -1).includes(")")) {
-    return /^(?:minimal|low|medium|high|xhigh|max|auto|[1-9]\d*)$/u.test(raw.slice(open + 1, -1).trim());
+  let raw = model.trim().toLowerCase();
+  // The modifier nearest the end that carries a thinking setting decides; plain labels such as `(free)` or `[1m]` are skipped.
+  for (let pass = 0; pass < 4; pass++) {
+    const closer = raw.trimEnd().slice(-1);
+    const open = Object.keys(BRACKET_PAIRS).find((o) => BRACKET_PAIRS[o] === closer);
+    const start = open ? raw.trimEnd().lastIndexOf(open) : -1;
+    if (start >= 0) {
+      const inner = raw
+        .trimEnd()
+        .slice(start + 1, -1)
+        .trim();
+      if (open === "(" || open === "（") {
+        if (/^(?:minimal|low|medium|high|xhigh|max|auto|[1-9]\d*)$/u.test(inner)) return true;
+        if (["none", "off", "0"].includes(inner)) return false;
+      }
+      raw = raw.slice(0, start);
+      continue;
+    }
+    const at = raw.lastIndexOf("@");
+    if (at < 0 || raw.indexOf("/", at) >= 0) break;
+    if (raw.startsWith("@thinking:", at)) return !["", "off", "none", "0"].includes(raw.slice(at + 10).trim());
+    raw = raw.slice(0, at);
   }
   const id = capabilityModelId(raw);
   return (

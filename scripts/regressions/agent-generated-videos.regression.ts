@@ -327,6 +327,8 @@ try {
   // video connection's instructions, instead of a generic line.
   assert.match(directorRequests.at(-1) ?? "", /<first_frame_generation_context>\\n1girl, lantern, rain/u);
   assert.match(directorRequests.at(-1) ?? "", /<video_prompting_instructions>[\s\S]*Describe one slow camera move\./u);
+  // The director's own system prompt asks for JSON and one shot; with instructions it is told they win.
+  assert.match(directorRequests.at(-1) ?? "", /The video prompting instructions in the request decide the output\./u);
   assert.equal(
     JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.text,
     "Lantern light sways as the scene moves",
@@ -440,6 +442,10 @@ try {
   assert.match(videoWriterRequests.at(-1) ?? "", /Context for the video message: waving from the bus/u);
   // Its instructions govern the format of every Conversation clip too.
   assert.match(videoWriterRequests.at(-1) ?? "", /These video-backend instructions govern the final video prompt/u);
+  assert.match(
+    videoWriterRequests.at(-1) ?? "",
+    /The video prompting instructions in the request decide the output\./u,
+  );
 
   // A bare [video] gives the writer the recent conversation, as /video does: the user's request and the reply.
   mainReply = "Here are the pinkish haloarchaea under my microscope! [video]";

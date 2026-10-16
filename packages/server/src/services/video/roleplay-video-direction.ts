@@ -5,6 +5,7 @@ import { loadPrompt, ROLEPLAY_CLIP_DIRECTOR, ROLEPLAY_GALLERY_VIDEO_DIRECTOR } f
 import {
   appendGoverningVideoPromptInstructions,
   normalizeVideoPromptInstructionsText,
+  withGoverningVideoFormat,
 } from "../generation/image-prompt-instructions.js";
 
 const ROLEPLAY_VIDEO_DIRECTION_MAX_LENGTH = 6_000;
@@ -61,7 +62,7 @@ export async function buildRoleplayVideoDirectionMessages(
     },
   );
   return [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: withGoverningVideoFormat(systemPrompt, ctx.videoPromptInstructions) },
     { role: "user", content: buildRoleplayVideoDirectionUserPrompt(ctx) },
   ];
 }

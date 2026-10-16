@@ -31,3 +31,13 @@ export function appendGoverningVideoPromptInstructions(prompt: string, instructi
 export function normalizeVideoPromptInstructionsText(instructions: unknown): string {
   return normalizeImagePromptInstructions(instructions) ?? "";
 }
+
+/**
+ * The writer's own (editable) system prompt names a format of its own, such as JSON or one continuous shot. When the
+ * video connection has instructions, this closing line makes them win at the system level too.
+ */
+export function withGoverningVideoFormat(systemPrompt: string, instructions: unknown): string {
+  return normalizeImagePromptInstructions(instructions)
+    ? `${systemPrompt}\n\nThe video prompting instructions in the request decide the output. Return the finished video prompt as plain text in their exact format, fields and line breaks, even where this prompt asks for JSON, a single shot or one paragraph.`
+    : systemPrompt;
+}

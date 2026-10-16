@@ -41,6 +41,7 @@ try {
   // No picture shows the moment, so the Clip Director writes the clip from Illustrator's scene and motion.
   const clipRequest = requests.director.at(-1) ?? "";
   assert.match(clipRequest, /No picture of this moment exists/u, "the Clip Director writes it");
+  assert.doesNotMatch(clipRequest, /decide the output/u, "with no instructions, the director's own format stands");
   assert.match(clipRequest, /Requested clip: 1girl, porch, dusk\\nAster waves slowly/u, "with the scene and motion");
   assert.equal(h.lastComfyInputs()?.text, "Bottles burst across the lab floor", "its prompt is what is sent");
 

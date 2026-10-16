@@ -12524,13 +12524,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     expressionSpriteIds: persistedExpressions.map((entry) => entry.characterId),
                   });
                   // The last reply keeps the whole turn's map, which marks the turn's sprites active (#6024).
-                  // Earlier Individual replies also get their own character's expression (#7712).
+                  // Earlier Individual replies also get their own character's expression (#7712), marked as part
+                  // of a turn so the client never reads one as a whole finished turn.
                   for (const [characterId, target] of individualReplyTargets) {
                     const expression = exprMap[characterId];
                     if (!expression || target.messageId === messageId) continue;
                     try {
                       await chats.updateMessageExtraForSwipe(target.messageId, target.swipeIndex, {
                         spriteExpressions: { [characterId]: expression },
+                        expressionTurnPart: true,
                       });
                     } catch (err) {
                       logger.warn(err, "[generate] Could not save the expression on reply %s", target.messageId);

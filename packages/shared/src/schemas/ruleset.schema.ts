@@ -3220,7 +3220,7 @@ const blowOnlyOnHit = (
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [...path, "blow"],
-      message: '"blow" says what kind of attack opens the moment, so it is on a "hit" or "attacked" moment',
+      message: '"blow" says what kind of hit or attack opens the moment, so it is on a "hit" or "attacked" moment',
     });
   }
   if (moment.missed && moment.on !== "attacked") {

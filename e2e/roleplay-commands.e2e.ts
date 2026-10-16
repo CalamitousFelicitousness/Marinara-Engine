@@ -2379,7 +2379,11 @@ test("Render in-line shows each illustrate command's images where the command wa
     const body = JSON.parse(data.toString("utf8"));
     const prompt = contentOf(body);
     const content = prompt.includes("You are the Illustrator prompt writer")
-      ? JSON.stringify({ prompt: "INLINE_PROMPT_FIXTURE", style: "ink sketch", aspectRatio: "landscape" })
+      ? JSON.stringify({
+          prompt: prompt.includes("A lecture hall filling up") ? "LECTURE_HALL_PROMPT" : "PIGEON_PHONE_PROMPT",
+          style: "ink sketch",
+          aspectRatio: "landscape",
+        })
       : (chatRequests.push(body), output);
     if (body.stream) {
       response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
@@ -2503,12 +2507,15 @@ test("Render in-line shows each illustrate command's images where the command wa
       contentType: "image/png",
     });
 
-    // Selecting an image still opens it with its prompt.
-    await placed
-      .first()
-      .getByRole("button", { name: /^Open /u })
-      .click();
-    await expect(page.getByText("INLINE_PROMPT_FIXTURE").first()).toBeVisible();
+    // Selecting each image still opens it with the prompt of the command written at its place.
+    for (const [index, expected] of ["LECTURE_HALL_PROMPT", "PIGEON_PHONE_PROMPT"].entries()) {
+      if (index > 0) await page.keyboard.press("Escape");
+      await placed
+        .nth(index)
+        .getByRole("button", { name: /^Open /u })
+        .click();
+      await expect(page.getByText(expected).first()).toBeVisible();
+    }
     await testInfo.attach(`roleplay-inline-illustration-lightbox-${testInfo.project.name}.png`, {
       body: await page.screenshot({
         animations: "disabled",

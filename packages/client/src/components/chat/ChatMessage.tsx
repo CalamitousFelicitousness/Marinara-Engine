@@ -3115,7 +3115,8 @@ export const ChatMessage = memo(function ChatMessage({
             onClick={() => handleRemoveAttachment(i)}
             aria-label={localizeUi("ui.chat.chatmessage.removeImageFromMessage")}
             title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
-            className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white sm:opacity-0 sm:group-hover/att:opacity-100"
+            // Touch screens have no hover, so the remove button stays shown there with a larger target.
+            className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white/100 pointer-coarse:p-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/att:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
           >
             <X size="0.875rem" />
           </button>

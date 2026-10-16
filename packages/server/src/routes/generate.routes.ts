@@ -759,6 +759,10 @@ import {
   startConversationVideoCommand,
 } from "../services/generation/conversation-video-runtime.js";
 import { writeRoleplayClipDirection } from "../services/video/roleplay-clip-writer.js";
+import {
+  formatVideoAppearanceDetails,
+  videoInstructionsUseAppearance,
+} from "../services/video/appearance-reference.js";
 import { formatRecentVideoContext } from "../services/video/prompt-context.js";
 import {
   animateGalleryImage,
@@ -4724,6 +4728,30 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // A Roleplay clip's video prompt, written to the video connection's Video Prompting Instructions from the
         // recent messages up to its reply: the Clip Director for a clip with no picture of its own, the Gallery
         // animation director to continue a picture. `request` is what the clip should show (a scene, a motion).
+        // Attach Card Appearance for videos, with instructions that speak to appearance: everyone in the scene
+        // (characters and persona) with their appearance details, for the clip's writer to build in.
+        const clipAppearanceDetails = async (instructions: unknown) => {
+          if (chatMeta.illustratorVideoIncludeCharacterAppearance !== true) return "";
+          if (!videoInstructionsUseAppearance(instructions)) return "";
+          const cast = illustratorCast();
+          const names = [
+            ...cast.chatCharacters.map((character) => character.name),
+            ...(cast.persona ? [cast.persona.name] : []),
+          ];
+          const resolution = await resolveIllustratorCharacterReferences({
+            charactersStore: chars,
+            characterGallery,
+            personaGallery,
+            ...cast,
+            requestedNames: names,
+            promptText: names.join("\n"),
+            fallbackToChatCharacters: true,
+            includeReferenceImages: false,
+            maxReferences: 12,
+          });
+          return formatVideoAppearanceDetails(resolution.appearanceBlock);
+        };
+        let clipSetup: Awaited<ReturnType<typeof resolveChatVideoSetup>> | undefined;
         const writeClipPrompt = async (opts: {
           messageId: string;
           request: string;
@@ -4733,7 +4761,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           writeRoleplayClipDirection(app.db, {
             chat,
             meta: chatMeta,
-            setup: await resolveChatVideoSetup(app.db, chatMeta),
+            setup: (clipSetup ??= await resolveChatVideoSetup(app.db, chatMeta)),
             sourceExchange: [
               opts.request ? `Requested clip: ${opts.request}` : "",
               formatRecentVideoContext(await chats.listMessages(input.chatId), {
@@ -4745,6 +4773,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               .join("\n\n"),
             referenceImagePrompt: opts.referenceImagePrompt,
             characterNames: charInfo.map((character) => character.name),
+            appearanceDetails: await clipAppearanceDetails(
+              (clipSetup ??= await resolveChatVideoSetup(app.db, chatMeta)).videoConn.videoPromptInstructions,
+            ),
             withoutPicture: opts.withoutPicture,
             debugMode: input.debugMode,
           });
@@ -7002,6 +7033,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               memory._generatedVideos = {
                 instructions: normalizeVideoPromptInstructions(videoConnection.videoPromptInstructions) ?? "",
                 clipsOnly: illustratorVideoMode === "clips_only",
+                // Attach Card Appearance for videos, with instructions that speak to appearance: the agent builds
+                // everyone's appearance into its videoPrompt (otherwise the lines are added after it).
+                describeAppearance:
+                  chatMeta.illustratorVideoIncludeCharacterAppearance === true &&
+                  videoInstructionsUseAppearance(videoConnection.videoPromptInstructions),
               };
             }
           }
@@ -14716,6 +14752,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 // A clip takes minutes; it finishes after "done" while the stream stays open for media.
                 const videoMessage = startConversationVideoCommand({
                   command,
+                  persona: illustratorCast().persona,
                   characterId,
                   chatId: input.chatId,
                   messageId,

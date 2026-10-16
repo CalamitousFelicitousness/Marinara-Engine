@@ -36,6 +36,7 @@ import { createAgentsStorage } from "../storage/agents.storage.js";
 import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveSceneVideoPrompt } from "../video/scene-video-prompt-review.js";
 import { attachVideoToMessage, buildChatVideoAttachment } from "../video/chat-video-messages.js";
+import { formatVideoAppearanceDetails, videoInstructionsUseAppearance } from "../video/appearance-reference.js";
 import { resolveBaseUrl } from "./connection-base-url.js";
 import {
   handleConversationSelfieCommand,
@@ -188,6 +189,34 @@ export async function generateConversationVideo(args: {
           : `Write a short video message from ${characterName} that fits the current conversation.`,
       );
     }
+    // Attach Card Appearance for videos: everyone in the chat (and the persona) with their appearance details, for
+    // the writer to build into the prompt in its format; nothing is pasted after it.
+    if (
+      args.chatMeta.selfieVideoIncludeCharacterAppearance === true &&
+      videoInstructionsUseAppearance(videoConn.videoPromptInstructions)
+    ) {
+      const everyone = [
+        ...args.charInfo.map((character) => character.name),
+        ...(args.persona ? [args.persona.name] : []),
+      ];
+      const details = await resolveIllustratorCharacterReferences({
+        charactersStore: createCharactersStorage(args.db),
+        chatCharacters: args.charInfo.map((character) => ({
+          id: character.id,
+          name: character.name,
+          avatarPath: character.avatarPath,
+          appearance: character.appearance,
+        })),
+        persona: args.persona ?? null,
+        requestedNames: everyone,
+        promptText: everyone.join("\n"),
+        fallbackToChatCharacters: true,
+        includeReferenceImages: false,
+        maxReferences: 12,
+      });
+      const block = formatVideoAppearanceDetails(details.appearanceBlock);
+      if (block) parts.push(block);
+    }
     const request = parts.join("\n\n");
     const user = appendGoverningVideoPromptInstructions(request, videoConn.videoPromptInstructions);
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] prompt-builder system:\n%s", system);
@@ -224,14 +253,19 @@ export async function generateConversationVideo(args: {
       );
     }
   }
-  // Matched once, from the writer's prompt; a reviewed prompt already carries the appearance lines.
+  // Matched once, from the writer's prompt. Instructions that speak to appearance had it built in; otherwise the
+  // named people's appearance lines go after the prompt. A reviewed prompt already carries them.
   const shown = await resolveVideoCharacters({
     ...args,
     characterName,
     prompt,
     picturePrompt: plan.kind === "gallery" ? plan.picturePrompt : undefined,
   });
-  if (!args.promptOverride?.trim() && args.chatMeta.selfieVideoIncludeCharacterAppearance === true) {
+  if (
+    !args.promptOverride?.trim() &&
+    args.chatMeta.selfieVideoIncludeCharacterAppearance === true &&
+    !videoInstructionsUseAppearance(videoConn.videoPromptInstructions)
+  ) {
     if (shown.appearanceBlock) prompt = `${prompt}\n\n${shown.appearanceBlock}`;
   }
   prompt = resolveSceneVideoPrompt({
@@ -549,6 +583,8 @@ export function startConversationVideoCommand(args: {
   swipeIndex: number | null;
   chatMeta: Record<string, unknown>;
   charInfo: PromptCharacter[];
+  /** The chat's persona, for its appearance details and gallery. */
+  persona?: IllustratorPersonaReference | null;
   promptConnection: IllustratorPromptConnection;
   promptConnectionId: string;
   debugMode?: boolean;
@@ -565,6 +601,7 @@ export function startConversationVideoCommand(args: {
       // so a clip the user asked for shows what they asked for even when the reply jokes around it.
       const context = args.command.context?.trim() || undefined;
       const result = await generateConversationVideo({
+        persona: args.persona ?? null,
         db: args.db,
         chatId: args.chatId,
         chatMeta: args.chatMeta,

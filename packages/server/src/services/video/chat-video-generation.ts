@@ -21,6 +21,7 @@ import { getSharp } from "../../utils/sharp.js";
 import { resolveSceneVideoConnectionId, serializeSceneVideo } from "./chat-video-messages.js";
 import { resolveGameVideoRuntime } from "./game-video-runtime.js";
 import { resolveSceneVideoPrompt } from "./scene-video-prompt-review.js";
+import { videoInstructionsUseAppearance } from "./appearance-reference.js";
 import { generateVideo, removeSavedVideoFromDisk, saveVideoToDisk } from "./video-generation.js";
 
 /** A problem the user can fix (missing connection, unusable picture); `statusCode` suits an HTTP reply. */
@@ -183,7 +184,10 @@ export async function animateGalleryImage(
   const referenceImage = await toVideoReferenceImage(readFileSync(path).toString("base64"));
   // A sentence of the connection's instructions the writer copied word for word is not video-model text.
   let prompt = removeCopiedPromptGuidance(args.motionPrompt.trim(), [setup.videoConn.videoPromptInstructions]);
-  if (args.appearanceBlock) prompt = `${prompt}\n\n${args.appearanceBlock}`;
+  // Instructions that speak to appearance had the writer build it in; otherwise the lines go after the prompt.
+  if (args.appearanceBlock && !videoInstructionsUseAppearance(setup.videoConn.videoPromptInstructions)) {
+    prompt = `${prompt}\n\n${args.appearanceBlock}`;
+  }
   prompt = resolveSceneVideoPrompt({
     generatedPrompt: prompt,
     maxPromptLength: setup.runtime.promptLimits.finalPrompt,
@@ -252,7 +256,10 @@ export async function generateRoleplayClip(
     );
   }
   let prompt = removeCopiedPromptGuidance(args.prompt.trim(), [setup.videoConn.videoPromptInstructions]);
-  if (args.appearanceBlock) prompt = `${prompt}\n\n${args.appearanceBlock}`;
+  // Instructions that speak to appearance had the writer build it in; otherwise the lines go after the prompt.
+  if (args.appearanceBlock && !videoInstructionsUseAppearance(setup.videoConn.videoPromptInstructions)) {
+    prompt = `${prompt}\n\n${args.appearanceBlock}`;
+  }
   prompt = resolveSceneVideoPrompt({
     generatedPrompt: prompt,
     maxPromptLength: setup.runtime.promptLimits.finalPrompt,

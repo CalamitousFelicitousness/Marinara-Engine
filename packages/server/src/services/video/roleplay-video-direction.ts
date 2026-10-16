@@ -21,6 +21,8 @@ export interface RoleplayVideoDirectionContext {
   videoPromptInstructions?: string | null;
   /** The clip has no picture of this moment (text to video, or starting from an avatar): describe the scene. */
   withoutPicture?: boolean;
+  /** Attach Card Appearance for videos: the people's appearance details to build in (formatVideoAppearanceDetails). */
+  appearanceDetails?: string;
 }
 
 export type RoleplayVideoDirectionMessages = [{ role: "system"; content: string }, { role: "user"; content: string }];
@@ -38,6 +40,7 @@ export function buildRoleplayVideoDirectionUserPrompt(ctx: RoleplayVideoDirectio
     referenceImagePrompt
       ? `<first_frame_generation_context>\n${referenceImagePrompt}\n</first_frame_generation_context>`
       : "",
+    ctx.appearanceDetails?.trim() ?? "",
     normalizeVideoPromptInstructionsText(ctx.videoPromptInstructions)
       ? "Write the clip's video prompt exactly as the video prompting instructions below say; it may be returned as plain text instead of JSON."
       : ctx.withoutPicture

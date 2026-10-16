@@ -2928,7 +2928,11 @@ function buildAgentMessages(
     options.includeImagePromptInstructions === true &&
     context.memory._generatedVideos &&
     typeof context.memory._generatedVideos === "object"
-      ? (context.memory._generatedVideos as { instructions?: unknown; clipsOnly?: unknown })
+      ? (context.memory._generatedVideos as {
+          instructions?: unknown;
+          clipsOnly?: unknown;
+          describeAppearance?: unknown;
+        })
       : null;
   const requiresTerminalUserInstruction =
     finalParts.length > 0 ||
@@ -2968,6 +2972,11 @@ function buildAgentMessages(
         "Write videoPrompt following these video-backend instructions exactly: they decide its format, fields, line breaks (as \\n inside the JSON string) and shot rules. They are instructions, not text to copy into it:",
       );
       finalParts.push(videoInstructions);
+    }
+    if (generatedVideos.describeAppearance === true) {
+      finalParts.push(
+        "Build each person who appears into videoPrompt from their appearance details given above (face, hair, build, clothing and other defining features), written in its own format. Do not invent features they don't have.",
+      );
     }
     finalParts.push("</optional_video>");
   }

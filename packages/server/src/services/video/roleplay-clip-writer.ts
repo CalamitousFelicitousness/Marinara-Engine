@@ -53,6 +53,8 @@ export async function writeRoleplayClipDirection(
     /** The picture the clip starts from, when there is one. */
     referenceImagePrompt?: string;
     characterNames: string[];
+    /** Attach Card Appearance for videos: the people's appearance details to build in (formatVideoAppearanceDetails). */
+    appearanceDetails?: string;
     withoutPicture: boolean;
     debugMode?: boolean;
     signal?: AbortSignal;
@@ -86,6 +88,7 @@ export async function writeRoleplayClipDirection(
     setting: buildRoleplayVideoSettingLine(args.chat, args.meta, runtime.promptLimits.artStyle),
     videoPromptInstructions: videoConn.videoPromptInstructions,
     withoutPicture: args.withoutPicture,
+    appearanceDetails: args.appearanceDetails,
   });
   const debug = args.debugMode === true || isDebugAgentsEnabled();
   logDebugOverride(

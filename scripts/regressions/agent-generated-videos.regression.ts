@@ -22,6 +22,7 @@ const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -123,6 +124,7 @@ const app = Fastify();
 app.decorate("db", db);
 await app.register(generateRoutes, { prefix: "/api/generate" });
 await app.register(chatsRoutes, { prefix: "/api/chats" });
+await app.register(connectionsRoutes, { prefix: "/api/connections" });
 const chats = createChatsStorage(db);
 
 // The Generated Videos toggles are saved through Chat Settings' own route, and each comes back as sent.
@@ -458,6 +460,52 @@ try {
     "the user's request and the reply both reach the writer",
   );
   assert.doesNotMatch(videoWriterRequests.at(-1) ?? "", /Context for the video message/u);
+  // ── Attach Card Appearance for videos ──
+  // Instructions that speak to appearance: the writer gets everyone's appearance details to build in, and nothing is
+  // pasted after the prompt. Instructions that don't: the named people's lines are pasted after it, as before.
+  const mira = await createCharactersStorage(db).create(
+    characterDataSchema.parse({ name: "Mira", extensions: { appearance: "silver braid, green coat" } }),
+  );
+  const rae = await createCharactersStorage(db).createPersona("Rae", "The player.", undefined, {
+    appearance: "short red hair, denim jacket",
+  });
+  assert.ok(mira && rae);
+  const looks = await chats.create({
+    name: "Looks",
+    mode: "conversation",
+    characterIds: [mira.id],
+    personaId: rae.id,
+    connectionId: text.id,
+  });
+  assert.ok(looks);
+  await saveChatSettings(looks.id, {
+    ...convoMeta,
+    conversationCommandToggles: { video: true },
+    selfieVideoIncludeCharacterAppearance: true,
+  });
+  const setInstructions = async (videoPromptInstructions: string) => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/connections/${video.id}`,
+      payload: { videoPromptInstructions },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+  };
+  const comfyText = () => String(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.text);
+  await setInstructions("Describe every person from their appearance fields.");
+  mainReply = 'Here! [video: context="waving at Mira"]';
+  await generate(looks.id, "Send me a video, Mira!");
+  assert.match(
+    videoWriterRequests.at(-1) ?? "",
+    /<character_appearance>[\s\S]*Mira's Appearance: silver braid, green coat/u,
+  );
+  assert.match(videoWriterRequests.at(-1) ?? "", /Rae's Appearance: short red hair, denim jacket/u, "the persona too");
+  assert.doesNotMatch(comfyText(), /Appearance:/u, "built in by the writer, not pasted after the prompt");
+  await setInstructions("Describe one slow camera move.");
+  await generate(looks.id, "Another one, Mira!");
+  assert.doesNotMatch(videoWriterRequests.at(-1) ?? "", /<character_appearance>/u);
+  assert.match(comfyText(), /Mira's Appearance: silver braid, green coat/u, "pasted after the prompt, as before");
+
   console.log("agent-generated-videos regression passed");
 } finally {
   await app.close();

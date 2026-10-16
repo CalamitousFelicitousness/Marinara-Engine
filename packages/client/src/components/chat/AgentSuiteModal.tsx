@@ -437,7 +437,7 @@ function DataBlock({
       )}
 
       {(error ?? jsonError) && (
-        <div role="alert" className="mt-1.5 text-[0.5625rem] text-[var(--destructive)]">
+        <div role="alert" className="mt-1.5 text-[0.5625rem] text-[var(--marinara-app-accent-static)]">
           {error ?? jsonError}
         </div>
       )}

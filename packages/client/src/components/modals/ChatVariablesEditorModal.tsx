@@ -138,7 +138,7 @@ export function ChatVariablesEditorModal({ open, onClose, chatId }: ChatVariable
         </div>
       ) : variablesQuery.isError || !variables ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center text-sm text-[var(--muted-foreground)]">
-          <AlertTriangle size="1.25rem" className="text-[var(--destructive)]" />
+          <AlertTriangle size="1.25rem" className="text-[var(--marinara-app-accent-static)]" />
           {localizeUi("ui.stateEditor.chatVariables.loadFailed")}
           <button
             type="button"

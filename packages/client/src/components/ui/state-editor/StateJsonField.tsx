@@ -52,7 +52,7 @@ export function StateJsonField({
         "grid overflow-hidden rounded-lg bg-[var(--background)] ring-1 focus-within:ring-2",
         compact ? "grid-cols-[2.25rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]",
         invalid
-          ? "ring-[var(--destructive)]/50 focus-within:ring-[var(--destructive)]/70"
+          ? "ring-[var(--marinara-app-accent-static)]/50 focus-within:ring-[var(--marinara-app-accent-static)]/70"
           : "ring-[var(--border)] focus-within:ring-[var(--ring)]",
         disabled && "opacity-60",
         className,

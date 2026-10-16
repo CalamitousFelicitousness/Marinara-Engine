@@ -209,7 +209,7 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
         {status?.kind === "invalid" ? (
           <AlertTriangle
             size="0.75rem"
-            className="shrink-0 text-[var(--destructive)]"
+            className="shrink-0 text-[var(--marinara-app-accent-static)]"
             aria-label={localizeUi("ui.stateEditor.sections.invalid")}
           />
         ) : status?.kind === "changed" ? (
@@ -320,7 +320,7 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
         {activeStatus?.kind === "invalid" ? (
           <div
             role="alert"
-            className="flex items-center gap-2 rounded-lg bg-[var(--destructive)]/10 px-3 py-2 text-xs text-[var(--destructive)] ring-1 ring-[var(--destructive)]/30"
+            className="flex items-center gap-2 rounded-lg bg-[var(--marinara-app-accent-static)]/10 px-3 py-2 text-xs text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/30"
           >
             <AlertTriangle size="0.875rem" className="shrink-0" />
             <span className="min-w-0 break-words">{activeStatus.error}</span>
@@ -370,7 +370,7 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
       {saveError ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg bg-[var(--destructive)]/10 px-3 py-2 text-xs text-[var(--destructive)] ring-1 ring-[var(--destructive)]/30"
+          className="flex items-start gap-2 rounded-lg bg-[var(--marinara-app-accent-static)]/10 px-3 py-2 text-xs text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/30"
         >
           <AlertTriangle size="0.875rem" className="mt-px shrink-0" />
           <span className="min-w-0 break-words">{saveError}</span>
@@ -445,7 +445,7 @@ export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSub
           <p
             className={cn(
               "text-xs font-semibold",
-              invalidSectionIds.length > 0 ? "text-[var(--destructive)]" : "text-[var(--foreground)]",
+              invalidSectionIds.length > 0 ? "text-[var(--marinara-app-accent-static)]" : "text-[var(--foreground)]",
             )}
           >
             {footerStatus}

@@ -2,7 +2,7 @@
 // Game State Editor — the State Editor opened on a roleplay chat's current
 // game state (what the tracker agents read back as <current_game_state>).
 // ──────────────────────────────────────────────
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, History, Loader2, RefreshCw } from "lucide-react";
 import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -90,14 +90,16 @@ function findSnapshotMessage(
 function SnapshotLabel({ chatId, snapshot }: { chatId: string; snapshot: GameState }) {
   const { t: localizeUi } = useUiTranslation();
   const qc = useQueryClient();
-  const info = useMemo(() => {
-    if (!snapshot.messageId) return null;
-    return findSnapshotMessage(
-      qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(chatId))?.pages,
-      qc.getQueryData<{ count: number }>(chatKeys.messageCount(chatId))?.count,
-      snapshot.messageId,
-    );
-  }, [chatId, qc, snapshot.messageId]);
+  // Subscribe to the chat's message caches, so the label fills in if they load after the snapshot.
+  const messagesKey = useMemo(() => chatKeys.messages(chatId), [chatId]);
+  const countKey = useMemo(() => chatKeys.messageCount(chatId), [chatId]);
+  const subscribe = useCallback((onChange: () => void) => qc.getQueryCache().subscribe(onChange), [qc]);
+  const pages = useSyncExternalStore(subscribe, () => qc.getQueryData<InfiniteData<Message[]>>(messagesKey)?.pages);
+  const totalCount = useSyncExternalStore(subscribe, () => qc.getQueryData<{ count: number }>(countKey)?.count);
+  const info = useMemo(
+    () => (snapshot.messageId ? findSnapshotMessage(pages, totalCount, snapshot.messageId) : null),
+    [pages, snapshot.messageId, totalCount],
+  );
 
   if (!snapshot.messageId) {
     return (
@@ -238,7 +240,7 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
         </div>
       ) : gameStateQuery.isError ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center text-sm text-[var(--muted-foreground)]">
-          <AlertTriangle size="1.25rem" className="text-[var(--destructive)]" />
+          <AlertTriangle size="1.25rem" className="text-[var(--marinara-app-accent-static)]" />
           {localizeUi("ui.stateEditor.gameState.loadFailed")}
           <button
             type="button"
@@ -266,7 +268,7 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
               {turnMovedOn ? (
                 <div
                   role="alert"
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-[var(--destructive)]/10 px-3 py-2 text-xs text-[var(--destructive)] ring-1 ring-[var(--destructive)]/30"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-[var(--marinara-app-accent-static)]/10 px-3 py-2 text-xs text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/30"
                 >
                   <AlertTriangle size="0.875rem" className="shrink-0" />
                   <span className="min-w-0 flex-1">{localizeUi("ui.stateEditor.gameState.turnMovedOnNotice")}</span>

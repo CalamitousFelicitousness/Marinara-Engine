@@ -20,8 +20,12 @@ process.env.IMAGE_LOCAL_URLS_ENABLED = "true";
 
 const { logger } = await import("../../packages/server/src/lib/logger.js");
 const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
-const { IMAGE_EDIT_UNSUPPORTED_MESSAGE, generateImage, imageConnectionTakesReferencePicture } =
-  await import("../../packages/server/src/services/image/image-generation.js");
+const {
+  IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE,
+  IMAGE_EDIT_UNSUPPORTED_MESSAGE,
+  generateImage,
+  imageConnectionTakesReferencePicture,
+} = await import("../../packages/server/src/services/image/image-generation.js");
 const { AvatarGenerationError, drawAvatarImageEdit, resolveAvatarImageConnection } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
@@ -290,6 +294,20 @@ try {
     ["/spicy/api/v1/models/acme/text/text-to-image"],
     "no task is created for a model that would redraw",
   );
+  // A picture too large to fit SpicyAPI's inline limit, and too broken to shrink, is dropped: the error says so
+  // instead of claiming the model can't edit pictures, and no task is made.
+  requests.length = 0;
+  await assert.rejects(
+    generateImage("spicyapi", `${base}/spicy`, "fixture-key", "spicyapi", {
+      prompt: "Close both eyes.",
+      model: "acme/picture/edit",
+      referenceImage: Buffer.alloc(1_200_000, 7).toString("base64"),
+      referenceIsCanvas: true,
+      allowLocalUrls: true,
+    }),
+    { message: IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE },
+  );
+  assert.ok(!requests.some((url) => url.includes("createTask")), "no task for a picture that didn't fit");
   requests.length = 0;
   await assert.rejects(spicy("acme/picture/edit"), /fixture stops here/u);
   assert.ok(

@@ -243,6 +243,10 @@ function imageHostname(baseUrl: string): string {
 export const IMAGE_EDIT_UNSUPPORTED_MESSAGE =
   "This image connection can't edit pictures. Choose one that accepts a reference picture.";
 
+/** Shown when an edit's picture is too large for the image connection, which does take pictures. */
+export const IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE =
+  "The picture is too large for this image connection to edit. Use a smaller picture or another connection.";
+
 /** Whether an image connection, given as generateImage receives it, sends a reference picture to its model. */
 export function imageConnectionTakesReferencePicture(connection: {
   source: string;
@@ -1788,10 +1792,12 @@ async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageG
     }),
   );
   const body = { model, input };
+  const takesPicture = input.image_urls !== undefined || input.image_url !== undefined;
   await fitSpicyApiReferences(body);
-  // Checked before the task is made, so a model without a picture input never bills a redrawn edit.
+  // Checked before the task is made, so a model without a picture input never bills a redrawn edit. A model
+  // that takes one but lost every reference to the size limits gets a size error instead.
   if (request.referenceIsCanvas && input.image_urls === undefined && input.image_url === undefined) {
-    throw new Error(IMAGE_EDIT_UNSUPPORTED_MESSAGE);
+    throw new Error(takesPicture ? IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE : IMAGE_EDIT_UNSUPPORTED_MESSAGE);
   }
   logDebugOverride(
     request.debugMode === true,

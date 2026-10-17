@@ -136,6 +136,8 @@ Auto-play fires only once, on the newest reply, at the moment it finishes. It do
 
 The same playback settings also let you **Skip text inside HTML and custom tags**, **Skip fenced code blocks**, or **Skip text inside square brackets**. Code blocks are skipped by default; the other two filters start off. Tag filtering removes the enclosed text, such as a hidden `<simulation>...</simulation>` block, while preserving speaker tags used to select voices. These filters apply to manual playback and auto-play, including Game narration and Roleplay speaker extraction.
 
+When **Enable emotion indicators** is on, square-bracketed delivery cues are kept in speech even if **Skip text inside square brackets** is enabled. Cues can describe nuanced delivery, such as `[Low, steady voice, restrained urgency]` or `[Quietly, with controlled fear]`, and remain intact when long speech is split into audio requests. Internal speaker and scene-format markers are still removed. The Roleplay formatter adds cues without rewriting the dialogue; with Game auto-play enabled, Game scene, party, and combat dialogue prompts also request them in the existing generation calls. How the cues sound depends on the selected speech model.
+
 ## Speaking a single message
 
 Once TTS is on, a **Speak** button (a microphone icon) appears in the toolbar under each character or narrator message. It reads that one message on demand.

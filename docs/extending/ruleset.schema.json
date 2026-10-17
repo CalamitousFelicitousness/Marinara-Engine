@@ -37540,6 +37540,11 @@
                           "$comment": {}
                         }
                       },
+                      "standsFor": {
+                        "type": "string",
+                        "maxLength": 81,
+                        "pattern": "^[^/]+\\/[^/]+$"
+                      },
                       "$comment": {}
                     },
                     "required": [

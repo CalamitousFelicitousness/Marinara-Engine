@@ -21,6 +21,7 @@
 
 import {
   RULESET_CATALOG_ROW_KEY,
+  RULESET_STANDS_FOR_ROW_KEY,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
   type RulesetCombatThreatTier,
@@ -130,7 +131,11 @@ function addCompanionRows(
     if (!list) continue;
     const rows = (sheet.lists[row.list] ??= []);
     if (rows.length >= list.maxItems || rows.some((existing) => existing[RULESET_CATALOG_ROW_KEY] === mark)) continue;
-    rows.push({ ...row.values, [RULESET_CATALOG_ROW_KEY]: mark });
+    rows.push({
+      ...row.values,
+      [RULESET_CATALOG_ROW_KEY]: mark,
+      ...(row.standsFor ? { [RULESET_STANDS_FOR_ROW_KEY]: row.standsFor } : {}),
+    });
   }
 }
 
@@ -225,7 +230,8 @@ export function readProposedRulesetSheet(
         if (value !== undefined) own[column.id] = value;
       }
       const found = entryFor(definition, list, row as Record<string, unknown>, catalogs);
-      const entryValues = found?.entry.rows?.find((entryRow) => entryRow.list === list.id)?.values ?? {};
+      const entryRow = found?.entry.rows?.find((candidate) => candidate.list === list.id);
+      const entryValues = entryRow?.values ?? {};
       const nameColumn = nameColumnOf(list);
       // The Game Master's own values on top of the entry's, except its name, which is the entry's:
       // "ember lance" is Ember Lance, and the sheet's `use` command knows it by that name.
@@ -237,6 +243,7 @@ export function readProposedRulesetSheet(
               ? { [nameColumn.id]: entryValues[nameColumn.id]! }
               : {}),
             [RULESET_CATALOG_ROW_KEY]: `${found.catalogId}/${found.entry.id}`,
+            ...(entryRow?.standsFor ? { [RULESET_STANDS_FOR_ROW_KEY]: entryRow.standsFor } : {}),
           }
         : own;
       if (list.columns.some((column) => column.required && built[column.id] === undefined)) continue;
@@ -460,10 +467,12 @@ export function fillRulesetSheetChoices(
         }
         const { catalogId, entry } = pool[picked]!;
         pool = pool.filter((_, index) => index !== picked);
+        const own = entry.rows?.find((row) => row.list === list.id);
         rows.push({
-          ...(entry.rows?.find((row) => row.list === list.id)?.values ?? {}),
+          ...(own?.values ?? {}),
           [ready]: true,
           [RULESET_CATALOG_ROW_KEY]: `${catalogId}/${entry.id}`,
+          ...(own?.standsFor ? { [RULESET_STANDS_FOR_ROW_KEY]: own.standsFor } : {}),
         });
         addCompanionRows(definition, sheet, catalogId, entry, list.id);
         filled.push(entry.label);

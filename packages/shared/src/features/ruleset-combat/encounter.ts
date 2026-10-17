@@ -9,6 +9,7 @@
 
 import {
   RULESET_CATALOG_ROW_KEY,
+  rulesetRowEntryRef,
   RULESET_ITEM_CHARGES_MAX,
   rulesetSheetBuildSchema,
   type RulesetCatalogEntriesById,
@@ -3434,7 +3435,8 @@ function abilityActions(
   rows.forEach((raw, rowIndex) => {
     if (!raw || typeof raw !== "object") return;
     const row = raw as Record<string, unknown>;
-    const ref = columnValue(row, RULESET_CATALOG_ROW_KEY);
+    // A row that stands for another entry (1.440) is that entry in a fight.
+    const ref = rulesetRowEntryRef(row);
     // A hand-typed row says nothing in numbers, so there is nothing to resolve.
     if (typeof ref !== "string" || seen.has(ref)) return;
     const always = source.alwaysWhen && columnValue(row, source.alwaysWhen.column) === source.alwaysWhen.equals;
@@ -3615,11 +3617,14 @@ function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntrie
   for (const rows of Object.values(build.lists ?? {})) {
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
-      const ref =
-        row && typeof row === "object"
-          ? columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY)
-          : undefined;
-      if (typeof ref === "string") refs.add(ref);
+      if (!row || typeof row !== "object") continue;
+      // Both the entry a row came from and the one it stands for (1.440).
+      for (const ref of [
+        columnValue(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY),
+        rulesetRowEntryRef(row as Record<string, unknown>),
+      ]) {
+        if (typeof ref === "string") refs.add(ref);
+      }
     }
   }
   const narrowed: Record<string, RulesetCatalogEntry[]> = {};

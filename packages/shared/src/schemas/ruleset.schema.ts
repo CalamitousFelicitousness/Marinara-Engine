@@ -2418,6 +2418,18 @@ const combatDiceSchema = z
  *  what a sheet already has. A column id starts with a letter, so this can never be one. */
 export const RULESET_CATALOG_ROW_KEY = "_catalog";
 
+/** The reserved key a row carries when it stands for another entry than the one that put it there
+ *  (1.440), `<catalogId>/<entryId>`: a feature's row for the spell it grants, which a fight reads
+ *  its price and mechanics from, while `_catalog` still says which entry the row belongs to. */
+export const RULESET_STANDS_FOR_ROW_KEY = "_standsFor";
+
+/** The entry a fight reads a row as: the one it stands for, else the one it came from. */
+export function rulesetRowEntryRef(row: Record<string, unknown>): unknown {
+  const own = (key: string) => (Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined);
+  const standsFor = own(RULESET_STANDS_FOR_ROW_KEY);
+  return typeof standsFor === "string" ? standsFor : own(RULESET_CATALOG_ROW_KEY);
+}
+
 /** Byte ceiling for one `catalogs/<id>.json` asset, checked against the manifest's declared
  *  `files[].bytes` BEFORE the asset is read. Larger than a ruleset because a spell list is long. 2 MB
  *  since Capability API 1.340; a package with a catalog over the earlier ceiling declares 1.340. */
@@ -6601,6 +6613,13 @@ const catalogEntryRowSchema = z
     /** Optional. `values` still holds what the row starts as, because a catalog is picked before
      *  anything knows which sheet it lands on. */
     scaled: catalogScaledSchema.optional(),
+    /** Optional (1.440). The entry this row stands for, `<catalogId>/<entryId>`, when the entry that
+     *  writes it only grants it: Pact of the Chain's Find Familiar row is the spell's in a fight. */
+    standsFor: z
+      .string()
+      .max(81)
+      .regex(/^[^/]+\/[^/]+$/, "standsFor is a <catalog>/<entry> reference")
+      .optional(),
   })
   .strict();
 
@@ -15978,29 +15997,32 @@ function creatureSheetIssues(
     if (rows.length > list.maxItems) add([...at, "lists", listId], `"${listId}" holds at most ${list.maxItems} rows`);
     rows.forEach((row, index) => {
       // Held to exactly what a catalog's row is held to, less the mark that says which entry it is.
-      const { [RULESET_CATALOG_ROW_KEY]: _mark, ...values } = row;
+      const { [RULESET_CATALOG_ROW_KEY]: _mark, [RULESET_STANDS_FOR_ROW_KEY]: _standsFor, ...values } = row;
       for (const message of rulesetListRowIssues(list, values)) add([...at, "lists", listId, index], message);
       // A row picked out of a catalog says which entry it is, which is what a fight reads its price
       // and its mechanics from. The catalog has to be one that holds rows and feeds this list; when
-      // it is written inline, the entry has to be in it too.
-      const ref = row[RULESET_CATALOG_ROW_KEY];
-      if (ref === undefined) return;
-      const where = [...at, "lists", listId, index, RULESET_CATALOG_ROW_KEY];
-      const slash = typeof ref === "string" ? ref.indexOf("/") : -1;
-      if (typeof ref !== "string" || slash <= 0 || slash === ref.length - 1) {
-        add(where, `"${String(ref)}" is not a <catalog>/<entry> reference`);
-        return;
-      }
-      const catalogId = ref.slice(0, slash);
-      const catalog = definition.catalogs?.find((candidate) => candidate.id === catalogId);
-      // A bestiary declares no feeds, so it is never one of these.
-      if (!catalog?.feeds?.includes(listId)) {
-        add(where, `No catalog "${catalogId}" feeds the list "${listId}"`);
-        return;
-      }
-      const entryId = ref.slice(slash + 1);
-      if (catalog.entries && !catalog.from && !catalog.entries.some((entry) => entry.id === entryId)) {
-        add(where, `Catalog "${catalogId}" has no entry "${entryId}"`);
+      // it is written inline, the entry has to be in it too. A row that stands for another entry
+      // (1.440) is held to the same.
+      for (const key of [RULESET_CATALOG_ROW_KEY, RULESET_STANDS_FOR_ROW_KEY]) {
+        const ref = row[key];
+        if (ref === undefined) continue;
+        const where = [...at, "lists", listId, index, key];
+        const slash = typeof ref === "string" ? ref.indexOf("/") : -1;
+        if (typeof ref !== "string" || slash <= 0 || slash === ref.length - 1) {
+          add(where, `"${String(ref)}" is not a <catalog>/<entry> reference`);
+          continue;
+        }
+        const catalogId = ref.slice(0, slash);
+        const catalog = definition.catalogs?.find((candidate) => candidate.id === catalogId);
+        // A bestiary declares no feeds, so it is never one of these.
+        if (!catalog?.feeds?.includes(listId)) {
+          add(where, `No catalog "${catalogId}" feeds the list "${listId}"`);
+          continue;
+        }
+        const entryId = ref.slice(slash + 1);
+        if (catalog.entries && !catalog.from && !catalog.entries.some((entry) => entry.id === entryId)) {
+          add(where, `Catalog "${catalogId}" has no entry "${entryId}"`);
+        }
       }
     });
   }
@@ -18716,6 +18738,26 @@ export function rulesetCatalogEntryIssues(
       const list = listById.get(row.list);
       if (!list) return add([...path, "list"], `Unknown list "${row.list}"`);
       for (const message of rulesetListRowIssues(list, row.values)) add([...path, "values"], message);
+      // The entry a row stands for (1.440) is one a catalog that feeds the row's list holds, so a
+      // fight finds its mechanics where it finds every other row's.
+      if (row.standsFor) {
+        const standsCatalog = definition.catalogs?.find(
+          (candidate) => candidate.id === row.standsFor!.slice(0, row.standsFor!.indexOf("/")),
+        );
+        const standsEntry = row.standsFor.slice(row.standsFor.indexOf("/") + 1);
+        if (!standsCatalog?.feeds?.includes(row.list)) {
+          add([...path, "standsFor"], `No catalog "${row.standsFor.split("/")[0]}" feeds the list "${row.list}"`);
+        } else if (standsCatalog.id === catalog.id && !entries.some((one) => one.id === standsEntry)) {
+          add([...path, "standsFor"], `Catalog "${standsCatalog.id}" has no entry "${standsEntry}"`);
+        } else if (
+          standsCatalog.id !== catalog.id &&
+          standsCatalog.entries &&
+          !standsCatalog.from &&
+          !standsCatalog.entries.some((one) => one.id === standsEntry)
+        ) {
+          add([...path, "standsFor"], `Catalog "${standsCatalog.id}" has no entry "${standsEntry}"`);
+        }
+      }
       if (!row.scaled) return;
       if ((rowsPerList.get(row.list) ?? 0) > 1 && !namedApart(row.list)) {
         add(
@@ -19404,7 +19446,14 @@ export type RulesetCatalogRow = { list: string; row: Record<string, string | num
  *  nothing onto a sheet, so it comes back as no rows at all. */
 export function rowsFromCatalogEntry(catalogId: string, entry: RulesetCatalogEntry): RulesetCatalogRow[] {
   const ref = catalogRowRef(catalogId, entry.id);
-  return (entry.rows ?? []).map((row) => ({ list: row.list, row: { ...row.values, [RULESET_CATALOG_ROW_KEY]: ref } }));
+  return (entry.rows ?? []).map((row) => ({
+    list: row.list,
+    row: {
+      ...row.values,
+      [RULESET_CATALOG_ROW_KEY]: ref,
+      ...(row.standsFor ? { [RULESET_STANDS_FOR_ROW_KEY]: row.standsFor } : {}),
+    },
+  }));
 }
 
 /** A `catalogs/<id>.json` asset. `$comment` is allowed anywhere, exactly as in `ruleset.json`. */

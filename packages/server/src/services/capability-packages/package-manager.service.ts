@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A row that stands for another entry than the one that writes it (1.440): Pact of the Chain's Find Familiar. */
+function carriesStandsFor440(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStandsFor440(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.standsFor !== undefined || record._standsFor !== undefined) return true;
+  return featureValues(record).some((one) => carriesStandsFor440(one, depth + 1));
+}
+
 /** Layers that stop what passes through them, or spare those picked at cast (1.439): Prismatic Wall. */
 function carriesLayerBlocks439(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6292,6 +6302,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A row that stands for another entry than the one that writes it, 1.440.
+  if (
+    !declaresApi(440) &&
+    (carriesStandsFor440(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStandsFor440(document)))
+  ) {
+    return "A ruleset whose entries write rows that stand for another entry in a fight (standsFor) requires schemaVersion 2 and capabilityApi 1.440 or newer";
+  }
   // Layers that stop what passes through them, or spare those picked at cast, 1.439.
   if (
     !declaresApi(439) &&

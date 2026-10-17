@@ -168,6 +168,12 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     // An absent value is how a note is cleared; the field still has to be named.
     return { ...parsed, op: { op: "note", field, value: values.get("value") ?? "" } };
   }
+  if (name === "pass") {
+    // Days of game time (1.392): a whole count.
+    const days = readInteger(values.get("days"));
+    if (days === null || days < 1) return parsed;
+    return { ...parsed, op: { op: "pass", days } };
+  }
   if (name === "use") {
     // `spell=` is the word that goes with `cast=`; both are read as the general `name=`.
     const entry = (values.get("name") ?? values.get("spell"))?.trim();
@@ -290,6 +296,8 @@ export function serializeSheetCommandTag(
       if (op.pool) attribute("pool", op.pool);
       if (op.recover?.length)
         attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
+    } else if (op.op === "pass") {
+      attribute("days", op.days);
     } else if (op.op === "rest") {
       attribute("rest", op.rest);
       if (op.dice) attribute("dice", op.dice);
@@ -350,7 +358,8 @@ export function readResolvedSheetCommandTags(text: string): ResolvedSheetCommand
       values.get("ability") ??
       values.get("skill") ??
       values.get("save") ??
-      values.get("rest");
+      values.get("rest") ??
+      (name === "pass" ? values.get("days") : undefined);
     const head = [sheet === "party" ? "party" : who, name ?? "sheet", target].filter(Boolean).join(" ");
     found.push({
       ...(sheet !== undefined ? { sheet } : {}),

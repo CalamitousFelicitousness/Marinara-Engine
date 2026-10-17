@@ -81,6 +81,9 @@ export interface RulesetLiveState {
   /** Whom an entry used once a creature until a rest went to (1.304), by name, keyed `rest|action`:
    *  that rest clears its lists. */
   usedOn?: Record<string, string[]>;
+  /** Days of game time counted since each spent row whose recharge takes days was spent (1.392),
+   *  keyed by pool. */
+  waited?: Record<string, number>;
 }
 
 /** Live state of every card, keyed by normalized name, plus RULESET_PARTY_KEY for the shared sheet. */
@@ -160,6 +163,7 @@ export const rulesetLiveStateSchema = z
     states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
+    waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
   })
   .strip();
 
@@ -720,6 +724,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (lowered) state.lowered = lowered;
   const usedOn = keepValid(source.usedOn, liveUsedOnNames, MAX_LIVE_USED_ON);
   if (usedOn) state.usedOn = usedOn;
+  const waited = keepValid(source.waited, liveNumber, MAX_LIVE_POOLS);
+  if (waited) state.waited = waited;
   return state;
 }
 
@@ -734,6 +740,7 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.states && Object.keys(state.states).length > 0) normalized.states = state.states;
   if (state.lowered && Object.keys(state.lowered).length > 0) normalized.lowered = state.lowered;
   if (state.usedOn && Object.keys(state.usedOn).length > 0) normalized.usedOn = state.usedOn;
+  if (state.waited && Object.keys(state.waited).length > 0) normalized.waited = state.waited;
   return normalized;
 }
 
@@ -915,6 +922,9 @@ export type RulesetSheetOp =
    *  party's best extra die for it (Song of Rest), worked out where the party is known; without it, the
    *  sheet's own. */
   | { op: "rest"; rest: string; dice?: number; pool?: string; extra?: { sides: number; add: number } }
+  /** Days of game time pass (1.392): a spent row whose recharge takes days counts them, and fills
+   *  again once they reach its count. */
+  | { op: "pass"; days: number }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
    *  `planRulesetUse` before it reaches `applyRulesetSheetOp`, because it needs the catalogs. */
   | { op: "use"; name: string; pool?: string; recover?: RulesetUseRecover[] };
@@ -977,6 +987,7 @@ export const RULESET_SHEET_OP_NAMES = Object.freeze([
   "note",
   "rest",
   "use",
+  "pass",
   "advance",
 ] as const);
 
@@ -1341,6 +1352,32 @@ export function applyRulesetSheetOp(
     const value = typeof op.value === "string" ? op.value.slice(0, field.maxLength) : "";
     setText(field.id, value);
     return done(value ? `${field.label}: ${value}` : `${field.label} cleared`);
+  }
+
+  // Days of game time (1.392): what recharges after so many days counts them.
+  if (op.op === "pass") {
+    if (!Number.isInteger(op.days) || op.days < 1 || op.days > 3650) return { ok: false, reason: "bad-amount" };
+    const back: string[] = [];
+    for (const pool of resolved.pools) {
+      const list = pool.listId ? definition.sheet.lists.find((entry) => entry.id === pool.listId) : undefined;
+      const needs = pool.recharge !== undefined ? own(list?.pools?.rechargeDays, pool.recharge) : undefined;
+      if (needs === undefined) continue;
+      const waited = next.waited ?? {};
+      if (pool.value >= pool.max) {
+        delete waited[pool.key];
+        next.waited = waited;
+        continue;
+      }
+      const counted = (own(waited, pool.key) ?? 0) + op.days;
+      if (counted >= needs) {
+        setPool(pool, pool.max, pool.temp);
+        delete waited[pool.key];
+        back.push(`${pool.label} ${pool.max}/${pool.max}`);
+      } else waited[pool.key] = counted;
+      next.waited = waited;
+    }
+    const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}`;
+    return done(back.length ? `${days}: ${back.join(", ")}` : days);
   }
 
   // Every other command was answered above, so what is left is a rest. Said rather than fallen

@@ -1178,7 +1178,15 @@ const listSchema = z
     /** Makes every row a live pool (a named class resource with its own maximum). Rows are keyed
      *  by `nameColumn`, so renaming a row starts its pool over. */
     pools: z
-      .object({ nameColumn: sheetId, maxColumn: sheetId, rechargeColumn: sheetId.optional() })
+      .object({
+        nameColumn: sheetId,
+        maxColumn: sheetId,
+        rechargeColumn: sheetId.optional(),
+        /** Recharge values that fill a spent row again once this many days of game time have
+         *  passed (Capability API 1.392), counted by the sheet's `pass` command: 5e's Divine
+         *  Intervention, `{"week": 7}`. */
+        rechargeDays: z.record(sheetId, z.number().int().min(1).max(3650)).optional(),
+      })
       .strict()
       .optional(),
   })
@@ -12551,6 +12559,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "pools", "maxColumn"], "Must name a number column");
       if (list.pools.rechargeColumn && typeOf(list.pools.rechargeColumn) !== "enum") {
         issue([...path, "pools", "rechargeColumn"], "Must name an enum column");
+      }
+      // Days only for a recharge the column offers (1.392).
+      if (list.pools.rechargeDays) {
+        const column = list.columns.find((entry) => entry.id === list.pools!.rechargeColumn);
+        const values = column && column.type === "enum" ? column.values : undefined;
+        if (!values) issue([...path, "pools", "rechargeDays"], '"rechargeDays" reads the rows\' rechargeColumn');
+        else
+          for (const value of Object.keys(list.pools.rechargeDays)) {
+            if (!values.includes(value))
+              issue([...path, "pools", "rechargeDays", value], `"${value}" is not a value of the recharge column`);
+          }
       }
     }
     void columns;

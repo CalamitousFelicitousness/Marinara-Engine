@@ -1431,6 +1431,12 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
+    // Days of game time (1.392): rows that recharge after so many days count them.
+    ...(ruleset.sheet.lists.some((list) => list.pools?.rechargeDays)
+      ? [
+          `- [sheet: who="Name" op="pass" days="N"] - when N days of game time pass for them; what recharges after days (${[...new Set(ruleset.sheet.lists.flatMap((list) => Object.entries(list.pools?.rechargeDays ?? {}).map(([value, days]) => `${value}: ${days} days`)))].join(", ")}) comes back once they have.`,
+        ]
+      : []),
     // Dice a rest may spend to heal (1.335): 5e's Hit Dice, as many as the player chooses.
     ...(ruleset.rests.some((rest) => rest.dice)
       ? [

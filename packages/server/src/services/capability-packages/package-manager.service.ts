@@ -2194,6 +2194,14 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Rows that recharge after days of game time (1.392): Divine Intervention's seven days. */
+function carriesRechargeDays392(ruleset: unknown): boolean {
+  const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+  return (
+    Array.isArray(lists) && lists.some((list) => plainRecord(plainRecord(list)?.pools)?.rechargeDays !== undefined)
+  );
+}
+
 /** A presence-only sense (1.391): Primeval Awareness. */
 function carriesPresence391(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5769,6 +5777,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Recharged after days, 1.392.
+  if (!declaresApi(392) && carriesRechargeDays392(ruleset)) {
+    return "A ruleset whose list rows recharge after days of game time (rechargeDays) requires schemaVersion 2 and capabilityApi 1.392 or newer";
+  }
   // A presence-only sense, 1.391.
   if (
     !declaresApi(391) &&

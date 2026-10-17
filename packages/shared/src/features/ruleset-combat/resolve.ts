@@ -229,6 +229,7 @@ import {
   rulesetWithFreeUse,
   rulesetAimCells,
   rulesetNeededComponents,
+  rulesetRowsReach,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -295,7 +296,7 @@ import {
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
-import { rulesetFormAllowed, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
+import { rulesetFormAllowed, rulesetKeepsAction, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -2642,9 +2643,14 @@ function takeShape(
     removeCondition(ctx, target, other, "moved");
   }
   // And what its holder's own conditions and levels say any shape keeps (1.382): Beast Spells.
-  const more = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap(
-    (entry) => entry.shapeKeeps ?? [],
-  );
+  // Narrowed to the rows it reaches (1.384): a druid's spells, not a wizard's.
+  const more = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap((entry) => {
+    if (!entry.shapeKeeps) return [];
+    const keeps = new Set(entry.shapeKeeps);
+    return target.actions
+      .filter((one) => rulesetKeepsAction(keeps, one) && rulesetRowsReach(entry.rowsWhere, one))
+      .map((one) => one.id);
+  });
   const kept = more.length ? { ...rule, keeps: [...(rule.keeps ?? []), ...more] } : rule;
   const shaped = rulesetTakeShape(ctx.definition, ctx.state, target, condition, kept, form, ctx.roll);
   if (shaped) ctx.events.push({ type: "shaped", targetId: target.id, condition, form: shaped.name });

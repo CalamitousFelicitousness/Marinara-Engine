@@ -954,6 +954,9 @@ export interface RulesetCombatAction {
   /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
    *  a stat block's own action, a contest and a standard action have none. */
   catalog?: string;
+  /** The sheet list row it was made from (1.384): its list, and its text and choice columns, which
+   *  a condition's `rowsWhere` reads. */
+  fromRow?: { list: string; values: Record<string, string> };
   /** The catalog an item's use casts from (1.180), as a scroll does: casting, without being an entry. */
   casts?: string;
   /** And the entry itself, as `<catalog>/<entry>` (1.117): what a reaction or a condition that names

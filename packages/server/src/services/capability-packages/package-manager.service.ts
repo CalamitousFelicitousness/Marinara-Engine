@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** What is kept in a shape or waived, narrowed to some rows (1.384): a druid's spells. */
+function carriesRowsWhere384(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRowsWhere384(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.rowsWhere !== undefined) return true;
+  return featureValues(record).some((one) => carriesRowsWhere384(one, depth + 1));
+}
+
 /** A condition ended on an idle turn (1.383): Rage, Persistent Rage. */
 function carriesEndsIdle383(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5694,6 +5704,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Narrowed to some rows, 1.384.
+  if (
+    !declaresApi(384) &&
+    (carriesRowsWhere384(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRowsWhere384(document)))
+  ) {
+    return "A ruleset whose conditions or levels narrow what they keep or waive to some rows (rowsWhere) requires schemaVersion 2 and capabilityApi 1.384 or newer";
+  }
   // Ended on an idle turn, 1.383.
   if (
     !declaresApi(383) &&

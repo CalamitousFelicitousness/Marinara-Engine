@@ -76,6 +76,19 @@ function rulesetProficiencies(
   return { saves, checks };
 }
 
+/** Whether a shape's `keeps` names this action (1.342): by id, by entry (`"catalog/entry"`, or the
+ *  entry's own id), or by its whole catalog (`"catalog/*"`, 1.382). */
+export function rulesetKeepsAction(keeps: ReadonlySet<string>, one: RulesetCombatAction): boolean {
+  return (
+    keeps.has(one.id) ||
+    (one.catalog !== undefined && keeps.has(`${one.catalog}/*`)) ||
+    (one.entry !== undefined &&
+      (keeps.has(one.entry) ||
+        keeps.has(one.entry.slice(one.entry.indexOf("/") + 1)) ||
+        keeps.has(`${one.entry.slice(0, one.entry.indexOf("/"))}/*`)))
+  );
+}
+
 /**
  * `target` takes `form`'s shape, held by `condition`. Whatever shape they were in is given up first.
  * Null when the form could not be built.
@@ -106,15 +119,7 @@ export function rulesetTakeShape(
   // What it keeps of its own: actions by id or entry ("catalog/entry", or the entry's own id), or a
   // whole catalog ("catalog/*", 1.382), saves and checks by id.
   const keeps = new Set(rule.keeps ?? []);
-  const kept = target.actions.filter(
-    (one) =>
-      keeps.has(one.id) ||
-      (one.catalog !== undefined && keeps.has(`${one.catalog}/*`)) ||
-      (one.entry !== undefined &&
-        (keeps.has(one.entry) ||
-          keeps.has(one.entry.slice(one.entry.indexOf("/") + 1)) ||
-          keeps.has(`${one.entry.slice(0, one.entry.indexOf("/"))}/*`))),
-  );
+  const kept = target.actions.filter((one) => rulesetKeepsAction(keeps, one));
   const keptIds = new Set(kept.map((one) => one.id));
   const formActions = built.actions.filter((one) => !keptIds.has(one.id));
   const revert: RulesetCombatAction[] = rule.revert

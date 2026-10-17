@@ -101875,6 +101875,38 @@
                 "minItems": 1,
                 "maxItems": 8
               },
+              "rowsWhere": {
+                "type": "object",
+                "properties": {
+                  "list": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "column": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "is": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "list",
+                  "column",
+                  "is"
+                ],
+                "additionalProperties": false
+              },
               "endsIdle": {
                 "anyOf": [
                   {
@@ -110865,6 +110897,38 @@
                 },
                 "minItems": 1,
                 "maxItems": 8
+              },
+              "rowsWhere": {
+                "type": "object",
+                "properties": {
+                  "list": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "column": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "is": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "list",
+                  "column",
+                  "is"
+                ],
+                "additionalProperties": false
               },
               "defeats": {
                 "type": "boolean",

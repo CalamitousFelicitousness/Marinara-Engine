@@ -510,6 +510,77 @@ try {
     };
     assert.equal(gagged(19), false, "a gag stops a spoken spell");
     assert.equal(gagged(20), true, "but not one whose words are waived");
+    // Only the druid's own spells (1.384): a wizard's stays behind in the shape, and stays gagged.
+    {
+      const scoped = (doc: Record<string, any>) => {
+        archdruid(doc);
+        doc.sheet.lists
+          .find((list: { id: string }) => list.id === "spells")
+          .columns.push({ id: "class", label: "Class", type: "text", maxLength: 40 });
+        for (const level of doc.combat.levels.slice(-2)) {
+          level.rowsWhere = { list: "spells", column: "class", is: ["druid"] };
+        }
+      };
+      const druidRow = (entry: Record<string, any>) => ({
+        ...entry,
+        rows: entry.rows.map((row: Record<string, any>) => ({ ...row, values: { ...row.values, class: "Druid" } })),
+      });
+      const shield = {
+        id: "shield",
+        label: "Shield",
+        rows: [{ list: "spells", values: { name: "Shield", level: 1, prepared: true, class: "Wizard" } }],
+        mechanics: { kind: "buff", targets: "self", budget: "action", components: ["verbal", "somatic"] },
+      };
+      const scopedDefinition = parsed(document([druidRow(wolfOnly), druidRow(spoken), shield], scoped));
+      const scopedEntries = scopedDefinition.catalogs!.find((catalog) => catalog.id === "spells")!
+        .entries! as RulesetCatalogEntry[];
+      const start = fight(scopedDefinition, scopedEntries, 20);
+      const option = optionFor(scopedDefinition, start, "druid", "Wild Shape");
+      const wolf = who(
+        step(scopedDefinition, start, {
+          actorId: "druid",
+          optionId: option.id,
+          targetIds: ["druid"],
+          mode: "form-creatures-dire-wolf",
+        }).state,
+        "druid",
+      );
+      assert.ok(
+        wolf.actions.some((one) => one.label === "Wild Shape"),
+        "a druid spell, kept",
+      );
+      assert.ok(!wolf.actions.some((one) => one.label === "Shield"), "a wizard spell, not");
+      const gag = fight(scopedDefinition, scopedEntries, 20);
+      who(gag, "druid").tracked.push({ condition: "gagged", rounds: null });
+      const labels = rulesetCombatOptions(scopedDefinition, gag, "druid").map((one) => one.label);
+      assert.ok(labels.includes("Polymorph"), "a druid spell's words waived");
+      assert.ok(!labels.includes("Shield"), "a wizard spell's not");
+      refused(
+        document([wolfOnly], (doc) => {
+          archdruid(doc);
+          doc.combat.levels.at(-1).rowsWhere = { list: "spells", column: "nope", is: ["Druid"] };
+        }),
+        /List "spells" has no column "nope"/,
+      );
+      const gate384 =
+        "A ruleset whose conditions or levels narrow what they keep or waive to some rows (rowsWhere) requires schemaVersion 2 and capabilityApi 1.384 or newer";
+      const manifest384 = (minor: number) => ({
+        schemaVersion: 2,
+        capabilityApi: { major: 1, minor },
+        id: "fivee",
+        name: "5e",
+        version: "1.0.0",
+        kind: ["ruleset"],
+        entrypoints: {},
+        contributions: { assets: { paths: ["ruleset.json"] } },
+        files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+        permissions: [],
+        restartRequired: false,
+      });
+      const narrowed = document([druidRow(wolfOnly)], scoped);
+      assert.equal(getCapabilityPackageInstallIssue(manifest384(383) as never, narrowed), gate384);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest384(384) as never, narrowed), gate384);
+    }
     refused(
       document([wolfOnly], (doc) => {
         archdruid(doc);

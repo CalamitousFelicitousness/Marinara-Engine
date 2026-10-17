@@ -4098,6 +4098,17 @@ function momentAnswers(
   return true;
 }
 
+/** Whether an action was made from a row `rowsWhere` reaches (1.384); without one, every action. */
+export function rulesetRowsReach(
+  where: { list: string; column: string; is: readonly string[] } | undefined,
+  one: RulesetCombatAction,
+): boolean {
+  if (!where) return true;
+  if (one.fromRow?.list !== where.list) return false;
+  const value = one.fromRow.values[where.column]?.trim().toLowerCase();
+  return value !== undefined && where.is.some((wanted) => wanted.trim().toLowerCase() === value);
+}
+
 /** The components using this still needs (1.179), less those its user's conditions and levels waive
  *  (1.382): 5e's Archdruid, verbal and somatic. */
 export function rulesetNeededComponents(
@@ -4108,8 +4119,11 @@ export function rulesetNeededComponents(
 ): string[] {
   const needs = action.components ?? [];
   if (!needs.length || !definition.combat) return needs;
+  // Only for the rows a waiver reaches (1.384): a druid's spells, not a racial one.
   const waived = new Set(
-    rulesetActiveConditions(definition, definition.combat, actor, state).flatMap((entry) => entry.waives ?? []),
+    rulesetActiveConditions(definition, definition.combat, actor, state).flatMap((entry) =>
+      rulesetRowsReach(entry.rowsWhere, action) ? (entry.waives ?? []) : [],
+    ),
   );
   return waived.size ? needs.filter((component) => !waived.has(component)) : needs;
 }

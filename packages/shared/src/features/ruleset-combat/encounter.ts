@@ -936,6 +936,7 @@ function activeLevels(
         ...(level.runsAcross ? { runsAcross: true as const } : {}),
         ...(level.shapeKeeps ? { shapeKeeps: level.shapeKeeps } : {}),
         ...(level.waives ? { waives: level.waives } : {}),
+        ...(level.rowsWhere ? { rowsWhere: level.rowsWhere } : {}),
         ...(level.defeats ? { defeats: true as const } : {}),
       },
     ];
@@ -3285,6 +3286,15 @@ function abilityActions(
     // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
     action.entry = ref;
+    // And the row it came from (1.384): Druid spells, not a wizard's.
+    action.fromRow = {
+      list: source.list,
+      values: Object.fromEntries(
+        Object.entries(row).flatMap(([key, value]) =>
+          typeof value === "string" && value.length <= 80 ? [[key, value]] : [],
+        ),
+      ),
+    };
     seen.add(ref);
     actions.push(action);
   });

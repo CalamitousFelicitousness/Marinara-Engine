@@ -9167,6 +9167,15 @@ export const checkFloorSchema = z
   });
 export type RulesetCheckFloor = z.infer<typeof checkFloorSchema>;
 
+/** Actions made from rows of a list whose column holds one of these (Capability API 1.384). */
+const rowsWhereSchema = z
+  .object({
+    list: sheetId,
+    column: sheetId,
+    is: z.array(z.string().trim().min(1).max(80)).min(1).max(12),
+  })
+  .strict();
+
 /** The effects a LEVEL may not have: a level is not something anybody put on its holder, so it has
  *  no source to be kept from, and it ends only when the track goes down, not by standing up or being
  *  hurt. */
@@ -9244,6 +9253,8 @@ const combatLevelSchema = z
      *  actions, and the components their uses need none of. */
     shapeKeeps: z.array(z.string().trim().min(1).max(200)).min(1).max(24).optional(),
     waives: uniqueIds(8).optional(),
+    /** As on a condition (Capability API 1.384). */
+    rowsWhere: rowsWhereSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9867,6 +9878,10 @@ const combatConditionSchema = z
     /** Its holder's uses need none of these components (Capability API 1.382): what stops a
      *  component stops nothing they use without it. 5e's Archdruid, verbal and somatic. */
     waives: uniqueIds(8).optional(),
+    /** Narrows its `shapeKeeps` and `waives` to actions made from a row of `list` whose `column`
+     *  holds one of `is`, case aside (Capability API 1.384): 5e's "your druid spells", the spells
+     *  list's class column. */
+    rowsWhere: rowsWhereSchema.optional(),
     /** It comes off as its holder ends a turn having neither made an attack at a foe nor taken damage
      *  since their last turn ended (Capability API 1.383): 5e's Rage. `unless` keeps it on while a
      *  value off its holder's sheet stands within its bounds: Persistent Rage from barbarian 15. */
@@ -14234,6 +14249,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
+      rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       if (typeof entry.endsIdle === "object") {
         const names = rulesetSheetNames(def.sheet, def.items);
         for (const found of rulesetValueRefIssues(entry.endsIdle.unless.value, names, names.derived)) {
@@ -14464,6 +14480,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       notWhileIssues(entry, path);
       if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
+      rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
@@ -15357,6 +15374,24 @@ function cureIssues(
 }
 
 /** The senses an obscuring zone or an unseen condition lets through are the fight's own (1.178). */
+/** What `rowsWhere` narrows is there to narrow, on a list and column the sheet has (1.384). */
+function rowsWhereIssues(
+  def: RulesetDefinitionBase,
+  entry: { rowsWhere?: { list: string; column: string }; shapeKeeps?: string[]; waives?: string[] },
+  path: (string | number)[],
+  issue: (path: (string | number)[], message: string) => void,
+): void {
+  const where = entry.rowsWhere;
+  if (!where) return;
+  if (!entry.shapeKeeps && !entry.waives)
+    issue(path, '"rowsWhere" narrows "shapeKeeps" or "waives", so it goes with one');
+  const list = def.sheet.lists.find((one) => one.id === where.list);
+  if (!list) issue([...path, "list"], `Unknown list "${where.list}"`);
+  else if (!list.columns.some((column) => column.id === where.column)) {
+    issue([...path, "column"], `List "${where.list}" has no column "${where.column}"`);
+  }
+}
+
 /** The components something needs, or a zone or condition stops, are the fight's own (1.179). */
 function componentIssues(
   definition: RulesetDefinition,

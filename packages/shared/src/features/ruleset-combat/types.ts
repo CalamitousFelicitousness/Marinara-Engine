@@ -2953,7 +2953,12 @@ export type RulesetCombatEvent =
         /** Magical darkness ended where a light met it (1.297). */
         | "dispelled"
         /** A hidden zone found by `targetId`'s Search (1.402). */
-        | "found";
+        | "found"
+        /** Its first standing layer destroyed by `targetId`, or left standing by what they did (1.437). */
+        | "layer-gone"
+        | "layer-held";
+      /** The layer it was about (1.437). */
+      layer?: string;
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.173). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -3632,6 +3637,25 @@ export interface RulesetCombatZoneRule {
   };
   /** Hidden from its caster's foes until found with a Search throwing this check (1.402). */
   hidden?: { check: string };
+  /** Layers crossed one at a time, each destroyed in turn (1.437), and the flash of whoever sees it
+   *  within `within` CELLS: Prismatic Wall. */
+  layers?: {
+    rows: Array<{
+      id: string;
+      label: string;
+      damageType?: string;
+      applies?: string[];
+      save?: string;
+      endedBy?: { damage?: { types: string[]; atLeast: number }; entries?: string[]; wind?: true };
+    }>;
+    spares?: "caster" | "allies";
+    flash?: {
+      within: number;
+      save: string;
+      applies: RulesetCombatApplies[];
+      triggers: Array<"appears" | "enter" | "turn-start">;
+    };
+  };
 }
 
 /** One lasting area standing on the board (1.172). A zone held at a point keeps the cells it was
@@ -3693,6 +3717,8 @@ export interface RulesetCombatZone {
   burning?: boolean;
   /** Until its maker's next lair count (1.324). */
   untilLair?: true;
+  /** How many of its layers are gone, from the first (1.437). */
+  layersGone?: number;
 }
 
 /** A Search's own throw for those who change how looking for them is thrown (1.290): 5e's Cloak of

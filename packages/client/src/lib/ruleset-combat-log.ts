@@ -970,6 +970,22 @@ export function rulesetCombatEventLine(
           target: names.combatant(event.targetId ?? ""),
         });
       }
+      // A layered wall's layer destroyed, or holding (1.437), and each layer crossed.
+      if (event.outcome === "layer-gone" || event.outcome === "layer-held") {
+        return key(event.outcome === "layer-gone" ? "zoneLayerGone" : "zoneLayerHeld", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          layer: event.layer ?? "",
+        });
+      }
+      if (event.outcome === "struck" && event.layer) {
+        return key("zoneLayerStruck", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          layer: event.layer,
+          target: names.combatant(event.targetId ?? ""),
+        });
+      }
       // Blown away by a strong wind (1.286).
       if (event.outcome === "dispersed") {
         return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });

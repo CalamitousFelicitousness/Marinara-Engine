@@ -195,6 +195,19 @@ export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   );
 }
 
+/** Every layered wall standing (1.437), with its cells: struck at, it stands in for one blow. */
+export function rulesetStandingLayers(state: RulesetEncounterState): Array<{
+  caster: RulesetCombatant;
+  zone: RulesetCombatZone;
+  action: RulesetCombatAction;
+  cells: RulesetCombatCell[];
+}> {
+  if (!state.board?.grid) return [];
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action }) =>
+    action.zone?.layers ? [{ caster, zone, action, cells: rulesetZoneCells(state, caster, zone) }] : [],
+  );
+}
+
 /** Where a zone may be moved to (1.173): any cell of the board within its `move` distance of where
  *  it is centred, its own cell aside. Priced as the distance, so a board draws it as a walk. */
 export function rulesetZoneMoveCells(

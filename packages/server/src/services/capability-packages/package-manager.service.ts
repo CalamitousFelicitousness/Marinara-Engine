@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A wall or globe of layers crossed one at a time, and its flash (1.437): Prismatic Wall. */
+function carriesLayers437(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLayers437(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.layers)?.rows !== undefined) return true;
+  return featureValues(record).some((one) => carriesLayers437(one, depth + 1));
+}
+
 /** An attack given up for one by a creature its maker called (1.435): Pact of the Chain. */
 function carriesLendsStrikes435(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6258,6 +6268,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A wall or globe of layers crossed one at a time, 1.437.
+  if (
+    !declaresApi(437) &&
+    (carriesLayers437(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLayers437(document)))
+  ) {
+    return "A ruleset whose zones are layers crossed one at a time (zone layers) requires schemaVersion 2 and capabilityApi 1.437 or newer";
+  }
   // Items crossing hard going freely, and conditions answering a hit by themselves, 1.436.
   if (
     !declaresApi(436) &&

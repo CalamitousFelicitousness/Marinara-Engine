@@ -45,7 +45,14 @@ import {
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
-import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
+import {
+  rulesetCanSee,
+  rulesetHiddenFrom,
+  rulesetHidingTraits,
+  rulesetLightAt,
+  rulesetSeesCell,
+  rulesetStaysHidden,
+} from "./sight.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -293,6 +300,7 @@ import type {
   RulesetWindowTrigger,
 } from "./types.js";
 import {
+  rulesetStandingLayers,
   rulesetStandingProps,
   rulesetStandingSections,
   rulesetStandingZones,
@@ -3882,6 +3890,14 @@ function disperseFogs(ctx: RulesetCombatContext): void {
       spendZone(ctx, caster, zone);
     }
   }
+  // A wind reaching a layered wall (1.437): the orange layer.
+  if (blown.size > 0) {
+    for (const { caster, zone, action, cells } of rulesetStandingLayers(ctx.state)) {
+      if (cells.some((cell) => blown.has(`${cell.x},${cell.y}`))) {
+        wearLayer(ctx, caster, zone, action, { wind: true }, undefined, false);
+      }
+    }
+  }
 }
 
 /** Every magical darkness a zone that `dispelsDark` meets, at its level or lower, dispelled (1.297):
@@ -3992,6 +4008,117 @@ function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>
     if (!rulesetZoneCells(ctx.state, caster, zone).some((cell) => keys.has(`${cell.x},${cell.y}`))) continue;
     zone.burning = true;
     ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "burning" });
+  }
+}
+
+/** Whom a layered wall spares (1.437): its caster, or their whole side. */
+function layersSpare(
+  caster: RulesetCombatant,
+  layers: NonNullable<RulesetCombatZoneRule["layers"]>,
+  one: RulesetCombatant,
+): boolean {
+  return layers.spares === "allies" ? one.side === caster.side : layers.spares === "caster" && one.id === caster.id;
+}
+
+/** The damage of each type a stand-in took since `from` (1.437), before its lines leave the log. */
+function dealtByType(ctx: RulesetCombatContext, from: number, id: string): Map<string, number> {
+  const dealt = new Map<string, number>();
+  for (const event of ctx.events.slice(from)) {
+    if (event.type !== "damage" || event.targetId !== id || !event.damageType) continue;
+    const type = event.damageType.trim().toLowerCase();
+    dealt.set(type, (dealt.get(type) ?? 0) + event.dealt);
+  }
+  return dealt;
+}
+
+/** What reached a layered wall (1.437): its first standing layer, and only that one, is destroyed
+ *  when this is what its `endedBy` names; the wall ends with its last. `tell` says a layer that held. */
+function wearLayer(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  by: { damage?: Map<string, number>; entry?: string; wind?: true },
+  byId?: string,
+  tell = true,
+): void {
+  const rows = action.zone?.layers?.rows;
+  if (!rows || !caster.zones?.includes(zone)) return;
+  const row = rows[zone.layersGone ?? 0];
+  if (!row) return;
+  const ended = row.endedBy;
+  const damage = ended?.damage;
+  const gone =
+    (!!ended?.wind && !!by.wind) ||
+    (by.entry !== undefined && !!ended?.entries?.includes(by.entry)) ||
+    (!!damage &&
+      !!by.damage &&
+      damage.types.reduce((total, type) => total + (by.damage!.get(type.trim().toLowerCase()) ?? 0), 0) >=
+        damage.atLeast);
+  if (!gone && !tell) return;
+  ctx.events.push({
+    type: "zone",
+    actorId: caster.id,
+    label: zone.label,
+    outcome: gone ? "layer-gone" : "layer-held",
+    layer: row.label,
+    ...(byId ? { targetId: byId } : {}),
+  });
+  if (!gone) return;
+  zone.layersGone = (zone.layersGone ?? 0) + 1;
+  if (zone.layersGone >= rows.length) spendZone(ctx, caster, zone);
+}
+
+/** Every layered wall these cells reach, worn by what reached them (1.437). */
+function wearLayersAt(
+  ctx: RulesetCombatContext,
+  cells: RulesetCombatCell[],
+  by: { entry?: string; wind?: true },
+  byId?: string,
+): void {
+  const keys = new Set(cells.map((cell) => `${cell.x},${cell.y}`));
+  for (const { caster, zone, action, cells: own } of rulesetStandingLayers(ctx.state)) {
+    if (own.some((cell) => keys.has(`${cell.x},${cell.y}`))) wearLayer(ctx, caster, zone, action, by, byId, false);
+  }
+}
+
+/** Whether somebody stands within a layered wall's flash (1.437). */
+function flashNear(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  one: RulesetCombatant,
+): boolean {
+  const flash = action.zone?.layers?.flash;
+  if (!flash || !ctx.state.board?.grid || one.defeated || !rulesetPositionOf(one)) return false;
+  return rulesetZoneCells(ctx.state, caster, zone).some((cell) => rulesetDistanceTo(cell, one) <= flash.within);
+}
+
+/** A layered wall's flash on somebody near it who sees it (1.437): its save at the entry's own
+ *  difficulty, or what it puts on. Prismatic Wall's blinding. */
+function flashOne(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  one: RulesetCombatant,
+): void {
+  const layers = action.zone?.layers;
+  const flash = layers?.flash;
+  if (!layers || !flash || !rulesetCombatStanding(one) || one.object || layersSpare(caster, layers, one)) return;
+  const cells = rulesetZoneCells(ctx.state, caster, zone);
+  if (!cells.some((cell) => rulesetSeesCell(ctx.definition, ctx.state, one, cell))) return;
+  const difficulty = action.save?.difficulty ?? action.saveDifficulty ?? 10;
+  if (rollSave(ctx, one, flash.save, difficulty, caster.id)) return;
+  for (const applies of flash.applies) {
+    applyConditionId(ctx, one, applies.condition, applies, {
+      sourceId: caster.id,
+      difficulty,
+      action: [action.id, action.label],
+      ...(action.concentration && caster.concentrating?.actionId === action.id ? { concentration: true } : {}),
+      ...(action.catalog ? { catalog: action.catalog } : {}),
+    });
   }
 }
 
@@ -4120,6 +4247,13 @@ function placeZone(
   (actor.flags.freshZones ??= []).push(action.id);
   ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
   if (rule.blocks?.move && cells && grid) shoveOffWall(ctx, actor, cells, wall?.side ?? []);
+  // Its flash on whoever sees it appear near it (1.437).
+  const placed = actor.zones.at(-1)!;
+  if (rule.layers?.flash?.triggers.includes("appears")) {
+    for (const one of [...ctx.state.combatants]) {
+      if (flashNear(ctx, actor, placed, action, one)) flashOne(ctx, actor, placed, action, one);
+    }
+  }
   // Whoever the cast caught is caught by the storm too (1.174), as it appears.
   for (const id of caught) {
     const target = rulesetCombatant(ctx.state, id);
@@ -4218,6 +4352,9 @@ function zoneStrike(
   // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.175).
   if ((trigger !== "ram" && !triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
+  // Crossed unharmed by whom it spares (1.437).
+  const layers = action.zone?.layers;
+  if (layers && layersSpare(caster, layers, target)) return;
   const stamp = turnStamp(ctx);
   if (zone.struck?.[target.id] === stamp) return;
   // Only this turn's catches are kept: an older one can never match again.
@@ -4225,14 +4362,17 @@ function zoneStrike(
     ...Object.fromEntries(Object.entries(zone.struck ?? {}).filter(([, when]) => when === stamp)),
     [target.id]: stamp,
   };
-  ctx.events.push({
-    type: "zone",
-    actorId: caster.id,
-    label: zone.label,
-    outcome: "struck",
-    targetId: target.id,
-    trigger,
-  });
+  // A layered wall says each layer it strikes with (1.437), below.
+  if (!layers) {
+    ctx.events.push({
+      type: "zone",
+      actorId: caster.id,
+      label: zone.label,
+      outcome: "struck",
+      targetId: target.id,
+      trigger,
+    });
+  }
   if (inBroken) {
     brokenStrike(ctx, caster, zone, action, broken!, target);
     return;
@@ -4281,7 +4421,29 @@ function zoneStrike(
   // The zone acting, not its caster (1.180).
   const byZone = ctx.byZone;
   ctx.byZone = true;
-  resolveAction(ctx, caster, again, [target], zone.payWith);
+  if (layers) {
+    // Each standing layer in turn (1.437), as its row says, each saved against on its own.
+    for (const row of layers.rows.slice(zone.layersGone ?? 0)) {
+      if (!rulesetCombatStanding(target)) break;
+      const derived: RulesetCombatAction = { ...again };
+      if (row.damageType && again.damage) derived.damage = { ...again.damage, type: row.damageType };
+      else delete derived.damage;
+      const applies = (again.applies ?? []).filter((one) => row.applies?.includes(one.condition));
+      if (applies.length) derived.applies = applies;
+      else delete derived.applies;
+      if (row.save && again.save) derived.save = { ...again.save, save: row.save };
+      ctx.events.push({
+        type: "zone",
+        actorId: caster.id,
+        label: zone.label,
+        outcome: "struck",
+        targetId: target.id,
+        trigger,
+        layer: row.label,
+      });
+      resolveAction(ctx, caster, derived, [target], zone.payWith);
+    }
+  } else resolveAction(ctx, caster, again, [target], zone.payWith);
   if (byZone) ctx.byZone = byZone;
   else delete ctx.byZone;
   if (aimed) ctx.aimedAt = aimed;
@@ -4366,6 +4528,14 @@ function zoneDealt(
  *  those it holds off one. */
 function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger: "turn-start" | "turn-end"): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    // Starting a turn near a layered wall (1.437): its flash.
+    if (
+      trigger === "turn-start" &&
+      action.zone?.layers?.flash?.triggers.includes("turn-start") &&
+      flashNear(ctx, caster, zone, action, actor)
+    ) {
+      flashOne(ctx, caster, zone, action, actor);
+    }
     const inside = ctx.state.board?.grid
       ? rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), actor)
       : (zone.held ?? []).includes(actor.id);
@@ -5976,6 +6146,9 @@ function backlashOn(ctx: RulesetCombatContext, one: NonNullable<RulesetCombatCon
   afterBlow(ctx, holder, dealt, false);
 }
 
+/** What a layered wall stands in as for a blow or an area (1.437): struck by anything, taking all of it. */
+const LAYERED_STAND_IN = { defense: 0, health: 100000 };
+
 /** A wall's section or a prop (1.200, 1.316) standing in as a creature for one blow or one area: its
  *  defense, its health, what it shrugs off or suffers double, on the side against whoever strikes it. */
 function objectStandIn(
@@ -6102,6 +6275,7 @@ function strikeSection(
   const found =
     rulesetStandingSections(state).some(({ section }) => at(section.cells)) ||
     rulesetStandingProps(state).some((prop) => at(prop.cells)) ||
+    rulesetStandingLayers(state).some((one) => at(one.cells)) ||
     !!state.board?.grid.ground?.[`${cell.x},${cell.y}`]?.growth;
   if (!found) return refusal(state, choice.actorId, "bad-target", option.id);
   const own = actor.actions.find((entry) => entry.id === option.id)!;
@@ -6125,6 +6299,37 @@ function strikeSection(
   spendAvailability(ctx, working, action);
   const standing = rulesetStandingSections(ctx.state).find(({ section }) => at(section.cells));
   const prop = standing ? undefined : rulesetStandingProps(ctx.state).find((one) => at(one.cells));
+  // A layered wall (1.437): it stands in for the blow, never broken by it, and what the blow dealt of
+  // each type is read against its first standing layer.
+  const layered = standing || prop ? undefined : rulesetStandingLayers(ctx.state).find((one) => at(one.cells));
+  if (layered) {
+    const stand = objectStandIn(
+      SECTION_ID,
+      layered.zone.label,
+      working,
+      LAYERED_STAND_IN,
+      LAYERED_STAND_IN.health,
+      cell,
+    );
+    const from = ctx.events.length;
+    ctx.state.combatants.push(stand);
+    resolveAction(
+      ctx,
+      working,
+      action,
+      [stand],
+      choice.payWith,
+      undefined,
+      style?.id,
+      style?.spends ? working.initiative : undefined,
+    );
+    ctx.state.combatants = ctx.state.combatants.filter((one) => one !== stand);
+    const damage = dealtByType(ctx, from, SECTION_ID);
+    objectBlows(ctx, from, [SECTION_ID]);
+    wearLayer(ctx, layered.caster, layered.zone, layered.action, { damage }, working.id);
+    noteOutcome(ctx);
+    return finish();
+  }
   // Growth, cut back (1.318): no roll, the square cleared.
   if (!standing && !prop) {
     const cut = rulesetClearGrowth(ctx.state.board!.grid, [cell]);
@@ -8529,17 +8734,30 @@ function resolveStand(ctx: RulesetCombatContext, actor: RulesetCombatant, option
  * were really crossed rather than the ones that were meant to be.
  */
 /** Who stands in which zone, before a step. Nothing is worked out in a fight with no zones. */
-function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }> {
-  const inside = new Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }>();
+function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, ZoneOccupancy> {
+  const inside = new Map<RulesetCombatZone, ZoneOccupancy>();
   if (!ctx.state.combatants.some((one) => one.zones?.length)) return inside;
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     inside.set(zone, {
       zone: new Set(rulesetZoneOccupants(ctx.state, caster, zone, action)),
       // A wall's side counts apart (1.177): walking onto it catches as the side says.
       side: new Set(rulesetZoneSideOccupants(ctx.state, caster, zone, action)),
+      // Who stands within a layered wall's flash (1.437), for whoever moves near it.
+      near: new Set(
+        action.zone?.layers?.flash?.triggers.includes("enter")
+          ? ctx.state.combatants.filter((one) => flashNear(ctx, caster, zone, action, one)).map((one) => one.id)
+          : [],
+      ),
     });
   }
   return inside;
+}
+
+/** Who stands in a zone, on its side, and near its flash, before a step. */
+interface ZoneOccupancy {
+  zone: Set<string>;
+  side: Set<string>;
+  near: Set<string>;
 }
 
 /** After a step, everybody now inside a zone who was not before it: the mover walking in, or those a
@@ -8547,11 +8765,19 @@ function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, { zone: 
 function zonesEntered(
   ctx: RulesetCombatContext,
   mover: RulesetCombatant,
-  before: Map<RulesetCombatZone, { zone: Set<string>; side: Set<string> }>,
+  before: Map<RulesetCombatZone, ZoneOccupancy>,
 ): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Moving near a layered wall (1.437): its flash.
+    if (
+      action.zone?.layers?.flash?.triggers.includes("enter") &&
+      !was.near.has(mover.id) &&
+      flashNear(ctx, caster, zone, action, mover)
+    ) {
+      flashOne(ctx, caster, zone, action, mover);
+    }
     // Out of it again, what they shrugged off works on them once more (1.407); in it anew, its save.
     const insideNow = rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), mover);
     if (zone.shrugged?.includes(mover.id) && !insideNow) {
@@ -9058,32 +9284,56 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
             ]
           : [];
       });
+  // Layered walls it reaches (1.437), standing in as props do, never broken by it.
+  const walls = !reaches
+    ? []
+    : rulesetStandingLayers(ctx.state).flatMap((wall) => {
+        const cell = wall.cells.find((one) => covered.has(`${one.x},${one.y}`));
+        return cell
+          ? [
+              {
+                ...wall,
+                stand: objectStandIn(
+                  `layers>${wall.caster.id}>${wall.zone.actionId}`,
+                  wall.zone.label,
+                  actor,
+                  LAYERED_STAND_IN,
+                  LAYERED_STAND_IN.health,
+                  cell,
+                ),
+              },
+            ]
+          : [];
+      });
   harmedBy(ctx, actor, action, resume, () => {
     const from = ctx.events.length;
-    ctx.state.combatants.push(...caught.map(({ stand }) => stand));
+    const standing = [...caught.map(({ stand }) => stand), ...walls.map(({ stand }) => stand)];
+    ctx.state.combatants.push(...standing);
     const hold = resolveAction(
       ctx,
       actor,
       action,
-      [...caught.map(({ stand }) => stand), ...targets],
+      [...standing, ...targets],
       resume.payWith,
       resume.held,
       resume.style,
       resume.spend,
     );
-    if (caught.length === 0) return hold;
+    if (standing.length === 0) return hold;
     // Taken off the board again before anybody is asked about being hurt: a prop is nobody.
-    const stands = new Set(caught.map(({ stand }) => stand));
+    const stands = new Set(standing);
     ctx.state.combatants = ctx.state.combatants.filter((one) => !stands.has(one));
+    const worn = walls.map((wall) => ({ wall, damage: dealtByType(ctx, from, wall.stand.id) }));
     const blows = objectBlows(
       ctx,
       from,
-      caught.map(({ stand }) => stand.id),
+      standing.map((stand) => stand.id),
     );
     for (const { prop, stand } of caught) {
       const { dealt, struck } = blows[stand.id]!;
       breakProp(ctx, actor, action.label, prop, stand, "area", dealt, struck);
     }
+    for (const { wall, damage } of worn) wearLayer(ctx, wall.caster, wall.zone, wall.action, { damage }, actor.id);
     return hold;
   });
   // Growth cleared where it lands (1.318): pruning shears.
@@ -9141,6 +9391,18 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
         ...(resume.also ? { also: resume.also } : {}),
         grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
       }),
+    );
+  }
+  // An entry a layered wall's layer names, reaching it (1.437): Daylight on the indigo.
+  if (grid && at && action.area && action.entry && !resume.held && rulesetStandingLayers(ctx.state).length > 0) {
+    wearLayersAt(
+      ctx,
+      areaCellsFor(ctx.state, actor, action.id, at, {
+        ...(resume.also ? { also: resume.also } : {}),
+        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+      }),
+      { entry: action.entry },
+      actor.id,
     );
   }
 }
@@ -10724,6 +10986,11 @@ function endSpellZone(
   const found = rulesetStandingZones(ctx.state).find(
     ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
   );
+  // A layered wall (1.437) loses its first standing layer only to what that layer names.
+  if (found?.action.zone?.layers) {
+    wearLayer(ctx, found.caster, found.zone, found.action, action.entry ? { entry: action.entry } : {}, actor.id);
+    return;
+  }
   if (!found || found.action.catalog === undefined || !ends.catalogs.includes(found.action.catalog)) return;
   const { caster, zone } = found;
   const level = rulesetPaidLevel(ctx.definition, caster, found.action, zone.payWith);

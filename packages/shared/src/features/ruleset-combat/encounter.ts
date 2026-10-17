@@ -2126,6 +2126,24 @@ export function rulesetZoneAction(
   // Kinds it keeps out (1.399): Magic Circle, Hallow.
   if (zone.keepsOut) out.keepsOut = structuredClone(zone.keepsOut);
   if (zone.hidden) out.hidden = { check: zone.hidden.check };
+  // Layers crossed one at a time, and its flash (1.437): Prismatic Wall.
+  const layers = zone.layers;
+  if (layers) {
+    out.layers = {
+      rows: structuredClone(layers.rows),
+      ...(layers.spares ? { spares: layers.spares } : {}),
+      ...(layers.flash
+        ? {
+            flash: {
+              within: rulesetInCells(layers.flash.within, perCell ?? 1),
+              save: layers.flash.save,
+              applies: structuredClone(layers.flash.applies),
+              triggers: [...layers.flash.triggers],
+            },
+          }
+        : {}),
+    };
+  }
   const held = zone.whileHeld;
   const heldAmount = held && amountOf(held.amount);
   if (held && heldAmount) {

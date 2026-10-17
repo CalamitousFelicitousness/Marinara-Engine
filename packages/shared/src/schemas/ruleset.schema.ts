@@ -3023,7 +3023,98 @@ export interface RulesetCatalogZone {
     stores?: true;
   };
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
+  layers?: RulesetZoneLayers;
 }
+
+/** One layer of a layered wall (Capability API 1.437): 5e's Prismatic Wall's red, orange and the rest. */
+export interface RulesetZoneLayer {
+  id: string;
+  label: string;
+  damageType?: string;
+  applies?: string[];
+  save?: string;
+  endedBy?: { damage?: { types: string[]; atLeast: number }; entries?: string[]; wind?: true };
+}
+/** A wall or globe of layers crossed one at a time (Capability API 1.437), and its flash. */
+export interface RulesetZoneLayers {
+  rows: RulesetZoneLayer[];
+  spares?: "caster" | "allies";
+  flash?: {
+    within: number;
+    save: string;
+    applies: RulesetCatalogApplies[];
+    triggers: Array<"appears" | "enter" | "turn-start">;
+  };
+}
+const zoneLayersSchema: z.ZodType<RulesetZoneLayers, z.ZodTypeDef, unknown> = z
+  .object({
+    rows: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label: promptSafeText(40),
+            /** The entry's own amount, dealt as this type; none without one. */
+            damageType: promptSafeText(40).optional(),
+            /** Those of the entry's own `applies` this layer puts on. */
+            applies: z.array(sheetId).min(1).max(6).optional(),
+            /** Its own save in place of the entry's, at the entry's difficulty. */
+            save: sheetId.optional(),
+            /** What destroys it, once every layer before it is gone: one blow or one area dealing at
+             *  least `atLeast` of these types, an entry named `<catalog>/<entry>` aimed at it or
+             *  reaching it, or a wind (a zone that `disperses`) reaching it. */
+            endedBy: z
+              .object({
+                damage: z
+                  .object({
+                    types: z.array(promptSafeText(40)).min(1).max(8),
+                    atLeast: z.number().int().min(1).max(100000),
+                  })
+                  .strict()
+                  .optional(),
+                entries: z
+                  .array(z.lazy(() => catalogEntryRef))
+                  .min(1)
+                  .max(8)
+                  .optional(),
+                wind: z.literal(true).optional(),
+              })
+              .strict()
+              .refine((ended) => ended.damage || ended.entries || ended.wind, {
+                message: '"endedBy" says "damage", "entries", "wind" or several',
+              })
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(12)
+      .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length, {
+        message: "Each layer's id is its own",
+      }),
+    /** Who crosses it, and stands near it, unharmed: its caster, or their whole side. */
+    spares: z.enum(["caster", "allies"]).optional(),
+    /** Who sees it within `within` (the ruleset's distance) of it throws `save` at the entry's own
+     *  difficulty or has `applies`: as it `appears`, as they move that near (`enter`), or as their turn
+     *  starts there (`turn-start`). 5e's blinding Constitution save. */
+    flash: z
+      .object({
+        within: z.number().finite().gt(0).max(10000),
+        save: sheetId,
+        applies: z
+          .array(z.lazy(() => catalogAppliesSchema))
+          .min(1)
+          .max(4),
+        triggers: z
+          .array(z.enum(["appears", "enter", "turn-start"]))
+          .min(1)
+          .max(3)
+          .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 
 /** What a creature's action does to the ground (Capability API 1.324): the tactical terrains, a
  *  height of 0 to 3, a cell's own light or obscurement (`clear` takes it off), growth, a season. */
@@ -3301,6 +3392,11 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  with its `save` at the entry's own difficulty. 5e's Wall of Ice: 10-foot panels, AC 12, 30 hit
      *  points, vulnerable to fire, leaving frigid air that deals 5d6 cold on a Constitution save. */
     sections: zoneSectionsSchema.optional(),
+    /** Layers crossed one at a time (Capability API 1.437): moving into it, each layer in turn does
+     *  the entry's own effect as its row says, each saved against on its own. A layer is destroyed
+     *  only once those before it are gone, as its `endedBy` says, and the zone ends with its last.
+     *  5e's Prismatic Wall, as a wall or a globe. */
+    layers: zoneLayersSchema.optional(),
     /** A wall's one side, chosen as it is cast (1.177): the cells within `distance` of it on that
      *  side catch as `triggers` say, beside the wall's own. 5e's Wall of Fire, 10 ft, turn-end. */
     side: z
@@ -6180,6 +6276,42 @@ const catalogMechanicsSchema: z.ZodType<
             code: z.ZodIssueCode.custom,
             path: ["rays", "rows", index, "applies", at],
             message: `A ray puts on only what the entry "applies": "${condition}" is not there`,
+          });
+        }
+      });
+    });
+  }
+  const layers = mechanics.zone?.layers;
+  if (layers) {
+    if (!mechanics.area) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["zone", "layers"],
+        message: 'Layers are a wall or a globe crossed: they go with an "area"',
+      });
+    }
+    if (!mechanics.save) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["zone", "layers"],
+        message: 'Each layer is saved against at the entry\'s own difficulty: layers go with "save"',
+      });
+    }
+    const conditions = new Set((mechanics.applies ?? []).map((one) => one.condition));
+    layers.rows.forEach((row, index) => {
+      if (row.damageType && !mechanics.amount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["zone", "layers", "rows", index, "damageType"],
+          message: "A layer's \"damageType\" is for the entry's own amount, so it has one",
+        });
+      }
+      row.applies?.forEach((condition, at) => {
+        if (!conditions.has(condition)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["zone", "layers", "rows", index, "applies", at],
+            message: `A layer puts on only what the entry "applies": "${condition}" is not there`,
           });
         }
       });
@@ -19042,6 +19174,23 @@ export function rulesetCatalogEntryIssues(
       add([index, "mechanics", "steers"], `Unknown condition "${mechanics.steers}"`);
     }
     // What finds a hidden zone (1.402) is one of the fight's checks, thrown by its Search.
+    // A layered wall's saves and what its flash puts on (1.437).
+    const layers = mechanics?.zone?.layers;
+    if (layers) {
+      const at = [index, "mechanics", "zone", "layers"];
+      const saves = new Set(definition.sheet.saves.map((save) => save.id));
+      layers.rows.forEach((row, rowIndex) => {
+        if (row.save && !saves.has(row.save)) add([...at, "rows", rowIndex, "save"], `Unknown save "${row.save}"`);
+      });
+      if (layers.flash) {
+        if (!saves.has(layers.flash.save)) add([...at, "flash", "save"], `Unknown save "${layers.flash.save}"`);
+        layers.flash.applies.forEach((one, appliesIndex) => {
+          if (!liveConditions.has(one.condition)) {
+            add([...at, "flash", "applies", appliesIndex, "condition"], `Unknown condition "${one.condition}"`);
+          }
+        });
+      }
+    }
     const hidden = mechanics?.zone?.hidden;
     if (hidden) {
       if (!definition.combat?.checks?.some((check) => check.id === hidden.check)) {

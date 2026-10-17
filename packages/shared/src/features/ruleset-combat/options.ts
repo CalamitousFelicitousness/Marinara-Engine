@@ -123,6 +123,7 @@ import {
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import {
+  rulesetStandingLayers,
   rulesetStandingProps,
   rulesetStandingSections,
   rulesetStandingZones,
@@ -646,6 +647,8 @@ export function rulesetWallTargets(
   const cells = [
     ...rulesetStandingSections(state).flatMap(({ section }) => section.cells),
     ...rulesetStandingProps(state).flatMap((prop) => prop.cells),
+    // A layered wall's cells (1.437), its first standing layer struck at.
+    ...rulesetStandingLayers(state).flatMap(({ cells }) => cells),
     // Growth an edge that cuts may cut back (1.318).
     ...(cutsGrowth(state, action)
       ? Object.entries(grid.ground ?? {}).flatMap(([at, here]) => {

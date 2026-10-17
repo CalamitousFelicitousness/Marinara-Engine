@@ -2633,6 +2633,24 @@ function optionFrom(
     }
     if (Object.keys(choices).length > 0) option.endsChoices = choices;
   }
+  // Or which of the conditions it ends (1.389): Greater Restoration's one effect.
+  if (action.ends?.chosen && !action.endsSpells?.chosen) {
+    const ends = action.ends;
+    const choices: NonNullable<RulesetCombatOption["endsChoices"]> = {};
+    for (const id of rulesetOptionTargets(definition, state, actor.id, option)) {
+      const target = rulesetCombatant(state, id);
+      if (!target) continue;
+      const held = new Set(rulesetCombatConditions(definition, target));
+      const list = ends.conditions
+        .filter((condition) => held.has(condition))
+        .map((condition) => ({
+          condition,
+          label: definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition,
+        }));
+      if (list.length > 0) choices[id] = list;
+    }
+    if (Object.keys(choices).length > 0) option.endsChoices = choices;
+  }
   // Where a teleport may go, and who may go along (1.276). With nowhere to go it is not offered.
   // Or out of the fight altogether, where it may leave it (1.279), the only way it goes off a board.
   if (action.teleport && (positioned(state) || action.teleport.leaves)) {

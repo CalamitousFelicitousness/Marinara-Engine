@@ -2963,6 +2963,7 @@ function mechanicsAction(
       conditions: rulesetKindConditions(definition, mechanics.ends.conditions),
       ...(mechanics.ends.count !== undefined ? { count: mechanics.ends.count } : {}),
       ...(mechanics.ends.from ? { from: structuredClone(mechanics.ends.from) } : {}),
+      ...(mechanics.ends.chosen ? { chosen: true as const } : {}),
     };
   }
   // Used, it ends a condition on its user (1.236): the spell that gave it.

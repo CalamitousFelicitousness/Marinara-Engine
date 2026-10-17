@@ -4546,7 +4546,7 @@ const catalogCheckSchema: z.ZodType<
 
 /** Conditions a cure takes off (Capability API 1.176). Typed, to keep the mechanics' type small. */
 const catalogEndsSchema: z.ZodType<
-  { conditions: string[]; count?: number; from?: RulesetTargetIs },
+  { conditions: string[]; count?: number; from?: RulesetTargetIs; chosen?: true },
   z.ZodTypeDef,
   unknown
 > = z
@@ -4561,6 +4561,9 @@ const catalogEndsSchema: z.ZodType<
      *  Enchantment ends a charm, a fright or a possession by a celestial, an elemental, a fey, a
      *  fiend or an undead. */
     from: targetIsSchema.optional(),
+    /** Its user picks which of those its target holds end, up to `count` (Capability API 1.389),
+     *  rather than the first named: 5e's Greater Restoration, "end one of the following effects". */
+    chosen: z.literal(true).optional(),
   })
   .strict();
 
@@ -15428,7 +15431,7 @@ export function rulesetConditionKindIds(definition: RulesetDefinition): Set<stri
 function cureIssues(
   definition: RulesetDefinition,
   mechanics: {
-    ends?: { conditions: string[]; count?: number };
+    ends?: { conditions: string[]; count?: number; chosen?: true };
     stabilizes?: true;
     tracks?: Array<{ track: string; by: number }>;
     unseals?: true;

@@ -4895,7 +4895,8 @@ function applyChoice(
   }
   if (choice.ends !== undefined) {
     const offered = option.endsChoices;
-    const named = actor.actions.find((entry) => entry.id === option.id)?.endsSpells;
+    const own = actor.actions.find((entry) => entry.id === option.id);
+    const named = own?.endsSpells?.chosen ? own.endsSpells : own?.ends;
     if (
       !offered ||
       !Array.isArray(choice.ends) ||
@@ -9618,8 +9619,11 @@ function endConditionsOf(
   level: number,
 ): void {
   let left = ends.count ?? ends.conditions.length;
+  // Only what its user picked (1.389), where they picked.
+  const picked = action.ends?.chosen && !action.endsSpells?.chosen ? ctx.endsChosen : undefined;
   for (const condition of ends.conditions) {
     if (left <= 0) break;
+    if (picked && !picked.has(condition)) continue;
     // Only a cure of its catalogs, at its level or higher, ends it (1.261).
     const only = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.curedOnlyBy;
     if (only && (level < only.minLevel || (only.catalogs && !only.catalogs.includes(action.catalog ?? "")))) continue;

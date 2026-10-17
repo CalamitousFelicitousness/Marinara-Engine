@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Conditions its user picks to end (1.389): Greater Restoration. */
+function carriesEndsChosen389(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsChosen389(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.ends)?.chosen !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsChosen389(one, depth + 1));
+}
+
 /** A use that works only on a roll (1.388): Divine Intervention, a demon's summoning. */
 function carriesUseChance388(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5749,6 +5759,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions picked to end, 1.389.
+  if (
+    !declaresApi(389) &&
+    (carriesEndsChosen389(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsChosen389(document)))
+  ) {
+    return "A ruleset whose entries let their user pick which conditions end (ends chosen) requires schemaVersion 2 and capabilityApi 1.389 or newer";
+  }
   // Worked only on a roll, 1.388.
   if (
     !declaresApi(388) &&

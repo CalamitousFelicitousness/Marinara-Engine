@@ -41576,6 +41576,10 @@
                           },
                           "additionalProperties": false
                         },
+                        "chosen": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -51457,6 +51461,10 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "chosen": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -70568,6 +70576,10 @@
                               },
                               "additionalProperties": false
                             },
+                            "chosen": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -83606,6 +83618,10 @@
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "chosen": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

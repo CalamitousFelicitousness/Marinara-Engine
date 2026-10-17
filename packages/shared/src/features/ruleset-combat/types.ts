@@ -391,7 +391,7 @@ export interface RulesetStatBlockAction {
   /** What it is (1.262): `["magical"]`, a deva's Healing Touch. */
   qualities?: string[];
   /** The conditions it ends on each target (1.261): Healing Touch. */
-  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
+  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs; chosen?: true };
   targets?: "ally" | "any";
   save?: RulesetCombatSaveRider;
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
@@ -729,7 +729,7 @@ export interface RulesetCombatAction {
   restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.176); with
    *  `from`, only what a creature that is that put on (1.236). */
-  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs };
+  ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs; chosen?: true };
   /** Ends what this catalog's entries put on its target (1.371): Dispel Magic, Cleansing Touch. */
   endsSpells?: {
     catalogs: string[];

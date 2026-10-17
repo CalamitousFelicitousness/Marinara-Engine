@@ -5495,8 +5495,9 @@ const catalogMechanicsObject = z
     /** The amount simply lands: no roll and no save. */
     autoHit: z.boolean().optional(),
     /** Conditions a use puts on the targets it affects: up to 6 (Capability API 1.277; 4 before),
-     *  for a rage whose path adds its own (Mindless Rage beside Rage's and Frenzy's). */
-    applies: z.array(catalogAppliesSchema).max(6).superRefine(linkedApplies).optional(),
+     *  for a rage whose path adds its own (Mindless Rage beside Rage's and Frenzy's). Up to 12 with
+     *  `appliesOneOf` (Capability API 1.416), one picked: Bestow Curse's nine curses. */
+    applies: z.array(catalogAppliesSchema).max(12).superRefine(linkedApplies).optional(),
     /** Conditions a use puts on its own user as it is made (Capability API 1.307), whatever happens to
      *  its targets, held by its concentration when it has one: Sunbeam's mote of radiance, which
      *  sheds light and gives the later beams as an action. */
@@ -5865,6 +5866,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["killsAtMost"],
       message: '"killsAtMost" kills whoever fails its save: it goes with "save"',
+    });
+  }
+  if (!mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) > 6) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["applies"],
+      message: 'An entry puts on up to 6 conditions; up to 12 with "appliesOneOf", which picks one',
     });
   }
   if (mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) < 2) {

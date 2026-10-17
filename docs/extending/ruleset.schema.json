@@ -47384,7 +47384,7 @@
                           ]
                         }
                       },
-                      "maxItems": 6
+                      "maxItems": 12
                     },
                     "appliesSelf": {
                       "type": "array",
@@ -77183,7 +77183,7 @@
                               ]
                             }
                           },
-                          "maxItems": 6
+                          "maxItems": 12
                         },
                         "appliesSelf": {
                           "type": "array",
@@ -90649,7 +90649,7 @@
                                     ]
                                   }
                                 },
-                                "maxItems": 6
+                                "maxItems": 12
                               },
                               "appliesSelf": {
                                 "type": "array",

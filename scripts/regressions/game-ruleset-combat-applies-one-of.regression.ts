@@ -3,6 +3,8 @@
  *
  *   - Primeval Awareness: its one mile, or six in favored terrain, offered as modes; the one picked
  *     is put on alone, and with none picked the first.
+ *   - Nine to pick from (1.416): Bestow Curse's curses on one entry; more than six without
+ *     `appliesOneOf` refused.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -53,13 +55,19 @@ try {
       ...more,
     },
   });
+  const curses = Array.from({ length: 7 }, (_, index) => `primeval_${index + 2}`);
   const fiveE = (more: Record<string, unknown> = {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.sheet.live.conditions.push(
       { id: "primeval", label: "One mile" },
       { id: "primeval_far", label: "Six miles (favored terrain)" },
+      ...curses.map((id) => ({ id, label: id })),
     );
-    doc.combat.conditions.push({ condition: "primeval", effects: [] }, { condition: "primeval_far", effects: [] });
+    doc.combat.conditions.push(
+      { condition: "primeval", effects: [] },
+      { condition: "primeval_far", effects: [] },
+      ...curses.map((condition) => ({ condition, effects: [] })),
+    );
     doc.catalogs.push({ id: "ranger", label: "Ranger", feeds: ["spells"], entries: [awareness(more)] });
     return doc;
   };
@@ -75,7 +83,7 @@ try {
   };
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
-  const holds = (definition: RulesetDefinition, mode: string | undefined) => {
+  const holds = (definition: RulesetDefinition, mode: string | undefined, modes = 2) => {
     const entries = definition.catalogs!.find((catalog) => catalog.id === "ranger")!.entries! as RulesetCatalogEntry[];
     const state = createRulesetEncounter({
       definition,
@@ -121,12 +129,13 @@ try {
         .join(", "),
     );
     assert.deepEqual(
-      option.modes?.map((one) => [one.id, one.label]),
+      option.modes?.slice(0, 2).map((one) => [one.id, one.label]),
       [
         ["applies-0", "One mile"],
         ["applies-1", "Six miles (favored terrain)"],
       ],
     );
+    assert.equal(option.modes?.length, modes);
     const step = applyRulesetCombatChoice(
       definition,
       state,
@@ -147,7 +156,22 @@ try {
     assert.deepEqual(holds(definition, undefined), ["primeval"], "none picked: the first");
   }
 
+  // ── Nine to pick from (1.416) ──
+  const nine = {
+    applies: [
+      { condition: "primeval", duration: { rounds: 10 } },
+      { condition: "primeval_far", duration: { rounds: 10 } },
+      ...curses.map((condition) => ({ condition, duration: { rounds: 10 } })),
+    ],
+  };
+  {
+    const definition = parsed(fiveE(nine));
+    assert.deepEqual(holds(definition, "applies-8", 9), ["primeval_8"], "the ninth, alone");
+    assert.deepEqual(holds(definition, "applies-1", 9), ["primeval_far"]);
+  }
+
   // ── Refusals ──
+  refused(fiveE({ ...nine, appliesOneOf: undefined }), /up to 6 conditions; up to 12 with "appliesOneOf"/);
   refused(fiveE({ applies: [{ condition: "primeval", duration: { rounds: 10 } }] }), /at least two/);
   refused(fiveE({ cureOneOf: true, ends: { conditions: ["charmed", "frightened"], count: 1 } }), /goes without/);
 
@@ -171,10 +195,15 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(394) as never, fiveE()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(395) as never, fiveE()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, fiveE({ appliesOneOf: undefined })), gate);
+    const many =
+      "A ruleset whose entries pick one of more than six conditions (appliesOneOf) requires schemaVersion 2 and capabilityApi 1.416 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(415) as never, fiveE(nine)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(416) as never, fiveE(nine)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(415) as never, fiveE()), many);
   }
 
   console.log(
-    "Applies one of: Primeval Awareness offers its one mile or six as modes and puts on only the one picked, the first when none is; gated at 1.395.",
+    "Applies one of: Primeval Awareness offers its one mile or six as modes and puts on only the one picked, the first when none is; nine on one entry; gated at 1.395 and 1.416.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

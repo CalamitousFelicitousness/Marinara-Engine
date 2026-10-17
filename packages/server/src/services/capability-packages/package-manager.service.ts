@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry picking one of more than six conditions (1.416): Bestow Curse. */
+function carriesManyApplies416(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesManyApplies416(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.appliesOneOf === true && Array.isArray(record.applies) && record.applies.length > 6) return true;
+  return featureValues(record).some((one) => carriesManyApplies416(one, depth + 1));
+}
+
 /** An entry rolling a ray for each target (1.415): Prismatic Spray. */
 function carriesRays415(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6022,6 +6032,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries picking one of more than six conditions, 1.416.
+  if (
+    !declaresApi(416) &&
+    (carriesManyApplies416(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesManyApplies416(document)))
+  ) {
+    return "A ruleset whose entries pick one of more than six conditions (appliesOneOf) requires schemaVersion 2 and capabilityApi 1.416 or newer";
+  }
   // Entries rolling a ray for each target, 1.415.
   if (
     !declaresApi(415) &&

@@ -661,6 +661,13 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "steered":
+      // Holders of a condition steered (1.411): Compulsion.
+      return key("steered", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        targets: event.targetIds.map((id) => names.combatant(id)).join(", "),
+      });
     case "wasted":
       // A turn's budget lost to a condition (1.410): Bestow Curse.
       return key("wasted", {

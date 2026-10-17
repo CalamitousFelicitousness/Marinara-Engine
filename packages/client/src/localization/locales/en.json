@@ -2237,6 +2237,7 @@
   "game.combat.ruleset.event.standardSearch": "{{actor}} searches.",
   "game.combat.ruleset.event.standardSearchFound": "{{actor}} searches ({{roll}}) and finds {{names}}.",
   "game.combat.ruleset.event.standardSearchNone": "{{actor}} searches ({{roll}}) and finds nobody.",
+  "game.combat.ruleset.event.steered": "{{actor}} steers {{targets}} with {{label}}.",
   "game.combat.ruleset.event.strikes_one": "{{actor}} swings with {{label}}, with {{count}} strike left.",
   "game.combat.ruleset.event.strikes_other": "{{actor}} swings with {{label}}, with {{count}} strikes left.",
   "game.combat.ruleset.event.strikesLast": "{{actor}} swings with {{label}}, the last of the strikes.",

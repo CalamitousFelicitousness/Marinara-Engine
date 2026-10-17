@@ -850,6 +850,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
     ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
     [
+      "steered",
+      say({
+        type: "steered",
+        actorId: "brenna",
+        label: "Compulsion",
+        condition: "incapacitated",
+        targetIds: ["lurker"],
+      }),
+    ],
+    [
       "wasted",
       say({ type: "wasted", actorId: "lurker", condition: "incapacitated", budget: "action", label: "Action" }),
     ],

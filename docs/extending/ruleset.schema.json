@@ -49327,6 +49327,11 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "steers": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
                     "alters": {
                       "type": "object",
                       "properties": {
@@ -78809,6 +78814,11 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "steers": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "alters": {
                           "type": "object",
                           "properties": {
@@ -92202,6 +92212,11 @@
                               "beforeFight": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "steers": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "alters": {
                                 "type": "object",
@@ -110643,7 +110658,14 @@
                   },
                   "from": {
                     "type": "string",
-                    "const": "point"
+                    "enum": [
+                      "point",
+                      "steered"
+                    ]
+                  },
+                  "walks": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "wastes": {
                     "type": "object",

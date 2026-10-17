@@ -5574,6 +5574,10 @@ const catalogMechanicsObject = z
      *  menu: its zone is set up before a fight, and stands as the fight starts. 5e's Glyph of
      *  Warding (an hour) and Hallow (a day). */
     beforeFight: z.literal(true).optional(),
+    /** Points where a condition its user put on is measured `from` (Capability API 1.411): aimed at a
+     *  point, every holder of this condition its user put on is steered toward (or away from) there.
+     *  Offered only while somebody holds it from them. 5e's Compulsion, its bonus action. */
+    steers: sheetId.optional(),
     /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
      *  uses (Capability API 1.253): 5e's Metamagic. Never on a menu of its own. One per use, unless
      *  it `joins` another. */
@@ -6000,6 +6004,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: "A restore is on an entry that helps, a heal or a buff",
       });
     }
+  }
+  if (mechanics.steers && !mechanics.area) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["steers"],
+      message: '"steers" is aimed at a point: it goes with "area"',
+    });
   }
   if (mechanics.beforeFight && !mechanics.zone) {
     ctx.addIssue({
@@ -9735,7 +9746,8 @@ export interface RulesetConditionBehavior {
   moves?: "away" | "toward";
   keepsOut?: number;
   keepsIn?: number;
-  from?: "point";
+  from?: "point" | "steered";
+  walks?: true;
   wastes?: { save: string; budget: string };
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
@@ -9786,7 +9798,12 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
     /** `moves` and `keepsOut` are measured from the point it was put on from, rather than from
      *  whoever put it on (Capability API 1.404): a zone's middle, or where an area was aimed. Put on
      *  from nowhere in particular, from whoever put it on. 5e's Symbol of Fear, fleeing the glyph. */
-    from: z.literal("point").optional(),
+    from: z.enum(["point", "steered"]).optional(),
+    /** Its holder is walked `moves` as far as they can as each of their turns starts (Capability API
+     *  1.411), rather than only kept from walking the other way. With `"from": "steered"`, measured
+     *  from the point whoever put it on last steered it at with an entry that `steers` it, and
+     *  nothing until they have (1.411): 5e's Compulsion. */
+    walks: z.literal(true).optional(),
     /** As each of its holder's turns starts they throw this save against the difficulty it was put
      *  on with, and on a failure this budget is wasted for the turn (Capability API 1.410): 5e's
      *  Bestow Curse, "wastes its action that turn doing nothing". */
@@ -9850,6 +9867,10 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
   .refine((behavior) => !behavior.from || behavior.moves || behavior.keepsOut !== undefined, {
     message: '"from" says where "moves" or "keepsOut" is measured from, so it goes with one of them',
     path: ["from"],
+  })
+  .refine((behavior) => !behavior.walks || behavior.moves, {
+    message: '"walks" walks its holder the way "moves" says, so it goes with "moves"',
+    path: ["walks"],
   });
 
 /** Conditions a condition's holder spreads around them (1.263): 5e's Aura of Protection. */
@@ -18639,6 +18660,10 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "zone", "keepsOut", "frees", conditionIndex], `Unknown condition "${condition}"`);
       }
     });
+    // What it steers (1.411) is a condition.
+    if (mechanics?.steers && !liveConditions.has(mechanics.steers)) {
+      add([index, "mechanics", "steers"], `Unknown condition "${mechanics.steers}"`);
+    }
     // What finds a hidden zone (1.402) is one of the fight's checks, thrown by its Search.
     const hidden = mechanics?.zone?.hidden;
     if (hidden) {

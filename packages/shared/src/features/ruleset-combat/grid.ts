@@ -73,18 +73,21 @@ export function rulesetPositionOf(combatant: RulesetCombatant | undefined): Rule
 }
 
 /** What a condition's behavior is measured from (1.264): whoever put it on, standing on the board and
- *  not its holder; or, `from` the point (1.404), where it was put on from, as one cell standing there.
+ *  not its holder; or, `from` the point (1.404), where it was put on from, as one cell standing there;
+ *  or where it was last `steered` (1.411).
  *  Nothing when there is nothing to measure from. */
 export function rulesetBehaviorAnchor(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
   condition: string,
-  behavior: { from?: "point" } | undefined,
+  behavior: { from?: "point" | "steered" } | undefined,
 ): RulesetCombatant | undefined {
   const tracked = holder.tracked.find((entry) => entry.condition === condition);
-  if (behavior?.from === "point" && tracked?.at) {
+  if ((behavior?.from === "point" || behavior?.from === "steered") && tracked?.at) {
     return { id: "", x: tracked.at.x, y: tracked.at.y } as unknown as RulesetCombatant;
   }
+  // Steered (1.411): nothing to measure from until it has been.
+  if (behavior?.from === "steered") return undefined;
   const source = tracked?.source ? rulesetCombatant(state, tracked.source) : undefined;
   return source && source.id !== holder.id && rulesetPositionOf(source) && rulesetCombatStanding(source)
     ? source

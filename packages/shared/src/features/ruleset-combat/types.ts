@@ -825,6 +825,8 @@ export interface RulesetCombatAction {
   castingRounds?: number;
   /** Never on the fight menu (1.409): set up before a fight, standing as it starts. */
   beforeFight?: true;
+  /** Aimed at a point, steers every holder of this condition its user put on there (1.411). */
+  steers?: string;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.253):
    *  5e's Metamagic. Never on a menu of its own. */
   alters?: RulesetCombatAlter;
@@ -2411,6 +2413,14 @@ export type RulesetCombatEvent =
   /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
    *  `to`, or lost. */
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
+  /** Holders of a condition steered toward a point by whoever put it on (1.411): Compulsion. */
+  | {
+      type: "steered";
+      actorId: string;
+      label: string;
+      condition: string;
+      targetIds: string[];
+    }
   /** A turn's budget wasted to a condition as the turn began (1.410), its save failed: Bestow Curse. */
   | {
       type: "wasted";

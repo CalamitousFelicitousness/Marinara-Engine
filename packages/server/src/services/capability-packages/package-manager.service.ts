@@ -2247,6 +2247,18 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition that walks its holder, or is steered (1.411): Compulsion. */
+function carriesSteering411(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSteering411(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior && (behavior.walks !== undefined || behavior.from === "steered")) return true;
+  if (record.steers !== undefined) return true;
+  return featureValues(record).some((one) => carriesSteering411(one, depth + 1));
+}
+
 /** A condition that wastes a turn's budget on a failed save (1.410): Bestow Curse. */
 function carriesWastes410(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5970,6 +5982,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions that walk their holder or are steered, 1.411.
+  if (
+    !declaresApi(411) &&
+    (carriesSteering411(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSteering411(document)))
+  ) {
+    return "A ruleset whose conditions walk their holder or are steered (behavior walks, from steered, steers) requires schemaVersion 2 and capabilityApi 1.411 or newer";
+  }
   // Conditions that waste a turn's budget on a failed save, 1.410.
   if (
     !declaresApi(410) &&

@@ -2628,7 +2628,8 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
   // One that leaves an area standing (1.178: Fog Cloud, Darkness) is set down wherever its caster
   // likes, and off a board held on whoever it is cast on.
   // So is one that clears growth from an area (1.318): Prune, a pair of shears.
-  if (mechanics.kind === "utility" && (mechanics.zone || mechanics.clears) && mechanics.area) {
+  // As is one that steers a condition at a point (1.411): Compulsion.
+  if (mechanics.kind === "utility" && (mechanics.zone || mechanics.clears || mechanics.steers) && mechanics.area) {
     return { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
   }
   // A strike back, or a missed attack sent on (1.369), is at somebody: whoever caused it, or the one
@@ -2771,7 +2772,9 @@ function mechanicsAction(
     !mechanics.calls &&
     // So is a strike back, or a missed attack sent on (1.369).
     !mechanics.strikesWith &&
-    !mechanics.redirects
+    !mechanics.redirects &&
+    // So is steering a condition (1.411).
+    !mechanics.steers
   ) {
     return null;
   }
@@ -2890,6 +2893,8 @@ function mechanicsAction(
   if (mechanics.castingRounds) action.castingRounds = mechanics.castingRounds;
   // Set up before a fight only (1.409): Glyph of Warding's hour.
   if (mechanics.beforeFight) action.beforeFight = true;
+  // Steering a condition it put on (1.411): Compulsion.
+  if (mechanics.steers) action.steers = mechanics.steers;
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.
   if (mechanics.alters) {
     const alters = mechanics.alters;

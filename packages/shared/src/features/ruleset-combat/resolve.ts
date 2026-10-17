@@ -143,6 +143,7 @@ import {
   rulesetFills,
   rulesetFootprint,
   rulesetFootprintAt,
+  rulesetBehaviorAnchor,
   rulesetGap,
   rulesetInCells,
   rulesetNearestCell,
@@ -9660,6 +9661,26 @@ function resolveAction(
     });
     return null;
   }
+  // Steering a condition it put on (1.411), and nothing else: Compulsion's direction.
+  if (action.steers) {
+    const at = ctx.aimedAt;
+    const steered: string[] = [];
+    for (const one of ctx.state.combatants) {
+      for (const entry of one.tracked) {
+        if (entry.condition !== action.steers || entry.source !== actor.id || !at) continue;
+        entry.at = { x: at.x, y: at.y };
+        steered.push(one.id);
+      }
+    }
+    ctx.events.push({
+      type: "steered",
+      actorId: actor.id,
+      label: action.label,
+      condition: action.steers,
+      targetIds: steered,
+    });
+    return null;
+  }
   // Creatures called beside it (1.325), and nothing else: Jars Burst.
   if (action.calls && !action.area && !action.damage) {
     // Held by its concentration (1.344): Conjure Animals.
@@ -12315,6 +12336,26 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   // What it lets fall as its turn starts (1.266): Command's "drop".
   for (const entry of active) {
     if (entry.behavior?.drops?.at === "turn-start") letFall(ctx, actor, entry.condition, entry.behavior.drops);
+  }
+  // Walked the way it moves as far as it can (1.411): Compulsion.
+  for (const entry of active) {
+    const moves = entry.behavior?.moves;
+    if (!entry.behavior?.walks || !moves) continue;
+    const from = rulesetBehaviorAnchor(ctx.state, actor, entry.condition, entry.behavior);
+    const at = rulesetPositionOf(actor);
+    if (!from || !at) continue;
+    const gapAt = (cell: { x: number; y: number }) => rulesetGap({ ...actor, x: cell.x, y: cell.y } as never, from);
+    let best: ReturnType<typeof rulesetReachableCells>[number] | undefined;
+    let bestGap = rulesetGap(actor, from);
+    for (const cell of rulesetReachableCells(ctx.definition, ctx.state, actor.id)) {
+      const gap = gapAt(cell);
+      if (moves === "away" ? gap > bestGap : gap < bestGap) {
+        best = cell;
+        bestGap = gap;
+      }
+    }
+    if (best) resolveMove(ctx, actor, best);
+    break;
   }
   // A save as the turn starts, or a budget wasted for it (1.410): Bestow Curse.
   for (const entry of active) {

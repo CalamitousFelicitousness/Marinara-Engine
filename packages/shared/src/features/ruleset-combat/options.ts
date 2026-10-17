@@ -2473,6 +2473,15 @@ function optionFrom(
   if (action.lair && !lairLent) return null;
   // Nor what takes longer to cast than a fight lasts (1.409): it stands as the fight starts or not at all.
   if (action.beforeFight) return null;
+  // Steering a condition (1.411) only while somebody holds it from its user.
+  if (
+    action.steers &&
+    !state.combatants.some((one) =>
+      one.tracked.some((entry) => entry.condition === action.steers && entry.source === actor.id),
+    )
+  ) {
+    return null;
+  }
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;

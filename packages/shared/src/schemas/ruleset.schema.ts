@@ -7375,6 +7375,19 @@ const creatureFields = {
    *  and the blow's own terms too: Undead Fortitude, Relentless. Not against what slays outright. See
    *  `hangsOnSchema`; `spends` and `tally` read a sheet, so a creature takes neither. */
   hangsOn: hangsOnSchema.optional(),
+  /** Harmed by one of `by` and left standing with at least `atLeast` health, it splits in two
+   *  (Capability API 1.422): a second of it beside it, each with half the health it had, rounded
+   *  down, and each one size smaller when the fight has sizes; not when it is smaller than
+   *  `smallest`. 5e's Black Pudding and Ochre Jelly, `{"by": ["lightning", "slashing"], "atLeast":
+   *  10, "smallest": "medium"}`. */
+  splits: z
+    .object({
+      by: z.array(promptSafeText(40)).min(1).max(8),
+      atLeast: z.number().int().min(2).max(10000),
+      smallest: sheetId.optional(),
+    })
+    .strict()
+    .optional(),
   /** It does not move while any of its cells is in one of these lights (Capability API 1.319): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
   stillIn: z

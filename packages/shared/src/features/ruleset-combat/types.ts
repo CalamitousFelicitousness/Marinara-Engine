@@ -634,6 +634,8 @@ export interface RulesetStatBlock {
   hangsOn?: RulesetHangsOn;
   /** What it regains as each of its turns starts (1.346). */
   regenerates?: RulesetRegeneration;
+  /** Harmed by one of `by` with `atLeast` health left, it splits in two (1.422): Black Pudding. */
+  splits?: { by: string[]; atLeast: number; smallest?: string };
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
@@ -2441,6 +2443,8 @@ export type RulesetCombatEvent =
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
   /** A health maximum raised while a condition holds, and the health with it (1.420): Aid. */
   | { type: "raisedMax"; targetId: string; condition: string; amount: number }
+  /** A creature split in two by what harmed it (1.422): a Black Pudding. Each has `health`. */
+  | { type: "split"; actorId: string; ids: string[]; health: number }
   /** A ray of a table rolled for one target (1.415): Prismatic Spray's colours. */
   | { type: "ray"; actorId: string; targetId: string; label: string; ray: string; roll: number }
   /** Holders of a condition steered toward a point by whoever put it on (1.411): Compulsion. */

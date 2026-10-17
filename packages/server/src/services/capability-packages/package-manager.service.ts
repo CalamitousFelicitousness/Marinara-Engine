@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A creature that splits in two when harmed (1.422): Black Pudding. */
+function carriesSplits422(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSplits422(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(plainRecord(record.splits)?.by)) return true;
+  return featureValues(record).some((one) => carriesSplits422(one, depth + 1));
+}
+
 /** An entry casting other entries of a catalog (1.421): Wish. */
 function carriesDuplicates421(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6082,6 +6092,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Creatures that split in two when harmed, 1.422.
+  if (
+    !declaresApi(422) &&
+    (carriesSplits422(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSplits422(document)))
+  ) {
+    return "A ruleset whose creatures split in two when harmed (splits) requires schemaVersion 2 and capabilityApi 1.422 or newer";
+  }
   // Entries casting other entries of a catalog, 1.421.
   if (
     !declaresApi(421) &&

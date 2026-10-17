@@ -494,6 +494,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.legendaryResistance !== undefined ? { legendaryResistance: creature.legendaryResistance } : {}),
     ...(creature.stillIn ? { stillIn: [...creature.stillIn] } : {}),
     ...(creature.hangsOn ? { hangsOn: structuredClone(creature.hangsOn) } : {}),
+    ...(creature.splits ? { splits: structuredClone(creature.splits) } : {}),
     ...(creature.regenerates ? { regenerates: structuredClone(creature.regenerates) } : {}),
     ...(creature.riders?.length ? { riders: creature.riders.flatMap((rider) => riderOf(rider, ids)) } : {}),
   };

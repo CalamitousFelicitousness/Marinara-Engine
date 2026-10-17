@@ -51637,6 +51637,37 @@
                       },
                       "additionalProperties": false
                     },
+                    "splits": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "atLeast": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 10000
+                        },
+                        "smallest": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "by",
+                        "atLeast"
+                      ],
+                      "additionalProperties": false
+                    },
                     "stillIn": {
                       "type": "array",
                       "items": {

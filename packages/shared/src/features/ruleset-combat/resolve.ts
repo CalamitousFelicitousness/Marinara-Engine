@@ -306,7 +306,7 @@ import {
   rulesetZoneSeenBy,
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
-import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
+import { RULESET_CALLED_FIGHT_MAX, rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
 import { rulesetFormAllowed, rulesetKeepsAction, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
@@ -949,6 +949,8 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   // A blow that leaves somebody standing tests their concentration. One that takes them out does
   // not: going down ends it outright (`dropToZero`), so nothing is rolled for it.
   if (!out) concentrationFromDamage(ctx, target, dealt);
+  // Split in two by what harmed it (1.422): a Black Pudding.
+  if (!out) splitOnHarm(ctx, target, kinds);
   if (out) {
     if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds });
     else if (target.dying && !target.defeated) {
@@ -961,6 +963,77 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
     }
   }
   groundFlier(ctx, target);
+}
+
+/** A creature split in two by the harm a blow dealt it (1.422): a second of it beside it, each with
+ *  half the health it had, rounded down, and each one size smaller when the fight has sizes. */
+function splitOnHarm(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: ReadonlySet<string>): void {
+  const splits = target.block?.splits;
+  if (!splits || target.defeated || target.down || target.object) return;
+  if (!splits.by.some((kind) => kinds.has(kind.trim().toLowerCase()))) return;
+  if ("track" in ctx.combat.health) return;
+  const health = healthOf(ctx, target);
+  if (health.value < splits.atLeast) return;
+  if (ctx.state.combatants.length >= RULESET_CALLED_FIGHT_MAX) return;
+  // One size smaller, and never below its smallest.
+  const order = ctx.combat.sizes?.order;
+  const rank = rulesetSizeRank(ctx.combat, target);
+  let smaller: string | undefined;
+  if (order && rank !== undefined) {
+    const floor = splits.smallest ? order.findIndex((size) => size.id === splits.smallest) : 0;
+    if (rank < Math.max(0, floor)) return;
+    smaller = order[Math.max(0, rank - 1)]!.id;
+  }
+  const half = Math.floor(health.value / 2);
+  const setHealth = (one: RulesetCombatant) => {
+    if (one.sheet) {
+      const now = healthOf(ctx, one);
+      if (now.value > half) writeHealthLoss(ctx, one, now.value - half, undefined);
+    } else if (one.health) one.health.value = Math.min(one.health.value, half);
+  };
+  setHealth(target);
+  const resize = (one: RulesetCombatant) => {
+    if (!smaller || !order) return;
+    one.size = smaller;
+    if (one.baseSize !== undefined) one.baseSize = smaller;
+    const cells = order.find((size) => size.id === smaller)?.cells ?? 1;
+    if (cells > 1) one.span = cells;
+    else delete one.span;
+  };
+  resize(target);
+  // Its twin: the same creature, fresh of what was on it.
+  let n = 1;
+  while (ctx.state.combatants.some((one) => one.id === `${target.id}-split-${n}`)) n += 1;
+  const twin = structuredClone(target);
+  twin.id = `${target.id}-split-${n}`;
+  twin.name = `${target.name} ${n + 1}`;
+  twin.tracked = [];
+  twin.flags = {};
+  twin.concentrating = null;
+  delete twin.zones;
+  delete twin.summons;
+  const grid = ctx.state.board?.grid;
+  const at = rulesetPositionOf(target);
+  if (grid && at) {
+    const taken = new Set(
+      ctx.state.combatants
+        .filter((one) => !one.defeated || one.object)
+        .flatMap((one) => rulesetFootprint(one))
+        .map((cell) => `${cell.x},${cell.y}`),
+    );
+    const cell = rulesetFitCell(grid, at, rulesetSpanOf(twin), taken);
+    if (!cell) return;
+    twin.x = cell.x;
+    twin.y = cell.y;
+  }
+  ctx.state.combatants.push(twin);
+  // Its turn straight after the one it split from.
+  const order2 = ctx.state.order;
+  const place = order2.indexOf(target.id) + 1;
+  order2.splice(place > 0 ? place : order2.length, 0, twin.id);
+  if (place > 0 && place <= ctx.state.turn) ctx.state.turn += 1;
+  if (ctx.state.interjected !== undefined && place > 0 && place <= ctx.state.interjected) ctx.state.interjected += 1;
+  ctx.events.push({ type: "split", actorId: target.id, ids: [twin.id], health: half });
 }
 
 /**

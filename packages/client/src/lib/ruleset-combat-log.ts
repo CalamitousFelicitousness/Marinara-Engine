@@ -661,6 +661,13 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "split":
+      // A creature split in two (1.422): a Black Pudding.
+      return key("split", {
+        actor: names.combatant(event.actorId),
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+        health: event.health,
+      });
     case "raisedMax":
       // A health maximum raised (1.420): Aid.
       return key("raisedMax", {

@@ -10314,6 +10314,11 @@ const combatConditionSchema = z
       .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
+    /** Held off, not ended, while its holder stands on one of these terrains, or the board's
+     *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
+     *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
+     *  `["water"]`. */
+    whileOffTerrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API
      *  1.275): what they do stops and their clocks run on, and they hold again once this ends.
      *  Calm Emotions' charm and fright, Mindless Rage's. */

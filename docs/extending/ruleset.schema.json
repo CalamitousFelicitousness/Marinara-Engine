@@ -105604,6 +105604,16 @@
                 ],
                 "additionalProperties": false
               },
+              "whileOffTerrain": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "minItems": 1,
+                "maxItems": 12
+              },
               "suppresses": {
                 "type": "array",
                 "items": {

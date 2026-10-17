@@ -479,6 +479,21 @@ function nearProp(
   return rulesetNearProp(state, combatant, gate.prop, rulesetInCells(gate.within, combat.distance.perCell));
 }
 
+/** Whether somebody stands on one of these terrains, or the board's environment is one (1.425).
+ *  Never off a board. */
+function onTerrain(
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  terrains: readonly string[],
+): boolean {
+  const board = state?.board;
+  if (!board) return false;
+  if (board.environment !== undefined && terrains.includes(board.environment)) return true;
+  if (!board.grid || combatant.x === undefined || combatant.y === undefined) return false;
+  const tile = board.grid.tiles[combatant.y]?.[combatant.x];
+  return tile !== undefined && terrains.includes(tile);
+}
+
 /** A prop's label or id loosely: lower case, a leading "the" dropped, and only letters and digits
  *  kept, so "Year-Wheel", "year wheel" and "The Year-Wheel" are one prop (1.332). */
 function looseProp(name: string): string {
@@ -556,6 +571,7 @@ export function rulesetActiveConditions(
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
     if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];
+    if (entry.whileOffTerrain && onTerrain(combatant, state, entry.whileOffTerrain)) return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];
     // Or near enough, seen or not (1.275): Antipathy's 60 feet.

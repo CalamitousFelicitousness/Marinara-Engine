@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition held off on some terrains (1.425): the aboleth's curse, off underwater. */
+function carriesOffTerrain425(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOffTerrain425(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.whileOffTerrain !== undefined) return true;
+  return featureValues(record).some((one) => carriesOffTerrain425(one, depth + 1));
+}
+
 /** An item's effect that softens a fall or holds conditions off (1.424): Ring of Feather Falling,
  *  Periapt of Health. A condition's own are older. */
 function carriesWornFallsAndHolds424(value: unknown, depth = 0): boolean {
@@ -6119,6 +6129,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions held off on some terrains, 1.425.
+  if (
+    !declaresApi(425) &&
+    (carriesOffTerrain425(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOffTerrain425(document)))
+  ) {
+    return "A ruleset whose conditions are held off on some terrains (whileOffTerrain) requires schemaVersion 2 and capabilityApi 1.425 or newer";
+  }
   // Items that soften a fall or hold conditions off, 1.424.
   if (
     !declaresApi(424) &&

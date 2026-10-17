@@ -26,6 +26,7 @@ import {
   buildGameDataEditorEdits,
   buildGameDataEditorSections,
   gameDataSectionRoute,
+  readGameDataRouteSection,
   readGameMetadata,
   readGameWorldEdits,
 } from "../../packages/client/src/lib/state-editor/game-data-editor-source.js";
@@ -367,6 +368,18 @@ assert.equal(
 assert.equal(gameDataSectionRoute("inventory"), "inventory");
 assert.equal(gameDataSectionRoute("worldEdits"), "world");
 assert.equal(gameDataSectionRoute("npcs"), undefined, "allow-listed keys go through the data route");
+assert.deepEqual(
+  ["storyScript", "partySheet", "widgets"].map(gameDataSectionRoute),
+  ["story", "partySheet", "widgets"],
+  "story script, party sheet and widgets save through their own routes",
+);
+assert.deepEqual(
+  readGameDataRouteSection({ gameWorld: { edits: { editsVersion: 1 } }, gameWidgetState: [{ id: "w" }] }, "worldEdits"),
+  { editsVersion: 1 },
+  "a routed section is read the way the editor shows it, to tell whether it changed since",
+);
+assert.deepEqual(readGameDataRouteSection({ gameWidgetState: [{ id: "w" }] }, "widgets"), [{ id: "w" }]);
+assert.equal(readGameDataRouteSection({}, "storyScript"), null, "an absent key reads as null");
 assert.deepEqual(
   buildGameDataEditorEdits({}, [
     { sectionId: "inventory", value: [] },

@@ -10,7 +10,7 @@ import { stateValuesEqual } from "./state-editor-json";
 import type { StateEditorChange, StateEditorSection } from "./state-editor.types";
 
 /** The game's own routes a section saves through instead of PATCH /api/game/:chatId/data. */
-export type GameDataSectionRoute = "inventory" | "world";
+export type GameDataSectionRoute = "inventory" | "world" | "story" | "partySheet" | "widgets";
 
 interface GameDataSectionDef {
   id: string;
@@ -23,7 +23,7 @@ interface GameDataSectionDef {
 /** The named sections, in the order the editor lists them. Keys no section names fall into "settings" or "other". */
 export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
   { id: "partyCards", keys: ["gameCharacterCards"] },
-  { id: "partySheet", keys: ["gamePartySheet"] },
+  { id: "partySheet", keys: ["gamePartySheet"], route: "partySheet" },
   { id: "npcs", keys: ["gameNpcs"] },
   { id: "journal", keys: ["gameJournal"] },
   { id: "playerNotes", keys: ["gamePlayerNotes"] },
@@ -33,8 +33,8 @@ export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
   { id: "world", keys: ["gameWorld"] },
   /** The hand-edits layer over the world (its `edits`), saved through PUT /world/edits. The world itself is never written. */
   { id: "worldEdits", keys: ["gameWorld"], route: "world" },
-  { id: "storyScript", keys: ["gameStory"] },
-  { id: "widgets", keys: ["gameWidgetState"] },
+  { id: "storyScript", keys: ["gameStory"], route: "story" },
+  { id: "widgets", keys: ["gameWidgetState"], route: "widgets" },
   { id: "timeWeather", keys: ["gameTime", "gameWeather", "gameMorale"] },
   {
     id: "maps",
@@ -114,6 +114,13 @@ export function readGameWorldEdits(metadata: Record<string, unknown>): unknown {
   const world = metadata.gameWorld;
   if (!world || typeof world !== "object" || Array.isArray(world)) return undefined;
   return (world as { edits?: unknown }).edits ?? null;
+}
+
+/** What a section with a route of its own shows, read from metadata (to tell whether it changed since). */
+export function readGameDataRouteSection(metadata: Record<string, unknown>, sectionId: string): unknown {
+  if (sectionId === "worldEdits") return readGameWorldEdits(metadata) ?? null;
+  const key = GAME_DATA_SECTIONS.find((def) => def.id === sectionId)?.keys[0];
+  return key ? (shownValue(key, metadata[key]) ?? null) : null;
 }
 
 /** What a section shows of a key: the inventory as the game reads it (every stack with its id). */

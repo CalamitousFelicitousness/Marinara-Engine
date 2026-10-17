@@ -16,6 +16,7 @@ import {
   type GameDataEditRefusal,
   type GameDataEditRequest,
   type GameInventoryOp,
+  type HudWidget,
   type GameInventoryOpResult,
 } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
@@ -27,8 +28,9 @@ import { describeGameInventoryRefusal } from "../../lib/game-inventory-refusal";
 import {
   buildGameDataEditorEdits,
   buildGameDataEditorSections,
+  gameDataSectionRoute,
+  readGameDataRouteSection,
   readGameMetadata,
-  readGameWorldEdits,
   type GameDataEditorIssue,
 } from "../../lib/state-editor/game-data-editor-source";
 import {
@@ -40,6 +42,8 @@ import {
 import { stateValuesEqual } from "../../lib/state-editor/state-editor-json";
 import type { StateEditorChange } from "../../lib/state-editor/state-editor.types";
 import { chatKeys } from "../../hooks/use-chats";
+import { useUpdateGameWidgets } from "../../hooks/use-game";
+import { stalePartySheet, useSavePartySheet } from "../../hooks/use-party-sheet";
 
 interface GameDataEditorModalProps {
   open: boolean;
@@ -81,6 +85,8 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
   /** Why the editor asks for a Reload: the game changed the data, or a save landed but reading it back failed. */
   const [notice, setNotice] = useState<"stale" | "refreshFailed" | null>(null);
   const [editorKey, setEditorKey] = useState(0);
+  const savePartySheet = useSavePartySheet();
+  const updateWidgets = useUpdateGameWidgets();
   const dirtyRef = useRef(false);
 
   const metadata = metadataQuery.data;
@@ -214,18 +220,46 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
     [chatId, localizeUi],
   );
 
-  /** The world's hand-edits layer, checked by the world route against the world, its towns and its story. */
-  const saveWorldEdits = useCallback(
-    async (edits: unknown) => {
+  /**
+   * One section saved through the game's own route for it, which checks it its own way: the world's
+   * edits layer (against the world, its towns and its story), the story script (against the world),
+   * the party sheet (on the revision it was opened at) and the HUD widgets.
+   */
+  const saveRoute = useCallback(
+    async (sectionId: string, value: unknown) => {
+      const label = sections.find((section) => section.id === sectionId)?.label ?? sectionId;
       try {
-        await trackChatMetadataSave(chatId, () => api.put(`/game/${chatId}/world/edits`, { edits }));
+        await trackChatMetadataSave(chatId, async () => {
+          switch (gameDataSectionRoute(sectionId)) {
+            case "world":
+              await api.put(`/game/${chatId}/world/edits`, { edits: value });
+              return;
+            case "story":
+              // Clearing the section takes the story away, as the story route's DELETE does.
+              if (value === null) await api.delete(`/game/${chatId}/story`);
+              else await api.put(`/game/${chatId}/story`, { story: value });
+              return;
+            case "partySheet": {
+              const revision = Number(metadata?.gamePartySheetRevision ?? 0);
+              await savePartySheet.mutateAsync({ chatId, sheet: value, revision });
+              return;
+            }
+            case "widgets":
+              await updateWidgets.mutateAsync({ chatId, widgets: (Array.isArray(value) ? value : []) as HudWidget[] });
+              return;
+          }
+        });
       } catch (error) {
+        if (stalePartySheet(error)) {
+          setNotice("stale");
+          throw new Error(localizeUi("ui.stateEditor.gameData.routeStale", { section: label }));
+        }
         const refusal = error instanceof ApiError ? (error.payload as { error?: string } | undefined) : null;
         if (!refusal?.error) throw error;
-        throw new Error(localizeUi("ui.stateEditor.gameData.worldEdits.refused", { error: refusal.error }));
+        throw new Error(localizeUi("ui.stateEditor.gameData.routeRefused", { section: label, error: refusal.error }));
       }
     },
-    [chatId, localizeUi],
+    [chatId, localizeUi, metadata, savePartySheet, sections, updateWidgets],
   );
 
   const save = useCallback(
@@ -240,11 +274,20 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       const inventory = inventoryChange ? buildGameInventoryOps(openedStacks, inventoryChange.value) : null;
       if (inventory && "issue" in inventory) throw new Error(inventoryIssueMessage(inventory.issue));
       const ops = inventory?.ops ?? [];
-      const worldChange = changes.find((change) => change.sectionId === "worldEdits");
-      if (result.edits.length === 0 && ops.length === 0 && !worldChange) return;
+      // Sections saved through their own route (inventory has its ops, above). Checked ones go first.
+      const order = ["world", "story", "partySheet", "widgets"] as const;
+      const routed = changes
+        .filter((change) => change.sectionId !== "inventory" && gameDataSectionRoute(change.sectionId))
+        .sort(
+          (a, b) =>
+            order.indexOf(gameDataSectionRoute(a.sectionId) as (typeof order)[number]) -
+            order.indexOf(gameDataSectionRoute(b.sectionId) as (typeof order)[number]),
+        );
+      if (result.edits.length === 0 && ops.length === 0 && routed.length === 0) return;
 
-      // Neither the inventory nor the world route checks staleness itself: compare with what's stored now.
-      if (ops.length > 0 || worldChange) {
+      // Only the party sheet's route and the data route check staleness themselves: compare the rest now.
+      const unchecked = routed.filter((change) => gameDataSectionRoute(change.sectionId) !== "partySheet");
+      if (ops.length > 0 || unchecked.length > 0) {
         const fresh = await fetchGameMetadata(chatId);
         const moved = findGameInventoryStacksChangedSince(
           openedStacks,
@@ -255,18 +298,27 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
           setNotice("stale");
           throw new Error(localizeUi("ui.stateEditor.gameData.inventory.stale", { names: moved.join(", ") }));
         }
-        if (worldChange && !stateValuesEqual(readGameWorldEdits(fresh), readGameWorldEdits(metadata))) {
+        const changed = unchecked.find(
+          (change) =>
+            !stateValuesEqual(
+              readGameDataRouteSection(fresh, change.sectionId),
+              readGameDataRouteSection(metadata, change.sectionId),
+            ),
+        );
+        if (changed) {
           setNotice("stale");
-          throw new Error(localizeUi("ui.stateEditor.gameData.worldEdits.stale"));
+          const section = sections.find((item) => item.id === changed.sectionId)?.label ?? changed.sectionId;
+          throw new Error(localizeUi("ui.stateEditor.gameData.routeStale", { section }));
         }
       }
 
-      // World first (its checks refuse most often), so a refusal there sends nothing else.
+      // The strictly checked routes first, so a refusal there sends nothing else; inventory last, as it
+      // saves what fits.
       let landed = false;
       let refused: string[] = [];
       try {
-        if (worldChange) {
-          await saveWorldEdits(worldChange.value);
+        for (const change of routed) {
+          await saveRoute(change.sectionId, change.value);
           landed = true;
         }
         if (result.edits.length > 0) {
@@ -314,7 +366,8 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       queryKey,
       saveDataEdits,
       saveInventoryOps,
-      saveWorldEdits,
+      saveRoute,
+      sections,
     ],
   );
 

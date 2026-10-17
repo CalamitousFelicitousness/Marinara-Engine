@@ -3403,6 +3403,8 @@ export interface RulesetCombatZoneRule {
   rounds: number;
   /** It ends as its maker's lair count next comes round (1.324). */
   untilLair?: true;
+  /** It stays when its caster is defeated or leaves (1.403), counting down as each round ends. */
+  outlasts?: true;
   anchor: "point" | "caster";
   /** Put on a cell somebody stands on, carried with them (1.301): only its caster (`own`), or anybody. */
   carried?: "own" | "any";

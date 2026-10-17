@@ -40785,6 +40785,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "outlasts": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "anchor": {
                           "type": "string",
                           "enum": [
@@ -55546,6 +55550,10 @@
                                 "maximum": 1000
                               },
                               "untilLair": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "outlasts": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -70460,6 +70468,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "outlasts": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "anchor": {
                               "type": "string",
                               "enum": [
@@ -83771,6 +83783,10 @@
                                     "maximum": 1000
                                   },
                                   "untilLair": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "outlasts": {
                                     "type": "boolean",
                                     "const": true
                                   },

@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A zone that outlasts its caster (1.403): Glyph of Warding, Symbol. */
+function carriesOutlasts403(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOutlasts403(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.outlasts !== undefined && record.rounds !== undefined) return true;
+  return featureValues(record).some((one) => carriesOutlasts403(one, depth + 1));
+}
+
 /** A zone hidden from its caster's foes (1.402): Glyph of Warding, Symbol. */
 function carriesHiddenZones402(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5885,6 +5895,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that outlast their caster, 1.403.
+  if (
+    !declaresApi(403) &&
+    (carriesOutlasts403(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOutlasts403(document)))
+  ) {
+    return "A ruleset whose zones outlast their caster (outlasts) requires schemaVersion 2 and capabilityApi 1.403 or newer";
+  }
   // Zones hidden from their caster's foes, 1.402.
   if (
     !declaresApi(402) &&

@@ -1908,6 +1908,7 @@ export function rulesetZoneAction(
     ...(zone.art ? { art: zone.art } : {}),
     rounds: zone.rounds,
     ...(zone.untilLair ? { untilLair: true as const } : {}),
+    ...(zone.outlasts ? { outlasts: true as const } : {}),
     anchor: zone.anchor ?? "point",
     ...(zone.carried ? { carried: zone.carried } : {}),
     triggers: [...zone.triggers],

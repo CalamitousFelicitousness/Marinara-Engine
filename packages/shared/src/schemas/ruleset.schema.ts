@@ -2945,6 +2945,7 @@ export interface RulesetCatalogZone {
   art?: string;
   rounds: number;
   untilLair?: true;
+  outlasts?: true;
   anchor?: "point" | "caster";
   carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
@@ -3041,6 +3042,11 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** It ends as its maker's lair count next comes round (Capability API 1.324), if `rounds` has
      *  not ended it first: "until the next lair action", The Owed's Freezing Fog. */
     untilLair: z.literal(true).optional(),
+    /** It stays when its caster is defeated or leaves the fight (Capability API 1.403), counting down
+     *  a round as each round ends, rather than ending with them: 5e's Glyph of Warding and Symbol,
+     *  lasting until triggered or dispelled. Never one held by concentration, nor one around its
+     *  caster. */
+    outlasts: z.literal(true).optional(),
     anchor: z.enum(["point", "caster"]).optional(),
     /** Cast on a thing somebody holds (Capability API 1.301), it is carried with them: a burst put on
      *  a cell its caster stands on (`own`), or on anybody's (`any`), moves with whoever stands
@@ -5623,6 +5629,7 @@ function zoneIssue(mechanics: {
   reaction?: unknown;
   save?: unknown;
   amount?: { dice?: string; flat?: number };
+  concentration?: unknown;
 }): string | undefined {
   const zone = mechanics.zone;
   if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
@@ -5647,6 +5654,11 @@ function zoneIssue(mechanics: {
   ) {
     return "A zone carried with somebody is a single burst put on a point, never moved of its own";
   }
+  // Outlasting its caster (1.403): nothing they hold, nothing around them.
+  if (zone.outlasts && mechanics.concentration) {
+    return 'A zone held by concentration ends with it, so it never "outlasts" its caster';
+  }
+  if (zone.outlasts && zone.anchor === "caster") return 'A zone around its caster never "outlasts" them';
   // Going off later and burning away (1.183).
   if (zone.detonates && (zone.anchor === "caster" || zone.move || zone.drift || wall)) {
     return "A zone that goes off stays where it is cast";

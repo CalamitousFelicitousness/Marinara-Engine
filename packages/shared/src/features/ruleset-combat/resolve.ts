@@ -3459,6 +3459,10 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   const ended: RulesetCombatZone[] = [];
   actor.zones = actor.zones.filter((zone) => {
     if (actionId !== undefined && zone.actionId !== actionId) return true;
+    // Its caster gone, one that outlasts them stays (1.403).
+    if (actionId === undefined && actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.outlasts) {
+      return true;
+    }
     ended.push(zone);
     return false;
   });
@@ -11861,6 +11865,14 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     for (const combatant of ctx.state.combatants) {
       refreshRulesetBudgets(combat, combatant.budgets, "round");
       refreshSpendLimits(combatant, "round");
+    }
+    // What outlasts a caster who takes no turns any more counts down as the round ends (1.403).
+    for (const caster of ctx.state.combatants) {
+      if (!caster.defeated || canTakeTurn(caster)) continue;
+      for (const zone of [...(caster.zones ?? [])]) {
+        zone.rounds -= 1;
+        if (zone.rounds <= 0) endZones(ctx, caster, zone.actionId);
+      }
     }
     // What standing in the board's light does as the round ends (1.319): Noonfield's.
     lightRuleAtRoundEnd(ctx);

@@ -2866,6 +2866,26 @@ const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** Some kinds kept out of a zone, or in it (Capability API 1.399): 5e's Magic Circle and Hallow. */
+export interface RulesetZoneKeepsOut {
+  is: RulesetTargetIs;
+  way?: "in" | "out";
+  attacksInto?: "disadvantage";
+  cantGive?: string[];
+}
+const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> = z
+  .object({
+    is: z.lazy(() => targetIsSchema),
+    /** `in` (the default): they cannot walk into it; `out`: once inside, they cannot walk out (a
+     *  Magic Circle turned inward to hold one). */
+    way: z.enum(["in", "out"]).optional(),
+    /** Their attacks at whoever stands inside have disadvantage. */
+    attacksInto: z.literal("disadvantage").optional(),
+    /** These conditions they cannot put on whoever stands inside: charmed, frightened, possessed. */
+    cantGive: uniqueIds(8).optional(),
+  })
+  .strict();
+
 /** A wall in sections that are struck and broken one by one (Capability API 1.200). */
 export interface RulesetZoneSections {
   every: number;
@@ -2954,6 +2974,7 @@ export interface RulesetCatalogZone {
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
+  keepsOut?: RulesetZoneKeepsOut;
   detonates?: {
     grows?: { dice?: string; flat?: number };
     touched?: true;
@@ -3180,6 +3201,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** What is cast from outside it at this level or lower, off these catalogs, does not reach whoever
      *  is inside (1.179): 5e's Globe of Invulnerability, spells of 5th level or lower. */
     wards: zoneWardsSchema.optional(),
+    /** Kinds of creature it keeps out (Capability API 1.399): they cannot walk into it (`way: "out"`:
+     *  out of it), their attacks into it may have disadvantage, and they cannot put `cantGive` on
+     *  whoever is inside. 5e's Magic Circle and Hallow. */
+    keepsOut: zoneKeepsOutSchema.optional(),
     /** A wall that nobody walks through, sees through, or both (Capability API 1.177): 5e's Wall of
      *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only. */
     blocks: z
@@ -5619,6 +5644,7 @@ function zoneIssue(mechanics: {
                 !zone.inside &&
                 !zone.forbids &&
                 !zone.wards &&
+                !zone.keepsOut &&
                 !zone.detonates &&
                 !zone.burns &&
                 !zone.lights &&
@@ -18480,6 +18506,13 @@ export function rulesetCatalogEntryIssues(
       sightIssues(definition, mechanics.teleport.smoke.pierced, [index, "mechanics", "teleport", "smoke"], add);
     }
     zoneInsideIssues(definition, mechanics?.zone, [index, "mechanics", "zone"], add);
+    // Whom a zone keeps out (1.399), and the conditions it keeps them from giving.
+    targetIsIssues(definition, mechanics?.zone?.keepsOut?.is, [index, "mechanics", "zone", "keepsOut", "is"], add);
+    mechanics?.zone?.keepsOut?.cantGive?.forEach((condition, conditionIndex) => {
+      if (!liveConditions.has(condition)) {
+        add([index, "mechanics", "zone", "keepsOut", "cantGive", conditionIndex], `Unknown condition "${condition}"`);
+      }
+    });
     // Who sets a glyph off (1.398) is a target test like any other.
     targetIsIssues(definition, mechanics?.zone?.detonates?.by, [index, "mechanics", "zone", "detonates", "by"], add);
     componentIssues(definition, mechanics?.components, [index, "mechanics", "components"], add);

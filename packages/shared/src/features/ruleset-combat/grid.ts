@@ -18,6 +18,7 @@ import {
   rulesetCombatEffects,
   rulesetCombatStanding,
   rulesetSealedApart,
+  rulesetTargetIs,
 } from "./encounter.js";
 import type {
   RulesetBlowKind,
@@ -847,6 +848,7 @@ export function rulesetReachableCells(
     }
   }
 
+  const keptBy = rulesetKeptBy(definition, state, actor);
   // Kept within a ring around whoever put a condition on, once inside it (1.274): Sympathy's.
   const within: Array<{ source: RulesetCombatant; ring: number }> = [];
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
@@ -921,6 +923,13 @@ export function rulesetReachableCells(
       )
         continue;
       if (within.some((one) => rulesetGapFrom({ x, y }, span, one.source) > one.ring)) continue;
+      // Kept out of a zone, or in it (1.399): Magic Circle, Hallow.
+      if (
+        keptBy.some(({ cells, rule }) =>
+          (rule.way ?? "in") === "in" ? cells.has(next) && !cells.has(key) : cells.has(key) && !cells.has(next),
+        )
+      )
+        continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (
         dx !== 0 &&
@@ -1147,6 +1156,40 @@ function provokedBy(
 }
 
 /** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
+/** The zones that keep this combatant out, or in (1.399), each with its cells: Magic Circle and
+ *  Hallow against the kinds they name. */
+export function rulesetKeptBy(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): Array<{ cells: Set<string>; rule: NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]> }> {
+  if (!state.board?.grid) return [];
+  return state.combatants.flatMap((caster) =>
+    (caster.zones ?? []).flatMap((zone) => {
+      const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.keepsOut;
+      if (!rule || !rulesetTargetIs(definition, combatant, rule.is)) return [];
+      return [{ cells: new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`)), rule }];
+    }),
+  );
+}
+
+/** Whether somebody stands in a zone that keeps `from` out (1.399), and so is warded against them. */
+export function rulesetWardedFrom(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  inside: RulesetCombatant,
+  from: RulesetCombatant,
+): Array<NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]>> {
+  const at = rulesetFootprint(inside).map((cell) => `${cell.x},${cell.y}`);
+  const by = rulesetFootprint(from).map((cell) => `${cell.x},${cell.y}`);
+  return rulesetKeptBy(definition, state, from)
+    .filter(
+      ({ cells, rule }) =>
+        (rule.way ?? "in") === "in" && at.some((key) => cells.has(key)) && !by.some((key) => cells.has(key)),
+    )
+    .map(({ rule }) => rule);
+}
+
 export function rulesetZoneCells(
   state: RulesetEncounterState,
   caster: RulesetCombatant,

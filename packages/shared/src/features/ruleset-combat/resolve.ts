@@ -149,6 +149,7 @@ import {
   rulesetReachableCells,
   rulesetSpanOf,
   rulesetWalkingDistances,
+  rulesetWardedFrom,
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
@@ -2308,6 +2309,17 @@ function applyConditionId(
     ).length >= applies.heldAtMost
   ) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
+    return;
+  }
+  // Put on by somebody kept out of where its holder stands (1.399): Magic Circle's "can't be
+  // charmed, frightened, or possessed by the creature".
+  const giver = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  if (
+    giver &&
+    giver.id !== target.id &&
+    rulesetWardedFrom(ctx.definition, ctx.state, target, giver).some((rule) => rule.cantGive?.includes(condition))
+  ) {
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "warded" });
     return;
   }
   // Its holder already holding all it has room for (1.352): Whelm's one Large or two Medium.

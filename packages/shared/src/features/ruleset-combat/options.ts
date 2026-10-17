@@ -115,6 +115,7 @@ import {
   rulesetCellSolidFor,
   rulesetFootprintAt,
   rulesetFills,
+  rulesetWardedFrom,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import {
@@ -3030,6 +3031,9 @@ export function rulesetAttackMode(
     }
   }
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
+  // At somebody inside a zone that keeps them out (1.399): Magic Circle.
+  if (where && rulesetWardedFrom(definition, where.state, target, actor).some((rule) => rule.attacksInto))
+    leans.add("disadvantage");
   // A creature's own (1.293): sensitivity to sunlight, where it holds.
   for (const rule of actor.block?.attackModes ?? []) {
     if (!rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) continue;

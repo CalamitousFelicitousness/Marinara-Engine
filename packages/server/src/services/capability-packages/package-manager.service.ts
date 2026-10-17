@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A zone that keeps some kinds out, or in (1.399): Magic Circle, Hallow. */
+function carriesKeepsOut399(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKeepsOut399(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.keepsOut !== undefined && plainRecord(record.keepsOut)?.is !== undefined) return true;
+  return featureValues(record).some((one) => carriesKeepsOut399(one, depth + 1));
+}
+
 /** A zone set off by somebody entering it, or reaching past its cells (1.398): Glyph of Warding. */
 function carriesGlyphs398(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5845,6 +5855,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that keep some kinds out or in, 1.399.
+  if (
+    !declaresApi(399) &&
+    (carriesKeepsOut399(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKeepsOut399(document)))
+  ) {
+    return "A ruleset whose zones keep some kinds out or in (keepsOut) requires schemaVersion 2 and capabilityApi 1.399 or newer";
+  }
   // Zones set off by entering them or reaching past their cells, 1.398.
   if (
     !declaresApi(398) &&

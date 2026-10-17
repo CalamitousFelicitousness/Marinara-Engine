@@ -2558,7 +2558,9 @@ export type RulesetCombatEvent =
         /** Its spell's light put out by magical darkness (1.299). */
         | "dispelled"
         /** Not put on: its source holds as many with it as it may (1.320). */
-        | "full";
+        | "full"
+        /** Not put on: its holder stands where its source is kept out (1.399). */
+        | "warded";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -3478,6 +3480,8 @@ export interface RulesetCombatZoneRule {
   forbids?: { components: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
+  /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */
+  keepsOut?: { is: RulesetTargetIs; way?: "in" | "out"; attacksInto?: "disadvantage"; cantGive?: string[] };
 }
 
 /** One lasting area standing on the board (1.172). A zone held at a point keeps the cells it was

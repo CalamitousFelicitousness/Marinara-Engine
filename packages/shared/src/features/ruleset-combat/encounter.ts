@@ -2023,6 +2023,8 @@ export function rulesetZoneAction(
       ...(zone.wards.maxLevelPerCostStep ? { maxLevelPerCostStep: zone.wards.maxLevelPerCostStep } : {}),
     };
   }
+  // Kinds it keeps out (1.399): Magic Circle, Hallow.
+  if (zone.keepsOut) out.keepsOut = structuredClone(zone.keepsOut);
   const held = zone.whileHeld;
   const heldAmount = held && amountOf(held.amount);
   if (held && heldAmount) {

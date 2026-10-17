@@ -2034,6 +2034,7 @@
   "game.combat.ruleset.event.conditionShaken": "An ally shakes {{target}} out of {{condition}}.",
   "game.combat.ruleset.event.conditionSpent": "{{condition}} is used up and ends on {{target}}.",
   "game.combat.ruleset.event.conditionStacked": "{{target}} is {{condition}} once more ({{stacks}} in all).",
+  "game.combat.ruleset.event.conditionWarded": "{{condition}} does not go on {{target}}: they stand where whoever puts it on is kept out.",
   "game.combat.ruleset.event.conditionWorsened": "{{condition}} on {{target}} worsens: too many saves failed.",
   "game.combat.ruleset.event.conjured": "{{actor}} uses {{label}} and holds {{item}}.",
   "game.combat.ruleset.event.conjuredGone": "{{actor}}'s {{item}} vanishes.",

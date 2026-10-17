@@ -2991,6 +2991,9 @@ function mechanicsAction(
     };
   // Sent out of the fight (1.236): Dismissal, Banishment.
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
+  // Divine Word (1.397): killed at the lowest health, and only some kinds sent away.
+  if (mechanics.killsAtMost !== undefined) action.killsAtMost = mechanics.killsAtMost;
+  if (mechanics.dismissesIs) action.dismissesIs = structuredClone(mechanics.dismissesIs);
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
   if (mechanics.unseals) action.unseals = true;

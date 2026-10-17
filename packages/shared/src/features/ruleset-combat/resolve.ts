@@ -11347,10 +11347,19 @@ function resolveActionBody(
       // Tracks moved and sealed health given back (1.201), before the conditions it puts on.
       for (const entry of cureTracks ?? []) moveTrack(ctx, actor, target, entry.track, entry.by);
       if (cureUnseals) unsealHealth(ctx, actor, target);
-      for (const applies of action.applies ?? []) {
+      // Its health as it lands (1.397), read once: Divine Word's tiers, and its kill at the lowest.
+      const healthNow = healthOf(ctx, target).value;
+      const slain =
+        action.killsAtMost !== undefined &&
+        target.id !== actor.id &&
+        !target.defeated &&
+        healthNow <= action.killsAtMost;
+      if (slain) slay(ctx, target, actor.id, action.label);
+      for (const applies of slain ? [] : (action.applies ?? [])) {
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
+        if (applies.targetHealthAtMost !== undefined && healthNow > applies.targetHealthAtMost) continue;
         // Destroyed in its place, at or below the tier its applier reaches (1.266): Destroy Undead.
         if (destroyedByTier(ctx, actor, target, applies)) {
           slay(ctx, target, actor.id, action.label);
@@ -11398,7 +11407,13 @@ function resolveActionBody(
         drawTarget(ctx, actor, target, action.draws.spends);
       }
       // Sent out of the fight (1.236), last of all.
-      if (action.dismisses && target.id !== actor.id) dismiss(ctx, actor, action, target);
+      if (
+        action.dismisses &&
+        target.id !== actor.id &&
+        !slain &&
+        rulesetTargetIs(ctx.definition, target, action.dismissesIs)
+      )
+        dismiss(ctx, actor, action, target);
     }
     spendUsed();
   }

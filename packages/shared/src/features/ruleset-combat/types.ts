@@ -185,6 +185,8 @@ export interface RulesetCombatApplies {
   when?: RulesetSheetBounds;
   /** It goes on only a target that is this (1.168). */
   targetIs?: RulesetTargetIs;
+  /** It goes on only a target with this much health or less as it lands (1.397). */
+  targetHealthAtMost?: number;
   /** It ends whenever this other condition put on with it ends (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */
@@ -745,6 +747,10 @@ export interface RulesetCombatAction {
   healthAtMost?: number;
   /** Kills outright whoever it affects (1.196). */
   kills?: true;
+  /** Kills outright whoever fails its save with this much health or less (1.397). */
+  killsAtMost?: number;
+  /** `dismisses` sends away only those that are this (1.397). */
+  dismissesIs?: RulesetTargetIs;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   /** `overMax` (1.252): it may go past the pool's maximum, as Font of Magic's slots do. */
   restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };

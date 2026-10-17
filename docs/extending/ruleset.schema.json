@@ -46100,6 +46100,11 @@
                               }
                             ]
                           },
+                          "targetHealthAtMost": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
                           "saveEnds": {
                             "type": "object",
                             "properties": {
@@ -47157,6 +47162,11 @@
                                 "additionalProperties": false
                               }
                             ]
+                          },
+                          "targetHealthAtMost": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
                           },
                           "saveEnds": {
                             "type": "object",
@@ -48263,6 +48273,48 @@
                     "kills": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "killsAtMost": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "dismissesIs": {
+                      "type": "object",
+                      "properties": {
+                        "types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 20
+                        },
+                        "upToSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "atLeastSize": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
                     },
                     "scales": {
                       "type": "object",
@@ -51954,6 +52006,11 @@
                                     }
                                   ]
                                 },
+                                "targetHealthAtMost": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 100000
+                                },
                                 "saveEnds": {
                                   "type": "object",
                                   "properties": {
@@ -53323,6 +53380,11 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "targetHealthAtMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -57284,6 +57346,11 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "targetHealthAtMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -65575,6 +65642,11 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "targetHealthAtMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -75186,6 +75258,11 @@
                                   }
                                 ]
                               },
+                              "targetHealthAtMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
                               "saveEnds": {
                                 "type": "object",
                                 "properties": {
@@ -76243,6 +76320,11 @@
                                     "additionalProperties": false
                                   }
                                 ]
+                              },
+                              "targetHealthAtMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100000
                               },
                               "saveEnds": {
                                 "type": "object",
@@ -77317,6 +77399,48 @@
                         "kills": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "killsAtMost": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "dismissesIs": {
+                          "type": "object",
+                          "properties": {
+                            "types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "upToSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeastSize": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "targetsScale": {
                           "type": "object",
@@ -88243,6 +88367,11 @@
                                         }
                                       ]
                                     },
+                                    "targetHealthAtMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
+                                    },
                                     "saveEnds": {
                                       "type": "object",
                                       "properties": {
@@ -89300,6 +89429,11 @@
                                           "additionalProperties": false
                                         }
                                       ]
+                                    },
+                                    "targetHealthAtMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -90374,6 +90508,48 @@
                               "kills": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "killsAtMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
+                              "dismissesIs": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "targetsScale": {
                                 "type": "object",
@@ -105619,6 +105795,11 @@
                             }
                           ]
                         },
+                        "targetHealthAtMost": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
                         "saveEnds": {
                           "type": "object",
                           "properties": {
@@ -107138,6 +107319,11 @@
                                   }
                                 ]
                               },
+                              "targetHealthAtMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
                               "saveEnds": {
                                 "type": "object",
                                 "properties": {
@@ -108216,6 +108402,11 @@
                                         "additionalProperties": false
                                       }
                                     ]
+                                  },
+                                  "targetHealthAtMost": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 100000
                                   },
                                   "saveEnds": {
                                     "type": "object",
@@ -109808,6 +109999,11 @@
                               "additionalProperties": false
                             }
                           ]
+                        },
+                        "targetHealthAtMost": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100000
                         },
                         "saveEnds": {
                           "type": "object",

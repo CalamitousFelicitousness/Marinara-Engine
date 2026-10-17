@@ -3943,6 +3943,7 @@ export interface RulesetCatalogApplies {
   heldAtMost?: number;
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
+  targetHealthAtMost?: number;
   endsWith?: string;
   checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   harmsPerCostStep?: { dice?: string; flat?: number };
@@ -3980,6 +3981,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
   .object({
     condition: sheetId,
     duration: catalogDurationSchema,
+    /** Put on only a target with this much health left or less as it lands (Capability API 1.397):
+     *  5e's Divine Word, deafened at 50 or fewer, blinded too at 40, stunned too at 30. */
+    targetHealthAtMost: z.number().int().min(0).max(100000).optional(),
     /** `at: "damaged"` rolls only on damage above zero, never on a turn (Capability API 1.129):
      *  5e's Dominate Person. */
     saveEnds: z
@@ -5395,6 +5399,12 @@ const catalogMechanicsObject = z
     healthAtMost: z.number().int().min(0).max(100000).optional(),
     /** Kills outright whoever it affects (Capability API 1.196): Power Word Kill. */
     kills: z.literal(true).optional(),
+    /** Kills outright whoever fails its save with this much health left or less, in place of all
+     *  else it does to them (Capability API 1.397): Divine Word at 20. */
+    killsAtMost: z.number().int().min(0).max(100000).optional(),
+    /** Sends out of the fight with `dismisses` only those that are this (Capability API 1.397):
+     *  Divine Word's celestials, elementals, fey and fiends. */
+    dismissesIs: targetIsSchema.optional(),
     /** An amount that grows with the sheet: the table gives the EXTRA dice at each step of the
      *  value it reads, so a trick that grows with a level needs no second entry. */
     scales: z.object({ from: rulesetValueRefSchema, table: stepTableSchema }).strict().optional(),
@@ -5660,6 +5670,20 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["kindChoice"],
       message: 'The kind chosen is remembered by what it puts on, so "kindChoice" goes with "applies"',
+    });
+  }
+  if (mechanics.dismissesIs && !mechanics.dismisses) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dismissesIs"],
+      message: '"dismissesIs" narrows whom "dismisses" sends away: it goes with "dismisses"',
+    });
+  }
+  if (mechanics.killsAtMost !== undefined && !mechanics.save) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["killsAtMost"],
+      message: '"killsAtMost" kills whoever fails its save: it goes with "save"',
     });
   }
   if (mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) < 2) {
@@ -15397,11 +15421,13 @@ function targetTestIssues(
     };
     save?: RulesetSaveExtras;
     maxAgainst?: RulesetTargetIs;
+    dismissesIs?: RulesetTargetIs;
   },
   at: (string | number)[],
   add: (path: (string | number)[], message: string) => void,
 ): void {
   saveExtrasIssues(definition, carrier.save, [...at, "save"], add);
+  targetIsIssues(definition, carrier.dismissesIs, [...at, "dismissesIs"], add);
   carrier.plus?.forEach((clause, index) =>
     targetIsIssues(definition, clause.targetIs, [...at, "plus", index, "targetIs"], add),
   );

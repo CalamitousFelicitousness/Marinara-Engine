@@ -2194,6 +2194,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** What lands by the health its target has left, or a dismissal of only some (1.397): Divine Word. */
+function carriesHealthTiers397(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealthTiers397(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.targetHealthAtMost !== undefined || record.killsAtMost !== undefined || record.dismissesIs !== undefined)
+    return true;
+  return featureValues(record).some((one) => carriesHealthTiers397(one, depth + 1));
+}
+
 /** Those a creature called sent away as an action (1.396): Summon Demon's dismissal. */
 function carriesDismissibleCalls396(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5822,6 +5833,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // By the health its target has left, or a dismissal of only some, 1.397.
+  if (
+    !declaresApi(397) &&
+    (carriesHealthTiers397(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealthTiers397(document)))
+  ) {
+    return "A ruleset whose entries act by the health their target has left (targetHealthAtMost, killsAtMost) or send away only some (dismissesIs) requires schemaVersion 2 and capabilityApi 1.397 or newer";
+  }
   // Called creatures sent away as an action, 1.396.
   if (
     !declaresApi(396) &&

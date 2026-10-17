@@ -44090,6 +44090,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "appliesOneOf": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "kindChoice": {
                       "type": "boolean",
                       "const": true
@@ -46082,6 +46086,11 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "perStep": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -47134,6 +47143,11 @@
                                   "untilLair": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "perStep": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000
                                   },
                                   "$comment": {}
                                 },
@@ -51926,6 +51940,11 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "perStep": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 1000
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -53290,6 +53309,11 @@
                                             "untilLair": {
                                               "type": "boolean",
                                               "const": true
+                                            },
+                                            "perStep": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000
                                             },
                                             "$comment": {}
                                           },
@@ -57242,6 +57266,11 @@
                                             "untilLair": {
                                               "type": "boolean",
                                               "const": true
+                                            },
+                                            "perStep": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000
                                             },
                                             "$comment": {}
                                           },
@@ -65529,6 +65558,11 @@
                                               "type": "boolean",
                                               "const": true
                                             },
+                                            "perStep": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -73166,6 +73200,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "appliesOneOf": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "kindChoice": {
                           "type": "boolean",
                           "const": true
@@ -75130,6 +75168,11 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "perStep": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -76182,6 +76225,11 @@
                                       "untilLair": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "perStep": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000
                                       },
                                       "$comment": {}
                                     },
@@ -86209,6 +86257,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "appliesOneOf": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "kindChoice": {
                                 "type": "boolean",
                                 "const": true
@@ -88173,6 +88225,11 @@
                                               "type": "boolean",
                                               "const": true
                                             },
+                                            "perStep": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -89225,6 +89282,11 @@
                                             "untilLair": {
                                               "type": "boolean",
                                               "const": true
+                                            },
+                                            "perStep": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000
                                             },
                                             "$comment": {}
                                           },
@@ -105539,6 +105601,11 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "perStep": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -107053,6 +107120,11 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "perStep": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -108126,6 +108198,11 @@
                                           "untilLair": {
                                             "type": "boolean",
                                             "const": true
+                                          },
+                                          "perStep": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 1000
                                           },
                                           "$comment": {}
                                         },
@@ -109713,6 +109790,11 @@
                                 "untilLair": {
                                   "type": "boolean",
                                   "const": true
+                                },
+                                "perStep": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000
                                 },
                                 "$comment": {}
                               },

@@ -147,7 +147,17 @@ export interface RulesetCombatApplies {
   form?: RulesetShapeForm;
   cap?: RulesetShapeCap;
   duration:
-    "instant" | "until-save" | "this-action" | { rounds: number; at?: "turn-start"; of?: "source"; untilLair?: true };
+    | "instant"
+    | "until-save"
+    | "this-action"
+    | {
+        rounds: number;
+        at?: "turn-start";
+        of?: "source";
+        untilLair?: true;
+        /** Rounds more for each step of higher cost paid (1.394). */
+        perStep?: number;
+      };
   /** Its source holds no more than this many with it at once (1.320). */
   heldAtMost?: number;
   saveEnds?: RulesetCombatSaveEnds;
@@ -773,6 +783,8 @@ export interface RulesetCombatAction {
   unseals?: true;
   /** It does one of its cures, not all (1.204): the mode picked, else the first the target needs. */
   cureOneOf?: true;
+  /** It puts on one of its `applies`, not all (1.395): the mode picked, else the first. */
+  appliesOneOf?: true;
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
   /** A form is picked as it is used (1.342), from its `modes`; `formCap` keeps out the forms above
@@ -1220,6 +1232,8 @@ export interface RulesetCombatMode {
   form?: RulesetShapeForm;
   /** Who is called in this mode (1.344): Conjure Animals' two wolves or four. */
   call?: NonNullable<RulesetCombatAction["calls"]>;
+  /** The one of its `applies` it puts on in this mode (1.395), by its place. */
+  appliesPick?: number;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
 }

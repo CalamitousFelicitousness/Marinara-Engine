@@ -3023,6 +3023,16 @@ function mechanicsAction(
       ...(mechanics.unseals ? [{ id: "unseals", label: healthLabel, cure: { unseals: true as const } }] : []),
     ];
   }
+  // One of what it puts on (1.395), picked like a weapon's mode: Primeval Awareness' reach.
+  if (mechanics.appliesOneOf && action.applies?.length) {
+    action.appliesOneOf = true;
+    const conditionLabel = (id: string) => definition.sheet.live.conditions.find((one) => one.id === id)?.label ?? id;
+    action.modes = action.applies.map((entry, index) => ({
+      id: `applies-${index}`,
+      label: conditionLabel(entry.condition),
+      appliesPick: index,
+    }));
+  }
   // A weapon put in hand (1.306): which one is picked as it is used, its modes filled in once the
   // sheet's items and entries are known.
   if (mechanics.conjures) action.conjures = true;

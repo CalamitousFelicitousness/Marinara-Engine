@@ -3763,6 +3763,10 @@ const catalogDurationSchema = z.union([
       /** Or until whoever put it on next comes to their lair's count, if that is sooner (Capability
        *  API 1.327): the Hour Bell's "until the next lair action". */
       untilLair: z.literal(true).optional(),
+      /** And this many rounds more for each step of higher cost it is paid with (Capability API
+       *  1.394): Primeval Awareness' "1 minute per level of the spell slot you expend" is
+       *  `{"rounds": 10, "perStep": 10}` on a 1st-level slot. */
+      perStep: z.number().int().min(1).max(1000).optional(),
     })
     .strict(),
 ]);
@@ -5263,6 +5267,10 @@ const catalogMechanicsObject = z
      *  of `tracks`, or `unseals`, picked as it is used like a weapon's mode, and otherwise the first
      *  of them, in that order, the target has something for. 5e's Greater Restoration. */
     cureOneOf: z.literal(true).optional(),
+    /** It puts on ONE of its `applies`, not all of them (Capability API 1.395), picked as it is used
+     *  like a weapon's mode, and otherwise the first: Primeval Awareness' one mile, or six in the
+     *  ranger's favored terrain, as two conditions with their own `presence`. */
+    appliesOneOf: z.literal(true).optional(),
     /** Its user names a creature type of `combat.creatureTypes` as they use it (Capability API
      *  1.270), picked like a weapon's mode: what it puts on remembers it, for an aura with
      *  `chosenKind` to reach only that kind (5e's Antipathy/Sympathy). */
@@ -5652,6 +5660,24 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["kindChoice"],
       message: 'The kind chosen is remembered by what it puts on, so "kindChoice" goes with "applies"',
+    });
+  }
+  if (mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) < 2) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["appliesOneOf"],
+      message: '"appliesOneOf" picks one of at least two "applies"',
+    });
+  }
+  if (
+    mechanics.appliesOneOf &&
+    (mechanics.cureOneOf || mechanics.kindChoice || mechanics.forms || mechanics.calls || mechanics.conjures)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["appliesOneOf"],
+      message:
+        '"appliesOneOf" is picked as a mode, so it goes without "cureOneOf", "kindChoice", "forms", "calls" or "conjures"',
     });
   }
   if (mechanics.cureOneOf && cureParts < 2) {

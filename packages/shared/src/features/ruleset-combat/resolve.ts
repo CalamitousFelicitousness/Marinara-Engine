@@ -7219,6 +7219,38 @@ function takeLairAction(
   };
 }
 
+/** The action with what it applies lasting `perStep` rounds more for each step of higher cost it is
+ *  paid with (1.394), or as it is when nothing of it grows. */
+function durationsPaid(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  payWith: string | undefined,
+): RulesetCombatAction {
+  const grows = (entry: RulesetCombatApplies) => typeof entry.duration === "object" && !!entry.duration.perStep;
+  if (!action.applies?.some(grows)) return action;
+  const steps = action.innate
+    ? Math.max(0, action.innate.level - action.innate.baseLevel)
+    : payWith
+      ? rulesetCostSteps(ctx.definition, action, payWith, actor)
+      : 0;
+  if (steps <= 0) return action;
+  return {
+    ...action,
+    applies: action.applies.map((entry) =>
+      typeof entry.duration === "object" && entry.duration.perStep
+        ? {
+            ...entry,
+            duration: {
+              ...entry.duration,
+              rounds: Math.min(14400, entry.duration.rounds + entry.duration.perStep * steps),
+            },
+          }
+        : entry,
+    ),
+  };
+}
+
 /** Calls an action's creatures into the fight (1.325), as many as its count throws, and says so. */
 function callCreatures(
   ctx: RulesetCombatContext,
@@ -8096,6 +8128,10 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   }
   // A later strike keeps the cast's amount and payment level, but does not start concentration again.
   if (resume.summon) action = { ...action, concentration: false };
+  // Lasting longer for each step of higher cost paid (1.394): Primeval Awareness.
+  action = durationsPaid(ctx, actor, action, resume.payWith);
+  // One of what it puts on, with none picked: the first (1.395).
+  if (action.appliesOneOf && action.applies?.length) action = { ...action, applies: [action.applies[0]!] };
   // A saved fight can come back through an import, so only a real cell of this board is taken.
   const grid = ctx.state.board?.grid;
   const at = resume.at;

@@ -2194,6 +2194,26 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** One of an entry's applies, picked as it is used (1.395): Primeval Awareness' reach. */
+function carriesAppliesOneOf395(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAppliesOneOf395(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.appliesOneOf !== undefined) return true;
+  return featureValues(record).some((one) => carriesAppliesOneOf395(one, depth + 1));
+}
+
+/** A duration that grows with the cost paid (1.394): Primeval Awareness. */
+function carriesDurationPerStep394(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDurationPerStep394(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duration)?.perStep !== undefined) return true;
+  return featureValues(record).some((one) => carriesDurationPerStep394(one, depth + 1));
+}
+
 /** A creature's call by options, for rounds or bound to its caller (1.393): Summon Demon. A catalog
  *  entry's calls (its mechanics carry a `kind`) took options and rounds at 1.344. */
 function carriesCreatureCalls393(value: unknown, depth = 0): boolean {
@@ -5792,6 +5812,22 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // One of an entry's applies picked as it is used, 1.395.
+  if (
+    !declaresApi(395) &&
+    (carriesAppliesOneOf395(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesOneOf395(document)))
+  ) {
+    return "A ruleset whose entries put on one of their applies, picked as they are used (appliesOneOf), requires schemaVersion 2 and capabilityApi 1.395 or newer";
+  }
+  // A duration that grows with the cost paid, 1.394.
+  if (
+    !declaresApi(394) &&
+    (carriesDurationPerStep394(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDurationPerStep394(document)))
+  ) {
+    return "A ruleset whose conditions last longer for each step of higher cost paid (perStep) requires schemaVersion 2 and capabilityApi 1.394 or newer";
+  }
   // A creature's call by options, for rounds or bound to its caller, 1.393.
   if (
     !declaresApi(393) &&

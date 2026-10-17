@@ -28,6 +28,7 @@ import {
   buildGameDataEditorEdits,
   buildGameDataEditorSections,
   readGameMetadata,
+  readGameWorldEdits,
   type GameDataEditorIssue,
 } from "../../lib/state-editor/game-data-editor-source";
 import {
@@ -36,6 +37,7 @@ import {
   type GameDataInventoryIssue,
   type GameDataInventoryOpLabel,
 } from "../../lib/state-editor/game-data-inventory";
+import { stateValuesEqual } from "../../lib/state-editor/state-editor-json";
 import type { StateEditorChange } from "../../lib/state-editor/state-editor.types";
 import { chatKeys } from "../../hooks/use-chats";
 
@@ -212,6 +214,20 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
     [chatId, localizeUi],
   );
 
+  /** The world's hand-edits layer, checked by the world route against the world, its towns and its story. */
+  const saveWorldEdits = useCallback(
+    async (edits: unknown) => {
+      try {
+        await trackChatMetadataSave(chatId, () => api.put(`/game/${chatId}/world/edits`, { edits }));
+      } catch (error) {
+        const refusal = error instanceof ApiError ? (error.payload as { error?: string } | undefined) : null;
+        if (!refusal?.error) throw error;
+        throw new Error(localizeUi("ui.stateEditor.gameData.worldEdits.refused", { error: refusal.error }));
+      }
+    },
+    [chatId, localizeUi],
+  );
+
   const save = useCallback(
     async (changes: StateEditorChange[]) => {
       if (!metadata) return;
@@ -224,20 +240,53 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       const inventory = inventoryChange ? buildGameInventoryOps(openedStacks, inventoryChange.value) : null;
       if (inventory && "issue" in inventory) throw new Error(inventoryIssueMessage(inventory.issue));
       const ops = inventory?.ops ?? [];
-      if (ops.length > 0) {
-        // The inventory route has no stale check of its own: compare the stacks the ops touch first.
-        const fresh = normalizeGameInventoryStacks((await fetchGameMetadata(chatId)).gameInventory);
-        const moved = findGameInventoryStacksChangedSince(openedStacks, fresh, ops);
+      const worldChange = changes.find((change) => change.sectionId === "worldEdits");
+      if (result.edits.length === 0 && ops.length === 0 && !worldChange) return;
+
+      // Neither the inventory nor the world route checks staleness itself: compare with what's stored now.
+      if (ops.length > 0 || worldChange) {
+        const fresh = await fetchGameMetadata(chatId);
+        const moved = findGameInventoryStacksChangedSince(
+          openedStacks,
+          normalizeGameInventoryStacks(fresh.gameInventory),
+          ops,
+        );
         if (moved.length > 0) {
           setNotice("stale");
           throw new Error(localizeUi("ui.stateEditor.gameData.inventory.stale", { names: moved.join(", ") }));
         }
+        if (worldChange && !stateValuesEqual(readGameWorldEdits(fresh), readGameWorldEdits(metadata))) {
+          setNotice("stale");
+          throw new Error(localizeUi("ui.stateEditor.gameData.worldEdits.stale"));
+        }
       }
-      if (result.edits.length === 0 && ops.length === 0) return;
 
-      if (result.edits.length > 0) await saveDataEdits(result.edits);
-      const refused =
-        inventory && "ops" in inventory && ops.length > 0 ? await saveInventoryOps(ops, inventory.labels) : [];
+      // World first (its checks refuse most often), so a refusal there sends nothing else.
+      let landed = false;
+      let refused: string[] = [];
+      try {
+        if (worldChange) {
+          await saveWorldEdits(worldChange.value);
+          landed = true;
+        }
+        if (result.edits.length > 0) {
+          await saveDataEdits(result.edits);
+          landed = true;
+        }
+        if (inventory && "ops" in inventory && ops.length > 0) refused = await saveInventoryOps(ops, inventory.labels);
+      } catch (error) {
+        if (!landed) throw error;
+        // Part of it saved: move the baseline to what's stored, so the saved sections read clean and only
+        // the refused one keeps its draft (a retry would otherwise resend saved keys and be refused as stale).
+        try {
+          qc.setQueryData(queryKey, await fetchGameMetadata(chatId));
+        } catch {
+          setNotice("refreshFailed");
+        }
+        void qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(localizeUi("ui.stateEditor.gameData.partlySaved", { error: message }));
+      }
 
       // A save that landed answers any earlier stale refusal; a failed read-back below sets its own notice.
       setNotice(null);
@@ -265,6 +314,7 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       queryKey,
       saveDataEdits,
       saveInventoryOps,
+      saveWorldEdits,
     ],
   );
 

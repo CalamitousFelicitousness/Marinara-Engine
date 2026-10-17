@@ -25,7 +25,9 @@ import {
 import {
   buildGameDataEditorEdits,
   buildGameDataEditorSections,
+  gameDataSectionRoute,
   readGameMetadata,
+  readGameWorldEdits,
 } from "../../packages/client/src/lib/state-editor/game-data-editor-source.js";
 import type { StateEditorSection } from "../../packages/client/src/lib/state-editor/state-editor.types.js";
 
@@ -331,6 +333,47 @@ assert.deepEqual(
   buildGameDataEditorEdits(openedGame, [{ sectionId: "maps", value: {} }]),
   { sectionId: "maps", issue: { kind: "readOnly" } },
   "a read-only section can't produce an edit",
+);
+
+// ── game data (#7743 slices 3-4): sections saved through the game's own routes ──
+
+assert.equal(readGameWorldEdits({}), undefined, "a game with no world has no world edits section");
+assert.equal(
+  readGameWorldEdits({ gameWorld: { seed: 1 } }),
+  null,
+  "a world without edits shows null, ready to add some",
+);
+assert.deepEqual(
+  readGameWorldEdits({ gameWorld: { seed: 1, edits: { editsVersion: 1, places: [] } } }),
+  { editsVersion: 1, places: [] },
+  "the layer is read where the world route keeps it",
+);
+const routed = buildGameDataEditorSections(
+  {
+    gameWorld: { seed: 1, edits: { editsVersion: 1 } },
+    gameInventory: [{ name: "Rope", quantity: 2 }],
+  },
+  (id) => id,
+);
+const routedById = Object.fromEntries(routed.map((section) => [section.id, section]));
+assert.equal(routedById.world?.readOnly, true, "the world itself stays read-only");
+assert.equal(routedById.worldEdits?.readOnly, undefined, "its edits layer is editable");
+assert.equal(routedById.inventory?.readOnly, false, "the inventory is editable");
+assert.equal(
+  (routedById.inventory?.value as Array<{ id?: string }>)[0]?.id !== undefined,
+  true,
+  "the inventory shows each stack with the id the game works out for it",
+);
+assert.equal(gameDataSectionRoute("inventory"), "inventory");
+assert.equal(gameDataSectionRoute("worldEdits"), "world");
+assert.equal(gameDataSectionRoute("npcs"), undefined, "allow-listed keys go through the data route");
+assert.deepEqual(
+  buildGameDataEditorEdits({}, [
+    { sectionId: "inventory", value: [] },
+    { sectionId: "worldEdits", value: { editsVersion: 1 } },
+  ]),
+  { edits: [] },
+  "sections with a route of their own never reach the data route",
 );
 
 console.log("state-editor regression passed");

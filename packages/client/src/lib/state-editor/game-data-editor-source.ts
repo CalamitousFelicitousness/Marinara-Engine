@@ -10,7 +10,7 @@ import { stateValuesEqual } from "./state-editor-json";
 import type { StateEditorChange, StateEditorSection } from "./state-editor.types";
 
 /** The game's own routes a section saves through instead of PATCH /api/game/:chatId/data. */
-export type GameDataSectionRoute = "inventory";
+export type GameDataSectionRoute = "inventory" | "world";
 
 interface GameDataSectionDef {
   id: string;
@@ -31,6 +31,8 @@ export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
   { id: "story", keys: ["gameWorldOverview", "gameStoryArc", "gamePlotTwists", "gamePartyArcs"] },
   { id: "sessionSummaries", keys: ["gamePreviousSessionSummaries"] },
   { id: "world", keys: ["gameWorld"] },
+  /** The hand-edits layer over the world (its `edits`), saved through PUT /world/edits. The world itself is never written. */
+  { id: "worldEdits", keys: ["gameWorld"], route: "world" },
   { id: "storyScript", keys: ["gameStory"] },
   { id: "widgets", keys: ["gameWidgetState"] },
   { id: "timeWeather", keys: ["gameTime", "gameWeather", "gameMorale"] },
@@ -107,6 +109,13 @@ export function gameDataSectionRoute(sectionId: string): GameDataSectionRoute | 
   return GAME_DATA_SECTIONS.find((def) => def.id === sectionId)?.route;
 }
 
+/** The world's hand-edits layer, null when it has none, or undefined for a game with no world. */
+export function readGameWorldEdits(metadata: Record<string, unknown>): unknown {
+  const world = metadata.gameWorld;
+  if (!world || typeof world !== "object" || Array.isArray(world)) return undefined;
+  return (world as { edits?: unknown }).edits ?? null;
+}
+
 /** What a section shows of a key: the inventory as the game reads it (every stack with its id). */
 function shownValue(key: string, value: unknown): unknown {
   return key === "gameInventory" ? normalizeGameInventoryStacks(value) : value;
@@ -163,6 +172,17 @@ export function buildGameDataEditorSections(
     };
   };
 
+  const worldEdits = readGameWorldEdits(metadata);
+  const worldEditsSection = (): StateEditorSection | null =>
+    worldEdits === undefined
+      ? null
+      : {
+          id: "worldEdits",
+          label: localize("worldEdits", "label"),
+          description: localize("worldEdits", "description"),
+          value: worldEdits,
+        };
+
   const rest = Object.keys(metadata)
     .filter((key) => isGameKey(key) && !NAMED_KEYS.has(key))
     .sort();
@@ -170,7 +190,9 @@ export function buildGameDataEditorSections(
   const otherKeys = rest.filter((key) => !SETTINGS_KEY.test(key));
 
   return [
-    ...GAME_DATA_SECTIONS.map((def) => section(def.id, def.keys, { editable: isEditableSection(def) })),
+    ...GAME_DATA_SECTIONS.map((def) =>
+      def.id === "worldEdits" ? worldEditsSection() : section(def.id, def.keys, { editable: isEditableSection(def) }),
+    ),
     section(GAME_DATA_SETTINGS_SECTION_ID, settingsKeys, { byKey: true }),
     section(GAME_DATA_OTHER_SECTION_ID, otherKeys, { byKey: true }),
   ].filter((item): item is StateEditorSection => item !== null);

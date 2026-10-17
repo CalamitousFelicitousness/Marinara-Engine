@@ -2194,6 +2194,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Awareness of some kinds only, or past no total cover (1.386): Divine Sense. */
+function carriesAwareOf386(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAwareOf386(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const aware = plainRecord(record.aware);
+  if (aware && (aware.of !== undefined || aware.uncovered !== undefined)) return true;
+  return featureValues(record).some((one) => carriesAwareOf386(one, depth + 1));
+}
+
 /** A condition that stops casting from a catalog or concentrating, or that its holder going down
  *  ends (1.385): Rage. */
 function carriesRageWays385(value: unknown, depth = 0): boolean {
@@ -5717,6 +5728,21 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Awareness from a condition or level, or of some kinds only, 1.386.
+  {
+    const combat = plainRecord(plainRecord(ruleset)?.combat);
+    const held = [combat?.conditions, combat?.levels].some(
+      (list) => Array.isArray(list) && list.some((entry) => plainRecord(entry)?.aware !== undefined),
+    );
+    if (
+      !declaresApi(386) &&
+      (held ||
+        carriesAwareOf386(ruleset) ||
+        [...(catalogDocuments?.values() ?? [])].some((document) => carriesAwareOf386(document)))
+    ) {
+      return "A ruleset whose conditions or levels make their holder aware of the hidden, or whose awareness is of some kinds only (of) or past no total cover (uncovered), requires schemaVersion 2 and capabilityApi 1.386 or newer";
+    }
+  }
   // No casting or concentrating, and ended by going down, 1.385.
   if (
     !declaresApi(385) &&

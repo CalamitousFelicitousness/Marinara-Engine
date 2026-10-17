@@ -2157,7 +2157,7 @@ export interface RulesetHidingTraits {
   /** Its Hide rolled so, when it has moved no more than half its speed this turn: Supreme Sneak. */
   slow?: "advantage";
   /** Nobody within this distance hides from it, unless it has one of these conditions: Blindsense. */
-  aware?: { within: number; lostWith?: string[] };
+  aware?: { within: number; lostWith?: string[]; of?: RulesetTargetIs; uncovered?: true };
   /** A creature's (only): it begins the fight hidden with this total, from whoever does not beat it,
    *  until it moves or gives itself away. A gelatinous cube's Transparent, DC 15. */
   starts?: number;

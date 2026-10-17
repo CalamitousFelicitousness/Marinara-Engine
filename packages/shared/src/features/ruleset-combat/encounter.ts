@@ -3076,6 +3076,8 @@ function mechanicsAction(
             aware: {
               within: rulesetInCells(aware.within, perCell ?? 1),
               ...(aware.lostWith ? { lostWith: [...aware.lostWith] } : {}),
+              ...(aware.of ? { of: structuredClone(aware.of) } : {}),
+              ...(aware.uncovered ? { uncovered: true as const } : {}),
             },
           }
         : {}),

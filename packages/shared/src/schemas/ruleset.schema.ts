@@ -3476,6 +3476,24 @@ const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
     { message: "A target test names types, tags or both, or a size" },
   );
 
+/** Nobody within `within` hides from its holder, unless they have one of `lostWith` (1.292). Only
+ *  those that are `of` (Capability API 1.386), and with `uncovered` only those not behind total
+ *  cover: 5e's Divine Sense, celestials, fiends and undead within 60 feet. */
+export interface RulesetAware {
+  within: number;
+  lostWith?: string[];
+  of?: RulesetTargetIs;
+  uncovered?: true;
+}
+const awareSchema: z.ZodType<RulesetAware, z.ZodTypeDef, unknown> = z
+  .object({
+    within: z.number().finite().gt(0).max(10000),
+    lostWith: z.array(sheetId).min(1).max(8).optional(),
+    of: targetIsSchema.optional(),
+    uncovered: z.literal(true).optional(),
+  })
+  .strict();
+
 /** One more amount on the same blow, rolled and typed on its own: "and 2d6 fire", "and 1d6 poison
  *  the target may shake off". Never a second attack roll: a clause rides the blow that carried it. */
 const catalogPlusClauseSchema = z
@@ -3657,13 +3675,7 @@ const hidingTraitFields = {
   slow: z.literal("advantage").optional(),
   /** Nobody within this distance, in the ruleset's own unit, is hidden from it, unless it has one
    *  of `lostWith` (a rogue's Blindsense, 10 feet, lost while deafened). */
-  aware: z
-    .object({
-      within: z.number().finite().gt(0).max(10000),
-      lostWith: z.array(sheetId).min(1).max(8).optional(),
-    })
-    .strict()
-    .optional(),
+  aware: awareSchema.optional(),
 };
 /** Ways of hiding and of finding the hidden that are their holder's own (Capability API 1.292), read
  *  where `combat.hiding` hides for real. */
@@ -9284,6 +9296,8 @@ const combatLevelSchema = z
     waives: uniqueIds(8).optional(),
     /** As on a condition (Capability API 1.384). */
     rowsWhere: rowsWhereSchema.optional(),
+    /** As on a condition (Capability API 1.386). */
+    aware: awareSchema.optional(),
     /** Reaching it takes the holder out of the fight for good (Capability API 1.115): 5e's sixth
      *  level of exhaustion. */
     defeats: z.literal(true).optional(),
@@ -9911,6 +9925,10 @@ const combatConditionSchema = z
      *  holds one of `is`, case aside (Capability API 1.384): 5e's "your druid spells", the spells
      *  list's class column. */
     rowsWhere: rowsWhereSchema.optional(),
+    /** Nobody within `within` hides from its holder while it holds, as a hiding `aware` (Capability
+     *  API 1.386), narrowed by `of` and `uncovered`: 5e's Divine Sense until the end of its next
+     *  turn, Primeval Awareness for a minute. */
+    aware: awareSchema.optional(),
     /** It comes off as its holder ends a turn having neither made an attack at a foe nor taken damage
      *  since their last turn ended (Capability API 1.383): 5e's Rage. `unless` keeps it on while a
      *  value off its holder's sheet stands within its bounds: Persistent Rage from barbarian 15. */
@@ -14281,6 +14299,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       castsIssues(def, entry.forbids?.casts, [...path, "forbids", "casts"], issue);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
+      if (entry.aware) awareIssues(def, entry.aware, [...path, "aware"], issue);
       rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       if (typeof entry.endsIdle === "object") {
         const names = rulesetSheetNames(def.sheet, def.items);
@@ -14512,6 +14531,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       notWhileIssues(entry, path);
       if (entry.checkFloor) checkFloorIssues(entry.checkFloor, [...path, "checkFloor"]);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
+      if (entry.aware) awareIssues(def, entry.aware, [...path, "aware"], issue);
       rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
@@ -18693,7 +18713,7 @@ export function capImportedRulesetSheets(value: unknown): {
  *  somebody larger only where there are sizes, and lost only with conditions the sheet has. */
 function hidingTraitsIssues(
   definition: RulesetDefinition,
-  traits: { behindLarger?: true; aware?: { lostWith?: string[] }; stillWhile?: { holds?: string } },
+  traits: { behindLarger?: true; aware?: RulesetAware; stillWhile?: { holds?: string } },
   path: Array<string | number>,
   add: (path: Array<string | number>, message: string) => void,
 ): void {
@@ -18709,9 +18729,24 @@ function hidingTraitsIssues(
   const holds = traits.stillWhile?.holds;
   if (holds !== undefined && !conditions.has(holds))
     add([...path, "stillWhile", "holds"], `Unknown condition "${holds}"`);
-  traits.aware?.lostWith?.forEach((condition, conditionIndex) => {
-    if (!conditions.has(condition)) {
-      add([...path, "aware", "lostWith", conditionIndex], `Unknown condition "${condition}"`);
-    }
+  if (traits.aware) awareIssues(definition, traits.aware, [...path, "aware"], add);
+}
+
+/** What is wrong with an awareness (1.292, 1.386): lost only with the sheet's conditions, of the
+ *  ruleset's own creature types, and read where hiding is real. */
+function awareIssues(
+  definition: RulesetDefinition,
+  aware: RulesetAware,
+  path: Array<string | number>,
+  add: (path: Array<string | number>, message: string) => void,
+): void {
+  if (!definition.combat?.hiding) {
+    add(path, "Awareness is read where combat.hiding hides for real, so it needs combat.hiding");
+    return;
+  }
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  aware.lostWith?.forEach((condition, conditionIndex) => {
+    if (!conditions.has(condition)) add([...path, "lostWith", conditionIndex], `Unknown condition "${condition}"`);
   });
+  targetIsIssues(definition, aware.of, [...path, "of"], add);
 }

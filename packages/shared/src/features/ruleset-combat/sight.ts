@@ -18,6 +18,7 @@ import {
   rulesetCheckTakenModes,
   rulesetCombatConditions,
   rulesetSizeRank,
+  rulesetTargetIs,
 } from "./encounter.js";
 import {
   rulesetInCells,
@@ -28,7 +29,7 @@ import {
   rulesetFootprint,
   rulesetGap,
 } from "./grid.js";
-import type { RulesetLightRadius } from "../../schemas/ruleset.schema.js";
+import type { RulesetLightRadius, RulesetTargetIs } from "../../schemas/ruleset.schema.js";
 import type {
   RulesetBoardLight,
   RulesetCombatant,
@@ -537,7 +538,7 @@ export function rulesetHidingTraits(
   stillWhile?: { holds?: string; wall?: true };
   unseenStrikes?: true;
   slow?: "advantage";
-  aware: Array<{ within: number; lostWith?: string[] }>;
+  aware: Array<{ within: number; lostWith?: string[]; of?: RulesetTargetIs; uncovered?: true }>;
   starts?: number;
   surprises?: true;
 } {
@@ -560,11 +561,19 @@ export function rulesetHidingTraits(
       traits.aware.push({
         within: inCells ? one.aware.within : rulesetInCells(one.aware.within, perCell),
         ...(one.aware.lostWith ? { lostWith: one.aware.lostWith } : {}),
+        ...(one.aware.of ? { of: one.aware.of } : {}),
+        ...(one.aware.uncovered ? { uncovered: true as const } : {}),
       });
     }
   };
   for (const action of who.actions) add(action.hiding, true);
   add(who.block?.hiding, false);
+  // While a condition or level of theirs says so (1.386): Divine Sense, Primeval Awareness.
+  if (definition.combat) {
+    for (const entry of rulesetActiveConditions(definition, definition.combat, who)) {
+      if (entry.aware) add({ aware: entry.aware }, false);
+    }
+  }
   return traits;
 }
 
@@ -580,7 +589,15 @@ export function rulesetAwareOf(
   if (aware.length === 0 || !state.board?.grid || !rulesetPositionOf(viewer) || !rulesetPositionOf(seen)) return false;
   const own = new Set(rulesetCombatConditions(definition, viewer));
   const gap = rulesetGap(viewer, seen);
-  return aware.some((one) => gap <= one.within && !one.lostWith?.some((condition) => own.has(condition)));
+  const grid = state.board.grid;
+  // Only of some kinds (1.386), and only with a line between them that total cover does not block.
+  return aware.some(
+    (one) =>
+      gap <= one.within &&
+      !one.lostWith?.some((condition) => own.has(condition)) &&
+      (!one.of || rulesetTargetIs(definition, seen, one.of)) &&
+      (!one.uncovered || rulesetLineOfSight(grid, rulesetPositionOf(viewer)!, rulesetPositionOf(seen)!)),
+  );
 }
 
 /** Whether somebody at least one size larger than `seen` stands between them and `viewer` (1.292),

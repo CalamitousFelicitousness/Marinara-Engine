@@ -3413,7 +3413,15 @@ export interface RulesetCombatZoneRule {
   /** It goes off as it ends, doing its effect once to everybody in it (1.183): `grows` is added to its
    *  amount at the end of each of its caster's turns, and `touched` sets it off when somebody moves
    *  onto its middle and fails its save. */
-  detonates?: { grows?: RulesetCombatAmount; touched?: boolean };
+  detonates?: {
+    grows?: RulesetCombatAmount;
+    touched?: boolean;
+    /** Set off by somebody entering it, only those `by` names (1.398): Glyph of Warding. */
+    entered?: true;
+    by?: RulesetTargetIs;
+    /** Going off, it reaches everybody within this many cells of its middle (1.398): Symbol. */
+    within?: number;
+  };
   /** Damage of one of these types reaching it sets it alight (1.183); it burns away when its caster's
    *  turn comes round, dealing `amount` to whoever starts a turn in it meanwhile. */
   burns?: { by: string[]; amount?: RulesetCombatAmount; damageType?: string };
@@ -3476,6 +3484,8 @@ export interface RulesetCombatZoneRule {
  *  cast on; one held by its caster is worked out around them wherever they stand. */
 export interface RulesetCombatZone {
   actionId: string;
+  /** Set off by somebody entering it (1.398), so its ending goes off. */
+  tripped?: true;
   label: string;
   rounds: number;
   anchor: "point" | "caster";

@@ -2954,7 +2954,13 @@ export interface RulesetCatalogZone {
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
-  detonates?: { grows?: { dice?: string; flat?: number }; touched?: true };
+  detonates?: {
+    grows?: { dice?: string; flat?: number };
+    touched?: true;
+    entered?: true;
+    by?: RulesetTargetIs;
+    within?: number;
+  };
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
 
@@ -3046,10 +3052,23 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
           })
           .optional(),
         touched: z.literal(true).optional(),
+        /** It goes off as somebody other than its caster enters any of its cells (Capability API
+         *  1.398), only those that are `by` when it says, with no save of the mover's own; it then
+         *  goes off only so, never as its time runs out. 5e's Glyph of Warding and Symbol. */
+        entered: z.literal(true).optional(),
+        by: z.lazy(() => targetIsSchema).optional(),
+        /** Going off, it reaches everybody within this distance of its middle, in the ruleset's own
+         *  unit, rather than only those in its cells (Capability API 1.398): Symbol's 60-foot sphere
+         *  from a 10-foot glyph. */
+        within: z.number().finite().gt(0).max(10000).optional(),
       })
       .strict()
-      .refine((detonates) => detonates.grows || detonates.touched, {
-        message: '"detonates" says how it "grows", that it goes off when "touched", or both',
+      .refine((detonates) => detonates.grows || detonates.touched || detonates.entered, {
+        message: '"detonates" says how it "grows", that it goes off when "touched" or "entered", or more than one',
+      })
+      .refine((detonates) => !detonates.by || detonates.entered, {
+        message: '"by" says who sets it off by entering it: it goes with "entered"',
+        path: ["by"],
       })
       .optional(),
     /** Damage of one of these types reaching it sets it alight (Capability API 1.183): it burns away
@@ -18461,6 +18480,8 @@ export function rulesetCatalogEntryIssues(
       sightIssues(definition, mechanics.teleport.smoke.pierced, [index, "mechanics", "teleport", "smoke"], add);
     }
     zoneInsideIssues(definition, mechanics?.zone, [index, "mechanics", "zone"], add);
+    // Who sets a glyph off (1.398) is a target test like any other.
+    targetIsIssues(definition, mechanics?.zone?.detonates?.by, [index, "mechanics", "zone", "detonates", "by"], add);
     componentIssues(definition, mechanics?.components, [index, "mechanics", "components"], add);
     if (mechanics?.zone?.whileHeld && !liveConditions.has(mechanics.zone.whileHeld.condition)) {
       add(

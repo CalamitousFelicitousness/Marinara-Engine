@@ -2194,6 +2194,18 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A zone set off by somebody entering it, or reaching past its cells (1.398): Glyph of Warding. */
+function carriesGlyphs398(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesGlyphs398(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const detonates = plainRecord(record.detonates);
+  if (detonates && (detonates.entered !== undefined || detonates.within !== undefined || detonates.by !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesGlyphs398(one, depth + 1));
+}
+
 /** What lands by the health its target has left, or a dismissal of only some (1.397): Divine Word. */
 function carriesHealthTiers397(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5833,6 +5845,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones set off by entering them or reaching past their cells, 1.398.
+  if (
+    !declaresApi(398) &&
+    (carriesGlyphs398(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesGlyphs398(document)))
+  ) {
+    return "A ruleset whose zones go off as somebody enters them or reach past their cells (detonates entered, within) requires schemaVersion 2 and capabilityApi 1.398 or newer";
+  }
   // By the health its target has left, or a dismissal of only some, 1.397.
   if (
     !declaresApi(397) &&

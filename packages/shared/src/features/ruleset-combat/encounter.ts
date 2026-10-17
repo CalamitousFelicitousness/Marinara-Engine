@@ -1914,7 +1914,14 @@ export function rulesetZoneAction(
     // What goes off later does nothing as it appears.
     out.atCast = false;
     const grows = amountOf(detonates.grows);
-    out.detonates = { ...(grows ? { grows } : {}), ...(detonates.touched ? { touched: true } : {}) };
+    out.detonates = {
+      ...(grows ? { grows } : {}),
+      ...(detonates.touched ? { touched: true } : {}),
+      // Set off by somebody entering it, and reaching farther than its cells (1.398): a glyph.
+      ...(detonates.entered ? { entered: true as const } : {}),
+      ...(detonates.by ? { by: structuredClone(detonates.by) } : {}),
+      ...(detonates.within !== undefined ? { within: rulesetInCells(detonates.within, perCell ?? 1) } : {}),
+    };
   }
   if (burns) {
     const amount = amountOf(burns.amount);

@@ -3462,8 +3462,20 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const rule = action?.zone?.detonates;
   if (!action || !rule) return;
+  // Set off only by somebody entering it (1.398): its time running out just ends it.
+  if (rule.entered && !zone.tripped) return;
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "detonated" });
-  const ids = ctx.state.board?.grid ? rulesetZoneOccupants(ctx.state, caster, zone, action) : (zone.held ?? []);
+  const middle = zone.at;
+  const ids = !ctx.state.board?.grid
+    ? (zone.held ?? [])
+    : rule.within !== undefined && middle
+      ? // Everybody within its reach of its middle (1.398): Symbol's sphere.
+        ctx.state.combatants
+          .filter(
+            (one) => rulesetZoneCatches(caster, zone, action, one) && rulesetDistanceTo(middle, one) <= rule.within!,
+          )
+          .map((one) => one.id)
+      : rulesetZoneOccupants(ctx.state, caster, zone, action);
   const targets = ids
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && rulesetCombatStanding(target));
@@ -7748,6 +7760,20 @@ function zonesEntered(
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Somebody walking into a glyph (1.398): it goes off, with no save of their own.
+    const glyph = action.zone?.detonates;
+    if (
+      glyph?.entered &&
+      mover.id !== caster.id &&
+      caster.zones?.includes(zone) &&
+      !was.zone.has(mover.id) &&
+      rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), mover) &&
+      rulesetTargetIs(ctx.definition, mover, glyph.by)
+    ) {
+      zone.tripped = true;
+      spendZone(ctx, caster, zone);
+      continue;
+    }
     // Stepping onto a bead (1.183): its save, or it goes off.
     if (action.zone?.detonates?.touched && zone.at && rulesetFills(mover, zone.at)) {
       if (!caster.zones?.includes(zone)) continue;

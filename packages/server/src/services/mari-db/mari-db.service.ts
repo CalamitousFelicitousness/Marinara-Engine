@@ -6458,7 +6458,7 @@ export class MariDbService {
         const patchData = rawJson ? parseCharacterDataJsonInput(rawJson, "Character update JSON") : {};
         const updatedData = buildMinimalCharacterData(
           flagString(flags, "name")?.trim() ?? (typeof existingData.name === "string" ? existingData.name : ""),
-          { ...existingData, ...patchData },
+          deepMerge(existingData, patchData) as Row,
           flags,
         );
         const row: Row = {

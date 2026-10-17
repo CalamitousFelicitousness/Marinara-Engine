@@ -69,7 +69,12 @@ try {
     assert.equal(data.extensions?.backstory, "Born in a storm", "a sibling extension (backstory) survives the patch");
     assert.equal(data.description, "A queen.", "untouched top-level fields survive the patch");
 
-    // Arrays still replace wholesale, same as app_data character.update.
+    // Arrays still replace wholesale, same as app_data character.update. Seed a populated list first so
+    // replacing can't pass for appending or merging.
+    await mari.executeCli({
+      argv: ["characters", "update", id, "--json", JSON.stringify({ tags: ["queen", "ruler"] }), "--apply"],
+    });
+    assert.deepEqual((await readData()).tags, ["queen", "ruler"], "seeded tags are stored");
     await mari.executeCli({
       argv: ["characters", "update", id, "--json", JSON.stringify({ tags: ["royal"] }), "--apply"],
     });

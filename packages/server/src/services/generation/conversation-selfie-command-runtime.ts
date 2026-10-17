@@ -421,10 +421,9 @@ async function generateSelfie(
       width: selfieWidth,
       height: selfieHeight,
       generation: buildChatImageGenerationRecord({
-        connectionId: imageResult.effectiveConnection?.connectionId ?? imgConnFull.id,
-        negativePrompt: imageResult.effectiveConnection
-          ? imageResult.effectiveNegativePrompt
-          : selfieSubmission.negativePrompt,
+        prompt: selfieSubmission.prompt,
+        connectionId: imgConnFull.id,
+        negativePrompt: selfieSubmission.negativePrompt,
         referenceCharacterIds: selfieReferenceCharacterIds,
       }),
     });

@@ -14011,10 +14011,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           width: imgWidth,
                           height: imgHeight,
                           generation: buildChatImageGenerationRecord({
-                            connectionId: imageResult.effectiveConnection?.connectionId ?? imgConnFull.id,
-                            negativePrompt: imageResult.effectiveConnection
-                              ? imageResult.effectiveNegativePrompt
-                              : finalNegativePrompt,
+                            prompt: compiledPrompt.prompt,
+                            connectionId: imgConnFull.id,
+                            negativePrompt: finalNegativePrompt,
                             characterPrompts: illustratorCharacterPrompts,
                             referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
                             referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,

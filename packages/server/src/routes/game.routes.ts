@@ -14836,6 +14836,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             model: imgModel,
             prompt: sentIllustrationPrompt,
             generation: buildChatImageGenerationRecord({
+              prompt: sentIllustrationPrompt,
               connectionId: imgConn.id,
               negativePrompt: sentIllustrationNegativePrompt,
               characterPrompts: illustration.characterPrompts,
@@ -16184,6 +16185,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               model: imgModel,
               prompt: sentIllustrationPrompt,
               generation: buildChatImageGenerationRecord({
+                prompt: sentIllustrationPrompt,
                 connectionId: imgConn.id,
                 negativePrompt: sentIllustrationNegativePrompt,
               }),

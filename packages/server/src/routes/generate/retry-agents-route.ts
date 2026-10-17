@@ -4061,10 +4061,9 @@ async function applyRetryResultEffects(args: {
                 width: imgWidth,
                 height: imgHeight,
                 generation: buildChatImageGenerationRecord({
-                  connectionId: imageResult.effectiveConnection?.connectionId ?? imgConnFull.id,
-                  negativePrompt: imageResult.effectiveConnection
-                    ? imageResult.effectiveNegativePrompt
-                    : promptSubmission.negativePrompt,
+                  prompt: promptSubmission.prompt,
+                  connectionId: imgConnFull.id,
+                  negativePrompt: promptSubmission.negativePrompt,
                   characterPrompts: illustratorCharacterPrompts,
                   referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
                   referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,

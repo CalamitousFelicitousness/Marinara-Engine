@@ -151,6 +151,33 @@ try {
       /Character question "title".*character\.update/,
       "an unused card question says how to fix it",
     );
+
+    // The prompt's pattern: a card-field edit and the onboarding in one response, no review kept in
+    // between. Both writes persist, and the card question is no longer reported unused.
+    const cardEdit = await mari.executeAction({
+      action: "character.update",
+      characterId,
+      patch: { scenario: "Ayrene calls {{user}} her {{title}}." },
+      apply: true,
+    });
+    assert.equal(cardEdit.ok, true, `the card edit saves: ${cardEdit.error ?? ""}`);
+    const sameResponse = await mari.executeAction({
+      action: "character.onboarding.update",
+      characterId,
+      onboarding: { enabled: true },
+      apply: true,
+    });
+    assert.equal(sameResponse.ok, true, `the onboarding saves right after: ${sameResponse.error ?? ""}`);
+    await drainKeep();
+    data = await readData();
+    assert.equal(
+      (data as { scenario?: string }).scenario,
+      "Ayrene calls {{user}} her {{title}}.",
+      "the card edit stays",
+    );
+    assert.equal(data.extensions?.onboarding?.enabled, true, "the onboarding write lands too");
+    const laterNotices = (sameResponse.validation?.notices ?? []).map((notice) => notice.message).join("\n");
+    assert.doesNotMatch(laterNotices, /"title"/, "a card question used in the scenario is not reported unused");
   } finally {
     await db._fileStore.close();
   }

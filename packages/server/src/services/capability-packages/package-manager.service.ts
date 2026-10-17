@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A condition ended by its holder gaining another (1.387): Rage, knocked unconscious. */
+function carriesEndsOnGains387(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsOnGains387(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.endsWhenHolder)?.gains !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsOnGains387(one, depth + 1));
+}
+
 /** Awareness of some kinds only, or past no total cover (1.386): Divine Sense. */
 function carriesAwareOf386(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5728,6 +5738,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ended by gaining a condition, 1.387.
+  if (
+    !declaresApi(387) &&
+    (carriesEndsOnGains387(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsOnGains387(document)))
+  ) {
+    return "A ruleset whose conditions end when their holder gains another condition (endsWhenHolder gains) requires schemaVersion 2 and capabilityApi 1.387 or newer";
+  }
   // Awareness from a condition or level, or of some kinds only, 1.386.
   {
     const combat = plainRecord(plainRecord(ruleset)?.combat);

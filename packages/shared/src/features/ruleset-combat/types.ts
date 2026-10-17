@@ -160,6 +160,7 @@ export interface RulesetCombatApplies {
     acts?: true;
     uses?: string[];
     downed?: true;
+    gains?: string[];
   };
   /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
    *  their sight (1.310): Eyebite's panic. With `orUnseen`, either as its holder ends a turn (1.380). */
@@ -1349,6 +1350,7 @@ export interface RulesetTrackedCondition {
     acts?: true;
     uses?: string[];
     downed?: true;
+    gains?: string[];
   };
   /** How far from its putter, and out of their sight, takes it off (1.310), or either as its holder
    *  ends a turn (1.380). */

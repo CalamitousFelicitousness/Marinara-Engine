@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 385);
+  assert.ok(supportedCapabilityApi.minor >= 387);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -222,10 +222,62 @@ try {
     assert.ok(has(state, "barbarian", "raging") && has(state, "barbarian", "frenzied"));
   }
 
+  // ── Ended by gaining a condition (1.387): put to sleep, still standing ──
+  {
+    const slept = parsed(fiveE({ ...rage, endsWhenHolder: { downed: true, gains: ["unconscious"] } }));
+    const state = fight();
+    who(state, "barbarian").tracked.push(
+      { condition: "raging", rounds: 10 },
+      { condition: "frenzied", rounds: 10, endsWhenHolder: { gains: ["unconscious"] } },
+      { condition: "unconscious", rounds: 10 },
+    );
+    const taken = applyRulesetCombatChoice(
+      slept,
+      state,
+      { actorId: "barbarian", optionId: "end-turn", targetIds: [] },
+      roll,
+    ).state;
+    assert.ok(!who(taken, "barbarian").down, "asleep, not down");
+    assert.equal(has(taken, "barbarian", "raging"), false, "rage ends on falling unconscious");
+    assert.equal(has(taken, "barbarian", "frenzied"), false, "and one put on saying so");
+    // Without the condition, both stay.
+    const awake = fight();
+    who(awake, "barbarian").tracked.push({ condition: "raging", rounds: 10 });
+    const kept = applyRulesetCombatChoice(
+      slept,
+      awake,
+      { actorId: "barbarian", optionId: "end-turn", targetIds: [] },
+      roll,
+    ).state;
+    assert.ok(has(kept, "barbarian", "raging"));
+  }
+
   // ── Refusals ──
   refused(fiveE({ forbids: {} }), /Say what it stops/);
   refused(fiveE({ forbids: { casts: ["no_such_catalog"] } }), /Unknown catalog "no_such_catalog"/);
   refused(fiveE({ endsWhenHolder: {} }), /Say what ends it/);
+  refused(fiveE({ endsWhenHolder: { gains: ["sleepy"] } }), /Unknown condition "sleepy"/);
+  refused(fiveE({ endsWhenHolder: { gains: ["raging"] } }), /never ended by gaining itself/);
+  {
+    const gate =
+      "A ruleset whose conditions end when their holder gains another condition (endsWhenHolder gains) requires schemaVersion 2 and capabilityApi 1.387 or newer";
+    const doc = fiveE({ endsWhenHolder: { gains: ["unconscious"] } });
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, doc), gate);
+  }
 
   // ── The install gate ──
   {

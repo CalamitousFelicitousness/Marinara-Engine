@@ -45784,6 +45784,16 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "gains": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -46826,6 +46836,16 @@
                               "downed": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "gains": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
                               },
                               "$comment": {}
                             },
@@ -51604,6 +51624,16 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "gains": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -52958,6 +52988,16 @@
                                         "downed": {
                                           "type": "boolean",
                                           "const": true
+                                        },
+                                        "gains": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
                                         },
                                         "$comment": {}
                                       },
@@ -56724,6 +56764,16 @@
                                         "downed": {
                                           "type": "boolean",
                                           "const": true
+                                        },
+                                        "gains": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
                                         },
                                         "$comment": {}
                                       },
@@ -65000,6 +65050,16 @@
                                         "downed": {
                                           "type": "boolean",
                                           "const": true
+                                        },
+                                        "gains": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
                                         },
                                         "$comment": {}
                                       },
@@ -74184,6 +74244,16 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "gains": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -75226,6 +75296,16 @@
                                   "downed": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "gains": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "$comment": {}
                                 },
@@ -86799,6 +86879,16 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "gains": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -87841,6 +87931,16 @@
                                         "downed": {
                                           "type": "boolean",
                                           "const": true
+                                        },
+                                        "gains": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
                                         },
                                         "$comment": {}
                                       },
@@ -104092,6 +104192,16 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "gains": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -105596,6 +105706,16 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "gains": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -106659,6 +106779,16 @@
                                       "downed": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "gains": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
                                       },
                                       "$comment": {}
                                     },
@@ -107755,6 +107885,16 @@
                     "type": "boolean",
                     "const": true
                   },
+                  "gains": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -108226,6 +108366,16 @@
                             "downed": {
                               "type": "boolean",
                               "const": true
+                            },
+                            "gains": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
                             },
                             "$comment": {}
                           },

@@ -2324,6 +2324,7 @@ function applyConditionId(
             ...(applies.endsWhenHolder.acts ? { acts: true as const } : {}),
             ...(applies.endsWhenHolder.uses ? { uses: [...applies.endsWhenHolder.uses] } : {}),
             ...(applies.endsWhenHolder.downed ? { downed: true as const } : {}),
+            ...(applies.endsWhenHolder.gains ? { gains: [...applies.endsWhenHolder.gains] } : {}),
           },
         }
       : {}),
@@ -2717,6 +2718,16 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
 /** What its holder's own state ends (1.385): a condition that says its holder going down ends it,
  *  once they are down, and concentration under a condition that forbids it. 5e's Rage. */
 function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  // Or its holder coming to hold one of these (1.387): unconscious, by a blow or by Sleep.
+  const held = new Set(rulesetCombatConditions(ctx.definition, target));
+  for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.gains?.some((id) => held.has(id)))) {
+    if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "spent");
+  }
+  for (const condition of [...held]) {
+    const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
+    if (ends?.gains?.some((id) => held.has(id)) && rulesetCombatConditions(ctx.definition, target).includes(condition))
+      removeCondition(ctx, target, condition, "spent");
+  }
   if (!rulesetCombatStanding(target)) {
     for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.downed)) {
       if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "spent");

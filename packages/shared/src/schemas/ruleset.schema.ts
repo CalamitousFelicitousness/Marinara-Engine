@@ -3741,6 +3741,7 @@ export interface RulesetHolderEnding {
   acts?: true;
   uses?: string[];
   downed?: true;
+  gains?: string[];
 }
 const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
   .object({
@@ -3770,10 +3771,14 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
     /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage, "if you are
      *  knocked unconscious". */
     downed: z.literal(true).optional(),
+    /** Its holder coming to hold one of these conditions, however (Capability API 1.387): 5e's Rage,
+     *  "knocked unconscious", by a blow or by Sleep. */
+    gains: uniqueIds(8).optional(),
   })
   .strict()
-  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses || ends.downed, {
-    message: "Say what ends it: attacking, casting, moving, acting or using one of its actions, or going down",
+  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses || ends.downed || ends.gains, {
+    message:
+      "Say what ends it: attacking, casting, moving, acting or using one of its actions, or going down or gaining a condition",
   })
   .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
     message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
@@ -10173,10 +10178,12 @@ const combatConditionSchema = z
         castsAtFoes: z.literal(true).optional(),
         /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage. */
         downed: z.literal(true).optional(),
+        /** Its holder coming to hold one of these conditions (Capability API 1.387): Rage. */
+        gains: uniqueIds(8).optional(),
       })
       .strict()
-      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed, {
-        message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed" or more than one',
+      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains, {
+        message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains" or more than one',
       })
       .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
         message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
@@ -14269,6 +14276,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (found) issue([...path, "resistIn", index], found);
       });
       // What its holder casts to end it (1.373) is cast from the ruleset's own catalogs.
+      gainsIssues(def, entry.endsWhenHolder?.gains, [...path, "endsWhenHolder", "gains"], issue);
+      if (entry.endsWhenHolder?.gains?.includes(entry.condition))
+        issue([...path, "endsWhenHolder", "gains"], "A condition is never ended by gaining itself");
       if (entry.endsWhenHolder?.casts) {
         castsIssues(def, entry.endsWhenHolder.casts, [...path, "endsWhenHolder", "casts"], issue);
       }
@@ -15548,6 +15558,19 @@ function senseRangeIssues(
   });
 }
 
+/** The conditions whose coming on ends something are the sheet's own (1.387). */
+function gainsIssues(
+  definition: RulesetDefinition,
+  conditions: string[] | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const known = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  conditions?.forEach((condition, index) => {
+    if (!known.has(condition)) add([...at, index], `Unknown condition "${condition}"`);
+  });
+}
+
 /** The catalogs casting from which ends something are the ruleset's own (1.180). */
 function castsIssues(
   definition: RulesetDefinition,
@@ -15583,7 +15606,7 @@ function escapeDcIssues(
     condition: string;
     escapeDc?: number | "save";
     escapeChecks?: string[];
-    endsWhenHolder?: { casts?: string[] };
+    endsWhenHolder?: { casts?: string[]; gains?: string[] };
     checkEnds?: { check: string };
     targetHolds?: RulesetTargetHolds;
     endsOnTarget?: string[];
@@ -15598,6 +15621,7 @@ function escapeDcIssues(
   }
   // What ends it when its holder casts (1.180) is cast from the ruleset's own catalogs.
   castsIssues(definition, applies.endsWhenHolder?.casts, [...at, "endsWhenHolder", "casts"], add);
+  gainsIssues(definition, applies.endsWhenHolder?.gains, [...at, "endsWhenHolder", "gains"], add);
   // What it asks the target to hold, and ends on them (1.354), are the sheet's own conditions.
   targetHoldsIssues(definition, applies.targetHolds, [...at, "targetHolds"], add);
   const known = new Set(definition.sheet.live.conditions.map((condition) => condition.id));

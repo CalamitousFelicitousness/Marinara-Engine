@@ -41438,6 +41438,16 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "frees": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -56197,6 +56207,16 @@
                                     "const": "disadvantage"
                                   },
                                   "cantGive": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "frees": {
                                     "type": "array",
                                     "items": {
                                       "type": "string",
@@ -71124,6 +71144,16 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "frees": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -84433,6 +84463,16 @@
                                         "const": "disadvantage"
                                       },
                                       "cantGive": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "frees": {
                                         "type": "array",
                                         "items": {
                                           "type": "string",

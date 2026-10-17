@@ -2565,7 +2565,9 @@ export type RulesetCombatEvent =
         /** Not put on: its source holds as many with it as it may (1.320). */
         | "full"
         /** Not put on: its holder stands where its source is kept out (1.399). */
-        | "warded";
+        | "warded"
+        /** Gone as its holder stepped into ground that keeps its source out (1.406): Hallow. */
+        | "freed";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -3500,7 +3502,14 @@ export interface RulesetCombatZoneRule {
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */
-  keepsOut?: { is: RulesetTargetIs; way?: "in" | "out"; attacksInto?: "disadvantage"; cantGive?: string[] };
+  keepsOut?: {
+    is: RulesetTargetIs;
+    way?: "in" | "out";
+    attacksInto?: "disadvantage";
+    cantGive?: string[];
+    /** Conditions put on by those it keeps out that come off whoever steps into it (1.406). */
+    frees?: string[];
+  };
   /** Hidden from its caster's foes until found with a Search throwing this check (1.402). */
   hidden?: { check: string };
 }

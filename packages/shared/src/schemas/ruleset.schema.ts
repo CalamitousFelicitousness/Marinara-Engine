@@ -2872,6 +2872,7 @@ export interface RulesetZoneKeepsOut {
   way?: "in" | "out";
   attacksInto?: "disadvantage";
   cantGive?: string[];
+  frees?: string[];
 }
 const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> = z
   .object({
@@ -2883,6 +2884,10 @@ const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> 
     attacksInto: z.literal("disadvantage").optional(),
     /** These conditions they cannot put on whoever stands inside: charmed, frightened, possessed. */
     cantGive: uniqueIds(8).optional(),
+    /** These conditions, put on by one of those it keeps out, come off whoever steps into it
+     *  (Capability API 1.406): Hallow's "no longer charmed, frightened, or possessed upon entering
+     *  the area". */
+    frees: uniqueIds(8).optional(),
   })
   .strict();
 
@@ -18580,6 +18585,11 @@ export function rulesetCatalogEntryIssues(
     mechanics?.zone?.keepsOut?.cantGive?.forEach((condition, conditionIndex) => {
       if (!liveConditions.has(condition)) {
         add([index, "mechanics", "zone", "keepsOut", "cantGive", conditionIndex], `Unknown condition "${condition}"`);
+      }
+    });
+    mechanics?.zone?.keepsOut?.frees?.forEach((condition, conditionIndex) => {
+      if (!liveConditions.has(condition)) {
+        add([index, "mechanics", "zone", "keepsOut", "frees", conditionIndex], `Unknown condition "${condition}"`);
       }
     });
     // What finds a hidden zone (1.402) is one of the fight's checks, thrown by its Search.

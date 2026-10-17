@@ -2022,6 +2022,7 @@
   "game.combat.ruleset.event.conditionDispelled": "{{condition}} on {{target}} is dispelled by magical darkness.",
   "game.combat.ruleset.event.conditionDown": "{{target}} is now {{condition}}.",
   "game.combat.ruleset.event.conditionExpired": "{{condition}} runs out on {{target}}.",
+  "game.combat.ruleset.event.conditionFreed": "{{condition}} comes off {{target}} on hallowed ground.",
   "game.combat.ruleset.event.conditionFull": "{{condition}} does not go on {{target}}: whoever puts it on holds as many as they can.",
   "game.combat.ruleset.event.conditionHarmed": "{{condition}} ends on {{target}} after harm from its source's side.",
   "game.combat.ruleset.event.conditionImmune": "{{target}} is immune to {{condition}}.",

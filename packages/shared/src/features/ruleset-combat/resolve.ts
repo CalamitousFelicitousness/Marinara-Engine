@@ -2894,7 +2894,8 @@ function removeCondition(
     | "moved"
     | "linked"
     | "worsened"
-    | "dispelled",
+    | "dispelled"
+    | "freed",
 ): void {
   if (target.dazed?.condition === condition) return;
   const removed = target.tracked.find((entry) => entry.condition === condition);
@@ -7872,6 +7873,21 @@ function zonesEntered(
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Stepping onto hallowed ground (1.406): what those it keeps out put on them comes off.
+    const kept = action.zone?.keepsOut;
+    if (
+      kept?.frees &&
+      caster.zones?.includes(zone) &&
+      rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), mover)
+    ) {
+      for (const entry of [...mover.tracked]) {
+        if (!kept.frees.includes(entry.condition) || !entry.source) continue;
+        const source = rulesetCombatant(ctx.state, entry.source);
+        if (source && rulesetTargetIs(ctx.definition, source, kept.is)) {
+          removeCondition(ctx, mover, entry.condition, "freed");
+        }
+      }
+    }
     // Somebody walking into a glyph (1.398): it goes off, with no save of their own.
     const glyph = action.zone?.detonates;
     if (

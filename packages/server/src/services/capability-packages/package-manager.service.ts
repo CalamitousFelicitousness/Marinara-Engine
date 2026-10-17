@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A zone whose ground frees whoever steps in of what those it keeps out put on them (1.406): Hallow. */
+function carriesFrees406(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFrees406(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.keepsOut)?.frees !== undefined) return true;
+  return featureValues(record).some((one) => carriesFrees406(one, depth + 1));
+}
+
 /** A zone that keeps some kinds in and wards those outside from them (1.405): Magic Circle reversed. */
 function carriesKeepsInWards405(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5919,6 +5929,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that free whoever steps in, 1.406.
+  if (
+    !declaresApi(406) &&
+    (carriesFrees406(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesFrees406(document)))
+  ) {
+    return "A ruleset whose zones free whoever steps in of what those they keep out put on them (keepsOut frees) requires schemaVersion 2 and capabilityApi 1.406 or newer";
+  }
   // Zones that keep some kinds in and ward those outside from them, 1.405.
   if (
     !declaresApi(405) &&

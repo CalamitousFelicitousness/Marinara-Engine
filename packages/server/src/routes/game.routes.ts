@@ -588,6 +588,8 @@ type IllustrationCharacterAssetMaps = {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
+  /** Name -> "character:<id>" / "persona:<id>", so a gallery record can name its reference sources (#7767). */
+  charOwnerByName: Map<string, string>;
 };
 
 type IllustrationCharacterAssetDetail = {
@@ -603,6 +605,8 @@ type IllustrationCharacterAssets = {
   referenceDetails: IllustrationCharacterAssetDetail[];
   maxReferenceImages: number;
   requestedNames: string[];
+  referenceCharacterIds: string[];
+  referencePersonaId: string | null;
 };
 
 type StoryboardCharacterContext = IllustrationCharacterAssetMaps & {
@@ -617,6 +621,7 @@ function emptyIllustrationCharacterAssetMaps(): IllustrationCharacterAssetMaps {
     charReferenceSourceByName: new Map<string, "character-sheet" | "avatar" | "sprite">(),
     charAvatarByName: new Map<string, string>(),
     charDescriptionByName: new Map<string, string>(),
+    charOwnerByName: new Map<string, string>(),
   };
 }
 
@@ -642,6 +647,7 @@ async function addCharacterRowIllustrationAssets(
     const parsed = JSON.parse(character.data) as Record<string, unknown> & { name?: string };
     const name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : null;
     if (!name) return null;
+    addNameLookupEntry(maps.charOwnerByName, name, `character:${character.id}`);
 
     const extensions =
       parsed.extensions && typeof parsed.extensions === "object" && !Array.isArray(parsed.extensions)
@@ -705,6 +711,7 @@ export async function addPersonaIllustrationAssets(
 ): Promise<string | null> {
   const name = typeof persona?.name === "string" && persona.name.trim() ? persona.name.trim() : null;
   if (!persona || !name) return null;
+  addNameLookupEntry(maps.charOwnerByName, name, `persona:${persona.id}`);
 
   const preferredReference = await readPreferredPersonaReferenceImage({
     personaId: persona.id,
@@ -862,6 +869,7 @@ function collectIllustrationCharacterAssets(opts: {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
+  charOwnerByName?: Map<string, string>;
   includeReferenceImages?: boolean;
   includeCharacterDescriptions?: boolean;
   maxReferenceImages?: number;
@@ -898,6 +906,14 @@ function collectIllustrationCharacterAssets(opts: {
   const referenceDetails: IllustrationCharacterAssetDetail[] = [];
   const seen = new Set<string>();
   const described = new Set<string>();
+  const referenceCharacterIds: string[] = [];
+  let referencePersonaId: string | null = null;
+  // Only library characters and the persona can be re-read later; NPC avatars are not recorded.
+  const recordReferenceOwner = (name: string) => {
+    const owner = opts.charOwnerByName ? findCharAvatarFuzzy(name, opts.charOwnerByName) : undefined;
+    if (owner?.startsWith("character:")) referenceCharacterIds.push(owner.slice("character:".length));
+    else if (owner?.startsWith("persona:")) referencePersonaId ??= owner.slice("persona:".length);
+  };
   const includeReferenceImages = opts.includeReferenceImages !== false;
   const includeCharacterDescriptions = opts.includeCharacterDescriptions !== false;
   for (const name of uniqueNames) {
@@ -909,20 +925,22 @@ function collectIllustrationCharacterAssets(opts: {
         seen.add(preferredReference);
         references.push(preferredReference);
         referenceAttached = true;
+        recordReferenceOwner(name);
         const storedReferenceSource = findCharAvatarFuzzy(name, opts.charReferenceSourceByName);
         referenceSource =
           storedReferenceSource === "character-sheet" || storedReferenceSource === "avatar"
             ? storedReferenceSource
             : "sprite";
       } else {
-        const avatarPath =
-          findCharAvatarFuzzy(name, opts.charAvatarByName) ?? findCharAvatarFuzzy(name, npcAvatarByName);
+        const characterAvatarPath = findCharAvatarFuzzy(name, opts.charAvatarByName);
+        const avatarPath = characterAvatarPath ?? findCharAvatarFuzzy(name, npcAvatarByName);
         const base64 = avatarPath && !seen.has(avatarPath) ? readAvatarBase64(avatarPath) : undefined;
         if (avatarPath && base64 && references.length < maxReferenceImages) {
           seen.add(avatarPath);
           references.push(base64);
           referenceAttached = true;
           referenceSource = "avatar";
+          if (characterAvatarPath) recordReferenceOwner(name);
         }
       }
     }
@@ -950,6 +968,8 @@ function collectIllustrationCharacterAssets(opts: {
     referenceDetails,
     maxReferenceImages,
     requestedNames: uniqueNames,
+    referenceCharacterIds: Array.from(new Set(referenceCharacterIds)),
+    referencePersonaId,
   };
 }
 
@@ -1687,10 +1707,7 @@ async function addGeneratedIllustrationToGallery(opts: {
   illustration: SceneIllustrationRequest;
   model: string;
   prompt?: string | null;
-  /**
-   * ponytail: game references (NPC portraits, location art) come from their own resolver and are
-   * not recorded, so a regeneration re-sends text only. Upgrade: record their source ids here.
-   */
+  /** Game NPC portraits are not recorded as references; library characters, persona and location are. */
   generation?: ChatImageGenerationRecord | null;
 }): Promise<ChatGalleryImageRow | null> {
   const prefix = "backgrounds:illustrations:";
@@ -14583,6 +14600,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           charReferenceSourceByName,
           charAvatarByName,
           charDescriptionByName,
+          charOwnerByName: storyboardCharacterContext.charOwnerByName,
           includeReferenceImages: useAvatarReferences,
           includeCharacterDescriptions: includeCharacterAppearanceAtRender && characterPrompts.length === 0,
           maxReferenceImages: Math.max(0, storyboardReferenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
@@ -14840,6 +14858,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               connectionId: imgConn.id,
               negativePrompt: sentIllustrationNegativePrompt,
               characterPrompts: illustration.characterPrompts,
+              referenceCharacterIds: illustrationAssets.referenceCharacterIds,
+              referencePersonaId: illustrationAssets.referencePersonaId,
+              locationImageId: spatialLocationReferenceImage ? storyboardSpatialProjection?.referenceImageId : null,
             }),
           });
           if (!galleryImage) throw new Error("Storyboard keyframe image could not be saved to gallery.");
@@ -16107,6 +16128,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             charReferenceSourceByName,
             charAvatarByName,
             charDescriptionByName,
+            charOwnerByName: illustrationCharacterAssets.charOwnerByName,
             includeReferenceImages: useAvatarReferences,
             includeCharacterDescriptions: includeCharacterAppearance,
             maxReferenceImages: Math.max(0, referenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
@@ -16188,6 +16210,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                 prompt: sentIllustrationPrompt,
                 connectionId: imgConn.id,
                 negativePrompt: sentIllustrationNegativePrompt,
+                referenceCharacterIds: illustrationAssets.referenceCharacterIds,
+                referencePersonaId: illustrationAssets.referencePersonaId,
+                locationImageId: spatialLocationReferenceImage ? ownerSpatialProjection?.referenceImageId : null,
               }),
             });
             generatedTags.push(tag);

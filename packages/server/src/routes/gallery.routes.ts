@@ -1794,8 +1794,15 @@ export async function galleryRoutes(app: FastifyInstance) {
       if (input.connectionId && !imageConnection) {
         return reply.status(400).send({ error: "That image connection no longer exists." });
       }
-      imageConnection ??= (await resolveGalleryImageConnection(app, chat.mode, parseChatMetadata(chat.metadata)))
-        .connection;
+      const chatMeta = parseChatMetadata(chat.metadata);
+      // Conversation selfies use the chat's own image connection, not the Illustrator's.
+      const conversationConnectionId =
+        chat.mode === "conversation" ? readTrimmedString(chatMeta.imageGenConnectionId) : null;
+      if (!imageConnection && conversationConnectionId) {
+        const conversationConnection = await connectionsStore.getWithKey(conversationConnectionId);
+        if (conversationConnection?.provider === "image_generation") imageConnection = conversationConnection;
+      }
+      imageConnection ??= (await resolveGalleryImageConnection(app, chat.mode, chatMeta)).connection;
       if (!imageConnection) {
         return reply
           .status(400)

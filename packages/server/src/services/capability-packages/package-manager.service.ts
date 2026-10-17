@@ -2247,6 +2247,19 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An item's effect that softens a fall or holds conditions off (1.424): Ring of Feather Falling,
+ *  Periapt of Health. A condition's own are older. */
+function carriesWornFallsAndHolds424(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWornFallsAndHolds424(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (effect?.fallsSafely !== undefined || effect?.suppresses !== undefined) return true;
+  }
+  return featureValues(record).some((one) => carriesWornFallsAndHolds424(one, depth + 1));
+}
+
 /** Conditions kept off when an entry of named catalogs would put them on (1.423): Freedom of Movement. */
 function carriesImmunityCatalogs423(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6106,6 +6119,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items that soften a fall or hold conditions off, 1.424.
+  if (
+    !declaresApi(424) &&
+    (carriesWornFallsAndHolds424(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWornFallsAndHolds424(document)))
+  ) {
+    return "A ruleset whose items soften a fall or hold conditions off (fallsSafely or suppresses on an item's effect) requires schemaVersion 2 and capabilityApi 1.424 or newer";
+  }
   // Conditions kept off when an entry of named catalogs would put them on, 1.423.
   if (
     !declaresApi(423) &&

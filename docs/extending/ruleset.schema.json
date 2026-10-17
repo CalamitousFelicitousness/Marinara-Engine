@@ -61261,6 +61261,20 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "fallsSafely": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "suppresses": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -62594,6 +62608,20 @@
                           "type": "number",
                           "exclusiveMinimum": 0,
                           "maximum": 10000
+                        },
+                        "fallsSafely": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "suppresses": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
                         },
                         "$comment": {}
                       },
@@ -64115,6 +64143,20 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "fallsSafely": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "suppresses": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 12
                               },
                               "$comment": {}
                             },

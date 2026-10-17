@@ -572,8 +572,10 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
-  // Held off, not ended, by another that holds (1.275): Calm Emotions' charm and fright.
-  const suppressed = new Set(conditions.flatMap((entry) => entry.suppresses ?? []));
+  const held = heldSources(definition, combatant);
+  // Held off, not ended, by another that holds (1.275): Calm Emotions' charm and fright. Or by an
+  // item (1.424): the Periapt of Health's diseases.
+  const suppressed = new Set([...conditions, ...held].flatMap((entry) => entry.suppresses ?? []));
   if (suppressed.size) {
     for (let at = conditions.length - 1; at >= 0; at -= 1) {
       if (suppressed.has(conditions[at]!.condition)) conditions.splice(at, 1);
@@ -581,7 +583,7 @@ export function rulesetActiveConditions(
   }
   const levels = combat.levels?.length ? activeLevels(definition, combat, combatant, rawLevels) : [];
   // And what the fighter's items do, each named for the stack, as a level is named for its track.
-  const items = heldSources(definition, combatant).map((source): RulesetActiveCondition => ({
+  const items = held.map((source): RulesetActiveCondition => ({
     condition: source.name,
     item: true,
     effects: [...(source.effects ?? [])] as RulesetCombatCondition["effects"],
@@ -596,6 +598,8 @@ export function rulesetActiveConditions(
     ...(source.senses ? { senses: { ...source.senses } } : {}),
     ...(source.light ? { light: { ...source.light } } : {}),
     ...(source.alerts ? { alerts: source.alerts } : {}),
+    ...(source.fallsSafely ? { fallsSafely: true as const } : {}),
+    ...(source.suppresses ? { suppresses: [...source.suppresses] } : {}),
   }));
   const all = [...conditions, ...levels, ...items, ...zoned];
   // Held off while its holder has something it names (1.364), a condition or what one does.

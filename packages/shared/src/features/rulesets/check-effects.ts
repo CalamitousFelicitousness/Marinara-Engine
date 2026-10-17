@@ -96,6 +96,10 @@ export interface RulesetCheckSource {
   light?: Readonly<{ bright: number; dim: number }>;
   /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
+  /** A fall does its holder no harm (Capability API 1.424 on an item; a condition's since 1.124). */
+  fallsSafely?: true;
+  /** Conditions on its holder it holds off, not ends (Capability API 1.424 on an item). */
+  suppresses?: readonly string[];
   /** Held off while its holder has any of these, conditions or effects (Capability API 1.364). */
   notWhile?: readonly string[];
   /** A floor under its holder's checks (Capability API 1.365). */

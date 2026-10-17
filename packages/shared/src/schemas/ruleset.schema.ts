@@ -10820,6 +10820,13 @@ export const rulesetItemEffectSchema = z
     /** It gives away whoever moves unseen this near its holder (Capability API 1.319), in the
      *  ruleset's distance: the showcase's Wind-Chime, `15`. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
+    /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.424):
+     *  5e's Ring of Feather Falling. */
+    fallsSafely: z.literal(true).optional(),
+    /** Conditions on its holder it holds off, not ends (Capability API 1.424): what they do stops and
+     *  their clocks run on, and they hold again once it is taken off. 5e's Periapt of Health, with
+     *  the same diseases in `conditionImmunities` so no new one is caught. */
+    suppresses: uniqueIds(12).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -10833,13 +10840,15 @@ export const rulesetItemEffectSchema = z
       !hide &&
       !entry.senses &&
       !entry.light &&
-      !entry.alerts
+      !entry.alerts &&
+      !entry.fallsSafely &&
+      !entry.suppresses
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, or harm or conditions it keeps off",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, or harm or conditions it keeps or holds off",
       });
     }
     if (abilities.length > 12) {
@@ -16919,6 +16928,11 @@ function itemHideIssues(
     });
   }
   hideIssues(definition, effect, at, add);
+  // What it holds off (1.424) is the sheet's own conditions.
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  effect.suppresses?.forEach((condition, index) => {
+    if (!conditions.has(condition)) add([...at, "suppresses", index], `Unknown condition "${condition}"`);
+  });
 }
 
 /** Hanging on at 1 (1.347): health in points, harm the ruleset has, and on a sheet its own saves and

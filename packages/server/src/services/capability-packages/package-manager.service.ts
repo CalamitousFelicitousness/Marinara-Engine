@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition that wastes a turn's budget on a failed save (1.410): Bestow Curse. */
+function carriesWastes410(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWastes410(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.wastes !== undefined) return true;
+  return featureValues(record).some((one) => carriesWastes410(one, depth + 1));
+}
+
 /** An entry set up before a fight only (1.409): Glyph of Warding, Hallow. */
 function carriesBeforeFight409(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5960,6 +5970,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions that waste a turn's budget on a failed save, 1.410.
+  if (
+    !declaresApi(410) &&
+    (carriesWastes410(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWastes410(document)))
+  ) {
+    return "A ruleset whose conditions waste a turn's budget on a failed save (behavior wastes) requires schemaVersion 2 and capabilityApi 1.410 or newer";
+  }
   // Entries set up before a fight only, 1.409.
   if (
     !declaresApi(409) &&

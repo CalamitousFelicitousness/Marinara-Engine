@@ -110645,6 +110645,27 @@
                     "type": "string",
                     "const": "point"
                   },
+                  "wastes": {
+                    "type": "object",
+                    "properties": {
+                      "save": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "budget": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "save",
+                      "budget"
+                    ],
+                    "additionalProperties": false
+                  },
                   "drops": {
                     "type": "object",
                     "properties": {

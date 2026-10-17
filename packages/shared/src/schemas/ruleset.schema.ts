@@ -9736,6 +9736,7 @@ export interface RulesetConditionBehavior {
   keepsOut?: number;
   keepsIn?: number;
   from?: "point";
+  wastes?: { save: string; budget: string };
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
 }
@@ -9786,6 +9787,10 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
      *  whoever put it on (Capability API 1.404): a zone's middle, or where an area was aimed. Put on
      *  from nowhere in particular, from whoever put it on. 5e's Symbol of Fear, fleeing the glyph. */
     from: z.literal("point").optional(),
+    /** As each of its holder's turns starts they throw this save against the difficulty it was put
+     *  on with, and on a failure this budget is wasted for the turn (Capability API 1.410): 5e's
+     *  Bestow Curse, "wastes its action that turn doing nothing". */
+    wastes: z.object({ save: sheetId, budget: sheetId }).strict().optional(),
     /** It lets fall what it holds (Capability API 1.266): each worn item taking one of `slots`
      *  (a hand), each item and each stat block action carrying one of `tags`, as the condition goes
      *  on or as each of its holder's turns starts. What falls lies where they stood: it does nothing
@@ -14715,6 +14720,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
         if (drops.pickUp !== undefined && !combat.economy.budgets.some((budget) => budget.id === drops.pickUp))
           issue([...at, "pickUp"], `Unknown budget "${drops.pickUp}"`);
+      }
+      // The save that keeps a turn's budget, and the budget (1.410).
+      const wastes = entry.behavior?.wastes;
+      if (wastes) {
+        const at = [...path, "behavior", "wastes"];
+        if (!def.sheet.saves.some((save) => save.id === wastes.save))
+          issue([...at, "save"], `Unknown save "${wastes.save}"`);
+        if (!combat.economy.budgets.some((budget) => budget.id === wastes.budget))
+          issue([...at, "budget"], `Unknown budget "${wastes.budget}"`);
       }
       if (entry.expires) {
         if (!conditions.has(entry.expires.becomes))

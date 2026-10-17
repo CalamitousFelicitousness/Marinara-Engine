@@ -2411,6 +2411,14 @@ export type RulesetCombatEvent =
   /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
    *  `to`, or lost. */
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
+  /** A turn's budget wasted to a condition as the turn began (1.410), its save failed: Bestow Curse. */
+  | {
+      type: "wasted";
+      actorId: string;
+      condition: string;
+      budget: string;
+      label: string;
+    }
   /** What a condition's table made of a turn as it began (1.264): the roll, and what it does. */
   | {
       type: "compelled";

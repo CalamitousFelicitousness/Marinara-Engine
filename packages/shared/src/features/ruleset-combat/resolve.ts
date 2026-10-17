@@ -12316,6 +12316,17 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   for (const entry of active) {
     if (entry.behavior?.drops?.at === "turn-start") letFall(ctx, actor, entry.condition, entry.behavior.drops);
   }
+  // A save as the turn starts, or a budget wasted for it (1.410): Bestow Curse.
+  for (const entry of active) {
+    const wastes = entry.behavior?.wastes;
+    if (!wastes) continue;
+    const tracked = actor.tracked.find((one) => one.condition === entry.condition);
+    if (tracked?.difficulty === undefined) continue;
+    if (rollSave(ctx, actor, wastes.save, tracked.difficulty, tracked.source)) continue;
+    actor.budgets[wastes.budget] = 0;
+    const label = ctx.combat.economy.budgets.find((budget) => budget.id === wastes.budget)?.label ?? wastes.budget;
+    ctx.events.push({ type: "wasted", actorId: actor.id, condition: entry.condition, budget: wastes.budget, label });
+  }
   // A turn that starts with nowhere to walk is its own where a condition says so (1.266): Fear.
   if (active.some((entry) => entry.behavior?.onlyWhenStuck === "any")) {
     actor.flags.stuck = rulesetReachableCells(ctx.definition, ctx.state, actor.id).length === 0;

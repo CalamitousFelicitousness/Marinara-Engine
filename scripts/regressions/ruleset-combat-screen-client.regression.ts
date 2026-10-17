@@ -849,6 +849,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["skip", say({ type: "skip", actorId: "lurker", reason: "daze" })],
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
     ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
+    [
+      "wasted",
+      say({ type: "wasted", actorId: "lurker", condition: "incapacitated", budget: "action", label: "Action" }),
+    ],
     ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
     ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
     ["averted", say({ type: "averted", actorId: "brenna", holderId: "lurker" })],

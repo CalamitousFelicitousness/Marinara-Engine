@@ -661,6 +661,13 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "wasted":
+      // A turn's budget lost to a condition (1.410): Bestow Curse.
+      return key("wasted", {
+        actor: names.combatant(event.actorId),
+        condition: names.condition(event.condition),
+        budget: event.label,
+      });
     case "letFall":
       return key("letFall", {
         actor: names.combatant(event.actorId),

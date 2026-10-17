@@ -2259,6 +2259,7 @@
   "game.combat.ruleset.event.unavailable": "The fight stopped here: {{reason}}",
   "game.combat.ruleset.event.unsealed": "{{actor}} lifts what kept {{amount}} of {{target}}'s health from healing; their maximum is {{max}} again.",
   "game.combat.ruleset.event.uses": "{{label}}: {{left}} of {{of}} left.",
+  "game.combat.ruleset.event.wasted": "{{condition}} makes {{actor}} waste this turn’s {{budget}}.",
   "game.combat.ruleset.event.windowAimed": "{{mover}} aims {{label}} at {{actor}}, who may answer.",
   "game.combat.ruleset.event.windowAttacked": "{{actor}} may answer {{mover}}'s {{label}}.",
   "game.combat.ruleset.event.windowBetween": "The fight pauses between turns, and {{actor}} may act.",

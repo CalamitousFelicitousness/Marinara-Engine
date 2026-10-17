@@ -7,6 +7,7 @@
 // skills or saves. The check resolver rolls what comes out of here; a fight reads its own conditions.
 // ──────────────────────────────────────────────
 import type {
+  RulesetConditionImmunityFrom,
   RulesetCatalogEntriesById,
   RulesetCheckFloor,
   RulesetContextualCheck,
@@ -100,6 +101,12 @@ export interface RulesetCheckSource {
   fallsSafely?: true;
   /** Conditions on its holder it holds off, not ends (Capability API 1.424 on an item). */
   suppresses?: readonly string[];
+  /** Conditions kept off by who or what would put them on (Capability API 1.433 on an item). */
+  conditionImmunitiesFrom?: readonly RulesetConditionImmunityFrom[];
+  /** What entries of these catalogs put on its holder does not lower their speed (Capability API 1.433). */
+  speedKeptFrom?: Readonly<{ catalogs: readonly string[] }>;
+  /** Conditions its holder may slip free of for some of their walk (Capability API 1.433). */
+  slipsFree?: Readonly<{ conditions: readonly string[]; cost: number; unlessCatalogs?: readonly string[] }>;
   /** Held off while its holder has any of these, conditions or effects (Capability API 1.364). */
   notWhile?: readonly string[];
   /** A floor under its holder's checks (Capability API 1.365). */

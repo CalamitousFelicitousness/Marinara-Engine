@@ -28,6 +28,7 @@ import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
+  RULESET_SLIP_OPTION_PREFIX,
   rulesetChargeSteps,
   breakRulesetItem,
   recoverRulesetAmmo,
@@ -70,6 +71,7 @@ import {
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetMovementAllowance,
+  rulesetSpeedZero,
   rulesetSealed,
   rulesetSealedApart,
   rulesetEngulfable,
@@ -329,6 +331,10 @@ interface RulesetCombatContext {
   /** The kinds of harm that landed on each target in the blow being dealt (1.347), "" for none: what
    *  a hang-on at 1 refuses (Undead Fortitude's radiant). Read and cleared as the blow ends. */
   blowTypes: Map<string, Set<string>>;
+  /** The kinds of harm each target was subjected to in the blow being dealt, whatever they dealt:
+   *  what a creature splits on (1.422) though it is immune to it, as a Black Pudding is to lightning.
+   *  Read and cleared as the blow ends. */
+  blowSubjected: Map<string, Set<string>>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
   /** How many of `events` have been read for who was stirred (1.383). */
@@ -408,6 +414,7 @@ function begin(
     events: [],
     overwhelmed: new Set(),
     blowTypes: new Map(),
+    blowSubjected: new Map(),
     harmEndings: [],
     ...(borrowedOuter ? { outer: borrowedOuter } : {}),
   };
@@ -889,6 +896,11 @@ function applyDamage(
     kinds.add(type ?? "");
     ctx.blowTypes.set(target.id, kinds);
   }
+  if (type) {
+    const subjected = ctx.blowSubjected.get(target.id) ?? new Set<string>();
+    subjected.add(type);
+    ctx.blowSubjected.set(target.id, subjected);
+  }
   ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt, false, damageSaves));
   // Harm its regeneration is stopped by (1.346): fire or acid on a troll, until its next turn starts.
   if (
@@ -941,7 +953,13 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   const overwhelmed = ctx.overwhelmed.delete(target.id);
   const kinds = ctx.blowTypes.get(target.id) ?? new Set<string>();
   ctx.blowTypes.delete(target.id);
-  if (dealt <= 0) return;
+  const subjected = ctx.blowSubjected.get(target.id) ?? new Set<string>();
+  ctx.blowSubjected.delete(target.id);
+  if (dealt <= 0) {
+    // Split by what it shrugged off (1.422): an ooze immune to the lightning it splits on.
+    splitOnHarm(ctx, target, subjected);
+    return;
+  }
   const wasDown = !!target.down;
   endConditionsOnDamage(ctx, target);
   const after = healthOf(ctx, target);
@@ -950,7 +968,7 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   // not: going down ends it outright (`dropToZero`), so nothing is rolled for it.
   if (!out) concentrationFromDamage(ctx, target, dealt);
   // Split in two by what harmed it (1.422): a Black Pudding.
-  if (!out) splitOnHarm(ctx, target, kinds);
+  if (!out) splitOnHarm(ctx, target, new Set([...kinds, ...subjected]));
   if (out) {
     if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds });
     else if (target.dying && !target.defeated) {
@@ -3051,7 +3069,8 @@ function removeCondition(
     | "linked"
     | "worsened"
     | "dispelled"
-    | "freed",
+    | "freed"
+    | "slipped",
 ): void {
   if (target.dazed?.condition === condition) return;
   const removed = target.tracked.find((entry) => entry.condition === condition);
@@ -4792,6 +4811,11 @@ function whyNotOffered(
     }
     return "unreachable";
   }
+  // Slipping free (1.433): nothing it may slip, or too little of the walk left to do it with.
+  if (optionId.startsWith(RULESET_SLIP_OPTION_PREFIX)) {
+    const condition = optionId.slice(RULESET_SLIP_OPTION_PREFIX.length);
+    return rulesetCombatConditions(definition, actor).includes(condition) ? "unreachable" : "unknown-option";
+  }
   // Picking up (1.266): out of reach, or nothing left to pick it up with.
   if (optionId.startsWith(RULESET_PICK_UP_OPTION_PREFIX)) {
     const thing = actor.dropped?.find((one) => one.key === optionId.slice(RULESET_PICK_UP_OPTION_PREFIX.length));
@@ -5126,6 +5150,27 @@ function applyChoice(
     if (kept.length) working.averted = kept;
     else delete working.averted;
     ctx.events.push({ type: "averted", actorId: working.id, holderId, ...(back ? { back: true as const } : {}) });
+    noteOutcome(ctx);
+    return finish();
+  }
+
+  // Slipping free (1.433): the condition comes off, the walk it kept from them comes back, and what
+  // slipping costs comes off that.
+  if (option.slip && option.id.startsWith(RULESET_SLIP_OPTION_PREFIX)) {
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    const condition = option.id.slice(RULESET_SLIP_OPTION_PREFIX.length);
+    const before =
+      working.movement !== undefined ? rulesetMovementAllowance(ctx.definition, ctx.combat, working, ctx.state) : 0;
+    removeCondition(ctx, working, condition, "slipped");
+    if (working.movement !== undefined) {
+      const after = rulesetMovementAllowance(ctx.definition, ctx.combat, working, ctx.state);
+      if (after > before) {
+        working.movementLeft = (working.movementLeft ?? 0) + after - before;
+        working.movement = Math.max(working.movement, after);
+      }
+      spendRulesetMovement(working, option.movementCost ?? 0);
+    }
     noteOutcome(ctx);
     return finish();
   }
@@ -8320,7 +8365,7 @@ function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
   const grounded =
     !rulesetCombatStanding(flier) ||
     !!rulesetProneCondition(ctx.definition, ctx.combat, flier) ||
-    rulesetCombatEffects(ctx.definition, ctx.combat, flier, ctx.state).has("speed-zero") ||
+    rulesetSpeedZero(ctx.definition, ctx.combat, flier, ctx.state) ||
     // Its flight gone with what gave it (1.345).
     !flier.speeds?.fly;
   if (!grounded) return;
@@ -8506,7 +8551,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // that nothing can (1.283).
     if (
       !rulesetCombatStanding(actor) ||
-      (!legendary?.untouchable && rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state).has("speed-zero"))
+      (!legendary?.untouchable && rulesetSpeedZero(ctx.definition, ctx.combat, actor, ctx.state))
     ) {
       stopped = true;
       break;

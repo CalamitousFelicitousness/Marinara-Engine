@@ -2659,7 +2659,9 @@ export type RulesetCombatEvent =
         /** Not put on: its holder stands where its source is kept out (1.399). */
         | "warded"
         /** Gone as its holder stepped into ground that keeps its source out (1.406): Hallow. */
-        | "freed";
+        | "freed"
+        /** Slipped free of by its holder (1.433): Freedom of Movement. */
+        | "slipped";
       stacks?: number;
     }
   /** A number that attacks move: what came off it or went on it, why, and what it is now. A style
@@ -3359,6 +3361,8 @@ export interface RulesetCombatOption {
   pickUp?: true;
   /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.268). */
   avert?: { holderId: string; back?: true };
+  /** Slipping free of the condition named by the id, called `label` (1.433). */
+  slip?: true;
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;

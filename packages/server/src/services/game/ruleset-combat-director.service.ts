@@ -1289,8 +1289,8 @@ function rulesetCandidatesFrom(
     // Walking is not a candidate of its own: it is what a candidate does before it acts, and a turn
     // with nothing to act on closes the distance instead (see `rulesetClosingMove`).
     if (option.kind === "move") continue;
-    // Averting the eyes is settled as the turn starts (see `playRulesetTurn`).
-    if (option.avert) continue;
+    // Averting the eyes is settled as the turn starts (see `playRulesetTurn`), and so is slipping free.
+    if (option.avert || option.slip) continue;
     // Putting away a weapon put in hand (1.308) is its player's own call: the Engine keeps it.
     if (option.dismiss) continue;
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
@@ -2118,6 +2118,12 @@ function playRulesetTurn(
     (option) => option.pickUp && !option.budget,
   );
   if (pickUp) applyChoice(definition, state, fight, { actorId, optionId: pickUp.id, targetIds: [] });
+  // Slips free of whatever holds it that it may (1.433): staying held never helps it.
+  for (let tries = 0; tries < 12; tries += 1) {
+    const slip = rulesetCombatOptions(definition, fight.encounter, actorId).find((option) => option.slip);
+    if (!slip) break;
+    applyChoice(definition, state, fight, { actorId, optionId: slip.id, targetIds: [] });
+  }
   // A gaze it may keep its eyes from (1.268): kept from while anybody else is left to fight, looked
   // at again once its holder is all that is left.
   for (const option of rulesetCombatOptions(definition, fight.encounter, actorId)) {

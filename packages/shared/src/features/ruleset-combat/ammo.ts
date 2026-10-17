@@ -456,6 +456,8 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
 
 /** Averting the eyes from a gaze's holder, or looking again (1.268): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
+/** Slipping free of a condition (1.433): `slip:<condition>`. */
+export const RULESET_SLIP_OPTION_PREFIX = "slip:";
 
 const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
 

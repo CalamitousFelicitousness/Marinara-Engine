@@ -3,7 +3,8 @@
  *
  *   - Black Pudding: slashing that leaves it standing with 10 or more splits it, each half its health
  *     and one size smaller, the second beside it and acting right after it; lightning splits a
- *     Medium one again; one already below Medium, one under 10, or fire does not.
+ *     Medium one again; one already below Medium, one under 10, or fire does not. One immune to
+ *     what it splits on splits all the same, the blow dealing nothing.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -95,8 +96,9 @@ try {
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
   const definition = parsed(fiveE());
-  const block = (health: number, size: string): RulesetStatBlock =>
+  const block = (health: number, size: string, more: Record<string, unknown> = {}): RulesetStatBlock =>
     ({
+      ...more,
       health,
       defense: 7,
       initiativeModifier: 0,
@@ -105,7 +107,7 @@ try {
       splits,
       size,
     }) as unknown as RulesetStatBlock;
-  const fight = (health = 85, size = "large") => {
+  const fight = (health = 85, size = "large", more: Record<string, unknown> = {}) => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
@@ -122,7 +124,7 @@ try {
           }),
           catalogs: { spells: entries },
         },
-        { id: "pudding", name: "Pudding", side: "enemy", block: block(health, size) },
+        { id: "pudding", name: "Pudding", side: "enemy", block: block(health, size, more) },
       ],
       board: {
         grid: { width: 12, height: 12, tiles: Array.from({ length: 12 }, () => Array(12).fill("plains")) },
@@ -181,6 +183,19 @@ try {
     assert.deepEqual(of(small.events, "split"), [], "below Medium: no split");
   }
 
+  // ── Immune to lightning and slashing, as the SRD's oozes are: it splits, nothing dealt ──
+  {
+    const immune = { immune: ["lightning", "slashing"] };
+    const zapped = cast(fight(85, "large", immune), "Zap");
+    assert.deepEqual(
+      of(zapped.events, "split").map((one) => [one.ids, one.health]),
+      [[["pudding-split-1"], 42]],
+      "85 kept: two of 42",
+    );
+    assert.equal(rulesetCombatant(zapped.state, "pudding")!.size, "medium");
+    assert.deepEqual(of(cast(fight(85, "large", { immune: ["fire"] }), "Burn").events, "split"), [], "fire still not");
+  }
+
   // ── Fire, or under 10 left: no split ──
   assert.deepEqual(of(cast(fight(), "Burn").events, "split"), [], "fire does not split it");
   assert.deepEqual(of(cast(fight(18), "Cut").events, "split"), [], "8 left: too few");
@@ -210,7 +225,7 @@ try {
   }
 
   console.log(
-    "Splits: a Black Pudding split by slashing or lightning into two of half its health, a size smaller, beside it and after it; not by fire, under 10 or below Medium; gated at 1.422.",
+    "Splits: a Black Pudding split by slashing or lightning into two of half its health, a size smaller, beside it and after it, immune to it or not; not by fire, under 10 or below Medium; gated at 1.422.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

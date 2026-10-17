@@ -2247,6 +2247,20 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A walk magic may not lower, slipping free, or an item keeping conditions off by who or what puts
+ *  them on (1.433): Freedom of Movement, and its ring. */
+function carriesFreedom433(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFreedom433(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.speedKeptFrom !== undefined || record.slipsFree !== undefined) return true;
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (effect?.conditionImmunitiesFrom !== undefined) return true;
+  }
+  return featureValues(record).some((one) => carriesFreedom433(one, depth + 1));
+}
+
 /** A duration said as "until-dispelled" (1.432): Continual Flame. */
 function carriesUntilDispelled432(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6209,6 +6223,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A walk magic may not lower, slipping free, and items keeping conditions off by who puts them on, 1.433.
+  if (
+    !declaresApi(433) &&
+    (carriesFreedom433(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFreedom433(document)))
+  ) {
+    return "A ruleset whose conditions or items keep a walk from being lowered or slip free (speedKeptFrom, slipsFree, or conditionImmunitiesFrom on an item) requires schemaVersion 2 and capabilityApi 1.433 or newer";
+  }
   // A duration said as "until-dispelled", 1.432.
   if (
     !declaresApi(432) &&

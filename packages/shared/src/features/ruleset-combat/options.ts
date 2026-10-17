@@ -20,6 +20,7 @@ import {
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
+  RULESET_SLIP_OPTION_PREFIX,
   RULESET_CHARGE_STEP_PREFIX,
   rulesetChargeSteps,
   rulesetActionDropped,
@@ -85,6 +86,8 @@ import {
   rulesetModeRuleHolds,
   rulesetMovesOnly,
   rulesetMovementAllowance,
+  rulesetSlipCost,
+  rulesetSpeedZero,
   rulesetLightMatches,
   rulesetNearProp,
   rulesetPropNamed,
@@ -3235,7 +3238,7 @@ function movementOptions(
   if (!positioned(state) || !rulesetPositionOf(actor)) return [];
   // A condition that pins somebody takes their movement away the moment it lands, not at the start
   // of their next turn.
-  if (rulesetCombatEffects(definition, combat, actor, state).has("speed-zero")) return [];
+  if (rulesetSpeedZero(definition, combat, actor, state)) return [];
   // Held where it stands by the light it is in (1.319): Lantern-Shy in bright light.
   const still = actor.block?.stillIn;
   if (
@@ -3370,6 +3373,8 @@ function compelled(
       const action = actor.actions.find((entry) => entry.id === option.id);
       return !!action?.contest?.from && allowed("escape");
     }
+    // Slipping free (1.433) is breaking free too.
+    if (option.slip) return allowed("escape");
     return false;
   });
 }
@@ -3389,6 +3394,44 @@ function pickUpOptions(actor: RulesetCombatant): RulesetCombatOption[] {
       targets: { side: "self", count: 0 },
       pickUp: true,
     });
+  }
+  return out;
+}
+
+/** Slipping free of what holds them (1.433), with no check, for some of the turn's walk: each
+ *  condition a `slipsFree` holding on them names, put on by nothing of its `unlessCatalogs`. 5e's
+ *  Freedom of Movement out of a grapple or a nonmagical restraint. */
+function slipOptions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatOption[] {
+  if (!combat.conditions?.some((entry) => entry.slipsFree) && !definition.items) return [];
+  const out: RulesetCombatOption[] = [];
+  const offered = new Set<string>();
+  const on = rulesetCombatConditions(definition, actor);
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const slips = entry.slipsFree;
+    if (!slips) continue;
+    for (const condition of on) {
+      if (offered.has(condition) || !slips.conditions.includes(condition)) continue;
+      const magic = actor.tracked.some(
+        (one) => one.condition === condition && !!one.catalog && !!slips.unlessCatalogs?.includes(one.catalog),
+      );
+      if (magic) continue;
+      const cells = rulesetSlipCost(definition, combat, actor, state, condition, slips.cost);
+      if (cells === null) continue;
+      offered.add(condition);
+      out.push({
+        id: `${RULESET_SLIP_OPTION_PREFIX}${condition}`,
+        kind: "standard",
+        label: definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition,
+        targets: { side: "self", count: 0 },
+        ...(cells ? { movementCost: cells } : {}),
+        slip: true,
+      });
+    }
   }
   return out;
 }
@@ -3488,6 +3531,7 @@ export function rulesetUncompelledOptions(
   }
   options.push(...pickUpOptions(actor));
   options.push(...avertOptions(definition, state, actor));
+  options.push(...slipOptions(definition, combat, state, actor));
   // Moving a lasting area its caster holds at a point (1.173): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;

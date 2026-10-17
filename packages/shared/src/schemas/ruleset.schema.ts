@@ -10272,6 +10272,42 @@ const conditionOnDamagedSchema: z.ZodType<RulesetConditionOnDamaged, z.ZodTypeDe
   })
   .strict();
 
+/** Conditions kept off only when a creature that is `from` would put them on (Capability API 1.191),
+ *  or an entry of one of `catalogs` would (Capability API 1.423). On an item's effect too (Capability
+ *  API 1.433): a Ring of Freedom of Movement. */
+const conditionImmunitiesFromSchema = z
+  .array(
+    z
+      .object({
+        conditions: z.array(sheetId).min(1).max(40),
+        from: targetIsSchema.optional(),
+        catalogs: z.array(sheetId).min(1).max(8).optional(),
+      })
+      .strict()
+      .refine((ward) => ward.from || ward.catalogs, {
+        message: 'Say what it is kept off from: "from", "catalogs" or both',
+      }) as z.ZodType<RulesetConditionImmunityFrom, z.ZodTypeDef, unknown>,
+  )
+  .min(1)
+  .max(10);
+
+/** Its holder's speed is not lowered by what entries of these catalogs put on them (Capability API
+ *  1.433): a slowing, a halving or a stop that a spell put on does nothing to their walk, and the
+ *  same from anything else still does. 5e's Freedom of Movement, `{ "catalogs": ["spells"] }`. */
+const speedKeptFromSchema = z.object({ catalogs: z.array(sheetId).min(1).max(8) }).strict();
+
+/** Its holder may slip free of these conditions on their turn (Capability API 1.433), with no check,
+ *  for `cost` of their walk in the ruleset's own distance: one put on by an entry of `unlessCatalogs`
+ *  holds. The walk a condition kept from them comes back as it ends. 5e's Freedom of Movement, 5 feet
+ *  out of a grapple or a nonmagical restraint. */
+const slipsFreeSchema = z
+  .object({
+    conditions: z.array(sheetId).min(1).max(12),
+    cost: z.number().finite().min(0).max(10000),
+    unlessCatalogs: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict();
+
 const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.132), as on a creature. */
@@ -10287,22 +10323,13 @@ const combatConditionSchema = z
      *  1.191): 5e's Protection from Evil and Good, no charm or fright from a fiend or undead. One
      *  already on stays. Or only when an entry of one of `catalogs` would (Capability API 1.423), with
      *  `from` or without it: 5e's Freedom of Movement, no paralysis or restraint from a spell. */
-    conditionImmunitiesFrom: z
-      .array(
-        z
-          .object({
-            conditions: z.array(sheetId).min(1).max(40),
-            from: targetIsSchema.optional(),
-            catalogs: z.array(sheetId).min(1).max(8).optional(),
-          })
-          .strict()
-          .refine((ward) => ward.from || ward.catalogs, {
-            message: 'Say what it is kept off from: "from", "catalogs" or both',
-          }) as z.ZodType<RulesetConditionImmunityFrom, z.ZodTypeDef, unknown>,
-      )
-      .min(1)
-      .max(10)
-      .optional(),
+    conditionImmunitiesFrom: conditionImmunitiesFromSchema.optional(),
+    /** What entries of these catalogs put on its holder does not lower their speed (Capability API
+     *  1.433): 5e's Freedom of Movement. */
+    speedKeptFrom: speedKeptFromSchema.optional(),
+    /** Conditions its holder may slip free of for some of their walk (Capability API 1.433): 5e's
+     *  Freedom of Movement. */
+    slipsFree: slipsFreeSchema.optional(),
     condition: sheetId,
     /** Saves among these, against something that deals half on a success, take nothing on a
      *  success and half on a failure (Capability API 1.250): 5e's Evasion, on Dexterity saves. */
@@ -10880,6 +10907,15 @@ export const rulesetItemEffectSchema = z
      *  the same diseases in `conditionImmunities` so no new one is caught. It may name a kind of
      *  condition (Capability API 1.431), every condition of that kind held off: `["disease"]`. */
     suppresses: uniqueIds(12).optional(),
+    /** Conditions kept off by who or what would put them on, as a condition's (Capability API
+     *  1.433): a Ring of Freedom of Movement, no paralysis or restraint from a spell. */
+    conditionImmunitiesFrom: conditionImmunitiesFromSchema.optional(),
+    /** What entries of these catalogs put on its holder does not lower their speed, as a
+     *  condition's (Capability API 1.433). */
+    speedKeptFrom: speedKeptFromSchema.optional(),
+    /** Conditions its holder may slip free of for some of their walk, as a condition's (Capability
+     *  API 1.433). */
+    slipsFree: slipsFreeSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -10895,13 +10931,16 @@ export const rulesetItemEffectSchema = z
       !entry.light &&
       !entry.alerts &&
       !entry.fallsSafely &&
-      !entry.suppresses
+      !entry.suppresses &&
+      !entry.conditionImmunitiesFrom &&
+      !entry.speedKeptFrom &&
+      !entry.slipsFree
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, or harm or conditions it keeps or holds off",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, or a walk it keeps or slips free with",
       });
     }
     if (abilities.length > 12) {
@@ -14752,19 +14791,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
       // Kept off by who puts them on (1.191): the ruleset's own conditions, from creatures it names.
-      entry.conditionImmunitiesFrom?.forEach((ward, wardIndex) => {
-        const where = [...path, "conditionImmunitiesFrom", wardIndex];
-        ward.conditions.forEach((condition, conditionIndex) => {
-          if (!conditions.has(condition))
-            issue([...where, "conditions", conditionIndex], `Unknown condition "${condition}"`);
-        });
-        if (ward.from) targetIsIssues(def, ward.from, [...where, "from"], issue);
-        // The catalogs it names (1.423) are the ruleset's.
-        ward.catalogs?.forEach((catalog, catalogIndex) => {
-          if (!def.catalogs?.some((one) => one.id === catalog))
-            issue([...where, "catalogs", catalogIndex], `Unknown catalog "${catalog}"`);
-        });
-      });
+      freedomIssues(def, entry, path, issue);
       // What it harms with is one of the ruleset's damage types (1.189).
       const harmType = entry.harms?.type;
       const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());
@@ -16988,6 +17015,40 @@ function itemHideIssues(
     if (!conditions.has(condition) && !kinds.has(condition))
       add([...at, "suppresses", index], `Unknown condition "${condition}"`);
   });
+  freedomIssues(definition, effect, at, add);
+}
+
+/** What keeps conditions off by who puts them on (1.191, 1.423), keeps a walk from being lowered and
+ *  slips free (1.433), on a condition or an item: the ruleset's own conditions and catalogs. */
+function freedomIssues(
+  definition: RulesetDefinition,
+  entry: Pick<RulesetItemEffect, "conditionImmunitiesFrom" | "speedKeptFrom" | "slipsFree">,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const catalogIssues = (catalogs: readonly string[] | undefined, where: (string | number)[]) =>
+    catalogs?.forEach((catalog, index) => {
+      if (!definition.catalogs?.some((one) => one.id === catalog))
+        add([...where, index], `Unknown catalog "${catalog}"`);
+    });
+  const conditionIssues = (ids: readonly string[], where: (string | number)[]) =>
+    ids.forEach((condition, index) => {
+      if (!conditions.has(condition)) add([...where, index], `Unknown condition "${condition}"`);
+    });
+  entry.conditionImmunitiesFrom?.forEach((ward, wardIndex) => {
+    const where = [...at, "conditionImmunitiesFrom", wardIndex];
+    conditionIssues(ward.conditions, [...where, "conditions"]);
+    if (ward.from) targetIsIssues(definition, ward.from, [...where, "from"], add);
+    catalogIssues(ward.catalogs, [...where, "catalogs"]);
+  });
+  catalogIssues(entry.speedKeptFrom?.catalogs, [...at, "speedKeptFrom", "catalogs"]);
+  if (entry.slipsFree) {
+    conditionIssues(entry.slipsFree.conditions, [...at, "slipsFree", "conditions"]);
+    catalogIssues(entry.slipsFree.unlessCatalogs, [...at, "slipsFree", "unlessCatalogs"]);
+    if (entry.slipsFree.cost > 0 && !definition.combat?.distance)
+      add([...at, "slipsFree", "cost"], "Slipping free costs some of the walk, so the fight has a distance");
+  }
 }
 
 /** Hanging on at 1 (1.347): health in points, harm the ruleset has, and on a sheet its own saves and

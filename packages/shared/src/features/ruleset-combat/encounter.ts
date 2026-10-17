@@ -618,6 +618,19 @@ export function rulesetActiveConditions(
     ...(source.alerts ? { alerts: source.alerts } : {}),
     ...(source.fallsSafely ? { fallsSafely: true as const } : {}),
     ...(source.suppresses ? { suppresses: [...source.suppresses] } : {}),
+    ...(source.conditionImmunitiesFrom
+      ? { conditionImmunitiesFrom: source.conditionImmunitiesFrom.map((ward) => ({ ...ward })) }
+      : {}),
+    ...(source.speedKeptFrom ? { speedKeptFrom: { catalogs: [...source.speedKeptFrom.catalogs] } } : {}),
+    ...(source.slipsFree
+      ? {
+          slipsFree: {
+            cost: source.slipsFree.cost,
+            conditions: [...source.slipsFree.conditions],
+            ...(source.slipsFree.unlessCatalogs ? { unlessCatalogs: [...source.slipsFree.unlessCatalogs] } : {}),
+          },
+        }
+      : {}),
   }));
   const all = [...conditions, ...levels, ...items, ...zoned];
   // Held off while its holder has something it names (1.364), a condition or what one does.
@@ -4432,10 +4445,12 @@ export function rulesetMovementAllowance(
   base: number = rulesetFastestSpeed(combatant),
   /** As though nothing sealed them (1.314): how far rolling a sphere is measured from. */
   unsealed = false,
+  /** As though these conditions were off them (1.433): the walk slipping free of them gives back. */
+  ignoring?: ReadonlySet<string>,
 ): number {
   const perCell = combat.distance?.perCell;
   if (perCell === undefined || !(perCell > 0)) return 0;
-  if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
+  if (rulesetSpeedZero(definition, combat, combatant, state, ignoring)) return 0;
   // Shut in a sphere (1.314): it goes only where it is rolled or carried.
   if (!unsealed && rulesetSealed(definition, combatant, state)) return 0;
   // Inside somebody (1.350): it goes only where they go, until they have fallen and it may climb
@@ -4443,12 +4458,84 @@ export function rulesetMovementAllowance(
   if (combatant.insideOf && !(state && rulesetInsideCorpse(state, combatant))) return 0;
   // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
   // slower, and half speed" is half of what is left.
-  const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);
+  // Not lowered by what magic put on them (1.433): Freedom of Movement.
+  const kept = speedKeptOff(definition, combat, combatant, state);
+  const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state).filter(
+    ({ condition, modifier }) =>
+      !ignoring?.has(condition) && !(kept.has(condition) && ((modifier.flat ?? 0) < 0 || (modifier.times ?? 1) < 1)),
+  );
   let speed = base;
   for (const { modifier } of changes) speed += modifier.flat ?? 0;
   for (const { modifier } of changes) speed *= modifier.times ?? 1;
   if (!Number.isFinite(speed) || speed <= 0) return 0;
   return Math.max(1, Math.floor(speed / perCell));
+}
+
+/**
+ * The conditions on this combatant that may not lower their speed (1.433): each put on only by
+ * entries of the catalogs a `speedKeptFrom` holding on them names. 5e's Freedom of Movement keeps a
+ * spell's slowing off their walk, and a net's still holds them.
+ */
+function speedKeptOff(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): Set<string> {
+  const kept = new Set<string>();
+  if (!combat.conditions?.some((entry) => entry.speedKeptFrom) && !definition.items) return kept;
+  const catalogs = new Set(
+    rulesetActiveConditions(definition, combat, combatant, state).flatMap(
+      (entry) => entry.speedKeptFrom?.catalogs ?? [],
+    ),
+  );
+  if (!catalogs.size) return kept;
+  const fromMagic = new Map<string, boolean>();
+  for (const entry of combatant.tracked) {
+    const magic = !!entry.catalog && catalogs.has(entry.catalog);
+    fromMagic.set(entry.condition, (fromMagic.get(entry.condition) ?? true) && magic);
+  }
+  for (const [condition, magic] of fromMagic) if (magic) kept.add(condition);
+  return kept;
+}
+
+/** Whether something holding on this combatant stops them moving at all: a condition that does
+ *  "speed-zero", unless all that does is kept off their walk (1.433) or is in `ignoring`. */
+export function rulesetSpeedZero(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+  ignoring?: ReadonlySet<string>,
+): boolean {
+  if (!rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return false;
+  const kept = speedKeptOff(definition, combat, combatant, state);
+  if (!kept.size && !ignoring?.size) return true;
+  return rulesetActiveConditions(definition, combat, combatant, state).some(
+    (entry) => entry.effects.includes("speed-zero") && !kept.has(entry.condition) && !ignoring?.has(entry.condition),
+  );
+}
+
+/**
+ * The cells of the walk slipping free of `condition` costs this combatant now (1.433), or null when
+ * what is left of their walk, with what it would give back, is too little. Nothing in a fight that
+ * measures no walk.
+ */
+export function rulesetSlipCost(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  condition: string,
+  cost: number,
+): number | null {
+  const perCell = combat.distance?.perCell;
+  if (combatant.movement === undefined || perCell === undefined || !(perCell > 0)) return 0;
+  const cells = Math.ceil(cost / perCell);
+  const freed =
+    rulesetMovementAllowance(definition, combat, combatant, state, undefined, false, new Set([condition])) -
+    rulesetMovementAllowance(definition, combat, combatant, state);
+  return (combatant.movementLeft ?? 0) + Math.max(0, freed) >= cells ? cells : null;
 }
 
 /** The fastest way this combatant moves, walking included (1.113). */

@@ -23,6 +23,7 @@ import {
   readChatVariables,
 } from "../../packages/client/src/lib/state-editor/chat-variables-editor-source.js";
 import {
+  buildGameDataEditorEdits,
   buildGameDataEditorSections,
   readGameMetadata,
 } from "../../packages/client/src/lib/state-editor/game-data-editor-source.js";
@@ -261,9 +262,10 @@ assert.deepEqual(
   ["npcs", "story", "maps", "settings", "other"],
   "only sections the game has data for show, named ones first, then Settings and Other",
 );
-assert.ok(
-  gameSections.every((section) => section.readOnly === true),
-  "every game data section is read-only until the validating route exists",
+assert.deepEqual(
+  gameSections.filter((section) => !section.readOnly).map((section) => section.id),
+  ["npcs", "story"],
+  "a section is editable only when every key in it is on the allow-list; catch-alls never are",
 );
 assert.deepEqual(gameSectionById.npcs?.value, gameMetadata.gameNpcs, "a one-key section shows that key's value as is");
 assert.deepEqual(
@@ -292,6 +294,43 @@ assert.deepEqual(
   buildGameDataEditorSections({ macroVariables: { a: "b" } }, () => ""),
   [],
   "non-game keys never show",
+);
+
+// ── game data (#7743): per-key edits with the opened values ──
+
+const openedGame = { gameNpcs: [{ id: "n1", name: "Bram" }], gameStoryArc: "Old arc", gamePlotTwists: ["a"] };
+assert.deepEqual(
+  buildGameDataEditorEdits(openedGame, [
+    { sectionId: "npcs", value: [{ id: "n1", name: "Bram", reputation: 5 }] },
+    { sectionId: "story", value: { gameStoryArc: "New arc", gamePlotTwists: ["a"], gameWorldOverview: "Added" } },
+  ]),
+  {
+    edits: [
+      { key: "gameNpcs", expected: openedGame.gameNpcs, value: [{ id: "n1", name: "Bram", reputation: 5 }] },
+      { key: "gameWorldOverview", expected: null, value: "Added" },
+      { key: "gameStoryArc", expected: "Old arc", value: "New arc" },
+    ],
+  },
+  "a several-key section sends only changed keys, each with the value it opened (null when absent)",
+);
+assert.deepEqual(
+  buildGameDataEditorEdits(openedGame, [{ sectionId: "story", value: { gamePlotTwists: ["a"] } }]),
+  { edits: [{ key: "gameStoryArc", expected: "Old arc", value: null }] },
+  "a key removed from a several-key section is sent as null",
+);
+assert.deepEqual(
+  buildGameDataEditorEdits(openedGame, [{ sectionId: "story", value: { gameSystemPrompt: "x" } }]),
+  { sectionId: "story", issue: { kind: "unknownKey", key: "gameSystemPrompt" } },
+  "a key that isn't the section's is refused before it reaches the server",
+);
+assert.deepEqual(buildGameDataEditorEdits(openedGame, [{ sectionId: "story", value: ["x"] }]), {
+  sectionId: "story",
+  issue: { kind: "notObject" },
+});
+assert.deepEqual(
+  buildGameDataEditorEdits(openedGame, [{ sectionId: "maps", value: {} }]),
+  { sectionId: "maps", issue: { kind: "readOnly" } },
+  "a read-only section can't produce an edit",
 );
 
 console.log("state-editor regression passed");

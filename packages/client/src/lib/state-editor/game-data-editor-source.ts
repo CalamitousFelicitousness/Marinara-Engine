@@ -1,10 +1,13 @@
 // ──────────────────────────────────────────────
 // Game data as a State Editor source: a Game Mode chat's own metadata
 // (party cards, NPCs, journal, story, maps, …) grouped into sections.
-// Every section is read-only for now; editing comes through a validating
-// server route with its own allow-list (#7743), never the generic metadata PATCH.
+// A section is editable when every key in it is on the shared allow-list; its
+// edits save through the validating PATCH /api/game/:chatId/data (#7743), never
+// the generic metadata PATCH.
 // ──────────────────────────────────────────────
-import type { StateEditorSection } from "./state-editor.types";
+import { isGameDataEditableKey, type GameDataEditRequest } from "@marinara-engine/shared";
+import { stateValuesEqual } from "./state-editor-json";
+import type { StateEditorChange, StateEditorSection } from "./state-editor.types";
 
 interface GameDataSectionDef {
   id: string;
@@ -20,9 +23,10 @@ export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
   { id: "journal", keys: ["gameJournal"] },
   { id: "playerNotes", keys: ["gamePlayerNotes"] },
   { id: "inventory", keys: ["gameInventory"] },
-  { id: "story", keys: ["gameWorldOverview", "gameStoryArc", "gamePlotTwists", "gamePartyArcs", "gameStory"] },
+  { id: "story", keys: ["gameWorldOverview", "gameStoryArc", "gamePlotTwists", "gamePartyArcs"] },
   { id: "sessionSummaries", keys: ["gamePreviousSessionSummaries"] },
   { id: "world", keys: ["gameWorld"] },
+  { id: "storyScript", keys: ["gameStory"] },
   { id: "widgets", keys: ["gameWidgetState"] },
   { id: "timeWeather", keys: ["gameTime", "gameWeather", "gameMorale"] },
   {
@@ -87,6 +91,11 @@ const SETTINGS_KEY =
 
 const NAMED_KEYS = new Set(GAME_DATA_SECTIONS.flatMap((section) => section.keys));
 
+/** A named section whose every key a hand edit may write. The catch-alls never are. */
+function isEditableSection(def: GameDataSectionDef): boolean {
+  return def.keys.every(isGameDataEditableKey);
+}
+
 /** A metadata key that belongs to Game Mode: every `game*` key, plus the named ones without that prefix. */
 function isGameKey(key: string): boolean {
   return /^game[A-Z]/.test(key) || NAMED_KEYS.has(key);
@@ -122,7 +131,11 @@ export function buildGameDataEditorSections(
   localize: (sectionId: string, part: "label" | "description") => string,
 ): StateEditorSection[] {
   // A catch-all always shows by key, so a lone key there keeps its name.
-  const section = (id: string, keys: readonly string[], byKey = keys.length > 1): StateEditorSection | null => {
+  const section = (
+    id: string,
+    keys: readonly string[],
+    { byKey = keys.length > 1, editable = false } = {},
+  ): StateEditorSection | null => {
     const picked = pick(metadata, keys);
     if (Object.keys(picked).length === 0) return null;
     return {
@@ -130,7 +143,7 @@ export function buildGameDataEditorSections(
       label: localize(id, "label"),
       description: localize(id, "description"),
       value: byKey ? picked : picked[keys[0]!],
-      readOnly: true,
+      readOnly: !editable,
     };
   };
 
@@ -141,8 +154,44 @@ export function buildGameDataEditorSections(
   const otherKeys = rest.filter((key) => !SETTINGS_KEY.test(key));
 
   return [
-    ...GAME_DATA_SECTIONS.map((def) => section(def.id, def.keys)),
-    section(GAME_DATA_SETTINGS_SECTION_ID, settingsKeys, true),
-    section(GAME_DATA_OTHER_SECTION_ID, otherKeys, true),
+    ...GAME_DATA_SECTIONS.map((def) => section(def.id, def.keys, { editable: isEditableSection(def) })),
+    section(GAME_DATA_SETTINGS_SECTION_ID, settingsKeys, { byKey: true }),
+    section(GAME_DATA_OTHER_SECTION_ID, otherKeys, { byKey: true }),
   ].filter((item): item is StateEditorSection => item !== null);
+}
+
+export type GameDataEditorIssue = { kind: "notObject" } | { kind: "unknownKey"; key: string } | { kind: "readOnly" };
+
+/**
+ * The per-key edits for the changed sections, each with the value the editor opened (null when the
+ * key was absent), so the server can refuse a key that changed since. A several-key section sends
+ * only the keys whose value changed; a key removed from it is sent as null.
+ */
+export function buildGameDataEditorEdits(
+  opened: Record<string, unknown>,
+  changes: StateEditorChange[],
+): { edits: GameDataEditRequest["edits"] } | { sectionId: string; issue: GameDataEditorIssue } {
+  const edits: GameDataEditRequest["edits"] = [];
+  for (const change of changes) {
+    const def = GAME_DATA_SECTIONS.find((item) => item.id === change.sectionId);
+    if (!def || !isEditableSection(def)) return { sectionId: change.sectionId, issue: { kind: "readOnly" } };
+    const keys = def.keys.filter(isGameDataEditableKey);
+    let values: Record<string, unknown>;
+    if (keys.length === 1) {
+      values = { [keys[0]!]: change.value };
+    } else {
+      if (!change.value || typeof change.value !== "object" || Array.isArray(change.value)) {
+        return { sectionId: change.sectionId, issue: { kind: "notObject" } };
+      }
+      values = change.value as Record<string, unknown>;
+      const unknown = Object.keys(values).find((key) => !(keys as readonly string[]).includes(key));
+      if (unknown !== undefined) return { sectionId: change.sectionId, issue: { kind: "unknownKey", key: unknown } };
+    }
+    for (const key of keys) {
+      const before = opened[key] ?? null;
+      const after = values[key] ?? null;
+      if (!stateValuesEqual(before, after)) edits.push({ key, expected: before, value: after });
+    }
+  }
+  return { edits };
 }

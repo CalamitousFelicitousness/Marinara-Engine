@@ -5,7 +5,7 @@
  *   - Set up before the fight: paid for off the sheet, put down between the caster and the nearest
  *     foe or where they stand; a hidden one put down unsaid; an unknown one left out and said.
  *   - A foe walking into the glyph set up beforehand sets it off.
- *   - Refusals and the install gate.
+ *   - The install gate.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -178,13 +178,6 @@ try {
       JSON.stringify(step.events.filter((one) => one.type === "zone")),
     );
     assert.ok(rulesetCombatHealth(definition, definition.combat!, who(step.state, "a")).value < 100);
-  }
-
-  // ── Refusals ──
-  {
-    const result = parseRulesetDefinition(fiveE([spell("loose", { kind: "utility", range: 30, beforeFight: true })]));
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.match(result.issues.join("; "), /"beforeFight" is set up before a fight/);
   }
 
   // ── The install gate ──

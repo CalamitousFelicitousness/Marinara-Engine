@@ -116,6 +116,7 @@ const directedCombatantFields = z.object({
           entry: z.string().min(1).max(200),
           at: z.enum(["self", "between"]).optional(),
           stores: z.string().min(1).max(200).optional(),
+          on: z.array(z.string().min(1).max(200)).max(12).optional(),
         })
         .strict(),
     )

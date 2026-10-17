@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry with no zone set up before a fight only (1.412): Heroes' Feast. */
+function carriesBeforeFightNoZone412(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBeforeFightNoZone412(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.beforeFight !== undefined && record.zone === undefined) return true;
+  return featureValues(record).some((one) => carriesBeforeFightNoZone412(one, depth + 1));
+}
+
 /** A condition that walks its holder, or is steered (1.411): Compulsion. */
 function carriesSteering411(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5982,6 +5992,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries with no zone set up before a fight only, 1.412.
+  if (
+    !declaresApi(412) &&
+    (carriesBeforeFightNoZone412(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBeforeFightNoZone412(document)))
+  ) {
+    return "A ruleset whose entries with no zone are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.412 or newer";
+  }
   // Conditions that walk their holder or are steered, 1.411.
   if (
     !declaresApi(411) &&

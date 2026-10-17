@@ -126,6 +126,8 @@ export interface CombatStandingEntry {
   entry: string;
   at?: "self" | "between";
   stores?: string;
+  /** Who a standing entry with no zone was cast on (1.412), by name. */
+  on?: string[];
 }
 
 /** A member of the player's party. */

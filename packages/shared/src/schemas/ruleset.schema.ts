@@ -5572,7 +5572,8 @@ const catalogMechanicsObject = z
     castingRounds: z.number().int().min(2).max(10).optional(),
     /** It takes longer to cast than a fight lasts (Capability API 1.409), so it is never on the fight
      *  menu: its zone is set up before a fight, and stands as the fight starts. 5e's Glyph of
-     *  Warding (an hour) and Hallow (a day). */
+     *  Warding (an hour) and Hallow (a day). On an entry with no zone (Capability API 1.412), what it
+     *  does is done as the fight starts when it was set up before it: Heroes' Feast, Foresight. */
     beforeFight: z.literal(true).optional(),
     /** Points where a condition its user put on is measured `from` (Capability API 1.411): aimed at a
      *  point, every holder of this condition its user put on is steered toward (or away from) there.
@@ -6010,13 +6011,6 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["steers"],
       message: '"steers" is aimed at a point: it goes with "area"',
-    });
-  }
-  if (mechanics.beforeFight && !mechanics.zone) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["beforeFight"],
-      message: '"beforeFight" is set up before a fight and stands as it starts: it goes with "zone"',
     });
   }
   if (mechanics.usesChosen && (mechanics.kind !== "heal" || mechanics.usesSpent !== undefined)) {

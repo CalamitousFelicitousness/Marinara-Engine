@@ -7606,12 +7606,15 @@ function dismissCalled(
  */
 /** A zone somebody set up before a fight (1.409): one of their own entries with a zone, by id or
  *  name, set down where they stand (`self`) or between them and their nearest foe (`between`, the
- *  default); for a glyph that stores another entry, that one too, by name. */
+ *  default); for a glyph that stores another entry, that one too, by name. Or any other entry of
+ *  theirs (1.412), done as the fight starts `on` whoever it names, by id or name: themselves when
+ *  it names nobody. */
 export interface RulesetStandingZone {
   casterId: string;
   entry: string;
   at?: "self" | "between";
   stores?: string;
+  on?: string[];
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -7657,9 +7660,47 @@ export function rulesetStandingAtStart(
     if (!caster || !rulesetCombatStanding(caster)) continue;
     const named = (action: RulesetCombatAction, name: string) =>
       action.id === name || action.label.trim().toLowerCase() === name.trim().toLowerCase();
-    const action = caster.actions.find((entry) => !!entry.zone && named(entry, one.entry));
+    const action =
+      caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
+      // Any other entry of theirs (1.412), done as the fight starts.
+      caster.actions.find((entry) => named(entry, one.entry));
     if (!action) {
-      skipped.push(`${caster.name} has no lasting entry called "${one.entry}", so nothing stands for it.`);
+      skipped.push(`${caster.name} has no entry called "${one.entry}", so nothing stands for it.`);
+      continue;
+    }
+    if (!action.zone) {
+      const side = action.targets.side;
+      const named = (one.on ?? [])
+        .map((name) =>
+          ctx.state.combatants.find(
+            (other) => other.id === name || other.name.trim().toLowerCase() === name.trim().toLowerCase(),
+          ),
+        )
+        .filter((other): other is RulesetCombatant => !!other && rulesetCombatStanding(other))
+        .filter((other) =>
+          side === "self"
+            ? other.id === caster.id
+            : side === "ally"
+              ? other.side === caster.side
+              : side === "enemy"
+                ? other.side !== caster.side
+                : true,
+        );
+      const targets = (named.length ? named : side === "self" || side === "ally" ? [caster] : []).slice(
+        0,
+        Math.max(1, action.targets.count),
+      );
+      if (!targets.length) {
+        skipped.push(`${caster.name}'s ${action.label} names nobody it can be done on, so it is not done.`);
+        continue;
+      }
+      const before = caster.sheet?.live;
+      if (!pay(caster, action)) {
+        if (caster.sheet && before !== undefined) caster.sheet.live = before;
+        skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it is not done.`);
+        continue;
+      }
+      resolveAction(ctx, caster, action, targets);
       continue;
     }
     // A spell glyph's stored entry (1.401), as a mode.

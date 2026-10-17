@@ -2631,7 +2631,11 @@ export function createChatsStorage(db: DB) {
     },
 
     /** Branch/JSONL copies retain receipts while replacing chat-local message/swipe identities. */
-    async remapRoleplayInterruptionTargets(chatId: string, messageIdMap: ReadonlyMap<string, string>) {
+    async remapRoleplayInterruptionTargets(
+      chatId: string,
+      messageIdMap: ReadonlyMap<string, string>,
+      swipeIndexMaps?: ReadonlyMap<string, ReadonlyMap<number, number>>,
+    ) {
       const rows = await this.listMessages(chatId);
       const swipesByMessageId = await this.getSwipesByMessageId(rows.map((row) => row.id));
       for (const owner of rows) {
@@ -2647,12 +2651,18 @@ export function createChatsStorage(db: DB) {
             if (!receipt) continue;
             changed = true;
             const targetId = messageIdMap.get(receipt.targetMessageId);
-            const targetSwipe = targetId
-              ? swipesByMessageId.get(targetId)?.find((row) => row.index === receipt.targetSwipeIndex)
-              : null;
+            const swipeIndexes = swipeIndexMaps?.get(receipt.targetMessageId);
+            const targetSwipeIndex = swipeIndexes
+              ? swipeIndexes.get(receipt.targetSwipeIndex)
+              : receipt.targetSwipeIndex;
+            const targetSwipe =
+              targetId && targetSwipeIndex !== undefined
+                ? swipesByMessageId.get(targetId)?.find((row) => row.index === targetSwipeIndex)
+                : null;
             item.interruption = {
               ...receipt,
               targetMessageId: targetId ?? receipt.targetMessageId,
+              targetSwipeIndex: targetSwipeIndex ?? receipt.targetSwipeIndex,
               targetSwipeId: targetSwipe?.id,
             };
             if (!targetId || !targetSwipe) {

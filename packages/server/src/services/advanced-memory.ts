@@ -6292,15 +6292,13 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
   ) {
     const source = await context(sourceChatId);
     const state = object(source.metadata.advancedMemoryState);
-    if (state.status !== "ready") {
-      if (state.paused === true)
-        await chats.patchMetadata(
-          chatId,
-          { advancedMemoryState: { ...IDLE_JOB, status: "cancelled", paused: true } },
-          { touchUpdatedAt: false },
-        );
-      return;
-    }
+    if (state.paused === true)
+      await chats.patchMetadata(
+        chatId,
+        { advancedMemoryState: { ...IDLE_JOB, status: "cancelled", paused: true } },
+        { touchUpdatedAt: false },
+      );
+    if (state.status !== "ready") return;
     const ctx = await context(chatId);
     const current = await records(chatId);
     if (missingKnowledge(ctx).length) return;
@@ -6371,7 +6369,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       {
         advancedMemoryState: {
           ...IDLE_JOB,
-          status: "ready",
+          status: state.paused === true ? "cancelled" : "ready",
           stage: "ready",
           paused: state.paused === true,
           completed: processed?.length ?? 0,

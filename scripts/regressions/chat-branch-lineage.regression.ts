@@ -424,6 +424,32 @@ try {
     /The brass compass was entrusted to us\./u,
     "branching a branch preserves the reusable archive",
   );
+  await chatStorage.patchMetadata(preparedChild.id, (metadata) => ({
+    advancedMemoryState: { ...(metadata.advancedMemoryState as Record<string, unknown>), paused: true },
+  }));
+  const pausedArchiveResponse = await app.inject({
+    method: "POST",
+    url: `/api/chats/${preparedChild.id}/branch`,
+    payload: {},
+  });
+  assert.equal(pausedArchiveResponse.statusCode, 200);
+  const pausedArchiveId = pausedArchiveResponse.json().id;
+  const pausedArchiveStatus = await memoryService.status(pausedArchiveId);
+  assert.equal(pausedArchiveStatus.job.paused, true);
+  assert.equal(pausedArchiveStatus.job.status, "cancelled", "a prepared paused branch offers Resume");
+  assert.equal(await memoryService.getSceneCheck(pausedArchiveId, { force: true }), null);
+  const pausedArchiveRecall = await memoryService.prepare({
+    chatId: pausedArchiveId,
+    messages: await chatStorage.listMessages(pausedArchiveId),
+    audienceCharacterIds: [],
+    budgetTokens: 4096,
+    readOnly: true,
+  });
+  assert.match(
+    pausedArchiveRecall.recalledScenes ?? "",
+    /The brass compass was entrusted to us\./u,
+    "an explicit pause preserves the copied archive for recall",
+  );
   await addMessage(preparedBranch.id, "One new message after the fork.");
   assert.equal(await memoryService.getSceneCheck(preparedBranch.id), null);
   await addMessage(preparedBranch.id, "Two new messages after the fork.");
@@ -539,6 +565,9 @@ try {
     individualMessages.slice(1).map((message) => message.id),
     "branching must not grant the newcomer access to earlier history",
   );
+  await chatStorage.patchMetadata(individual.id, (metadata) => ({
+    advancedMemoryState: { ...(metadata.advancedMemoryState as Record<string, unknown>), paused: true },
+  }));
   const beforeArrivalResponse = await app.inject({
     method: "POST",
     url: `/api/chats/${individual.id}/branch`,
@@ -547,6 +576,7 @@ try {
   assert.equal(beforeArrivalResponse.statusCode, 200);
   const beforeArrivalStatus = await memoryService.status(beforeArrivalResponse.json().id);
   assert.equal(beforeArrivalStatus.job.status, "needs_confirmation");
+  assert.equal(beforeArrivalStatus.job.paused, true, "a missing knowledge anchor must not clear an inherited pause");
   assert.equal(beforeArrivalStatus.settings.knowledgeConfirmed, false);
   assert.equal(
     "joins-in-future" in beforeArrivalStatus.settings.knowledgeStarts,
@@ -557,16 +587,26 @@ try {
 
   const paused = await create("Paused memory stays paused after branching");
   await addMessage(paused.id, "A paused history.");
-  await chatStorage.patchMetadata(paused.id, {
-    advancedMemory: { enabled: true },
-    advancedMemoryState: { status: "cancelled", paused: true },
-  });
-  const pausedBranchResponse = await app.inject({ method: "POST", url: `/api/chats/${paused.id}/branch`, payload: {} });
-  assert.equal(pausedBranchResponse.statusCode, 200);
-  const pausedBranchId = pausedBranchResponse.json().id;
-  assert.equal((await memoryService.status(pausedBranchId)).job.paused, true);
-  assert.equal((await memoryService.status(pausedBranchId)).job.status, "cancelled");
-  assert.equal(await memoryService.getSceneCheck(pausedBranchId, { force: true }), null);
+  for (const status of ["cancelled", "ready"] as const) {
+    await chatStorage.patchMetadata(paused.id, {
+      advancedMemory: { enabled: true },
+      advancedMemoryState: { status, paused: true },
+    });
+    const pausedBranchResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${paused.id}/branch`,
+      payload: {},
+    });
+    assert.equal(pausedBranchResponse.statusCode, 200);
+    const pausedBranchId = pausedBranchResponse.json().id;
+    assert.equal(
+      (await memoryService.status(pausedBranchId)).job.paused,
+      true,
+      `${status} preserves an explicit pause`,
+    );
+    assert.equal((await memoryService.status(pausedBranchId)).job.status, "cancelled");
+    assert.equal(await memoryService.getSceneCheck(pausedBranchId, { force: true }), null);
+  }
 
   const sparse = await create("Sparse selected swipe branches densely", "game");
   const sparseMessage = await addMessage(sparse.id, "OLDER_SPARSE_SWIPE", "assistant");

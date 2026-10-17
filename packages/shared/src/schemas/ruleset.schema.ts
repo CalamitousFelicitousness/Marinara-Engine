@@ -2987,6 +2987,7 @@ export interface RulesetCatalogZone {
       triggers: Array<"enter" | "turn-start" | "turn-end">;
       lights?: RulesetLightRadius;
     };
+    stores?: true;
   };
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
@@ -3107,6 +3108,12 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
           })
           .strict()
           .optional(),
+        /** Its caster may store one of their own entries in it as they cast it (Capability API
+         *  1.401), of the first level or higher and no higher than this one was paid at, paying for
+         *  both; set off, the stored entry is cast at whoever set it off, or centred on them for one
+         *  with an area, in place of the entry's own effect. Picked as a mode; none picked, it does
+         *  its own. 5e's Glyph of Warding as a spell glyph. */
+        stores: z.literal(true).optional(),
       })
       .strict()
       .refine((detonates) => detonates.grows || detonates.touched || detonates.entered, {
@@ -3115,6 +3122,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .refine((detonates) => !detonates.by || detonates.entered, {
         message: '"by" says who sets it off by entering it: it goes with "entered"',
         path: ["by"],
+      })
+      .refine((detonates) => !detonates.stores || detonates.entered, {
+        message: '"stores" casts what it holds at whoever sets it off by entering it: it goes with "entered"',
+        path: ["stores"],
       })
       .optional(),
     /** Damage of one of these types reaching it sets it alight (Capability API 1.183): it burns away

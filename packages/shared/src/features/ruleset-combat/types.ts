@@ -1242,6 +1242,8 @@ export interface RulesetCombatMode {
   call?: NonNullable<RulesetCombatAction["calls"]>;
   /** The one of its `applies` it puts on in this mode (1.395), by its place. */
   appliesPick?: number;
+  /** The id of its caster's own action stored in it in this mode (1.401): a spell glyph's spell. */
+  stores?: string;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
 }
@@ -3431,6 +3433,8 @@ export interface RulesetCombatZoneRule {
       triggers: RulesetCombatZoneRule["triggers"];
       lights?: RulesetCombatZoneRule["lights"];
     };
+    /** Its caster may store one of their own entries in it (1.401), cast at whoever sets it off. */
+    stores?: true;
   };
   /** Damage of one of these types reaching it sets it alight (1.183); it burns away when its caster's
    *  turn comes round, dealing `amount` to whoever starts a turn in it meanwhile. */
@@ -3501,6 +3505,10 @@ export interface RulesetCombatZone {
   /** Gone off and stayed as what it `becomes` (1.400): it strikes at its new triggers and never goes
    *  off again. */
   became?: true;
+  /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
+  trippedBy?: string;
+  /** The id of its caster's own action stored in it (1.401), cast as it goes off. */
+  stored?: string;
   label: string;
   rounds: number;
   anchor: "point" | "caster";

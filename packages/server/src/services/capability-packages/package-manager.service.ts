@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A glyph that stores one of its caster's own entries (1.401): a spell glyph. */
+function carriesStores401(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStores401(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.detonates)?.stores !== undefined) return true;
+  return featureValues(record).some((one) => carriesStores401(one, depth + 1));
+}
+
 /** A zone that stays as something else once set off (1.400): Symbol's sphere. */
 function carriesBecomes400(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5865,6 +5875,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Glyphs that store one of their caster's own entries, 1.401.
+  if (
+    !declaresApi(401) &&
+    (carriesStores401(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStores401(document)))
+  ) {
+    return "A ruleset whose glyphs store one of their caster's own entries (detonates stores) requires schemaVersion 2 and capabilityApi 1.401 or newer";
+  }
   // Zones that stay as something else once set off, 1.400.
   if (
     !declaresApi(400) &&

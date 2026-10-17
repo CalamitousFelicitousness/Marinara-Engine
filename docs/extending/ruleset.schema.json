@@ -40993,6 +40993,10 @@
                               ],
                               "additionalProperties": false
                             },
+                            "stores": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -55737,6 +55741,10 @@
                                       "triggers"
                                     ],
                                     "additionalProperties": false
+                                  },
+                                  "stores": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -70630,6 +70638,10 @@
                                   ],
                                   "additionalProperties": false
                                 },
+                                "stores": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -83924,6 +83936,10 @@
                                           "triggers"
                                         ],
                                         "additionalProperties": false
+                                      },
+                                      "stores": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },

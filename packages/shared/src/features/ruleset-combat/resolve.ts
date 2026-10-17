@@ -3484,6 +3484,12 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   // Set off only by somebody entering it (1.398): its time running out just ends it.
   if (rule.entered && !zone.tripped) return false;
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "detonated" });
+  // A spell glyph (1.401): what it stores, cast at whoever set it off, in place of its own effect.
+  const stored = zone.stored ? caster.actions.find((entry) => entry.id === zone.stored) : undefined;
+  if (stored) {
+    castStored(ctx, caster, zone, stored);
+    return false;
+  }
   const middle = zone.at;
   const ids = !ctx.state.board?.grid
     ? (zone.held ?? [])
@@ -3539,6 +3545,40 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   if (grid && middle) zone.cells = rulesetAreaCells("burst", becomes.size, middle, middle, grid);
   else zone.held = targets.map((one) => one.id);
   return true;
+}
+
+/** A spell glyph's stored entry, cast as it goes off (1.401): at whoever set it off, or, for one with
+ *  an area, at everybody it reaches centred on them. Paid for as the glyph was cast, so it costs
+ *  nothing now; whatever it would hold its caster's concentration for lasts its full time. */
+function castStored(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  stored: RulesetCombatAction,
+): void {
+  const trigger = zone.trippedBy ? rulesetCombatant(ctx.state, zone.trippedBy) : undefined;
+  if (!trigger || !rulesetCombatStanding(trigger)) return;
+  const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = stored;
+  const grid = ctx.state.board?.grid;
+  const at = rulesetPositionOf(trigger);
+  const area = again.area;
+  const cells = grid && at && area ? rulesetAreaCells("burst", area.size, at, at, grid) : undefined;
+  const targets = cells
+    ? ctx.state.combatants.filter((one) => rulesetCombatStanding(one) && rulesetZoneHoldsOne(cells, one))
+    : [trigger];
+  const aimed = ctx.aimedAt;
+  const aimedAlso = ctx.aimedAlso;
+  delete ctx.aimedAlso;
+  if (at) ctx.aimedAt = { x: at.x, y: at.y };
+  else delete ctx.aimedAt;
+  const byZone = ctx.byZone;
+  ctx.byZone = true;
+  resolveAction(ctx, caster, again, targets, undefined);
+  if (byZone) ctx.byZone = byZone;
+  else delete ctx.byZone;
+  if (aimed) ctx.aimedAt = aimed;
+  else delete ctx.aimedAt;
+  if (aimedAlso) ctx.aimedAlso = aimedAlso;
 }
 
 /** Every obscuring zone a wind reaches, where it is `dispersed`, blown away (1.286): 5e's Gust of
@@ -3788,6 +3828,13 @@ function placeZone(
     ...(!grid ? { held: [...resume.targetIds] } : {}),
     ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
     ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
+    // What its caster stored in it (1.401).
+    ...(rule.detonates?.stores && resume.mode
+      ? (() => {
+          const stores = action.modes?.find((one) => one.id === resume.mode)?.stores;
+          return stores ? { stored: stores } : {};
+        })()
+      : {}),
   });
   (actor.flags.freshZones ??= []).push(action.id);
   ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
@@ -5353,6 +5400,33 @@ function applyChoice(
       });
     }
     spendAvailability(ctx, working, alter);
+  }
+  // A spell glyph (1.401): the entry stored in it, no higher than the glyph is paid at, paid too.
+  const storedId = mode ? own.modes?.find((one) => one.id === mode.id)?.stores : undefined;
+  const stored = storedId ? working.actions.find((one) => one.id === storedId) : undefined;
+  if (storedId) {
+    if (!stored) return refusal(state, choice.actorId, "unknown-mode", option.id);
+    const price = planRulesetCombatCost(definition, working, stored);
+    if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
+    // Each one's level, as the pools it was paid out of say.
+    const levelOf = (one: RulesetCombatAction, cost: Array<{ pool: string }>) =>
+      Math.max(0, ...cost.map((entry) => rulesetPaidLevel(definition, working, one, entry.pool)));
+    const storedLevel = levelOf(stored, price.cost);
+    if (storedLevel < 1 || storedLevel > levelOf(action, paid.cost)) {
+      return refusal(state, choice.actorId, "unknown-mode", option.id);
+    }
+    if (price.live && working.sheet) working.sheet.live = price.live;
+    countRulesetSpend(working, price.cost);
+    for (const entry of price.cost) {
+      ctx.events.push({
+        type: "spend",
+        actorId: working.id,
+        pool: entry.pool,
+        label: entry.label,
+        amount: entry.amount,
+      });
+    }
+    spendAvailability(ctx, working, stored);
   }
   if (alters?.length) {
     ctx.events.push({
@@ -7803,6 +7877,7 @@ function zonesEntered(
       rulesetTargetIs(ctx.definition, mover, glyph.by)
     ) {
       zone.tripped = true;
+      zone.trippedBy = mover.id;
       spendZone(ctx, caster, zone);
       continue;
     }

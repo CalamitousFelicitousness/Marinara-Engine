@@ -1936,6 +1936,8 @@ export function rulesetZoneAction(
       ...(detonates.entered ? { entered: true as const } : {}),
       ...(detonates.by ? { by: structuredClone(detonates.by) } : {}),
       ...(detonates.within !== undefined ? { within: rulesetInCells(detonates.within, perCell ?? 1) } : {}),
+      // An entry of its caster's own stored in it (1.401): a spell glyph.
+      ...(detonates.stores ? { stores: true as const } : {}),
       // What it stays as once set off (1.400): Symbol's sphere.
       ...(detonates.becomes
         ? {
@@ -3860,6 +3862,16 @@ function sheetCombatant(
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
   ];
+  // What a spell glyph may store (1.401): each of its caster's own entries paid off the sheet, as a
+  // mode; its level, the first or higher and no higher than the glyph is paid at, is checked as it is
+  // cast.
+  for (const action of actions) {
+    if (!action.zone?.detonates?.stores) continue;
+    const storable = actions.filter((one) => one.id !== action.id && !!one.use && !one.zone?.detonates?.stores);
+    if (storable.length) {
+      action.modes = storable.map((one) => ({ id: `stores-${one.id}`, label: one.label, stores: one.id }));
+    }
+  }
   // What a conjuring entry puts in hand (1.306), read now like everything else: each weapon it may
   // make, and each held weapon it may bind, as attacks of that entry's, so what amends it amends them.
   const conjurable: NonNullable<RulesetCombatant["conjurable"]> = {};

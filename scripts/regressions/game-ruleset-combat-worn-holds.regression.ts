@@ -1,5 +1,5 @@
 /**
- * Items that hold conditions off (Capability API 1.424).
+ * Items that hold conditions off (Capability API 1.424), by name or by kind (1.431).
  *
  *   - Periapt of Health: a disease already caught is held off while it is worn, not ended; no new one
  *     is caught; taken off, the old one holds again.
@@ -42,7 +42,11 @@ try {
   const fiveE = (worn: Record<string, unknown> = periapt): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.sheet.live.conditions.push({ id: "sewer_plague", label: "Sewer Plague" });
-    doc.combat.conditions.push({ condition: "sewer_plague", effects: ["own-attacks-disadvantage"] });
+    doc.combat.conditions.push({
+      condition: "sewer_plague",
+      effects: ["own-attacks-disadvantage"],
+      kinds: ["disease"],
+    });
     doc.items = { categories: [{ id: "gear", label: "Gear" }] };
     doc.catalogs.push({
       id: "trinkets",
@@ -80,11 +84,11 @@ try {
       },
     ],
   } as unknown as RulesetStatBlock;
-  const item = (worn: boolean): RulesetSheetItem => ({
+  const item = (worn: boolean, effect: Record<string, unknown> = periapt): RulesetSheetItem => ({
     name: "Periapt of Health",
     quantity: 1,
     worn,
-    item: { category: "gear", worn: periapt },
+    item: { category: "gear", worn: effect } as RulesetSheetItem["item"],
   });
   const fight = () => {
     const state = createRulesetEncounter({
@@ -155,6 +159,24 @@ try {
     assert.equal(sick(state), true);
   }
 
+  // ── By kind (1.431): every disease held off, and none caught ──
+  {
+    const byKind = { conditionImmunities: ["disease"], suppresses: ["disease"] };
+    parsed(fiveE(byKind));
+    const state = fight();
+    hero(state).tracked.push({ condition: "sewer_plague", rounds: 50, source: "rat" });
+    hero(state).sheet!.items = [item(true, byKind)];
+    assert.equal(sick(state), false, "held off by its kind");
+    const events: RulesetCombatEvent[] = bite(state);
+    assert.ok(
+      events.some((one) => one.type === "condition" && one.reason === "immune" && one.condition === "sewer_plague"),
+      "no new one is caught",
+    );
+    assert.equal(tracked(state).length, 1, "the old one is still there");
+    hero(state).sheet!.items = [];
+    assert.equal(sick(state), true);
+  }
+
   // ── Refusals ──
   refused(fiveE({ suppresses: ["the_vapours"] }), /Unknown condition "the_vapours"/);
   refused(fiveE({ fallsSafely: false }), /fallsSafely/);
@@ -186,6 +208,12 @@ try {
       gate,
       "immunities alone are older",
     );
+    const kindGate =
+      "A ruleset whose items hold off a kind of condition (suppresses naming a kind) requires schemaVersion 2 and capabilityApi 1.431 or newer";
+    const byKind = fiveE({ suppresses: ["disease"] });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(430) as never, byKind), kindGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(431) as never, byKind), kindGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(430) as never, fiveE()), kindGate, "by name is 1.424's");
   }
 
   console.log(

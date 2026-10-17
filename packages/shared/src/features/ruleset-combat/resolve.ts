@@ -2919,8 +2919,12 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
   const held = new Set(
     rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap((entry) => entry.suppresses ?? []),
   );
+  // Held by its kind too (1.431).
+  const heldOff = (condition: string) =>
+    held.has(condition) ||
+    !!ctx.combat.conditions?.find((one) => one.condition === condition)?.kinds?.some((kind) => held.has(kind));
   const ended = rulesetCombatConditions(ctx.definition, target).filter(
-    (condition) => !held.has(condition) && rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
+    (condition) => !heldOff(condition) && rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
   );
   for (const condition of ended) {
     if (rulesetCombatConditions(ctx.definition, target).includes(condition))

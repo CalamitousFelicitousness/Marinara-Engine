@@ -10874,7 +10874,8 @@ export const rulesetItemEffectSchema = z
     fallsSafely: z.literal(true).optional(),
     /** Conditions on its holder it holds off, not ends (Capability API 1.424): what they do stops and
      *  their clocks run on, and they hold again once it is taken off. 5e's Periapt of Health, with
-     *  the same diseases in `conditionImmunities` so no new one is caught. */
+     *  the same diseases in `conditionImmunities` so no new one is caught. It may name a kind of
+     *  condition (Capability API 1.431), every condition of that kind held off: `["disease"]`. */
     suppresses: uniqueIds(12).optional(),
   })
   .strict()
@@ -16977,10 +16978,12 @@ function itemHideIssues(
     });
   }
   hideIssues(definition, effect, at, add);
-  // What it holds off (1.424) is the sheet's own conditions.
+  // What it holds off (1.424) is the sheet's own conditions, or their kinds (1.431).
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  const kinds = rulesetConditionKindIds(definition);
   effect.suppresses?.forEach((condition, index) => {
-    if (!conditions.has(condition)) add([...at, "suppresses", index], `Unknown condition "${condition}"`);
+    if (!conditions.has(condition) && !kinds.has(condition))
+      add([...at, "suppresses", index], `Unknown condition "${condition}"`);
   });
 }
 

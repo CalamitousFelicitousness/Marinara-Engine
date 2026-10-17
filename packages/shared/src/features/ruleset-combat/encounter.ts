@@ -594,7 +594,9 @@ export function rulesetActiveConditions(
   const suppressed = new Set([...conditions, ...held].flatMap((entry) => entry.suppresses ?? []));
   if (suppressed.size) {
     for (let at = conditions.length - 1; at >= 0; at -= 1) {
-      if (suppressed.has(conditions[at]!.condition)) conditions.splice(at, 1);
+      // By its id, or by a kind it is of (1.431): the Periapt's every disease.
+      const one = conditions[at]!;
+      if (suppressed.has(one.condition) || one.kinds?.some((kind) => suppressed.has(kind))) conditions.splice(at, 1);
     }
   }
   const levels = combat.levels?.length ? activeLevels(definition, combat, combatant, rawLevels) : [];

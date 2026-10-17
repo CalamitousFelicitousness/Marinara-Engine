@@ -2247,6 +2247,19 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An item holding off a kind of condition (1.431): the Periapt of Health's diseases. The kinds are
+ *  read off the ruleset's conditions. */
+function carriesWornKindHolds431(value: unknown, kinds: ReadonlySet<string>, depth = 0): boolean {
+  if (!value || depth > 40 || kinds.size === 0) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWornKindHolds431(one, kinds, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (Array.isArray(effect?.suppresses) && effect.suppresses.some((one) => kinds.has(String(one)))) return true;
+  }
+  return featureValues(record).some((one) => carriesWornKindHolds431(one, kinds, depth + 1));
+}
+
 /** A save made as its putter's turn starts, or failures that send its holder away (1.430):
  *  Prismatic Spray's Violet ray. */
 function carriesSourceSaves430(value: unknown, depth = 0): boolean {
@@ -6186,6 +6199,23 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items holding off a kind of condition, 1.431.
+  {
+    const conditionsOf = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
+    const kinds = new Set(
+      (Array.isArray(conditionsOf) ? conditionsOf : []).flatMap((one) => {
+        const named = plainRecord(one)?.kinds;
+        return Array.isArray(named) ? named.map(String) : [];
+      }),
+    );
+    if (
+      !declaresApi(431) &&
+      (carriesWornKindHolds431(ruleset, kinds) ||
+        [...(catalogDocuments?.values() ?? [])].some((document) => carriesWornKindHolds431(document, kinds)))
+    ) {
+      return "A ruleset whose items hold off a kind of condition (suppresses naming a kind) requires schemaVersion 2 and capabilityApi 1.431 or newer";
+    }
+  }
   // Saves made as the putter's turn starts, and failures that send the holder away, 1.430.
   if (
     !declaresApi(430) &&

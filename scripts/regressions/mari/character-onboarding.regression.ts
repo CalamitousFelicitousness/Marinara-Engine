@@ -12,6 +12,7 @@ import { createFileNativeDB } from "../../../packages/server/src/db/file-backed-
 import { eq } from "../../../packages/server/src/db/file-query.js";
 import { characters } from "../../../packages/server/src/db/schema/characters.js";
 import { MariDbService } from "../../../packages/server/src/services/mari-db/mari-db.service.js";
+import { compactMutationResult } from "../../../packages/server/src/services/professor-mari/workspace-agent.service.js";
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 const dir = mkdtempSync(join(tmpdir(), "marinara-character-onboarding-"));
@@ -150,6 +151,19 @@ try {
       notices,
       /Character question "title".*character\.update/,
       "an unused card question says how to fix it",
+    );
+    // What Mari reads: the compact result's message must point at the warnings, not just say "applied"
+    // (live run, ds4.1 flash: she reported done with an unused character question).
+    const compact = compactMutationResult(unused) as { message?: string };
+    assert.match(
+      compact.message ?? "",
+      /saved with warnings in validation\.notices/,
+      "Mari is told about the warnings",
+    );
+    assert.doesNotMatch(
+      (compactMutationResult(saved) as { message?: string }).message ?? "",
+      /warnings/,
+      "a clean save doesn't mention warnings",
     );
 
     // The prompt's pattern: a card-field edit and the onboarding in one response, no review kept in

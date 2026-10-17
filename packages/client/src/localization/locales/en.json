@@ -14172,7 +14172,7 @@
   "ui.stateEditor.gameData.keys.gameWorldOverview": "World overview",
   "ui.stateEditor.gameData.loadFailed": "Couldn't load this game's data.",
   "ui.stateEditor.gameData.loading": "Loading game data…",
-  "ui.stateEditor.gameData.refreshFailedNotice": "Your changes were saved, but the editor couldn't load the game's data again. Reload to see what's saved.",
+  "ui.stateEditor.gameData.refreshFailedNotice": "Your changes were saved, but couldn't be loaded back; reload to see them.",
   "ui.stateEditor.gameData.reload": "Reload",
   "ui.stateEditor.gameData.saved": "Game data saved",
   "ui.stateEditor.gameData.sections.combat.description": "The fight in progress, if there is one.",

@@ -147,6 +147,8 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
         if (error instanceof ApiError && error.status === 409) setNotice("stale");
         throw new Error(refusal.issues.map(serverIssueMessage).join(" "));
       }
+      // A save that landed answers any earlier stale refusal; a failed read-back below sets its own notice.
+      setNotice(null);
       void qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
       toast.success(localizeUi("ui.stateEditor.gameData.saved"));
       // The save landed: a failed read-back must not report it as failed (and keep drafts already saved).

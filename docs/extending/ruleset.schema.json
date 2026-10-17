@@ -38314,6 +38314,10 @@
                           "minItems": 1,
                           "maxItems": 8
                         },
+                        "calledBySelf": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -45375,6 +45379,16 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 20
+                        },
+                        "asTypes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 6
                         },
                         "$comment": {}
                       },
@@ -58172,6 +58186,10 @@
                                 "minItems": 1,
                                 "maxItems": 8
                               },
+                              "calledBySelf": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -69219,6 +69237,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "calledBySelf": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -76004,6 +76026,16 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 20
+                            },
+                            "asTypes": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 6
                             },
                             "$comment": {}
                           },
@@ -82826,6 +82858,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "calledBySelf": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -89611,6 +89647,16 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 20
+                                  },
+                                  "asTypes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 6
                                   },
                                   "$comment": {}
                                 },
@@ -109756,6 +109802,10 @@
                           },
                           "minItems": 1,
                           "maxItems": 8
+                        },
+                        "calledBySelf": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "$comment": {}
                       },

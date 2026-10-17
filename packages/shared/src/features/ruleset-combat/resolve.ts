@@ -983,6 +983,28 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   groundFlier(ctx, target);
 }
 
+/** What an action puts on its own user as it is made (1.307), whatever its targets do. */
+function applySelf(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  payWith: string | undefined,
+  steps: number,
+): void {
+  for (const applies of action.appliesSelf ?? []) {
+    if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
+    const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;
+    applyConditionId(ctx, actor, applies.condition, applies, {
+      ...(value !== undefined ? { value } : {}),
+      ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
+      ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
+      sourceId: actor.id,
+      action: [action.id, action.label],
+      ...(action.concentration ? { concentration: true } : {}),
+    });
+  }
+}
+
 /** A creature split in two by the harm a blow dealt it (1.422): a second of it beside it, each with
  *  half the health it had, rounded down, and each one size smaller when the fight has sizes. */
 function splitOnHarm(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: ReadonlySet<string>): void {
@@ -7907,8 +7929,11 @@ export interface RulesetStandingZone {
   at?: "self" | "between";
   stores?: string;
   on?: string[];
-  /** The creature type a zone that chooses whom it works on works on (1.413), by id or name. */
+  /** The creature type a zone that chooses whom it works on works on (1.413), by id or name; or
+   *  that an entry that names one as it is used names (1.434): Antipathy/Sympathy on an object. */
   kind?: string;
+  /** The mode an entry is done in (1.434), by id or name: the creature Find Familiar calls. */
+  mode?: string;
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -7962,8 +7987,40 @@ export function rulesetStandingAtStart(
       skipped.push(`${caster.name} has no entry called "${one.entry}", so nothing stands for it.`);
       continue;
     }
+    // The mode it is done in (1.434), by id or name, or the kind it names.
+    const lower = (text: string) => text.trim().toLowerCase();
+    const picked = one.mode
+      ? action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!))
+      : undefined;
+    if (one.mode && !picked) {
+      skipped.push(`${caster.name}'s ${action.label} has no "${one.mode}", so it is not done.`);
+      continue;
+    }
     if (!action.zone) {
-      const side = action.targets.side;
+      const kindPicked = one.kind
+        ? action.modes?.find(
+            (entry) =>
+              entry.kind !== undefined &&
+              (entry.kind === one.kind || lower(entry.label) === lower(one.kind!) || entry.id === one.kind),
+          )
+        : undefined;
+      if (one.kind && !kindPicked) {
+        skipped.push(`${caster.name}'s ${action.label} cannot name "${one.kind}", so it is not done.`);
+        continue;
+      }
+      const chosen = picked ?? kindPicked;
+      if (!chosen && action.modes?.length) {
+        const ways = action.modes
+          .slice(0, 6)
+          .map((entry) => entry.label)
+          .join(", ");
+        skipped.push(
+          `${caster.name}'s ${action.label} is done one of several ways (${ways}${action.modes.length > 6 ? ", ..." : ""}) and none was named, so it is not done.`,
+        );
+        continue;
+      }
+      const done = chosen ? (rulesetModedAction(definition, action, chosen.id) ?? action) : action;
+      const side = done.targets.side;
       const named = (one.on ?? [])
         .map((name) =>
           ctx.state.combatants.find(
@@ -7982,7 +8039,7 @@ export function rulesetStandingAtStart(
         );
       const targets = (named.length ? named : side === "self" || side === "ally" ? [caster] : []).slice(
         0,
-        Math.max(1, action.targets.count),
+        Math.max(1, done.targets.count),
       );
       if (!targets.length) {
         skipped.push(`${caster.name}'s ${action.label} names nobody it can be done on, so it is not done.`);
@@ -7994,7 +8051,7 @@ export function rulesetStandingAtStart(
         skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it is not done.`);
         continue;
       }
-      resolveAction(ctx, caster, action, targets);
+      resolveAction(ctx, caster, done, targets);
       continue;
     }
     // The kind it works on (1.413), as a mode.
@@ -8010,6 +8067,7 @@ export function rulesetStandingAtStart(
     }
     // A spell glyph's stored entry (1.401), as a mode.
     const mode =
+      picked ??
       kindMode ??
       (one.stores
         ? action.modes?.find((entry) => {
@@ -10061,6 +10119,8 @@ function resolveAction(
         ? rulesetCostSteps(ctx.definition, action, payWith, actor)
         : 0;
     callCreatures(ctx, actor, action, undefined, steps);
+    // And what it puts on its user (1.434): Find Familiar's bond with what it called.
+    if (!held) applySelf(ctx, actor, action, payWith, steps);
     return null;
   }
   // A legendary Detect (1.287): the looking, and nothing else.
@@ -10967,20 +11027,7 @@ function resolveActionBody(
   }
   // What it puts on its own user as it is made (1.307), whatever its targets do: Sunbeam's mote,
   // held by the same concentration and given the level it was cast at.
-  if (!held) {
-    for (const applies of action.appliesSelf ?? []) {
-      if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
-      const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;
-      applyConditionId(ctx, actor, applies.condition, applies, {
-        ...(value !== undefined ? { value } : {}),
-        ...(rulesetIsSpell(action) ? { level: rulesetPaidLevel(ctx.definition, actor, action, payWith) } : {}),
-        ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
-        sourceId: actor.id,
-        action: [action.id, action.label],
-        ...(action.concentration ? { concentration: true } : {}),
-      });
-    }
-  }
+  if (!held) applySelf(ctx, actor, action, payWith, steps);
   // The standard actions taken with it (1.313): Expeditious Retreat's Dash as it is cast.
   if (!held) for (const taken of action.takes ?? []) resolveStandard(ctx, actor, taken, undefined);
   // A higher cost's more, or more charges' (1.269); once for every so many steps (1.300).
@@ -11156,7 +11203,7 @@ function resolveActionBody(
     // Behind a ward this does not get through (1.179), at the level it was paid at.
     !rulesetWarded(ctx.definition, ctx.state, actor, action, target, payWith) &&
     // An area or a list catches only who the action may take, by what they are (1.168).
-    rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes);
+    rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes, actor);
   const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
   for (const target of targets) {
     if (!reaches(target) || spared.has(target.id)) continue;

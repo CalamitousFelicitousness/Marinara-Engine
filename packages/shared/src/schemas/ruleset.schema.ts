@@ -4640,6 +4640,7 @@ const catalogTargetTypesSchema: z.ZodType<
     abilityAtMost?: Record<string, number>;
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
+    calledBySelf?: true;
   },
   z.ZodTypeDef,
   unknown
@@ -4658,6 +4659,9 @@ const catalogTargetTypesSchema: z.ZodType<
     /** Only a target not immune to any of these conditions (1.185): 5e's Sleep, which passes over
      *  whoever cannot be charmed. */
     notImmuneTo: z.array(sheetId).min(1).max(8).optional(),
+    /** Only a creature its user called into the fight (Capability API 1.434): 5e's "your familiar",
+     *  for Voice of the Chain Master and seeing through its eyes. */
+    calledBySelf: z.literal(true).optional(),
   })
   .strict()
   .refine(
@@ -4666,8 +4670,12 @@ const catalogTargetTypesSchema: z.ZodType<
       types.not !== undefined ||
       types.abilityAtMost !== undefined ||
       types.abilityAtLeast !== undefined ||
-      types.notImmuneTo !== undefined,
-    { message: '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo" or several' },
+      types.notImmuneTo !== undefined ||
+      types.calledBySelf !== undefined,
+    {
+      message:
+        '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf" or several',
+    },
   );
 
 /** A health pool an entry shares out among its targets (Capability API 1.196). Typed by hand:
@@ -5035,6 +5043,10 @@ export const catalogCallsSchema = z
      *  API 1.349): 5e's Conjure Animals, twice as many with a 5th-level slot, three times with 7th
      *  and four times with 9th, is `2`. */
     timesPerSteps: z.number().int().min(1).max(20).optional(),
+    /** The creature type each one called is instead of its own, picked as it is used like a mode
+     *  (Capability API 1.434), by id of `combat.creatureTypes.types`: 5e's Find Familiar, "a
+     *  celestial, fey, or fiend (your choice) instead of a beast". */
+    asTypes: z.array(sheetId).min(1).max(6).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -10082,6 +10094,7 @@ export interface RulesetConditionAura {
     abilityAtMost?: Record<string, number>;
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
+    calledBySelf?: true;
   };
   sourcesOf?: string[];
   chosenKind?: true;
@@ -15853,6 +15866,7 @@ function targetTestIssues(
       abilityAtMost?: Record<string, number>;
       abilityAtLeast?: Record<string, number>;
       notImmuneTo?: string[];
+      calledBySelf?: true;
     };
     save?: RulesetSaveExtras;
     maxAgainst?: RulesetTargetIs;
@@ -18835,6 +18849,11 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.kindChoice && !definition.combat?.creatureTypes)
       add([index, "mechanics", "kindChoice"], "This ruleset has no creature types to choose from");
+    // The types a call may make what it calls (1.434), the fight's own.
+    mechanics?.calls?.asTypes?.forEach((type, typeIndex) => {
+      if (!definition.combat?.creatureTypes?.types.some((one) => one.id === type))
+        add([index, "mechanics", "calls", "asTypes", typeIndex], `Unknown creature type "${type}"`);
+    });
     if (mechanics?.forms) {
       shapeFormsIssues(definition, mechanics.applies, [index, "mechanics"], add);
       for (const [key, ref] of [

@@ -1820,7 +1820,7 @@ export function rulesetOptionTargets(
         // Behind a ward it cannot reach (1.179). One that may be paid higher is offered, and its
         // payment decides when it is used.
         if (cure && !cure.use?.group && rulesetWarded(definition, state, actor, cure, combatant)) return false;
-        if (!rulesetTargetTypesAllow(definition, combatant, targetTypes)) return false;
+        if (!rulesetTargetTypesAllow(definition, combatant, targetTypes, actor)) return false;
         // No bigger than it holds (1.314).
         if (cure?.targetsUpTo && combat?.sizes) {
           const most = combat.sizes.order.findIndex((size) => size.id === cure.targetsUpTo);

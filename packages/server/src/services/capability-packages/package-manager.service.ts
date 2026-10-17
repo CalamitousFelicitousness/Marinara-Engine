@@ -2247,6 +2247,17 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** Only one's own called creature as a target, or a call that makes its creature another type
+ *  (1.434): Find Familiar's familiar, Voice of the Chain Master. */
+function carriesFamiliar434(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFamiliar434(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.calledBySelf !== undefined || record.asTypes !== undefined) return true;
+  return featureValues(record).some((one) => carriesFamiliar434(one, depth + 1));
+}
+
 /** A walk magic may not lower, slipping free, or an item keeping conditions off by who or what puts
  *  them on (1.433): Freedom of Movement, and its ring. */
 function carriesFreedom433(value: unknown, depth = 0): boolean {
@@ -6223,6 +6234,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Only one's own called creature, and a call that makes its creature another type, 1.434.
+  if (
+    !declaresApi(434) &&
+    (carriesFamiliar434(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFamiliar434(document)))
+  ) {
+    return "A ruleset whose entries aim only at what their user called (calledBySelf) or call a creature as another type (calls asTypes) requires schemaVersion 2 and capabilityApi 1.434 or newer";
+  }
   // A walk magic may not lower, slipping free, and items keeping conditions off by who puts them on, 1.433.
   if (
     !declaresApi(433) &&

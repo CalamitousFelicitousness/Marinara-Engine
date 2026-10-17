@@ -755,6 +755,7 @@ export interface RulesetCombatAction {
     abilityAtMost?: Record<string, number>;
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
+    calledBySelf?: true;
   };
   /** Dealt at its most to a target that is this (1.185). */
   maxAgainst?: RulesetTargetIs;

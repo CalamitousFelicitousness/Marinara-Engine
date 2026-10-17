@@ -835,10 +835,15 @@ export function rulesetTargetTypesAllow(
         abilityAtMost?: Record<string, number>;
         abilityAtLeast?: Record<string, number>;
         notImmuneTo?: string[];
+        calledBySelf?: true;
       }
     | undefined,
+  /** Who it is pointed by (1.434), for `calledBySelf`: nobody given, nobody passes it. */
+  by?: RulesetCombatant,
 ): boolean {
   if (!targetTypes) return true;
+  // Only one its user called (1.434): Find Familiar's own familiar.
+  if (targetTypes.calledBySelf && (!by || combatant.calledBy !== by.id)) return false;
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
   // Its ability scores at most these (1.185); a score nobody wrote down keeps nobody out.
@@ -4785,6 +4790,32 @@ function fillCatalogCalls(
   action: RulesetCombatAction,
   catalogs: RulesetCatalogEntriesById,
 ): void {
+  const asTypes = action.callsOf!.asTypes;
+  fillCatalogCallsAsWritten(definition, action, catalogs);
+  if (!asTypes?.length) return;
+  // A type picked as well (1.434), each creature once for each: Find Familiar's celestial, fey or
+  // fiend in place of a beast.
+  const labels = new Map((definition.combat?.creatureTypes?.types ?? []).map((one) => [one.id, one.label]));
+  const modes = action.calls ? [{ id: "call", label: action.calls.name, call: action.calls }] : (action.modes ?? []);
+  delete action.calls;
+  action.modes = modes.flatMap((mode) =>
+    mode.call
+      ? asTypes.map((type) => ({
+          ...mode,
+          id: `${mode.id}-as-${type}`,
+          label: `${mode.label}, ${labels.get(type) ?? type}`,
+          call: { ...mode.call!, block: { ...mode.call!.block, type } },
+        }))
+      : [mode],
+  );
+  action.callChoice = true;
+}
+
+function fillCatalogCallsAsWritten(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  catalogs: RulesetCatalogEntriesById,
+): void {
   const calls = action.callsOf!;
   delete action.callsOf;
   const found = (
@@ -5847,7 +5878,7 @@ export function rulesetAuraReaches(
     if (zoneTakesSenses(definition, state, holder, aura.needs)) return false;
   }
   // Only who is this (1.268): a sea hag's humanoids.
-  if (!rulesetTargetTypesAllow(definition, target, aura.targetTypes)) return false;
+  if (!rulesetTargetTypesAllow(definition, target, aura.targetTypes, holder)) return false;
   // Only who has put one of these on its holder (1.268): whoever grapples a barbed devil.
   if (aura.sourcesOf?.length) {
     const named = aura.sourcesOf;

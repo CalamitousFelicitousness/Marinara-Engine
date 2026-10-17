@@ -5147,7 +5147,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     // Preserve each message's original createdAt timestamp so ordering and
     // display times remain identical to the source chat.
     const sourceToBranchedMessageId = new Map<string, string>();
-    const sourceToCopiedSwipeIndexes = new Map<string, number[]>();
+    const sourceToCopiedSwipeIndexes = new Map<string, Map<number, number>>();
     const copiedSourceMessages: typeof msgs = [];
     const copiedMessageInputs: Parameters<typeof storage.createMessagesBatch>[1] = [];
 
@@ -5182,15 +5182,16 @@ export async function chatsRoutes(app: FastifyInstance) {
                 },
               ),
             )
-          : [
-              {
-                index: 0,
-                content: msg.content,
-                extra: messageExtra,
-                createdAt: msg.createdAt as string,
-              },
-            ];
-      const activeSwipe = copiedSwipes.find((swipe) => swipe.index === activeSwipeIndex) ?? copiedSwipes[0];
+          : [];
+      // The selected message row is authoritative even if its older swipe history is incomplete.
+      if (!copiedSwipes.some((swipe) => swipe.index === activeSwipeIndex))
+        copiedSwipes.push({
+          index: activeSwipeIndex,
+          content: msg.content,
+          extra: messageExtra,
+          createdAt: msg.createdAt as string,
+        });
+      const activeSwipe = copiedSwipes.find((swipe) => swipe.index === activeSwipeIndex)!;
       const copiedActiveSwipeIndex = activeSwipe?.index ?? 0;
 
       copiedMessageInputs.push({
@@ -5203,10 +5204,6 @@ export async function chatsRoutes(app: FastifyInstance) {
         createdAt: msg.createdAt as string,
       });
       copiedSourceMessages.push(msg);
-      sourceToCopiedSwipeIndexes.set(
-        msg.id,
-        copiedSwipes.map((swipe) => swipe.index),
-      );
     }
 
     // A branch ending before the interrupting response keeps the full preceding message.
@@ -5230,12 +5227,24 @@ export async function chatsRoutes(app: FastifyInstance) {
           }
         }
     }
+    // Swipe navigation and later additions use dense indexes. Keep source indexes for snapshots and receipts.
+    copiedMessageInputs.forEach((copied, index) => {
+      const swipeIndexes = new Map<number, number>();
+      copied.swipes
+        ?.sort((left, right) => left.index - right.index)
+        .forEach((swipe, copiedIndex) => {
+          swipeIndexes.set(swipe.index, copiedIndex);
+          swipe.index = copiedIndex;
+        });
+      copied.activeSwipeIndex = swipeIndexes.get(copied.activeSwipeIndex ?? 0) ?? 0;
+      sourceToCopiedSwipeIndexes.set(copiedSourceMessages[index]!.id, swipeIndexes);
+    });
     const branchedMessageIds = await storage.createMessagesBatch(newChat.id, copiedMessageInputs);
     copiedSourceMessages.forEach((msg, index) => {
       const branchedId = branchedMessageIds[index];
       if (branchedId) sourceToBranchedMessageId.set(msg.id, branchedId);
     });
-    await storage.remapRoleplayInterruptionTargets(newChat.id, sourceToBranchedMessageId);
+    await storage.remapRoleplayInterruptionTargets(newChat.id, sourceToBranchedMessageId, sourceToCopiedSwipeIndexes);
     const forkSourceMessage = copiedSourceMessages.at(-1);
 
     if (sourceChat.mode === "game" && settingsToKeep.gameJournal) {
@@ -5266,14 +5275,23 @@ export async function chatsRoutes(app: FastifyInstance) {
         ? sourceToBranchedMessageId.get(sourceMeta.lastAutomaticSummaryMessageId)
         : undefined;
     const branchCharacterIds = resolveChatCharacterIds(newChat.characterIds);
-    settingsToKeep = remapAdvancedMemoryMetadata(settingsToKeep, sourceToBranchedMessageId, branchCharacterIds);
-    // A game's record of one turn's tellings (#6774) follows that turn into the branch, whose copy
-    // keeps every swipe index. A branch that stops before the turn has nothing for it to follow.
+    settingsToKeep = remapAdvancedMemoryMetadata(settingsToKeep, sourceToBranchedMessageId, branchCharacterIds, true);
+    // A game's record of one turn's tellings (#6774) follows the copied turn and its swipe indexes.
     const inventoryTurn = readGameInventoryTurn(settingsToKeep.gameInventoryTurn);
     const branchedInventoryTurnId = inventoryTurn && sourceToBranchedMessageId.get(inventoryTurn.messageId);
-    if (branchedInventoryTurnId)
-      settingsToKeep.gameInventoryTurn = { ...inventoryTurn, messageId: branchedInventoryTurnId };
-    else delete settingsToKeep.gameInventoryTurn;
+    if (branchedInventoryTurnId) {
+      const swipeIndexes = sourceToCopiedSwipeIndexes.get(inventoryTurn.messageId)!;
+      settingsToKeep.gameInventoryTurn = {
+        ...inventoryTurn,
+        messageId: branchedInventoryTurnId,
+        swipes: Object.fromEntries(
+          Object.entries(inventoryTurn.swipes).flatMap(([index, stacks]) => {
+            const copiedIndex = swipeIndexes.get(Number(index));
+            return copiedIndex === undefined ? [] : [[String(copiedIndex), stacks]];
+          }),
+        ),
+      };
+    } else delete settingsToKeep.gameInventoryTurn;
     // #5406: `settingsToKeep` is the source metadata verbatim, which carries its
     // `metadataWriteOrdinals` mirror. Inherit the source's write-ordinal counter too, or the
     // branch's first allocation would come in BELOW the stamps it just copied and invert the
@@ -5310,7 +5328,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     // for that specific message, not just the latest snapshot in the source chat.
     try {
       if (sourceChat.mode === "roleplay") {
-        await copyAdvancedMemoryRecords({
+        const copiedMemoryRecordIds = await copyAdvancedMemoryRecords({
           db: app.db,
           chatId: newChat.id,
           records: advancedMemoryTransfer,
@@ -5323,7 +5341,14 @@ export async function chatsRoutes(app: FastifyInstance) {
           messageIds: sourceToBranchedMessageId,
           characterIds: branchCharacterIds,
           metadata: { ...settingsToKeep, summaryEntries: inheritedEntries },
+          reopenSceneAtMessageId: firstOmittedMessage ? forkSourceMessage?.id : undefined,
         });
+        await createAdvancedMemoryService(app.db).restoreBranchState(
+          newChat.id,
+          sourceChat.id,
+          sourceToBranchedMessageId,
+          copiedMemoryRecordIds,
+        );
       }
       const spatialStore = createSpatialContextStorage();
       const spatialBootstrap = await spatialStore.getBootstrap(req.params.id);
@@ -5432,9 +5457,10 @@ export async function chatsRoutes(app: FastifyInstance) {
         for (const srcMsg of copiedSourceMessages) {
           const branchedMsgId = sourceToBranchedMessageId.get(srcMsg.id);
           if (!branchedMsgId) continue;
-          const swipeIndexes = sourceToCopiedSwipeIndexes.get(srcMsg.id) ?? [srcMsg.activeSwipeIndex ?? 0];
-          for (const swipeIndex of swipeIndexes) {
-            const spatialSnapshot = await spatialStore.getByAnchor(req.params.id, srcMsg.id, swipeIndex);
+          const swipeIndexes =
+            sourceToCopiedSwipeIndexes.get(srcMsg.id) ?? new Map([[srcMsg.activeSwipeIndex ?? 0, 0]]);
+          for (const [sourceSwipeIndex, swipeIndex] of swipeIndexes) {
+            const spatialSnapshot = await spatialStore.getByAnchor(req.params.id, srcMsg.id, sourceSwipeIndex);
             if (spatialSnapshot) {
               await spatialStore.create({
                 chatId: newChat.id,
@@ -5447,14 +5473,18 @@ export async function chatsRoutes(app: FastifyInstance) {
                 transitionPayloadHash: null,
               });
             }
-            const snapshot = await gameStateStore.getByChatAndMessage(req.params.id, srcMsg.id, swipeIndex);
+            const snapshot = await gameStateStore.getByChatAndMessage(req.params.id, srcMsg.id, sourceSwipeIndex);
             if (snapshot) {
               await copySnapshot(snapshot, branchedMsgId, swipeIndex);
             }
             if (gameEngineStore) {
               // One anchor can hold a row per gameType writer (a turn-game AND an
               // Experience, #5102) — branching must copy every one, not limit(1).
-              const engineSnapshots = await gameEngineStore.listByChatAndMessage(req.params.id, srcMsg.id, swipeIndex);
+              const engineSnapshots = await gameEngineStore.listByChatAndMessage(
+                req.params.id,
+                srcMsg.id,
+                sourceSwipeIndex,
+              );
               // Reads are newest-first; replay oldest-first so the source-effective row wins dedupe.
               for (const engineSnapshot of engineSnapshots.reverse()) {
                 await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);

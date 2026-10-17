@@ -622,6 +622,7 @@ export function rulesetActiveConditions(
       ? { conditionImmunitiesFrom: source.conditionImmunitiesFrom.map((ward) => ({ ...ward })) }
       : {}),
     ...(source.speedKeptFrom ? { speedKeptFrom: { catalogs: [...source.speedKeptFrom.catalogs] } } : {}),
+    ...(source.ignoresHardGround ? { ignoresHardGround: true as const } : {}),
     ...(source.slipsFree
       ? {
           slipsFree: {

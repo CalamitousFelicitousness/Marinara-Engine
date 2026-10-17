@@ -10304,6 +10304,23 @@ const conditionImmunitiesFromSchema = z
   .min(1)
   .max(10);
 
+/** What a condition does to whoever hits its holder, by itself (1.436). Typed by hand, to keep the
+ *  condition's inferred type short enough to emit. */
+export interface RulesetConditionWhenHit {
+  blow?: "melee" | "ranged";
+  from?: RulesetTargetIs;
+  save: { save: string; difficulty?: number };
+  applies: RulesetCatalogApplies[];
+}
+const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, unknown> = z
+  .object({
+    blow: z.enum(["melee", "ranged"]).optional(),
+    from: targetIsSchema.optional(),
+    save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000).optional() }).strict(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4),
+  })
+  .strict();
+
 /** Its holder's speed is not lowered by what entries of these catalogs put on them (Capability API
  *  1.433): a slowing, a halving or a stop that a spell put on does nothing to their walk, and the
  *  same from anything else still does. 5e's Freedom of Movement, `{ "catalogs": ["spells"] }`. */
@@ -10406,6 +10423,12 @@ const combatConditionSchema = z
      *  one that may not otherwise harm. 5e's Pact of the Chain: "forgo one of your own attacks to
      *  allow your familiar to make one attack with its reaction", `{ "budget": "reaction" }`. */
     lendsStrikes: z.object({ budget: sheetId }).strict().optional(),
+    /** What it does to whoever hits its holder with an attack, nobody choosing and nothing spent
+     *  (Capability API 1.436): only a blow of `blow`, from a creature that is `from`, and they make
+     *  `save` against `difficulty`, else the save difficulty of the entry that put this on, or take
+     *  `applies`, held as long as this condition's own concentration. 5e's Holy Aura: a fiend or
+     *  undead hitting its holder in melee saves with Constitution or is blinded until the spell ends. */
+    whenHit: conditionWhenHitSchema.optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -10925,6 +10948,9 @@ export const rulesetItemEffectSchema = z
      *  the same diseases in `conditionImmunities` so no new one is caught. It may name a kind of
      *  condition (Capability API 1.431), every condition of that kind held off: `["disease"]`. */
     suppresses: uniqueIds(12).optional(),
+    /** Hard going costs its holder no more than plain ground, as a condition's (Capability API
+     *  1.436): 5e's Ring of Free Action. */
+    ignoresHardGround: z.literal(true).optional(),
     /** Conditions kept off by who or what would put them on, as a condition's (Capability API
      *  1.433): a Ring of Freedom of Movement, no paralysis or restraint from a spell. */
     conditionImmunitiesFrom: conditionImmunitiesFromSchema.optional(),
@@ -10952,7 +10978,8 @@ export const rulesetItemEffectSchema = z
       !entry.suppresses &&
       !entry.conditionImmunitiesFrom &&
       !entry.speedKeptFrom &&
-      !entry.slipsFree
+      !entry.slipsFree &&
+      !entry.ignoresHardGround
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -14810,6 +14837,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
       // Kept off by who puts them on (1.191): the ruleset's own conditions, from creatures it names.
       freedomIssues(def, entry, path, issue);
+      // Who is hit saves with a save of the sheet's, or takes conditions it has (1.436).
+      if (entry.whenHit) {
+        const where = [...path, "whenHit"];
+        if (!def.sheet.saves.some((one) => one.id === entry.whenHit!.save.save))
+          issue([...where, "save", "save"], `Unknown save "${entry.whenHit.save.save}"`);
+        entry.whenHit.applies.forEach((applied, appliedIndex) => {
+          if (!conditions.has(applied.condition))
+            issue([...where, "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+        });
+        if (entry.whenHit.from) targetIsIssues(def, entry.whenHit.from, [...where, "from"], issue);
+      }
       // What a called creature pays with is a budget of the fight's (1.435).
       if (entry.lendsStrikes && !combat.economy.budgets.some((one) => one.id === entry.lendsStrikes!.budget))
         issue([...path, "lendsStrikes", "budget"], `Unknown budget "${entry.lendsStrikes.budget}"`);

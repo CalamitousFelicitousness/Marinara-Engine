@@ -2247,6 +2247,20 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An item that crosses hard going freely, or a condition that answers a hit by itself (1.436): the
+ *  Ring of Free Action, Holy Aura's flash. */
+function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFreeActionAndFlash436(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.whenHit !== undefined) return true;
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried), plainRecord(record.otherwise)]) {
+    if (effect?.ignoresHardGround !== undefined) return true;
+  }
+  return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
+}
+
 /** An attack given up for one by a creature its maker called (1.435): Pact of the Chain. */
 function carriesLendsStrikes435(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6244,6 +6258,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items crossing hard going freely, and conditions answering a hit by themselves, 1.436.
+  if (
+    !declaresApi(436) &&
+    (carriesFreeActionAndFlash436(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFreeActionAndFlash436(document)))
+  ) {
+    return "A ruleset whose items cross hard going freely (ignoresHardGround on an item) or whose conditions answer a hit by themselves (whenHit) requires schemaVersion 2 and capabilityApi 1.436 or newer";
+  }
   // An attack given up for one by a creature its maker called, 1.435.
   if (
     !declaresApi(435) &&

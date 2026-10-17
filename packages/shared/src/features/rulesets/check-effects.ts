@@ -101,6 +101,8 @@ export interface RulesetCheckSource {
   fallsSafely?: true;
   /** Conditions on its holder it holds off, not ends (Capability API 1.424 on an item). */
   suppresses?: readonly string[];
+  /** Hard going costs no more than plain ground (Capability API 1.436 on an item). */
+  ignoresHardGround?: true;
   /** Conditions kept off by who or what would put them on (Capability API 1.433 on an item). */
   conditionImmunitiesFrom?: readonly RulesetConditionImmunityFrom[];
   /** What entries of these catalogs put on its holder does not lower their speed (Capability API 1.433). */

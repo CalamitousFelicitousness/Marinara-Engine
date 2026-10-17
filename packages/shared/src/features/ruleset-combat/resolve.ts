@@ -984,6 +984,40 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   groundFlier(ctx, target);
 }
 
+/** What a condition on whoever was hit does to who hit them, nobody choosing (1.436): Holy Aura's
+ *  flash, blinding a fiend or undead that hits its holder in melee unless it saves. What it puts on
+ *  is held as the condition is, by the same concentration. */
+function answerHit(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  attacker: RulesetCombatant,
+  action: RulesetCombatAction,
+): void {
+  if (!ctx.combat.conditions?.some((entry) => entry.whenHit)) return;
+  if (attacker.defeated || attacker.id === target.id) return;
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
+    const rule = entry.whenHit;
+    if (!rule || attacker.defeated) continue;
+    if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
+    if (rule.from && !rulesetTargetIs(ctx.definition, attacker, rule.from)) continue;
+    const held = target.tracked.find((one) => one.condition === entry.condition);
+    const source = held?.source ? rulesetCombatant(ctx.state, held.source) : undefined;
+    const by = held?.action ? source?.actions.find((one) => one.id === held.action![0]) : undefined;
+    const difficulty = rule.save.difficulty ?? by?.save?.difficulty ?? by?.saveDifficulty ?? 10;
+    const sourceId = source?.id ?? target.id;
+    if (rollSave(ctx, attacker, rule.save.save, difficulty, sourceId)) continue;
+    for (const applies of rule.applies) {
+      applyConditionId(ctx, attacker, applies.condition, applies, {
+        sourceId,
+        difficulty,
+        ...(held?.action ? { action: held.action } : {}),
+        ...(held?.concentration ? { concentration: true } : {}),
+        ...(held?.catalog ? { catalog: held.catalog } : {}),
+      });
+    }
+  }
+}
+
 /** What an action puts on its own user as it is made (1.307), whatever its targets do. */
 function applySelf(
   ctx: RulesetCombatContext,
@@ -11363,6 +11397,7 @@ function resolveActionBody(
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
         landed = outcome === "hit";
         if (landed) noteHitBy(ctx, target, actor);
+        if (landed) answerHit(ctx, target, actor, action);
         if (landed) extraDice = thrown.successes - needed;
         if (
           landed &&
@@ -11474,6 +11509,7 @@ function resolveActionBody(
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
         landed = outcome !== "miss";
         if (landed) noteHitBy(ctx, target, actor);
+        if (landed) answerHit(ctx, target, actor, action);
         critical = outcome === "critical";
         // A hit on somebody who holds an answer for being hit stops here, before its damage: the
         // window asks them, and the attack picks up from this roll once they have answered. Nothing

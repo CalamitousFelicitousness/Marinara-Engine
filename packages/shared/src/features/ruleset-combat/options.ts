@@ -615,10 +615,13 @@ export function rulesetDispelTargets(
   action: RulesetCombatAction,
 ): Array<{ casterId: string; actionId: string; label: string }> {
   const ends = action.endsSpells;
-  if (!ends?.zones) return [];
+  // Or a layered wall one of whose layers names it (1.438): Passwall at a Prismatic Wall.
+  const breaks = !!action.endsLayers && action.entry !== undefined;
+  if (!ends?.zones && !breaks) return [];
   const reach = positioned(state) && rulesetPositionOf(actor) ? rulesetOptionReach(state, actor.id, action.id) : null;
   return rulesetStandingZones(state).flatMap(({ caster, zone, action: made }) => {
-    if (made.catalog === undefined || !ends.catalogs.includes(made.catalog)) return [];
+    const named = breaks && !!made.zone?.layers?.rows.some((row) => row.endedBy?.entries?.includes(action.entry!));
+    if (!named && (!ends?.zones || made.catalog === undefined || !ends.catalogs.includes(made.catalog))) return [];
     // Not one hidden from them (1.402).
     if (!rulesetZoneSeenBy(caster, zone, made, actor.side)) return [];
     if (reach && !rulesetZoneCells(state, caster, zone).some((cell) => rulesetDistanceTo(cell, actor) <= reach.max)) {
@@ -2082,6 +2085,8 @@ export function rulesetActionAvailable(
     if (!definition || !state || !at) return false;
     if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
   }
+  // Nothing but a wall's layer to break (1.438): only while such a wall stands within reach.
+  if (action.endsLayers?.only && !(state && rulesetDispelTargets(state, actor, action).length > 0)) return false;
   // Only beside a prop (1.332): Fennick's Hymnal at the Year-Wheel.
   if (action.usableNear && !(state && rulesetNearProp(state, actor, action.usableNear.prop, action.usableNear.within)))
     return false;

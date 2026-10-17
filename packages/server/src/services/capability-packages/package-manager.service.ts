@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An entry aimed at a layered wall to break its layer (1.438): Passwall. */
+function carriesEndsLayers438(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsLayers438(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsLayers !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsLayers438(one, depth + 1));
+}
+
 /** A wall or globe of layers crossed one at a time, and its flash (1.437): Prismatic Wall. */
 function carriesLayers437(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6268,6 +6278,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An entry aimed at a layered wall to break its layer, 1.438.
+  if (
+    !declaresApi(438) &&
+    (carriesEndsLayers438(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsLayers438(document)))
+  ) {
+    return "A ruleset whose entries break a layered wall's layer by being aimed at it (endsLayers) requires schemaVersion 2 and capabilityApi 1.438 or newer";
+  }
   // A wall or globe of layers crossed one at a time, 1.437.
   if (
     !declaresApi(437) &&

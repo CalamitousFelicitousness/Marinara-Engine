@@ -4,6 +4,7 @@
  *   - Holy Aura: a fiend hitting its holder in melee saves with Constitution against the caster's
  *     save difficulty or is blinded, held by the aura's concentration; a fiend that saves, one
  *     shooting from afar, a beast, or a miss is not.
+ *   - Given through another's aura (1.438), it answers on the same terms.
  *   - Ring of Free Action: worn, hard going costs its wearer no more than plain ground.
  *   - Refusals and the install gate.
  */
@@ -19,6 +20,7 @@ import {
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
+  rulesetSyncAuras,
   supportedCapabilityApi,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -195,6 +197,45 @@ try {
       () => 10,
     );
     assert.equal(of(step.events, "save").find((one) => one.actorId === "foe")?.difficulty, 9);
+  }
+
+  // ── Given through the cleric's aura (1.438): the caster's difficulty and concentration all the same ──
+  {
+    const doc = document();
+    doc.sheet.live.conditions.push({ id: "holy_caster", label: "Holy Aura (caster)" });
+    doc.combat.conditions.push({
+      condition: "holy_caster",
+      effects: [],
+      auras: [{ distance: 30, side: "allies", conditions: ["holy"] }],
+    });
+    const aura = parsed(doc);
+    const state = fight(foe("fiend", -5));
+    const hero = rulesetCombatant(state, "hero")!;
+    hero.tracked = hero.tracked.filter((one) => one.condition !== "holy");
+    rulesetCombatant(state, "cleric")!.tracked.push({
+      condition: "holy_caster",
+      rounds: 10,
+      source: "cleric",
+      action: ["aura", "Holy Aura"],
+      concentration: true,
+    });
+    rulesetSyncAuras(aura, state);
+    assert.ok(
+      hero.tracked.some((one) => one.condition === "holy" && one.aura === "cleric"),
+      "spread to the hero",
+    );
+    const option = rulesetCombatOptions(aura, state, "foe").find((one) => one.kind === "block")!;
+    const step = applyRulesetCombatChoice(
+      aura,
+      state,
+      { actorId: "foe", optionId: option.id, targetIds: ["hero"] },
+      () => 10,
+    );
+    assert.equal(of(step.events, "save").find((one) => one.actorId === "foe")?.difficulty, 17, "the caster's number");
+    const held = blinded(step.state);
+    assert.ok(held, "blinded");
+    assert.equal(held.source, "cleric");
+    assert.equal(held.concentration, true, "held by the caster's concentration");
   }
 
   // ── Ring of Free Action ──

@@ -1008,7 +1008,9 @@ function answerHit(
     if (!rule || attacker.defeated) continue;
     if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
     if (rule.from && !rulesetTargetIs(ctx.definition, attacker, rule.from)) continue;
-    const held = target.tracked.find((one) => one.condition === entry.condition);
+    const own = target.tracked.find((one) => one.condition === entry.condition);
+    // Spread by another's aura (1.438): what put the aura's own condition on its holder.
+    const held = own?.aura && !own.action ? (auraOrigin(ctx, own) ?? own) : own;
     const source = held?.source ? rulesetCombatant(ctx.state, held.source) : undefined;
     const by = held?.action ? source?.actions.find((one) => one.id === held.action![0]) : undefined;
     const difficulty = rule.save.difficulty ?? by?.save?.difficulty ?? by?.saveDifficulty ?? 10;
@@ -1024,6 +1026,17 @@ function answerHit(
       });
     }
   }
+}
+
+/** The condition an aura spread this from (1.438), as its holder holds it: whose it is, the entry
+ *  that put it on, and the concentration holding it. Holy Aura's ward, given to each nearby ally. */
+function auraOrigin(ctx: RulesetCombatContext, spread: RulesetTrackedCondition): RulesetTrackedCondition | undefined {
+  const holder = spread.aura ? rulesetCombatant(ctx.state, spread.aura) : undefined;
+  if (!holder) return undefined;
+  const rules = (ctx.combat.conditions ?? []).filter((rule) =>
+    rule.auras?.some((aura) => aura.conditions?.includes(spread.condition)),
+  );
+  return holder.tracked.find((one) => !one.aura && rules.some((rule) => rule.condition === one.condition));
 }
 
 /** What an action puts on its own user as it is made (1.307), whatever its targets do. */
@@ -11275,6 +11288,15 @@ function resolveActionBody(
   // Aimed at a lasting area rather than a creature (1.374): Dispel Magic on a wall.
   if (action.endsSpells && ctx.dispel && !held) {
     endSpellZone(ctx, actor, action, rulesetPaidLevel(ctx.definition, actor, action, payWith));
+  } else if (action.endsLayers && ctx.dispel && !held) {
+    // At a layered wall one of whose layers names it (1.438): Passwall.
+    const aimed = ctx.dispel;
+    const found = rulesetStandingZones(ctx.state).find(
+      ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
+    );
+    if (found?.action.zone?.layers && action.entry) {
+      wearLayer(ctx, found.caster, found.zone, found.action, { entry: action.entry }, actor.id);
+    }
   }
   // Its user's weapon at each creature its area catches (1.375), a roll and a shot for each:
   // Whirlwind Attack, Volley. Its own side only when it says "any".

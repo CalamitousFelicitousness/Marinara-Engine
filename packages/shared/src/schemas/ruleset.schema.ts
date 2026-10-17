@@ -3413,6 +3413,58 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
+/** A table of rays rolled for each target (1.415): Prismatic Spray. Typed by hand, as the mechanics
+ *  are near the limit of what the compiler writes out. */
+export interface RulesetCatalogRays {
+  dice: string;
+  rows: Array<{ atMost: number; label: string; damageType?: string; applies?: string[]; again?: number }>;
+}
+const catalogRaysSchema: z.ZodType<RulesetCatalogRays, z.ZodTypeDef, unknown> = z
+  .object({
+    dice: catalogDice,
+    rows: z
+      .array(
+        z
+          .object({
+            atMost: z.number().int().min(1).max(100),
+            label: promptSafeText(40),
+            damageType: promptSafeText(40).optional(),
+            applies: z.array(sheetId).min(1).max(6).optional(),
+            again: z.number().int().min(1).max(3).optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(12)
+      .superRefine((rows, ctx) => {
+        for (let index = 1; index < rows.length; index++) {
+          if (rows[index]!.atMost <= rows[index - 1]!.atMost) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [index, "atMost"],
+              message: "Rows run strictly up",
+            });
+          }
+        }
+      }),
+  })
+  .strict();
+
+/** What an entry casts in its place (1.421): Wish. Typed by hand, as the mechanics are near the
+ *  limit of what the compiler writes out. */
+export interface RulesetCatalogDuplicates {
+  catalog: string;
+  upTo: number;
+  only?: string[];
+}
+const catalogDuplicatesSchema: z.ZodType<RulesetCatalogDuplicates, z.ZodTypeDef, unknown> = z
+  .object({
+    catalog: sheetId,
+    upTo: z.number().int().min(1).max(20),
+    only: z.array(sheetId).min(1).max(200).optional(),
+  })
+  .strict();
+
 /** One catalog entry, named the way a sheet row points at it: `<catalog>/<entry>`. */
 const catalogEntryRef = z
   .string()
@@ -5769,49 +5821,17 @@ const catalogMechanicsObject = z
      *  menu as its own option beside this one's name, paid for as this one is and needing none of
      *  its components; this entry itself is on no menu. `only` keeps it to those entry ids. 5e's
      *  Wish, duplicating a spell of 8th level or lower. */
-    duplicates: z
-      .object({
-        catalog: sheetId,
-        upTo: z.number().int().min(1).max(20),
-        only: z.array(sheetId).min(1).max(200).optional(),
-      })
-      .strict()
-      .optional(),
+    duplicates: catalogDuplicatesSchema.optional(),
+    /** It may be aimed at a standing layered wall (Capability API 1.438) whose layer names it in its
+     *  `endedBy.entries`, within its range, destroying that layer once those before it are gone; with
+     *  nothing else to do it is offered only while such a wall stands. 5e's Passwall on the green
+     *  layer of a Prismatic Wall. */
+    endsLayers: z.literal(true).optional(),
     /** A table rolled for each target (Capability API 1.415), its row the ray that strikes them: each
      *  row deals `amount` as its own `damageType` (none without one), puts on those of `applies` it
      *  names, and `again` strikes that many more rays, landing on it again rolled over. Each target
      *  throws `save` once, which every ray striking them reads. 5e's Prismatic Spray. */
-    rays: z
-      .object({
-        dice: catalogDice,
-        rows: z
-          .array(
-            z
-              .object({
-                atMost: z.number().int().min(1).max(100),
-                label: promptSafeText(40),
-                damageType: promptSafeText(40).optional(),
-                applies: z.array(sheetId).min(1).max(6).optional(),
-                again: z.number().int().min(1).max(3).optional(),
-              })
-              .strict(),
-          )
-          .min(2)
-          .max(12)
-          .superRefine((rows, ctx) => {
-            for (let index = 1; index < rows.length; index++) {
-              if (rows[index]!.atMost <= rows[index - 1]!.atMost) {
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  path: [index, "atMost"],
-                  message: "Rows run strictly up",
-                });
-              }
-            }
-          }),
-      })
-      .strict()
-      .optional(),
+    rays: catalogRaysSchema.optional(),
     /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
      *  uses (Capability API 1.253): 5e's Metamagic. Never on a menu of its own. One per use, unless
      *  it `joins` another. */

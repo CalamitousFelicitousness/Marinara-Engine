@@ -2849,10 +2849,32 @@ function mechanicsAction(
     // So is steering a condition (1.411).
     !mechanics.steers &&
     // And casting other entries (1.421): Wish.
-    !mechanics.duplicates
+    !mechanics.duplicates &&
+    // And breaking a layered wall's layer (1.438): Passwall.
+    !mechanics.endsLayers
   ) {
     return null;
   }
+  // Nothing but a wall's layer to break (1.438).
+  const onlyEndsLayers =
+    !!mechanics.endsLayers &&
+    mechanics.kind === "utility" &&
+    !mechanics.gives &&
+    !mechanics.standard &&
+    !mechanics.hiding &&
+    !cancels &&
+    !cures &&
+    !places &&
+    !clears &&
+    !mechanics.rescue &&
+    !mechanics.alters &&
+    !mechanics.conjures &&
+    !mechanics.teleport &&
+    !mechanics.calls &&
+    !mechanics.strikesWith &&
+    !mechanics.redirects &&
+    !mechanics.steers &&
+    !mechanics.duplicates;
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   // What the sheet adds to it (1.83), read as the entry is put on the menu: 1d10 plus a level.
@@ -2972,6 +2994,7 @@ function mechanicsAction(
   if (mechanics.steers) action.steers = mechanics.steers;
   // Casting other entries (1.421): Wish.
   if (mechanics.duplicates) action.duplicates = structuredClone(mechanics.duplicates);
+  if (mechanics.endsLayers) action.endsLayers = onlyEndsLayers ? { only: true } : {};
   // A ray rolled for each target (1.415): Prismatic Spray.
   if (mechanics.rays) action.rays = structuredClone(mechanics.rays);
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.

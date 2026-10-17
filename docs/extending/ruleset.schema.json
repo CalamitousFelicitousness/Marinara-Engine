@@ -50771,6 +50771,10 @@
                       ],
                       "additionalProperties": false
                     },
+                    "endsLayers": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "rays": {
                       "type": "object",
                       "properties": {
@@ -83678,6 +83682,10 @@
                           ],
                           "additionalProperties": false
                         },
+                        "endsLayers": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "rays": {
                           "type": "object",
                           "properties": {
@@ -98556,6 +98564,10 @@
                                   "upTo"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "endsLayers": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "rays": {
                                 "type": "object",

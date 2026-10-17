@@ -1291,6 +1291,9 @@ function rulesetCandidatesFrom(
     if (option.kind === "move") continue;
     // Averting the eyes is settled as the turn starts (see `playRulesetTurn`), and so is slipping free.
     if (option.avert || option.slip) continue;
+    // An attack given up for a called creature's (1.435) is its player's own call: the Engine keeps
+    // its own attacks.
+    if (option.lend) continue;
     // Putting away a weapon put in hand (1.308) is its player's own call: the Engine keeps it.
     if (option.dismiss) continue;
     // From another cell, only what the actor would do THERE is worth enumerating: everything it

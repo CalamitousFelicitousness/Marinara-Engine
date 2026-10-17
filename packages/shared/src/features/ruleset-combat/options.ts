@@ -21,6 +21,7 @@ import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
   RULESET_SLIP_OPTION_PREFIX,
+  RULESET_LEND_OPTION_PREFIX,
   RULESET_CHARGE_STEP_PREFIX,
   rulesetChargeSteps,
   rulesetActionDropped,
@@ -1780,6 +1781,18 @@ export function rulesetOptionTargets(
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
   if (!actor || option.targets.count <= 0) return [];
+  // An attack given up for one by what they called (1.435): whom that one's attack may reach.
+  if (option.id.startsWith(RULESET_LEND_OPTION_PREFIX)) {
+    const lent = rulesetLentAttack(state, actor, option.id);
+    if (!lent) return [];
+    return rulesetOptionTargets(
+      definition,
+      state,
+      lent.called.id,
+      { id: lent.attack.id, targets: lent.attack.targets },
+      ignoreRange,
+    );
+  }
   // An area is aimed at a CELL, so nobody is named: which combatants it catches follows from where
   // it lands, and `rulesetAreaTargets` is the one place that answers it.
   if (positioned(state) && actionOf(actor, option.id)?.area) return [];
@@ -3436,6 +3449,74 @@ function slipOptions(
   return out;
 }
 
+/** The creature an attack is given up for and the attack it makes (1.435), read off the option's id:
+ *  one its maker called, with an attack of its own. */
+export function rulesetLentAttack(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  optionId: string,
+): { called: RulesetCombatant; attack: RulesetCombatAction } | null {
+  if (!optionId.startsWith(RULESET_LEND_OPTION_PREFIX)) return null;
+  const rest = optionId.slice(RULESET_LEND_OPTION_PREFIX.length);
+  const cut = rest.indexOf(":");
+  if (cut < 0) return null;
+  const called = rulesetCombatant(state, rest.slice(0, cut));
+  if (!called || called.calledBy !== actor.id) return null;
+  const attack = called.actions.find((entry) => entry.id === rest.slice(cut + 1));
+  return attack && rulesetIsAttack(attack) ? { called, attack } : null;
+}
+
+/**
+ * Giving up one attack of their attack action for a creature they called to make one of its own
+ * (1.435), out of the budget a `lendsStrikes` holding on them names, its can't-harm passed by: 5e's
+ * Pact of the Chain. Offered while a strike of the attack action is in hand, or the action itself
+ * may still be taken; one for each attack of each such creature that has somebody to reach.
+ */
+function lendOptions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatOption[] {
+  if (!combat.conditions?.some((entry) => entry.lendsStrikes)) return [];
+  const lends = rulesetActiveConditions(definition, combat, actor, state).find(
+    (entry) => entry.lendsStrikes,
+  )?.lendsStrikes;
+  if (!lends) return [];
+  // Their weapons', or a stat block's own attacks.
+  const own = actor.actions.filter(
+    (entry) => (entry.kind === "attack" || entry.kind === "block") && !entry.catalog && rulesetIsAttack(entry),
+  );
+  const base = own.find((entry) => entry.strikes !== undefined) ?? own[0];
+  if (!base || ((actor.strikesLeft ?? 0) < 1 && (actor.budgets[base.budget] ?? 0) < 1)) return [];
+  const out: RulesetCombatOption[] = [];
+  for (const called of state.combatants) {
+    if (called.calledBy !== actor.id || !rulesetCombatStanding(called) || called.defeated) continue;
+    if ((called.budgets[lends.budget] ?? 0) < 1) continue;
+    const effects = rulesetCombatEffects(definition, combat, called, state);
+    if (effects.has("cannot-act") || effects.has("cannot-react")) continue;
+    for (const attack of called.actions) {
+      const struck = attack.kind === "attack" || attack.kind === "block";
+      if (!struck || !rulesetIsAttack(attack) || attack.targets.side !== "enemy") continue;
+      const option: RulesetCombatOption = {
+        id: `${RULESET_LEND_OPTION_PREFIX}${called.id}:${attack.id}`,
+        kind: "attack",
+        label: `${called.name}: ${attack.label}`,
+        targets: { ...attack.targets },
+        lend: {
+          calledId: called.id,
+          actionId: attack.id,
+          spends: lends.budget,
+          attackBudget: base.budget,
+          strikes: base.strikes ?? 1,
+        },
+      };
+      if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) out.push(option);
+    }
+  }
+  return out;
+}
+
 /** Averting the eyes from each holder of a gaze that may be averted (1.268), and looking at whoever
  *  they keep them from again. Free, and as often as they like. */
 function avertOptions(
@@ -3532,6 +3613,7 @@ export function rulesetUncompelledOptions(
   options.push(...pickUpOptions(actor));
   options.push(...avertOptions(definition, state, actor));
   options.push(...slipOptions(definition, combat, state, actor));
+  options.push(...lendOptions(definition, combat, state, actor));
   // Moving a lasting area its caster holds at a point (1.173): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;

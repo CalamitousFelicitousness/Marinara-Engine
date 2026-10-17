@@ -2466,6 +2466,8 @@ export type RulesetCombatEvent =
   /** What a condition made its holder let fall (1.266), and picking one thing back up. */
   | { type: "letFall"; actorId: string; condition: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
+  /** One attack given up for one by a creature its maker called (1.435): Pact of the Chain. */
+  | { type: "lent"; actorId: string; calledId: string; label: string }
   | { type: "averted"; actorId: string; holderId: string; back?: true }
   /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
    *  `to`, or lost. */
@@ -3364,6 +3366,9 @@ export interface RulesetCombatOption {
   avert?: { holderId: string; back?: true };
   /** Slipping free of the condition named by the id, called `label` (1.433). */
   slip?: true;
+  /** One attack of its maker's given up for one by a creature they called (1.435): who, with what,
+   *  out of which of its budgets; and the attack action it comes out of, its budget and strikes. */
+  lend?: { calledId: string; actionId: string; spends: string; attackBudget: string; strikes: number };
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
    *  action): the strikes the attack would otherwise put in hand are not given. */
   oneStrike?: true;

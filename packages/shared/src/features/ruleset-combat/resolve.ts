@@ -29,6 +29,7 @@ import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
   RULESET_SLIP_OPTION_PREFIX,
+  RULESET_LEND_OPTION_PREFIX,
   rulesetChargeSteps,
   breakRulesetItem,
   recoverRulesetAmmo,
@@ -4834,6 +4835,8 @@ function whyNotOffered(
     return "unreachable";
   }
   // Slipping free (1.433): nothing it may slip, or too little of the walk left to do it with.
+  // An attack given up (1.435): nobody to give it to, or nothing left to give.
+  if (optionId.startsWith(RULESET_LEND_OPTION_PREFIX)) return "no-budget";
   if (optionId.startsWith(RULESET_SLIP_OPTION_PREFIX)) {
     const condition = optionId.slice(RULESET_SLIP_OPTION_PREFIX.length);
     return rulesetCombatConditions(definition, actor).includes(condition) ? "unreachable" : "unknown-option";
@@ -5423,6 +5426,29 @@ function applyChoice(
   }
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
+
+  // One attack given up for one by what they called (1.435): out of a strike in hand, or the attack
+  // action taken now with the rest of its strikes put in hand; the called one pays its own budget.
+  if (option.lend) {
+    const { calledId, actionId, spends, attackBudget, strikes } = option.lend;
+    const called = rulesetCombatant(ctx.state, calledId);
+    const attack = called?.actions.find((entry) => entry.id === actionId);
+    if (!called || !attack) return refusal(state, choice.actorId, "unknown-option", option.id);
+    if ((working.strikesLeft ?? 0) > 0) {
+      working.strikesLeft! -= 1;
+      if (working.strikesLeft === 0) delete working.strikesLeft;
+    } else {
+      spendBudget(ctx, working, attackBudget);
+      if (strikes > 1) working.strikesLeft = strikes - 1;
+    }
+    working.flags.attackAction = [...(working.flags.attackAction ?? []), option.label];
+    spendBudget(ctx, called, spends);
+    ctx.events.push({ type: "lent", actorId: working.id, calledId: called.id, label: attack.label });
+    spendAvailability(ctx, called, attack);
+    resolveAction(ctx, called, attack, workingTargets);
+    noteOutcome(ctx);
+    return finish();
+  }
 
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;

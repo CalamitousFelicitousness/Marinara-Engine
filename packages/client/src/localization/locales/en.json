@@ -2122,6 +2122,7 @@
   "game.combat.ruleset.event.left": "{{actor}} leaves the fight with {{label}}.",
   "game.combat.ruleset.event.leftAlong": "{{actor}} leaves the fight along with {{by}}'s {{label}}.",
   "game.combat.ruleset.event.legendaryResistance": "{{actor}} chooses to succeed on the {{save}} instead: legendary resistance, {{left}} left.",
+  "game.combat.ruleset.event.lent": "{{actor}} gives up an attack, and {{called}} strikes with {{label}} instead.",
   "game.combat.ruleset.event.letFall": "{{actor}} drops {{items}} ({{condition}}).",
   "game.combat.ruleset.event.letOut": "{{target}} gets out of {{holder}}.",
   "game.combat.ruleset.event.lightRule": "{{actor}} has stood in that light too long.",

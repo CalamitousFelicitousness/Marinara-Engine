@@ -704,6 +704,12 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         items: event.labels.join(", "),
       });
+    case "lent":
+      return key("lent", {
+        actor: names.combatant(event.actorId),
+        called: names.combatant(event.calledId),
+        label: event.label,
+      });
     case "pickedUp":
       return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
     case "sanctuary":

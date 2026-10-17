@@ -10401,6 +10401,11 @@ const combatConditionSchema = z
      *  Familiar, Voice of the Chain Master) and Gaze of Two Minds; what their own senses lose while
      *  they do is the entry's `appliesSelf`. */
     lendsSenses: z.literal(true).optional(),
+    /** Its holder may give up one attack of their attack action for a creature they called to make
+     *  one of its own attacks, paid out of `budget` of its own economy (Capability API 1.435), even
+     *  one that may not otherwise harm. 5e's Pact of the Chain: "forgo one of your own attacks to
+     *  allow your familiar to make one attack with its reaction", `{ "budget": "reaction" }`. */
+    lendsStrikes: z.object({ budget: sheetId }).strict().optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -14805,6 +14810,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
       // Kept off by who puts them on (1.191): the ruleset's own conditions, from creatures it names.
       freedomIssues(def, entry, path, issue);
+      // What a called creature pays with is a budget of the fight's (1.435).
+      if (entry.lendsStrikes && !combat.economy.budgets.some((one) => one.id === entry.lendsStrikes!.budget))
+        issue([...path, "lendsStrikes", "budget"], `Unknown budget "${entry.lendsStrikes.budget}"`);
       // What it harms with is one of the ruleset's damage types (1.189).
       const harmType = entry.harms?.type;
       const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());

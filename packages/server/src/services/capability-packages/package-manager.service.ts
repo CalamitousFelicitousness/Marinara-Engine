@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An attack given up for one by a creature its maker called (1.435): Pact of the Chain. */
+function carriesLendsStrikes435(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLendsStrikes435(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.lendsStrikes !== undefined) return true;
+  return featureValues(record).some((one) => carriesLendsStrikes435(one, depth + 1));
+}
+
 /** Only one's own called creature as a target, or a call that makes its creature another type
  *  (1.434): Find Familiar's familiar, Voice of the Chain Master. */
 function carriesFamiliar434(value: unknown, depth = 0): boolean {
@@ -6234,6 +6244,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An attack given up for one by a creature its maker called, 1.435.
+  if (
+    !declaresApi(435) &&
+    (carriesLendsStrikes435(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLendsStrikes435(document)))
+  ) {
+    return "A ruleset whose conditions let an attack be given up for one by a called creature (lendsStrikes) requires schemaVersion 2 and capabilityApi 1.435 or newer";
+  }
   // Only one's own called creature, and a call that makes its creature another type, 1.434.
   if (
     !declaresApi(434) &&

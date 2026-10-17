@@ -458,6 +458,8 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 /** Slipping free of a condition (1.433): `slip:<condition>`. */
 export const RULESET_SLIP_OPTION_PREFIX = "slip:";
+/** An attack given up for one by a creature its maker called (1.435): `lend:<called id>:<action id>`. */
+export const RULESET_LEND_OPTION_PREFIX = "lend:";
 
 const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
 

@@ -3,17 +3,18 @@
 // Opened from Game controls (next to Edit game data). The State Editor takes one
 // before each save, so an edit can always be undone.
 // ──────────────────────────────────────────────
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AlertTriangle, Flag, History, Loader2, Trash2 } from "lucide-react";
-import type { GameCheckpoint } from "@marinara-engine/shared";
+import type { GameCheckpoint, GameState } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
 import { api } from "../../lib/api-client";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { chatKeys } from "../../hooks/use-chats";
 import { gameKeys } from "../../hooks/use-game";
+import { useGameStateStore } from "../../stores/game-state.store";
 
 interface GameCheckpointsModalProps {
   open: boolean;
@@ -26,6 +27,8 @@ const WHEN = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle
 export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsModalProps) {
   const { t: localizeUi } = useUiTranslation();
   const qc = useQueryClient();
+  /** The checkpoint a load or delete is running for; both buttons wait while it does. */
+  const [busyId, setBusyId] = useState<string | null>(null);
   const queryKey = useMemo(() => ["game-checkpoints", chatId] as const, [chatId]);
   const checkpoints = useQuery({
     queryKey,
@@ -43,16 +46,22 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
         cancelLabel: localizeUi("ui.game.checkpoints.cancel"),
       });
       if (!confirmed) return;
+      setBusyId(checkpoint.id);
       try {
         await api.post("/game/checkpoint/load", { chatId, checkpointId: checkpoint.id });
-        // The game the turn reads is back to the checkpoint: reload the chat, its messages and the
-        // game surface's own caches.
+        // The game the tracker draws is the restored one, now: the game surface only fetches it when
+        // the store holds none for this chat, so it has to be replaced here rather than left stale.
+        const restored = await api.get<GameState | null>(`/chats/${chatId}/game-state`).catch(() => undefined);
+        if (restored !== undefined) useGameStateStore.getState().setGameState(restored);
+        // And the rest: the chat, its messages, and the game surface's own caches.
         void qc.invalidateQueries({ queryKey: chatKeys.all });
         void qc.invalidateQueries({ queryKey: gameKeys.all });
         toast.success(localizeUi("ui.game.checkpoints.loaded"));
         onClose();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : localizeUi("ui.game.checkpoints.loadFailed"));
+      } finally {
+        setBusyId(null);
       }
     },
     [chatId, localizeUi, onClose, qc],
@@ -68,11 +77,14 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
         tone: "destructive",
       });
       if (!confirmed) return;
+      setBusyId(checkpoint.id);
       try {
         await api.delete(`/game/checkpoint/${checkpoint.id}?chatId=${chatId}`);
         void qc.invalidateQueries({ queryKey });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : localizeUi("ui.game.checkpoints.deleteFailed"));
+      } finally {
+        setBusyId(null);
       }
     },
     [chatId, localizeUi, qc, queryKey],
@@ -121,6 +133,7 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
               <button
                 type="button"
                 onClick={() => void load(checkpoint)}
+                disabled={busyId !== null}
                 className="inline-flex min-h-8 items-center gap-1 rounded-md bg-[var(--secondary)] px-2.5 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]"
               >
                 <History size="0.75rem" />
@@ -129,6 +142,7 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
               <button
                 type="button"
                 onClick={() => void remove(checkpoint)}
+                disabled={busyId !== null}
                 aria-label={localizeUi("ui.game.checkpoints.delete")}
                 title={localizeUi("ui.game.checkpoints.delete")}
                 className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"

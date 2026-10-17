@@ -8,6 +8,9 @@
 //   2) End-to-end on a game saved before stacks had ids: the ids the client works out are the ones
 //      the server applies the ops to, so the edit lands as made.
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   normalizeGameInventoryStacks,
   type GameInventoryStack,
@@ -123,6 +126,10 @@ assert.deepEqual(
 
 // ── Part 2: end-to-end on a game saved before stacks had ids ──
 
+// Its own store, so the run never touches a server's data folder.
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-game-data-inventory-"));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const Fastify = (await import("../../packages/server/node_modules/fastify/fastify.js")).default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
@@ -173,5 +180,6 @@ try {
   await chats.remove(chat.id).catch(() => {});
   await app.close();
   await closeDB();
+  rmSync(dataDir, { recursive: true, force: true });
 }
 console.log("game-data-inventory regression passed");

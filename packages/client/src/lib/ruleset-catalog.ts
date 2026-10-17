@@ -672,6 +672,15 @@ export function formatCatalogMechanics(
     const save = labels.saves[mechanics.save.save] ?? mechanics.save.save;
     parts.push(t(SAVE_KEYS[mechanics.save.onSuccess], { save }));
   }
+  // A ray rolled for each target (1.415).
+  if (mechanics.rays) {
+    parts.push(
+      t("game.ruleset.catalog.mechanics.rays", {
+        dice: mechanics.rays.dice,
+        rays: mechanics.rays.rows.map((row) => row.label).join(", "),
+      }),
+    );
+  }
   for (const cost of mechanics.cost ?? []) {
     parts.push(
       t("game.ruleset.catalog.mechanics.cost", { count: cost.amount, pool: labels.pools[cost.pool] ?? cost.pool }),

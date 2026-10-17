@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry rolling a ray for each target (1.415): Prismatic Spray. */
+function carriesRays415(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRays415(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(plainRecord(record.rays)?.rows)) return true;
+  return featureValues(record).some((one) => carriesRays415(one, depth + 1));
+}
+
 /** A zone that forbids teleporting (1.414): Hallow's Extradimensional Interference. */
 function carriesForbidsTeleport414(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6012,6 +6022,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries rolling a ray for each target, 1.415.
+  if (
+    !declaresApi(415) &&
+    (carriesRays415(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesRays415(document)))
+  ) {
+    return "A ruleset whose entries roll a ray for each target (rays) requires schemaVersion 2 and capabilityApi 1.415 or newer";
+  }
   // Zones that forbid teleporting, 1.414.
   if (
     !declaresApi(414) &&

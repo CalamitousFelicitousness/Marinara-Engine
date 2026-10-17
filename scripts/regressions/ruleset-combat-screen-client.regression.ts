@@ -849,6 +849,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["skip", say({ type: "skip", actorId: "lurker", reason: "daze" })],
     ["resized", say({ type: "resized", targetId: "lurker", size: "large", label: "Large" })],
     ["compelled", say({ type: "compelled", actorId: "lurker", condition: "incapacitated", roll: 2, does: "nothing" })],
+    ["ray", say({ type: "ray", actorId: "brenna", targetId: "lurker", label: "Prismatic Spray", ray: "Red", roll: 1 })],
     [
       "steered",
       say({

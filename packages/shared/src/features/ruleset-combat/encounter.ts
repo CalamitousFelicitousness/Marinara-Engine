@@ -2904,6 +2904,8 @@ function mechanicsAction(
   if (mechanics.beforeFight) action.beforeFight = true;
   // Steering a condition it put on (1.411): Compulsion.
   if (mechanics.steers) action.steers = mechanics.steers;
+  // A ray rolled for each target (1.415): Prismatic Spray.
+  if (mechanics.rays) action.rays = structuredClone(mechanics.rays);
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.
   if (mechanics.alters) {
     const alters = mechanics.alters;

@@ -5594,6 +5594,41 @@ const catalogMechanicsObject = z
      *  point, every holder of this condition its user put on is steered toward (or away from) there.
      *  Offered only while somebody holds it from them. 5e's Compulsion, its bonus action. */
     steers: sheetId.optional(),
+    /** A table rolled for each target (Capability API 1.415), its row the ray that strikes them: each
+     *  row deals `amount` as its own `damageType` (none without one), puts on those of `applies` it
+     *  names, and `again` strikes that many more rays, landing on it again rolled over. Each target
+     *  throws `save` once, which every ray striking them reads. 5e's Prismatic Spray. */
+    rays: z
+      .object({
+        dice: catalogDice,
+        rows: z
+          .array(
+            z
+              .object({
+                atMost: z.number().int().min(1).max(100),
+                label: promptSafeText(40),
+                damageType: promptSafeText(40).optional(),
+                applies: z.array(sheetId).min(1).max(6).optional(),
+                again: z.number().int().min(1).max(3).optional(),
+              })
+              .strict(),
+          )
+          .min(2)
+          .max(12)
+          .superRefine((rows, ctx) => {
+            for (let index = 1; index < rows.length; index++) {
+              if (rows[index]!.atMost <= rows[index - 1]!.atMost) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: [index, "atMost"],
+                  message: "Rows run strictly up",
+                });
+              }
+            }
+          }),
+      })
+      .strict()
+      .optional(),
     /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
      *  uses (Capability API 1.253): 5e's Metamagic. Never on a menu of its own. One per use, unless
      *  it `joins` another. */
@@ -6020,6 +6055,41 @@ const catalogMechanicsSchema: z.ZodType<
         message: "A restore is on an entry that helps, a heal or a buff",
       });
     }
+  }
+  if (mechanics.rays) {
+    if (!mechanics.save) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rays"],
+        message: '"rays" are saved against once by each target: they go with "save"',
+      });
+    }
+    if (mechanics.attackRoll) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rays"],
+        message: '"rays" are saved against, so they go with no "attackRoll"',
+      });
+    }
+    const conditions = new Set((mechanics.applies ?? []).map((one) => one.condition));
+    mechanics.rays.rows.forEach((row, index) => {
+      if (row.damageType && !mechanics.amount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rays", "rows", index, "damageType"],
+          message: "A ray's \"damageType\" is for the entry's own amount, so it has one",
+        });
+      }
+      row.applies?.forEach((condition, at) => {
+        if (!conditions.has(condition)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["rays", "rows", index, "applies", at],
+            message: `A ray puts on only what the entry "applies": "${condition}" is not there`,
+          });
+        }
+      });
+    });
   }
   if (mechanics.steers && !mechanics.area) {
     ctx.addIssue({

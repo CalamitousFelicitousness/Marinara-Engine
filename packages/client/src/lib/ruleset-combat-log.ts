@@ -661,6 +661,15 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "ray":
+      // A ray rolled for one target (1.415): Prismatic Spray.
+      return key("ray", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        ray: event.ray,
+        roll: event.roll,
+      });
     case "steered":
       // Holders of a condition steered (1.411): Compulsion.
       return key("steered", {

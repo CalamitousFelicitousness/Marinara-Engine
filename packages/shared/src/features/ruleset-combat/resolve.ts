@@ -245,6 +245,7 @@ import type {
   RulesetFallResume,
   RulesetBlowKind,
   RulesetCombatAction,
+  RulesetCombatRays,
   RulesetCombatHealAdd,
   RulesetAttackedRecord,
   RulesetCombatCharge,
@@ -334,6 +335,9 @@ interface RulesetCombatContext {
   stirredAt?: number;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
+  /** Each target's one save against the rays striking them (1.415), read by every ray after the
+   *  first. */
+  raySaves?: Map<string, boolean>;
   /** Where further copies of the area were set down (1.178). */
   aimedAlso?: RulesetCombatCell[];
   /** A lasting area its endsSpells is aimed at instead of a creature (1.374). */
@@ -1658,6 +1662,42 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 /** A save, and a creature's legendary resistance (Capability API 1.317) turning a failure into a
  *  success while it has uses left: 5e's "If the dragon fails a saving throw, it can choose to succeed
  *  instead." A creature run by the Engine always chooses to. */
+/** The rows of an action's rays striking one target (1.415), each logged as it is rolled: a row that
+ *  strikes `again` rolls that many more, landing on it again rolled over. */
+function rayRows(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetCombatRays["rows"] {
+  const rays = action.rays!;
+  const dice = parseRulesetCombatDice(rays.dice);
+  if (!dice) return [];
+  const struck: RulesetCombatRays["rows"] = [];
+  const strike = (avoid?: RulesetCombatRays["rows"][number]) => {
+    // Rolled over while it lands on the row that sent it, but never for ever.
+    for (let tries = 0; tries < 20; tries++) {
+      const roll = rollAmount(ctx, dice).total;
+      const row = rays.rows.find((one) => roll <= one.atMost) ?? rays.rows[rays.rows.length - 1]!;
+      if (avoid && row === avoid) continue;
+      ctx.events.push({
+        type: "ray",
+        actorId: actor.id,
+        targetId: target.id,
+        label: action.label,
+        ray: row.label,
+        roll,
+      });
+      struck.push(row);
+      return row;
+    }
+    return undefined;
+  };
+  const first = strike();
+  if (first?.again) for (let more = 0; more < first.again; more++) strike(first);
+  return struck;
+}
+
 function rollSave(
   ctx: RulesetCombatContext,
   combatant: RulesetCombatant,
@@ -9745,6 +9785,28 @@ function resolveAction(
     });
     return null;
   }
+  // A ray rolled for each target, each struck as its rows say (1.415): Prismatic Spray.
+  if (action.rays && !ctx.raySaves) {
+    ctx.raySaves = new Map();
+    try {
+      for (const target of targets) {
+        for (const row of rayRows(ctx, actor, target, action)) {
+          if (row.again) continue;
+          const derived: RulesetCombatAction = { ...action };
+          delete derived.rays;
+          if (row.damageType && action.damage) derived.damage = { ...action.damage, type: row.damageType };
+          else delete derived.damage;
+          const applies = (action.applies ?? []).filter((one) => row.applies?.includes(one.condition));
+          if (applies.length) derived.applies = applies;
+          else delete derived.applies;
+          resolveAction(ctx, actor, derived, [target], payWith, undefined, styleId, spend);
+        }
+      }
+    } finally {
+      delete ctx.raySaves;
+    }
+    return null;
+  }
   // Creatures called beside it (1.325), and nothing else: Jars Burst.
   if (action.calls && !action.area && !action.damage) {
     // Held by its concentration (1.344): Conjure Animals.
@@ -11198,18 +11260,22 @@ function resolveActionBody(
         automatic: true,
       });
     } else if (action.save) {
-      saved = rollSave(
-        ctx,
-        target,
-        action.save.save,
-        action.save.difficulty,
-        actor.id,
-        action.save.ignoresCover ? null : saveFromFor(target),
-        against,
-        target.id === heightened
-          ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
-          : saveLean(ctx, target, action.save.modes),
-      );
+      // One save against every ray striking them (1.415).
+      saved =
+        ctx.raySaves?.get(target.id) ??
+        rollSave(
+          ctx,
+          target,
+          action.save.save,
+          action.save.difficulty,
+          actor.id,
+          action.save.ignoresCover ? null : saveFromFor(target),
+          against,
+          target.id === heightened
+            ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
+            : saveLean(ctx, target, action.save.modes),
+        );
+      ctx.raySaves?.set(target.id, saved);
       if (saved) noteSaved(ctx.state, actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();

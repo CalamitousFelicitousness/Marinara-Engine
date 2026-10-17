@@ -104,6 +104,14 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
   alternatives?: RulesetCombatDamageAlternative[];
 }
 
+/** A table rolled for each target of an action (1.415): the row it lands on is what strikes them.
+ *  Each row deals the action's amount as `damageType` (nothing without one) and puts on the
+ *  action's conditions it names; `again` rolls that many more, landing on it again rolled over. */
+export interface RulesetCombatRays {
+  dice: string;
+  rows: Array<{ atMost: number; label: string; damageType?: string; applies?: string[]; again?: number }>;
+}
+
 /** One amount a creature's action deals in place of its first, and when. */
 export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
   when: "twoHanded" | { selfHealthAtMost: number };
@@ -827,6 +835,8 @@ export interface RulesetCombatAction {
   beforeFight?: true;
   /** Aimed at a point, steers every holder of this condition its user put on there (1.411). */
   steers?: string;
+  /** A table rolled for each target, its row the ray that strikes them (1.415): Prismatic Spray. */
+  rays?: RulesetCombatRays;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.253):
    *  5e's Metamagic. Never on a menu of its own. */
   alters?: RulesetCombatAlter;
@@ -2415,6 +2425,8 @@ export type RulesetCombatEvent =
   /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
    *  `to`, or lost. */
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
+  /** A ray of a table rolled for one target (1.415): Prismatic Spray's colours. */
+  | { type: "ray"; actorId: string; targetId: string; label: string; ray: string; roll: number }
   /** Holders of a condition steered toward a point by whoever put it on (1.411): Compulsion. */
   | {
       type: "steered";

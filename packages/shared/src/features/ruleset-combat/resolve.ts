@@ -2364,6 +2364,8 @@ function applyConditionId(
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
+    // Where it was put on from (1.404), for a behavior measured from there: Symbol of Fear's glyph.
+    ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),

@@ -59635,7 +59635,8 @@
                               "own-checks-disadvantage",
                               "resist-all",
                               "cannot-heal",
-                              "cannot-heal-nonmagical"
+                              "cannot-heal-nonmagical",
+                              "cannot-harm"
                             ]
                           },
                           "minItems": 1,
@@ -60964,7 +60965,8 @@
                               "own-checks-disadvantage",
                               "resist-all",
                               "cannot-heal",
-                              "cannot-heal-nonmagical"
+                              "cannot-heal-nonmagical",
+                              "cannot-harm"
                             ]
                           },
                           "minItems": 1,
@@ -62480,7 +62482,8 @@
                                     "own-checks-disadvantage",
                                     "resist-all",
                                     "cannot-heal",
-                                    "cannot-heal-nonmagical"
+                                    "cannot-heal-nonmagical",
+                                    "cannot-harm"
                                   ]
                                 },
                                 "minItems": 1,
@@ -103531,7 +103534,8 @@
                     "cannot-target-source-side",
                     "cannot-approach-source",
                     "cannot-heal",
-                    "cannot-heal-nonmagical"
+                    "cannot-heal-nonmagical",
+                    "cannot-harm"
                   ]
                 },
                 "maxItems": 12,
@@ -104511,7 +104515,8 @@
                         "cannot-target-source-side",
                         "cannot-approach-source",
                         "cannot-heal",
-                        "cannot-heal-nonmagical"
+                        "cannot-heal-nonmagical",
+                        "cannot-harm"
                       ]
                     },
                     "minItems": 1,
@@ -106180,7 +106185,8 @@
                         "cannot-target-source-side",
                         "cannot-approach-source",
                         "cannot-heal",
-                        "cannot-heal-nonmagical"
+                        "cannot-heal-nonmagical",
+                        "cannot-harm"
                       ]
                     }
                   ]
@@ -110340,6 +110346,10 @@
                     "minimum": 1,
                     "maximum": 1000
                   },
+                  "from": {
+                    "type": "string",
+                    "const": "point"
+                  },
                   "drops": {
                     "type": "object",
                     "properties": {
@@ -112168,7 +112178,8 @@
                     "own-checks-disadvantage",
                     "resist-all",
                     "cannot-heal",
-                    "cannot-heal-nonmagical"
+                    "cannot-heal-nonmagical",
+                    "cannot-harm"
                   ]
                 },
                 "maxItems": 12,
@@ -113684,7 +113695,8 @@
                         "cannot-target-source-side",
                         "cannot-approach-source",
                         "cannot-heal",
-                        "cannot-heal-nonmagical"
+                        "cannot-heal-nonmagical",
+                        "cannot-harm"
                       ]
                     }
                   ]

@@ -1374,6 +1374,9 @@ export interface RulesetTrackedCondition {
   /** Removed once the action that opened its window finishes (1.131). */
   thisAction?: true;
   condition: string;
+  /** The point it was put on from (1.404), where its behavior is measured `from` there: a zone's
+   *  middle. */
+  at?: RulesetCombatCell;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
   saveEnds?: RulesetCombatSaveEnds;

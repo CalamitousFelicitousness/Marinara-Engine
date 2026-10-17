@@ -9085,6 +9085,10 @@ const combatConditionEffectSchema = z.enum([
    *  1.261), in a fight or out of it, a rest included: a diseased giant rat's bite. A heal is
    *  magical when its action's qualities say "magical" (a spell, a potion tagged so). */
   "cannot-heal-nonmagical",
+  /** Its holder may not attack, nor use on anybody what harms them (Capability API 1.404): no
+   *  attack, no harmful entry, nothing aimed at a foe, no grab or shove, no area that deals damage,
+   *  and no strike as somebody leaves its reach. 5e's Symbol of Hopelessness. */
+  "cannot-harm",
 ]);
 export const RULESET_COMBAT_CONDITION_EFFECTS = combatConditionEffectSchema.options;
 
@@ -9697,6 +9701,7 @@ export interface RulesetConditionBehavior {
   moves?: "away" | "toward";
   keepsOut?: number;
   keepsIn?: number;
+  from?: "point";
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
 }
@@ -9743,6 +9748,10 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
     /** Once within this distance of whoever put it on, it never walks farther off than this
      *  (Capability API 1.274): Sympathy's "can't willingly move away from the target". */
     keepsIn: z.number().int().min(1).max(1000).optional(),
+    /** `moves` and `keepsOut` are measured from the point it was put on from, rather than from
+     *  whoever put it on (Capability API 1.404): a zone's middle, or where an area was aimed. Put on
+     *  from nowhere in particular, from whoever put it on. 5e's Symbol of Fear, fleeing the glyph. */
+    from: z.literal("point").optional(),
     /** It lets fall what it holds (Capability API 1.266): each worn item taking one of `slots`
      *  (a hand), each item and each stat block action carrying one of `tags`, as the condition goes
      *  on or as each of its holder's turns starts. What falls lies where they stood: it does nothing
@@ -9798,6 +9807,10 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
   .refine((behavior) => !behavior.onlyWhenStuck || behavior.only?.includes("move"), {
     message: '"onlyWhenStuck" goes with "only" naming "move"',
     path: ["onlyWhenStuck"],
+  })
+  .refine((behavior) => !behavior.from || behavior.moves || behavior.keepsOut !== undefined, {
+    message: '"from" says where "moves" or "keepsOut" is measured from, so it goes with one of them',
+    path: ["from"],
   });
 
 /** Conditions a condition's holder spreads around them (1.263): 5e's Aura of Protection. */

@@ -192,6 +192,7 @@ export {
   rulesetFootprint,
   rulesetFootprintAt,
   rulesetFootprintsSee,
+  rulesetBehaviorAnchor,
   rulesetGap,
   rulesetGapFrom,
   rulesetNearestCell,

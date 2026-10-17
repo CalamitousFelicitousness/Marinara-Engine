@@ -2194,6 +2194,19 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A condition that keeps its holder from harming anybody, or a behavior measured from a point
+ *  (1.404): Symbol of Hopelessness and Fear. */
+function carriesHarmlessOrPoint404(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHarmlessOrPoint404(one, depth + 1));
+  if (value === "cannot-harm") return true;
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.from !== undefined) return true;
+  if (Array.isArray(record.effects) && record.effects.includes("cannot-harm")) return true;
+  return featureValues(record).some((one) => carriesHarmlessOrPoint404(one, depth + 1));
+}
+
 /** A zone that outlasts its caster (1.403): Glyph of Warding, Symbol. */
 function carriesOutlasts403(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5895,6 +5908,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions that keep their holder from harming, or behaviors measured from a point, 1.404.
+  if (
+    !declaresApi(404) &&
+    (carriesHarmlessOrPoint404(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHarmlessOrPoint404(document)))
+  ) {
+    return "A ruleset whose conditions keep their holder from harming anybody (cannot-harm) or measure a behavior from a point (from) requires schemaVersion 2 and capabilityApi 1.404 or newer";
+  }
   // Zones that outlast their caster, 1.403.
   if (
     !declaresApi(403) &&

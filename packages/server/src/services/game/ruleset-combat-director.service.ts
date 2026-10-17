@@ -69,6 +69,7 @@ import {
   rulesetFootprint,
   rulesetFootprintAt,
   rulesetSpanOf,
+  rulesetBehaviorAnchor,
   rulesetGapFrom,
   rulesetSheetBuildsByName,
   readProposedRulesetSheet,
@@ -1895,11 +1896,9 @@ function rulesetDrivenFrom(
   for (const entry of rulesetActiveConditions(definition, definition.combat, actor, encounter)) {
     const moves = entry.behavior?.moves;
     if (!moves) continue;
-    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
-    const source = sourceId ? rulesetCombatant(encounter, sourceId) : undefined;
-    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
-      return { source, moves };
-    }
+    // From whoever put it on, or the point it was put on from (1.404).
+    const source = rulesetBehaviorAnchor(encounter, actor, entry.condition, entry.behavior);
+    if (source) return { source, moves };
   }
   return null;
 }

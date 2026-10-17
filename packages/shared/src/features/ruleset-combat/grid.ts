@@ -72,6 +72,25 @@ export function rulesetPositionOf(combatant: RulesetCombatant | undefined): Rule
   return { x: combatant.x, y: combatant.y };
 }
 
+/** What a condition's behavior is measured from (1.264): whoever put it on, standing on the board and
+ *  not its holder; or, `from` the point (1.404), where it was put on from, as one cell standing there.
+ *  Nothing when there is nothing to measure from. */
+export function rulesetBehaviorAnchor(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  condition: string,
+  behavior: { from?: "point" } | undefined,
+): RulesetCombatant | undefined {
+  const tracked = holder.tracked.find((entry) => entry.condition === condition);
+  if (behavior?.from === "point" && tracked?.at) {
+    return { id: "", x: tracked.at.x, y: tracked.at.y } as unknown as RulesetCombatant;
+  }
+  const source = tracked?.source ? rulesetCombatant(state, tracked.source) : undefined;
+  return source && source.id !== holder.id && rulesetPositionOf(source) && rulesetCombatStanding(source)
+    ? source
+    : undefined;
+}
+
 /** How many cells a side somebody fills (1.194): one unless their size says more. */
 export function rulesetSpanOf(combatant: { span?: number } | undefined): number {
   const span = combatant?.span;
@@ -741,7 +760,8 @@ export function rulesetThreateningEnemies(
     // Nobody strikes through a sphere (1.314).
     if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
-    if (effects.has("cannot-act") || effects.has("cannot-react")) continue;
+    // Nor one who may harm nobody (1.404).
+    if (effects.has("cannot-act") || effects.has("cannot-react") || effects.has("cannot-harm")) continue;
     const at = rulesetPositionOf(combatant);
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
@@ -829,11 +849,8 @@ export function rulesetReachableCells(
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
     const moves = entry.behavior?.moves;
     if (!moves) continue;
-    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
-    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
-    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
-      driven.push({ source, start: rulesetGap(actor, source), moves });
-    }
+    const source = rulesetBehaviorAnchor(state, actor, entry.condition, entry.behavior);
+    if (source) driven.push({ source, start: rulesetGap(actor, source), moves });
   }
   // Kept out of a ring around whoever put a condition on (1.266): inside it, only steps further off;
   // and somewhere to stop only outside it while there is anywhere outside it to stop.
@@ -841,11 +858,8 @@ export function rulesetReachableCells(
   for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
     const keepsOut = entry.behavior?.keepsOut;
     if (keepsOut === undefined || !combat.distance) continue;
-    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
-    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
-    if (source && source.id !== actor.id && rulesetPositionOf(source) && rulesetCombatStanding(source)) {
-      kept.push({ source, ring: Math.floor(keepsOut / combat.distance.perCell) });
-    }
+    const source = rulesetBehaviorAnchor(state, actor, entry.condition, entry.behavior);
+    if (source) kept.push({ source, ring: Math.floor(keepsOut / combat.distance.perCell) });
   }
 
   const keptBy = rulesetKeptBy(definition, state, actor);

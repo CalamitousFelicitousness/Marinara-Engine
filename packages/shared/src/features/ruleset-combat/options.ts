@@ -1597,6 +1597,18 @@ export function rulesetUsedOnMeans(
   return used.includes(name) && usedOnNameUnique(state, combatant);
 }
 
+/** Whether using it harms somebody (1.404): an attack, a harmful entry, one aimed at foes, a grab or
+ *  shove (breaking free is not), or an area that deals damage. */
+export function rulesetActionHarms(action: RulesetCombatAction): boolean {
+  return (
+    action.kind === "attack" ||
+    !!action.harmful ||
+    action.targets.side === "enemy" ||
+    (!!action.contest && !action.contest.from) ||
+    (!!action.area && !!action.damage)
+  );
+}
+
 /** Whoever this combatant may not point anything at: the source of a condition on them that says
  *  so. A charm keeps a character from turning on whoever charmed them, in the ruleset's own words. */
 export function rulesetForbiddenTargets(
@@ -2464,6 +2476,10 @@ function optionFrom(
   if (action.reaction && !atItsMoment) return null;
   // Spent when its holder's roll fails, never chosen (1.249).
   if (action.rescue) return null;
+  // Nothing that harms, for one who may harm nobody (1.404): Symbol of Hopelessness.
+  if (rulesetActionHarms(action) && rulesetCombatEffects(definition, combat, actor, state).has("cannot-harm")) {
+    return null;
+  }
   // Chosen with what it changes, never on its own (1.253): Metamagic.
   if (action.alters) return null;
   // A sequence whose parts are all gone, or all spent, would spend a budget and do nothing.

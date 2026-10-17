@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A damage change counting with no attack roll too (1.418): Bestow Curse's extra necrotic. */
+function carriesAlsoUnrolled418(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAlsoUnrolled418(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.alsoUnrolled !== undefined) return true;
+  return featureValues(record).some((one) => carriesAlsoUnrolled418(one, depth + 1));
+}
+
 /** A duration set by the cost paid, or concentration only below a step (1.417): Bestow Curse. */
 function carriesBySteps417(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6042,6 +6052,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Damage changes counting with no attack roll too, 1.418.
+  if (
+    !declaresApi(418) &&
+    (carriesAlsoUnrolled418(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAlsoUnrolled418(document)))
+  ) {
+    return "A ruleset whose damage changes count with no attack roll too (alsoUnrolled) requires schemaVersion 2 and capabilityApi 1.418 or newer";
+  }
   // Durations set by the cost paid, and concentration only below a step, 1.417.
   if (
     !declaresApi(417) &&

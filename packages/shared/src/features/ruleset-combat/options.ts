@@ -2356,7 +2356,9 @@ export function rulesetDamageModifiers(
   taken = false,
 ): RulesetConditionModifier[] {
   const combat = definition.combat;
-  if (!combat || !action.damage || action.toHit === undefined || action.autoHit || action.save) return [];
+  if (!combat || !action.damage) return [];
+  // No attack roll (1.418): only a change that says it counts there too.
+  const unrolled = action.toHit === undefined || !!action.autoHit || !!action.save;
   const weapon = rulesetWeaponBlow(action);
   const holder = taken ? target : actor;
   if (!holder) return [];
@@ -2364,6 +2366,7 @@ export function rulesetDamageModifiers(
     ({ condition, level, item, modifier }) => {
       // Only a fall's own damage (1.360): Slow Fall.
       if (modifier.falls) return false;
+      if (unrolled && !modifier.alsoUnrolled) return false;
       if (modifier.attacks && modifier.attacks !== "any" && modifier.attacks !== (weapon ? "weapon" : "spell"))
         return false;
       if (modifier.blow && modifier.blow !== rulesetBlowKind(state, actor, target ?? actor, action)) return false;

@@ -39069,6 +39069,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "alsoUnrolled": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "flat": {
                                 "type": "integer",
                                 "minimum": -100,
@@ -59977,6 +59981,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "alsoUnrolled": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "flat": {
                                 "type": "integer",
                                 "minimum": -100,
@@ -61304,6 +61312,10 @@
                                 "maxLength": 80
                               },
                               "fromSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "alsoUnrolled": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -62821,6 +62833,10 @@
                                       "maxLength": 80
                                     },
                                     "fromSource": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "alsoUnrolled": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -69162,6 +69178,10 @@
                                     "maxLength": 80
                                   },
                                   "fromSource": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "alsoUnrolled": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -82653,6 +82673,10 @@
                                           "maxLength": 80
                                         },
                                         "fromSource": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "alsoUnrolled": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -104232,6 +104256,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "alsoUnrolled": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "flat": {
                       "type": "integer",
                       "minimum": -100,
@@ -112941,6 +112969,10 @@
                       "maxLength": 80
                     },
                     "fromSource": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "alsoUnrolled": {
                       "type": "boolean",
                       "const": true
                     },

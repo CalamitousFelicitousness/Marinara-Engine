@@ -9335,6 +9335,10 @@ const combatModifierSchema = z
     abilities: z.array(sheetId).min(1).max(12).optional(),
     damageType: z.string().trim().min(1).max(80).optional(),
     fromSource: z.literal(true).optional(),
+    /** Counts on damage with no attack roll too (Capability API 1.418): a save's, or one that simply
+     *  lands. Without it a damage change counts on attack hits only. 5e's Bestow Curse, "your
+     *  attacks and spells deal an extra 1d8 necrotic damage to the target". */
+    alsoUnrolled: z.literal(true).optional(),
     flat: z.number().int().min(-100).max(100).optional(),
     dice: catalogDice.optional(),
     minus: z.literal(true).optional(),
@@ -9472,7 +9476,7 @@ const combatModifierSchema = z
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
-    for (const key of ["damageType", "fromSource"] as const) {
+    for (const key of ["damageType", "fromSource", "alsoUnrolled"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
     }
     for (const key of ["attacks", "blow"] as const) {

@@ -1,4 +1,4 @@
-import { applyClockCommandTags, buildChatImageGenerationRecord, type RulesetClocks } from "@marinara-engine/shared";
+import { applyClockCommandTags, type RulesetClocks } from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -147,6 +147,7 @@ import {
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
   estimateTextTokens,
+  buildChatImageGenerationRecord,
   diffChatVariables,
   mergeChatVariableChanges,
   removeCopiedPromptGuidance,

@@ -45341,7 +45341,8 @@
                           "type": "string",
                           "enum": [
                             "roll",
-                            "after"
+                            "after",
+                            "none"
                           ]
                         },
                         "rounds": {
@@ -45479,6 +45480,10 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 9
+                    },
+                    "appliesToCalled": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "repeats": {
                       "type": "object",
@@ -75485,7 +75490,8 @@
                               "type": "string",
                               "enum": [
                                 "roll",
-                                "after"
+                                "after",
+                                "none"
                               ]
                             },
                             "rounds": {
@@ -75623,6 +75629,10 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 9
+                        },
+                        "appliesToCalled": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "sustains": {
                           "type": "object",
@@ -89055,7 +89065,8 @@
                                     "type": "string",
                                     "enum": [
                                       "roll",
-                                      "after"
+                                      "after",
+                                      "none"
                                     ]
                                   },
                                   "rounds": {
@@ -89193,6 +89204,10 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 9
+                              },
+                              "appliesToCalled": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "sustains": {
                                 "type": "object",

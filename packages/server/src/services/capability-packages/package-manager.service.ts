@@ -2247,6 +2247,18 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** What an entry applies put on what it calls, or called objects with no turns (1.426): Antipathy on
+ *  an object. */
+function carriesAppliesToCalled426(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAppliesToCalled426(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.appliesToCalled !== undefined) return true;
+  if (plainRecord(record.calls)?.initiative === "none") return true;
+  return featureValues(record).some((one) => carriesAppliesToCalled426(one, depth + 1));
+}
+
 /** A condition held off on some terrains (1.425): the aboleth's curse, off underwater. */
 function carriesOffTerrain425(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6129,6 +6141,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What an entry applies put on what it calls, and called objects with no turns, 1.426.
+  if (
+    !declaresApi(426) &&
+    (carriesAppliesToCalled426(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesToCalled426(document)))
+  ) {
+    return "A ruleset whose entries put what they apply on what they call, or call what takes no turns (appliesToCalled, initiative none), requires schemaVersion 2 and capabilityApi 1.426 or newer";
+  }
   // Conditions held off on some terrains, 1.425.
   if (
     !declaresApi(425) &&

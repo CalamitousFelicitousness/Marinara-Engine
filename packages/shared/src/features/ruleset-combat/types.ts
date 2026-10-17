@@ -454,7 +454,7 @@ export interface RulesetStatBlockAction {
     count?: RulesetCombatAmount;
     /** Or its options, picked as it is used (1.393): Summon Demon. */
     options?: RulesetCatalogCalls["options"];
-    initiative?: "roll" | "after";
+    initiative?: "roll" | "after" | "none";
     rounds?: number;
     endsWithCaller?: true;
     cantCall?: true;
@@ -845,6 +845,8 @@ export interface RulesetCombatAction {
   duplicatedBy?: string;
   /** Its concentration holds only when paid fewer steps of higher cost than this (1.417). */
   concentrationBelowStep?: number;
+  /** What it applies goes on what it calls, not on whoever it is aimed at (1.426): Antipathy. */
+  appliesToCalled?: true;
   /** Aimed at a point, steers every holder of this condition its user put on there (1.411). */
   steers?: string;
   /** A table rolled for each target, its row the ray that strikes them (1.415): Prismatic Spray. */
@@ -1073,6 +1075,8 @@ export interface RulesetCombatAction {
     creature: { catalogId: string; entryId: string };
     count: RulesetCombatAmount;
     after?: true;
+    /** They take no turns (1.426): an object, Antipathy's. */
+    turnless?: true;
     /** They leave once this many rounds have passed, at their caller's turn (1.344). */
     rounds?: number;
     /** Their count once over again for each this many steps of higher cost paid (1.349). */
@@ -1554,6 +1558,9 @@ export interface RulesetCombatant {
   calledUntil?: number;
   /** They leave as soon as their caller is out (1.393). */
   calledEndsWithCaller?: true;
+  /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
+   *  standing for a fight's end. */
+  turnless?: true;
   /** Sent away (1.344): off the board and out of the fight, as if never there. */
   dismissed?: true;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and

@@ -7681,6 +7681,20 @@ function callCreatures(
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+  // What it puts on goes on them (1.426): Antipathy's condition on its object, the kind remembered.
+  if (action.appliesToCalled) {
+    for (const id of ids) {
+      const called = rulesetCombatant(ctx.state, id);
+      if (!called) continue;
+      for (const applies of action.applies ?? []) {
+        applyConditionId(ctx, called, applies.condition, applies, {
+          sourceId: actor.id,
+          action: [action.id, action.label],
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+        });
+      }
+    }
+  }
 }
 
 /** Health regained as a turn starts (1.346): Regeneration, Survivor. Stopped since its last turn by
@@ -12024,7 +12038,8 @@ function resolveActionBody(
         !target.defeated &&
         healthNow <= action.killsAtMost;
       if (slain) slay(ctx, target, actor.id, action.label);
-      for (const applies of slain ? [] : (action.applies ?? [])) {
+      // Not on whoever it catches where it goes on what it calls (1.426).
+      for (const applies of slain || action.appliesToCalled ? [] : (action.applies ?? [])) {
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
@@ -12783,7 +12798,9 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   const enemies = state.combatants.filter((combatant) => combatant.side === "enemy");
   const party = state.combatants.filter((combatant) => combatant.side === "party");
   // Down at 0 while it may regenerate (1.346), a troll is not out of it yet.
-  const out = (combatant: RulesetCombatant) => !rulesetCombatStanding(combatant) && !combatant.regrowing;
+  // An object called to take no turns (1.426) keeps no side standing.
+  const out = (combatant: RulesetCombatant) =>
+    combatant.turnless || (!rulesetCombatStanding(combatant) && !combatant.regrowing);
   if (enemies.length > 0 && enemies.every(out)) return "victory";
   if (party.length > 0 && party.every(out)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.

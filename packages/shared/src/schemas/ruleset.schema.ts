@@ -5006,7 +5006,9 @@ export const catalogCallsSchema = z
     from: catalogFromSchema.optional(),
     upTo: calledUpTo.optional(),
     options: calledOptionsSchema.optional(),
-    initiative: z.enum(["roll", "after"]).optional(),
+    /** `"none"` (Capability API 1.426): they take no turns and keep no side standing, an object the
+     *  entry is cast on: 5e's Antipathy/Sympathy's target object or area. */
+    initiative: z.enum(["roll", "after", "none"]).optional(),
     rounds: z.number().int().min(1).max(14400).optional(),
     /** Its count once over again for each this many steps of higher cost it is paid with (Capability
      *  API 1.349): 5e's Conjure Animals, twice as many with a 5th-level slot, three times with 7th
@@ -5456,6 +5458,10 @@ const catalogMechanicsObject = z
      *  (Capability API 1.417): paid this many or more, nobody concentrates on it. Bestow Curse from
      *  a 5th-level slot is `2` on its 3rd-level cost. */
     concentrationBelowStep: z.number().int().min(1).max(9).optional(),
+    /** What it `applies` goes on the creatures it `calls`, the kind named as it was used remembered,
+     *  in place of on anybody it is aimed at or catches (Capability API 1.426): 5e's Antipathy/Sympathy
+     *  cast on an object or an area, whose condition's aura then spreads from it. */
+    appliesToCalled: z.literal(true).optional(),
     /** Made again on later turns while its user concentrates on it (Capability API 1.310), on
      *  `budget`, with no cost and no new concentration, at the cost it was cast at: Vampiric Touch,
      *  Call Lightning, Heat Metal (a bonus action). `notSaved`: never at a creature that succeeded on a
@@ -6137,6 +6143,13 @@ const catalogMechanicsSchema: z.ZodType<
           });
         }
       });
+    });
+  }
+  if (mechanics.appliesToCalled && !(mechanics.calls && mechanics.applies?.length)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["appliesToCalled"],
+      message: '"appliesToCalled" puts what it "applies" on what it "calls": it goes with both',
     });
   }
   if (mechanics.concentrationBelowStep && !mechanics.concentration) {

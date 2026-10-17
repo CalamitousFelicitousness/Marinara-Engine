@@ -105,6 +105,11 @@ export function rulesetCallCreatures(
   // this round's turn has passed is next round's.
   const order = state.order;
   for (const combatant of came) {
+    // An object takes no turn (1.426).
+    if (calls.turnless) {
+      combatant.turnless = true;
+      continue;
+    }
     let place: number;
     if (calls.after) {
       combatant.initiative = caller.initiative;

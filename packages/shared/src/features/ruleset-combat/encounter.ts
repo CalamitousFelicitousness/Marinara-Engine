@@ -3065,6 +3065,8 @@ function mechanicsAction(
   if (mechanics.concentration && mechanics.concentrationBelowStep) {
     action.concentrationBelowStep = mechanics.concentrationBelowStep;
   }
+  // What it puts on goes on what it calls (1.426): Antipathy on an object.
+  if (mechanics.appliesToCalled) action.appliesToCalled = true;
   if (mechanics.ends) {
     action.ends = {
       // A kind named in place of conditions is every condition of that kind (1.258): one disease.
@@ -4699,6 +4701,7 @@ function fillCatalogCalls(
       creature: { catalogId: catalogId!, entryId: entryId! },
       count,
       ...(calls.initiative === "after" ? { after: true as const } : {}),
+      ...(calls.initiative === "none" ? { turnless: true as const } : {}),
       ...(calls.rounds ? { rounds: calls.rounds } : {}),
       ...(calls.timesPerSteps ? { timesPerSteps: calls.timesPerSteps } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
@@ -5114,6 +5117,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         creature: { catalogId: catalogId!, entryId: entryId! },
         count: { ...source.calls.count },
         ...(source.calls.initiative === "after" ? { after: true as const } : {}),
+        ...(source.calls.initiative === "none" ? { turnless: true as const } : {}),
         ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
         ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
         ...(source.calls.cantCall ? { cantCall: true as const } : {}),

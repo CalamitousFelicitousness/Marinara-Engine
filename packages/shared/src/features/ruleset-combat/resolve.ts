@@ -300,6 +300,7 @@ import {
   rulesetZoneOccupants,
   rulesetZoneSideOccupants,
   rulesetSyncZoneWalls,
+  rulesetZoneLights,
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
@@ -3463,19 +3464,25 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   if (actor.zones.length === 0) delete actor.zones;
   // Off the board before it goes off (1.183), so nothing its blast sets moving can end it twice.
   for (const zone of ended) {
-    detonate(ctx, actor, zone);
+    // Gone off and staying as what it becomes (1.400): back on the board.
+    if (detonate(ctx, actor, zone)) {
+      actor.zones = [...(actor.zones ?? []), zone];
+      continue;
+    }
     ctx.events.push({ type: "zone", actorId: actor.id, label: zone.label, outcome: "ended" });
   }
 }
 
 /** A zone that goes off as it ends (1.183): the entry's own effect, once, on everybody in it, with
- *  what it has grown by added to its amount. Its caster's, though they may be down by now. */
-function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): void {
+ *  what it has grown by added to its amount. Its caster's, though they may be down by now. Whether it
+ *  stays, as what it `becomes` (1.400). */
+function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): boolean {
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const rule = action?.zone?.detonates;
-  if (!action || !rule) return;
+  // Once gone off and stayed (1.400), its time running out just ends it.
+  if (!action || !rule || zone.became) return false;
   // Set off only by somebody entering it (1.398): its time running out just ends it.
-  if (rule.entered && !zone.tripped) return;
+  if (rule.entered && !zone.tripped) return false;
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "detonated" });
   const middle = zone.at;
   const ids = !ctx.state.board?.grid
@@ -3520,6 +3527,18 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
       rulesetZoneCells(ctx.state, caster, zone),
     );
   }
+  // It stays (1.400): a burst of its own around its middle, for its own rounds, striking at its own
+  // triggers. Symbol's sphere.
+  const becomes = rule.becomes;
+  if (!becomes) return false;
+  zone.became = true;
+  delete zone.tripped;
+  zone.rounds = becomes.rounds;
+  zone.triggers = [...becomes.triggers];
+  const grid = ctx.state.board?.grid;
+  if (grid && middle) zone.cells = rulesetAreaCells("burst", becomes.size, middle, middle, grid);
+  else zone.held = targets.map((one) => one.id);
+  return true;
 }
 
 /** Every obscuring zone a wind reaches, where it is `dispersed`, blown away (1.286): 5e's Gust of
@@ -3586,7 +3605,7 @@ function dispelDarkness(ctx: RulesetCombatContext): void {
   );
   if (darks.length === 0) return;
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
-    if (!action.zone?.lights || !caster.zones?.includes(zone)) continue;
+    if (!rulesetZoneLights(zone, action) || !caster.zones?.includes(zone)) continue;
     const level = rulesetPaidLevel(ctx.definition, caster, action, zone.payWith);
     const cells = rulesetZoneCells(ctx.state, caster, zone);
     if (!darks.some((dark) => level <= dark.upTo && cells.some((cell) => dark.cells.has(key(cell))))) continue;
@@ -7776,6 +7795,7 @@ function zonesEntered(
     const glyph = action.zone?.detonates;
     if (
       glyph?.entered &&
+      !zone.became &&
       mover.id !== caster.id &&
       caster.zones?.includes(zone) &&
       !was.zone.has(mover.id) &&
@@ -7787,7 +7807,7 @@ function zonesEntered(
       continue;
     }
     // Stepping onto a bead (1.183): its save, or it goes off.
-    if (action.zone?.detonates?.touched && zone.at && rulesetFills(mover, zone.at)) {
+    if (action.zone?.detonates?.touched && !zone.became && zone.at && rulesetFills(mover, zone.at)) {
       if (!caster.zones?.includes(zone)) continue;
       const save = action.save;
       if (!save || !rollSave(ctx, mover, save.save, save.difficulty, caster.id, null, save.against)) {

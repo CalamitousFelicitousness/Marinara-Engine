@@ -2981,6 +2981,12 @@ export interface RulesetCatalogZone {
     entered?: true;
     by?: RulesetTargetIs;
     within?: number;
+    becomes?: {
+      size: number;
+      rounds: number;
+      triggers: Array<"enter" | "turn-start" | "turn-end">;
+      lights?: RulesetLightRadius;
+    };
   };
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
 }
@@ -3082,6 +3088,25 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
          *  unit, rather than only those in its cells (Capability API 1.398): Symbol's 60-foot sphere
          *  from a 10-foot glyph. */
         within: z.number().finite().gt(0).max(10000).optional(),
+        /** Once set off, it stays (Capability API 1.400): a burst of `size` around its middle, in the
+         *  ruleset's own unit, for `rounds`, doing the entry's own effect again at its `triggers` and
+         *  shedding `lights`. Symbol's sphere, glowing for ten minutes and striking whoever enters it
+         *  or ends a turn in it. */
+        becomes: z
+          .object({
+            size: z.number().finite().gt(0).max(10000),
+            rounds: z.number().int().min(1).max(1000),
+            triggers: z
+              .array(z.enum(["enter", "turn-start", "turn-end"]))
+              .min(1)
+              .max(3)
+              .refine((triggers) => new Set(triggers).size === triggers.length, {
+                message: "A trigger is named once",
+              }),
+            lights: lightRadiusSchema.optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .refine((detonates) => detonates.grows || detonates.touched || detonates.entered, {

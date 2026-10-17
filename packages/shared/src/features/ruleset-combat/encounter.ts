@@ -1883,6 +1883,21 @@ function lastChargeDie(
   };
 }
 
+/** A zone's light (1.297), in cells. */
+function zoneLightsInCells(
+  lights: NonNullable<RulesetCatalogZone["lights"]>,
+  perCell: number | undefined,
+): NonNullable<NonNullable<RulesetCombatAction["zone"]>["lights"]> {
+  const bright = lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0;
+  return {
+    bright,
+    dim: Math.max(0, rulesetInCells(lights.bright + lights.dim, perCell ?? 1) - bright),
+    ...(lights.reveals ? { reveals: true as const } : {}),
+    ...(lights.sunlight ? { sunlight: true as const } : {}),
+    ...(lights.shade ? { shade: true as const } : {}),
+  };
+}
+
 /** A zone as a fight holds it (1.172), in cells: a catalog entry's, an item use's, or a creature
  *  action's (1.324). */
 export function rulesetZoneAction(
@@ -1921,6 +1936,17 @@ export function rulesetZoneAction(
       ...(detonates.entered ? { entered: true as const } : {}),
       ...(detonates.by ? { by: structuredClone(detonates.by) } : {}),
       ...(detonates.within !== undefined ? { within: rulesetInCells(detonates.within, perCell ?? 1) } : {}),
+      // What it stays as once set off (1.400): Symbol's sphere.
+      ...(detonates.becomes
+        ? {
+            becomes: {
+              size: rulesetInCells(detonates.becomes.size, perCell ?? 1),
+              rounds: detonates.becomes.rounds,
+              triggers: [...detonates.becomes.triggers],
+              ...(detonates.becomes.lights ? { lights: zoneLightsInCells(detonates.becomes.lights, perCell) } : {}),
+            },
+          }
+        : {}),
     };
   }
   if (burns) {
@@ -1984,20 +2010,7 @@ export function rulesetZoneAction(
     };
   }
   // The light it sheds (1.297), in cells; and the magical darkness it ends.
-  const lights = zone.lights;
-  if (lights) {
-    out.lights = {
-      bright: lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0,
-      dim: Math.max(
-        0,
-        rulesetInCells(lights.bright + lights.dim, perCell ?? 1) -
-          (lights.bright > 0 ? rulesetInCells(lights.bright, perCell ?? 1) : 0),
-      ),
-      ...(lights.reveals ? { reveals: true as const } : {}),
-      ...(lights.sunlight ? { sunlight: true as const } : {}),
-      ...(lights.shade ? { shade: true as const } : {}),
-    };
-  }
+  if (zone.lights) out.lights = zoneLightsInCells(zone.lights, perCell);
   const dispels = zone.dispelsDark;
   if (dispels) {
     out.dispelsDark = {

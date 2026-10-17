@@ -38,6 +38,14 @@ export function rulesetStandingZones(
   );
 }
 
+/** The light a zone sheds now (1.297): what it `becomes` sheds once it has gone off (1.400). */
+export function rulesetZoneLights(
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): NonNullable<RulesetCombatAction["zone"]>["lights"] {
+  return zone.became ? action.zone?.detonates?.becomes?.lights : action.zone?.lights;
+}
+
 /** Whether a cell is one of a zone's. */
 export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: RulesetCombatCell | null): boolean {
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);

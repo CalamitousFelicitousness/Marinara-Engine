@@ -39,7 +39,7 @@ import type {
 } from "./types.js";
 import type { TacticalGrid } from "../tactical-combat/types.js";
 import { rulesetDroppedItems, rulesetItemOn } from "./ammo.js";
-import { rulesetStandingZones } from "./zones.js";
+import { rulesetStandingZones, rulesetZoneLights } from "./zones.js";
 
 /** How far each of the fight's senses reaches for this combatant, in cells: a creature's off its
  *  block, anybody else's as it was read off their sheet when the fight began. What their conditions
@@ -318,7 +318,7 @@ function lightSources(definition: RulesetDefinition, state: RulesetEncounterStat
   });
   // A zone's light (1.297), over its own cells from its middle: a point's, or its caster's.
   const zones = rulesetStandingZones(state).flatMap(({ caster, zone, action }): LightSource[] => {
-    const lights = action.zone?.lights;
+    const lights = rulesetZoneLights(zone, action);
     if (!lights) return [];
     const middle = rulesetZoneMiddles(state, caster, zone);
     const only = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));

@@ -40921,6 +40921,78 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "becomes": {
+                              "type": "object",
+                              "properties": {
+                                "size": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "rounds": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000
+                                },
+                                "triggers": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "enum": [
+                                      "enter",
+                                      "turn-start",
+                                      "turn-end"
+                                    ]
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 3
+                                },
+                                "lights": {
+                                  "type": "object",
+                                  "properties": {
+                                    "bright": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "dim": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "reveals": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "sunlight": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "magical": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "shade": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "bright",
+                                    "dim"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "size",
+                                "rounds",
+                                "triggers"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -55593,6 +55665,78 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "becomes": {
+                                    "type": "object",
+                                    "properties": {
+                                      "size": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "rounds": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000
+                                      },
+                                      "triggers": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "enter",
+                                            "turn-start",
+                                            "turn-end"
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      },
+                                      "lights": {
+                                        "type": "object",
+                                        "properties": {
+                                          "bright": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "dim": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "reveals": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "sunlight": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "magical": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "shade": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "bright",
+                                          "dim"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "size",
+                                      "rounds",
+                                      "triggers"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -70414,6 +70558,78 @@
                                   "exclusiveMinimum": 0,
                                   "maximum": 10000
                                 },
+                                "becomes": {
+                                  "type": "object",
+                                  "properties": {
+                                    "size": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "rounds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 1000
+                                    },
+                                    "triggers": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "enum": [
+                                          "enter",
+                                          "turn-start",
+                                          "turn-end"
+                                        ]
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 3
+                                    },
+                                    "lights": {
+                                      "type": "object",
+                                      "properties": {
+                                        "bright": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "dim": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "reveals": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "sunlight": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "magical": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "shade": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "bright",
+                                        "dim"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "size",
+                                    "rounds",
+                                    "triggers"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -83636,6 +83852,78 @@
                                         "type": "number",
                                         "exclusiveMinimum": 0,
                                         "maximum": 10000
+                                      },
+                                      "becomes": {
+                                        "type": "object",
+                                        "properties": {
+                                          "size": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "rounds": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 1000
+                                          },
+                                          "triggers": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "enum": [
+                                                "enter",
+                                                "turn-start",
+                                                "turn-end"
+                                              ]
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 3
+                                          },
+                                          "lights": {
+                                            "type": "object",
+                                            "properties": {
+                                              "bright": {
+                                                "type": "number",
+                                                "minimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "dim": {
+                                                "type": "number",
+                                                "minimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "reveals": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "sunlight": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "magical": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "shade": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "bright",
+                                              "dim"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "size",
+                                          "rounds",
+                                          "triggers"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       "$comment": {}
                                     },

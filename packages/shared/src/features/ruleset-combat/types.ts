@@ -3423,6 +3423,14 @@ export interface RulesetCombatZoneRule {
     by?: RulesetTargetIs;
     /** Going off, it reaches everybody within this many cells of its middle (1.398): Symbol. */
     within?: number;
+    /** Once set off, it stays as a burst of `size` cells for `rounds`, striking at its `triggers` and
+     *  shedding `lights` (1.400): Symbol's sphere. */
+    becomes?: {
+      size: number;
+      rounds: number;
+      triggers: RulesetCombatZoneRule["triggers"];
+      lights?: RulesetCombatZoneRule["lights"];
+    };
   };
   /** Damage of one of these types reaching it sets it alight (1.183); it burns away when its caster's
    *  turn comes round, dealing `amount` to whoever starts a turn in it meanwhile. */
@@ -3490,6 +3498,9 @@ export interface RulesetCombatZone {
   actionId: string;
   /** Set off by somebody entering it (1.398), so its ending goes off. */
   tripped?: true;
+  /** Gone off and stayed as what it `becomes` (1.400): it strikes at its new triggers and never goes
+   *  off again. */
+  became?: true;
   label: string;
   rounds: number;
   anchor: "point" | "caster";

@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A zone that stays as something else once set off (1.400): Symbol's sphere. */
+function carriesBecomes400(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBecomes400(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.detonates)?.becomes !== undefined) return true;
+  return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
+}
+
 /** A zone that keeps some kinds out, or in (1.399): Magic Circle, Hallow. */
 function carriesKeepsOut399(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5855,6 +5865,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that stay as something else once set off, 1.400.
+  if (
+    !declaresApi(400) &&
+    (carriesBecomes400(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBecomes400(document)))
+  ) {
+    return "A ruleset whose zones stay as something else once set off (detonates becomes) requires schemaVersion 2 and capabilityApi 1.400 or newer";
+  }
   // Zones that keep some kinds out or in, 1.399.
   if (
     !declaresApi(399) &&

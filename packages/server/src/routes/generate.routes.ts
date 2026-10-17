@@ -1,4 +1,4 @@
-import { applyClockCommandTags, type RulesetClocks } from "@marinara-engine/shared";
+import { applyClockCommandTags, TTS_SETTINGS_KEY, type RulesetClocks } from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -370,6 +370,7 @@ import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js";
 import { isSentSelfieAttachment } from "../services/generation/prompt-attachments.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { gameTtsEmotionIndicatorsEnabled } from "../services/tts-emotion-guidance.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
 import { applyRegexScriptsToPromptMessages } from "../services/regex/regex-application.js";
@@ -5300,6 +5301,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
+              ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(await appSettings.get(TTS_SETTINGS_KEY)),
               hasSceneModel,
               hudWidgets: gmCtx.hudWidgets,
               turnNumber: gameTurnNumber,

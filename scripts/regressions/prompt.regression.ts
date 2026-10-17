@@ -3447,14 +3447,12 @@ const cases: RegressionCase[] = [
       const context: MacroContext = { user: "Mari", char: "Dottore", characters: ["Dottore"], variables: {} };
       const literal = "Preserved summary detail. ".repeat(10_000);
       const options = { trimResult: false };
-      assert.equal(
-        resolveMacros(literal, context, options),
-        literal,
+      assert.ok(
+        resolveMacros(literal, context, options) === literal,
         "literal content must survive beyond 200k characters",
       );
-      assert.equal(
-        resolveMacros(`${literal}{{char}}`, context, options),
-        `${literal}Dottore`,
+      assert.ok(
+        resolveMacros(`${literal}${literal}{{char}}`, context, options) === `${literal}${literal}Dottore`,
         "reusing options must size each authored template independently",
       );
       assert.equal(

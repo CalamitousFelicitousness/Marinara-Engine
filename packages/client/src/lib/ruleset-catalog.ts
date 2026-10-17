@@ -785,11 +785,13 @@ export function formatCatalogMechanics(
     if (inside?.immune?.length) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneInsideImmune", { types: inside.immune.join(", ") }));
     }
-    if (mechanics.zone.forbids) {
+    if (mechanics.zone.forbids?.components) {
       parts.push(
         t("game.ruleset.catalog.mechanics.zoneForbids", { components: mechanics.zone.forbids.components.join(", ") }),
       );
     }
+    // No teleporting into, out of or within it (1.414).
+    if (mechanics.zone.forbids?.teleport) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
     if (mechanics.zone.wards) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneWards", { level: mechanics.zone.wards.maxLevel }));
     }

@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A zone that forbids teleporting (1.414): Hallow's Extradimensional Interference. */
+function carriesForbidsTeleport414(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesForbidsTeleport414(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.forbids)?.teleport !== undefined) return true;
+  return featureValues(record).some((one) => carriesForbidsTeleport414(one, depth + 1));
+}
+
 /** A zone whose inside works on a kind chosen as it is cast (1.413): Hallow. */
 function carriesInsideChooses413(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6002,6 +6012,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that forbid teleporting, 1.414.
+  if (
+    !declaresApi(414) &&
+    (carriesForbidsTeleport414(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesForbidsTeleport414(document)))
+  ) {
+    return "A ruleset whose zones forbid teleporting (forbids teleport) requires schemaVersion 2 and capabilityApi 1.414 or newer";
+  }
   // Zones whose inside works on a kind chosen as they are cast, 1.413.
   if (
     !declaresApi(413) &&

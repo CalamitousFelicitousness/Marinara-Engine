@@ -2833,9 +2833,20 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
     message: "Say what standing inside does: conditions, immune or both",
   });
 export interface RulesetForbids {
-  components: string[];
+  components?: string[];
+  teleport?: true;
 }
-const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z.object({ components: uniqueIds(8) }).strict();
+const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z
+  .object({
+    components: uniqueIds(8).optional(),
+    /** Nobody it works on inside teleports into it, out of it or within it, nor leaves the fight by
+     *  teleporting from inside it (Capability API 1.414): Hallow's Extradimensional Interference. */
+    teleport: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((forbids) => forbids.components || forbids.teleport, {
+    message: 'Say what it stops: "components", "teleport" or both',
+  });
 /** What a condition stops its holder using (1.179), and, from Capability API 1.385, casting from
  *  these catalogs or concentrating at all: 5e's Rage. */
 export interface RulesetConditionForbids {

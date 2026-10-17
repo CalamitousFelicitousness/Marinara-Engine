@@ -348,6 +348,32 @@ export function rulesetRoomAt(
   );
 }
 
+/** The cells of every standing zone that keeps this combatant from teleporting (1.414): one that
+ *  forbids it, which works on them inside (its kind, and not shrugged off). */
+function teleportBarred(definition: RulesetDefinition, state: RulesetEncounterState, actor: RulesetCombatant) {
+  const barred = new Set<string>();
+  for (const { caster, zone, action } of rulesetStandingZones(state)) {
+    const rule = action.zone;
+    if (!rule?.forbids?.teleport || zone.shrugged?.includes(actor.id)) continue;
+    const is = zone.insideIs ?? rule.inside?.is;
+    if (is && !rulesetTargetIs(definition, actor, is)) continue;
+    for (const cell of rulesetZoneCells(state, caster, zone)) barred.add(`${cell.x},${cell.y}`);
+  }
+  return barred;
+}
+
+/** Whether this combatant stands where it may not teleport from (1.414): Hallow. */
+export function rulesetTeleportBarredHere(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): boolean {
+  const at = rulesetPositionOf(actor);
+  if (!at) return false;
+  const barred = teleportBarred(definition, state, actor);
+  return rulesetFootprintAt(at, rulesetSpanOf(actor)).some((cell) => barred.has(`${cell.x},${cell.y}`));
+}
+
 /**
  * Where a teleport may go (1.276): every cell its user's corner may stand on within its distance of
  * where they stand now, nearest cell to nearest cell, with room for all of them and nobody there,
@@ -364,11 +390,15 @@ export function rulesetTeleportCells(
   if (!grid || !from) return [];
   const span = rulesetSpanOf(actor);
   const cells: RulesetCombatCell[] = [];
+  // Never out of, into or within ground that forbids it (1.414).
+  const barred = teleportBarred(definition, state, actor);
+  if (rulesetFootprintAt(from, span).some((cell) => barred.has(`${cell.x},${cell.y}`))) return [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       if (x === from.x && y === from.y) continue;
       const at = { x, y };
       if (rulesetGapFrom(at, span, actor) > teleport.distance) continue;
+      if (rulesetFootprintAt(at, span).some((cell) => barred.has(`${cell.x},${cell.y}`))) continue;
       if (!rulesetRoomAt(state, grid, actor, at)) continue;
       if (
         teleport.seen &&
@@ -2698,6 +2728,14 @@ function optionFrom(
   }
   // Where a teleport may go, and who may go along (1.276). With nowhere to go it is not offered.
   // Or out of the fight altogether, where it may leave it (1.279), the only way it goes off a board.
+  // Nor leaving the fight from ground that forbids teleporting (1.414).
+  if (
+    action.teleport?.leaves &&
+    rulesetTeleportBarredHere(definition, state, actor) &&
+    !rulesetDoesMoreThanTeleport(action)
+  ) {
+    return null;
+  }
   if (action.teleport && (positioned(state) || action.teleport.leaves)) {
     const cells = positioned(state) ? rulesetTeleportCells(definition, state, actor, action.teleport) : [];
     if (cells.length === 0 && !action.teleport.leaves) return null;

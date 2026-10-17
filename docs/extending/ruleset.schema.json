@@ -41393,11 +41393,12 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "teleport": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
-                          "required": [
-                            "components"
-                          ],
                           "additionalProperties": false
                         },
                         "wards": {
@@ -56246,11 +56247,12 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "teleport": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
-                                "required": [
-                                  "components"
-                                ],
                                 "additionalProperties": false
                               },
                               "wards": {
@@ -71235,11 +71237,12 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "teleport": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
-                              "required": [
-                                "components"
-                              ],
                               "additionalProperties": false
                             },
                             "wards": {
@@ -84638,11 +84641,12 @@
                                         "minItems": 1,
                                         "maxItems": 8
                                       },
+                                      "teleport": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
-                                    "required": [
-                                      "components"
-                                    ],
                                     "additionalProperties": false
                                   },
                                   "wards": {

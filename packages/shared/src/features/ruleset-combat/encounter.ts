@@ -536,14 +536,14 @@ export function rulesetActiveConditions(
   }
   const zoned = inside.flatMap(({ label, rule, zone }): RulesetActiveCondition[] => {
     const works = insideWorksOn(definition, combatant, zone, rule);
-    return (works && rule.inside?.immune) || rule.forbids
+    return (works && rule.inside?.immune) || rule.forbids?.components
       ? [
           {
             condition: label,
             zone: true,
             effects: [],
             ...(works && rule.inside?.immune ? { immune: [...rule.inside.immune] } : {}),
-            ...(rule.forbids ? { forbids: { components: [...rule.forbids.components] } } : {}),
+            ...(rule.forbids?.components ? { forbids: { components: [...rule.forbids.components] } } : {}),
           },
         ]
       : [];
@@ -2062,7 +2062,13 @@ export function rulesetZoneAction(
       ...(inside.save ? { save: { ...inside.save } } : {}),
     };
   }
-  if (zone.forbids) out.forbids = { components: [...zone.forbids.components] };
+  if (zone.forbids) {
+    out.forbids = {
+      ...(zone.forbids.components ? { components: [...zone.forbids.components] } : {}),
+      // No teleporting into, out of or within it (1.414).
+      ...(zone.forbids.teleport ? { teleport: true as const } : {}),
+    };
+  }
   if (zone.wards) {
     out.wards = {
       catalogs: [...zone.wards.catalogs],

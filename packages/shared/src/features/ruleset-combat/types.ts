@@ -3548,7 +3548,7 @@ export interface RulesetCombatZoneRule {
     save?: { save: string; ignoresUntilLeaves: true };
   };
   /** Components nothing used from inside it may need (1.179). */
-  forbids?: { components: string[] };
+  forbids?: { components?: string[]; teleport?: true };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */

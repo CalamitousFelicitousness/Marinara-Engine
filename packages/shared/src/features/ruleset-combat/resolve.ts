@@ -2464,6 +2464,8 @@ function applyConditionId(
       ? { type: "condition", targetId: target.id, condition, active: true, reason: "stacked", stacks }
       : { type: "condition", targetId: target.id, condition, active: true, reason: "applied" },
   );
+  // Its holder's health maximum raised while it holds, and their health with it (1.420): Aid.
+  if (applies.raisesMax) raiseMax(ctx, target, condition, applies.raisesMax, extra.steps ?? 0);
   // The shape it holds (1.342), in place of any other.
   if (shapeRule && applies.form) takeShape(ctx, target, condition, shapeRule, applies.form);
   // Inside whoever put it on (1.350): a gelatinous cube's engulfed, a purple worm's swallowed.
@@ -2495,6 +2497,33 @@ function applyConditionId(
       target.budgets[change.budget] = Math.max(0, target.budgets[change.budget]! + change.flat);
     }
   }
+}
+
+/** A condition's raise of its holder's health maximum (1.420), rolled as it goes on, and their
+ *  health raised by the same. A wound track has no maximum to raise. */
+function raiseMax(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  condition: string,
+  raises: NonNullable<RulesetCombatApplies["raisesMax"]>,
+  steps: number,
+): void {
+  if ("track" in ctx.combat.health) return;
+  const dice = raises.dice ? parseRulesetCombatDice(raises.dice) : null;
+  const amount = Math.max(
+    0,
+    (dice ? rollAmount(ctx, dice).total : 0) + (raises.flat ?? 0) + (raises.perStep ?? 0) * Math.max(0, steps),
+  );
+  if (amount <= 0) return;
+  if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "raise", condition, amount });
+  else if (target.health) {
+    const tracked = target.tracked.find((entry) => entry.condition === condition);
+    if (!tracked) return;
+    tracked.raisedMax = amount;
+    const now = healthOf(ctx, target);
+    target.health.value = Math.min(now.max, now.value + amount);
+  } else return;
+  ctx.events.push({ type: "raisedMax", targetId: target.id, condition, amount });
 }
 
 /** What a condition's `inside` says (1.350, 1.352), `true` read as nothing more. */
@@ -2944,6 +2973,10 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // The maximum it raised falls back, and health above it with it (1.420): Heroes' Feast.
+  if (removed?.raisedMax && target.health && !target.sheet) {
+    target.health.value = Math.min(target.health.value, healthOf(ctx, target).max);
+  }
   // The shape it held ends with it (1.342).
   if (target.shape?.condition === condition) leaveShape(ctx, target, reason);
   // Out of the sphere, nobody is carrying them (1.314).

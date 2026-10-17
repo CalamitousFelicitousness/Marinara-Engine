@@ -661,6 +661,13 @@ export function rulesetCombatEventLine(
         return key("compelledStrike", { ...values, target: names.combatant(event.targetId ?? "") });
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
+    case "raisedMax":
+      // A health maximum raised (1.420): Aid.
+      return key("raisedMax", {
+        target: names.combatant(event.targetId),
+        condition: names.condition(event.condition),
+        amount: event.amount,
+      });
     case "ray":
       // A ray rolled for one target (1.415): Prismatic Spray.
       return key("ray", {

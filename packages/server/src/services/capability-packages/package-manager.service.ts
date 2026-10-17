@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition raising its holder's health maximum (1.420): Aid, Heroes' Feast. */
+function carriesRaisesMax420(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRaisesMax420(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.raisesMax !== undefined) return true;
+  return featureValues(record).some((one) => carriesRaisesMax420(one, depth + 1));
+}
+
 /** A condition walking its holder as they end their turn (1.419): Compulsion, acting first. */
 function carriesWalksAfter419(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6062,6 +6072,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions raising their holder's health maximum, 1.420.
+  if (
+    !declaresApi(420) &&
+    (carriesRaisesMax420(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRaisesMax420(document)))
+  ) {
+    return "A ruleset whose conditions raise their holder's health maximum (raisesMax) requires schemaVersion 2 and capabilityApi 1.420 or newer";
+  }
   // Conditions walking their holder as they end their turn, 1.419.
   if (
     !declaresApi(419) &&

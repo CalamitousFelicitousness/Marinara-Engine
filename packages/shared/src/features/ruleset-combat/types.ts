@@ -203,6 +203,8 @@ export interface RulesetCombatApplies {
   checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.255). */
   harmsPerCostStep?: { dice?: string; flat?: number };
+  /** Its holder's health maximum raised while it holds, and their health with it (1.420): Aid. */
+  raisesMax?: { dice?: string; flat?: number; perStep?: number };
   /** A creature of one of these threat tiers or below is destroyed in its place (1.266). */
   destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
@@ -1389,6 +1391,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */
+  raisedMax?: number;
   /** The catalog of the entry that put it on (1.371): a spell's, for Dispel Magic. */
   catalog?: string;
   /** Who saved against its sanctuary and is free of it for the rest of the fight (1.370). */
@@ -2431,6 +2435,8 @@ export type RulesetCombatEvent =
   /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.370): sent to
    *  `to`, or lost. */
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
+  /** A health maximum raised while a condition holds, and the health with it (1.420): Aid. */
+  | { type: "raisedMax"; targetId: string; condition: string; amount: number }
   /** A ray of a table rolled for one target (1.415): Prismatic Spray's colours. */
   | { type: "ray"; actorId: string; targetId: string; label: string; ray: string; roll: number }
   /** Holders of a condition steered toward a point by whoever put it on (1.411): Compulsion. */

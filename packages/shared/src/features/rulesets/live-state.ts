@@ -78,6 +78,9 @@ export interface RulesetLiveState {
   /** What each condition's rests took off health's maximum for good (1.261), keyed by condition
    *  id, for one that gives it back when it is cured (`restoredWhenCured`). */
   lowered?: Record<string, number>;
+  /** What each condition raises health's maximum by while it is held (1.420), keyed by condition
+   *  id: 5e's Aid. Dropped once the condition is. */
+  raised?: Record<string, number>;
   /** Whom an entry used once a creature until a rest went to (1.304), by name, keyed `rest|action`:
    *  that rest clears its lists. */
   usedOn?: Record<string, string[]>;
@@ -162,6 +165,7 @@ export const rulesetLiveStateSchema = z
     conditions: z.array(z.string().max(MAX_LIVE_CONDITION_LENGTH)).max(MAX_LIVE_CONDITIONS).optional(),
     states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
+    raised: boundedRecord(liveNumber.min(0), MAX_LIVE_CONDITIONS, "raised maximums").optional(),
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
   })
@@ -722,6 +726,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (states) state.states = states;
   const lowered = keepValid(source.lowered, liveNumber, MAX_LIVE_CONDITIONS);
   if (lowered) state.lowered = lowered;
+  const raised = keepValid(source.raised, liveNumber.min(0), MAX_LIVE_CONDITIONS);
+  if (raised) state.raised = raised;
   const usedOn = keepValid(source.usedOn, liveUsedOnNames, MAX_LIVE_USED_ON);
   if (usedOn) state.usedOn = usedOn;
   const waited = keepValid(source.waited, liveNumber, MAX_LIVE_POOLS);
@@ -739,6 +745,10 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.conditions && state.conditions.length > 0) normalized.conditions = state.conditions;
   if (state.states && Object.keys(state.states).length > 0) normalized.states = state.states;
   if (state.lowered && Object.keys(state.lowered).length > 0) normalized.lowered = state.lowered;
+  // A raise lasts while its condition does (1.420).
+  const held = new Set(state.conditions ?? []);
+  const raised = Object.entries(state.raised ?? {}).filter(([condition, amount]) => held.has(condition) && amount > 0);
+  if (raised.length > 0) normalized.raised = Object.fromEntries(raised);
   if (state.usedOn && Object.keys(state.usedOn).length > 0) normalized.usedOn = state.usedOn;
   if (state.waited && Object.keys(state.waited).length > 0) normalized.waited = state.waited;
   return normalized;
@@ -750,6 +760,13 @@ function resolveLive(
   state: RulesetLiveState,
 ): ResolvedRulesetLive {
   const active = new Set(state.conditions ?? []);
+  // Health's maximum raised by what its conditions raise it by (1.420): Aid.
+  const health = definition.combat?.health;
+  const healthKey = health && "pool" in health ? health.pool : undefined;
+  const raisedBy = Object.entries(state.raised ?? {}).reduce(
+    (total, [condition, amount]) => total + (active.has(condition) ? Math.max(0, amount) : 0),
+    0,
+  );
   // Worked out once, and only when a track's maximum is a value the sheet works out.
   let evaluated: ReturnType<typeof evaluateRulesetSheet> | null = null;
   const trackMax = (track: RulesetDefinition["sheet"]["live"]["tracks"][number]): number => {
@@ -760,7 +777,11 @@ function resolveLive(
     return Math.max(track.min, Math.min(MAX_LIVE_NUMBER, worked));
   };
   return {
-    pools: listRulesetLivePools(definition, build).map((spec) => {
+    pools: listRulesetLivePools(definition, build).map((listed) => {
+      const spec =
+        raisedBy > 0 && listed.key === healthKey
+          ? { ...listed, max: Math.min(MAX_LIVE_NUMBER, listed.max + raisedBy) }
+          : listed;
       const entry = own(state.pools, spec.key);
       const fallback = spec.startAt ?? (spec.start === "full" ? spec.max : 0);
       return {
@@ -915,6 +936,9 @@ export type RulesetSheetOp =
   | { op: "damage"; track: string; kind: string; amount: number; box?: number }
   | { op: "track"; track: string; to?: number; by?: number }
   | { op: "condition"; condition: string; active: boolean }
+  /** Health's maximum raised by `amount` while `condition` is held, and health with it (1.420), in
+   *  place of what it raised it by before. */
+  | { op: "raise"; condition: string; amount: number }
   /** Sets a live state to one of its values, named by the value or its label. */
   | { op: "state"; state: string; value: string }
   | { op: "note"; field: string; value: string }
@@ -1333,6 +1357,24 @@ export function applyRulesetSheetOp(
     next.conditions = [...active].slice(0, MAX_LIVE_CONDITIONS);
     const restored = !op.active && was ? giveBackLowered(condition.id) : "";
     return done(`${condition.label} ${op.active ? "on" : "off"}${restored}`);
+  }
+
+  if (op.op === "raise") {
+    const condition = resolved.conditions.find(
+      (entry) => sameName(entry.id, op.condition) || sameName(entry.label, op.condition),
+    );
+    if (!condition) return { ok: false, reason: "unknown-condition" };
+    if (!isAmount(op.amount, false)) return { ok: false, reason: "bad-amount" };
+    const rule = definition.combat?.health;
+    const pool = rule && "pool" in rule ? resolved.pools.find((entry) => entry.key === rule.pool) : undefined;
+    if (!pool) return { ok: false, reason: "unknown-pool" };
+    const held = (next.conditions ?? []).includes(condition.id);
+    const before = held ? Math.max(0, own(next.raised, condition.id) ?? 0) : 0;
+    const max = Math.max(0, pool.max - before + op.amount);
+    next.raised = { ...next.raised, [condition.id]: op.amount };
+    const value = Math.min(max, Math.max(0, pool.value - before) + op.amount);
+    setPool({ ...pool, max }, value, pool.temp);
+    return done(`${pool.label} ${value}/${max} (${condition.label} +${op.amount})`);
   }
 
   if (op.op === "state") {

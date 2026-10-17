@@ -4080,6 +4080,7 @@ export interface RulesetCatalogApplies {
   endsWith?: string;
   checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   harmsPerCostStep?: { dice?: string; flat?: number };
+  raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
   targetHolds?: RulesetTargetHolds;
@@ -4226,6 +4227,21 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .strict()
       .refine((amount) => amount.dice !== undefined || (amount.flat ?? 0) > 0, {
         message: '"harmsPerCostStep" names dice, a flat amount, or both',
+      })
+      .optional(),
+    /** Its holder's health maximum is raised by this while it holds, and their health by the same
+     *  as it goes on (Capability API 1.420): dice rolled once, `flat`, and `perStep` more for each
+     *  step of higher cost it was put on with. Put on again, the new raise replaces the old. 5e's
+     *  Aid, `{"flat": 5, "perStep": 5}`; Heroes' Feast, `{"dice": "2d10"}`. */
+    raisesMax: z
+      .object({
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(1).max(1000).optional(),
+        perStep: z.number().int().min(1).max(1000).optional(),
+      })
+      .strict()
+      .refine((raise) => raise.dice !== undefined || raise.flat !== undefined, {
+        message: '"raisesMax" names dice, a flat amount, or both',
       })
       .optional(),
     /** A creature whose threat tier is at or below one of these is destroyed outright in place of

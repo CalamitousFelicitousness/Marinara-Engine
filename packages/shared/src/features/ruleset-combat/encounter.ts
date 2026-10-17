@@ -238,8 +238,13 @@ export function rulesetCombatHealth(
   // blow has to still be holding what it was before. An opponent without a sheet is written in
   // plain numbers whichever shape the party's health takes; one with a sheet is read below, exactly
   // as a party member is.
-  if (!combatant.sheet)
-    return halvedHealth(definition, combat, combatant, { ...(combatant.health ?? { value: 0, max: 0, temp: 0 }) });
+  if (!combatant.sheet) {
+    const health = { ...(combatant.health ?? { value: 0, max: 0, temp: 0 }) };
+    // Raised while what raises it holds (1.420): Aid.
+    const raised = combatant.tracked.reduce((total, entry) => total + (entry.raisedMax ?? 0), 0);
+    if (raised > 0) health.max += raised;
+    return halvedHealth(definition, combat, combatant, health);
+  }
   const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
   const health = combat.health;
   if ("track" in health) {

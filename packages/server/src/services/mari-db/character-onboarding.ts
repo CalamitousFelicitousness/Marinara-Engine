@@ -7,6 +7,7 @@
  */
 import {
   characterOnboardingSchema,
+  characterOnboardingVariableSchema,
   ONBOARDING_MAX_QUESTIONS,
   resolveOnboardingPersona,
   validateOnboarding,
@@ -25,6 +26,31 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 
 const ONBOARDING_KEYS = Object.keys(characterOnboardingSchema.shape);
 const QUESTION_LISTS = ["variables", "cardVariables"] as const;
+// Zod drops unknown keys, so a typo like `allowcustom` would save without taking effect. `name` is
+// accepted as an alias for `variableName`.
+const QUESTION_KEYS = new Set([...Object.keys(characterOnboardingVariableSchema.shape), "name"]);
+const OPTION_KEYS = new Set(["id", "label", "value", "description"]);
+
+/** Unknown keys inside each question and option of the lists sent, as fixable messages. */
+function unknownNestedKeys(patch: Row): string[] {
+  const problems: string[] = [];
+  for (const list of QUESTION_LISTS) {
+    const questions = patch[list];
+    if (!Array.isArray(questions)) continue;
+    questions.forEach((question, index) => {
+      if (!isRecord(question)) return;
+      const where = `${list}[${index}]${typeof question.variableName === "string" ? ` (${question.variableName})` : ""}`;
+      const bad = Object.keys(question).filter((key) => !QUESTION_KEYS.has(key));
+      if (bad.length > 0) problems.push(`${where} has unknown key(s): ${bad.join(", ")}.`);
+      if (!Array.isArray(question.options)) return;
+      for (const option of question.options) {
+        const badOption = isRecord(option) ? Object.keys(option).filter((key) => !OPTION_KEYS.has(key)) : [];
+        if (badOption.length > 0) problems.push(`An option in ${where} has unknown key(s): ${badOption.join(", ")}.`);
+      }
+    });
+  }
+  return problems;
+}
 
 /** The card text character questions feed, read the way the editor reads it. */
 export function onboardingCardFields(data: Row): OnboardingCardFields {
@@ -146,6 +172,12 @@ export function buildOnboardingUpdate(
   if (unknownKeys.length > 0) {
     throw new Error(
       `Unknown onboarding key(s): ${unknownKeys.join(", ")}. Use ${ONBOARDING_KEYS.join(", ")} (variables = persona questions, cardVariables = character questions).`,
+    );
+  }
+  const nested = unknownNestedKeys(patch);
+  if (nested.length > 0) {
+    throw new Error(
+      `Onboarding not saved. Fix and retry:\n- ${nested.join("\n- ")}\nQuestion keys: variableName, question, options, allowCustom, multiSelect, separator, displayMode, optionSort. Option keys: label, value, description.`,
     );
   }
   const stored = readStoredOnboarding(data).onboarding ?? characterOnboardingSchema.parse({});

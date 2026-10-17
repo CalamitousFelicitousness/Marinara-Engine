@@ -1183,7 +1183,7 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
   // matter-of-fact "applied" lets Mari report done with the problem still in the result.
   const noticeSentence =
     (result.validation?.notices.length ?? 0) > 0
-      ? " It saved with warnings in validation.notices: fix them now, or tell the user what still needs doing."
+      ? " It saved with notices in validation.notices: read them, fix what you can, otherwise tell the user what still needs doing."
       : "";
   return {
     ok: result.ok,

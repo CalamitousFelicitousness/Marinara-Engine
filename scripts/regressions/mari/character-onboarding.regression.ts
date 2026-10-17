@@ -129,6 +129,16 @@ try {
         /More than one question is named "origin"/,
       ],
       ["unknown key", { questions: [] }, /Unknown onboarding key\(s\): questions/],
+      [
+        "misspelled question key",
+        { variables: [{ variableName: "player", question: "Name?", allowcustom: true }] },
+        /variables\[0\] \(player\) has unknown key\(s\): allowcustom/,
+      ],
+      [
+        "misspelled option key",
+        { cardVariables: [{ variableName: "title", question: "?", options: [{ lable: "x" }] }] },
+        /An option in cardVariables\[0\] \(title\) has unknown key\(s\): lable/,
+      ],
       ["wrong shape", { variables: "nope" }, /doesn't match the shape/],
       ["not an object", "nope", /needs an onboarding object/],
     ];
@@ -155,14 +165,10 @@ try {
     // What Mari reads: the compact result's message must point at the warnings, not just say "applied"
     // (live run, ds4.1 flash: she reported done with an unused character question).
     const compact = compactMutationResult(unused) as { message?: string };
-    assert.match(
-      compact.message ?? "",
-      /saved with warnings in validation\.notices/,
-      "Mari is told about the warnings",
-    );
+    assert.match(compact.message ?? "", /saved with notices in validation\.notices/, "Mari is told about the warnings");
     assert.doesNotMatch(
       (compactMutationResult(saved) as { message?: string }).message ?? "",
-      /warnings/,
+      /validation.notices/,
       "a clean save doesn't mention warnings",
     );
 

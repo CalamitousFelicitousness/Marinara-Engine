@@ -1927,14 +1927,17 @@ export async function galleryRoutes(app: FastifyInstance) {
           const message = await chats.getMessage(input.messageId);
           candidateMessageIds = message?.chatId === chatId ? [message.id] : [];
         } else {
-          // Opened from the gallery: only active-swipe mirrors are scanned, which is where a
-          // visible image lives; reading every swipe row of a long chat would be too slow.
-          candidateMessageIds = (await chats.listMessages(chatId))
-            .filter((message) => {
-              const extra = typeof message.extra === "string" ? message.extra : JSON.stringify(message.extra ?? {});
-              return extra.includes(original.id);
-            })
-            .map((message) => message.id);
+          // Opened from the gallery: the image may sit in the active mirror or only in an inactive swipe.
+          const mentionsImage = (row: { extra: unknown }) =>
+            (typeof row.extra === "string" ? row.extra : JSON.stringify(row.extra ?? {})).includes(original.id);
+          const messages = await chats.listMessages(chatId);
+          const swipes = await chats.listSwipesByMessageIds(messages.map((message) => message.id));
+          candidateMessageIds = Array.from(
+            new Set([
+              ...messages.filter(mentionsImage).map((message) => message.id),
+              ...swipes.filter(mentionsImage).map((swipe) => swipe.messageId),
+            ]),
+          );
         }
         const replacedMessageIds: string[] = [];
         for (const messageId of candidateMessageIds) {

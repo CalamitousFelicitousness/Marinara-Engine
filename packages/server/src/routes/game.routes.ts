@@ -588,8 +588,11 @@ type IllustrationCharacterAssetMaps = {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
-  /** Name -> "character:<id>" / "persona:<id>", so a gallery record can name its reference sources (#7767). */
-  charOwnerByName: Map<string, string>;
+  /**
+   * Reference image (base64) or avatar path -> "character:<id>" / "persona:<id>", keyed by the image itself
+   * so a fuzzy name match records whoever owns the image that was actually sent (#7767).
+   */
+  charOwnerByReference: Map<string, string>;
 };
 
 type IllustrationCharacterAssetDetail = {
@@ -621,8 +624,13 @@ function emptyIllustrationCharacterAssetMaps(): IllustrationCharacterAssetMaps {
     charReferenceSourceByName: new Map<string, "character-sheet" | "avatar" | "sprite">(),
     charAvatarByName: new Map<string, string>(),
     charDescriptionByName: new Map<string, string>(),
-    charOwnerByName: new Map<string, string>(),
+    charOwnerByReference: new Map<string, string>(),
   };
+}
+
+function addReferenceOwner(maps: IllustrationCharacterAssetMaps, reference: string, owner: string): void {
+  // First owner wins: two cards sharing one image can't be told apart, and either re-reads the same picture.
+  if (!maps.charOwnerByReference.has(reference)) maps.charOwnerByReference.set(reference, owner);
 }
 
 function addUniqueCharacterName(target: string[], seen: Set<string>, name: unknown): void {
@@ -647,7 +655,6 @@ async function addCharacterRowIllustrationAssets(
     const parsed = JSON.parse(character.data) as Record<string, unknown> & { name?: string };
     const name = typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : null;
     if (!name) return null;
-    addNameLookupEntry(maps.charOwnerByName, name, `character:${character.id}`);
 
     const extensions =
       parsed.extensions && typeof parsed.extensions === "object" && !Array.isArray(parsed.extensions)
@@ -664,8 +671,12 @@ async function addCharacterRowIllustrationAssets(
     if (preferredReference) {
       addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
       addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
+      addReferenceOwner(maps, preferredReference.base64, `character:${character.id}`);
     }
-    if (character.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, character.avatarPath);
+    if (character.avatarPath) {
+      addNameLookupEntry(maps.charAvatarByName, name, character.avatarPath);
+      addReferenceOwner(maps, character.avatarPath, `character:${character.id}`);
+    }
 
     const appearanceText = extractCharacterAppearanceText(parsed);
     if (appearanceText) addNameLookupEntry(maps.charDescriptionByName, name, appearanceText);
@@ -711,7 +722,6 @@ export async function addPersonaIllustrationAssets(
 ): Promise<string | null> {
   const name = typeof persona?.name === "string" && persona.name.trim() ? persona.name.trim() : null;
   if (!persona || !name) return null;
-  addNameLookupEntry(maps.charOwnerByName, name, `persona:${persona.id}`);
 
   const preferredReference = await readPreferredPersonaReferenceImage({
     personaId: persona.id,
@@ -724,8 +734,12 @@ export async function addPersonaIllustrationAssets(
   if (preferredReference) {
     addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
     addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
+    addReferenceOwner(maps, preferredReference.base64, `persona:${persona.id}`);
   }
-  if (persona.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
+  if (persona.avatarPath) {
+    addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
+    addReferenceOwner(maps, persona.avatarPath, `persona:${persona.id}`);
+  }
 
   // #7053: the persona row carries the image-prompt override as TOP-LEVEL text
   // columns (no extensions bag), so feed them through the shared helper. Without
@@ -869,7 +883,7 @@ function collectIllustrationCharacterAssets(opts: {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
-  charOwnerByName?: Map<string, string>;
+  charOwnerByReference?: Map<string, string>;
   includeReferenceImages?: boolean;
   includeCharacterDescriptions?: boolean;
   maxReferenceImages?: number;
@@ -909,8 +923,8 @@ function collectIllustrationCharacterAssets(opts: {
   const referenceCharacterIds: string[] = [];
   let referencePersonaId: string | null = null;
   // Only library characters and the persona can be re-read later; NPC avatars are not recorded.
-  const recordReferenceOwner = (name: string) => {
-    const owner = opts.charOwnerByName ? findCharAvatarFuzzy(name, opts.charOwnerByName) : undefined;
+  const recordReferenceOwner = (reference: string) => {
+    const owner = opts.charOwnerByReference?.get(reference);
     if (owner?.startsWith("character:")) referenceCharacterIds.push(owner.slice("character:".length));
     else if (owner?.startsWith("persona:")) referencePersonaId ??= owner.slice("persona:".length);
   };
@@ -925,22 +939,22 @@ function collectIllustrationCharacterAssets(opts: {
         seen.add(preferredReference);
         references.push(preferredReference);
         referenceAttached = true;
-        recordReferenceOwner(name);
+        recordReferenceOwner(preferredReference);
         const storedReferenceSource = findCharAvatarFuzzy(name, opts.charReferenceSourceByName);
         referenceSource =
           storedReferenceSource === "character-sheet" || storedReferenceSource === "avatar"
             ? storedReferenceSource
             : "sprite";
       } else {
-        const characterAvatarPath = findCharAvatarFuzzy(name, opts.charAvatarByName);
-        const avatarPath = characterAvatarPath ?? findCharAvatarFuzzy(name, npcAvatarByName);
+        const avatarPath =
+          findCharAvatarFuzzy(name, opts.charAvatarByName) ?? findCharAvatarFuzzy(name, npcAvatarByName);
         const base64 = avatarPath && !seen.has(avatarPath) ? readAvatarBase64(avatarPath) : undefined;
         if (avatarPath && base64 && references.length < maxReferenceImages) {
           seen.add(avatarPath);
           references.push(base64);
           referenceAttached = true;
           referenceSource = "avatar";
-          if (characterAvatarPath) recordReferenceOwner(name);
+          recordReferenceOwner(avatarPath);
         }
       }
     }
@@ -14600,7 +14614,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           charReferenceSourceByName,
           charAvatarByName,
           charDescriptionByName,
-          charOwnerByName: storyboardCharacterContext.charOwnerByName,
+          charOwnerByReference: storyboardCharacterContext.charOwnerByReference,
           includeReferenceImages: useAvatarReferences,
           includeCharacterDescriptions: includeCharacterAppearanceAtRender && characterPrompts.length === 0,
           maxReferenceImages: Math.max(0, storyboardReferenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
@@ -16128,7 +16142,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             charReferenceSourceByName,
             charAvatarByName,
             charDescriptionByName,
-            charOwnerByName: illustrationCharacterAssets.charOwnerByName,
+            charOwnerByReference: illustrationCharacterAssets.charOwnerByReference,
             includeReferenceImages: useAvatarReferences,
             includeCharacterDescriptions: includeCharacterAppearance,
             maxReferenceImages: Math.max(0, referenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),

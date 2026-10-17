@@ -23,7 +23,7 @@ interface ImageRegeneratePanelProps {
 }
 
 const PANEL_CLASS =
-  "flex flex-col gap-2.5 rounded-lg border border-white/10 bg-neutral-950/95 px-3 py-2.5 text-left shadow-2xl";
+  "flex flex-col gap-2.5 rounded-lg border border-white/10 bg-black/95 px-3 py-2.5 text-left shadow-2xl";
 const FIELD_CLASS =
   "w-full resize-y rounded-md border border-white/10 bg-black/40 px-2.5 py-2 font-mono text-[0.75rem] leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/30 focus:border-white/30 disabled:opacity-60";
 const LABEL_CLASS = "text-[0.6875rem] font-semibold text-white/55";

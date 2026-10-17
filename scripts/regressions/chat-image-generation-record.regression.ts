@@ -224,6 +224,40 @@ try {
   assert.equal(editedRecord?.negativePrompt, "", "an empty negative prompt clears it");
   assert.deepEqual(editedResult.replacedMessageIds, [message.id]);
 
+  // An image left behind on an inactive swipe is still found from the gallery (no messageId).
+  const swipedImage = await gallery.create({
+    chatId: chat.id,
+    filePath: `${chat.id}/swiped.png`,
+    prompt: "swiped away",
+    provider: "image_generation",
+    model: "dall-e-3",
+    generation: buildChatImageGenerationRecord({ prompt: "swiped away", connectionId: connection.id }),
+  });
+  assert.ok(swipedImage?.id);
+  const swipedMessage = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "First take.",
+    extra: { attachments: [{ type: "image", url: "/api/gallery/file/swiped.png", galleryId: swipedImage.id }] },
+  } as never);
+  assert.ok(swipedMessage?.id);
+  await chats.addSwipe(swipedMessage.id, "Second take.");
+  const swipedMirror = await chats.getMessage(swipedMessage.id);
+  assert.ok(!JSON.stringify(swipedMirror?.extra ?? {}).includes(swipedImage.id), "the fresh swipe has no image");
+  const swipedResult = await app.inject({
+    method: "POST",
+    url: `/api/gallery/${chat.id}/images/${swipedImage.id}/regenerate`,
+    payload: { prompt: "swiped away, again" },
+  });
+  assert.equal(swipedResult.statusCode, 200, swipedResult.body);
+  const swipedBody = swipedResult.json() as { image: { id: string }; replacedMessageIds: string[] };
+  assert.deepEqual(swipedBody.replacedMessageIds, [swipedMessage.id], "inactive swipe rows are scanned too");
+  const firstTake = (await chats.getSwipes(swipedMessage.id))[0];
+  assert.ok(
+    JSON.stringify(firstTake?.extra ?? {}).includes(swipedBody.image.id),
+    "the inactive swipe shows the new image",
+  );
+
   // An image saved before records existed still regenerates, on the chat's image connection.
   const legacyRegenerated = await app.inject({
     method: "POST",
@@ -256,7 +290,7 @@ try {
   assert.equal(missingImage.statusCode, 404, missingImage.body);
   const emptyPrompt = await app.inject({ method: "POST", url: regenerateUrl, payload: { prompt: "   " } });
   assert.notEqual(emptyPrompt.statusCode, 200, "an empty prompt is rejected");
-  assert.equal(imagePrompts.length, 3, "rejected requests never reach the provider");
+  assert.equal(imagePrompts.length, 4, "rejected requests never reach the provider");
 
   console.log("chat-image-generation-record: ok (record, storage round trip, regenerate route)");
 } finally {

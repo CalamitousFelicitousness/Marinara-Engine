@@ -10334,6 +10334,12 @@ const combatConditionSchema = z
       .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
+    /** Whoever put it on sees what its holder sees while it holds (Capability API 1.428), as well as
+     *  what they see themselves: for whatever reads who sees whom (a target that must be seen, an
+     *  attack at somebody unseen, an aura that needs sight). 5e's familiar seen through (Find
+     *  Familiar, Voice of the Chain Master) and Gaze of Two Minds; what their own senses lose while
+     *  they do is the entry's `appliesSelf`. */
+    lendsSenses: z.literal(true).optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:

@@ -487,8 +487,31 @@ export function rulesetCanSee(
   seen: RulesetCombatant,
 ): boolean {
   // Nobody sees somebody hidden from them (1.287).
-  if (rulesetHiddenFrom(viewer, seen)) return false;
-  return sees(definition, state, viewer, seen, false);
+  if (!rulesetHiddenFrom(viewer, seen) && sees(definition, state, viewer, seen, false)) return true;
+  // Or through the eyes of somebody they put a condition on that lends its holder's senses (1.428): a
+  // familiar, Gaze of Two Minds.
+  return lendersOf(definition, state, viewer).some(
+    (lender) => !rulesetHiddenFrom(lender, seen) && sees(definition, state, lender, seen, false),
+  );
+}
+
+/** Who lends `viewer` their senses now (1.428): standing, holding a condition `viewer` put on them
+ *  whose rule lends its holder's senses. */
+function lendersOf(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+): RulesetCombatant[] {
+  const lending = new Set(
+    (definition.combat?.conditions ?? []).flatMap((entry) => (entry.lendsSenses ? [entry.condition] : [])),
+  );
+  if (!lending.size) return [];
+  return state.combatants.filter(
+    (one) =>
+      one.id !== viewer.id &&
+      !one.defeated &&
+      one.tracked.some((entry) => entry.source === viewer.id && lending.has(entry.condition)),
+  );
 }
 
 /** Whether `seen` is hidden from `viewer` (1.287): they hid, and that opponent has not found them. */

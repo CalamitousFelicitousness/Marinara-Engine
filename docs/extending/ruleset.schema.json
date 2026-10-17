@@ -105640,6 +105640,10 @@
                 ],
                 "additionalProperties": false
               },
+              "lendsSenses": {
+                "type": "boolean",
+                "const": true
+              },
               "whileOffTerrain": {
                 "type": "array",
                 "items": {

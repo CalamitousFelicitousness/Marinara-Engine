@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition that lends its holder's senses to whoever put it on (1.428): a familiar seen through. */
+function carriesLendsSenses428(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLendsSenses428(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.lendsSenses !== undefined) return true;
+  return featureValues(record).some((one) => carriesLendsSenses428(one, depth + 1));
+}
+
 /** A conjured weapon gone once left lying far off (1.427): the pact weapon. */
 function carriesConjuredVanishes427(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6151,6 +6161,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Senses lent to whoever put a condition on, 1.428.
+  if (
+    !declaresApi(428) &&
+    (carriesLendsSenses428(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLendsSenses428(document)))
+  ) {
+    return "A ruleset whose conditions lend their holder's senses to whoever put them on (lendsSenses) requires schemaVersion 2 and capabilityApi 1.428 or newer";
+  }
   // Conjured weapons gone once left lying far off, 1.427.
   if (
     !declaresApi(427) &&

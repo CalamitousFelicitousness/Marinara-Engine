@@ -111043,8 +111043,14 @@
                     ]
                   },
                   "walks": {
-                    "type": "boolean",
-                    "const": true
+                    "type": [
+                      "boolean",
+                      "string"
+                    ],
+                    "enum": [
+                      true,
+                      "after"
+                    ]
                   },
                   "wastes": {
                     "type": "object",

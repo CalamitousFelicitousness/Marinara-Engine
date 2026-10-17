@@ -12143,6 +12143,21 @@ export function advanceRulesetTurn(
   if (state.window) return refusal(state, currentRulesetActor(state)?.id ?? "", "window-open", "end-turn");
   const { ctx, finish } = begin(definition, combat, state, roller);
   const leaving = currentRulesetActor(ctx.state);
+  // Walked with what movement is left as they end the turn (1.419), having acted: Compulsion. A walk
+  // held open by somebody's reach waits for its answers, and ending the turn again goes on.
+  if (
+    leaving &&
+    !leaving.flags.walkedAfter &&
+    rulesetCombatStanding(leaving) &&
+    !leaving.defeated &&
+    !rulesetCombatEffects(definition, combat, leaving, ctx.state).has("cannot-act")
+  ) {
+    const active = rulesetActiveConditions(definition, combat, leaving, ctx.state);
+    if (active.some((entry) => entry.behavior?.walks === "after")) {
+      leaving.flags.walkedAfter = true;
+      if (walkCompelled(ctx, leaving, active, "after") && ctx.state.window) return finish();
+    }
+  }
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
@@ -12458,6 +12473,37 @@ const WANDER_WAYS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
 ];
 
+/** Walked the way the first condition that `walks` them now moves, as far as they can (1.411), as
+ *  their turn starts (`true`) or as they end it (`"after"`, 1.419). Whether they were walked. */
+function walkCompelled(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  active: ReturnType<typeof rulesetActiveConditions>,
+  when: true | "after",
+): boolean {
+  for (const entry of active) {
+    const moves = entry.behavior?.moves;
+    if (entry.behavior?.walks !== when || !moves) continue;
+    const from = rulesetBehaviorAnchor(ctx.state, actor, entry.condition, entry.behavior);
+    const at = rulesetPositionOf(actor);
+    if (!from || !at) continue;
+    const gapAt = (cell: { x: number; y: number }) => rulesetGap({ ...actor, x: cell.x, y: cell.y } as never, from);
+    let best: ReturnType<typeof rulesetReachableCells>[number] | undefined;
+    let bestGap = rulesetGap(actor, from);
+    for (const cell of rulesetReachableCells(ctx.definition, ctx.state, actor.id)) {
+      const gap = gapAt(cell);
+      if (moves === "away" ? gap > bestGap : gap < bestGap) {
+        best = cell;
+        bestGap = gap;
+      }
+    }
+    if (!best) return false;
+    resolveMove(ctx, actor, best);
+    return true;
+  }
+  return false;
+}
+
 /**
  * A condition's table rolled as its holder's turn starts (1.264): 5e's Confusion. The first table
  * among what they hold decides the turn. `wander` walks as far as their speed goes one way a d8
@@ -12474,25 +12520,7 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     if (entry.behavior?.drops?.at === "turn-start") letFall(ctx, actor, entry.condition, entry.behavior.drops);
   }
   // Walked the way it moves as far as it can (1.411): Compulsion.
-  for (const entry of active) {
-    const moves = entry.behavior?.moves;
-    if (!entry.behavior?.walks || !moves) continue;
-    const from = rulesetBehaviorAnchor(ctx.state, actor, entry.condition, entry.behavior);
-    const at = rulesetPositionOf(actor);
-    if (!from || !at) continue;
-    const gapAt = (cell: { x: number; y: number }) => rulesetGap({ ...actor, x: cell.x, y: cell.y } as never, from);
-    let best: ReturnType<typeof rulesetReachableCells>[number] | undefined;
-    let bestGap = rulesetGap(actor, from);
-    for (const cell of rulesetReachableCells(ctx.definition, ctx.state, actor.id)) {
-      const gap = gapAt(cell);
-      if (moves === "away" ? gap > bestGap : gap < bestGap) {
-        best = cell;
-        bestGap = gap;
-      }
-    }
-    if (best) resolveMove(ctx, actor, best);
-    break;
-  }
+  walkCompelled(ctx, actor, active, true);
   // A save as the turn starts, or a budget wasted for it (1.410): Bestow Curse.
   for (const entry of active) {
     const wastes = entry.behavior?.wastes;

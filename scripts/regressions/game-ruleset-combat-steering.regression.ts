@@ -4,6 +4,8 @@
  *   - Compulsion: a foe holding its condition is not walked until steered; its caster's Steer is
  *     offered only while somebody holds it from them; steered, the foe is walked toward the point
  *     as its turn starts.
+ *   - Acting first (1.419): with `walks: "after"` the foe is not walked as its turn starts, and is
+ *     walked as it ends its turn, with the movement it has left.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -79,7 +81,7 @@ try {
   };
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
-  const definition = parsed(fiveE());
+  let definition = parsed(fiveE());
   const entries = [compel, steer()];
   const block: RulesetStatBlock = {
     health: 40,
@@ -165,6 +167,22 @@ try {
     assert.equal(now.y, 2, "six cells, as far as its speed goes");
   }
 
+  // ── Acting first (1.419) ──
+  {
+    definition = parsed(fiveE({ moves: "toward", from: "steered", walks: "after" }));
+    const fresh = structuredClone(state);
+    const compelledAfter = act(fresh, "Compel", { targetIds: ["thug"] }).state;
+    const steered = act(compelledAfter, "Steer", { at: { x: 8, y: 1 } }).state;
+    steered.turn = steered.order.indexOf("mage");
+    const started = advanceRulesetTurn(definition, steered, roll).state;
+    assert.equal(started.order[started.turn], "thug");
+    assert.deepEqual(at(started, "thug"), { x: 8, y: 8 }, "not walked as its turn starts");
+    const ended = advanceRulesetTurn(definition, started, roll);
+    assert.equal(at(ended.state, "thug")!.y, 2, "walked as it ends its turn");
+    assert.equal(ended.state.order[ended.state.turn], "ogre", "and the turn goes on");
+    definition = parsed(fiveE());
+  }
+
   // ── Refusals ──
   refused(fiveE({ walks: true }), /"walks" walks its holder the way "moves" says/);
   refused(fiveE(undefined, "nope"), /Unknown condition "nope"/);
@@ -188,10 +206,16 @@ try {
     });
     assert.equal(getCapabilityPackageInstallIssue(manifest(410) as never, fiveE()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(411) as never, fiveE()), gate);
+    const after =
+      'A ruleset whose conditions walk their holder as they end their turn (behavior walks "after") requires schemaVersion 2 and capabilityApi 1.419 or newer';
+    const late = fiveE({ moves: "toward", from: "steered", walks: "after" });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(418) as never, late), after);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(419) as never, late), after);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(418) as never, fiveE()), after);
   }
 
   console.log(
-    "Steering: Compulsion's foe is walked only once steered, toward the point, as far as it can; gated at 1.411.",
+    "Steering: Compulsion's foe is walked only once steered, toward the point, as far as it can, or as it ends its turn after acting; gated at 1.411 and 1.419.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

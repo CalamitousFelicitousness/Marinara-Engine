@@ -9857,7 +9857,7 @@ export interface RulesetConditionBehavior {
   keepsOut?: number;
   keepsIn?: number;
   from?: "point" | "steered";
-  walks?: true;
+  walks?: true | "after";
   wastes?: { save: string; budget: string };
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
@@ -9912,8 +9912,10 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
     /** Its holder is walked `moves` as far as they can as each of their turns starts (Capability API
      *  1.411), rather than only kept from walking the other way. With `"from": "steered"`, measured
      *  from the point whoever put it on last steered it at with an entry that `steers` it, and
-     *  nothing until they have (1.411): 5e's Compulsion. */
-    walks: z.literal(true).optional(),
+     *  nothing until they have (1.411): 5e's Compulsion. `"after"` (Capability API 1.419) walks
+     *  them with the movement they have left as they end their turn instead, so they act first:
+     *  Compulsion's "it can take its action before it moves". */
+    walks: z.union([z.literal(true), z.literal("after")]).optional(),
     /** As each of its holder's turns starts they throw this save against the difficulty it was put
      *  on with, and on a failure this budget is wasted for the turn (Capability API 1.410): 5e's
      *  Bestow Curse, "wastes its action that turn doing nothing". */

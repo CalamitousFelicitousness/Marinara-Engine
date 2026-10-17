@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A condition walking its holder as they end their turn (1.419): Compulsion, acting first. */
+function carriesWalksAfter419(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWalksAfter419(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.walks === "after") return true;
+  return featureValues(record).some((one) => carriesWalksAfter419(one, depth + 1));
+}
+
 /** A damage change counting with no attack roll too (1.418): Bestow Curse's extra necrotic. */
 function carriesAlsoUnrolled418(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6052,6 +6062,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions walking their holder as they end their turn, 1.419.
+  if (
+    !declaresApi(419) &&
+    (carriesWalksAfter419(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalksAfter419(document)))
+  ) {
+    return 'A ruleset whose conditions walk their holder as they end their turn (behavior walks "after") requires schemaVersion 2 and capabilityApi 1.419 or newer';
+  }
   // Damage changes counting with no attack roll too, 1.418.
   if (
     !declaresApi(418) &&

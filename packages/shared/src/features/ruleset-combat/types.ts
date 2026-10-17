@@ -1614,6 +1614,8 @@ export interface RulesetCombatant {
     compelledTarget?: string;
     /** The turn began with nowhere a condition let them walk (1.266). */
     stuck?: boolean;
+    /** Walked by a condition as they ended this turn (1.419), so ending it again goes on. */
+    walkedAfter?: true;
     /** Something dropped was picked up this turn for nothing (1.266). */
     pickedUp?: boolean;
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when

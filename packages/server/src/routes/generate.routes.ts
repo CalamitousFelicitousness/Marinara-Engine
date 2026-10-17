@@ -1,4 +1,4 @@
-import { applyClockCommandTags, type RulesetClocks } from "@marinara-engine/shared";
+import { applyClockCommandTags, buildChatImageGenerationRecord, type RulesetClocks } from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -14009,6 +14009,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           model: effectiveImageModel,
                           width: imgWidth,
                           height: imgHeight,
+                          generation: buildChatImageGenerationRecord({
+                            connectionId: imageResult.effectiveConnection?.connectionId ?? imgConnFull.id,
+                            negativePrompt: imageResult.effectiveConnection
+                              ? imageResult.effectiveNegativePrompt
+                              : finalNegativePrompt,
+                            characterPrompts: illustratorCharacterPrompts,
+                            referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
+                            referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,
+                            locationImageId: spatialLocationReferenceImage
+                              ? ownerSpatialProjection?.referenceImageId
+                              : null,
+                          }),
                         });
                         await persistGeneratedImageToEntityGalleries({
                           enabled: imageSettings.autoSaveToGalleries,

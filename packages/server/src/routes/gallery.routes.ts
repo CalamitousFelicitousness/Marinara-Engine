@@ -7,6 +7,7 @@ import { writeFile } from "fs/promises";
 import { basename, extname, join } from "path";
 import { z } from "zod";
 import {
+  buildChatImageGenerationRecord,
   findImageStyleProfile,
   LOCAL_SIDECAR_CONNECTION_ID,
   readImageAppearanceOverride,
@@ -1558,6 +1559,13 @@ export async function galleryRoutes(app: FastifyInstance) {
           model: imageModel || "unknown",
           width,
           height,
+          generation: buildChatImageGenerationRecord({
+            connectionId: imageResult.effectiveConnection?.connectionId ?? imageConn.id,
+            negativePrompt: imageResult.effectiveConnection
+              ? imageResult.effectiveNegativePrompt
+              : providerNegativePrompt,
+            referenceCharacterIds: referenceImages ? [character.id] : [],
+          }),
         });
         if (!image) throw new Error("Generated selfie metadata could not be saved");
         await persistGeneratedImageToEntityGalleries({
@@ -1708,6 +1716,12 @@ export async function galleryRoutes(app: FastifyInstance) {
         model: context.imageModel || "unknown",
         width: compiledPrompt.width,
         height: compiledPrompt.height,
+        generation: buildChatImageGenerationRecord({
+          connectionId: generated.effectiveConnection?.connectionId ?? context.imageConnection.id,
+          negativePrompt: generated.effectiveConnection
+            ? generated.effectiveNegativePrompt
+            : compiledPrompt.negativePrompt,
+        }),
       });
       if (!image) throw new Error("Generated Gallery image metadata could not be saved");
       metadataSaved = true;

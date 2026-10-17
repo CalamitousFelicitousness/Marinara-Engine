@@ -2274,6 +2274,7 @@
   "game.combat.ruleset.event.zoneDispersed": "The wind blows {{actor}}’s {{label}} away.",
   "game.combat.ruleset.event.zoneDrifted": "{{actor}}’s {{label}} drifts away from them.",
   "game.combat.ruleset.event.zoneEnded": "{{actor}}’s {{label}} ends.",
+  "game.combat.ruleset.event.zoneFound": "{{target}} finds {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneMoved": "{{actor}} moves {{label}}.",
   "game.combat.ruleset.event.zoneShoved": "{{target}} is pushed aside as {{actor}}'s {{label}} goes up.",
   "game.combat.ruleset.event.zoneStruckEnd": "{{target}} ends their turn in {{actor}}’s {{label}}.",

@@ -301,6 +301,7 @@ import {
   rulesetZoneSideOccupants,
   rulesetSyncZoneWalls,
   rulesetZoneLights,
+  rulesetZoneSeenBy,
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 import { rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
@@ -8799,6 +8800,7 @@ function resolveStandard(
   else if (action === "search" && ctx.combat.hiding) {
     const { check, found, apart } = search(ctx, actor);
     ctx.events.push({ type: "standard", actorId: actor.id, action, check, found, ...(apart ? { apart } : {}) });
+    searchZones(ctx, actor);
     return;
   } else if (action === "ready") actor.flags.ready = true;
   else if (action === "help" && target) target.flags.helped = true;
@@ -8818,6 +8820,27 @@ function hidingCheck(
   taken?: { advantage: boolean; disadvantage: boolean },
 ): RulesetContestSide {
   return throwCheck(ctx, who, check, who.checks?.[check] ?? 0, taken);
+}
+
+/**
+ * Looking for hidden zones as a Search is made (1.402): each check they are found with thrown once,
+ * and every one of its foes' its total meets the entry's own save difficulty for is found by the
+ * searcher's side.
+ */
+function searchZones(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const throws = new Map<string, number>();
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
+    const hidden = action.zone?.hidden;
+    if (!hidden || rulesetZoneSeenBy(caster, zone, action, actor.side)) continue;
+    let total = throws.get(hidden.check);
+    if (total === undefined) {
+      total = hidingCheck(ctx, actor, hidden.check).total;
+      throws.set(hidden.check, total);
+    }
+    if (total < (action.save?.difficulty ?? action.saveDifficulty ?? 10)) continue;
+    zone.foundBy = [...(zone.foundBy ?? []), actor.side];
+    ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "found", targetId: actor.id });
+  }
 }
 
 /**

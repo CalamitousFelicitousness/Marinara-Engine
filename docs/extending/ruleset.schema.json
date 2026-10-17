@@ -41441,6 +41441,21 @@
                           ],
                           "additionalProperties": false
                         },
+                        "hidden": {
+                          "type": "object",
+                          "properties": {
+                            "check": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "check"
+                          ],
+                          "additionalProperties": false
+                        },
                         "blocks": {
                           "type": "array",
                           "items": {
@@ -56187,6 +56202,21 @@
                                 },
                                 "required": [
                                   "is"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "hidden": {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "check"
                                 ],
                                 "additionalProperties": false
                               },
@@ -71086,6 +71116,21 @@
                               ],
                               "additionalProperties": false
                             },
+                            "hidden": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "check"
+                              ],
+                              "additionalProperties": false
+                            },
                             "blocks": {
                               "type": "array",
                               "items": {
@@ -84382,6 +84427,21 @@
                                     },
                                     "required": [
                                       "is"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "hidden": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "check"
                                     ],
                                     "additionalProperties": false
                                   },

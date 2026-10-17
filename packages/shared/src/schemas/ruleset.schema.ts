@@ -2975,6 +2975,7 @@ export interface RulesetCatalogZone {
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
   keepsOut?: RulesetZoneKeepsOut;
+  hidden?: { check: string };
   detonates?: {
     grows?: { dice?: string; flat?: number };
     touched?: true;
@@ -3241,6 +3242,11 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  out of it), their attacks into it may have disadvantage, and they cannot put `cantGive` on
      *  whoever is inside. 5e's Magic Circle and Hallow. */
     keepsOut: zoneKeepsOutSchema.optional(),
+    /** Hidden from its caster's foes (Capability API 1.402): not shown to them until one of them
+     *  finds it with the `search` standard action, which also throws this `check` (one of
+     *  `combat.checks`) against the entry's own save difficulty. 5e's Glyph of Warding and Symbol,
+     *  found with Intelligence (Investigation). */
+    hidden: z.object({ check: sheetId }).strict().optional(),
     /** A wall that nobody walks through, sees through, or both (Capability API 1.177): 5e's Wall of
      *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only. */
     blocks: z
@@ -18549,6 +18555,16 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "zone", "keepsOut", "cantGive", conditionIndex], `Unknown condition "${condition}"`);
       }
     });
+    // What finds a hidden zone (1.402) is one of the fight's checks, thrown by its Search.
+    const hidden = mechanics?.zone?.hidden;
+    if (hidden) {
+      if (!definition.combat?.checks?.some((check) => check.id === hidden.check)) {
+        add([index, "mechanics", "zone", "hidden", "check"], `Unknown check "${hidden.check}"`);
+      }
+      if (!definition.combat?.standard?.includes("search")) {
+        add([index, "mechanics", "zone", "hidden"], 'A hidden zone is found with the "search" standard action');
+      }
+    }
     // Who sets a glyph off (1.398) is a target test like any other.
     targetIsIssues(definition, mechanics?.zone?.detonates?.by, [index, "mechanics", "zone", "detonates", "by"], add);
     componentIssues(definition, mechanics?.components, [index, "mechanics", "components"], add);

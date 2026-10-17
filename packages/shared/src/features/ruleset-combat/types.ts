@@ -2849,7 +2849,9 @@ export type RulesetCombatEvent =
         /** Blown away by a wind's zone (1.286). */
         | "dispersed"
         /** Magical darkness ended where a light met it (1.297). */
-        | "dispelled";
+        | "dispelled"
+        /** A hidden zone found by `targetId`'s Search (1.402). */
+        | "found";
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.173). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
@@ -3494,6 +3496,8 @@ export interface RulesetCombatZoneRule {
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */
   keepsOut?: { is: RulesetTargetIs; way?: "in" | "out"; attacksInto?: "disadvantage"; cantGive?: string[] };
+  /** Hidden from its caster's foes until found with a Search throwing this check (1.402). */
+  hidden?: { check: string };
 }
 
 /** One lasting area standing on the board (1.172). A zone held at a point keeps the cells it was
@@ -3505,6 +3509,8 @@ export interface RulesetCombatZone {
   /** Gone off and stayed as what it `becomes` (1.400): it strikes at its new triggers and never goes
    *  off again. */
   became?: true;
+  /** The sides that have found it, hidden (1.402). */
+  foundBy?: string[];
   /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
   trippedBy?: string;
   /** The id of its caster's own action stored in it (1.401), cast as it goes off. */

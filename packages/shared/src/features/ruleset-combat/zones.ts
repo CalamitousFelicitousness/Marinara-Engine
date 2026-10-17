@@ -122,7 +122,21 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
 }
 
 /** The zones a fight shows: each one's caster, label, rounds left and cells, and a wall's side. */
-export function rulesetZonesShown(state: RulesetEncounterState): Array<{
+/** Whether a side sees a zone (1.402): its caster's own always, others once one of them found it. */
+export function rulesetZoneSeenBy(
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  side: string,
+): boolean {
+  return !action.zone?.hidden || caster.side === side || !!zone.foundBy?.includes(side);
+}
+
+/** The zones a side sees (the party's by default): a hidden one of its foes' only once found (1.402). */
+export function rulesetZonesShown(
+  state: RulesetEncounterState,
+  side = "party",
+): Array<{
   casterId: string;
   label: string;
   rounds: number;
@@ -132,24 +146,32 @@ export function rulesetZonesShown(state: RulesetEncounterState): Array<{
   /** How it looks (1.333): a `bz_` tile of the board's pack. */
   art?: string;
 }> {
-  return rulesetStandingZones(state).map(({ caster, zone, action }) => ({
-    casterId: caster.id,
-    label: zone.label,
-    rounds: zone.rounds,
-    ...(action.zone?.art ? { art: action.zone.art } : {}),
-    cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({ ...cell })),
-    ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
-    // Each section and what it has left (1.200).
-    ...(zone.sections?.length && action.zone?.sections
-      ? {
-          sections: zone.sections.map((section) => ({
-            cells: section.cells.map((cell) => ({ ...cell })),
-            health: Math.max(0, section.health),
-            max: action.zone!.sections!.health,
-          })),
-        }
-      : {}),
-  }));
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action }) =>
+    !rulesetZoneSeenBy(caster, zone, action, side)
+      ? []
+      : [
+          {
+            casterId: caster.id,
+            label: zone.label,
+            rounds: zone.rounds,
+            ...(action.zone?.art ? { art: action.zone.art } : {}),
+            cells: rulesetZoneCells(state, rulesetCombatant(state, caster.id) ?? caster, zone).map((cell) => ({
+              ...cell,
+            })),
+            ...(zone.sideCells?.length ? { side: zone.sideCells.map((cell) => ({ ...cell })) } : {}),
+            // Each section and what it has left (1.200).
+            ...(zone.sections?.length && action.zone?.sections
+              ? {
+                  sections: zone.sections.map((section) => ({
+                    cells: section.cells.map((cell) => ({ ...cell })),
+                    health: Math.max(0, section.health),
+                    max: action.zone!.sections!.health,
+                  })),
+                }
+              : {}),
+          },
+        ],
+  );
 }
 
 /** What still stands on the board that may be broken (1.316). */

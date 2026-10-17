@@ -122,6 +122,7 @@ import {
   rulesetStandingProps,
   rulesetStandingSections,
   rulesetStandingZones,
+  rulesetZoneSeenBy,
   rulesetZoneMoveCells,
   rulesetZoneTurnCells,
 } from "./zones.js";
@@ -583,6 +584,8 @@ export function rulesetDispelTargets(
   const reach = positioned(state) && rulesetPositionOf(actor) ? rulesetOptionReach(state, actor.id, action.id) : null;
   return rulesetStandingZones(state).flatMap(({ caster, zone, action: made }) => {
     if (made.catalog === undefined || !ends.catalogs.includes(made.catalog)) return [];
+    // Not one hidden from them (1.402).
+    if (!rulesetZoneSeenBy(caster, zone, made, actor.side)) return [];
     if (reach && !rulesetZoneCells(state, caster, zone).some((cell) => rulesetDistanceTo(cell, actor) <= reach.max)) {
       return [];
     }

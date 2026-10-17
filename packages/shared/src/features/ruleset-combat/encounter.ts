@@ -2040,6 +2040,7 @@ export function rulesetZoneAction(
   }
   // Kinds it keeps out (1.399): Magic Circle, Hallow.
   if (zone.keepsOut) out.keepsOut = structuredClone(zone.keepsOut);
+  if (zone.hidden) out.hidden = { check: zone.hidden.check };
   const held = zone.whileHeld;
   const heldAmount = held && amountOf(held.amount);
   if (held && heldAmount) {

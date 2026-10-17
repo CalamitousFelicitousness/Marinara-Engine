@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A zone hidden from its caster's foes (1.402): Glyph of Warding, Symbol. */
+function carriesHiddenZones402(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHiddenZones402(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.hidden !== undefined && plainRecord(record.hidden)?.check !== undefined) return true;
+  return featureValues(record).some((one) => carriesHiddenZones402(one, depth + 1));
+}
+
 /** A glyph that stores one of its caster's own entries (1.401): a spell glyph. */
 function carriesStores401(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5875,6 +5885,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones hidden from their caster's foes, 1.402.
+  if (
+    !declaresApi(402) &&
+    (carriesHiddenZones402(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHiddenZones402(document)))
+  ) {
+    return "A ruleset whose zones are hidden from their caster's foes (hidden) requires schemaVersion 2 and capabilityApi 1.402 or newer";
+  }
   // Glyphs that store one of their caster's own entries, 1.401.
   if (
     !declaresApi(401) &&

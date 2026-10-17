@@ -919,6 +919,14 @@ export function rulesetCombatEventLine(
           label: event.label,
         });
       }
+      // A hidden one found (1.402).
+      if (event.outcome === "found") {
+        return key("zoneFound", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          target: names.combatant(event.targetId ?? ""),
+        });
+      }
       // Blown away by a strong wind (1.286).
       if (event.outcome === "dispersed") {
         return key("zoneDispersed", { actor: names.combatant(event.actorId), label: event.label });

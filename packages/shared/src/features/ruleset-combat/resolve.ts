@@ -407,6 +407,7 @@ function begin(
     endImmuneConditions(ctx, target);
     holderBound(ctx, target);
   }
+  leaveWithCallers(ctx);
   return {
     ctx,
     finish: () => {
@@ -415,6 +416,7 @@ function begin(
         endImmuneConditions(ctx, target);
         holderBound(ctx, target);
       }
+      leaveWithCallers(ctx);
       for (const end of ctx.harmEndings.splice(0)) end();
       // What an alteration costs its user's health, once what it changed was cast (1.362).
       for (const one of ctx.backlash?.splice(0) ?? []) {
@@ -7236,6 +7238,7 @@ function callCreatures(
     if (!called) continue;
     called.calledWith = action.id;
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
+    if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
 }
@@ -7293,12 +7296,20 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
+/** Those bound to their caller (1.393) leave once it is out: a demon's summoned kin. */
+function leaveWithCallers(ctx: RulesetCombatContext): void {
+  for (const caller of ctx.state.combatants) {
+    if (!caller.defeated) continue;
+    dismissCalled(ctx, caller, (one) => !!one.calledEndsWithCaller, "caller");
+  }
+}
+
 /** Sends away those `caller` called that `which` picks (1.344): off the board and out of the fight. */
 function dismissCalled(
   ctx: RulesetCombatContext,
   caller: RulesetCombatant,
   which: (one: RulesetCombatant) => boolean,
-  reason: "rounds" | "concentration",
+  reason: "rounds" | "concentration" | "caller",
 ): void {
   const going = ctx.state.combatants.filter(
     (one) => one.calledBy === caller.id && !one.dismissed && !one.defeated && which(one),

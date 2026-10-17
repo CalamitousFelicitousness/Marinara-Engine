@@ -292,12 +292,16 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // The forms it changes into (1.342), found in the bestiary as the fight begins.
     ...(action.forms ? { forms: structuredClone(action.forms) } : {}),
     // Who it calls into the fight (1.325), found in the bestiary as the fight begins.
-    ...(action.calls && amountOf(action.calls.count)
+    // Or its options, for rounds and bound to its caller (1.393): Summon Demon.
+    ...(action.calls && (action.calls.options || (action.calls.creature && amountOf(action.calls.count)))
       ? {
           calls: {
-            creature: action.calls.creature,
-            count: amountOf(action.calls.count)!,
+            ...(action.calls.creature ? { creature: action.calls.creature, count: amountOf(action.calls.count)! } : {}),
+            ...(action.calls.options ? { options: structuredClone(action.calls.options) } : {}),
             ...(action.calls.initiative ? { initiative: action.calls.initiative } : {}),
+            ...(action.calls.rounds ? { rounds: action.calls.rounds } : {}),
+            ...(action.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+            ...(action.calls.cantCall ? { cantCall: true as const } : {}),
           },
         }
       : {}),

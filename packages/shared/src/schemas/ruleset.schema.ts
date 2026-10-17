@@ -4810,6 +4810,29 @@ const calledCount = z
     message: "A call brings at least one creature",
   });
 
+/** The creatures a call picks among as it is used (1.344), up to 8, each like a weapon's mode. */
+const calledOptionsSchema = z
+  .array(
+    z
+      .object({
+        creature: calledCreatureRef.optional(),
+        from: catalogFromSchema.optional(),
+        upTo: calledUpTo.optional(),
+        count: calledCount,
+        label: promptSafeText(80).optional(),
+      })
+      .strict()
+      .refine((option) => (option.creature === undefined) !== (option.from === undefined), {
+        message: 'An option names one "creature" or reads "from" a catalog',
+      })
+      .refine((option) => !option.upTo || option.from !== undefined, {
+        message: '"upTo" caps what is read "from" a catalog',
+        path: ["upTo"],
+      }),
+  )
+  .min(1)
+  .max(8);
+
 /** Creatures a catalog entry or an item use calls into the fight on its user's side (Capability API
  *  1.344): 5e's Conjure Animals, Animate Dead, Find Familiar, a Figurine of Wondrous Power. Either
  *  one `creature` and its `count`, or up to 8 `options` its user picks among as they use it, like a
@@ -4825,28 +4848,7 @@ export const catalogCallsSchema = z
      *  is used, no higher than `upTo`. */
     from: catalogFromSchema.optional(),
     upTo: calledUpTo.optional(),
-    options: z
-      .array(
-        z
-          .object({
-            creature: calledCreatureRef.optional(),
-            from: catalogFromSchema.optional(),
-            upTo: calledUpTo.optional(),
-            count: calledCount,
-            label: promptSafeText(80).optional(),
-          })
-          .strict()
-          .refine((option) => (option.creature === undefined) !== (option.from === undefined), {
-            message: 'An option names one "creature" or reads "from" a catalog',
-          })
-          .refine((option) => !option.upTo || option.from !== undefined, {
-            message: '"upTo" caps what is read "from" a catalog',
-            path: ["upTo"],
-          }),
-      )
-      .min(1)
-      .max(8)
-      .optional(),
+    options: calledOptionsSchema.optional(),
     initiative: z.enum(["roll", "after"]).optional(),
     rounds: z.number().int().min(1).max(14400).optional(),
     /** Its count once over again for each this many steps of higher cost it is paid with (Capability
@@ -6443,22 +6445,49 @@ const creatureActionSchema = z
      *  bestiary, and `count` how many (`{"dice": "1d4"}`, or `{"flat": 2}`), eight at most. They
      *  appear in the action's `area` where it is aimed, or beside it without one, and roll their
      *  own initiative, or with `"initiative": "after"` act right after it. The Owed's Jars Burst,
-     *  Shelves Lean's specters. */
+     *  Shelves Lean's specters. Or (Capability API 1.393) up to 8 `options` its user picks among as
+     *  it is used, one use between them, as a catalog entry's are: a demon's Summon Demon, "2d4
+     *  dretches or one vrock". They leave once `rounds` have passed, counted from their caller's next
+     *  turn; with `endsWithCaller` as soon as their caller is out; and with `cantCall` they come
+     *  without any calling actions of their own. */
     calls: z
       .object({
         creature: z
           .string()
           .trim()
-          .regex(/^[^/\s]{1,80}\/[^/\s]{1,120}$/, 'A called creature is named "<catalogId>/<entryId>"'),
+          .regex(/^[^/\s]{1,80}\/[^/\s]{1,120}$/, 'A called creature is named "<catalogId>/<entryId>"')
+          .optional(),
         count: z
           .object(catalogAmountShape)
           .strict()
           .refine((count) => count.dice !== undefined || (count.flat ?? 0) >= 1, {
             message: "A call brings at least one creature",
-          }),
+          })
+          .optional(),
+        options: calledOptionsSchema.optional(),
         initiative: z.enum(["roll", "after"]).optional(),
+        rounds: z.number().int().min(1).max(14400).optional(),
+        endsWithCaller: z.literal(true).optional(),
+        cantCall: z.literal(true).optional(),
       })
       .strict()
+      .superRefine((calls, ctx) => {
+        if ((calls.creature === undefined) === (calls.options === undefined))
+          ctx.addIssue({
+            code: "custom",
+            message: 'A call names one "creature" or lists "options": one of them',
+          });
+        if (calls.options && calls.options.length < 2 && !calls.options[0]?.from)
+          ctx.addIssue({
+            code: "custom",
+            path: ["options"],
+            message: 'A list of "options" has two at least, or one read "from" a catalog',
+          });
+        if (calls.creature !== undefined && !calls.count)
+          ctx.addIssue({ code: "custom", path: ["count"], message: 'A call of one creature says its "count"' });
+        if (calls.options && calls.count)
+          ctx.addIssue({ code: "custom", path: ["count"], message: 'Each of the "options" says its own "count"' });
+      })
       .optional(),
     /** The forms it changes into (Capability API 1.342), with `applies` putting on a condition with
      *  `shape`: a monster's Change Shape. See `shapeFormsSchema`; `upTo.at` reads nothing here. */

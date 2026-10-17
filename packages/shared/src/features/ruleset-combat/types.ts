@@ -425,7 +425,16 @@ export interface RulesetStatBlockAction {
    *  list, its runner picking (1.336). */
   brokenNextLair?: string | string[];
   /** Creatures it calls into the fight (1.325), by bestiary entry, `count` of them. */
-  calls?: { creature: string; count: RulesetCombatAmount; initiative?: "roll" | "after" };
+  calls?: {
+    creature?: string;
+    count?: RulesetCombatAmount;
+    /** Or its options, picked as it is used (1.393): Summon Demon. */
+    options?: RulesetCatalogCalls["options"];
+    initiative?: "roll" | "after";
+    rounds?: number;
+    endsWithCaller?: true;
+    cantCall?: true;
+  };
   /** The forms it changes into (1.342), found in the bestiary as the fight begins. */
   forms?: RulesetShapeForms;
   /** A permission (1.291): these standard actions taken with this action's budget, only while it
@@ -774,7 +783,7 @@ export interface RulesetCombatAction {
   formsOf?: RulesetShapeForms;
   /** Who it calls as written (1.344), until the fight finds them in the bestiary; picked from its
    *  `modes` when it names options. */
-  callsOf?: RulesetCatalogCalls;
+  callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true };
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
@@ -1020,6 +1029,10 @@ export interface RulesetCombatAction {
     rounds?: number;
     /** Their count once over again for each this many steps of higher cost paid (1.349). */
     timesPerSteps?: number;
+    /** They leave as soon as their caller is out (1.393). */
+    endsWithCaller?: true;
+    /** They come without any calling actions of their own (1.393). */
+    cantCall?: true;
   };
   /** A burst centred on its user, never aimed (1.282): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
@@ -1480,6 +1493,8 @@ export interface RulesetCombatant {
   calledWith?: string;
   /** The round, at their caller's turn, they leave in (1.344). */
   calledUntil?: number;
+  /** They leave as soon as their caller is out (1.393). */
+  calledEndsWithCaller?: true;
   /** Sent away (1.344): off the board and out of the fight, as if never there. */
   dismissed?: true;
   /** Strikes in hand: what is left of a spend that bought several. Absent when there are none, and
@@ -2696,7 +2711,7 @@ export type RulesetCombatEvent =
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
   /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }
-  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" }
+  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" | "caller" }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

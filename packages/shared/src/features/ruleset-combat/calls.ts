@@ -87,6 +87,12 @@ export function rulesetCallCreatures(
     combatant.side = caller.side;
     combatant.calledBy = caller.id;
     combatant.creature = { ...calls.creature };
+    // Called kin that cannot call kin of their own (1.393).
+    if (calls.cantCall) {
+      combatant.actions = combatant.actions.filter(
+        (one) => !one.calls && !one.callsOf && !one.modes?.some((mode) => mode.call),
+      );
+    }
     state.combatants.push(combatant);
     came.push(combatant);
   }

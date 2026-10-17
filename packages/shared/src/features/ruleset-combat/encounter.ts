@@ -4528,6 +4528,8 @@ function fillCatalogCalls(
       ...(calls.initiative === "after" ? { after: true as const } : {}),
       ...(calls.rounds ? { rounds: calls.rounds } : {}),
       ...(calls.timesPerSteps ? { timesPerSteps: calls.timesPerSteps } : {}),
+      ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+      ...(calls.cantCall ? { cantCall: true as const } : {}),
     };
   };
   if (calls.creature && calls.count) {
@@ -4903,6 +4905,20 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       const action = combatant.actions.find(
         (one) => one.kind === "block" && one.id === (source.id ?? `block:${index}`),
       );
+      // Its options (1.393), found as a catalog entry's are, below.
+      if (source.calls.options) {
+        if (!action) return;
+        action.callsOf = {
+          options: structuredClone(source.calls.options),
+          ...(source.calls.initiative ? { initiative: source.calls.initiative } : {}),
+          ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
+          ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+          ...(source.calls.cantCall ? { cantCall: true as const } : {}),
+        };
+        action.callChoice = true;
+        return;
+      }
+      if (!source.calls.creature || !source.calls.count) return;
       const [catalogId, entryId] = source.calls.creature.split("/");
       const catalogs = callable();
       const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
@@ -4914,6 +4930,9 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         creature: { catalogId: catalogId!, entryId: entryId! },
         count: { ...source.calls.count },
         ...(source.calls.initiative === "after" ? { after: true as const } : {}),
+        ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
+        ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+        ...(source.calls.cantCall ? { cantCall: true as const } : {}),
       };
     });
   }

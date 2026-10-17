@@ -2194,6 +2194,21 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A creature's call by options, for rounds or bound to its caller (1.393): Summon Demon. A catalog
+ *  entry's calls (its mechanics carry a `kind`) took options and rounds at 1.344. */
+function carriesCreatureCalls393(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureCalls393(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls) {
+    if (calls.endsWithCaller !== undefined || calls.cantCall !== undefined) return true;
+    if (record.kind === undefined && (calls.options !== undefined || calls.rounds !== undefined)) return true;
+  }
+  return featureValues(record).some((one) => carriesCreatureCalls393(one, depth + 1));
+}
+
 /** Rows that recharge after days of game time (1.392): Divine Intervention's seven days. */
 function carriesRechargeDays392(ruleset: unknown): boolean {
   const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
@@ -5777,6 +5792,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's call by options, for rounds or bound to its caller, 1.393.
+  if (
+    !declaresApi(393) &&
+    (carriesCreatureCalls393(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureCalls393(document)))
+  ) {
+    return "A ruleset whose creatures call others by options, for rounds or bound to their caller (calls) requires schemaVersion 2 and capabilityApi 1.393 or newer";
+  }
   // Recharged after days, 1.392.
   if (!declaresApi(392) && carriesRechargeDays392(ruleset)) {
     return "A ruleset whose list rows recharge after days of game time (rechargeDays) requires schemaVersion 2 and capabilityApi 1.392 or newer";

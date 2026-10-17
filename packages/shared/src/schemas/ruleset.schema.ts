@@ -9807,7 +9807,8 @@ export interface RulesetCombatSense {
 /** Conditions kept off when a creature that is `from` puts them on (1.191). */
 export interface RulesetConditionImmunityFrom {
   conditions: string[];
-  from: RulesetTargetIs;
+  from?: RulesetTargetIs;
+  catalogs?: string[];
 }
 const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = z
   .object({ id: sheetId, label, sheet: rulesetValueRefSchema.optional(), blind: z.literal(true).optional() })
@@ -10243,14 +10244,20 @@ const combatConditionSchema = z
     conditionImmunities: z.array(sheetId).min(1).max(40).optional(),
     /** Conditions kept off only when a creature that is `from` would put them on (Capability API
      *  1.191): 5e's Protection from Evil and Good, no charm or fright from a fiend or undead. One
-     *  already on stays. */
+     *  already on stays. Or only when an entry of one of `catalogs` would (Capability API 1.423), with
+     *  `from` or without it: 5e's Freedom of Movement, no paralysis or restraint from a spell. */
     conditionImmunitiesFrom: z
       .array(
-        z.object({ conditions: z.array(sheetId).min(1).max(40), from: targetIsSchema }).strict() as z.ZodType<
-          RulesetConditionImmunityFrom,
-          z.ZodTypeDef,
-          unknown
-        >,
+        z
+          .object({
+            conditions: z.array(sheetId).min(1).max(40),
+            from: targetIsSchema.optional(),
+            catalogs: z.array(sheetId).min(1).max(8).optional(),
+          })
+          .strict()
+          .refine((ward) => ward.from || ward.catalogs, {
+            message: 'Say what it is kept off from: "from", "catalogs" or both',
+          }) as z.ZodType<RulesetConditionImmunityFrom, z.ZodTypeDef, unknown>,
       )
       .min(1)
       .max(10)
@@ -14689,7 +14696,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!conditions.has(condition))
             issue([...where, "conditions", conditionIndex], `Unknown condition "${condition}"`);
         });
-        targetIsIssues(def, ward.from, [...where, "from"], issue);
+        if (ward.from) targetIsIssues(def, ward.from, [...where, "from"], issue);
+        // The catalogs it names (1.423) are the ruleset's.
+        ward.catalogs?.forEach((catalog, catalogIndex) => {
+          if (!def.catalogs?.some((one) => one.id === catalog))
+            issue([...where, "catalogs", catalogIndex], `Unknown catalog "${catalog}"`);
+        });
       });
       // What it harms with is one of the ruleset's damage types (1.189).
       const harmType = entry.harms?.type;

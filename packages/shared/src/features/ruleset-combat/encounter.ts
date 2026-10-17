@@ -5370,6 +5370,8 @@ export function rulesetImmuneToCondition(
   state?: RulesetEncounterState,
   /** Given, who would put it on, which a condition's `conditionImmunitiesFrom` reads (1.191). */
   source?: RulesetCombatant,
+  /** Given, the catalog of the entry that would put it on, which its `catalogs` reads (1.423). */
+  catalog?: string,
 ): boolean {
   const wanted = condition.trim().toLowerCase();
   // Read reached levels without asking immunity again: a track's own immunity must not recurse.
@@ -5381,12 +5383,14 @@ export function rulesetImmuneToCondition(
   const kinds = definition?.combat?.conditions?.find((entry) => entry.condition.trim().toLowerCase() === wanted)?.kinds;
   if (kinds?.some((kind) => immunities.some((entry) => entry.trim().toLowerCase() === kind.trim().toLowerCase())))
     return true;
-  if (!source || !definition?.combat) return false;
+  if ((!source && !catalog) || !definition?.combat) return false;
   return rulesetActiveConditions(definition, definition.combat, combatant, state, true).some((entry) =>
     entry.conditionImmunitiesFrom?.some(
       (one) =>
         one.conditions.some((id) => id.trim().toLowerCase() === wanted) &&
-        rulesetTargetIs(definition, source, one.from),
+        (one.from === undefined || (!!source && rulesetTargetIs(definition, source, one.from))) &&
+        // Put on by an entry of one of these catalogs (1.423): Freedom of Movement against a spell.
+        (one.catalogs === undefined || (!!catalog && one.catalogs.includes(catalog))),
     ),
   );
 }

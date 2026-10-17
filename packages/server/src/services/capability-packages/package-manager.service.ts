@@ -2247,6 +2247,20 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** Conditions kept off when an entry of named catalogs would put them on (1.423): Freedom of Movement. */
+function carriesImmunityCatalogs423(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesImmunityCatalogs423(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.conditionImmunitiesFrom) &&
+    record.conditionImmunitiesFrom.some((one) => plainRecord(one)?.catalogs !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesImmunityCatalogs423(one, depth + 1));
+}
+
 /** A creature that splits in two when harmed (1.422): Black Pudding. */
 function carriesSplits422(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6092,6 +6106,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions kept off when an entry of named catalogs would put them on, 1.423.
+  if (
+    !declaresApi(423) &&
+    (carriesImmunityCatalogs423(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesImmunityCatalogs423(document)))
+  ) {
+    return "A ruleset whose conditions are kept off by the catalog of what puts them on (conditionImmunitiesFrom catalogs) requires schemaVersion 2 and capabilityApi 1.423 or newer";
+  }
   // Creatures that split in two when harmed, 1.422.
   if (
     !declaresApi(422) &&

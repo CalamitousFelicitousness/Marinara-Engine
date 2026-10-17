@@ -2395,7 +2395,14 @@ function applyConditionId(
   if (applies.targetHolds && !rulesetHoldsFor(ctx.definition, target, extra.sourceId ?? "", applies.targetHolds))
     return;
   if (
-    rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state, putter) ||
+    rulesetImmuneToCondition(
+      target,
+      condition,
+      ctx.definition,
+      ctx.state,
+      putter,
+      extra.catalog ?? ctx.harming?.catalog,
+    ) ||
     // Nothing reaches through a sphere (1.314): a zone's, or a harm's.
     (!!putter && rulesetSealedApart(ctx.definition, ctx.state, putter, target))
   ) {

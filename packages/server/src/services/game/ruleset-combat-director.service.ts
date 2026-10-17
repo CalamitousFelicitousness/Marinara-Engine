@@ -2483,6 +2483,7 @@ export function commandRulesetCombatDirector(
       ...(command.dispel ? { dispel: command.dispel } : {}),
       ...(command.ends?.length ? { ends: command.ends } : {}),
       ...(command.carries?.length ? { carries: command.carries } : {}),
+      ...(command.designates?.length ? { designates: command.designates } : {}),
       ...(command.amount !== undefined ? { amount: command.amount } : {}),
       ...(command.alters?.length ? { alters: command.alters } : {}),
       ...(command.spares ? { spares: command.spares } : {}),

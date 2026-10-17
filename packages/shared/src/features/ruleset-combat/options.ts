@@ -103,6 +103,7 @@ import {
   rulesetCombatantDistance,
   rulesetLevelOf,
   rulesetLineOfSight,
+  rulesetPathCells,
   rulesetSees,
   rulesetOpportunityAttack,
   rulesetBestWeapon,
@@ -601,7 +602,35 @@ export function rulesetTargetRefusal(
   // Any cell of one to any cell of the other (1.194).
   const actor = rulesetCombatant(state, actorId);
   if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
+  // Through a layered wall's standing layer that stops it (1.439): Prismatic Wall's red and orange.
+  const own = actor ? actionOf(actor, optionId) : undefined;
+  if (own && target && rulesetLayersStop(state, own, from, rulesetPositionOf(target) ?? to)) return "no-line-of-sight";
   return null;
+}
+
+/** Whether a layered wall's standing layer stops this between two cells (1.439): an attack from afar,
+ *  magical or not, or a spell cast across it. Prismatic Wall's red, orange and indigo layers. */
+export function rulesetLayersStop(
+  state: RulesetEncounterState,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+): boolean {
+  const walls = rulesetStandingLayers(state);
+  if (walls.length === 0) return false;
+  const spell = rulesetIsSpell(action);
+  const magical = spell || (action.qualities ?? action.damage?.qualities)?.includes("magical") === true;
+  const kinds = new Set<string>();
+  if (spell) kinds.add("spells");
+  if (action.toHit !== undefined && !action.area) kinds.add(magical ? "ranged-magical" : "ranged-nonmagical");
+  if (kinds.size === 0) return false;
+  const path = new Set(rulesetPathCells(from, to).map((cell) => `${cell.x},${cell.y}`));
+  if (path.size === 0) return false;
+  return walls.some(
+    ({ zone, action: made, cells }) =>
+      made.zone!.layers!.rows.slice(zone.layersGone ?? 0).some((row) => row.blocks?.some((kind) => kinds.has(kind))) &&
+      cells.some((cell) => path.has(`${cell.x},${cell.y}`)),
+  );
 }
 
 /**
@@ -703,6 +732,8 @@ export function rulesetAimLegal(
   if (at.x < 0 || at.y < 0 || at.x >= grid.width || at.y >= grid.height) return false;
   // From whichever cell the actor fills (1.194).
   if (rulesetDistanceTo(at, actor) > reach.max) return false;
+  // Not cast across a layered wall's layer that stops spells (1.439): Prismatic Wall's indigo.
+  if (rulesetLayersStop(state, action, from, at)) return false;
   return rulesetFootprint(actor).some((cell) => rulesetLineOfSight(grid, cell, at));
 }
 
@@ -2716,6 +2747,12 @@ function optionFrom(
     // Lasting areas it may end instead (1.374): Dispel Magic on a Wall of Fire.
     const dispels = rulesetDispelTargets(state, actor, action);
     if (dispels.length > 0) option.dispels = dispels;
+  }
+  // Whom a layered wall it leaves may spare, picked as it is cast (1.439): Prismatic Wall.
+  const spares = action.zone?.layers?.spares;
+  if (spares && typeof spares === "object") {
+    const ids = state.combatants.filter((one) => !one.defeated && one.id !== actor.id).map((one) => one.id);
+    if (ids.length > 0) option.designates = { count: spares.chosen, ids };
   }
   // What its user may pick to end on each target (1.374): Cleansing Touch's one spell.
   if (action.endsSpells?.chosen) {

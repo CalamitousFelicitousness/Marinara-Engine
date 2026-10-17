@@ -186,13 +186,15 @@ export function RulesetCombatBoard({
         return;
       }
       setStep(null);
-      // Who goes along on a teleport (1.276), picked in the menu while it is aimed.
+      // Who goes along on a teleport (1.276), or whom a layered wall spares (1.439), picked in the
+      // menu while it is aimed.
       const carries = step.option.teleport ? step.targets : [];
+      const designates = step.option.designates ? step.targets : [];
       onChoose(
         step.option.id,
         [],
         step.payWith,
-        carries.length ? { ...taken.send, carries } : taken.send,
+        carries.length ? { ...taken.send, carries } : designates.length ? { ...taken.send, designates } : taken.send,
         step.style,
         step.mode,
         step.amount,

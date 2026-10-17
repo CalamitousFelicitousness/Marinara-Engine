@@ -3034,11 +3034,12 @@ export interface RulesetZoneLayer {
   applies?: string[];
   save?: string;
   endedBy?: { damage?: { types: string[]; atLeast: number }; entries?: string[]; wind?: true };
+  blocks?: Array<"ranged-nonmagical" | "ranged-magical" | "spells">;
 }
 /** A wall or globe of layers crossed one at a time (Capability API 1.437), and its flash. */
 export interface RulesetZoneLayers {
   rows: RulesetZoneLayer[];
-  spares?: "caster" | "allies";
+  spares?: "caster" | "allies" | { chosen: number };
   flash?: {
     within: number;
     save: string;
@@ -3084,6 +3085,15 @@ const zoneLayersSchema: z.ZodType<RulesetZoneLayers, z.ZodTypeDef, unknown> = z
                 message: '"endedBy" says "damage", "entries", "wind" or several',
               })
               .optional(),
+            /** What cannot pass through the wall while this layer stands (Capability API 1.439):
+             *  attacks from afar that are not magical, those that are (a spell's or a `magical`
+             *  one's), and spells cast across it. 5e's red, orange and indigo layers. */
+            blocks: z
+              .array(z.enum(["ranged-nonmagical", "ranged-magical", "spells"]))
+              .min(1)
+              .max(3)
+              .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
+              .optional(),
           })
           .strict(),
       )
@@ -3092,8 +3102,12 @@ const zoneLayersSchema: z.ZodType<RulesetZoneLayers, z.ZodTypeDef, unknown> = z
       .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length, {
         message: "Each layer's id is its own",
       }),
-    /** Who crosses it, and stands near it, unharmed: its caster, or their whole side. */
-    spares: z.enum(["caster", "allies"]).optional(),
+    /** Who crosses it, and stands near it, unharmed: its caster, or their whole side; or (Capability
+     *  API 1.439) its caster and up to `chosen` creatures its caster picks as it is cast, 5e's "you and
+     *  creatures you designate". */
+    spares: z
+      .union([z.enum(["caster", "allies"]), z.object({ chosen: z.number().int().min(1).max(20) }).strict()])
+      .optional(),
     /** Who sees it within `within` (the ruleset's distance) of it throws `save` at the entry's own
      *  difficulty or has `applies`: as it `appears`, as they move that near (`enter`), or as their turn
      *  starts there (`turn-start`). 5e's blinding Constitution save. */

@@ -69,6 +69,8 @@ export type DirectedCommand =
       ends?: string[];
       /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
       carries?: string[];
+      /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
+      designates?: string[];
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
       /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */

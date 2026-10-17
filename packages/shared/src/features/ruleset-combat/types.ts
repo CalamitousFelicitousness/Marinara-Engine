@@ -2143,6 +2143,8 @@ export interface RulesetActionResume {
   spares?: string[];
   /** Who Heightened gives disadvantage, as they were picked (1.255). */
   heightens?: string;
+  /** Whom a layered wall spares, as they were picked (1.439). */
+  designates?: string[];
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.242). */
@@ -3335,6 +3337,9 @@ export interface RulesetCombatOption {
   /** Where a teleport may go (1.276), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
   teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
+  /** Whom a layered wall may spare (1.439), picked as it is cast: at most `count` of `ids`. The
+   *  choice names them as `designates`. */
+  designates?: { count: number; ids: string[] };
   /** The second half of an action already made this turn (1.280), and so free. */
   followUp?: true;
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
@@ -3445,6 +3450,8 @@ export interface RulesetCombatChoice {
   at?: RulesetCombatCell;
   /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
   carries?: string[];
+  /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
+  designates?: string[];
   /** Which way a wall runs from `at` (1.177): toward this cell. Across the line to its maker when
    *  left out. A ring ignores it. */
   toward?: RulesetCombatCell;
@@ -3650,8 +3657,11 @@ export interface RulesetCombatZoneRule {
       applies?: string[];
       save?: string;
       endedBy?: { damage?: { types: string[]; atLeast: number }; entries?: string[]; wind?: true };
+      /** What cannot pass through while it stands (1.439). */
+      blocks?: Array<"ranged-nonmagical" | "ranged-magical" | "spells">;
     }>;
-    spares?: "caster" | "allies";
+    /** Its caster, their side, or its caster and those picked as it was cast (1.439). */
+    spares?: "caster" | "allies" | { chosen: number };
     flash?: {
       within: number;
       save: string;
@@ -3722,6 +3732,8 @@ export interface RulesetCombatZone {
   untilLair?: true;
   /** How many of its layers are gone, from the first (1.437). */
   layersGone?: number;
+  /** Whom its caster picked for it to spare (1.439). */
+  spared?: string[];
 }
 
 /** A Search's own throw for those who change how looking for them is thrown (1.290): 5e's Cloak of

@@ -134,6 +134,7 @@ export function DirectedCombatUI(props: Props) {
       ...(cell?.dispel ? { dispel: cell.dispel } : {}),
       ...(cell?.ends?.length ? { ends: cell.ends } : {}),
       ...(cell?.carries?.length ? { carries: cell.carries } : {}),
+      ...(cell?.designates?.length ? { designates: cell.designates } : {}),
       ...(amount !== undefined ? { amount } : {}),
       ...(alters?.length ? { alters } : {}),
       ...(alters?.length && spares ? { spares } : {}),

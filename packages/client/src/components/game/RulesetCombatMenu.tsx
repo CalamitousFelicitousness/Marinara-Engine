@@ -686,10 +686,22 @@ export function RulesetCombatMenu({
       if (!laid) return;
       if (picksFirst({ ...step, targets: [], cell: laid })) return;
       closeStep();
-      onChoose(option.id, [], step.payWith, laid, step.style, step.mode, step.amount, step.alters);
+      // Whom a layered wall spares (1.439), ticked below.
+      const designates = option.designates && step.targets.length ? { designates: step.targets } : {};
+      onChoose(
+        option.id,
+        [],
+        step.payWith,
+        { ...laid, ...designates },
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
     };
-    // Who may go along on a teleport (1.276), ticked here while the board takes the cell.
-    const carries = step.stage === "aim" ? option.teleport?.carries : undefined;
+    // Who may go along on a teleport (1.276), or whom a layered wall spares (1.439), ticked here
+    // while the board takes the cell.
+    const carries = step.stage === "aim" ? (option.teleport?.carries ?? option.designates) : undefined;
     const prompt =
       step.stage === "move"
         ? "game.combat.ruleset.board.movePrompt"
@@ -731,9 +743,12 @@ export function RulesetCombatMenu({
                   }
                   className={cn(buttonClass, along ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
                 >
-                  {t("game.combat.ruleset.board.teleportCarry", {
-                    name: view.combatants.find((one) => one.id === id)?.name ?? id,
-                  })}
+                  {t(
+                    option.teleport ? "game.combat.ruleset.board.teleportCarry" : "game.combat.ruleset.board.designate",
+                    {
+                      name: view.combatants.find((one) => one.id === id)?.name ?? id,
+                    },
+                  )}
                 </button>
               );
             })}

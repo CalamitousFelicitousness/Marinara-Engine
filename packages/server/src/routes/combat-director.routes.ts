@@ -243,6 +243,8 @@ const command = z.discriminatedUnion("type", [
     ends: z.array(key).max(16).optional(),
     /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
+    /** Whom a layered wall spares (1.439), checked against the menu by the resolver. */
+    designates: z.array(key).max(20).optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */

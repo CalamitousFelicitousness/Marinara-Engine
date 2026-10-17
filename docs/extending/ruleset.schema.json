@@ -41794,6 +41794,19 @@
                                     },
                                     "additionalProperties": false
                                   },
+                                  "blocks": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ranged-nonmagical",
+                                        "ranged-magical",
+                                        "spells"
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -41806,10 +41819,29 @@
                               "maxItems": 12
                             },
                             "spares": {
-                              "type": "string",
-                              "enum": [
-                                "caster",
-                                "allies"
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "caster",
+                                    "allies"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "chosen": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "chosen"
+                                  ],
+                                  "additionalProperties": false
+                                }
                               ]
                             },
                             "flash": {
@@ -58267,6 +58299,19 @@
                                           },
                                           "additionalProperties": false
                                         },
+                                        "blocks": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "enum": [
+                                              "ranged-nonmagical",
+                                              "ranged-magical",
+                                              "spells"
+                                            ]
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 3
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -58279,10 +58324,29 @@
                                     "maxItems": 12
                                   },
                                   "spares": {
-                                    "type": "string",
-                                    "enum": [
-                                      "caster",
-                                      "allies"
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "caster",
+                                          "allies"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "chosen": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 20
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "chosen"
+                                        ],
+                                        "additionalProperties": false
+                                      }
                                     ]
                                   },
                                   "flash": {
@@ -75073,6 +75137,19 @@
                                         },
                                         "additionalProperties": false
                                       },
+                                      "blocks": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "ranged-nonmagical",
+                                            "ranged-magical",
+                                            "spells"
+                                          ]
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 3
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -75085,10 +75162,29 @@
                                   "maxItems": 12
                                 },
                                 "spares": {
-                                  "type": "string",
-                                  "enum": [
-                                    "caster",
-                                    "allies"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "caster",
+                                        "allies"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "chosen": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "chosen"
+                                      ],
+                                      "additionalProperties": false
+                                    }
                                   ]
                                 },
                                 "flash": {
@@ -89956,6 +90052,19 @@
                                               },
                                               "additionalProperties": false
                                             },
+                                            "blocks": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "ranged-nonmagical",
+                                                  "ranged-magical",
+                                                  "spells"
+                                                ]
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 3
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -89968,10 +90077,29 @@
                                         "maxItems": 12
                                       },
                                       "spares": {
-                                        "type": "string",
-                                        "enum": [
-                                          "caster",
-                                          "allies"
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "caster",
+                                              "allies"
+                                            ]
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "chosen": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 20
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "chosen"
+                                            ],
+                                            "additionalProperties": false
+                                          }
                                         ]
                                       },
                                       "flash": {

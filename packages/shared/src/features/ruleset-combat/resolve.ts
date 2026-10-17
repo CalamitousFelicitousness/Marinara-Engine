@@ -4027,10 +4027,15 @@ function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>
 /** Whom a layered wall spares (1.437): its caster, or their whole side. */
 function layersSpare(
   caster: RulesetCombatant,
+  zone: RulesetCombatZone,
   layers: NonNullable<RulesetCombatZoneRule["layers"]>,
   one: RulesetCombatant,
 ): boolean {
-  return layers.spares === "allies" ? one.side === caster.side : layers.spares === "caster" && one.id === caster.id;
+  const spares = layers.spares;
+  if (!spares) return false;
+  if (spares === "allies") return one.side === caster.side;
+  // Its caster and those they picked as it was cast (1.439).
+  return one.id === caster.id || (typeof spares === "object" && !!zone.spared?.includes(one.id));
 }
 
 /** The damage of each type a stand-in took since `from` (1.437), before its lines leave the log. */
@@ -4119,9 +4124,16 @@ function flashOne(
 ): void {
   const layers = action.zone?.layers;
   const flash = layers?.flash;
-  if (!layers || !flash || !rulesetCombatStanding(one) || one.object || layersSpare(caster, layers, one)) return;
+  if (!layers || !flash || !rulesetCombatStanding(one) || one.object || layersSpare(caster, zone, layers, one)) return;
   const cells = rulesetZoneCells(ctx.state, caster, zone);
-  if (!cells.some((cell) => rulesetSeesCell(ctx.definition, ctx.state, one, cell))) return;
+  // Seen as it shines, whatever it hides behind it (1.439): its own murk is no veil over itself.
+  const view: RulesetEncounterState = {
+    ...ctx.state,
+    combatants: ctx.state.combatants.map((other) =>
+      other.id === caster.id ? { ...other, zones: (other.zones ?? []).filter((own) => own !== zone) } : other,
+    ),
+  };
+  if (!cells.some((cell) => rulesetSeesCell(ctx.definition, view, one, cell))) return;
   const difficulty = action.save?.difficulty ?? action.saveDifficulty ?? 10;
   if (rollSave(ctx, one, flash.save, difficulty, caster.id)) return;
   for (const applies of flash.applies) {
@@ -4249,6 +4261,10 @@ function placeZone(
           return kind ? { insideIs: { types: [kind] } } : {};
         })()
       : {}),
+    // Whom its caster picked for it to spare (1.439).
+    ...(rule.layers?.spares && typeof rule.layers.spares === "object"
+      ? { spared: [...(resume.designates ?? [])] }
+      : {}),
     // What its caster stored in it (1.401).
     ...(rule.detonates?.stores && resume.mode
       ? (() => {
@@ -4367,7 +4383,7 @@ function zoneStrike(
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
   // Crossed unharmed by whom it spares (1.437).
   const layers = action.zone?.layers;
-  if (layers && layersSpare(caster, layers, target)) return;
+  if (layers && layersSpare(caster, zone, layers, target)) return;
   const stamp = turnStamp(ctx);
   if (zone.struck?.[target.id] === stamp) return;
   // Only this turn's catches are kept: an older one can never match again.
@@ -5546,6 +5562,20 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
   }
+  // Whom a layered wall spares (1.439): those its option offered, no more than it spares.
+  const designated = option.designates;
+  if (
+    choice.designates !== undefined &&
+    !(
+      designated &&
+      Array.isArray(choice.designates) &&
+      new Set(choice.designates).size === choice.designates.length &&
+      choice.designates.length <= designated.count &&
+      choice.designates.every((id) => designated.ids.includes(id))
+    )
+  ) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
   // A wall's section struck at instead of a creature (1.200).
   if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
   // A lasting area to end instead of a creature (1.374), one the menu offered; and what to end on a
@@ -6099,6 +6129,7 @@ function applyChoice(
     ...(alters?.length ? { alters: alters.map((alter) => alter.id) } : {}),
     ...(alters?.length && picks.spared ? { spares: [...picks.spared] } : {}),
     ...(alters?.length && picks.heightened ? { heightens: picks.heightened } : {}),
+    ...(choice.designates?.length ? { designates: [...choice.designates] } : {}),
   };
   // A cast taking rounds (1.408): begun now, and landing as its last round is spent.
   if (action.castingRounds) {

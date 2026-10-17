@@ -2261,6 +2261,20 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Layers that stop what passes through them, or spare those picked at cast (1.439): Prismatic Wall. */
+function carriesLayerBlocks439(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLayerBlocks439(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const layers = plainRecord(record.layers);
+  if (layers) {
+    if (plainRecord(layers.spares)) return true;
+    if (Array.isArray(layers.rows) && layers.rows.some((row) => plainRecord(row)?.blocks !== undefined)) return true;
+  }
+  return featureValues(record).some((one) => carriesLayerBlocks439(one, depth + 1));
+}
+
 /** An entry aimed at a layered wall to break its layer (1.438): Passwall. */
 function carriesEndsLayers438(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6278,6 +6292,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Layers that stop what passes through them, or spare those picked at cast, 1.439.
+  if (
+    !declaresApi(439) &&
+    (carriesLayerBlocks439(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLayerBlocks439(document)))
+  ) {
+    return "A ruleset whose layered walls stop what passes through a layer (layer blocks) or spare those picked as they are cast (spares chosen) requires schemaVersion 2 and capabilityApi 1.439 or newer";
+  }
   // An entry aimed at a layered wall to break its layer, 1.438.
   if (
     !declaresApi(438) &&

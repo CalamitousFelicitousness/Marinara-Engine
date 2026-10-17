@@ -49318,6 +49318,11 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "castingRounds": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 10
+                    },
                     "alters": {
                       "type": "object",
                       "properties": {
@@ -78791,6 +78796,11 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "castingRounds": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 10
+                        },
                         "alters": {
                           "type": "object",
                           "properties": {
@@ -92175,6 +92185,11 @@
                               "usesChosen": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "castingRounds": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 10
                               },
                               "alters": {
                                 "type": "object",

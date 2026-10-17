@@ -4301,6 +4301,8 @@ function endConcentration(
   const held = actor.concentrating;
   if (!held) return;
   actor.concentrating = null;
+  // A cast taking rounds (1.408) fails with it, what it cost given back.
+  if (actor.casting && held.actionId === castingHeld(actor.casting.optionId)) loseCasting(ctx, actor);
   // A spell held ready by it is lost with it (1.288).
   const readied = actor.readied;
   if (readied?.paid && readied.optionId === held.actionId) {
@@ -5566,6 +5568,12 @@ function applyChoice(
     ...(alters?.length && picks.spared ? { spares: [...picks.spared] } : {}),
     ...(alters?.length && picks.heightened ? { heightens: picks.heightened } : {}),
   };
+  // A cast taking rounds (1.408): begun now, and landing as its last round is spent.
+  if (action.castingRounds) {
+    beginCasting(ctx, working, action, resume, budget);
+    noteOutcome(ctx);
+    return finish();
+  }
   // A condition that slows what its holder uses (1.120) may hold it over to their next turn.
   if (budget && delayRoll(ctx, working, action, budget)) {
     working.delayed = { ...resume, label: action.label, budget };
@@ -5906,6 +5914,84 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   }
   spendBudget(ctx, actor, budget);
   ctx.events.push({ type: "delay", actorId: actor.id, label, outcome: "completed" });
+  reopenAction(ctx, actor, action, resume);
+}
+
+/** The concentration a cast taking rounds is held by (1.408), apart from the entry's own. */
+function castingHeld(optionId: string): string {
+  return `casting:${optionId}`;
+}
+
+/** A cast taking rounds begun (1.408): paid for now, concentrated on, and given back if it fails. */
+function beginCasting(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  resume: RulesetActionResume,
+  budget: string | undefined,
+): void {
+  const paid = ctx.events.flatMap((event) =>
+    event.type === "spend" && event.actorId === actor.id ? [{ pool: event.pool, amount: event.amount }] : [],
+  );
+  startConcentration(ctx, actor, { ...action, id: castingHeld(action.id) });
+  const left = action.castingRounds! - 1;
+  actor.casting = { ...resume, label: action.label, ...(budget ? { budget } : {}), left, paid };
+  ctx.events.push({ type: "casting", actorId: actor.id, label: action.label, outcome: "started", left });
+}
+
+/** A cast taking rounds failing (1.408): what it cost given back. */
+function loseCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const casting = actor.casting;
+  if (!casting) return;
+  delete actor.casting;
+  for (const { pool, amount } of casting.paid) {
+    if (actor.sheet && amount > 0) writeRulesetSheet(ctx.definition, actor, { op: "restore", pool, amount });
+  }
+  ctx.events.push({ type: "casting", actorId: actor.id, label: casting.label, outcome: "lost" });
+}
+
+/** A cast taking rounds carried on as its maker's turn starts (1.408): its budget spent on it again,
+ *  and on the last, it lands. One who cannot act, or has no budget to spend, loses it. */
+function continueCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const casting = actor.casting;
+  if (!casting) return;
+  const effects = rulesetCombatEffects(ctx.definition, ctx.combat, actor, ctx.state);
+  if (
+    !rulesetCombatStanding(actor) ||
+    effects.has("cannot-act") ||
+    (casting.budget !== undefined && (actor.budgets[casting.budget] ?? 0) < 1)
+  ) {
+    if (actor.concentrating?.actionId === castingHeld(casting.optionId)) endConcentration(ctx, actor, "spent");
+    loseCasting(ctx, actor);
+    return;
+  }
+  if (casting.budget !== undefined) spendBudget(ctx, actor, casting.budget);
+  casting.left -= 1;
+  if (casting.left > 0) {
+    ctx.events.push({
+      type: "casting",
+      actorId: actor.id,
+      label: casting.label,
+      outcome: "continued",
+      left: casting.left,
+    });
+    return;
+  }
+  delete actor.casting;
+  // Done casting, its concentration on the casting is over; the entry's own may begin as it lands.
+  if (actor.concentrating?.actionId === castingHeld(casting.optionId)) {
+    actor.concentrating = null;
+    const concentration = ctx.combat.concentration;
+    if (concentration) writeRulesetSheet(ctx.definition, actor, { op: "note", field: concentration.text, value: "" });
+  }
+  const { label, budget: _budget, left: _left, paid: _paid, ...resume } = casting;
+  const found = actor.actions.find((entry) => entry.id === resume.optionId);
+  const action = found && rulesetResumedAction(actor, found, resume.alters, resume.spares, resume.heightens);
+  if (!action) {
+    ctx.events.push({ type: "casting", actorId: actor.id, label, outcome: "lost" });
+    return;
+  }
+  ctx.events.push({ type: "casting", actorId: actor.id, label, outcome: "completed" });
   reopenAction(ctx, actor, action, resume);
 }
 
@@ -7151,12 +7237,18 @@ function windowClosed(
     if (first) {
       if (!ctx.state.acted?.includes(first.id)) (ctx.state.acted ??= []).push(first.id);
       openMoment(ctx, { kind: "turn-start", sourceId: first.id, label: first.name }, ctx.state.combatants);
-      if (!ctx.state.window) completeDelayed(ctx, first);
+      if (!ctx.state.window) {
+        completeDelayed(ctx, first);
+        continueCasting(ctx, first);
+      }
     }
   } else if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
   if (!over && trigger.kind === "turn-start") {
     const actor = rulesetCombatant(ctx.state, trigger.sourceId);
-    if (actor) completeDelayed(ctx, actor);
+    if (actor) {
+      completeDelayed(ctx, actor);
+      continueCasting(ctx, actor);
+    }
   }
 }
 
@@ -12007,7 +12099,11 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     compelTurn(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.
     openMoment(ctx, { kind: "turn-start", sourceId: actor.id, label: actor.name }, ctx.state.combatants);
-    if (!ctx.state.window) completeDelayed(ctx, actor);
+    if (!ctx.state.window) {
+      completeDelayed(ctx, actor);
+      // A cast taking rounds carried on (1.408).
+      continueCasting(ctx, actor);
+    }
   }
   const after = rulesetEncounterOutcome(ctx.state);
   if (after !== "ongoing") pushOutcome(ctx, after);

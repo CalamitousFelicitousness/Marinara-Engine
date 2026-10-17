@@ -821,6 +821,8 @@ export interface RulesetCombatAction {
   lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.251). */
   usesChosen?: true;
+  /** It takes this many rounds to cast (1.408), its budget spent again as each turn starts. */
+  castingRounds?: number;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.253):
    *  5e's Metamagic. Never on a menu of its own. */
   alters?: RulesetCombatAlter;
@@ -1664,6 +1666,14 @@ export interface RulesetCombatant {
   /** What a delay held over to their next turn (1.120): the action as it was made, and the budget
    *  completing it takes. Absent while nothing waits. */
   delayed?: RulesetActionResume & { label: string; budget: string };
+  /** A cast taking rounds (1.408): the action as it was made, the budget each turn spends on it, the
+   *  turns still `left`, and what it was `paid`, given back if it fails. Absent while nothing is cast. */
+  casting?: RulesetActionResume & {
+    label: string;
+    budget?: string;
+    left: number;
+    paid: Array<{ pool: string; amount: number }>;
+  };
   /** What the holder's spells left behind (1.122). Distances are in cells. */
   summons?: Array<{
     actionId: string;
@@ -2917,6 +2927,15 @@ export type RulesetCombatEvent =
       outcome: "now" | "held" | "completed" | "lost";
       roll?: number;
       needed?: number;
+    }
+  /** A cast taking rounds (1.408): `started` and `continued` with `left` turns to go, then
+   *  `completed`, or `lost` with what it cost given back. */
+  | {
+      type: "casting";
+      actorId: string;
+      label: string;
+      outcome: "started" | "continued" | "completed" | "lost";
+      left?: number;
     }
   /** Something held open by a window was called off, and never happened. What it cost stays spent:
    *  it was paid for before anybody was asked. */

@@ -2886,6 +2886,8 @@ function mechanicsAction(
   // Dice off somebody else's roll that hit (1.250): Cutting Words, its die sized by a level.
   // As many uses as its user chooses, healing that many times over (1.251): Lay on Hands.
   if (mechanics.usesChosen) action.usesChosen = true;
+  // Taking rounds to cast (1.408): Symbol's minute.
+  if (mechanics.castingRounds) action.castingRounds = mechanics.castingRounds;
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.
   if (mechanics.alters) {
     const alters = mechanics.alters;

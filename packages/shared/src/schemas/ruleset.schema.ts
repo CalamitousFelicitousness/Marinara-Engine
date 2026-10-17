@@ -5565,6 +5565,11 @@ const catalogMechanicsObject = z
      *  that many times its amount (Capability API 1.251): 5e's Lay on Hands, a point of its pool for
      *  each hit point. */
     usesChosen: z.literal(true).optional(),
+    /** It takes this many rounds to cast (Capability API 1.408): its user spends the same budget on it
+     *  again as each of their next turns starts, concentrating on the casting all the while, and it
+     *  lands as the last is spent. Broken off (their concentration lost, or no budget to spend), it
+     *  fails, and what it cost is given back. 5e's spells cast over a minute: Symbol's `10`. */
+    castingRounds: z.number().int().min(2).max(10).optional(),
     /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
      *  uses (Capability API 1.253): 5e's Metamagic. Never on a menu of its own. One per use, unless
      *  it `joins` another. */

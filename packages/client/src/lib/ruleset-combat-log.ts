@@ -965,6 +965,14 @@ export function rulesetCombatEventLine(
             actor: names.combatant(event.actorId),
             label: event.label,
           });
+    case "casting": {
+      // A cast taking rounds (1.408).
+      const said = { actor: names.combatant(event.actorId), label: event.label, left: event.left ?? 0 };
+      if (event.outcome === "started") return key("castingStarted", said);
+      if (event.outcome === "continued") return key("castingContinued", said);
+      if (event.outcome === "completed") return key("castingCompleted", said);
+      return key("castingLost", said);
+    }
     case "delay": {
       // What a slowing condition holds over to its maker's next turn (1.120).
       const said = { actor: names.combatant(event.actorId), label: event.label };

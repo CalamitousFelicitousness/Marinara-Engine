@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry that takes rounds to cast (1.408): Symbol's minute. */
+function carriesCastingRounds408(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCastingRounds408(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.castingRounds !== undefined) return true;
+  return featureValues(record).some((one) => carriesCastingRounds408(one, depth + 1));
+}
+
 /** A zone whose inside works only on some, or is shrugged off with a save (1.407): Hallow. */
 function carriesInsideIsSave407(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5940,6 +5950,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries that take rounds to cast, 1.408.
+  if (
+    !declaresApi(408) &&
+    (carriesCastingRounds408(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCastingRounds408(document)))
+  ) {
+    return "A ruleset whose entries take rounds to cast (castingRounds) requires schemaVersion 2 and capabilityApi 1.408 or newer";
+  }
   // Zones whose inside works only on some, or is shrugged off with a save, 1.407.
   if (
     !declaresApi(407) &&

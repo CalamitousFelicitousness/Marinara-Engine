@@ -124,7 +124,11 @@ You can also edit these secrets, which acts like a game-master cheat panel. Clic
 
 Game Mode saves your progress automatically. You do not need to press a save button. Your world, party, map, inventory, in-game time, and session summaries are all kept for you as you play.
 
-The app also records automatic checkpoints behind the scenes. It captures a checkpoint at session start, at session end, and when combat begins or ends. There is currently no in-app screen to browse or restore these checkpoints. So do not rely on loading an old checkpoint to undo a turn.
+The app also records automatic checkpoints behind the scenes. It captures a checkpoint at session start, at session end, when combat begins or ends, and before every save from the Game data editor. Open **Game controls → Checkpoints** to see them, newest first. **Load** takes the game back to that moment: the tracker, the map and the story after it are restored, and a system message marks where the game was set back. **Delete** removes one for good.
+
+Automatic checkpoints are kept to the five newest of each kind, so very old ones are cleaned up as you play. Checkpoints you make yourself are never cleaned up.
+
+To undo a single bad turn, use Replay or a swipe instead: loading a checkpoint also restores the story to that moment.
 
 To keep your own copy of your data, use the app's backup tools. See [Backup and Restore](../data/backup-and-restore.md).
 

@@ -1,0 +1,144 @@
+// ──────────────────────────────────────────────
+// Checkpoints — a game's saved rewind points, newest first, with Load and Delete.
+// Opened from Game controls (next to Edit game data). The State Editor takes one
+// before each save, so an edit can always be undone.
+// ──────────────────────────────────────────────
+import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation as useUiTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { AlertTriangle, Flag, History, Loader2, Trash2 } from "lucide-react";
+import type { GameCheckpoint } from "@marinara-engine/shared";
+import { Modal } from "../ui/Modal";
+import { api } from "../../lib/api-client";
+import { showConfirmDialog } from "../../lib/app-dialogs";
+import { chatKeys } from "../../hooks/use-chats";
+import { gameKeys } from "../../hooks/use-game";
+
+interface GameCheckpointsModalProps {
+  open: boolean;
+  onClose: () => void;
+  chatId: string;
+}
+
+const WHEN = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsModalProps) {
+  const { t: localizeUi } = useUiTranslation();
+  const qc = useQueryClient();
+  const queryKey = useMemo(() => ["game-checkpoints", chatId] as const, [chatId]);
+  const checkpoints = useQuery({
+    queryKey,
+    queryFn: () => api.get<GameCheckpoint[]>(`/game/${chatId}/checkpoints`),
+    enabled: open && !!chatId,
+    staleTime: 0,
+  });
+
+  const load = useCallback(
+    async (checkpoint: GameCheckpoint) => {
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.game.checkpoints.loadTitle", { label: checkpoint.label }),
+        message: localizeUi("ui.game.checkpoints.loadMessage"),
+        confirmLabel: localizeUi("ui.game.checkpoints.load"),
+        cancelLabel: localizeUi("ui.game.checkpoints.cancel"),
+      });
+      if (!confirmed) return;
+      try {
+        await api.post("/game/checkpoint/load", { chatId, checkpointId: checkpoint.id });
+        // The game the turn reads is back to the checkpoint: reload the chat, its messages and the
+        // game surface's own caches.
+        void qc.invalidateQueries({ queryKey: chatKeys.all });
+        void qc.invalidateQueries({ queryKey: gameKeys.all });
+        toast.success(localizeUi("ui.game.checkpoints.loaded"));
+        onClose();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.game.checkpoints.loadFailed"));
+      }
+    },
+    [chatId, localizeUi, onClose, qc],
+  );
+
+  const remove = useCallback(
+    async (checkpoint: GameCheckpoint) => {
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.game.checkpoints.deleteTitle", { label: checkpoint.label }),
+        message: localizeUi("ui.game.checkpoints.deleteMessage"),
+        confirmLabel: localizeUi("ui.game.checkpoints.delete"),
+        cancelLabel: localizeUi("ui.game.checkpoints.cancel"),
+        tone: "destructive",
+      });
+      if (!confirmed) return;
+      try {
+        await api.delete(`/game/checkpoint/${checkpoint.id}?chatId=${chatId}`);
+        void qc.invalidateQueries({ queryKey });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.game.checkpoints.deleteFailed"));
+      }
+    },
+    [chatId, localizeUi, qc, queryKey],
+  );
+
+  const rows = checkpoints.data ?? [];
+
+  return (
+    <Modal open={open} onClose={onClose} title={localizeUi("ui.game.checkpoints.title")} width="max-w-xl">
+      <div className="flex max-h-[min(70dvh,36rem)] flex-col gap-2 overflow-y-auto">
+        {checkpoints.isPending ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--muted-foreground)]">
+            <Loader2 size="1rem" className="animate-spin" />
+            {localizeUi("ui.game.checkpoints.loading")}
+          </div>
+        ) : checkpoints.isError ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--muted-foreground)]">
+            <AlertTriangle size="1rem" />
+            {localizeUi("ui.game.checkpoints.readFailed")}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-[var(--muted-foreground)]">
+            <History size="1.25rem" />
+            {localizeUi("ui.game.checkpoints.empty")}
+          </div>
+        ) : (
+          rows.map((checkpoint) => (
+            <div
+              key={checkpoint.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-3 py-2.5 ring-1 ring-[var(--border)]"
+            >
+              <Flag size="0.875rem" className="shrink-0 text-[var(--marinara-app-accent-static)]" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm text-[var(--foreground)]">{checkpoint.label}</div>
+                <div className="truncate text-xs text-[var(--muted-foreground)]">
+                  {localizeUi(`ui.game.checkpoints.triggers.${checkpoint.triggerType}`)} ·{" "}
+                  {WHEN.format(new Date(checkpoint.createdAt))}
+                  {checkpoint.location ? (
+                    <>
+                      {" · "}
+                      {checkpoint.location}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void load(checkpoint)}
+                className="inline-flex min-h-8 items-center gap-1 rounded-md bg-[var(--secondary)] px-2.5 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]"
+              >
+                <History size="0.75rem" />
+                {localizeUi("ui.game.checkpoints.load")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void remove(checkpoint)}
+                aria-label={localizeUi("ui.game.checkpoints.delete")}
+                title={localizeUi("ui.game.checkpoints.delete")}
+                className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
+              >
+                <Trash2 size="0.875rem" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </Modal>
+  );
+}

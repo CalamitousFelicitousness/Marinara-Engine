@@ -2072,6 +2072,7 @@ import {
   AlertTriangle,
   BookOpen,
   Braces,
+  History,
   Feather,
   Folder,
   Film,
@@ -14000,6 +14001,13 @@ function GameSurfaceComponent({
               >
                 <Braces size={13} />
                 <span>{t("game.toolbar.editGameData")}</span>
+              </button>
+              <button
+                onClick={() => useUIStore.getState().openModal("game-checkpoints", { chatId: activeChatId })}
+                className={GAME_ACTION_MENU_ITEM}
+              >
+                <History size={13} />
+                <span>{t("game.toolbar.checkpoints")}</span>
               </button>
             </div>
           </ChatControlWindow>

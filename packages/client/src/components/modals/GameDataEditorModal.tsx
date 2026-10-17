@@ -183,6 +183,23 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
     [localizeUi],
   );
 
+  /**
+   * A checkpoint of the game as it is before this save, so the edit can be undone. Taken after the
+   * checks (nothing refused is worth a checkpoint) and before any write. A game too new to have a
+   * snapshot has no checkpoint to take: that never blocks the save.
+   */
+  const takeCheckpoint = useCallback(async () => {
+    try {
+      await api.post("/game/checkpoint", {
+        chatId,
+        label: localizeUi("ui.stateEditor.gameData.checkpointLabel"),
+        triggerType: "state_editor_save",
+      });
+    } catch {
+      // Best effort: the save itself must not depend on it.
+    }
+  }, [chatId, localizeUi]);
+
   /** The data route's keys. A refusal throws, so nothing after it is sent. */
   const saveDataEdits = useCallback(
     async (edits: GameDataEditRequest["edits"]) => {
@@ -312,6 +329,8 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
         }
       }
 
+      await takeCheckpoint();
+
       // The strictly checked routes first, so a refusal there sends nothing else; inventory last, as it
       // saves what fits.
       let landed = false;
@@ -368,6 +387,7 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       saveInventoryOps,
       saveRoute,
       sections,
+      takeCheckpoint,
     ],
   );
 

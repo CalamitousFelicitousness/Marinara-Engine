@@ -16398,6 +16398,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       "combat_end",
       "location_change",
       "auto_interval",
+      "state_editor_save",
     ]),
   });
 

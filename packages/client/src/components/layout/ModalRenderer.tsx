@@ -90,6 +90,9 @@ const ChatVariablesEditorModal = lazy(() =>
 const GameDataEditorModal = lazy(() =>
   import("../modals/GameDataEditorModal").then((module) => ({ default: module.GameDataEditorModal })),
 );
+const GameCheckpointsModal = lazy(() =>
+  import("../modals/GameCheckpointsModal").then((module) => ({ default: module.GameCheckpointsModal })),
+);
 const ActivityOverviewModal = lazy(() =>
   import("../modals/ActivityOverviewModal").then((module) => ({ default: module.ActivityOverviewModal })),
 );
@@ -274,6 +277,9 @@ export function ModalRenderer() {
       break;
     case "game-data-editor":
       content = <GameDataEditorModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
+      break;
+    case "game-checkpoints":
+      content = <GameCheckpointsModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
       break;
     case "activity-overview":
       content = <ActivityOverviewModal open onClose={closeModal} />;

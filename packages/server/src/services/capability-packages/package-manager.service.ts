@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A conjured weapon gone once left lying far off (1.427): the pact weapon. */
+function carriesConjuredVanishes427(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConjuredVanishes427(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.conjures)?.vanishes !== undefined) return true;
+  return featureValues(record).some((one) => carriesConjuredVanishes427(one, depth + 1));
+}
+
 /** What an entry applies put on what it calls, or called objects with no turns (1.426): Antipathy on
  *  an object. */
 function carriesAppliesToCalled426(value: unknown, depth = 0): boolean {
@@ -6141,6 +6151,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conjured weapons gone once left lying far off, 1.427.
+  if (
+    !declaresApi(427) &&
+    (carriesConjuredVanishes427(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesConjuredVanishes427(document)))
+  ) {
+    return "A ruleset whose conjured weapons are gone once left lying far off (conjures vanishes) requires schemaVersion 2 and capabilityApi 1.427 or newer";
+  }
   // What an entry applies put on what it calls, and called objects with no turns, 1.426.
   if (
     !declaresApi(426) &&

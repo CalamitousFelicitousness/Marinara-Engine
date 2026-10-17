@@ -5286,6 +5286,13 @@ const catalogMechanicsObject = z
          *  out of the fight, as 5e's hour-long ritual during a short rest is, by writing its name
          *  there. Empty, nothing is bound. */
         boundIn: sheetId.optional(),
+        /** A weapon it made, let fall and lying farther than `beyond` (the ruleset's distance) from
+         *  its maker for `rounds` of their turns, is gone (Capability API 1.427): 5e's pact weapon,
+         *  "more than 5 feet away from you for 1 minute or more", `{ "beyond": 5, "rounds": 10 }`. */
+        vanishes: z
+          .object({ beyond: z.number().finite().min(0).max(10000), rounds: z.number().int().min(1).max(1000) })
+          .strict()
+          .optional(),
       })
       .strict()
       .refine((conjures) => conjures.boundIn === undefined || conjures.binds !== undefined, {

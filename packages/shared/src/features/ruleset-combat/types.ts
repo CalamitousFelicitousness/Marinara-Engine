@@ -143,6 +143,9 @@ export interface RulesetDroppedThing {
   at?: RulesetCombatCell;
   /** The budget picking it up costs; without one, the turn's one free pick-up. */
   pickUp?: string;
+  /** The round it was first found lying far off as its maker's turn started (1.427): a pact weapon's
+   *  minute counted from then. */
+  farSince?: number;
 }
 
 /** A condition a hit or a failed save puts on its target. */
@@ -1751,7 +1754,19 @@ export interface RulesetCombatant {
   usedOn?: Record<string, string[]>;
   /** What each conjuring action makes in each of its modes (1.306), keyed `action|mode`, read as the
    *  fight began: a new weapon's actions, or a held one's, as its own made with the binding. */
-  conjurable?: Record<string, { item: string; actions: RulesetCombatAction[]; bound?: number }>;
+  conjurable?: Record<
+    string,
+    {
+      item: string;
+      actions: RulesetCombatAction[];
+      bound?: number;
+      /** What a made weapon takes and is (1.427), for what makes held things fall. */
+      slots?: string[];
+      tags?: string[];
+      /** Gone once let fall and left this far off this many of its maker's turns (1.427), in cells. */
+      vanishes?: { beyond: number; rounds: number };
+    }
+  >;
   /** The mode each conjuring action was last used in (1.306), and a bound weapon's actions as they
    *  were, to give back when another takes its place. */
   conjured?: Record<string, { mode: string; was?: RulesetCombatAction[] }>;

@@ -4602,6 +4602,8 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
     switches: { conjured: action.id },
   });
   actor.conjured = { ...actor.conjured, [action.id]: { mode, ...(was ? { was } : {}) } };
+  // The one it replaces, if it lay where it fell, is gone (1.427).
+  if (actor.dropped?.length) actor.dropped = actor.dropped.filter((thing) => thing.key !== `conjured:${action.id}`);
   // Named as the entry, not as the mode it was used in: "Pact of the Blade", not "(Longsword)".
   const label = actor.actions.find((one) => one.id === action.id)?.label ?? action.label;
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
@@ -4635,7 +4637,29 @@ function unconjure(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId:
   );
   if (bound !== undefined && made.was) actor.actions.push(...structuredClone(made.was));
   delete actor.conjured![actionId];
+  // Gone from where it lay, too (1.427).
+  if (actor.dropped?.length) actor.dropped = actor.dropped.filter((thing) => thing.key !== `conjured:${actionId}`);
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: actionId, label: "", item, gone: true });
+}
+
+/** A weapon put in hand, let fall and left far off long enough, gone (1.427): a pact weapon more than
+ *  5 feet from its maker for a minute. Counted as its maker's turns start. */
+function conjuredLeftBehind(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const at = rulesetPositionOf(actor);
+  for (const thing of [...(actor.dropped ?? [])]) {
+    if (!thing.key.startsWith("conjured:")) continue;
+    const id = thing.key.slice("conjured:".length);
+    const made = actor.conjured?.[id];
+    const vanishes = made ? actor.conjurable?.[`${id}|${made.mode}`]?.vanishes : undefined;
+    if (!vanishes) continue;
+    const far = !!thing.at && !!at && rulesetGapFrom(thing.at, 1, actor) > vanishes.beyond;
+    if (!far) {
+      delete thing.farSince;
+      continue;
+    }
+    thing.farSince ??= ctx.state.round;
+    if (ctx.state.round - thing.farSince >= vanishes.rounds) unconjure(ctx, actor, id);
+  }
 }
 
 /** Everything its maker put in hand gone with them (1.308). */
@@ -12461,6 +12485,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     rollRulesetRecharges(ctx, actor);
     // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.
     regenerate(ctx, actor);
+    // A pact weapon left lying far off long enough is gone (1.427).
+    if (actor.dropped?.length) conjuredLeftBehind(ctx, actor);
     // What it senses the presence of (1.391), said again each turn.
     sensePresence(ctx, actor, true);
     // Whoever it called for a while (1.344) leaves as its time comes round.

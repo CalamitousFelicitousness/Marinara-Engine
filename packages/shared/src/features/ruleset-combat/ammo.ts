@@ -470,6 +470,12 @@ export function rulesetActionItemIndex(action: Pick<RulesetCombatAction, "id">):
  *  every action, or a stat block's own. */
 export function rulesetActionDropped(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (!actor.dropped?.length) return false;
+  // A weapon put in hand (1.427), its every attack, though it may still be dismissed.
+  const conjured =
+    action.kind === "switch"
+      ? undefined
+      : Object.keys(actor.conjured ?? {}).find((id) => action.id.startsWith(`conjured:${id}:`));
+  if (conjured !== undefined) return actor.dropped.some((thing) => thing.key === `conjured:${conjured}`);
   const index = actor.sheet ? rulesetActionItemIndex(action) : undefined;
   const key = index !== undefined ? `item:${index}` : action.id;
   return actor.dropped.some((thing) => thing.key === key);
@@ -519,6 +525,14 @@ export function rulesetThingsToDrop(
       const named = actor.actions.find((action) => rulesetActionItemIndex(action) === index)?.label;
       add(`item:${index}`, held.name ?? named ?? held.item.category);
     });
+    // A weapon put in hand that is no item of theirs (1.427): a pact weapon, which a bound one is not.
+    for (const [id, made] of Object.entries(actor.conjured ?? {})) {
+      const weapon = actor.conjurable?.[`${id}|${made.mode}`];
+      if (!weapon || weapon.bound !== undefined) continue;
+      const slotted = drops.slots?.some((slot) => weapon.slots?.includes(slot));
+      const tagged = drops.tags?.some((tag) => weapon.tags?.includes(tag));
+      if (slotted || tagged) add(`conjured:${id}`, weapon.item);
+    }
     return out;
   }
   for (const action of actor.actions) {

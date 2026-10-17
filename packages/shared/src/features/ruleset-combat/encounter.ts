@@ -4039,9 +4039,21 @@ function sheetCombatant(
       if (!made.length) return;
       const mode = `weapon-${at}`;
       modes.push({ id: mode, label: entry.label, targets: 0 });
+      const slots = Object.entries(entry.item.slots ?? {}).flatMap(([slot, count]) => (count > 0 ? [slot] : []));
       conjurable[`${action.id}|${mode}`] = {
         item: entry.label,
         actions: ownership(made).map((one) => ({ ...one, id: `conjured:${action.id}:${one.id}` })),
+        // What it takes and is, for what makes held things fall, and when it is gone (1.427).
+        ...(slots.length ? { slots } : {}),
+        ...(entry.item.tags?.length ? { tags: [...entry.item.tags] } : {}),
+        ...(conjures.vanishes
+          ? {
+              vanishes: {
+                beyond: rulesetInCells(conjures.vanishes.beyond, combat.distance?.perCell ?? 1),
+                rounds: conjures.vanishes.rounds,
+              },
+            }
+          : {}),
       };
     });
     if (conjures.binds) {

@@ -18,7 +18,12 @@ import {
   type RulesetConditionInside,
   type RulesetInsideRoom,
 } from "../../schemas/ruleset.schema.js";
-import { evaluateRulesetSheetLive, readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
+import {
+  evaluateRulesetSheetLive,
+  readRulesetLive,
+  type RulesetLiveState,
+  type RulesetSheetOp,
+} from "../rulesets/live-state.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
@@ -171,6 +176,7 @@ import {
   rulesetActionAvailable,
   rulesetSheetWithin,
   rulesetSheetValue,
+  rulesetFailedChanceLive,
   rulesetAimLegal,
   rulesetAimedCells,
   rulesetCopiesLegal,
@@ -1839,6 +1845,43 @@ function throwOwnDice(
 /** An item's gate, rolled by its user as a check: the fight's own dice (a pool in a pool fight) with
  *  the sheet's number read as the fight began, what their conditions add to checks (and to the skill
  *  it names), and the lean they give it. Logged as a save is. */
+/** Whether a use's chance comes up (1.388): sure while its sheet says so, else one die at or under
+ *  what it needs. Failed, `failUses` is spent in place of what it cost. */
+function rollsChance(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  unpaid: RulesetLiveState | undefined,
+): boolean {
+  const chance = action.chance!;
+  const needed =
+    typeof chance.atMost === "number" ? chance.atMost : (rulesetSheetValue(ctx.definition, actor, chance.atMost) ?? 0);
+  const said = {
+    type: "chance" as const,
+    actorId: actor.id,
+    optionId: action.id,
+    label: action.label,
+    sides: chance.sides,
+    needed,
+  };
+  if (chance.sure && actor.sheet && rulesetSheetWithin(ctx.definition, actor, chance.sure)) {
+    ctx.events.push({ ...said, outcome: "sure" });
+    return true;
+  }
+  const roll = ctx.roll(chance.sides);
+  const answered = roll <= needed;
+  ctx.events.push({ ...said, roll, outcome: answered ? "answered" : "failed" });
+  if (answered) return true;
+  const instead = chance.failUses ? rulesetFailedChanceLive(ctx.definition, actor, action, unpaid) : null;
+  if (instead && actor.sheet) {
+    actor.sheet.live = instead.live;
+    for (const entry of instead.cost) {
+      ctx.events.push({ type: "spend", actorId: actor.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    }
+  }
+  return false;
+}
+
 function passesGate(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -5180,6 +5223,7 @@ function applyChoice(
       return refusal(state, choice.actorId, "insufficient", option.id);
     }
   }
+  const unpaid = working.sheet?.live;
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith, amount);
   // More of an item's charges (1.269), spent with its own.
   const moreCharges = rulesetChargeSteps(action, choice.payWith);
@@ -5247,6 +5291,12 @@ function applyChoice(
   // same weapon at another near them, for nothing: Horde Breaker.
   if (action.strikeAgain) working.flags.struckAgain = true;
   else offerStrikeAgain(ctx, working, action, workingTargets);
+  // A chance rolled once it is paid for (1.388): failed, it does nothing, and with `failUses` that
+  // row is spent in place of its own.
+  if (action.chance && !rollsChance(ctx, working, action, unpaid)) {
+    noteOutcome(ctx);
+    return finish();
+  }
   // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
   // asked about a use that never happened.
   if (action.itemUse?.gate && !passesGate(ctx, working, action, action.itemUse.gate)) {

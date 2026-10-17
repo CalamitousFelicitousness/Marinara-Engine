@@ -2194,6 +2194,17 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A use that works only on a roll (1.388): Divine Intervention, a demon's summoning. */
+function carriesUseChance388(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUseChance388(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const chance = plainRecord(record.chance);
+  if (chance && chance.sides !== undefined && chance.atMost !== undefined) return true;
+  return featureValues(record).some((one) => carriesUseChance388(one, depth + 1));
+}
+
 /** A condition ended by its holder gaining another (1.387): Rage, knocked unconscious. */
 function carriesEndsOnGains387(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5738,6 +5749,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Worked only on a roll, 1.388.
+  if (
+    !declaresApi(388) &&
+    (carriesUseChance388(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUseChance388(document)))
+  ) {
+    return "A ruleset whose uses work only on a roll (chance) requires schemaVersion 2 and capabilityApi 1.388 or newer";
+  }
   // Ended by gaining a condition, 1.387.
   if (
     !declaresApi(387) &&

@@ -18,6 +18,7 @@ import type {
   RulesetRegeneration,
   RulesetHangsOn,
   RulesetTargetIs,
+  RulesetUseChance,
   RulesetInsideRoom,
   RulesetValueRef,
   RulesetCatalogWhere,
@@ -463,6 +464,8 @@ export interface RulesetStatBlockAction {
   healsOnSlay?: RulesetCombatAmount;
   /** Who it fells on Held Ground is reaped (1.323). */
   reaps?: true;
+  /** It works only on a roll (1.388): a demon's 30 percent summoning. */
+  chance?: { sides: number; atMost: number };
   targetCount?: number;
   reach?: number;
   range?: number | RulesetCombatRange;
@@ -696,6 +699,8 @@ export interface RulesetCombatAction {
   components?: string[];
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.166). */
   usableWhen?: RulesetSheetBounds;
+  /** It works only on a roll (1.388), paid for either way; a failure spends `failUses` instead. */
+  chance?: RulesetUseChance;
   /** Who it may be pointed at or catch, by what they are (Capability API 1.168). */
   targetTypes?: {
     is?: RulesetTargetIs;
@@ -2589,6 +2594,17 @@ export type RulesetCombatEvent =
     }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
+  /** A use's chance rolled (1.388): `sure` when nothing needed rolling. */
+  | {
+      type: "chance";
+      actorId: string;
+      optionId: string;
+      label: string;
+      sides: number;
+      needed: number;
+      roll?: number;
+      outcome: "answered" | "failed" | "sure";
+    }
   | {
       type: "gate";
       actorId: string;

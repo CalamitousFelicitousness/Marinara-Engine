@@ -3535,6 +3535,33 @@ function sheetBoundsSchema(key: string, never: string) {
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
+/** A use that works only on a roll (Capability API 1.388): one die of `sides`, at most `atMost`, a
+ *  number or a value off its user's sheet. Its price is paid either way. 5e's Divine Intervention, a
+ *  percentile roll at or under the cleric's level, sure from 20th level (`sure`); a failure spends the
+ *  row `failUses` names instead of its own, so its own row (recharging only after seven days) stays
+ *  and the long-rest row is spent. A demon's 30 percent summoning. */
+export interface RulesetUseChance {
+  sides: number;
+  atMost: number | RulesetValueRef;
+  sure?: { value: RulesetValueRef; atLeast?: number; atMost?: number };
+  failUses?: string;
+}
+const useChanceSchema: z.ZodType<RulesetUseChance, z.ZodTypeDef, unknown> = z
+  .object({
+    sides: z.number().int().min(2).max(100),
+    atMost: z.union([
+      z.number().int().min(1).max(100),
+      rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+    ]),
+    sure: sheetBoundsSchema("sure", "sure").optional(),
+    failUses: z.string().trim().min(1).max(80).optional(),
+  })
+  .strict();
+/** A creature's (Capability API 1.388): a printed chance, nothing off a sheet. */
+const creatureChanceSchema = z
+  .object({ sides: z.number().int().min(2).max(100), atMost: z.number().int().min(1).max(100) })
+  .strict();
+
 /** Held weapons that are these (Capability API 1.244): one of `names`, the name its attack goes by,
  *  or carrying every one of `tags` and none of `notTags`. 5e's monk weapons are the shortsword and
  *  the simple melee weapons that are neither two-handed nor heavy, magic ones included. */
@@ -4858,6 +4885,8 @@ const catalogMechanicsObject = z
     /** Offered in a fight only while a value off its holder's sheet, live state and items stands
      *  within these bounds (Capability API 1.166): 5e's Protection, which needs a shield in hand. */
     usableWhen: catalogUsableWhenSchema.optional(),
+    /** It works only on a roll (Capability API 1.388), paid for either way. */
+    chance: useChanceSchema.optional(),
     /** Who may be picked or caught at all, by what they are (Capability API 1.168): Animal
      *  Friendship takes only a beast (`is`), Sleep passes over the undead (`not`). A combatant with
      *  no type never matches `is` and always passes `not`. */
@@ -6395,6 +6424,9 @@ const creatureActionSchema = z
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
+    /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
+     *  `{"sides": 100, "atMost": 30}`. Its use is spent either way. */
+    chance: creatureChanceSchema.optional(),
     /** Creatures it calls into the fight (Capability API 1.325), on its side: `creature` names a
      *  bestiary entry as `"<catalogId>/<entryId>"`, from this ruleset's catalogs or the fight's
      *  bestiary, and `count` how many (`{"dice": "1d4"}`, or `{"flat": 2}`), eight at most. They
@@ -17752,6 +17784,21 @@ export function rulesetCatalogEntryIssues(
       for (const issue of rulesetValueRefIssues(entry.mechanics.usableWhen.value, names, names.derived)) {
         add([index, "mechanics", "usableWhen", "value", issue.key], issue.message);
       }
+    }
+    // What a chance reads off the sheet (1.388) is the sheet's own.
+    const chance = entry.mechanics?.chance;
+    if (chance) {
+      for (const [key, ref] of [
+        ["atMost", typeof chance.atMost === "number" ? undefined : chance.atMost],
+        ["sure", chance.sure?.value],
+      ] as const) {
+        if (!ref) continue;
+        for (const issue of rulesetValueRefIssues(ref, names, names.derived)) {
+          add([index, "mechanics", "chance", key, ...(key === "sure" ? ["value"] : []), issue.key], issue.message);
+        }
+      }
+      if (typeof chance.atMost === "number" && chance.atMost > chance.sides)
+        add([index, "mechanics", "chance", "atMost"], "A chance of more than its die can show always works");
     }
     entry.mechanics?.attackRows?.forEach((rule, ruleIndex) => {
       for (const [key, ref] of [

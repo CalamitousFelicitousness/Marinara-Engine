@@ -662,6 +662,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["rider", say({ type: "rider", actorId: "brenna", targetId: "lurker", riderId: "sly", label: "Sly Strike" })],
     ["ashore", say({ type: "ashore", actorId: "brenna", to: { x: 4, y: 2 } })],
     [
+      "chance",
+      say({
+        type: "chance",
+        actorId: "brenna",
+        optionId: "x",
+        label: "Divine Intervention",
+        sides: 100,
+        needed: 12,
+        roll: 40,
+        outcome: "failed",
+      }),
+    ],
+    [
       "sustained",
       say({
         type: "sustained",
@@ -1170,6 +1183,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("gives"), "Brenna uses Second Wind and has 1 Action.");
   assert.equal(printed.get("rider"), "Sly Strike catches Thorn Lurker as well.");
   assert.equal(printed.get("ashore"), "Brenna cannot stop on the water and comes out at 4, 2.");
+  assert.equal(printed.get("chance"), "Brenna's Divine Intervention fails: 40 on a d100, needing 12 or less.");
   assert.equal(printed.get("sustained"), "Brenna keeps Thorn Lurker Poisoned with Intimidating Presence.");
   // The last strike of a spend says so rather than promising none left.
   assert.equal(

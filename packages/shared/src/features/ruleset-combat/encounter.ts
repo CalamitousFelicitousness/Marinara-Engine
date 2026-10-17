@@ -2937,6 +2937,7 @@ function mechanicsAction(
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.maxAgainst) action.maxAgainst = structuredClone(mechanics.maxAgainst);
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
+  if (mechanics.chance) action.chance = structuredClone(mechanics.chance);
   if (mechanics.save) {
     action.save = {
       save: mechanics.save.save,
@@ -3564,6 +3565,8 @@ function blockActions(
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),
+    // A printed chance (1.388): a demon's summoning.
+    ...(action.chance ? { chance: { ...action.chance } } : {}),
     // An area that stays, and the ground changed (1.324): The Owed's Freezing Fog, a bonfire guttering.
     ...(action.zone ? { zone: rulesetZoneAction(action.zone, perCell) } : {}),
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),

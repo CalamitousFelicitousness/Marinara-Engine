@@ -1027,6 +1027,17 @@ export function rulesetCombatEventLine(
         count: event.left,
         left: event.left,
       });
+    case "chance":
+      return key(
+        event.outcome === "sure" ? "chanceSure" : event.outcome === "answered" ? "chanceAnswered" : "chanceFailed",
+        {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          roll: event.roll ?? 0,
+          sides: event.sides,
+          needed: event.needed,
+        },
+      );
     case "ashore":
       return key("ashore", { actor: names.combatant(event.actorId), x: event.to.x, y: event.to.y });
     case "sustained":

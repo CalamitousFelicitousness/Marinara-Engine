@@ -1909,7 +1909,35 @@ export function rulesetActionUsable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
 ): boolean {
-  return rulesetSheetWithin(definition, actor, action.usableWhen);
+  if (!rulesetSheetWithin(definition, actor, action.usableWhen)) return false;
+  // What a failed chance spends instead (1.388) must be there to spend too.
+  if (action.chance?.failUses && definition && actor.sheet && !rulesetFailedChanceLive(definition, actor, action))
+    return false;
+  return true;
+}
+
+/** The live state a failed chance leaves (1.388): `live` as it was before the price, with a use of
+ *  the row `failUses` names spent instead. Null when that row cannot pay. */
+export function rulesetFailedChanceLive(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  live = actor.sheet?.live,
+): { live: RulesetLiveState; cost: Array<{ pool: string; label: string; amount: number }> } | null {
+  const failUses = action.chance?.failUses;
+  if (!failUses || !actor.sheet || !live) return null;
+  const { build, catalogs } = actor.sheet;
+  const plan = planRulesetUse(definition, build, live, catalogs, { op: "use", name: failUses });
+  if (!plan.ok) return null;
+  let after = live;
+  const cost: Array<{ pool: string; label: string; amount: number }> = [];
+  for (const step of plan.steps) {
+    const result = applyRulesetSheetOp(definition, build, after, step.op);
+    if (!result.ok) return null;
+    after = result.live;
+    if (step.op.op === "spend") cost.push({ pool: step.op.pool, label: step.label, amount: step.op.amount });
+  }
+  return { live: after, cost };
 }
 
 /** Whether a value off the combatant's sheet, live state and items stands within the bounds: an

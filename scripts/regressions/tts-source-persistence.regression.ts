@@ -213,6 +213,14 @@ for (const cue of [
   );
   assert.equal(chunks.join(" "), line.trim(), "chunking preserves the words and the complete delivery cue");
 }
+const unclosedBracketLine = `${"word ".repeat(181)}[unfinished cue`;
+const unclosedBracketChunks = splitTTSChunks(unclosedBracketLine, emotionalConfig);
+assert.ok(unclosedBracketChunks.length > 1 && unclosedBracketChunks.every((chunk) => chunk.length <= 900));
+assert.equal(
+  unclosedBracketChunks.join("").replace(/\s/g, ""),
+  unclosedBracketLine.replace(/\s/g, ""),
+  "splitting oversized speech retains an unclosed bracket and every non-whitespace character",
+);
 assert.deepEqual(splitTTSChunks(detailedCue, filteredConfig), ["Stay close. Keep moving."]);
 assert.equal(cleanTTSInputText("[main] [happy] Hello. [side]", emotionalConfig), "[happy] Hello.");
 assert.equal(

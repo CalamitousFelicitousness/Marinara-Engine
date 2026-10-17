@@ -136,7 +136,11 @@ Auto-play fires only once, on the newest reply, at the moment it finishes. It do
 
 The same playback settings also let you **Skip text inside HTML and custom tags**, **Skip fenced code blocks**, or **Skip text inside square brackets**. Code blocks are skipped by default; the other two filters start off. Tag filtering removes the enclosed text, such as a hidden `<simulation>...</simulation>` block, while preserving speaker tags used to select voices. These filters apply to manual playback and auto-play, including Game narration and Roleplay speaker extraction.
 
-When **Enable emotion indicators** is on, square-bracketed delivery cues are kept in speech even if **Skip text inside square brackets** is enabled. Cues can describe nuanced delivery, such as `[Low, steady voice, restrained urgency]` or `[Quietly, with controlled fear]`, and remain intact when long speech is split into audio requests. Internal speaker and scene-format markers are still removed. The Roleplay formatter adds cues without rewriting the dialogue; with Game auto-play enabled, Game scene, party, and combat dialogue prompts also request them in the existing generation calls. How the cues sound depends on the selected speech model.
+Turn on **Roleplay speaker extractor** to see **Enable emotion indicators**. With emotion indicators on, text in square brackets is kept for the speech service even when **Skip text inside square brackets** is on. This can include notes. To keep bracketed notes out of speech, turn emotion indicators off and leave the skip option on.
+
+Voice directions such as `[Low, steady voice, restrained urgency]` stay whole when a long line is split for speech. Known speaker and scene labels are still removed. The speech model decides how to use each direction.
+
+The **Roleplay speaker extractor** adds directions without changing the original dialogue words. With **Enable TTS**, **Game narration**, and emotion indicators on, Game scene, party, and combat dialogue can include these directions too.
 
 ## Speaking a single message
 

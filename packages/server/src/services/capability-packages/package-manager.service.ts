@@ -2247,6 +2247,18 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A save made as its putter's turn starts, or failures that send its holder away (1.430):
+ *  Prismatic Spray's Violet ray. */
+function carriesSourceSaves430(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSourceSaves430(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const ends = plainRecord(record.saveEnds);
+  if (ends?.at === "source-turn-start" || plainRecord(ends?.failures)?.dismisses !== undefined) return true;
+  return featureValues(record).some((one) => carriesSourceSaves430(one, depth + 1));
+}
+
 /** A duration past 1000 rounds, or one paid high enough to have no clock (1.429): Aid's 8 hours,
  *  Bestow Curse from a 9th-level slot. */
 function carriesLongDurations429(value: unknown, depth = 0): boolean {
@@ -6174,6 +6186,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Saves made as the putter's turn starts, and failures that send the holder away, 1.430.
+  if (
+    !declaresApi(430) &&
+    (carriesSourceSaves430(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSourceSaves430(document)))
+  ) {
+    return "A ruleset whose saves are made as the turn of whoever put a condition on starts, or whose failed saves send the holder away (saveEnds source-turn-start, failures dismisses), requires schemaVersion 2 and capabilityApi 1.430 or newer";
+  }
   // Durations past 1000 rounds, or with no clock once paid high enough, 1.429.
   if (
     !declaresApi(429) &&

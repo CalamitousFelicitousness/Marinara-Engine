@@ -122,9 +122,10 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
 export interface RulesetCombatSaveEnds {
   save: string;
   /** `action` (1.264): rolled when its holder spends their action on it. */
-  at: "turn-end" | "turn-start" | "damaged" | "action";
+  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start";
   successes?: number;
-  failures?: { count: number; becomes: string };
+  /** Or, with `dismisses` (1.430), its holder leaves the fight for good, alive. */
+  failures?: { count: number; becomes?: string; dismisses?: true };
   /** Rolled only while its holder cannot see whoever put it on (1.266). */
   unseen?: true;
   /** Rolled with this lean while its holder can see whoever put it on (1.268). */

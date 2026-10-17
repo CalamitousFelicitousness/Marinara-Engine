@@ -4062,9 +4062,9 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
 /** A save that ends a condition, and what counting them decides (1.258). */
 export interface RulesetCatalogSaveEnds {
   save: string;
-  at: "turn-end" | "turn-start" | "damaged" | "action";
+  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start";
   successes?: number;
-  failures?: { count: number; becomes: string };
+  failures?: { count: number; becomes?: string; dismisses?: true };
   unseen?: true;
   seenLean?: "advantage" | "disadvantage";
   beyond?: number;
@@ -4131,8 +4131,10 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .object({
         save: sheetId,
         /** `action` (Capability API 1.264): rolled when its holder spends their action on it, as 5e's
-         *  Irresistible Dance allows. */
-        at: z.enum(["turn-end", "turn-start", "damaged", "action"]),
+         *  Irresistible Dance allows. `source-turn-start` (Capability API 1.430): rolled as the turn
+         *  of whoever put it on starts, Prismatic Spray's Violet ray's "at the start of your next
+         *  turn". */
+        at: z.enum(["turn-end", "turn-start", "damaged", "action", "source-turn-start"]),
         /** It takes this many successes, counted over the turns, to end it (Capability API 1.258):
          *  5e's Contagion, three. */
         successes: z.number().int().min(2).max(10).optional(),
@@ -4140,8 +4142,17 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
          *  clock, and no more saves are made (Capability API 1.258): Contagion's disease setting in
          *  after three, Flesh to Stone's petrification. */
         failures: z
-          .object({ count: z.number().int().min(1).max(10), becomes: sheetId })
+          .object({
+            count: z.number().int().min(1).max(10),
+            becomes: sheetId.optional(),
+            /** Or its holder leaves the fight for good, alive (Capability API 1.430): Violet's
+             *  "transported to another plane of existence". */
+            dismisses: z.literal(true).optional(),
+          })
           .strict()
+          .refine((failures) => (failures.becomes === undefined) !== (failures.dismisses === undefined), {
+            message: 'After its failures it "becomes" another condition or "dismisses" its holder: one of them',
+          })
           .optional(),
         /** Rolled only while its holder cannot see whoever put it on (Capability API 1.266): 5e's
          *  Fear, saved against at the end of a turn out of the caster's line of sight. */

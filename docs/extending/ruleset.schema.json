@@ -46453,7 +46453,8 @@
                                   "turn-end",
                                   "turn-start",
                                   "damaged",
-                                  "action"
+                                  "action",
+                                  "source-turn-start"
                                 ]
                               },
                               "successes": {
@@ -46474,11 +46475,14 @@
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
+                                  "dismisses": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
-                                  "count",
-                                  "becomes"
+                                  "count"
                                 ],
                                 "additionalProperties": false
                               },
@@ -47556,7 +47560,8 @@
                                   "turn-end",
                                   "turn-start",
                                   "damaged",
-                                  "action"
+                                  "action",
+                                  "source-turn-start"
                                 ]
                               },
                               "successes": {
@@ -47577,11 +47582,14 @@
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
+                                  "dismisses": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
-                                  "count",
-                                  "becomes"
+                                  "count"
                                 ],
                                 "additionalProperties": false
                               },
@@ -52577,7 +52585,8 @@
                                         "turn-end",
                                         "turn-start",
                                         "damaged",
-                                        "action"
+                                        "action",
+                                        "source-turn-start"
                                       ]
                                     },
                                     "successes": {
@@ -52598,11 +52607,14 @@
                                           "maxLength": 40,
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
+                                        "dismisses": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
-                                        "count",
-                                        "becomes"
+                                        "count"
                                       ],
                                       "additionalProperties": false
                                     },
@@ -53992,7 +54004,8 @@
                                             "turn-end",
                                             "turn-start",
                                             "damaged",
-                                            "action"
+                                            "action",
+                                            "source-turn-start"
                                           ]
                                         },
                                         "successes": {
@@ -54013,11 +54026,14 @@
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
                                             },
+                                            "dismisses": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
-                                            "count",
-                                            "becomes"
+                                            "count"
                                           ],
                                           "additionalProperties": false
                                         },
@@ -58279,7 +58295,8 @@
                                             "turn-end",
                                             "turn-start",
                                             "damaged",
-                                            "action"
+                                            "action",
+                                            "source-turn-start"
                                           ]
                                         },
                                         "successes": {
@@ -58300,11 +58317,14 @@
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
                                             },
+                                            "dismisses": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
-                                            "count",
-                                            "becomes"
+                                            "count"
                                           ],
                                           "additionalProperties": false
                                         },
@@ -66672,7 +66692,8 @@
                                             "turn-end",
                                             "turn-start",
                                             "damaged",
-                                            "action"
+                                            "action",
+                                            "source-turn-start"
                                           ]
                                         },
                                         "successes": {
@@ -66693,11 +66714,14 @@
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
                                             },
+                                            "dismisses": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
-                                            "count",
-                                            "becomes"
+                                            "count"
                                           ],
                                           "additionalProperties": false
                                         },
@@ -76622,7 +76646,8 @@
                                       "turn-end",
                                       "turn-start",
                                       "damaged",
-                                      "action"
+                                      "action",
+                                      "source-turn-start"
                                     ]
                                   },
                                   "successes": {
@@ -76643,11 +76668,14 @@
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
                                       },
+                                      "dismisses": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
-                                      "count",
-                                      "becomes"
+                                      "count"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -77725,7 +77753,8 @@
                                       "turn-end",
                                       "turn-start",
                                       "damaged",
-                                      "action"
+                                      "action",
+                                      "source-turn-start"
                                     ]
                                   },
                                   "successes": {
@@ -77746,11 +77775,14 @@
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
                                       },
+                                      "dismisses": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
-                                      "count",
-                                      "becomes"
+                                      "count"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -90213,7 +90245,8 @@
                                             "turn-end",
                                             "turn-start",
                                             "damaged",
-                                            "action"
+                                            "action",
+                                            "source-turn-start"
                                           ]
                                         },
                                         "successes": {
@@ -90234,11 +90267,14 @@
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
                                             },
+                                            "dismisses": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
-                                            "count",
-                                            "becomes"
+                                            "count"
                                           ],
                                           "additionalProperties": false
                                         },
@@ -91316,7 +91352,8 @@
                                             "turn-end",
                                             "turn-start",
                                             "damaged",
-                                            "action"
+                                            "action",
+                                            "source-turn-start"
                                           ]
                                         },
                                         "successes": {
@@ -91337,11 +91374,14 @@
                                               "maxLength": 40,
                                               "pattern": "^[a-z][a-z0-9_]*$"
                                             },
+                                            "dismisses": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
-                                            "count",
-                                            "becomes"
+                                            "count"
                                           ],
                                           "additionalProperties": false
                                         },
@@ -107858,7 +107898,8 @@
                                 "turn-end",
                                 "turn-start",
                                 "damaged",
-                                "action"
+                                "action",
+                                "source-turn-start"
                               ]
                             },
                             "successes": {
@@ -107879,11 +107920,14 @@
                                   "maxLength": 40,
                                   "pattern": "^[a-z][a-z0-9_]*$"
                                 },
+                                "dismisses": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
-                                "count",
-                                "becomes"
+                                "count"
                               ],
                               "additionalProperties": false
                             },
@@ -109422,7 +109466,8 @@
                                       "turn-end",
                                       "turn-start",
                                       "damaged",
-                                      "action"
+                                      "action",
+                                      "source-turn-start"
                                     ]
                                   },
                                   "successes": {
@@ -109443,11 +109488,14 @@
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
                                       },
+                                      "dismisses": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
-                                      "count",
-                                      "becomes"
+                                      "count"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -110546,7 +110594,8 @@
                                           "turn-end",
                                           "turn-start",
                                           "damaged",
-                                          "action"
+                                          "action",
+                                          "source-turn-start"
                                         ]
                                       },
                                       "successes": {
@@ -110567,11 +110616,14 @@
                                             "maxLength": 40,
                                             "pattern": "^[a-z][a-z0-9_]*$"
                                           },
+                                          "dismisses": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
                                           "$comment": {}
                                         },
                                         "required": [
-                                          "count",
-                                          "becomes"
+                                          "count"
                                         ],
                                         "additionalProperties": false
                                       },
@@ -112221,7 +112273,8 @@
                                 "turn-end",
                                 "turn-start",
                                 "damaged",
-                                "action"
+                                "action",
+                                "source-turn-start"
                               ]
                             },
                             "successes": {
@@ -112242,11 +112295,14 @@
                                   "maxLength": 40,
                                   "pattern": "^[a-z][a-z0-9_]*$"
                                 },
+                                "dismisses": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
-                                "count",
-                                "becomes"
+                                "count"
                               ],
                               "additionalProperties": false
                             },

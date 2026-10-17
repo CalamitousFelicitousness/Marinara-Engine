@@ -3288,6 +3288,26 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
       // What it harms them with as this one's turn starts or ends (1.350): a gelatinous cube's acid.
       if (entry.source === actor.id) harmFromCondition(ctx, holder, entry, `source-${at}`);
       if (!holder.tracked.includes(entry)) continue;
+      // Its save, made as this one's turn starts (1.430): Prismatic Spray's Violet ray.
+      if (
+        at === "turn-start" &&
+        entry.source === actor.id &&
+        entry.saveEnds?.at === "source-turn-start" &&
+        entry.difficulty !== undefined &&
+        !holder.defeated
+      ) {
+        const saved = rollSave(
+          ctx,
+          holder,
+          entry.saveEnds.save,
+          entry.difficulty,
+          entry.source,
+          undefined,
+          { conditions: [entry.condition], ...(entry.action ? { action: entry.action } : {}) },
+          leanInSight(ctx, holder, entry),
+        );
+        if (savedAgainst(ctx, holder, entry, saved)) continue;
+      }
       if (entry.source !== actor.id || !ticksOnSource(ctx, holder, entry)) continue;
       if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
       entry.rounds -= 1;
@@ -3439,11 +3459,21 @@ function savedAgainst(
   entry.fails = (entry.fails ?? 0) + 1;
   if (entry.fails < ends.failures.count) return false;
   removeCondition(ctx, holder, entry.condition, "worsened");
+  // Or out of the fight for good, alive (1.430): Violet's other plane.
+  if (ends.failures.dismisses) {
+    const label =
+      entry.action?.[1] ??
+      ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ??
+      entry.condition;
+    sendAway(ctx, entry.source ?? holder.id, holder, label);
+    return true;
+  }
+  const becomes = ends.failures.becomes!;
   applyConditionId(
     ctx,
     holder,
-    ends.failures.becomes,
-    { condition: ends.failures.becomes, duration: "instant" },
+    becomes,
+    { condition: becomes, duration: "instant" },
     entry.source ? { sourceId: entry.source } : {},
   );
   return true;
@@ -10156,6 +10186,19 @@ function dismiss(
     label: action.label,
     ...(rule !== true ? { while: rule.while } : {}),
   });
+  endSummons(ctx, target);
+  endZones(ctx, target);
+  endConcentration(ctx, target, "spent");
+  endConditionsFromSource(ctx, target);
+}
+
+/** Out of the fight for good, alive, by no use of an entry (1.430): a failed save against what
+ *  `sourceId` put on it. What it held up ends. */
+function sendAway(ctx: RulesetCombatContext, sourceId: string, target: RulesetCombatant, label: string): void {
+  if (target.defeated) return;
+  target.defeated = true;
+  target.away = { by: sourceId, label };
+  ctx.events.push({ type: "dismissed", actorId: sourceId, targetId: target.id, label });
   endSummons(ctx, target);
   endZones(ctx, target);
   endConcentration(ctx, target, "spent");

@@ -6475,7 +6475,9 @@ const creatureActionSchema = z
      *  it is used, one use between them, as a catalog entry's are: a demon's Summon Demon, "2d4
      *  dretches or one vrock". They leave once `rounds` have passed, counted from their caller's next
      *  turn; with `endsWithCaller` as soon as their caller is out; and with `cantCall` they come
-     *  without any calling actions of their own. */
+     *  without any calling actions of their own. With `dismissible` (Capability API 1.396) its
+     *  caller has an action, on the action's own budget, that sends away those it called: "until its
+     *  summoner dismisses it as an action". */
     calls: z
       .object({
         creature: z
@@ -6495,6 +6497,7 @@ const creatureActionSchema = z
         rounds: z.number().int().min(1).max(14400).optional(),
         endsWithCaller: z.literal(true).optional(),
         cantCall: z.literal(true).optional(),
+        dismissible: z.literal(true).optional(),
       })
       .strict()
       .superRefine((calls, ctx) => {

@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** Those a creature called sent away as an action (1.396): Summon Demon's dismissal. */
+function carriesDismissibleCalls396(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDismissibleCalls396(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.dismissible !== undefined) return true;
+  return featureValues(record).some((one) => carriesDismissibleCalls396(one, depth + 1));
+}
+
 /** One of an entry's applies, picked as it is used (1.395): Primeval Awareness' reach. */
 function carriesAppliesOneOf395(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5812,6 +5822,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Called creatures sent away as an action, 1.396.
+  if (
+    !declaresApi(396) &&
+    (carriesDismissibleCalls396(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDismissibleCalls396(document)))
+  ) {
+    return "A ruleset whose creatures may send away those they called as an action (dismissible) requires schemaVersion 2 and capabilityApi 1.396 or newer";
+  }
   // One of an entry's applies picked as it is used, 1.395.
   if (
     !declaresApi(395) &&

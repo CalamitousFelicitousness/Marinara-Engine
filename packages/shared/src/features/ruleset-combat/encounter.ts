@@ -4915,6 +4915,17 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       const action = combatant.actions.find(
         (one) => one.kind === "block" && one.id === (source.id ?? `block:${index}`),
       );
+      // Sent away again as an action (1.396): Summon Demon's "until its summoner dismisses it".
+      if (action && source.calls.dismissible) {
+        combatant.actions.push({
+          id: `dismiss-called:${action.id}`,
+          kind: "switch",
+          label: action.label,
+          budget: action.budget,
+          targets: { side: "self", count: 0 },
+          switches: { called: action.id },
+        });
+      }
       // Its options (1.393), found as a catalog entry's are, below.
       if (source.calls.options) {
         if (!action) return;

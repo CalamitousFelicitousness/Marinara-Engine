@@ -304,6 +304,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.rounds ? { rounds: action.calls.rounds } : {}),
             ...(action.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
+            ...(action.calls.dismissible ? { dismissible: true as const } : {}),
           },
         }
       : {}),

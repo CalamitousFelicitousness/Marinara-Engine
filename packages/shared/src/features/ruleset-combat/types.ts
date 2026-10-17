@@ -444,6 +444,8 @@ export interface RulesetStatBlockAction {
     rounds?: number;
     endsWithCaller?: true;
     cantCall?: true;
+    /** Its caller may send them away as an action (1.396). */
+    dismissible?: true;
   };
   /** The forms it changes into (1.342), found in the bestiary as the fight begins. */
   forms?: RulesetShapeForms;
@@ -1070,7 +1072,7 @@ export interface RulesetCombatAction {
   clip?: { item: number; max: number };
   /** Turning one of the holder's items on or off (1.170): its place in `sheet.items`. */
   /** What it turns: an item (1.170), or the light its holder carries (1.295). */
-  switches?: { item: number } | { carried: true } | { conjured: string };
+  switches?: { item: number } | { carried: true } | { conjured: string } | { called: string };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -2725,7 +2727,7 @@ export type RulesetCombatEvent =
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
   /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }
-  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" | "caller" }
+  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" | "caller" | "dismissed" }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

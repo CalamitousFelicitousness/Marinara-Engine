@@ -5186,6 +5186,10 @@ function applyChoice(
     } else if (switching?.switches && "conjured" in switching.switches) {
       // A weapon put in hand, put away for nothing (1.308).
       unconjure(ctx, working, switching.switches.conjured);
+    } else if (switching?.switches && "called" in switching.switches) {
+      // Those it called sent away as an action (1.396): Summon Demon's dismissal.
+      const by = switching.switches.called;
+      dismissCalled(ctx, working, (one) => one.calledWith === by, "dismissed");
     } else if (switching?.switches && "item" in switching.switches) {
       const on = !rulesetItemOn(working, switching.switches.item);
       working.on = { ...(working.on ?? {}), [switching.switches.item]: on };
@@ -7341,7 +7345,7 @@ function dismissCalled(
   ctx: RulesetCombatContext,
   caller: RulesetCombatant,
   which: (one: RulesetCombatant) => boolean,
-  reason: "rounds" | "concentration" | "caller",
+  reason: "rounds" | "concentration" | "caller" | "dismissed",
 ): void {
   const going = ctx.state.combatants.filter(
     (one) => one.calledBy === caller.id && !one.dismissed && !one.defeated && which(one),

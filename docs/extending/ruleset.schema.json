@@ -56288,6 +56288,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "dismissible": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false

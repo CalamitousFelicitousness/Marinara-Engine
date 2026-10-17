@@ -90,7 +90,12 @@ export function rulesetCallCreatures(
     // Called kin that cannot call kin of their own (1.393).
     if (calls.cantCall) {
       combatant.actions = combatant.actions.filter(
-        (one) => !one.calls && !one.callsOf && !one.callChoice && !one.modes?.some((mode) => mode.call),
+        (one) =>
+          !one.calls &&
+          !one.callsOf &&
+          !one.callChoice &&
+          !one.modes?.some((mode) => mode.call) &&
+          !(one.switches && "called" in one.switches),
       );
     }
     state.combatants.push(combatant);

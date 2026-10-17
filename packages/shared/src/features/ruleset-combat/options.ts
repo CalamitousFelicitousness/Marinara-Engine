@@ -2032,6 +2032,16 @@ export function rulesetActionAvailable(
     const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools;
     if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
   }
+  // Sending away who it called only while some of them are here (1.396).
+  if (action.switches && "called" in action.switches) {
+    const by = action.switches.called;
+    if (
+      !state?.combatants.some(
+        (one) => one.calledBy === actor.id && one.calledWith === by && !one.dismissed && !one.defeated,
+      )
+    )
+      return false;
+  }
   // Made again only while its cast is concentrated on (1.310).
   if (action.again && !rulesetRepeatsHeld(actor, action.again)) return false;
   // Kept up only while what it put on is still on somebody (1.378).
@@ -2554,7 +2564,7 @@ function optionFrom(
       : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
-    ...(action.switches && "conjured" in action.switches
+    ...(action.switches && ("conjured" in action.switches || "called" in action.switches)
       ? { dismiss: true as const }
       : action.switches
         ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }

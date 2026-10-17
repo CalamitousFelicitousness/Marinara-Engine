@@ -1,5 +1,6 @@
 /**
- * A creature's call with options, kept for rounds and by its caller (Capability API 1.393).
+ * A creature's call with options, kept for rounds and by its caller (Capability API 1.393), and sent
+ * away as an action (1.396).
  *
  *   - Summon Demon: a vrock picks 2d4 dretches or another vrock, one use a day shared by both; they
  *     leave once a minute has passed, or as soon as the vrock that called them is out, and never
@@ -34,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 393);
+  assert.ok(supportedCapabilityApi.minor >= 396);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -47,6 +48,7 @@ try {
     rounds: 10,
     endsWithCaller: true,
     cantCall: true,
+    dismissible: true,
   };
   const claws = { id: "claws", name: "Claws", budget: "action", toHit: 4, reach: 5, damage: { flat: 3 } };
   const creature = (actions: unknown[]) => ({
@@ -176,6 +178,30 @@ try {
     const dretches = summon(fight(), "call-0").taken.state;
     assert.equal(here(dretches).length, 8);
     assert.ok(here(dretches).every((name) => name.startsWith("Dretch")));
+    // Sent away as an action (1.396), offered only while they are here; the called vrock has none.
+    assert.ok(!called.actions.some((one) => one.switches), "nothing to dismiss of its own");
+    const dismissing = structuredClone(state);
+    who(dismissing, "vrock").budgets.action = 1;
+    const dismiss = rulesetCombatOptions(definition, dismissing, "vrock").find(
+      (one) => one.id === "dismiss-called:summon",
+    );
+    assert.ok(dismiss?.dismiss, "offered");
+    const sent = applyRulesetCombatChoice(
+      definition,
+      dismissing,
+      { actorId: "vrock", optionId: "dismiss-called:summon", targetIds: [] },
+      roll,
+    );
+    assert.deepEqual(
+      of(sent.events, "sentAway").map((one) => [one.reason, one.ids]),
+      [["dismissed", [called.id]]],
+    );
+    assert.deepEqual(here(sent.state), []);
+    assert.equal(who(sent.state, "vrock").budgets.action, 0, "on its action");
+    assert.ok(
+      !rulesetCombatOptions(definition, sent.state, "vrock").some((one) => one.id === "dismiss-called:summon"),
+      "nobody left to dismiss",
+    );
     // Over 30: nobody comes, and the day's use is spent.
     const missed = fight();
     const failed = applyRulesetCombatChoice(
@@ -268,14 +294,19 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(392) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, fiveE()), gate);
+    const kept = fiveE({ ...summonDemon, dismissible: undefined });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(392) as never, kept), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, kept), gate);
     const plain = fiveE({ creature: "creatures/dretch", count: { flat: 1 } });
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(392) as never, plain), gate);
+    const dismissGate =
+      "A ruleset whose creatures may send away those they called as an action (dismissible) requires schemaVersion 2 and capabilityApi 1.396 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(395) as never, fiveE()), dismissGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(396) as never, fiveE()), dismissGate);
   }
 
   console.log(
-    "Call options: Summon Demon picks dretches or a vrock on one use a day; they leave after a minute or with their caller and call nobody; gated at 1.393.",
+    "Call options: Summon Demon picks dretches or a vrock on one use a day; they leave after a minute or with their caller and call nobody; gated at 1.393, dismissed as an action at 1.396.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

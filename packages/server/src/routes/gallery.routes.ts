@@ -1937,7 +1937,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         }
         const storyboards = createGameStoryboardsStorage(app.db);
         const replacedKeyframeIds: string[] = [];
-        for (const keyframe of await storyboards.listKeyframesByChatImageId(original.id)) {
+        for (const keyframe of await storyboards.listKeyframesByChatImageId(chatId, original.id)) {
           await storyboards.updateKeyframe(keyframe.id, { chatImageId: image.id });
           replacedKeyframeIds.push(keyframe.id);
         }

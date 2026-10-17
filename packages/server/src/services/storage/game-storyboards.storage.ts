@@ -213,12 +213,19 @@ export function createGameStoryboardsStorage(db: DB) {
       return this.listKeyframes(storyboardId);
     },
 
-    /** Keyframes showing a chat gallery image, so a regenerated image can replace it (#7767). */
-    async listKeyframesByChatImageId(chatImageId: string) {
+    /** This chat's keyframes showing a gallery image, so a regenerated image can replace it (#7767). */
+    async listKeyframesByChatImageId(chatId: string, chatImageId: string) {
+      const storyboardIds = (await this.listByChatId(chatId)).map((storyboard) => storyboard.id);
+      if (storyboardIds.length === 0) return [];
       return db
         .select()
         .from(gameTurnStoryboardKeyframes)
-        .where(eq(gameTurnStoryboardKeyframes.chatImageId, chatImageId));
+        .where(
+          and(
+            eq(gameTurnStoryboardKeyframes.chatImageId, chatImageId),
+            inArray(gameTurnStoryboardKeyframes.storyboardId, storyboardIds),
+          ),
+        );
     },
 
     async updateKeyframe(id: string, patch: Partial<typeof gameTurnStoryboardKeyframes.$inferInsert>) {

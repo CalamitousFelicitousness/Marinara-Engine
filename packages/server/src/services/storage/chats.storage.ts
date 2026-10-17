@@ -3793,26 +3793,30 @@ export function createChatsStorage(db: DB) {
         });
         return changed ? JSON.stringify({ ...existing, attachments }) : null;
       };
-      return withPatchQueue(messageExtraPatchQueues, messageId, async () => {
-        const msg = await this.getMessage(messageId);
-        if (!msg) return false;
-        let changed = false;
-        const nextMessageExtra = swap(msg.extra);
-        if (nextMessageExtra) {
-          await db.update(messages).set({ extra: nextMessageExtra }).where(eq(messages.id, messageId));
-          changed = true;
-        }
-        for (const swipe of await this.getSwipes(messageId)) {
-          const nextSwipeExtra = swap(swipe.extra);
-          if (!nextSwipeExtra) continue;
-          await db
-            .update(messageSwipes)
-            .set({ extra: nextSwipeExtra })
-            .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, swipe.id)));
-          changed = true;
-        }
-        return changed;
-      });
+      // Queue first, then the transaction (LOCK ORDER above), so the message and its swipe
+      // rows change together. Only plain reads/writes run inside the transaction.
+      return withPatchQueue(messageExtraPatchQueues, messageId, () =>
+        db.transaction(async (tx) => {
+          const msg = (await tx.select().from(messages).where(eq(messages.id, messageId)))[0];
+          if (!msg) return false;
+          let changed = false;
+          const nextMessageExtra = swap(msg.extra);
+          if (nextMessageExtra) {
+            await tx.update(messages).set({ extra: nextMessageExtra }).where(eq(messages.id, messageId));
+            changed = true;
+          }
+          for (const swipe of await tx.select().from(messageSwipes).where(eq(messageSwipes.messageId, messageId))) {
+            const nextSwipeExtra = swap(swipe.extra);
+            if (!nextSwipeExtra) continue;
+            await tx
+              .update(messageSwipes)
+              .set({ extra: nextSwipeExtra })
+              .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, swipe.id)));
+            changed = true;
+          }
+          return changed;
+        }),
+      );
     },
 
     // ── Chat Connections ──

@@ -19,8 +19,9 @@ export function useRegenerateChatImage(chatId: string) {
         input,
       ),
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: galleryKeys.chat(chatId) });
-      qc.invalidateQueries({ queryKey: galleryKeys.assets(chatId) });
+      // The prefix, not this chat's keys: a Game gallery lists sibling sessions' images, and
+      // regenerating one of those must refresh whichever gallery is open.
+      qc.invalidateQueries({ queryKey: galleryKeys.all });
       if (result.replacedMessageIds.length > 0) qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
       if (result.replacedKeyframeIds.length > 0) qc.invalidateQueries({ queryKey: gameStoryboardKeys.chat(chatId) });
     },

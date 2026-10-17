@@ -41,7 +41,7 @@ import {
   spendRulesetShots,
   rulesetShotsAvailable,
 } from "./ammo.js";
-import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
+import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
 import { rulesetCanSee, rulesetHiddenFrom, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
 import {
@@ -7603,6 +7603,107 @@ function dismissCalled(
  * goes on as it was handed out once it closes. Anything that turn's start was asking waits behind
  * it. The fight as it was when nobody's lair is due.
  */
+/** A zone somebody set up before a fight (1.409): one of their own entries with a zone, by id or
+ *  name, set down where they stand (`self`) or between them and their nearest foe (`between`, the
+ *  default); for a glyph that stores another entry, that one too, by name. */
+export interface RulesetStandingZone {
+  casterId: string;
+  entry: string;
+  at?: "self" | "between";
+  stores?: string;
+}
+
+/** Where a zone set up before a fight is set down (1.409), on a board. */
+function standingCell(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  at: "self" | "between",
+): RulesetCombatCell | undefined {
+  const own = rulesetPositionOf(caster);
+  if (!own || !state.board?.grid || at === "self") return own ?? undefined;
+  const foes = state.combatants
+    .filter((one) => one.side !== caster.side && rulesetCombatStanding(one) && rulesetPositionOf(one))
+    .sort((a, b) => rulesetGap(caster, a) - rulesetGap(caster, b));
+  const foe = foes[0] ? rulesetPositionOf(foes[0]) : undefined;
+  if (!foe) return own;
+  return { x: Math.round((own.x + foe.x) / 2), y: Math.round((own.y + foe.y) / 2) };
+}
+
+/**
+ * What stands as a fight starts (Capability API 1.409): each zone its caster set up before it, paid
+ * for now off their sheet and put down as though just cast, held by their concentration where it
+ * needs it. A hidden one is put down unsaid, so its foes learn of it only by finding it. What cannot
+ * be set up (no such entry, nothing to pay with, a stored entry it cannot hold) is left out and said.
+ */
+export function rulesetStandingAtStart(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  standing: readonly RulesetStandingZone[] | undefined,
+): { state: RulesetEncounterState; skipped: string[] } {
+  const combat = definition.combat;
+  if (!combat || !standing?.length) return { state, skipped: [] };
+  const { ctx, finish } = begin(definition, combat, state, rulesetCombatRoller(state.seed, state.cursor));
+  const skipped: string[] = [];
+  const pay = (caster: RulesetCombatant, action: RulesetCombatAction): boolean => {
+    const price = planRulesetCombatCost(definition, caster, action);
+    if (!price) return false;
+    if (price.live && caster.sheet) caster.sheet.live = price.live;
+    spendAvailability(ctx, caster, action);
+    return true;
+  };
+  for (const one of standing) {
+    const caster = rulesetCombatant(ctx.state, one.casterId);
+    if (!caster || !rulesetCombatStanding(caster)) continue;
+    const named = (action: RulesetCombatAction, name: string) =>
+      action.id === name || action.label.trim().toLowerCase() === name.trim().toLowerCase();
+    const action = caster.actions.find((entry) => !!entry.zone && named(entry, one.entry));
+    if (!action) {
+      skipped.push(`${caster.name} has no lasting entry called "${one.entry}", so nothing stands for it.`);
+      continue;
+    }
+    // A spell glyph's stored entry (1.401), as a mode.
+    const mode = one.stores
+      ? action.modes?.find((entry) => {
+          const stored = entry.stores ? caster.actions.find((held) => held.id === entry.stores) : undefined;
+          return !!stored && named(stored, one.stores!);
+        })
+      : undefined;
+    if (one.stores && !mode) {
+      skipped.push(`${caster.name}'s ${action.label} cannot hold "${one.stores}", so it stands with its own effect.`);
+    }
+    const stored = mode?.stores ? caster.actions.find((held) => held.id === mode.stores) : undefined;
+    if (stored && rulesetPaidLevel(definition, caster, stored) > rulesetPaidLevel(definition, caster, action)) {
+      skipped.push(`${caster.name}'s ${action.label} cannot hold "${stored.label}", so nothing stands for it.`);
+      continue;
+    }
+    const before = caster.sheet?.live;
+    if (!pay(caster, action) || (stored && !pay(caster, stored))) {
+      if (caster.sheet && before !== undefined) caster.sheet.live = before;
+      skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it does not stand.`);
+      continue;
+    }
+    const mark = ctx.events.length;
+    if (action.concentration) startConcentration(ctx, caster, action);
+    const at = standingCell(ctx.state, caster, one.at ?? "between");
+    placeZone(ctx, caster, action, {
+      kind: "action",
+      actorId: caster.id,
+      optionId: action.id,
+      targetIds: [],
+      ...(at ? { at } : {}),
+      ...(mode ? { mode: mode.id } : {}),
+    });
+    // Put down before anybody was looking: no blow it strikes as it appears, and a hidden one unsaid.
+    if (caster.flags.freshZones) {
+      caster.flags.freshZones = caster.flags.freshZones.filter((id) => id !== action.id);
+      if (caster.flags.freshZones.length === 0) delete caster.flags.freshZones;
+    }
+    if (action.zone?.hidden) ctx.events.length = mark;
+  }
+  const step = finish();
+  return { state: { ...step.state, opening: [...step.state.opening, ...step.events] }, skipped };
+}
+
 export function rulesetOpenLairWindow(
   definition: RulesetDefinition,
   state: RulesetEncounterState,

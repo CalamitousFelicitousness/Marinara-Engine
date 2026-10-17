@@ -823,6 +823,8 @@ export interface RulesetCombatAction {
   usesChosen?: true;
   /** It takes this many rounds to cast (1.408), its budget spent again as each turn starts. */
   castingRounds?: number;
+  /** Never on the fight menu (1.409): set up before a fight, standing as it starts. */
+  beforeFight?: true;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.253):
    *  5e's Metamagic. Never on a menu of its own. */
   alters?: RulesetCombatAlter;

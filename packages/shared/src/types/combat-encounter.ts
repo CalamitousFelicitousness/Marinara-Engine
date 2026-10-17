@@ -120,10 +120,20 @@ export interface CombatVisualRequest {
   slug?: string;
 }
 
+/** A lasting entry somebody set up before a fight (1.409): a ward, a glyph, hallowed ground. `at`
+ *  is where they stand, or between them and their foes; `stores` names what a spell glyph holds. */
+export interface CombatStandingEntry {
+  entry: string;
+  at?: "self" | "between";
+  stores?: string;
+}
+
 /** A member of the player's party. */
 export interface CombatPartyMember {
   /** Caught unaware as the fight begins (1.237); a ruleset fight reads it. */
   surprised?: boolean;
+  /** What they set up before the fight, standing as it begins (1.409); a ruleset fight reads it. */
+  standing?: CombatStandingEntry[];
   projectile?: boolean;
   requiresSight?: boolean;
   spellSlots?: Record<string, number>;
@@ -150,6 +160,8 @@ export interface CombatPartyMember {
 export interface RulesetEncounterBlueprint {
   /** Caught unaware as the fight begins (1.237); a ruleset fight reads it. */
   surprised?: boolean;
+  /** What it set up before the fight, standing as it begins (1.409); a ruleset fight reads it. */
+  standing?: CombatStandingEntry[];
   /** Fights in its own lair (1.315): its lair actions are taken. A ruleset fight reads it. */
   inLair?: boolean;
   creature?: string;

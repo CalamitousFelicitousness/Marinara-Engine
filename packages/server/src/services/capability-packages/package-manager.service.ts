@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry set up before a fight only (1.409): Glyph of Warding, Hallow. */
+function carriesBeforeFight409(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBeforeFight409(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.beforeFight !== undefined) return true;
+  return featureValues(record).some((one) => carriesBeforeFight409(one, depth + 1));
+}
+
 /** An entry that takes rounds to cast (1.408): Symbol's minute. */
 function carriesCastingRounds408(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5950,6 +5960,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries set up before a fight only, 1.409.
+  if (
+    !declaresApi(409) &&
+    (carriesBeforeFight409(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBeforeFight409(document)))
+  ) {
+    return "A ruleset whose entries are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.409 or newer";
+  }
   // Entries that take rounds to cast, 1.408.
   if (
     !declaresApi(408) &&

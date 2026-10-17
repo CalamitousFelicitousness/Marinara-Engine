@@ -81,6 +81,8 @@ import {
   rulesetZonesShown,
   rulesetBoardShading,
   rulesetOpenLairWindow,
+  rulesetStandingAtStart,
+  type RulesetStandingZone,
   rulesetWindowOptions,
   rulesetAreaCells,
   rulesetZoneCatches,
@@ -231,6 +233,8 @@ export interface RulesetFightSeed {
   /** Held Ground (1.323): whoever reaches no health in this fight is felled instead. The story's
    *  region rule decides it; the fight only keeps it. */
   heldGround?: RulesetHeldGround;
+  /** What was set up before the fight (1.409), standing as it begins. */
+  standing?: RulesetStandingZone[];
   /** The scene's time of day as the game tracks it (1.291), which sets the light outdoors. */
   time?: string | null;
 }
@@ -405,6 +409,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
+  }
+  // What was set up before it stands as it begins (1.409).
+  if (input.standing?.length) {
+    const stood = rulesetStandingAtStart(definition, encounter, input.standing);
+    encounter = stood.state;
+    adjustments.push(...stood.skipped);
   }
   // A lair whose count comes before everybody's acts before the first turn (1.315).
   encounter = rulesetOpenLairWindow(definition, encounter);

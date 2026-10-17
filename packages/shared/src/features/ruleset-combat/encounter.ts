@@ -2888,6 +2888,8 @@ function mechanicsAction(
   if (mechanics.usesChosen) action.usesChosen = true;
   // Taking rounds to cast (1.408): Symbol's minute.
   if (mechanics.castingRounds) action.castingRounds = mechanics.castingRounds;
+  // Set up before a fight only (1.409): Glyph of Warding's hour.
+  if (mechanics.beforeFight) action.beforeFight = true;
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.
   if (mechanics.alters) {
     const alters = mechanics.alters;

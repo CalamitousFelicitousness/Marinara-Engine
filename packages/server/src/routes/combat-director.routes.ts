@@ -108,6 +108,19 @@ const directedCombatantFields = z.object({
   surprised: z.boolean().optional(),
   /** Fights in its own lair (1.315): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
+  /** What it set up before the fight, standing as it begins (1.409): read by a ruleset fight only. */
+  standing: z
+    .array(
+      z
+        .object({
+          entry: z.string().min(1).max(200),
+          at: z.enum(["self", "between"]).optional(),
+          stores: z.string().min(1).max(200).optional(),
+        })
+        .strict(),
+    )
+    .max(6)
+    .optional(),
   hp: num,
   maxHp: num.min(1),
   mp: num.optional(),
@@ -919,6 +932,10 @@ export async function combatDirectorRoutes(
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.315).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
+            // What was set up before it, standing as it begins (1.409).
+            standing: [...input.party, ...input.enemies].flatMap((one) =>
+              (one.standing ?? []).map((entry) => ({ casterId: one.id, ...entry })),
+            ),
             // The scene's time of day, for the light it is fought in (1.291).
             time: liveRow?.time ?? null,
           });

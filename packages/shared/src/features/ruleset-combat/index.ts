@@ -286,6 +286,8 @@ export {
 export {
   advanceRulesetTurn,
   rulesetOpenLairWindow,
+  rulesetStandingAtStart,
+  type RulesetStandingZone,
   applyRulesetCombatChoice,
   rulesetSaveDifficultyShift,
   liftRulesetFightEffects,

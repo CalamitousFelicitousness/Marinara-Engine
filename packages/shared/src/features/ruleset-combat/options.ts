@@ -2471,6 +2471,8 @@ function optionFrom(
   if (action.signature) return null;
   // Nor a lair action (1.315), but on the turn lent for it.
   if (action.lair && !lairLent) return null;
+  // Nor what takes longer to cast than a fight lasts (1.409): it stands as the fight starts or not at all.
+  if (action.beforeFight) return null;
   // A reaction waits for its moment, which is never a turn. `rulesetWindowOptions` is where the
   // moment offers it.
   if (action.reaction && !atItsMoment) return null;

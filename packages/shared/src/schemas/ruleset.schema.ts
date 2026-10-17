@@ -5570,6 +5570,10 @@ const catalogMechanicsObject = z
      *  lands as the last is spent. Broken off (their concentration lost, or no budget to spend), it
      *  fails, and what it cost is given back. 5e's spells cast over a minute: Symbol's `10`. */
     castingRounds: z.number().int().min(2).max(10).optional(),
+    /** It takes longer to cast than a fight lasts (Capability API 1.409), so it is never on the fight
+     *  menu: its zone is set up before a fight, and stands as the fight starts. 5e's Glyph of
+     *  Warding (an hour) and Hallow (a day). */
+    beforeFight: z.literal(true).optional(),
     /** Changes how another entry is used, chosen as it is used and paid for with this entry's own
      *  uses (Capability API 1.253): 5e's Metamagic. Never on a menu of its own. One per use, unless
      *  it `joins` another. */
@@ -5996,6 +6000,13 @@ const catalogMechanicsSchema: z.ZodType<
         message: "A restore is on an entry that helps, a heal or a buff",
       });
     }
+  }
+  if (mechanics.beforeFight && !mechanics.zone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["beforeFight"],
+      message: '"beforeFight" is set up before a fight and stands as it starts: it goes with "zone"',
+    });
   }
   if (mechanics.usesChosen && (mechanics.kind !== "heal" || mechanics.usesSpent !== undefined)) {
     ctx.addIssue({

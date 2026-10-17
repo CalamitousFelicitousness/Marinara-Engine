@@ -49323,6 +49323,10 @@
                       "minimum": 2,
                       "maximum": 10
                     },
+                    "beforeFight": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "alters": {
                       "type": "object",
                       "properties": {
@@ -78801,6 +78805,10 @@
                           "minimum": 2,
                           "maximum": 10
                         },
+                        "beforeFight": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "alters": {
                           "type": "object",
                           "properties": {
@@ -92190,6 +92198,10 @@
                                 "type": "integer",
                                 "minimum": 2,
                                 "maximum": 10
+                              },
+                              "beforeFight": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "alters": {
                                 "type": "object",

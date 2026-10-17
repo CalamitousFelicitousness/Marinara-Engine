@@ -309,6 +309,20 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
           surprised: z.boolean().optional().catch(undefined),
+          // What it set up before the fight, standing as it begins (1.409); a ruleset fight reads it.
+          standing: z
+            .array(
+              z
+                .object({
+                  entry: z.string().min(1).max(200),
+                  at: z.enum(["self", "between"]).optional().catch(undefined),
+                  stores: z.string().min(1).max(200).optional().catch(undefined),
+                })
+                .strip(),
+            )
+            .max(6)
+            .optional()
+            .catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           attacks: z
             .array(
@@ -332,6 +346,20 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
           surprised: z.boolean().optional().catch(undefined),
+          // What it set up before the fight, standing as it begins (1.409); a ruleset fight reads it.
+          standing: z
+            .array(
+              z
+                .object({
+                  entry: z.string().min(1).max(200),
+                  at: z.enum(["self", "between"]).optional().catch(undefined),
+                  stores: z.string().min(1).max(200).optional().catch(undefined),
+                })
+                .strip(),
+            )
+            .max(6)
+            .optional()
+            .catch(undefined),
           // Fights in its own lair (1.315); a ruleset fight reads it.
           inLair: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
@@ -695,6 +723,7 @@ export function buildInitPrompt(
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
     inst += `- Surprise: give "surprised": true to every party member or enemy the scene shows was caught unaware (it did not notice the ambush or the attackers before the fight began). Leave it out for anyone who saw it coming, and for everybody when nobody was caught off guard.\n`;
     inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
+    inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". Only for what the scene says was really done; leave it out otherwise.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;
     inst += `  - abilities: ${sheet.abilities.join(", ") || "none"}\n`;

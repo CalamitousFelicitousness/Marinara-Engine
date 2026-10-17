@@ -2464,7 +2464,9 @@ function applyConditionId(
     return;
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
-  const rounds = typeof applies.duration === "object" ? applies.duration.rounds : null;
+  // Paid high enough to have no clock (1.429): Bestow Curse from a 9th-level slot.
+  const rounds =
+    typeof applies.duration === "object" && !applies.duration.untilDispelled ? applies.duration.rounds : null;
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
   // On its source's clock (1.119), counted from their NEXT turn: put on in the middle of their own
   // turn, the end of this one is not "the end of your next turn".
@@ -7663,7 +7665,7 @@ function durationsPaid(
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
   if (steps <= 0) return action;
-  const roundsPaid = (duration: { rounds: number; perStep?: number; bySteps?: number[] }) =>
+  const roundsPaid = (duration: { rounds: number; perStep?: number; bySteps?: Array<number | "until-dispelled"> }) =>
     duration.bySteps
       ? duration.bySteps[Math.min(steps, duration.bySteps.length) - 1]!
       : Math.min(14400, duration.rounds + (duration.perStep ?? 0) * steps);
@@ -7673,7 +7675,13 @@ function durationsPaid(
       ? {
           applies: action.applies.map((entry) =>
             typeof entry.duration === "object" && (entry.duration.perStep || entry.duration.bySteps)
-              ? { ...entry, duration: { ...entry.duration, rounds: roundsPaid(entry.duration) } }
+              ? {
+                  ...entry,
+                  duration: ((paid) =>
+                    paid === "until-dispelled"
+                      ? { ...entry.duration, untilDispelled: true as const }
+                      : { ...entry.duration, rounds: paid })(roundsPaid(entry.duration)),
+                }
               : entry,
           ),
         }

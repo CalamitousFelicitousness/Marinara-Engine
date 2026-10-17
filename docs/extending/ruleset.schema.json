@@ -46388,7 +46388,7 @@
                                   "rounds": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "maximum": 1000
+                                    "maximum": 14400
                                   },
                                   "at": {
                                     "type": "string",
@@ -46410,9 +46410,17 @@
                                   "bySteps": {
                                     "type": "array",
                                     "items": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 14400
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
+                                        }
+                                      ]
                                     },
                                     "minItems": 1,
                                     "maxItems": 9
@@ -47483,7 +47491,7 @@
                                   "rounds": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "maximum": 1000
+                                    "maximum": 14400
                                   },
                                   "at": {
                                     "type": "string",
@@ -47505,9 +47513,17 @@
                                   "bySteps": {
                                     "type": "array",
                                     "items": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 14400
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
+                                        }
+                                      ]
                                     },
                                     "minItems": 1,
                                     "maxItems": 9
@@ -52496,7 +52512,7 @@
                                         "rounds": {
                                           "type": "integer",
                                           "minimum": 1,
-                                          "maximum": 1000
+                                          "maximum": 14400
                                         },
                                         "at": {
                                           "type": "string",
@@ -52518,9 +52534,17 @@
                                         "bySteps": {
                                           "type": "array",
                                           "items": {
-                                            "type": "integer",
-                                            "minimum": 1,
-                                            "maximum": 14400
+                                            "anyOf": [
+                                              {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              {
+                                                "type": "string",
+                                                "const": "until-dispelled"
+                                              }
+                                            ]
                                           },
                                           "minItems": 1,
                                           "maxItems": 9
@@ -53903,7 +53927,7 @@
                                             "rounds": {
                                               "type": "integer",
                                               "minimum": 1,
-                                              "maximum": 1000
+                                              "maximum": 14400
                                             },
                                             "at": {
                                               "type": "string",
@@ -53925,9 +53949,17 @@
                                             "bySteps": {
                                               "type": "array",
                                               "items": {
-                                                "type": "integer",
-                                                "minimum": 1,
-                                                "maximum": 14400
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                    "maximum": 14400
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "const": "until-dispelled"
+                                                  }
+                                                ]
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
@@ -58182,7 +58214,7 @@
                                             "rounds": {
                                               "type": "integer",
                                               "minimum": 1,
-                                              "maximum": 1000
+                                              "maximum": 14400
                                             },
                                             "at": {
                                               "type": "string",
@@ -58204,9 +58236,17 @@
                                             "bySteps": {
                                               "type": "array",
                                               "items": {
-                                                "type": "integer",
-                                                "minimum": 1,
-                                                "maximum": 14400
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                    "maximum": 14400
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "const": "until-dispelled"
+                                                  }
+                                                ]
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
@@ -66567,7 +66607,7 @@
                                             "rounds": {
                                               "type": "integer",
                                               "minimum": 1,
-                                              "maximum": 1000
+                                              "maximum": 14400
                                             },
                                             "at": {
                                               "type": "string",
@@ -66589,9 +66629,17 @@
                                             "bySteps": {
                                               "type": "array",
                                               "items": {
-                                                "type": "integer",
-                                                "minimum": 1,
-                                                "maximum": 14400
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                    "maximum": 14400
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "const": "until-dispelled"
+                                                  }
+                                                ]
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
@@ -76509,7 +76557,7 @@
                                       "rounds": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "maximum": 1000
+                                        "maximum": 14400
                                       },
                                       "at": {
                                         "type": "string",
@@ -76531,9 +76579,17 @@
                                       "bySteps": {
                                         "type": "array",
                                         "items": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 14400
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 14400
+                                            },
+                                            {
+                                              "type": "string",
+                                              "const": "until-dispelled"
+                                            }
+                                          ]
                                         },
                                         "minItems": 1,
                                         "maxItems": 9
@@ -77604,7 +77660,7 @@
                                       "rounds": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "maximum": 1000
+                                        "maximum": 14400
                                       },
                                       "at": {
                                         "type": "string",
@@ -77626,9 +77682,17 @@
                                       "bySteps": {
                                         "type": "array",
                                         "items": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 14400
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 14400
+                                            },
+                                            {
+                                              "type": "string",
+                                              "const": "until-dispelled"
+                                            }
+                                          ]
                                         },
                                         "minItems": 1,
                                         "maxItems": 9
@@ -90084,7 +90148,7 @@
                                             "rounds": {
                                               "type": "integer",
                                               "minimum": 1,
-                                              "maximum": 1000
+                                              "maximum": 14400
                                             },
                                             "at": {
                                               "type": "string",
@@ -90106,9 +90170,17 @@
                                             "bySteps": {
                                               "type": "array",
                                               "items": {
-                                                "type": "integer",
-                                                "minimum": 1,
-                                                "maximum": 14400
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                    "maximum": 14400
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "const": "until-dispelled"
+                                                  }
+                                                ]
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
@@ -91179,7 +91251,7 @@
                                             "rounds": {
                                               "type": "integer",
                                               "minimum": 1,
-                                              "maximum": 1000
+                                              "maximum": 14400
                                             },
                                             "at": {
                                               "type": "string",
@@ -91201,9 +91273,17 @@
                                             "bySteps": {
                                               "type": "array",
                                               "items": {
-                                                "type": "integer",
-                                                "minimum": 1,
-                                                "maximum": 14400
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                    "maximum": 14400
+                                                  },
+                                                  {
+                                                    "type": "string",
+                                                    "const": "until-dispelled"
+                                                  }
+                                                ]
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
@@ -107713,7 +107793,7 @@
                                 "rounds": {
                                   "type": "integer",
                                   "minimum": 1,
-                                  "maximum": 1000
+                                  "maximum": 14400
                                 },
                                 "at": {
                                   "type": "string",
@@ -107735,9 +107815,17 @@
                                 "bySteps": {
                                   "type": "array",
                                   "items": {
-                                    "type": "integer",
-                                    "minimum": 1,
-                                    "maximum": 14400
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "until-dispelled"
+                                      }
+                                    ]
                                   },
                                   "minItems": 1,
                                   "maxItems": 9
@@ -109269,7 +109357,7 @@
                                       "rounds": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "maximum": 1000
+                                        "maximum": 14400
                                       },
                                       "at": {
                                         "type": "string",
@@ -109291,9 +109379,17 @@
                                       "bySteps": {
                                         "type": "array",
                                         "items": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 14400
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 14400
+                                            },
+                                            {
+                                              "type": "string",
+                                              "const": "until-dispelled"
+                                            }
+                                          ]
                                         },
                                         "minItems": 1,
                                         "maxItems": 9
@@ -110385,7 +110481,7 @@
                                           "rounds": {
                                             "type": "integer",
                                             "minimum": 1,
-                                            "maximum": 1000
+                                            "maximum": 14400
                                           },
                                           "at": {
                                             "type": "string",
@@ -110407,9 +110503,17 @@
                                           "bySteps": {
                                             "type": "array",
                                             "items": {
-                                              "type": "integer",
-                                              "minimum": 1,
-                                              "maximum": 14400
+                                              "anyOf": [
+                                                {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 14400
+                                                },
+                                                {
+                                                  "type": "string",
+                                                  "const": "until-dispelled"
+                                                }
+                                              ]
                                             },
                                             "minItems": 1,
                                             "maxItems": 9
@@ -112052,7 +112156,7 @@
                                 "rounds": {
                                   "type": "integer",
                                   "minimum": 1,
-                                  "maximum": 1000
+                                  "maximum": 14400
                                 },
                                 "at": {
                                   "type": "string",
@@ -112074,9 +112178,17 @@
                                 "bySteps": {
                                   "type": "array",
                                   "items": {
-                                    "type": "integer",
-                                    "minimum": 1,
-                                    "maximum": 14400
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "until-dispelled"
+                                      }
+                                    ]
                                   },
                                   "minItems": 1,
                                   "maxItems": 9

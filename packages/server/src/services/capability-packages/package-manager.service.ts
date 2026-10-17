@@ -2247,6 +2247,19 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A duration past 1000 rounds, or one paid high enough to have no clock (1.429): Aid's 8 hours,
+ *  Bestow Curse from a 9th-level slot. */
+function carriesLongDurations429(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLongDurations429(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const duration = plainRecord(record.duration);
+  if (typeof duration?.rounds === "number" && duration.rounds > 1000) return true;
+  if (Array.isArray(duration?.bySteps) && duration.bySteps.includes("until-dispelled")) return true;
+  return featureValues(record).some((one) => carriesLongDurations429(one, depth + 1));
+}
+
 /** A condition that lends its holder's senses to whoever put it on (1.428): a familiar seen through. */
 function carriesLendsSenses428(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6161,6 +6174,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Durations past 1000 rounds, or with no clock once paid high enough, 1.429.
+  if (
+    !declaresApi(429) &&
+    (carriesLongDurations429(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLongDurations429(document)))
+  ) {
+    return "A ruleset whose durations run past 1000 rounds, or end only when dispelled once paid high enough (bySteps until-dispelled), requires schemaVersion 2 and capabilityApi 1.429 or newer";
+  }
   // Senses lent to whoever put a condition on, 1.428.
   if (
     !declaresApi(428) &&

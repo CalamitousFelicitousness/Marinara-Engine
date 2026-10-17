@@ -141,10 +141,19 @@ try {
     assert.deepEqual(lasts(definition, "slots_3"), [4800, null], "two higher: eight hours, unheld");
     const always = parsed(fiveE({ rounds: 10, bySteps: [100] }, { concentrationBelowStep: undefined }));
     assert.deepEqual(lasts(always, "slots_3"), [100, "Bestow Curse"], "the last step holds beyond");
+    // Until dispelled (1.429): no clock at all from that step up.
+    const forever = parsed(fiveE({ rounds: 10, bySteps: [100, "until-dispelled"] }));
+    assert.deepEqual(lasts(forever, "slots_2"), [100, "Bestow Curse"]);
+    assert.deepEqual(lasts(forever, "slots_3"), [null, null], "two higher: until dispelled, unheld");
+    // A day of rounds (1.429): Aid's eight hours, as written.
+    const aid = parsed(fiveE({ rounds: 4800 }, { concentrationBelowStep: undefined, concentration: undefined }));
+    assert.deepEqual(lasts(aid, undefined), [4800, null]);
   }
 
   // ── Refusals ──
   refused(fiveE({ rounds: 10, perStep: 10, bySteps: [100] }), /"perStep" and "bySteps"/);
+  refused(fiveE({ rounds: 14401 }), /duration/);
+  refused(fiveE({ rounds: 10, bySteps: ["forever"] }), /duration/);
   refused(fiveE(undefined, { concentration: undefined }), /"concentrationBelowStep" says when its concentration stops/);
 
   // ── The install gate ──
@@ -178,6 +187,14 @@ try {
       ),
       gate,
     );
+    // Past 1000 rounds, or until dispelled (1.429).
+    const later =
+      "A ruleset whose durations run past 1000 rounds, or end only when dispelled once paid high enough (bySteps until-dispelled), requires schemaVersion 2 and capabilityApi 1.429 or newer";
+    for (const duration of [{ rounds: 4800 }, { rounds: 10, bySteps: [100, "until-dispelled"] }]) {
+      assert.equal(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE(duration)), later);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(429) as never, fiveE(duration)), later);
+    }
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE({ rounds: 1000 })), later);
   }
 
   console.log(

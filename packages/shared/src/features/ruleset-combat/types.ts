@@ -168,8 +168,11 @@ export interface RulesetCombatApplies {
         untilLair?: true;
         /** Rounds more for each step of higher cost paid (1.394). */
         perStep?: number;
-        /** Rounds instead at one step higher, two and so on, the last for every step beyond (1.417). */
-        bySteps?: number[];
+        /** Rounds instead at one step higher, two and so on, the last for every step beyond (1.417),
+         *  or no clock at all (1.429). */
+        bySteps?: Array<number | "until-dispelled">;
+        /** Paid high enough to have no clock (1.429): on until something takes it off. */
+        untilDispelled?: true;
       };
   /** Its source holds no more than this many with it at once (1.320). */
   heldAtMost?: number;

@@ -3880,7 +3880,8 @@ const catalogDurationSchema = z.union([
   z.literal("this-action"),
   z
     .object({
-      rounds: z.number().int().min(1).max(1000),
+      /** Up to 1000, or up to 14400 (a day, Capability API 1.429): 5e's Aid for 8 hours, 4800. */
+      rounds: z.number().int().min(1).max(14400),
       at: z.literal("turn-start").optional(),
       /** Counted on the turns of whoever put it on, from their next one (Capability API 1.119):
        *  "until the end of your next turn", as Guiding Bolt's advantage lasts. */
@@ -3894,8 +3895,14 @@ const catalogDurationSchema = z.union([
       perStep: z.number().int().min(1).max(1000).optional(),
       /** Or lasting these many rounds instead when paid one step higher, two, and so on, the last
        *  holding for every step beyond (Capability API 1.417): Bestow Curse's ten minutes from a
-       *  4th-level slot and eight hours from a 5th, `{"rounds": 10, "bySteps": [100, 4800]}`. */
-      bySteps: z.array(z.number().int().min(1).max(14400)).min(1).max(9).optional(),
+       *  4th-level slot and eight hours from a 5th, `{"rounds": 10, "bySteps": [100, 4800]}`. Any of
+       *  them may be `"until-dispelled"` (Capability API 1.429): no clock at all, as Bestow Curse
+       *  from a 9th-level slot lasts until it is dispelled. */
+      bySteps: z
+        .array(z.union([z.number().int().min(1).max(14400), z.literal("until-dispelled")]))
+        .min(1)
+        .max(9)
+        .optional(),
     })
     .strict()
     .refine((duration) => !duration.perStep || !duration.bySteps, {

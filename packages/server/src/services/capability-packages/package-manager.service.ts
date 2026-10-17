@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A zone whose inside works on a kind chosen as it is cast (1.413): Hallow. */
+function carriesInsideChooses413(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInsideChooses413(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.inside)?.chooses !== undefined) return true;
+  return featureValues(record).some((one) => carriesInsideChooses413(one, depth + 1));
+}
+
 /** An entry with no zone set up before a fight only (1.412): Heroes' Feast. */
 function carriesBeforeFightNoZone412(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5992,6 +6002,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones whose inside works on a kind chosen as they are cast, 1.413.
+  if (
+    !declaresApi(413) &&
+    (carriesInsideChooses413(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInsideChooses413(document)))
+  ) {
+    return "A ruleset whose zones work inside on a kind chosen as they are cast (inside chooses) requires schemaVersion 2 and capabilityApi 1.413 or newer";
+  }
   // Entries with no zone set up before a fight only, 1.412.
   if (
     !declaresApi(412) &&

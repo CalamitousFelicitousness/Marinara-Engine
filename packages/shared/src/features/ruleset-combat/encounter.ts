@@ -615,7 +615,9 @@ function insideWorksOn(
   rule: NonNullable<RulesetCombatAction["zone"]>,
 ): boolean {
   if (zone.shrugged?.includes(combatant.id)) return false;
-  return !rule.inside?.is || (!!definition && rulesetTargetIs(definition, combatant, rule.inside.is));
+  // Whom it was cast to work on (1.413), else whom it names.
+  const is = zone.insideIs ?? rule.inside?.is;
+  return !is || (!!definition && rulesetTargetIs(definition, combatant, is));
 }
 
 function zonesStoodIn(
@@ -2056,6 +2058,7 @@ export function rulesetZoneAction(
       ...(inside.immune ? { immune: [...inside.immune] } : {}),
       // Whom it works on, and the save that shrugs it off (1.407).
       ...(inside.is ? { is: structuredClone(inside.is) } : {}),
+      ...(inside.chooses ? { chooses: inside.chooses } : {}),
       ...(inside.save ? { save: { ...inside.save } } : {}),
     };
   }
@@ -3911,6 +3914,13 @@ function sheetCombatant(
     if (storable.length) {
       action.modes = storable.map((one) => ({ id: `stores-${one.id}`, label: one.label, stores: one.id }));
     }
+  }
+  // Whom a zone works on inside, chosen as it is cast (1.413): each of the fight's creature types,
+  // as a mode.
+  const kinds = definition.combat?.creatureTypes?.types ?? [];
+  for (const action of actions) {
+    if (!action.zone?.inside?.chooses || !kinds.length) continue;
+    action.modes = kinds.map((kind) => ({ id: `kind-${kind.id}`, label: kind.label, insideType: kind.id }));
   }
   // What a conjuring entry puts in hand (1.306), read now like everything else: each weapon it may
   // make, and each held weapon it may bind, as attacks of that entry's, so what amends it amends them.

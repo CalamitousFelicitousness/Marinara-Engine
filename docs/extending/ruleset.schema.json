@@ -41352,6 +41352,10 @@
                               },
                               "additionalProperties": false
                             },
+                            "chooses": {
+                              "type": "string",
+                              "const": "type"
+                            },
                             "save": {
                               "type": "object",
                               "properties": {
@@ -56200,6 +56204,10 @@
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "chooses": {
+                                    "type": "string",
+                                    "const": "type"
                                   },
                                   "save": {
                                     "type": "object",
@@ -71186,6 +71194,10 @@
                                   },
                                   "additionalProperties": false
                                 },
+                                "chooses": {
+                                  "type": "string",
+                                  "const": "type"
+                                },
                                 "save": {
                                   "type": "object",
                                   "properties": {
@@ -84584,6 +84596,10 @@
                                           "$comment": {}
                                         },
                                         "additionalProperties": false
+                                      },
+                                      "chooses": {
+                                        "type": "string",
+                                        "const": "type"
                                       },
                                       "save": {
                                         "type": "object",

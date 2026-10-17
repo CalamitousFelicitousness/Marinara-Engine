@@ -3837,6 +3837,13 @@ function placeZone(
     ...(!grid ? { held: [...resume.targetIds] } : {}),
     ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
     ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
+    // Whom it works on inside, chosen as it was cast (1.413).
+    ...(rule.inside?.chooses && resume.mode
+      ? (() => {
+          const kind = action.modes?.find((one) => one.id === resume.mode)?.insideType;
+          return kind ? { insideIs: { types: [kind] } } : {};
+        })()
+      : {}),
     // What its caster stored in it (1.401).
     ...(rule.detonates?.stores && resume.mode
       ? (() => {
@@ -4117,7 +4124,8 @@ function insideSave(
 ): void {
   const inside = action.zone?.inside;
   if (!inside?.save || zone.shrugged?.includes(one.id) || !rulesetCombatStanding(one)) return;
-  if (inside.is && !rulesetTargetIs(ctx.definition, one, inside.is)) return;
+  const is = zone.insideIs ?? inside.is;
+  if (is && !rulesetTargetIs(ctx.definition, one, is)) return;
   const difficulty = action.save?.difficulty ?? action.saveDifficulty;
   if (difficulty === undefined) return;
   if (rollSave(ctx, one, inside.save.save, difficulty, caster.id)) zone.shrugged = [...(zone.shrugged ?? []), one.id];
@@ -7615,6 +7623,8 @@ export interface RulesetStandingZone {
   at?: "self" | "between";
   stores?: string;
   on?: string[];
+  /** The creature type a zone that chooses whom it works on works on (1.413), by id or name. */
+  kind?: string;
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -7703,13 +7713,26 @@ export function rulesetStandingAtStart(
       resolveAction(ctx, caster, action, targets);
       continue;
     }
-    // A spell glyph's stored entry (1.401), as a mode.
-    const mode = one.stores
-      ? action.modes?.find((entry) => {
-          const stored = entry.stores ? caster.actions.find((held) => held.id === entry.stores) : undefined;
-          return !!stored && named(stored, one.stores!);
-        })
+    // The kind it works on (1.413), as a mode.
+    const kindMode = one.kind
+      ? action.modes?.find(
+          (entry) =>
+            !!entry.insideType &&
+            (entry.insideType === one.kind || entry.label.trim().toLowerCase() === one.kind!.trim().toLowerCase()),
+        )
       : undefined;
+    if (one.kind && !kindMode) {
+      skipped.push(`${caster.name}'s ${action.label} cannot be set on "${one.kind}", so it works on everybody.`);
+    }
+    // A spell glyph's stored entry (1.401), as a mode.
+    const mode =
+      kindMode ??
+      (one.stores
+        ? action.modes?.find((entry) => {
+            const stored = entry.stores ? caster.actions.find((held) => held.id === entry.stores) : undefined;
+            return !!stored && named(stored, one.stores!);
+          })
+        : undefined);
     if (one.stores && !mode) {
       skipped.push(`${caster.name}'s ${action.label} cannot hold "${one.stores}", so it stands with its own effect.`);
     }

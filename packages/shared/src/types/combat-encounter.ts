@@ -128,6 +128,8 @@ export interface CombatStandingEntry {
   stores?: string;
   /** Who a standing entry with no zone was cast on (1.412), by name. */
   on?: string[];
+  /** The creature type a ward that works on one sort works on (1.413). */
+  kind?: string;
 }
 
 /** A member of the player's party. */

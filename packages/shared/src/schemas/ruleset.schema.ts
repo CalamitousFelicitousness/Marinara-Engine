@@ -2793,6 +2793,7 @@ export interface RulesetZoneInside {
   conditions?: string[];
   immune?: string[];
   is?: RulesetTargetIs;
+  chooses?: "type";
   save?: { save: string; ignoresUntilLeaves: true };
 }
 const uniqueIds = (max: number) =>
@@ -2816,6 +2817,9 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
     immune: z.array(promptSafeText(40)).min(1).max(12).optional(),
     /** Only those it matches have them there (Capability API 1.407): Hallow's chosen kinds. */
     is: z.lazy(() => targetIsSchema).optional(),
+    /** Whom it works on is one creature type chosen as it is cast, as a mode (Capability API 1.413),
+     *  or everybody when none is chosen: Hallow's "creatures of a specific sort". */
+    chooses: z.literal("type").optional(),
     /** Whoever enters it, or starts a turn there, throws this save against the entry's own save
      *  difficulty, and on a success ignores what it does inside until they leave (Capability API
      *  1.407): Hallow's extra effect, a Charisma save. */
@@ -15817,6 +15821,16 @@ function zoneInsideIssues(
   });
   // Whom it works on, and the save that shrugs it off (1.407).
   targetIsIssues(definition, zone.inside?.is, [...at, "inside", "is"], add);
+  // A kind chosen as it is cast (1.413), one of the fight's creature types, in place of `is`.
+  if (zone.inside?.chooses) {
+    if (zone.inside.is) add([...at, "inside", "chooses"], 'Whom it works on is chosen or named in "is", not both');
+    if (!definition.combat?.creatureTypes?.types?.length) {
+      add(
+        [...at, "inside", "chooses"],
+        "A kind is chosen from combat.creatureTypes, which this ruleset does not declare",
+      );
+    }
+  }
   const insideSave = zone.inside?.save?.save;
   if (insideSave && !definition.sheet.saves.some((save) => save.id === insideSave)) {
     add([...at, "inside", "save", "save"], `Unknown save "${insideSave}"`);

@@ -1250,6 +1250,8 @@ export interface RulesetCombatMode {
   appliesPick?: number;
   /** The id of its caster's own action stored in it in this mode (1.401): a spell glyph's spell. */
   stores?: string;
+  /** The creature type its zone works on inside in this mode (1.413): Hallow's chosen sort. */
+  insideType?: string;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
 }
@@ -3540,6 +3542,8 @@ export interface RulesetCombatZoneRule {
     immune?: string[];
     /** Only those it matches (1.407). */
     is?: RulesetTargetIs;
+    /** Whom it works on is a creature type chosen as it is cast, as a mode (1.413). */
+    chooses?: "type";
     /** Thrown on entering and at a turn's start; made, ignored until they leave (1.407). */
     save?: { save: string; ignoresUntilLeaves: true };
   };
@@ -3573,6 +3577,8 @@ export interface RulesetCombatZone {
   foundBy?: string[];
   /** Who made its inside save and ignores what it does inside until they leave (1.407). */
   shrugged?: string[];
+  /** Whom its inside works on, chosen as it was cast (1.413). */
+  insideIs?: RulesetTargetIs;
   /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
   trippedBy?: string;
   /** The id of its caster's own action stored in it (1.401), cast as it goes off. */

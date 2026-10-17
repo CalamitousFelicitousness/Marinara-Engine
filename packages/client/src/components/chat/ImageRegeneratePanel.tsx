@@ -8,7 +8,8 @@ import {
   type SceneIllustrationCharacterPrompt,
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
-import { useGalleryImages, useRegenerateChatImage, type ChatImage } from "../../hooks/use-gallery";
+import { useGalleryImages, type ChatImage } from "../../hooks/use-gallery";
+import { useRegenerateChatImage } from "../../hooks/use-regenerate-chat-image";
 import { useUIStore } from "../../stores/ui.store";
 import { cn } from "../../lib/utils";
 
@@ -187,10 +188,13 @@ function ImageRegenerateForm({
             if (!id) return null;
             const name = readString(connection.name) || id;
             const model = readString(connection.model);
+            // One string: a JSX line break between name and model would render without a space.
+            const label = model
+              ? name + " " + localizeUi("ui.connections.connectioneditor.value1", { value1: model })
+              : name;
             return (
               <option key={id} value={id}>
-                {name}
-                {model ? localizeUi("ui.connections.connectioneditor.value1", { value1: model }) : ""}
+                {label}
               </option>
             );
           })}

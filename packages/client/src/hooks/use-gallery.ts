@@ -4,8 +4,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api-client";
 import type { GeneratedSceneVideo, SceneIllustrationCharacterPrompt } from "@marinara-engine/shared";
-import { chatKeys } from "./use-chats";
-import { gameStoryboardKeys } from "./use-game-storyboards";
 
 export interface ChatImage {
   id: string;
@@ -47,7 +45,7 @@ export interface ChatAssetBrowserItem {
   cardUrl: string;
 }
 
-const galleryKeys = {
+export const galleryKeys = {
   all: ["gallery"] as const,
   chat: (chatId: string) => ["gallery", chatId] as const,
   assets: (chatId: string) => ["gallery", "assets", chatId] as const,
@@ -150,24 +148,6 @@ export function useGenerateGallerySelfie(chatId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: galleryKeys.chat(chatId) });
       qc.invalidateQueries({ queryKey: galleryKeys.assets(chatId) });
-    },
-  });
-}
-
-/** Re-send an image's final request, possibly edited; the new image replaces it in messages and storyboards. */
-export function useRegenerateChatImage(chatId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ imageId, ...input }: RegenerateChatImageInput) =>
-      api.post<{ image: ChatImage; replacedMessageIds: string[]; replacedKeyframeIds: string[] }>(
-        `/gallery/${chatId}/images/${encodeURIComponent(imageId)}/regenerate`,
-        input,
-      ),
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: galleryKeys.chat(chatId) });
-      qc.invalidateQueries({ queryKey: galleryKeys.assets(chatId) });
-      if (result.replacedMessageIds.length > 0) qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
-      if (result.replacedKeyframeIds.length > 0) qc.invalidateQueries({ queryKey: gameStoryboardKeys.chat(chatId) });
     },
   });
 }

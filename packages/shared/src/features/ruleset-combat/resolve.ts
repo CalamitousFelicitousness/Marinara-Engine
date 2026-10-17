@@ -397,12 +397,18 @@ function begin(
     harmEndings: [],
     ...(borrowedOuter ? { outer: borrowedOuter } : {}),
   };
-  for (const target of next.combatants) endImmuneConditions(ctx, target);
+  for (const target of next.combatants) {
+    endImmuneConditions(ctx, target);
+    holderBound(ctx, target);
+  }
   return {
     ctx,
     finish: () => {
       noteStirred(ctx);
-      for (const target of next.combatants) endImmuneConditions(ctx, target);
+      for (const target of next.combatants) {
+        endImmuneConditions(ctx, target);
+        holderBound(ctx, target);
+      }
       for (const end of ctx.harmEndings.splice(0)) end();
       // What an alteration costs its user's health, once what it changed was cast (1.362).
       for (const one of ctx.backlash?.splice(0) ?? []) {
@@ -2317,6 +2323,7 @@ function applyConditionId(
             ...(applies.endsWhenHolder.moves ? { moves: true as const } : {}),
             ...(applies.endsWhenHolder.acts ? { acts: true as const } : {}),
             ...(applies.endsWhenHolder.uses ? { uses: [...applies.endsWhenHolder.uses] } : {}),
+            ...(applies.endsWhenHolder.downed ? { downed: true as const } : {}),
           },
         }
       : {}),
@@ -2705,6 +2712,26 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
     if (rulesetCombatConditions(ctx.definition, target).includes(condition))
       removeCondition(ctx, target, condition, "immune");
   }
+}
+
+/** What its holder's own state ends (1.385): a condition that says its holder going down ends it,
+ *  once they are down, and concentration under a condition that forbids it. 5e's Rage. */
+function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  if (!rulesetCombatStanding(target)) {
+    for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.downed)) {
+      if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "spent");
+    }
+    for (const condition of rulesetCombatConditions(ctx.definition, target)) {
+      const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
+      if (ends?.downed && rulesetCombatConditions(ctx.definition, target).includes(condition))
+        removeCondition(ctx, target, condition, "spent");
+    }
+  }
+  if (
+    target.concentrating &&
+    rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.forbids?.concentration)
+  )
+    endConcentration(ctx, target, "spent");
 }
 
 /**

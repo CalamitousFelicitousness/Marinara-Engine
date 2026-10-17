@@ -2813,6 +2813,31 @@ export interface RulesetForbids {
   components: string[];
 }
 const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z.object({ components: uniqueIds(8) }).strict();
+/** What a condition stops its holder using (1.179), and, from Capability API 1.385, casting from
+ *  these catalogs or concentrating at all: 5e's Rage. */
+export interface RulesetConditionForbids {
+  components?: string[];
+  casts?: string[];
+  concentration?: true;
+}
+const conditionForbidsSchema: z.ZodType<RulesetConditionForbids, z.ZodTypeDef, unknown> = z
+  .object({
+    components: uniqueIds(8).optional(),
+    /** Nothing cast from these catalogs while it holds (Capability API 1.385). */
+    casts: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+      .optional(),
+    /** Nothing needing concentration while it holds, and what its holder concentrates on ends as it
+     *  comes on (Capability API 1.385). */
+    concentration: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((forbids) => forbids.components || forbids.casts || forbids.concentration, {
+    message: 'Say what it stops: "components", "casts", "concentration" or more than one',
+  });
 export interface RulesetZoneWards {
   catalogs: string[];
   maxLevel: number;
@@ -3703,6 +3728,7 @@ export interface RulesetHolderEnding {
   moves?: true;
   acts?: true;
   uses?: string[];
+  downed?: true;
 }
 const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
   .object({
@@ -3729,10 +3755,13 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
       .max(8)
       .refine((uses) => new Set(uses).size === uses.length, { message: "An action is named once" })
       .optional(),
+    /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage, "if you are
+     *  knocked unconscious". */
+    downed: z.literal(true).optional(),
   })
   .strict()
-  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses, {
-    message: "Say what ends it: attacking, casting, moving, acting or using one of its actions",
+  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses || ends.downed, {
+    message: "Say what ends it: attacking, casting, moving, acting or using one of its actions, or going down",
   })
   .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
     message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
@@ -9767,7 +9796,7 @@ const combatConditionSchema = z
      *  `pierced` names, within its range: 5e's invisible, which blindsight and truesight see. */
     unseen: seenThroughSchema.optional(),
     /** Nothing needing these components is used while it holds (Capability API 1.179): gagged. */
-    forbids: forbidsSchema.optional(),
+    forbids: conditionForbidsSchema.optional(),
     /** How far its holder senses with each of `combat.senses` while it holds, in the ruleset's
      *  distance (Capability API 1.180): 5e's Darkvision spell, True Seeing's truesight. Their own
      *  reach stands where it is longer; `{ "add": N }` (1.182) adds to it. */
@@ -10124,10 +10153,12 @@ const combatConditionSchema = z
           .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
           .optional(),
         castsAtFoes: z.literal(true).optional(),
+        /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage. */
+        downed: z.literal(true).optional(),
       })
       .strict()
-      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts, {
-        message: 'Say what ends it: "moves", "acts", "attacks", "casts" or more than one',
+      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed, {
+        message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed" or more than one',
       })
       .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
         message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
@@ -14248,6 +14279,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.light && !combat.sight?.darkness)
         issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
+      castsIssues(def, entry.forbids?.casts, [...path, "forbids", "casts"], issue);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
       rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       if (typeof entry.endsIdle === "object") {

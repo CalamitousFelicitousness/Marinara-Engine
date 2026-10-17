@@ -2021,6 +2021,16 @@ export function rulesetActionAvailable(
     if (rulesetNeededComponents(definition, actor, action, state).some((component) => stopped.includes(component)))
       return false;
   }
+  // Casting from a catalog, or anything needing concentration, a condition stops (1.385): Rage.
+  if (definition?.combat && ((action.catalog ?? action.casts) !== undefined || action.concentration)) {
+    const cast = action.catalog ?? action.casts;
+    const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).some(
+      (entry) =>
+        (cast !== undefined && !!entry.forbids?.casts?.includes(cast)) ||
+        (!!action.concentration && !!entry.forbids?.concentration),
+    );
+    if (stopped) return false;
+  }
   if (action.innate?.coven) {
     const coven = action.innate.coven;
     if (!state || !coven) return false;

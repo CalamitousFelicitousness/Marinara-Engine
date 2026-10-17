@@ -2194,6 +2194,19 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A condition that stops casting from a catalog or concentrating, or that its holder going down
+ *  ends (1.385): Rage. */
+function carriesRageWays385(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRageWays385(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const forbids = plainRecord(record.forbids);
+  if (forbids && (forbids.casts !== undefined || forbids.concentration !== undefined)) return true;
+  if (plainRecord(record.endsWhenHolder)?.downed !== undefined) return true;
+  return featureValues(record).some((one) => carriesRageWays385(one, depth + 1));
+}
+
 /** What is kept in a shape or waived, narrowed to some rows (1.384): a druid's spells. */
 function carriesRowsWhere384(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5704,6 +5717,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // No casting or concentrating, and ended by going down, 1.385.
+  if (
+    !declaresApi(385) &&
+    (carriesRageWays385(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRageWays385(document)))
+  ) {
+    return "A ruleset whose conditions stop casting from a catalog or concentrating (forbids casts, concentration) or end when their holder goes down (endsWhenHolder downed) requires schemaVersion 2 and capabilityApi 1.385 or newer";
+  }
   // Narrowed to some rows, 1.384.
   if (
     !declaresApi(384) &&

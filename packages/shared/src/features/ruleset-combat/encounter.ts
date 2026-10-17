@@ -3231,6 +3231,7 @@ function abilityActions(
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return { actions: [], riders: [] };
   const byRef = rulesetCatalogEntriesByRef(catalogs);
+  const listColumns = definition.sheet.lists.find((entry) => entry.id === source.list)?.columns ?? [];
   /** A catalog states what its own `range` and `area.size` numbers mean; one that does not is read
    *  in the combat block's own unit. */
   const perCellOf = (ref: string) => {
@@ -3286,15 +3287,16 @@ function abilityActions(
     // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
     action.entry = ref;
-    // And the row it came from (1.384): Druid spells, not a wizard's.
-    action.fromRow = {
-      list: source.list,
-      values: Object.fromEntries(
-        Object.entries(row).flatMap(([key, value]) =>
-          typeof value === "string" && value.length <= 80 ? [[key, value]] : [],
-        ),
-      ),
-    };
+    // And the row it came from (1.384): Druid spells, not a wizard's. A cell the row lacks reads as
+    // its column's default (1.385), as a spell the builder added from a catalog carries no class.
+    const values: Record<string, string> = {};
+    for (const column of listColumns) {
+      if (typeof column.default === "string" && column.default.length <= 80) values[column.id] = column.default;
+    }
+    for (const [key, value] of Object.entries(row)) {
+      if (typeof value === "string" && value.length <= 80) values[key] = value;
+    }
+    action.fromRow = { list: source.list, values };
     seen.add(ref);
     actions.push(action);
   });

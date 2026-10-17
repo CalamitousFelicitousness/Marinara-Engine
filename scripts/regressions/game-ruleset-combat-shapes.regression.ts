@@ -555,6 +555,24 @@ try {
       const labels = rulesetCombatOptions(scopedDefinition, gag, "druid").map((one) => one.label);
       assert.ok(labels.includes("Polymorph"), "a druid spell's words waived");
       assert.ok(!labels.includes("Shield"), "a wizard spell's not");
+      // A row with no cell for the column reads its default (1.385): spells the builder added from a
+      // catalog carry no class, and 5e's column says "any".
+      {
+        const defaulted = (doc: Record<string, any>) => {
+          scoped(doc);
+          const spellList = doc.sheet.lists.find((list: { id: string }) => list.id === "spells");
+          spellList.columns.at(-1).default = "any";
+          for (const level of doc.combat.levels.slice(-2)) level.rowsWhere.is = ["druid", "any"];
+        };
+        const plain = parsed(document([wolfOnly, spoken, shield], defaulted));
+        const plainEntries = plain.catalogs!.find((catalog) => catalog.id === "spells")!
+          .entries! as RulesetCatalogEntry[];
+        const gagged = fight(plain, plainEntries, 20);
+        who(gagged, "druid").tracked.push({ condition: "gagged", rounds: null });
+        const heard = rulesetCombatOptions(plain, gagged, "druid").map((one) => one.label);
+        assert.ok(heard.includes("Polymorph"), "a classless row reads the default and is waived");
+        assert.ok(!heard.includes("Shield"), "a row saying Wizard is not");
+      }
       refused(
         document([wolfOnly], (doc) => {
           archdruid(doc);

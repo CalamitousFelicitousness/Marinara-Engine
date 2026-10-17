@@ -205,6 +205,35 @@ try {
     assert.deepEqual(here(state), [], "gone once the minute is up");
   }
 
+  // ── From the fight's bestiary only: the called vrock's own call, never filled, is gone too ──
+  {
+    const definition = parsed(fiveE());
+    const creatures = definition.catalogs!.find((catalog) => catalog.holds === "creatures")!;
+    const bestiary: RulesetCatalogEntriesById = { creatures: [...creatures.entries!] };
+    creatures.entries = creatures.entries!.filter((entry) => entry.id !== "vrock" && entry.id !== "dretch");
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: roll,
+      bestiary,
+      combatants: [
+        { id: "vrock", name: "Vrock", side: "enemy", creature: { catalogId: "creatures", entryId: "vrock" } },
+      ],
+    });
+    state.order = ["vrock"];
+    state.turn = 0;
+    const taken = applyRulesetCombatChoice(
+      definition,
+      state,
+      { actorId: "vrock", optionId: "summon", targetIds: [], mode: "call-1" },
+      roll,
+    );
+    assert.deepEqual(of(taken.events, "refused"), []);
+    const called = taken.state.combatants.find((one) => one.calledBy === "vrock")!;
+    assert.ok(called, "a vrock came");
+    assert.ok(!called.actions.some((one) => one.id === "summon"), JSON.stringify(called.actions.map((one) => one.id)));
+  }
+
   // ── Without endsWithCaller: they stay ──
   {
     const { fight, summon, end } = setUp({ ...summonDemon, endsWithCaller: undefined });

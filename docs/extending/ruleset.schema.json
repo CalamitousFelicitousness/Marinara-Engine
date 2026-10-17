@@ -103537,6 +103537,59 @@
                 ],
                 "additionalProperties": false
               },
+              "presence": {
+                "type": "object",
+                "properties": {
+                  "within": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000
+                  },
+                  "of": {
+                    "type": "object",
+                    "properties": {
+                      "types": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      "upToSize": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "atLeastSize": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "within",
+                  "of"
+                ],
+                "additionalProperties": false
+              },
               "endsIdle": {
                 "anyOf": [
                   {

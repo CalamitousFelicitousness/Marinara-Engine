@@ -1027,6 +1027,12 @@ export function rulesetCombatEventLine(
         count: event.left,
         left: event.left,
       });
+    case "presence":
+      return key(event.kinds.length ? "presence" : "presenceNone", {
+        actor: names.combatant(event.actorId),
+        kinds: event.kinds.join(", "),
+        within: event.within,
+      });
     case "chance":
       return key(
         event.outcome === "sure" ? "chanceSure" : event.outcome === "answered" ? "chanceAnswered" : "chanceFailed",

@@ -9969,6 +9969,13 @@ const combatConditionSchema = z
      *  API 1.386), narrowed by `of` and `uncovered`: 5e's Divine Sense until the end of its next
      *  turn, Primeval Awareness for a minute. */
     aware: awareSchema.optional(),
+    /** Its holder knows whether creatures that are `of` are within `within`, in the ruleset's
+     *  distance, and nothing of where or how many (Capability API 1.391): said as it comes on and as
+     *  each of its holder's turns starts. 5e's Primeval Awareness, a mile or six. */
+    presence: z
+      .object({ within: z.number().finite().gt(0).max(1000000), of: targetIsSchema })
+      .strict()
+      .optional(),
     /** It comes off as its holder ends a turn having neither made an attack at a foe nor taken damage
      *  since their last turn ended (Capability API 1.383): 5e's Rage. `unless` keeps it on while a
      *  value off its holder's sheet stands within its bounds: Persistent Rage from barbarian 15. */
@@ -14345,6 +14352,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       castsIssues(def, entry.forbids?.casts, [...path, "forbids", "casts"], issue);
       componentIssues(def, entry.waives, [...path, "waives"], issue);
       if (entry.aware) awareIssues(def, entry.aware, [...path, "aware"], issue);
+      if (entry.presence) {
+        targetIsIssues(def, entry.presence.of, [...path, "presence", "of"], issue);
+        if (!combat.creatureTypes && (entry.presence.of.types || entry.presence.of.tags))
+          issue([...path, "presence", "of"], "Sensing kinds of creature reads combat.creatureTypes");
+      }
       rowsWhereIssues(def, entry, [...path, "rowsWhere"], issue);
       if (typeof entry.endsIdle === "object") {
         const names = rulesetSheetNames(def.sheet, def.items);

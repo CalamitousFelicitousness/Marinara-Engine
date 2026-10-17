@@ -2138,6 +2138,8 @@
   "game.combat.ruleset.event.owingSafe": "{{actor}}'s debt comes due, {{count}} saves ({{rolls}}), and they live.",
   "game.combat.ruleset.event.pass": "{{actor}} lets the moment go by.",
   "game.combat.ruleset.event.pickedUp": "{{actor}} picks up {{item}}.",
+  "game.combat.ruleset.event.presence": "{{actor}} senses {{kinds}} within {{within}}.",
+  "game.combat.ruleset.event.presenceNone": "{{actor}} senses none of what they seek within {{within}}.",
   "game.combat.ruleset.event.prop": "{{actor}}'s {{label}} strikes {{prop}} for {{dealt}}; it has {{health}} left.",
   "game.combat.ruleset.event.propArea": "{{actor}}'s {{label}} catches {{prop}} for {{dealt}}; it has {{health}} left.",
   "game.combat.ruleset.event.propAreaBroken": "{{actor}}'s {{label}} catches {{prop}} for {{dealt}} and breaks it.",

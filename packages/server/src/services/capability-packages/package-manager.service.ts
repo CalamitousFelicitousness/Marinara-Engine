@@ -2194,6 +2194,16 @@ function carriesUntrainedAdd366(ruleset: unknown): boolean {
 /** What ends a catalog's entries' conditions on its target (1.371): Dispel Magic, Cleansing Touch. */
 /** A weapon struck over an area, and a strike again near the first (1.375): Whirlwind Attack,
  *  Volley, Horde Breaker. */
+/** A presence-only sense (1.391): Primeval Awareness. */
+function carriesPresence391(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPresence391(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.presence !== undefined) return true;
+  return featureValues(record).some((one) => carriesPresence391(one, depth + 1));
+}
+
 /** Conditions its user picks to end (1.389): Greater Restoration. */
 function carriesEndsChosen389(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5759,6 +5769,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A presence-only sense, 1.391.
+  if (
+    !declaresApi(391) &&
+    (carriesPresence391(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPresence391(document)))
+  ) {
+    return "A ruleset whose conditions sense only the presence of some kinds of creature (presence) requires schemaVersion 2 and capabilityApi 1.391 or newer";
+  }
   // Conditions picked to end, 1.389.
   if (
     !declaresApi(389) &&

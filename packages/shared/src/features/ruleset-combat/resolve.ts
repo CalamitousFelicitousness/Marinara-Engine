@@ -2781,11 +2781,50 @@ function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void 
         removeCondition(ctx, target, condition, "spent");
     }
   }
+  sensePresence(ctx, target, false);
   if (
     target.concentrating &&
     rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.forbids?.concentration)
   )
     endConcentration(ctx, target, "spent");
+}
+
+/** Which kinds a presence sense finds within its reach (1.391), said as it comes on and, with
+ *  `again`, as its holder's turn starts. Nothing of where, nor how many. */
+function sensePresence(ctx: RulesetCombatContext, holder: RulesetCombatant, again: boolean): void {
+  const senses = holder.defeated
+    ? []
+    : rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).flatMap((entry) =>
+        entry.presence ? [{ condition: entry.condition, ...entry.presence }] : [],
+      );
+  const said = new Set(holder.presenceSaid ?? []);
+  const now = new Set(senses.map((one) => one.condition));
+  for (const sense of senses) {
+    if (said.has(sense.condition) && !again) continue;
+    const perCell = ctx.definition.combat?.distance?.perCell;
+    const reach = perCell !== undefined ? rulesetInCells(sense.within, perCell) : Infinity;
+    const kinds = new Set<string>();
+    for (const one of ctx.state.combatants) {
+      if (one.id === holder.id || one.defeated || !rulesetTargetIs(ctx.definition, one, sense.of)) continue;
+      if (ctx.state.board?.grid && rulesetGap(holder, one) > reach) continue;
+      const kind = rulesetCreatureKind(ctx.definition, one);
+      for (const id of [kind.type, ...kind.tags]) {
+        if (id !== undefined && (sense.of.types?.includes(id) || sense.of.tags?.includes(id))) kinds.add(id);
+      }
+    }
+    const types = ctx.definition.combat?.creatureTypes;
+    const labelOf = (id: string) =>
+      types?.types.find((one) => one.id === id)?.label ?? types?.tags?.find((one) => one.id === id)?.label ?? id;
+    ctx.events.push({
+      type: "presence",
+      actorId: holder.id,
+      condition: sense.condition,
+      within: sense.within,
+      kinds: [...kinds].map(labelOf).sort(),
+    });
+  }
+  if (now.size > 0) holder.presenceSaid = [...now];
+  else delete holder.presenceSaid;
 }
 
 /**
@@ -11649,6 +11688,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     rollRulesetRecharges(ctx, actor);
     // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.
     regenerate(ctx, actor);
+    // What it senses the presence of (1.391), said again each turn.
+    sensePresence(ctx, actor, true);
     // Whoever it called for a while (1.344) leaves as its time comes round.
     dismissCalled(ctx, actor, (one) => one.calledUntil !== undefined && round >= one.calledUntil, "rounds");
     recoverFromCrash(ctx, actor);

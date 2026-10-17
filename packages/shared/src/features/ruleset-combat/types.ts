@@ -1708,6 +1708,8 @@ export interface RulesetCombatant {
   harmedBy?: string;
   /** Has made an attack at a foe, or taken damage, since their last turn ended (1.383). */
   stirred?: true;
+  /** The presence senses already said since they came on (1.391), by condition. */
+  presenceSaid?: string[];
   regrowing?: true;
   /** Their own ways of moving while a condition gives them more (1.345); `speeds` and `hover` are
    *  what they have now. Absent while nothing gives them any. */
@@ -2594,6 +2596,9 @@ export type RulesetCombatEvent =
     }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
+  /** What a presence sense tells its holder (1.391): which kinds are within `within`, none found
+   *  when `kinds` is empty. */
+  | { type: "presence"; actorId: string; condition: string; within: number; kinds: string[] }
   /** A use's chance rolled (1.388): `sure` when nothing needed rolling. */
   | {
       type: "chance";

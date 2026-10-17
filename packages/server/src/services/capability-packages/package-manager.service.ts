@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A duration set by the cost paid, or concentration only below a step (1.417): Bestow Curse. */
+function carriesBySteps417(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBySteps417(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duration)?.bySteps !== undefined || record.concentrationBelowStep !== undefined) return true;
+  return featureValues(record).some((one) => carriesBySteps417(one, depth + 1));
+}
+
 /** An entry picking one of more than six conditions (1.416): Bestow Curse. */
 function carriesManyApplies416(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6032,6 +6042,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Durations set by the cost paid, and concentration only below a step, 1.417.
+  if (
+    !declaresApi(417) &&
+    (carriesBySteps417(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBySteps417(document)))
+  ) {
+    return "A ruleset whose durations are set by the cost paid, or whose concentration holds only below a step (bySteps, concentrationBelowStep), requires schemaVersion 2 and capabilityApi 1.417 or newer";
+  }
   // Entries picking one of more than six conditions, 1.416.
   if (
     !declaresApi(416) &&

@@ -3892,8 +3892,16 @@ const catalogDurationSchema = z.union([
        *  1.394): Primeval Awareness' "1 minute per level of the spell slot you expend" is
        *  `{"rounds": 10, "perStep": 10}` on a 1st-level slot. */
       perStep: z.number().int().min(1).max(1000).optional(),
+      /** Or lasting these many rounds instead when paid one step higher, two, and so on, the last
+       *  holding for every step beyond (Capability API 1.417): Bestow Curse's ten minutes from a
+       *  4th-level slot and eight hours from a 5th, `{"rounds": 10, "bySteps": [100, 4800]}`. */
+      bySteps: z.array(z.number().int().min(1).max(14400)).min(1).max(9).optional(),
     })
-    .strict(),
+    .strict()
+    .refine((duration) => !duration.perStep || !duration.bySteps, {
+      message: '"perStep" and "bySteps" both say how it grows with the cost paid: one of them',
+      path: ["bySteps"],
+    }),
 ]);
 
 /** What its holder does that takes a condition off (1.180). */
@@ -5428,6 +5436,10 @@ const catalogMechanicsObject = z
       .strict()
       .optional(),
     concentration: z.boolean().optional(),
+    /** Its `concentration` holds only when it is paid fewer than this many steps of higher cost
+     *  (Capability API 1.417): paid this many or more, nobody concentrates on it. Bestow Curse from
+     *  a 5th-level slot is `2` on its 3rd-level cost. */
+    concentrationBelowStep: z.number().int().min(1).max(9).optional(),
     /** Made again on later turns while its user concentrates on it (Capability API 1.310), on
      *  `budget`, with no cost and no new concentration, at the cost it was cast at: Vampiric Touch,
      *  Call Lightning, Heat Metal (a bonus action). `notSaved`: never at a creature that succeeded on a
@@ -6097,6 +6109,13 @@ const catalogMechanicsSchema: z.ZodType<
           });
         }
       });
+    });
+  }
+  if (mechanics.concentrationBelowStep && !mechanics.concentration) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["concentrationBelowStep"],
+      message: '"concentrationBelowStep" says when its concentration stops: it goes with "concentration"',
     });
   }
   if (mechanics.steers && !mechanics.area) {

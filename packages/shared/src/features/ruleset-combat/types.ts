@@ -165,6 +165,8 @@ export interface RulesetCombatApplies {
         untilLair?: true;
         /** Rounds more for each step of higher cost paid (1.394). */
         perStep?: number;
+        /** Rounds instead at one step higher, two and so on, the last for every step beyond (1.417). */
+        bySteps?: number[];
       };
   /** Its source holds no more than this many with it at once (1.320). */
   heldAtMost?: number;
@@ -833,6 +835,8 @@ export interface RulesetCombatAction {
   castingRounds?: number;
   /** Never on the fight menu (1.409): set up before a fight, standing as it starts. */
   beforeFight?: true;
+  /** Its concentration holds only when paid fewer steps of higher cost than this (1.417). */
+  concentrationBelowStep?: number;
   /** Aimed at a point, steers every holder of this condition its user put on there (1.411). */
   steers?: string;
   /** A table rolled for each target, its row the ray that strikes them (1.415): Prismatic Spray. */

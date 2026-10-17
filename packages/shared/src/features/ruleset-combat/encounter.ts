@@ -3032,6 +3032,10 @@ function mechanicsAction(
   // The standard actions taken with it (1.313): Expeditious Retreat's Dash.
   if ("takes" in mechanics && mechanics.takes?.length) action.takes = [...mechanics.takes];
   if (mechanics.concentration) action.concentration = true;
+  // No concentration from a higher payment up (1.417): Bestow Curse from a 5th-level slot.
+  if (mechanics.concentration && mechanics.concentrationBelowStep) {
+    action.concentrationBelowStep = mechanics.concentrationBelowStep;
+  }
   if (mechanics.ends) {
     action.ends = {
       // A kind named in place of conditions is every condition of that kind (1.258): one disease.

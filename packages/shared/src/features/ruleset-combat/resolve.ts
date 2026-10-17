@@ -7509,35 +7509,41 @@ function takeLairAction(
 }
 
 /** The action with what it applies lasting `perStep` rounds more for each step of higher cost it is
- *  paid with (1.394), or as it is when nothing of it grows. */
+ *  paid with (1.394), or its `bySteps` rounds (1.417), and held by no concentration from its
+ *  `concentrationBelowStep` up (1.417); or as it is when nothing of it changes. */
 function durationsPaid(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   payWith: string | undefined,
 ): RulesetCombatAction {
-  const grows = (entry: RulesetCombatApplies) => typeof entry.duration === "object" && !!entry.duration.perStep;
-  if (!action.applies?.some(grows)) return action;
+  const grows = (entry: RulesetCombatApplies) =>
+    typeof entry.duration === "object" && (!!entry.duration.perStep || !!entry.duration.bySteps);
+  if (!action.applies?.some(grows) && !action.concentrationBelowStep) return action;
   const steps = action.innate
     ? Math.max(0, action.innate.level - action.innate.baseLevel)
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
   if (steps <= 0) return action;
-  return {
+  const roundsPaid = (duration: { rounds: number; perStep?: number; bySteps?: number[] }) =>
+    duration.bySteps
+      ? duration.bySteps[Math.min(steps, duration.bySteps.length) - 1]!
+      : Math.min(14400, duration.rounds + (duration.perStep ?? 0) * steps);
+  const paid: RulesetCombatAction = {
     ...action,
-    applies: action.applies.map((entry) =>
-      typeof entry.duration === "object" && entry.duration.perStep
-        ? {
-            ...entry,
-            duration: {
-              ...entry.duration,
-              rounds: Math.min(14400, entry.duration.rounds + entry.duration.perStep * steps),
-            },
-          }
-        : entry,
-    ),
+    ...(action.applies
+      ? {
+          applies: action.applies.map((entry) =>
+            typeof entry.duration === "object" && (entry.duration.perStep || entry.duration.bySteps)
+              ? { ...entry, duration: { ...entry.duration, rounds: roundsPaid(entry.duration) } }
+              : entry,
+          ),
+        }
+      : {}),
   };
+  if (action.concentrationBelowStep && steps >= action.concentrationBelowStep) paid.concentration = false;
+  return paid;
 }
 
 /** Calls an action's creatures into the fight (1.325), as many as its count throws, and says so. */

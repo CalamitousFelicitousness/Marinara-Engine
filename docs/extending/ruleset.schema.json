@@ -45471,6 +45471,11 @@
                     "concentration": {
                       "type": "boolean"
                     },
+                    "concentrationBelowStep": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9
+                    },
                     "repeats": {
                       "type": "object",
                       "properties": {
@@ -46371,6 +46376,16 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 1000
+                                  },
+                                  "bySteps": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 9
                                   },
                                   "$comment": {}
                                 },
@@ -47434,6 +47449,16 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 1000
+                                  },
+                                  "bySteps": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 9
                                   },
                                   "$comment": {}
                                 },
@@ -52354,6 +52379,16 @@
                                           "minimum": 1,
                                           "maximum": 1000
                                         },
+                                        "bySteps": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 14400
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 9
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -53728,6 +53763,16 @@
                                               "type": "integer",
                                               "minimum": 1,
                                               "maximum": 1000
+                                            },
+                                            "bySteps": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 9
                                             },
                                             "$comment": {}
                                           },
@@ -57975,6 +58020,16 @@
                                               "type": "integer",
                                               "minimum": 1,
                                               "maximum": 1000
+                                            },
+                                            "bySteps": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 9
                                             },
                                             "$comment": {}
                                           },
@@ -66274,6 +66329,16 @@
                                               "type": "integer",
                                               "minimum": 1,
                                               "maximum": 1000
+                                            },
+                                            "bySteps": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 9
                                             },
                                             "$comment": {}
                                           },
@@ -75298,6 +75363,11 @@
                         "concentration": {
                           "type": "boolean"
                         },
+                        "concentrationBelowStep": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9
+                        },
                         "sustains": {
                           "type": "object",
                           "properties": {
@@ -76170,6 +76240,16 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 1000
+                                      },
+                                      "bySteps": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 9
                                       },
                                       "$comment": {}
                                     },
@@ -77233,6 +77313,16 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 1000
+                                      },
+                                      "bySteps": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 9
                                       },
                                       "$comment": {}
                                     },
@@ -88764,6 +88854,11 @@
                               "concentration": {
                                 "type": "boolean"
                               },
+                              "concentrationBelowStep": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 9
+                              },
                               "sustains": {
                                 "type": "object",
                                 "properties": {
@@ -89636,6 +89731,16 @@
                                               "type": "integer",
                                               "minimum": 1,
                                               "maximum": 1000
+                                            },
+                                            "bySteps": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 9
                                             },
                                             "$comment": {}
                                           },
@@ -90699,6 +90804,16 @@
                                               "type": "integer",
                                               "minimum": 1,
                                               "maximum": 1000
+                                            },
+                                            "bySteps": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 9
                                             },
                                             "$comment": {}
                                           },
@@ -107144,6 +107259,16 @@
                                   "minimum": 1,
                                   "maximum": 1000
                                 },
+                                "bySteps": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 9
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -108668,6 +108793,16 @@
                                         "minimum": 1,
                                         "maximum": 1000
                                       },
+                                      "bySteps": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 9
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -109751,6 +109886,16 @@
                                             "type": "integer",
                                             "minimum": 1,
                                             "maximum": 1000
+                                          },
+                                          "bySteps": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 14400
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 9
                                           },
                                           "$comment": {}
                                         },
@@ -111380,6 +111525,16 @@
                                   "type": "integer",
                                   "minimum": 1,
                                   "maximum": 1000
+                                },
+                                "bySteps": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 9
                                 },
                                 "$comment": {}
                               },

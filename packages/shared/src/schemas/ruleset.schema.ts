@@ -2792,6 +2792,8 @@ const senseRangesSchema: z.ZodType<Record<string, RulesetSenseGrant>, z.ZodTypeD
 export interface RulesetZoneInside {
   conditions?: string[];
   immune?: string[];
+  is?: RulesetTargetIs;
+  save?: { save: string; ignoresUntilLeaves: true };
 }
 const uniqueIds = (max: number) =>
   z
@@ -2812,6 +2814,15 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
   .object({
     conditions: uniqueIds(8).optional(),
     immune: z.array(promptSafeText(40)).min(1).max(12).optional(),
+    /** Only those it matches have them there (Capability API 1.407): Hallow's chosen kinds. */
+    is: z.lazy(() => targetIsSchema).optional(),
+    /** Whoever enters it, or starts a turn there, throws this save against the entry's own save
+     *  difficulty, and on a success ignores what it does inside until they leave (Capability API
+     *  1.407): Hallow's extra effect, a Charisma save. */
+    save: z
+      .object({ save: sheetId, ignoresUntilLeaves: z.literal(true) })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((inside) => inside.conditions !== undefined || inside.immune !== undefined, {
@@ -15759,6 +15770,12 @@ function zoneInsideIssues(
       add([...at, "inside", "immune", index], `Unknown damage type "${type}"`);
     }
   });
+  // Whom it works on, and the save that shrugs it off (1.407).
+  targetIsIssues(definition, zone.inside?.is, [...at, "inside", "is"], add);
+  const insideSave = zone.inside?.save?.save;
+  if (insideSave && !definition.sheet.saves.some((save) => save.id === insideSave)) {
+    add([...at, "inside", "save", "save"], `Unknown save "${insideSave}"`);
+  }
   componentIssues(definition, zone.forbids?.components, [...at, "forbids", "components"], add);
   zone.burns?.by.forEach((type, index) => {
     if (types && !types.includes(type.trim().toLowerCase()))

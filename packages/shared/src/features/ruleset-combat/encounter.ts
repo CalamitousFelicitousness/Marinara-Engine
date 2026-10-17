@@ -530,20 +530,24 @@ export function rulesetActiveConditions(
           (!sealedByOwn(definition, combat, combatant) && !sealedByOwn(definition, combat, caster)),
       )
     : [];
-  for (const { rule } of inside) for (const condition of rule.inside?.conditions ?? []) active.add(condition);
-  const zoned = inside.flatMap(({ label, rule }): RulesetActiveCondition[] =>
-    rule.inside?.immune || rule.forbids
+  for (const { rule, zone } of inside) {
+    if (!insideWorksOn(definition, combatant, zone, rule)) continue;
+    for (const condition of rule.inside?.conditions ?? []) active.add(condition);
+  }
+  const zoned = inside.flatMap(({ label, rule, zone }): RulesetActiveCondition[] => {
+    const works = insideWorksOn(definition, combatant, zone, rule);
+    return (works && rule.inside?.immune) || rule.forbids
       ? [
           {
             condition: label,
             zone: true,
             effects: [],
-            ...(rule.inside?.immune ? { immune: [...rule.inside.immune] } : {}),
+            ...(works && rule.inside?.immune ? { immune: [...rule.inside.immune] } : {}),
             ...(rule.forbids ? { forbids: { components: [...rule.forbids.components] } } : {}),
           },
         ]
-      : [],
-  );
+      : [];
+  });
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
     if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];
@@ -603,6 +607,17 @@ function sealedByOwn(definition: RulesetDefinition, combat: RulesetCombat, comba
   return combat.conditions.some((entry) => entry.sealed && own.has(entry.condition));
 }
 
+/** Whether what a zone does inside works on this one (1.407): one it matches, who has not shrugged it off. */
+function insideWorksOn(
+  definition: RulesetDefinition | undefined,
+  combatant: RulesetCombatant,
+  zone: RulesetCombatZone,
+  rule: NonNullable<RulesetCombatAction["zone"]>,
+): boolean {
+  if (zone.shrugged?.includes(combatant.id)) return false;
+  return !rule.inside?.is || (!!definition && rulesetTargetIs(definition, combatant, rule.inside.is));
+}
+
 function zonesStoodIn(
   state: RulesetEncounterState,
   combatant: RulesetCombatant,
@@ -629,9 +644,20 @@ function zonesStoodIn(
   );
 }
 
-/** The conditions standing zones put on this combatant now (1.179): Silence's deafened. */
-export function rulesetZoneConditions(state: RulesetEncounterState, combatant: RulesetCombatant): string[] {
-  return [...new Set(zonesStoodIn(state, combatant).flatMap(({ rule }) => rule.inside?.conditions ?? []))];
+/** The conditions standing zones put on this combatant now (1.179): Silence's deafened. Only one it
+ *  works on (1.407), read by `definition`. */
+export function rulesetZoneConditions(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+  definition?: RulesetDefinition,
+): string[] {
+  return [
+    ...new Set(
+      zonesStoodIn(state, combatant).flatMap(({ rule, zone }) =>
+        insideWorksOn(definition, combatant, zone, rule) ? (rule.inside?.conditions ?? []) : [],
+      ),
+    ),
+  ];
 }
 
 /** The zones warding whoever stands in them (1.179), each by its caster and action, with what it
@@ -2028,6 +2054,9 @@ export function rulesetZoneAction(
     out.inside = {
       ...(inside.conditions ? { conditions: [...inside.conditions] } : {}),
       ...(inside.immune ? { immune: [...inside.immune] } : {}),
+      // Whom it works on, and the save that shrugs it off (1.407).
+      ...(inside.is ? { is: structuredClone(inside.is) } : {}),
+      ...(inside.save ? { save: { ...inside.save } } : {}),
     };
   }
   if (zone.forbids) out.forbids = { components: [...zone.forbids.components] };
@@ -5642,8 +5671,9 @@ function zoneTakesSenses(
   senses: readonly string[],
 ): boolean {
   const rules = definition.combat?.conditions ?? [];
-  return zonesStoodIn(state, combatant).some(({ rule }) =>
-    (rule.inside?.conditions ?? []).some((condition) =>
+  return zonesStoodIn(state, combatant).some(({ rule, zone }) =>
+    // Only one it works on (1.407).
+    (insideWorksOn(definition, combatant, zone, rule) ? (rule.inside?.conditions ?? []) : []).some((condition) =>
       rules.some((one) => one.condition === condition && one.lacks?.some((sense) => senses.includes(sense))),
     ),
   );

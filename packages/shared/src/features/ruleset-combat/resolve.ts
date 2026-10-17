@@ -4092,15 +4092,34 @@ function zoneDealt(
 /** Everybody a zone catches at the start or end of their turn: those standing in it on a board, or
  *  those it holds off one. */
 function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger: "turn-start" | "turn-end"): void {
-  for (const { caster, zone } of rulesetStandingZones(ctx.state)) {
+  for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const inside = ctx.state.board?.grid
       ? rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), actor)
       : (zone.held ?? []).includes(actor.id);
+    // Starting a turn inside, its save to shrug off what it does there (1.407).
+    if (inside && trigger === "turn-start") insideSave(ctx, caster, zone, action, actor);
     if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
     else if (rulesetZoneHoldsOne(zone.sideCells ?? [], actor)) {
       zoneStrike(ctx, caster, zone, actor, trigger, "side");
     }
   }
+}
+
+/** The save whoever enters a zone, or starts a turn in it, throws to ignore what it does inside until
+ *  they leave (1.407): Hallow's Charisma save. Only one it works on, who has not made it already. */
+function insideSave(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  one: RulesetCombatant,
+): void {
+  const inside = action.zone?.inside;
+  if (!inside?.save || zone.shrugged?.includes(one.id) || !rulesetCombatStanding(one)) return;
+  if (inside.is && !rulesetTargetIs(ctx.definition, one, inside.is)) return;
+  const difficulty = action.save?.difficulty ?? action.saveDifficulty;
+  if (difficulty === undefined) return;
+  if (rollSave(ctx, one, inside.save.save, difficulty, caster.id)) zone.shrugged = [...(zone.shrugged ?? []), one.id];
 }
 
 /**
@@ -7873,6 +7892,15 @@ function zonesEntered(
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Out of it again, what they shrugged off works on them once more (1.407); in it anew, its save.
+    const insideNow = rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), mover);
+    if (zone.shrugged?.includes(mover.id) && !insideNow) {
+      zone.shrugged = zone.shrugged.filter((id) => id !== mover.id);
+      if (zone.shrugged.length === 0) delete zone.shrugged;
+    }
+    if (insideNow && !was.zone.has(mover.id) && caster.zones?.includes(zone)) {
+      insideSave(ctx, caster, zone, action, mover);
+    }
     // Stepping onto hallowed ground (1.406): what those it keeps out put on them comes off.
     const kept = action.zone?.keepsOut;
     if (

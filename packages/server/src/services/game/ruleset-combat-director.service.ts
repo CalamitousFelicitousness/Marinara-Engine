@@ -640,7 +640,7 @@ function conditionsOf(
   // And what a zone they stand in puts on them while they stay (1.179).
   const ids = new Set([
     ...rulesetCombatConditions(definition, combatant),
-    ...(state ? rulesetZoneConditions(state, combatant) : []),
+    ...(state ? rulesetZoneConditions(state, combatant, definition) : []),
   ]);
   return [...ids].map((id) => {
     const rounds = tracked.get(id);

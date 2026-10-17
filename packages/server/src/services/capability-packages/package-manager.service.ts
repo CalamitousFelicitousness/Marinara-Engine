@@ -2247,6 +2247,17 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A zone whose inside works only on some, or is shrugged off with a save (1.407): Hallow. */
+function carriesInsideIsSave407(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInsideIsSave407(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const inside = plainRecord(record.inside);
+  if (inside && (inside.is !== undefined || inside.save !== undefined)) return true;
+  return featureValues(record).some((one) => carriesInsideIsSave407(one, depth + 1));
+}
+
 /** A zone whose ground frees whoever steps in of what those it keeps out put on them (1.406): Hallow. */
 function carriesFrees406(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5929,6 +5940,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones whose inside works only on some, or is shrugged off with a save, 1.407.
+  if (
+    !declaresApi(407) &&
+    (carriesInsideIsSave407(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInsideIsSave407(document)))
+  ) {
+    return "A ruleset whose zones work inside only on some, or are shrugged off with a save (inside is, save) requires schemaVersion 2 and capabilityApi 1.407 or newer";
+  }
   // Zones that free whoever steps in, 1.406.
   if (
     !declaresApi(406) &&

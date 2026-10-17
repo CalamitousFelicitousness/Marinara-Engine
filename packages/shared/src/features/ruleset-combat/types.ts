@@ -3496,7 +3496,14 @@ export interface RulesetCombatZoneRule {
   /** A wind: obscuring zones it reaches that are `dispersed` end (1.286). */
   disperses?: true;
   /** Conditions on, and damage types kept off, whoever stands in it (1.179). */
-  inside?: { conditions?: string[]; immune?: string[] };
+  inside?: {
+    conditions?: string[];
+    immune?: string[];
+    /** Only those it matches (1.407). */
+    is?: RulesetTargetIs;
+    /** Thrown on entering and at a turn's start; made, ignored until they leave (1.407). */
+    save?: { save: string; ignoresUntilLeaves: true };
+  };
   /** Components nothing used from inside it may need (1.179). */
   forbids?: { components: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
@@ -3525,6 +3532,8 @@ export interface RulesetCombatZone {
   became?: true;
   /** The sides that have found it, hidden (1.402). */
   foundBy?: string[];
+  /** Who made its inside save and ignores what it does inside until they leave (1.407). */
+  shrugged?: string[];
   /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
   trippedBy?: string;
   /** The id of its caster's own action stored in it (1.401), cast as it goes off. */

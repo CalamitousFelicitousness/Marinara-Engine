@@ -2247,6 +2247,17 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A zone that keeps some kinds in and wards those outside from them (1.405): Magic Circle reversed. */
+function carriesKeepsInWards405(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKeepsInWards405(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const kept = plainRecord(record.keepsOut);
+  if (kept && kept.way === "out" && (kept.attacksInto !== undefined || kept.cantGive !== undefined)) return true;
+  return featureValues(record).some((one) => carriesKeepsInWards405(one, depth + 1));
+}
+
 /** A zone that keeps some kinds out, or in (1.399): Magic Circle, Hallow. */
 function carriesKeepsOut399(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -5908,6 +5919,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that keep some kinds in and ward those outside from them, 1.405.
+  if (
+    !declaresApi(405) &&
+    (carriesKeepsInWards405(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKeepsInWards405(document)))
+  ) {
+    return "A ruleset whose zones keep some kinds in and ward those outside from them (keepsOut way out) requires schemaVersion 2 and capabilityApi 1.405 or newer";
+  }
   // Conditions that keep their holder from harming, or behaviors measured from a point, 1.404.
   if (
     !declaresApi(404) &&

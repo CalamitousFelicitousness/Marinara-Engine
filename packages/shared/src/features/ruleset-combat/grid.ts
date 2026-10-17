@@ -1187,20 +1187,23 @@ export function rulesetKeptBy(
   );
 }
 
-/** Whether somebody stands in a zone that keeps `from` out (1.399), and so is warded against them. */
+/** The zones that ward somebody against `from` (1.399): one that keeps `from` out, with them inside it
+ *  and `from` outside; or one that keeps `from` in (`way: "out"`, 1.405), with `from` inside it and
+ *  them outside. */
 export function rulesetWardedFrom(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
-  inside: RulesetCombatant,
+  target: RulesetCombatant,
   from: RulesetCombatant,
 ): Array<NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]>> {
-  const at = rulesetFootprint(inside).map((cell) => `${cell.x},${cell.y}`);
+  const at = rulesetFootprint(target).map((cell) => `${cell.x},${cell.y}`);
   const by = rulesetFootprint(from).map((cell) => `${cell.x},${cell.y}`);
   return rulesetKeptBy(definition, state, from)
-    .filter(
-      ({ cells, rule }) =>
-        (rule.way ?? "in") === "in" && at.some((key) => cells.has(key)) && !by.some((key) => cells.has(key)),
-    )
+    .filter(({ cells, rule }) => {
+      const targetIn = at.some((key) => cells.has(key));
+      const fromIn = by.some((key) => cells.has(key));
+      return (rule.way ?? "in") === "in" ? targetIn && !fromIn : fromIn && !targetIn;
+    })
     .map(({ rule }) => rule);
 }
 

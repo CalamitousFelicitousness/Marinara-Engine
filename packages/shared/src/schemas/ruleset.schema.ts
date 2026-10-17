@@ -3244,9 +3244,11 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** What is cast from outside it at this level or lower, off these catalogs, does not reach whoever
      *  is inside (1.179): 5e's Globe of Invulnerability, spells of 5th level or lower. */
     wards: zoneWardsSchema.optional(),
-    /** Kinds of creature it keeps out (Capability API 1.399): they cannot walk into it (`way: "out"`:
-     *  out of it), their attacks into it may have disadvantage, and they cannot put `cantGive` on
-     *  whoever is inside. 5e's Magic Circle and Hallow. */
+    /** Kinds of creature it keeps out (Capability API 1.399): they cannot walk into it, their attacks
+     *  into it may have disadvantage, and they cannot put `cantGive` on whoever is inside. With
+     *  `way: "out"` it keeps them in: they cannot walk out of it, and (Capability API 1.405) their
+     *  attacks out of it and what they cannot give ward whoever stands outside. 5e's Magic Circle,
+     *  either way, and Hallow. */
     keepsOut: zoneKeepsOutSchema.optional(),
     /** Hidden from its caster's foes (Capability API 1.402): not shown to them until one of them
      *  finds it with the `search` standard action, which also throws this `check` (one of

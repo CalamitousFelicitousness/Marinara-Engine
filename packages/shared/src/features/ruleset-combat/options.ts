@@ -1927,7 +1927,11 @@ export function rulesetFailedChanceLive(
   const failUses = action.chance?.failUses;
   if (!failUses || !actor.sheet || !live) return null;
   const { build, catalogs } = actor.sheet;
-  const plan = planRulesetUse(definition, build, live, catalogs, { op: "use", name: failUses });
+  // Only the row named (1.390), as `usesOf` spends it: never its entry's other rows, so a failed
+  // Divine Intervention keeps its own row beside the plea it spends.
+  const plan = planRulesetUse(definition, build, live, catalogs, { op: "use", name: failUses }, 1, undefined, {
+    cost: [],
+  });
   if (!plan.ok) return null;
   let after = live;
   const cost: Array<{ pool: string; label: string; amount: number }> = [];

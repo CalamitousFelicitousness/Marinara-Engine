@@ -292,6 +292,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // The forms it changes into (1.342), found in the bestiary as the fight begins.
     ...(action.forms ? { forms: structuredClone(action.forms) } : {}),
     // Who it calls into the fight (1.325), found in the bestiary as the fight begins.
+    // A printed chance (1.388): a demon's summoning.
+    ...(action.chance ? { chance: { ...action.chance } } : {}),
     // Or its options, for rounds and bound to its caller (1.393): Summon Demon.
     ...(action.calls && (action.calls.options || (action.calls.creature && amountOf(action.calls.count)))
       ? {

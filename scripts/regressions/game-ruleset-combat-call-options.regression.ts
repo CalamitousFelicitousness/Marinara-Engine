@@ -59,7 +59,15 @@ try {
   });
   const fiveE = (calls: Record<string, unknown> = summonDemon): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
-    const summon = { id: "summon", name: "Summon Demon", budget: "action", uses: { per: "day", count: 1 }, calls };
+    const summon = {
+      id: "summon",
+      name: "Summon Demon",
+      budget: "action",
+      uses: { per: "day", count: 1 },
+      calls,
+      // Its 30 percent, carried from the catalog (1.388); a roll of 10 answers it.
+      chance: { sides: 100, atMost: 30 },
+    };
     doc.catalogs
       .find((catalog: { holds?: string }) => catalog.holds === "creatures")
       .entries.push(
@@ -148,6 +156,11 @@ try {
       "its options, as modes",
     );
     let state = taken.state;
+    assert.deepEqual(
+      of(taken.events, "chance").map((one) => [one.roll, one.needed, one.outcome]),
+      [[10, 30, "answered"]],
+      "a catalog creature's chance is rolled",
+    );
     assert.deepEqual(here(state), ["Vrock"], "another vrock");
     const called = state.combatants.find((one) => one.calledBy === "vrock")!;
     assert.ok(
@@ -163,6 +176,16 @@ try {
     const dretches = summon(fight(), "call-0").taken.state;
     assert.equal(here(dretches).length, 8);
     assert.ok(here(dretches).every((name) => name.startsWith("Dretch")));
+    // Over 30: nobody comes, and the day's use is spent.
+    const missed = fight();
+    const failed = applyRulesetCombatChoice(
+      definition,
+      missed,
+      { actorId: "vrock", optionId: "summon", targetIds: [], mode: "call-0" },
+      (sides) => (sides === 100 ? 31 : roll(sides)),
+    );
+    assert.equal(of(failed.events, "chance")[0]?.outcome, "failed");
+    assert.deepEqual(here(failed.state), [], "31: no demons");
     // The vrock that called them out: they leave with it.
     who(state, "vrock").defeated = true;
     state.turn = state.order.indexOf("ada");

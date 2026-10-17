@@ -378,6 +378,8 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "character.search",
   "character.create",
   "character.update",
+  "character.onboarding.get",
+  "character.onboarding.update",
   "character.folder.list",
   "character.moveToFolder",
   "persona.list",

@@ -13,6 +13,7 @@ import {
   type GameDataEditRequest,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
+import { buildPartyNpcId } from "../generation/game-party-utils.js";
 
 /** The largest value one key may save: generous for real games, small enough to refuse a paste accident. */
 export const GAME_DATA_EDIT_MAX_BYTES = 256 * 1024;
@@ -97,6 +98,8 @@ export function sameGameDataValue(left: unknown, right: unknown): boolean {
 
 interface CheckContext {
   current: unknown;
+  /** The party's member ids: an NPC who joined it is `npc:<name>` there and found in gameNpcs by name. */
+  partyIds: readonly unknown[];
   /** The game's ruleset, when it has one that loads: party card sheets are read through it. */
   ruleset: RulesetDefinition | null;
 }
@@ -119,9 +122,13 @@ function checkCharacterCards(value: unknown, { current, ruleset }: CheckContext)
       const extra = record(card.extra, `${index}.extra`);
       for (const [field, item] of Object.entries(extra)) text(item, `${index}.extra.${field}`);
     }
-    if (card.rulesetSheet == null) return card;
     // A sheet left as it was needs no ruleset to stay; a changed one is read through it.
     const was = before.find((item) => lookupName(item.name) === lookupName(card.name))?.rulesetSheet;
+    if (card.rulesetSheet == null) {
+      // Without its sheet a character starts over from a blank one on the next turn.
+      if (was != null) refuse({ reason: "sheetRemoved", path: `${index}.rulesetSheet`, name: names[index] });
+      return card;
+    }
     if (sameGameDataValue(card.rulesetSheet, was)) return card;
     if (!ruleset) return refuse({ reason: "noRuleset", path: `${index}.rulesetSheet`, name: names[index] });
     const envelope = readRulesetSheetEnvelope(ruleset, card.rulesetSheet);
@@ -130,10 +137,10 @@ function checkCharacterCards(value: unknown, { current, ruleset }: CheckContext)
   });
 }
 
-function checkNpcs(value: unknown, { current }: CheckContext): unknown {
+function checkNpcs(value: unknown, { current, partyIds }: CheckContext): unknown {
   const before = currentList(current);
   const seen = new Set<string>();
-  return list(value, "", 1_000).map((item, index) => {
+  const npcs = list(value, "", 1_000).map((item, index) => {
     const npc = { ...record(item, String(index)) };
     const id = text(npc.id, `${index}.id`, NAME_MAX);
     if (!id.trim()) refuse({ reason: "shape", path: `${index}.id` });
@@ -159,6 +166,12 @@ function checkNpcs(value: unknown, { current }: CheckContext): unknown {
     npc.reputation = Math.round(Math.min(100, Math.max(-100, reputation as number)));
     return npc;
   });
+  // An NPC who joined the party stays: the party finds them here by name.
+  const gone = before.find(
+    (was) => !seen.has(String(was.id)) && partyIds.includes(buildPartyNpcId(String(was.name ?? ""))),
+  );
+  if (gone) refuse({ reason: "partyChanged", path: "", name: String(gone.name) });
+  return npcs;
 }
 
 function checkJournal(value: unknown): unknown {
@@ -269,7 +282,8 @@ export function buildGameDataEditPatch(
       if (new TextEncoder().encode(JSON.stringify(edit.value ?? null)).length > GAME_DATA_EDIT_MAX_BYTES) {
         refuse({ reason: "tooLarge", max: GAME_DATA_EDIT_MAX_BYTES });
       }
-      patch[edit.key] = CHECKS[edit.key](edit.value, { current: fresh[edit.key], ruleset });
+      const partyIds = Array.isArray(fresh.gamePartyCharacterIds) ? fresh.gamePartyCharacterIds : [];
+      patch[edit.key] = CHECKS[edit.key](edit.value, { current: fresh[edit.key], partyIds, ruleset });
     } catch (error) {
       if (!(error instanceof Refusal)) throw error;
       issues.push({ key: edit.key, ...error.issue });

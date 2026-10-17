@@ -219,6 +219,33 @@ assert.deepEqual(
   "one refused key refuses the save, and only that key is reported",
 );
 
+// CodeRabbit: a sheet can't be dropped, and an NPC who joined the party can't be removed.
+{
+  const withSheet = { gameCharacterCards: [{ ...cards[0], rulesetSheet: { schema: 1 } }] };
+  const result = buildGameDataEditPatch(
+    withSheet,
+    [{ key: "gameCharacterCards", expected: withSheet.gameCharacterCards, value: cards }],
+    null,
+  );
+  assert.deepEqual(
+    "issues" in result ? result.issues : null,
+    [{ key: "gameCharacterCards", reason: "sheetRemoved", path: "0.rulesetSheet", name: "Gwendolyn" }],
+    "removing a card's ruleset sheet is refused (the character would start over from a blank one)",
+  );
+
+  const party = { gameNpcs: npcs, gamePartyCharacterIds: ["npc:sister-sel"] };
+  const removeMember = (value: unknown) => {
+    const outcome = buildGameDataEditPatch(party, [{ key: "gameNpcs", expected: npcs, value }], null);
+    return "issues" in outcome ? outcome.issues : null;
+  };
+  assert.deepEqual(
+    removeMember([npcs[0]]),
+    [{ key: "gameNpcs", reason: "partyChanged", path: "", name: "Sister Sel" }],
+    "an NPC who joined the party can't be removed",
+  );
+  assert.equal(removeMember([npcs[1]]), null, "an NPC outside the party still can");
+}
+
 // ── Part 2: end-to-end through the route ──
 
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");

@@ -55,10 +55,12 @@ export type GameDataEditRequest = z.infer<typeof gameDataEditRequestSchema>;
  * - `tooLong`: text past `max` characters, or a list past `max` entries (`path` says where).
  * - `tooLarge`: the whole value past the size a hand edit may save.
  * - `rename`: a name changed. Names link cards, NPCs, the party, live sheets and bags.
- * - `partyChanged`: a character card or arc added or removed (the party is not edited here).
+ * - `partyChanged`: a character card or arc added or removed, or an NPC who joined the party removed
+ *   (the party is not edited here).
  * - `duplicateId`: two NPCs share an id.
  * - `idChanged`: an NPC kept its name but not its id.
  * - `sheet`: a ruleset sheet the game's ruleset can't read.
+ * - `sheetRemoved`: a card's ruleset sheet removed (the character would start over from a blank one).
  * - `noRuleset`: a changed ruleset sheet in a game whose ruleset can't be loaded to check it.
  * - `sessionsChanged`: a session summary added, removed, or changed outside its text.
  * - `emptySummary`: a session summary left without its recap.
@@ -75,6 +77,7 @@ export type GameDataEditIssue = {
     | "duplicateId"
     | "idChanged"
     | "sheet"
+    | "sheetRemoved"
     | "noRuleset"
     | "sessionsChanged"
     | "emptySummary";

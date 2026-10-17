@@ -2788,7 +2788,9 @@ function mechanicsAction(
     !mechanics.strikesWith &&
     !mechanics.redirects &&
     // So is steering a condition (1.411).
-    !mechanics.steers
+    !mechanics.steers &&
+    // And casting other entries (1.421): Wish.
+    !mechanics.duplicates
   ) {
     return null;
   }
@@ -2909,6 +2911,8 @@ function mechanicsAction(
   if (mechanics.beforeFight) action.beforeFight = true;
   // Steering a condition it put on (1.411): Compulsion.
   if (mechanics.steers) action.steers = mechanics.steers;
+  // Casting other entries (1.421): Wish.
+  if (mechanics.duplicates) action.duplicates = structuredClone(mechanics.duplicates);
   // A ray rolled for each target (1.415): Prismatic Spray.
   if (mechanics.rays) action.rays = structuredClone(mechanics.rays);
   // Changes how another action is used (1.253): Metamagic, its sheet values read now.
@@ -3930,6 +3934,41 @@ function sheetCombatant(
     const storable = actions.filter((one) => one.id !== action.id && !!one.use && !one.zone?.detonates?.stores);
     if (storable.length) {
       action.modes = storable.map((one) => ({ id: `stores-${one.id}`, label: one.label, stores: one.id }));
+    }
+  }
+  // What an entry that duplicates others casts (1.421): every other entry of its catalog no higher
+  // than its `upTo`, each its own option, with its maker's numbers, paid for as the duplicating entry
+  // is and needing none of its components. 5e's Wish.
+  for (const wish of [...actions]) {
+    const duplicates = wish.duplicates;
+    if (!duplicates) continue;
+    const header = definition.catalogs?.find((catalog) => catalog.id === duplicates.catalog);
+    for (const [ref, entry] of byRef) {
+      if (ref !== `${duplicates.catalog}/${entry.id}` || ref === wish.entry || !entry.mechanics) continue;
+      if (duplicates.only && !duplicates.only.includes(entry.id)) continue;
+      if (entry.mechanics.duplicates || entry.mechanics.kind === "rider" || entry.mechanics.beforeFight) continue;
+      const action = mechanicsAction(definition, entry.mechanics, {
+        id: `${wish.id}~${ref}`,
+        ...(wish.ability ? { ability: wish.ability } : {}),
+        kind: "ability",
+        label: `${wish.label}: ${entry.label}`,
+        budget: wish.budget,
+        toHit: wish.toHit ?? 0,
+        ...(wish.saveDifficulty !== undefined ? { saveDifficulty: wish.saveDifficulty } : {}),
+        build,
+        evaluated,
+        perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+      });
+      if (!action || action.reaction) continue;
+      const level = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
+      if (level < 1 || level > duplicates.upTo) continue;
+      action.catalog = duplicates.catalog;
+      action.entry = ref;
+      if (wish.use) action.use = { ...wish.use };
+      else delete action.use;
+      delete action.components;
+      action.duplicatedBy = wish.id;
+      actions.push(action);
     }
   }
   // Whom a zone works on inside, chosen as it is cast (1.413): each of the fight's creature types,

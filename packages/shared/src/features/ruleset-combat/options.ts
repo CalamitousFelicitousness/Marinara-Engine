@@ -2506,6 +2506,8 @@ function optionFrom(
   if (action.lair && !lairLent) return null;
   // Nor what takes longer to cast than a fight lasts (1.409): it stands as the fight starts or not at all.
   if (action.beforeFight) return null;
+  // Nor what only casts other entries (1.421): each of those is on the menu instead. Wish.
+  if (action.duplicates) return null;
   // Steering a condition (1.411) only while somebody holds it from its user.
   if (
     action.steers &&

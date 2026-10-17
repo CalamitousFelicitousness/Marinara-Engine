@@ -5623,6 +5623,18 @@ const catalogMechanicsObject = z
      *  point, every holder of this condition its user put on is steered toward (or away from) there.
      *  Offered only while somebody holds it from them. 5e's Compulsion, its bonus action. */
     steers: sheetId.optional(),
+    /** Casts any other entry of `catalog` no higher than `upTo` (Capability API 1.421), each on the
+     *  menu as its own option beside this one's name, paid for as this one is and needing none of
+     *  its components; this entry itself is on no menu. `only` keeps it to those entry ids. 5e's
+     *  Wish, duplicating a spell of 8th level or lower. */
+    duplicates: z
+      .object({
+        catalog: sheetId,
+        upTo: z.number().int().min(1).max(20),
+        only: z.array(sheetId).min(1).max(200).optional(),
+      })
+      .strict()
+      .optional(),
     /** A table rolled for each target (Capability API 1.415), its row the ray that strikes them: each
      *  row deals `amount` as its own `damageType` (none without one), puts on those of `applies` it
      *  names, and `again` strikes that many more rays, landing on it again rolled over. Each target
@@ -18798,6 +18810,13 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "zone", "keepsOut", "frees", conditionIndex], `Unknown condition "${condition}"`);
       }
     });
+    // What it duplicates (1.421) is a catalog of the ruleset's.
+    if (
+      mechanics?.duplicates &&
+      !definition.catalogs?.some((catalog) => catalog.id === mechanics.duplicates!.catalog)
+    ) {
+      add([index, "mechanics", "duplicates", "catalog"], `Unknown catalog "${mechanics.duplicates.catalog}"`);
+    }
     // What it steers (1.411) is a condition.
     if (mechanics?.steers && !liveConditions.has(mechanics.steers)) {
       add([index, "mechanics", "steers"], `Unknown condition "${mechanics.steers}"`);

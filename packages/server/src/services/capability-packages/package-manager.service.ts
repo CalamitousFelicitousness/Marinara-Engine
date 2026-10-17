@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** An entry casting other entries of a catalog (1.421): Wish. */
+function carriesDuplicates421(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDuplicates421(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duplicates)?.catalog !== undefined) return true;
+  return featureValues(record).some((one) => carriesDuplicates421(one, depth + 1));
+}
+
 /** A condition raising its holder's health maximum (1.420): Aid, Heroes' Feast. */
 function carriesRaisesMax420(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6072,6 +6082,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Entries casting other entries of a catalog, 1.421.
+  if (
+    !declaresApi(421) &&
+    (carriesDuplicates421(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDuplicates421(document)))
+  ) {
+    return "A ruleset whose entries cast other entries of a catalog (duplicates) requires schemaVersion 2 and capabilityApi 1.421 or newer";
+  }
   // Conditions raising their holder's health maximum, 1.420.
   if (
     !declaresApi(420) &&

@@ -837,6 +837,10 @@ export interface RulesetCombatAction {
   castingRounds?: number;
   /** Never on the fight menu (1.409): set up before a fight, standing as it starts. */
   beforeFight?: true;
+  /** Casts other entries of a catalog, each its own option (1.421): 5e's Wish. On no menu itself. */
+  duplicates?: { catalog: string; upTo: number; only?: string[] };
+  /** The entry that casts this one, as its own option paid as it is (1.421): Wish's id. */
+  duplicatedBy?: string;
   /** Its concentration holds only when paid fewer steps of higher cost than this (1.417). */
   concentrationBelowStep?: number;
   /** Aimed at a point, steers every holder of this condition its user put on there (1.411). */

@@ -58,10 +58,10 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
     staleTime: 0,
     gcTime: 0,
     // The loaded data is the drafts' baseline: only Reload or a save may replace it.
-    refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
-  const [stale, setStale] = useState(false);
+  /** Why the editor asks for a Reload: the game changed the data, or a save landed but reading it back failed. */
+  const [notice, setNotice] = useState<"stale" | "refreshFailed" | null>(null);
   const [editorKey, setEditorKey] = useState(0);
   const dirtyRef = useRef(false);
 
@@ -95,7 +95,7 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
   }, [localizeUi, onClose]);
 
   const reload = useCallback(async () => {
-    setStale(false);
+    setNotice(null);
     dirtyRef.current = false;
     setEditorKey((key) => key + 1);
     await metadataQuery.refetch();
@@ -144,12 +144,17 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
       } catch (error) {
         const refusal = error instanceof ApiError ? (error.payload as Partial<GameDataEditRefusal> | undefined) : null;
         if (!refusal?.issues?.length) throw error;
-        if (error instanceof ApiError && error.status === 409) setStale(true);
+        if (error instanceof ApiError && error.status === 409) setNotice("stale");
         throw new Error(refusal.issues.map(serverIssueMessage).join(" "));
       }
-      qc.setQueryData(queryKey, await fetchGameMetadata(chatId));
       void qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
       toast.success(localizeUi("ui.stateEditor.gameData.saved"));
+      // The save landed: a failed read-back must not report it as failed (and keep drafts already saved).
+      try {
+        qc.setQueryData(queryKey, await fetchGameMetadata(chatId));
+      } catch {
+        setNotice("refreshFailed");
+      }
     },
     [chatId, editorIssueMessage, localizeUi, metadata, qc, queryKey, serverIssueMessage],
   );
@@ -198,10 +203,16 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
                 <AlertTriangle size="0.875rem" className="shrink-0" />
                 <span className="min-w-0 flex-1">{localizeUi("ui.stateEditor.gameData.warning")}</span>
               </div>
-              {stale ? (
+              {notice ? (
                 <div role="alert" className={NOTICE_CLASS}>
                   <AlertTriangle size="0.875rem" className="shrink-0" />
-                  <span className="min-w-0 flex-1">{localizeUi("ui.stateEditor.gameData.staleNotice")}</span>
+                  <span className="min-w-0 flex-1">
+                    {localizeUi(
+                      notice === "stale"
+                        ? "ui.stateEditor.gameData.staleNotice"
+                        : "ui.stateEditor.gameData.refreshFailedNotice",
+                    )}
+                  </span>
                   <button
                     type="button"
                     onClick={() => void reload()}

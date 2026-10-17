@@ -46383,6 +46383,10 @@
                                 "const": "this-action"
                               },
                               {
+                                "type": "string",
+                                "const": "until-dispelled"
+                              },
+                              {
                                 "type": "object",
                                 "properties": {
                                   "rounds": {
@@ -47488,6 +47492,10 @@
                               {
                                 "type": "string",
                                 "const": "this-action"
+                              },
+                              {
+                                "type": "string",
+                                "const": "until-dispelled"
                               },
                               {
                                 "type": "object",
@@ -52515,6 +52523,10 @@
                                       "const": "this-action"
                                     },
                                     {
+                                      "type": "string",
+                                      "const": "until-dispelled"
+                                    },
+                                    {
                                       "type": "object",
                                       "properties": {
                                         "rounds": {
@@ -53932,6 +53944,10 @@
                                         {
                                           "type": "string",
                                           "const": "this-action"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
                                         },
                                         {
                                           "type": "object",
@@ -58223,6 +58239,10 @@
                                         {
                                           "type": "string",
                                           "const": "this-action"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
                                         },
                                         {
                                           "type": "object",
@@ -66620,6 +66640,10 @@
                                         {
                                           "type": "string",
                                           "const": "this-action"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
                                         },
                                         {
                                           "type": "object",
@@ -76576,6 +76600,10 @@
                                     "const": "this-action"
                                   },
                                   {
+                                    "type": "string",
+                                    "const": "until-dispelled"
+                                  },
+                                  {
                                     "type": "object",
                                     "properties": {
                                       "rounds": {
@@ -77681,6 +77709,10 @@
                                   {
                                     "type": "string",
                                     "const": "this-action"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "until-dispelled"
                                   },
                                   {
                                     "type": "object",
@@ -90175,6 +90207,10 @@
                                           "const": "this-action"
                                         },
                                         {
+                                          "type": "string",
+                                          "const": "until-dispelled"
+                                        },
+                                        {
                                           "type": "object",
                                           "properties": {
                                             "rounds": {
@@ -91280,6 +91316,10 @@
                                         {
                                           "type": "string",
                                           "const": "this-action"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "const": "until-dispelled"
                                         },
                                         {
                                           "type": "object",
@@ -107828,6 +107868,10 @@
                               "const": "this-action"
                             },
                             {
+                              "type": "string",
+                              "const": "until-dispelled"
+                            },
+                            {
                               "type": "object",
                               "properties": {
                                 "rounds": {
@@ -109396,6 +109440,10 @@
                                     "const": "this-action"
                                   },
                                   {
+                                    "type": "string",
+                                    "const": "until-dispelled"
+                                  },
+                                  {
                                     "type": "object",
                                     "properties": {
                                       "rounds": {
@@ -110522,6 +110570,10 @@
                                       {
                                         "type": "string",
                                         "const": "this-action"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "until-dispelled"
                                       },
                                       {
                                         "type": "object",
@@ -112201,6 +112253,10 @@
                             {
                               "type": "string",
                               "const": "this-action"
+                            },
+                            {
+                              "type": "string",
+                              "const": "until-dispelled"
                             },
                             {
                               "type": "object",

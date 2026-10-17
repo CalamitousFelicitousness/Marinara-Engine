@@ -148,6 +148,11 @@ try {
     // A day of rounds (1.429): Aid's eight hours, as written.
     const aid = parsed(fiveE({ rounds: 4800 }, { concentrationBelowStep: undefined, concentration: undefined }));
     assert.deepEqual(lasts(aid, undefined), [4800, null]);
+    // Until dispelled, said plainly (1.432): Continual Flame, no clock at all.
+    const flame = parsed(
+      fiveE("until-dispelled" as never, { concentrationBelowStep: undefined, concentration: undefined }),
+    );
+    assert.deepEqual(lasts(flame, undefined), [null, null]);
   }
 
   // ── Refusals ──
@@ -195,6 +200,11 @@ try {
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(429) as never, fiveE(duration)), later);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE({ rounds: 1000 })), later);
+    const plain =
+      'A ruleset whose durations are "until-dispelled" requires schemaVersion 2 and capabilityApi 1.432 or newer';
+    const flameDoc = fiveE("until-dispelled" as never, { concentrationBelowStep: undefined });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(431) as never, flameDoc), plain);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(432) as never, flameDoc), plain);
   }
 
   console.log(

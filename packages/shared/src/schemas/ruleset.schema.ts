@@ -3878,6 +3878,9 @@ const catalogDurationSchema = z.union([
   z.literal("instant"),
   z.literal("until-save"),
   z.literal("this-action"),
+  /** No clock at all, said as it reads (Capability API 1.432): on until something takes it off, as
+   *  `instant` is. 5e's Continual Flame, "until dispelled". */
+  z.literal("until-dispelled"),
   z
     .object({
       /** Up to 1000, or up to 14400 (a day, Capability API 1.429): 5e's Aid for 8 hours, 4800. */

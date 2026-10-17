@@ -162,6 +162,8 @@ export interface RulesetCombatApplies {
     | "instant"
     | "until-save"
     | "this-action"
+    /** No clock at all (1.432): Continual Flame. */
+    | "until-dispelled"
     | {
         rounds: number;
         at?: "turn-start";

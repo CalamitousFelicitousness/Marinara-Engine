@@ -2247,6 +2247,16 @@ function carriesBecomes400(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBecomes400(one, depth + 1));
 }
 
+/** A duration said as "until-dispelled" (1.432): Continual Flame. */
+function carriesUntilDispelled432(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUntilDispelled432(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.duration === "until-dispelled") return true;
+  return featureValues(record).some((one) => carriesUntilDispelled432(one, depth + 1));
+}
+
 /** An item holding off a kind of condition (1.431): the Periapt of Health's diseases. The kinds are
  *  read off the ruleset's conditions. */
 function carriesWornKindHolds431(value: unknown, kinds: ReadonlySet<string>, depth = 0): boolean {
@@ -6199,6 +6209,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A duration said as "until-dispelled", 1.432.
+  if (
+    !declaresApi(432) &&
+    (carriesUntilDispelled432(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUntilDispelled432(document)))
+  ) {
+    return 'A ruleset whose durations are "until-dispelled" requires schemaVersion 2 and capabilityApi 1.432 or newer';
+  }
   // Items holding off a kind of condition, 1.431.
   {
     const conditionsOf = plainRecord(plainRecord(ruleset)?.combat)?.conditions;

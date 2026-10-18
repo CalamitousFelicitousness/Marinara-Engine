@@ -158,7 +158,8 @@ const { buildCheckpointWorldEditsRestore, captureCheckpointWorldEdits } =
 // ── Parts 2 and 3: end to end through the routes ──
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
-const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createChatsStorage, withChatMetadataPatchQueue } =
+  await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createCheckpointService } = await import("../../packages/server/src/services/game/checkpoint.service.js");
 const { loadGameWorld, saveGameWorldSnapshot } =
@@ -291,6 +292,37 @@ try {
 
     await loadCheckpoint(chatId, checkpointId);
     assert.deepEqual((await metadataOf(chatId)).gameWorld, older, "an unreadable world is left untouched");
+  }
+
+  // ── Part 5: the restore and its snapshot are one transaction, so a failed save writes nothing ──
+  // The load cannot be made to fail its snapshot insert from here: the store's only failure seam
+  // exists when the DB is created and fires on flush, not on an insert. So this pins the contract the
+  // load relies on — a patch made inside the transaction is rolled back when the save after it throws.
+  {
+    const { chatId } = await seedGame("a load whose snapshot cannot be saved", {
+      gameWorldKit: kit,
+      gameWorld: { ...worldRecipe, edits: withOdda },
+      gameStory: story,
+    });
+    const before = await metadataOf(chatId);
+    await withChatMetadataPatchQueue(chatId, () =>
+      assert.rejects(
+        app.db.transaction(async (tx) => {
+          await createChatsStorage(tx).patchMetadata(
+            chatId,
+            { gameStory: { storyVersion: 1 }, gameWorld: worldRecipe },
+            { metadataQueueHeld: true },
+          );
+          throw new Error("the snapshot could not be saved");
+        }),
+        /snapshot could not be saved/,
+      ),
+    );
+    assert.deepEqual(
+      await metadataOf(chatId),
+      before,
+      "a load that cannot save its snapshot leaves the story and the world as they were",
+    );
   }
 
   console.log("Game checkpoint world edits regression checks passed.");

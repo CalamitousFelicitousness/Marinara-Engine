@@ -161,7 +161,8 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createCheckpointService } = await import("../../packages/server/src/services/game/checkpoint.service.js");
-const { loadGameWorld } = await import("../../packages/server/src/services/game/game-world.service.js");
+const { loadGameWorld, saveGameWorldSnapshot } =
+  await import("../../packages/server/src/services/game/game-world.service.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 
 const db = await getDB();
@@ -243,6 +244,9 @@ try {
       gameWorld: worldRecipe,
       gameStory: { storyVersion: 1 },
     });
+    // A stale snapshot without the layer, so only the load re-saving one can make the assertion below
+    // pass (loadGameWorld reads the snapshot, never the metadata, once a snapshot exists).
+    await saveGameWorldSnapshot(db, chatId, await metadataOf(chatId));
 
     await loadCheckpoint(chatId, checkpointId);
     const after = await metadataOf(chatId);

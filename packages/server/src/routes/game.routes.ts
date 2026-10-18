@@ -16863,22 +16863,27 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         : cp.gameState || restoresGameMetadata || capturedWorldEdits != null
           ? await chats.patchMetadata(input.chatId, (current) => ({ ...restorePatch(current) }))
           : null;
-    // One save of a chat's edits at a time, the same lock PUT /world/edits holds.
-    const saved = await (capturedWorldEdits == null
-      ? applyRestore()
-      : withWorldLock(`edits:${input.chatId}`, applyRestore));
-    // Assigned only inside the queued updater, so read through a typed local.
-    const worldEditsWritten = worldEditsWrite as { previous: unknown } | null;
-    if (worldEditsWritten && saved) {
-      // The world with its restored layer is the snapshot from now on (W11). A snapshot it could not
-      // keep is taken back, so the recipe and the snapshot never disagree.
-      try {
-        await saveGameWorldSnapshot(app.db, input.chatId, parseMeta(saved.metadata));
-      } catch (err) {
-        await chats.patchMetadata(input.chatId, () => ({ gameWorld: worldEditsWritten.previous }));
-        throw err;
+    // One save of a chat's edits at a time, the same lock PUT /world/edits holds — and the snapshot
+    // save and its rollback run inside it too: a snapshot built from a world another save changed
+    // meanwhile, or a rollback that undid one, would leave loadGameWorld serving a world nobody saved.
+    const applyRestoreAndSnapshot = async () => {
+      const saved = await applyRestore();
+      // Assigned only inside the queued updater, so read through a typed local.
+      const worldEditsWritten = worldEditsWrite as { previous: unknown } | null;
+      if (worldEditsWritten && saved) {
+        // The world with its restored layer is the snapshot from now on (W11). A snapshot it could not
+        // keep is taken back, so the recipe and the snapshot never disagree.
+        try {
+          await saveGameWorldSnapshot(app.db, input.chatId, parseMeta(saved.metadata));
+        } catch (err) {
+          await chats.patchMetadata(input.chatId, () => ({ gameWorld: worldEditsWritten.previous }));
+          throw err;
+        }
       }
-    }
+    };
+    await (capturedWorldEdits == null
+      ? applyRestore()
+      : withWorldLock(`edits:${input.chatId}`, applyRestoreAndSnapshot));
     const worldEditsSkip = worldEditsRefusal as string | null;
     if (worldEditsSkip) {
       // The load still restores everything else; only the layer is left as it is.

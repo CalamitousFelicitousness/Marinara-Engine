@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A creature that deals double damage to objects (1.507): Siege Monster. */
+function carriesDoubleToObjects507(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDoubleToObjects507(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.doubleToObjects !== undefined) return true;
+  return featureValues(record).some((one) => carriesDoubleToObjects507(one, depth + 1));
+}
+
 /** A call or an item's use rolled for (1.506): a Bag of Tricks, a Wand of Wonder. */
 function carriesRolledTables506(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7069,6 +7079,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Creatures that deal double damage to objects, 1.507.
+  if (
+    !declaresApi(507) &&
+    (carriesDoubleToObjects507(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDoubleToObjects507(document)))
+  ) {
+    return "A ruleset with a creature that deals double damage to objects (doubleToObjects) requires schemaVersion 2 and capabilityApi 1.507 or newer";
+  }
   // Calls and item uses rolled for, 1.506.
   if (
     !declaresApi(506) &&

@@ -8246,6 +8246,9 @@ const creatureFields = {
    *  and regains as many hit points as the blow would have dealt. 5e's flesh golem's Lightning
    *  Absorption, an iron golem's Fire Absorption. */
   healedBy: z.array(promptSafeText(40)).min(1).max(12).optional(),
+  /** It deals double damage to objects (Capability API 1.507): a wall's sections, a layered wall's
+   *  layers and a board's props. 5e's Siege Monster. */
+  doubleToObjects: z.literal(true).optional(),
   /** The sheet's own condition ids this creature is never in. */
   conditionImmunities: z.array(sheetId).max(40).optional(),
   /** Conditions it has on through every fight (Capability API 1.263), as a sheet's `keepsOn` entry

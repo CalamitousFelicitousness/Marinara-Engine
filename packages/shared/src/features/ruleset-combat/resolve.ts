@@ -839,6 +839,8 @@ function applyDamage(
       dealt *= 2;
       adjust = "vulnerable";
     }
+    // Twice as much to an object from whoever deals double to them (1.507): Siege Monster.
+    if (target.object && from?.block?.doubleToObjects) dealt *= 2;
   }
   // Its roll, as it is made, has dice taken off by the other side where that keeps one of them
   // standing who it would take down (1.257): Cutting Words.

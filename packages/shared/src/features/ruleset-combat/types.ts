@@ -643,6 +643,8 @@ export interface RulesetStatBlock {
   immune?: RulesetCreatureHideEntry[];
   /** Damage types that heal it instead (1.488): a flesh golem's lightning. */
   healedBy?: string[];
+  /** Double damage to objects (1.507): Siege Monster. */
+  doubleToObjects?: true;
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.115). */
   conditionImmunities?: string[];
   /** Conditions it has on through every fight (1.263): an aura it spreads. */

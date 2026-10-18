@@ -481,6 +481,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.healedBy ? { healedBy: [...creature.healedBy] } : {}),
+    ...(creature.doubleToObjects ? { doubleToObjects: true as const } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
     ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
     ...(creature.held ? { held: creature.held.map((thing) => ({ ...thing, tags: [...thing.tags] })) } : {}),

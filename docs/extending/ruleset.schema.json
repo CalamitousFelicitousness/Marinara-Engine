@@ -56182,6 +56182,10 @@
                       "minItems": 1,
                       "maxItems": 12
                     },
+                    "doubleToObjects": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "conditionImmunities": {
                       "type": "array",
                       "items": {

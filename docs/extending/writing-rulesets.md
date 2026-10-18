@@ -1410,6 +1410,8 @@ Walking through creatures and solid ground (Capability API 1.442). `combat.sizes
 
 Mounted combat (Capability API 1.443). `combat.mounts` lets a combatant mount a willing creature of its own side beside it that is at least `larger` sizes bigger (5e's 1), for half its speed, and get down beside it the same way. The menu offers `move:mount:<id>` and `move:dismount`. The rider goes wherever the mount walks and walks no way of its own while up. With `controlled.standard` (5e's `["dash", "disengage", "dodge"]`), a mount with no sheet is controlled: its turn comes straight after its rider's, and it only moves and takes the standard actions named. One that already had its turn this round waits until the next. A creature whose block says `mountIndependent: true` acts as it will. `fall` (`save`, `difficulty`, `applies`, `when`) is for a mount that comes to hold a condition in `when`, or is pushed: its rider throws the save or comes off with `applies` on, and on a success gets down on their feet. A rider who holds one comes off too. A mount that drops, or a rider who does, parts them. 5e: `{ "larger": 1, "controlled": { "standard": ["dash", "disengage", "dodge"] }, "fall": { "save": "dex_save", "difficulty": 10, "applies": "prone", "when": ["prone"] } }`.
 
+Dragging whoever you hold (Capability API 1.444). A combat condition's `dragged` drags its holder along when whoever put it on walks: each step the walker takes, the holder moves into the cell the walker left. The walker's speed is halved for it, with every step costing double, unless the holder is at least `unlessSmaller` sizes smaller. 5e's grappled: `"dragged": { "unlessSmaller": 2 }`.
+
 A condition, or an item worn or carried, with `"alerts": 15` gives away whoever moves hidden within that distance of its holder: they are hidden from nobody, logged as given away by its holder. The showcase's Wind-Chime is an item carried with `{"alerts": 15}`. A creature's `"stillIn": ["bright"]` keeps it from moving while any of its cells is in one of those lights: no walking is on its menu there. The showcase's Lantern-Shy.
 
 Growing auras, holds with a most, tearing free and hanging on (Capability API 1.320). An aura's `"grows": {"by": 10, "upTo": 40}` reaches `by` further as each of its holder's turns starts, to no more than `upTo`, which is more than its `distance`; the log says how far it reaches now. Its `harms` may say `"on": "their-turn"`: dealt as each turn of whoever it reaches starts, in place of all at once as its holder's turn starts. `"lingers": true` leaves what it spreads on whoever it no longer reaches until their next turn starts, and the aura holds it again if it reaches them before then. The Owed's Frost Debt is `{"distance": 20, "side": "enemies", "conditions": ["no_heal"], "grows": {"by": 10, "upTo": 40}, "lingers": true, "harms": {"dice": "2d6", "type": "cold", "on": "their-turn"}}`.
@@ -4742,9 +4744,8 @@ fall is a separate event. Feather Fall uses the same `fallsSafely` condition as 
 Said plainly, because a ruleset should not claim what the Engine does not do:
 
 - **Beyond the modest board**: no flying over
-  obstacles, no squeezing and no mounts. A creature is moved only by its own walk, a teleport, and
-  what pushes it (a contest, an entry, a creature's action or a zone). Nobody drags a creature they
-  hold.
+  obstacles. A creature is moved only by its own walk, a mount's walk, a teleport, what pushes it
+  (a contest, an entry, a creature's action or a zone), and whoever drags it.
 - **A contest is plain.** Its roll opens no window, but a fall it causes may be answered.
 - **An entry may wait for six moments only**, `used`, `aimed`, `hit`, `harmed`, `falls` and `turn-start` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody

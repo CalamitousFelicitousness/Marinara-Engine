@@ -112876,6 +112876,18 @@
                 },
                 "additionalProperties": false
               },
+              "dragged": {
+                "type": "object",
+                "properties": {
+                  "unlessSmaller": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "shapeKeeps": {
                 "type": "array",
                 "items": {

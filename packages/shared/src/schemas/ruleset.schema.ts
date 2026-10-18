@@ -10732,6 +10732,13 @@ const combatConditionSchema = z
      *  1.442), taking `harm`, with no save, when a turn of its own ends there: Incorporeal
      *  Movement's 1d10 force. */
     passesObjects: passesObjectsSchema.optional(),
+    /** Its holder is dragged along when whoever put it on walks (Capability API 1.444), into each cell
+     *  they leave, and their speed is halved for it unless its holder is at least `unlessSmaller`
+     *  sizes smaller than them: 5e's grappled, `{ "unlessSmaller": 2 }`. */
+    dragged: z
+      .object({ unlessSmaller: z.number().int().min(1).max(9).optional() })
+      .strict()
+      .optional(),
     /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
      *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
      *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */

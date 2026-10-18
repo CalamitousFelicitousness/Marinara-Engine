@@ -144,6 +144,7 @@ import {
   rulesetAirborne,
   rulesetCellBlocked,
   rulesetCrowdedStep,
+  rulesetDragging,
   rulesetThroughSolid,
   rulesetLevelOf,
   rulesetSlowedCells,
@@ -9026,6 +9027,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   const walked = [...resume.walked];
   const asked = new Set(resume.asked);
   const readyAsked = new Set(resume.readyAsked ?? []);
+  // Whom they drag as they go (1.444), as it stood when the walk began or picked up again.
+  const draggingNow = rulesetDragging(ctx.definition, ctx.state, actor);
   // Only when somebody has readied something for an opponent coming near (1.288).
   const readying =
     !!ctx.combat.readying && ctx.state.combatants.some((one) => one.readied?.on === "comes" && one.side !== actor.side);
@@ -9110,7 +9113,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         ? 2
         : (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y));
       const slowedStep = rulesetSlowedStep(grid, cell, plain, rulesetSlowedCells(ctx.state, actor), at, actor);
-      spent += rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
+      const crowdedStep = rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
+      // Dragging somebody they hold (1.444), as the menu priced it.
+      spent += draggingNow.halves ? crowdedStep * 2 : crowdedStep;
     } else spent += 1;
     walked.push(cell);
     // What a charge reads (1.186): where this turn's walking began, then each cell of it. A
@@ -9119,9 +9124,11 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       if (!actor.trail?.length) actor.trail = [{ ...at }];
       actor.trail.push({ ...cell });
     }
-    // Whoever they carry shut in a sphere (1.314) comes along, into the cell they left.
+    // Whoever they carry shut in a sphere (1.314) comes along, into the cell they left, and so does
+    // whoever they drag (1.444).
     for (const carried of ctx.state.combatants) {
-      if (carried.carriedBy !== actor.id || !rulesetSealed(ctx.definition, carried, ctx.state)) continue;
+      const sealed = carried.carriedBy === actor.id && rulesetSealed(ctx.definition, carried, ctx.state);
+      if (!sealed && !draggingNow.ids.includes(carried.id)) continue;
       carried.x = at.x;
       carried.y = at.y;
     }

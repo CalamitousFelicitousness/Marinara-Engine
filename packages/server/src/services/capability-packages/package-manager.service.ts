@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition whose holder is dragged along by whoever put it on (1.444): grappled. */
+function carriesDragged444(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDragged444(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.dragged !== undefined) return true;
+  return featureValues(record).some((one) => carriesDragged444(one, depth + 1));
+}
+
 /** Mounted combat (1.443): the combat block's mounts, or a creature that acts as it will ridden. */
 function carriesMounts443(ruleset: unknown, depth = 0): boolean {
   const record = plainRecord(ruleset);
@@ -6334,6 +6344,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition whose holder is dragged along by whoever put it on, 1.444.
+  if (
+    !declaresApi(444) &&
+    (carriesDragged444(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDragged444(document)))
+  ) {
+    return "A ruleset whose conditions drag their holder along with whoever put them on (dragged) requires schemaVersion 2 and capabilityApi 1.444 or newer";
+  }
   // Mounted combat, 1.443.
   if (
     !declaresApi(443) &&

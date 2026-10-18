@@ -320,6 +320,33 @@ export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mo
   return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
 }
 
+/** Whom this mover drags along as they walk (1.444), those holding a `dragged` condition they put
+ *  on, and whether that halves their speed: anybody not `unlessSmaller` sizes smaller does. */
+export function rulesetDragging(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  mover: RulesetCombatant,
+): { ids: string[]; halves: boolean } {
+  const combat = definition.combat;
+  const out = { ids: [] as string[], halves: false };
+  if (!combat) return out;
+  const own = rulesetSizeRank(combat, mover);
+  for (const one of state.combatants) {
+    if (one.id === mover.id || one.defeated || !rulesetPositionOf(one) || one.insideOf || one.mountedOn) continue;
+    const rule = rulesetActiveConditions(definition, combat, one, state).find(
+      (entry) =>
+        entry.dragged &&
+        one.tracked.some((tracked) => tracked.condition === entry.condition && tracked.source === mover.id),
+    );
+    if (!rule?.dragged) continue;
+    out.ids.push(one.id);
+    const rank = rulesetSizeRank(combat, one);
+    const smaller = rule.dragged.unlessSmaller;
+    if (smaller === undefined || own === undefined || rank === undefined || own - rank < smaller) out.halves = true;
+  }
+  return out;
+}
+
 /** Solid ground this mover walks through (1.442): Incorporeal Movement. */
 export function rulesetThroughSolid(grid: TacticalGrid, x: number, y: number, mover: RulesetCombatant): boolean {
   return !!mover.passesObjects && inBounds(grid, x, y) && rulesetCellSolidFor(grid, x, y, mover);
@@ -869,6 +896,8 @@ export function rulesetReachableCells(
   }
   // Another's space costs as hard going (1.442), and solid ground does to one who walks through it.
   const crowded = combat.sizes?.passing?.crowded;
+  // Dragging somebody they hold (1.444): every step costs double, unless all are much smaller.
+  const dragging = rulesetDragging(definition, state, actor);
   const solidFor = (x: number, y: number) =>
     rulesetCellSolidFor(grid, x, y, actor) && !rulesetThroughSolid(grid, x, y, actor);
   const insideSolid = (x: number, y: number) => rulesetThroughSolid(grid, x, y, actor);
@@ -997,10 +1026,11 @@ export function rulesetReachableCells(
       if (plain === undefined) continue;
       // Ground a lasting area makes hard going (1.173), and another's space (1.442).
       const slowedStep = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);
-      const step =
+      const crowdedStep =
         crowded !== undefined && occupied.has(next)
           ? Math.max(slowedStep, plain + Math.max(0, crowded - enterCostFor(grid, { x, y }, actor)))
           : slowedStep;
+      const step = dragging.halves ? crowdedStep * 2 : crowdedStep;
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);

@@ -2565,7 +2565,8 @@ function itemAttackActions(
         : 0;
     const ownDamage = number(read(attack.damage.bonus));
     const ownHit = pooled ? 0 : number(read(attack.toHit?.bonus));
-    const bonus = ownDamage + (Number.isFinite(sheetDamage) ? sheetDamage : 0);
+    // Less what corrosion took off it for good (1.498).
+    const bonus = ownDamage + (Number.isFinite(sheetDamage) ? sheetDamage : 0) - (held.corroded ?? 0);
     const typeRead = read(attack.damage.type);
     const type = typeof typeRead === "string" && typeRead.trim() ? typeRead.trim() : undefined;
     const strikes = attack.strikes

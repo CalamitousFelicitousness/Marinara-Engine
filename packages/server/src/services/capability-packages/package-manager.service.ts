@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Weapons that corrode on hitting it (1.498): a rust monster's Rust Metal. */
+function carriesCorrodesWeapons498(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCorrodesWeapons498(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.corrodesWeapons) && Array.isArray(record.actions)) return true;
+  return featureValues(record).some((one) => carriesCorrodesWeapons498(one, depth + 1));
+}
+
 /** Heads that die and grow back (1.497): a hydra's Multiple Heads, Reactive Heads and Multiattack. */
 function carriesHeads497(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6969,6 +6979,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Weapons that corrode on hitting it, 1.498.
+  if (
+    !declaresApi(498) &&
+    (carriesCorrodesWeapons498(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCorrodesWeapons498(document)))
+  ) {
+    return "A ruleset with a creature that corrodes the weapons hitting it (corrodesWeapons) requires schemaVersion 2 and capabilityApi 1.498 or newer";
+  }
   // Heads that die and grow back, 1.497.
   if (
     !declaresApi(497) &&

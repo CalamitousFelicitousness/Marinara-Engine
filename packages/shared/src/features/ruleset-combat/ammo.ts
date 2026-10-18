@@ -166,6 +166,8 @@ function draw(actor: RulesetCombatant, tag: string, count: number, recover?: num
     const take = Math.min(wanted, Math.max(0, held.quantity - used));
     if (take <= 0) return;
     (actor.itemsUsed ??= {})[index] = used + take;
+    // Where the shot came from (1.498), for ammunition destroyed as it hits.
+    actor.lastShot = index;
     if (recover) {
       const recoverable = (actor.recoverable ??= {});
       recoverable[index] = (recoverable[index] ?? 0) + take * recover;
@@ -326,6 +328,8 @@ export interface RulesetFightItemChange {
   loaded?: number;
   /** What an item with charges holds now. */
   charges?: number;
+  /** What a weapon has taken off its damage rolls for good now (1.498), corroded. */
+  corroded?: number;
   /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
   usesLeft?: Record<string, number>;
   /** What is stored in it now (1.471), when the fight stored or cast something. */
@@ -358,6 +362,7 @@ export function rulesetFightItemChanges(
       (!combatant.itemsUsed &&
         !combatant.loaded &&
         !combatant.charges &&
+        !combatant.corroded &&
         !combatant.usesLeft &&
         !combatant.on &&
         !combatant.became &&
@@ -373,6 +378,9 @@ export function rulesetFightItemChanges(
       const reloaded = loaded !== undefined && loaded !== earlier?.loaded?.[index];
       const charges = combatant.charges?.[index];
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
+      // Corroded further (1.498), since `before`.
+      const corroded = combatant.corroded?.[index];
+      const rusted = corroded !== undefined && corroded !== (earlier?.corroded?.[index] ?? held.corroded);
       // Its own uses spent (1.466), since `before`.
       const usesLeft = Object.fromEntries(
         Object.entries(combatant.usesLeft ?? {}).flatMap(([key, left]) => {
@@ -390,7 +398,7 @@ export function rulesetFightItemChanges(
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !usesSpent && !restored && !switched && !turned) return;
+      if (taken === 0 && !reloaded && !spent && !rusted && !usesSpent && !restored && !switched && !turned) return;
       // The stack holds what it became from the step after it turned, so later changes name that.
       const ref = earlier?.became?.[index] ?? held.stack.ref;
       changes.push({
@@ -399,6 +407,7 @@ export function rulesetFightItemChanges(
         taken,
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
+        ...(rusted ? { corroded } : {}),
         ...(usesSpent ? { usesLeft } : {}),
         ...(restored ? { storedEntries: storedNow } : {}),
         ...(switched ? { on } : {}),
@@ -459,7 +468,14 @@ export function applyRulesetFightItemChanges(
     const on = change.on ?? wasOn === true;
     // Become another item (1.272): the stack holds that item now, under its name, with no charges.
     if (change.becomes) {
-      const { charges: _charges, loaded: _loaded, usesLeft: _usesLeft, storedEntries: _stored, ...plain } = kept;
+      const {
+        charges: _charges,
+        corroded: _corroded,
+        loaded: _loaded,
+        usesLeft: _usesLeft,
+        storedEntries: _stored,
+        ...plain
+      } = kept;
       journal.push({ item: stack.name, action: "lost", quantity: 1 });
       journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
       next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
@@ -473,6 +489,7 @@ export function applyRulesetFightItemChanges(
       ...(change.storedEntries?.length && quantity === 1 ? { storedEntries: change.storedEntries } : {}),
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
+      ...(change.corroded && quantity === 1 ? { corroded: change.corroded } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
     };

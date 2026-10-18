@@ -674,6 +674,8 @@ export interface RulesetStatBlock {
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
   /** Budgets back in full as every turn starts, anybody's (1.496): a marilith's Reactive. */
   refillsEveryTurn?: string[];
+  /** Weapons that hit it corrode (1.498): a rust monster's Rust Metal. */
+  corrodesWeapons?: { tags: string[]; sparesMagical?: true; step?: number; destroyedAt?: number; ammunition?: true };
   /** Heads that die and grow back (1.497): a hydra's Multiple Heads and Reactive Heads. */
   heads?: {
     count: number;
@@ -1882,6 +1884,11 @@ export interface RulesetCombatant {
   itemsUsed?: Record<string, number>;
   loaded?: Record<string, number>;
   recoverable?: Record<string, number>;
+  /** What each weapon has taken off its damage rolls for good (1.498), corroded, keyed as the rest
+   *  are: as the fight began and since. */
+  corroded?: Record<string, number>;
+  /** The item the last shot was drawn from (1.498), for ammunition destroyed as it hits. */
+  lastShot?: number;
   /** What each item with charges holds now, keyed as the rest are. */
   charges?: Record<string, number>;
   /** What is left of each further use that counts its own (1.466), keyed `<item>:<more>`. */
@@ -3331,6 +3338,17 @@ export type RulesetCombatEvent =
   | { type: "deathBurst"; actorId: string; label: string }
   /** Its low-health roll as its turn starts (1.490): Berserk's d6. */
   | { type: "turnRoll"; actorId: string; roll: number; atLeast: number; conditions: string[] }
+  /** A weapon corroded on hitting it (1.498): `penalty` off its damage now, gone when `destroyed`;
+   *  with `ammunition`, the shot is destroyed. */
+  | {
+      type: "corroded";
+      actorId: string;
+      targetId: string;
+      label: string;
+      penalty: number;
+      destroyed?: true;
+      ammunition?: true;
+    }
   /** One of its heads died (1.497), `left` still on it. */
   | { type: "headLost"; actorId: string; left: number }
   /** Heads grown back as its turn ends (1.497), `heads` now; none when `burned`. */

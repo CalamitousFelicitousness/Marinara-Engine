@@ -925,6 +925,15 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["turnRoll", say({ type: "turnRoll", actorId: "lurker", roll: 6, atLeast: 6, conditions: ["berserk"] })],
     ["rampage", say({ type: "rampage", actorId: "lurker", label: "Bite", cells: 3 })],
     ["headLost", say({ type: "headLost", actorId: "lurker", left: 4 })],
+    ["corroded", say({ type: "corroded", actorId: "brenna", targetId: "lurker", label: "Longsword", penalty: 2 })],
+    [
+      "corroded",
+      say({ type: "corroded", actorId: "brenna", targetId: "lurker", label: "Longsword", penalty: 5, destroyed: true }),
+    ],
+    [
+      "corroded",
+      say({ type: "corroded", actorId: "brenna", targetId: "lurker", label: "Arrow", penalty: 0, ammunition: true }),
+    ],
     ["headsGrow", say({ type: "headsGrow", actorId: "lurker", grown: 2, heads: 6 })],
     ["headsGrow", say({ type: "headsGrow", actorId: "lurker", grown: 0, heads: 4, burned: true })],
     ["goesAt", say({ type: "goesAt", actorId: "lurker", condition: "berserk", targetId: "lurker" })],

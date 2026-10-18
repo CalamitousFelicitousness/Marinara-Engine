@@ -8081,6 +8081,22 @@ const creatureFields = {
    *  While it has more than one head it holds the conditions `whileMany` names, as a condition's
    *  save advantage against being blinded or charmed is written. A sequence step's `perHead` makes
    *  that strike once per head. */
+  /** Weapons that hit it corrode (Capability API 1.498): a held weapon with any of `tags`, after
+   *  dealing damage, takes `step` (1) more off its damage rolls for good, kept on its stack, and is
+   *  destroyed once that reaches `destroyedAt` (5). `sparesMagical` leaves a magical weapon alone.
+   *  With `ammunition`, ammunition with any of `tags` that hits it is destroyed after dealing damage
+   *  rather than won back. 5e's rust monster's Rust Metal, `{"tags": ["metal"], "sparesMagical": true,
+   *  "ammunition": true}`, and a black pudding's Corrosive Form, `["metal", "wood"]`. */
+  corrodesWeapons: z
+    .object({
+      tags: z.array(sheetId).min(1).max(8),
+      sparesMagical: z.literal(true).optional(),
+      step: z.number().int().min(1).max(10).optional(),
+      destroyedAt: z.number().int().min(1).max(100).optional(),
+      ammunition: z.literal(true).optional(),
+    })
+    .strict()
+    .optional(),
   heads: z
     .object({
       count: z.number().int().min(2).max(20),

@@ -991,6 +991,63 @@ function applyDamage(
   return dealt;
 }
 
+/** A held weapon that dealt damage to a creature that corrodes weapons (1.498): another `step` off its
+ *  damage for good, written back to its stack, and destroyed at `destroyedAt`, its blows gone with it.
+ *  Ammunition it shot of the same stuff is destroyed instead of won back. */
+function corrodeOnHit(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const rule = target.block?.corrodesWeapons;
+  const items = actor.sheet?.items;
+  if (!rule || !items || !/^(?:item|offhand):/.test(action.id)) return;
+  const index = rulesetActionItemIndex(action);
+  const held = index === undefined ? undefined : items[index];
+  if (index === undefined || !held || actor.broken?.[index]) return;
+  const made = (tags: readonly string[] | undefined) =>
+    rule.tags.some((tag) => tags?.includes(tag)) && !(rule.sparesMagical && tags?.includes("magical"));
+  // The shot, when it was one (1.498): destroyed rather than won back.
+  if (action.ammo && rule.ammunition && actor.lastShot !== undefined) {
+    const shot = items[actor.lastShot];
+    const back = actor.recoverable?.[actor.lastShot];
+    if (shot && made(shot.item.tags) && back) {
+      actor.recoverable![actor.lastShot] = Math.max(0, back - (action.ammo.recover ?? 0) * action.ammo.per);
+      ctx.events.push({
+        type: "corroded",
+        actorId: actor.id,
+        targetId: target.id,
+        label: shot.name ?? action.label,
+        penalty: 0,
+        ammunition: true,
+      });
+    }
+    return;
+  }
+  if (action.ammo || !made(held.item.tags)) return;
+  const step = rule.step ?? 1;
+  const was = actor.corroded?.[index] ?? held.corroded ?? 0;
+  const penalty = was + step;
+  (actor.corroded ??= {})[index] = penalty;
+  const label = held.name ?? action.label;
+  if (penalty >= (rule.destroyedAt ?? 5)) {
+    (actor.itemsUsed ??= {})[index] = (actor.itemsUsed[index] ?? 0) + 1;
+    (actor.broken ??= {})[index] = true;
+    actor.actions = actor.actions.filter((one) => rulesetActionItemIndex(one) !== index);
+    ctx.events.push({ type: "corroded", actorId: actor.id, targetId: target.id, label, penalty, destroyed: true });
+    return;
+  }
+  for (const one of actor.actions) {
+    if (rulesetActionItemIndex(one) !== index || !one.damage) continue;
+    one.damage = {
+      ...one.damage,
+      flat: rulesetCombatIsPool(ctx.combat) ? Math.max(0, one.damage.flat - step) : one.damage.flat - step,
+    };
+  }
+  ctx.events.push({ type: "corroded", actorId: actor.id, targetId: target.id, label, penalty });
+}
+
 /** A hydra's heads as damage reaches it (1.497): what stops them growing is remembered until its
  *  turn ends, and the turn's damage reaching `lostAt` kills one, once a turn. With none left it dies,
  *  and with one left it holds what many heads give it no more. */
@@ -13760,6 +13817,8 @@ function resolveActionBodyIn(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // A weapon that hit it corroded (1.498): a rust monster's Rust Metal.
+    if (dealt > 0) corrodeOnHit(ctx, actor, action, target);
     // Caught (1.363): a weapon's missile its target took all of away, to be thrown back with the
     // missile's own damage.
     if (before && lessened && dealt === 0 && action.damage && rulesetWeaponBlow(action) && !target.defeated) {

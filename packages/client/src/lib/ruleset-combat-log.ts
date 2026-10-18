@@ -628,6 +628,14 @@ export function rulesetCombatEventLine(
         roll: event.roll,
         conditions: event.conditions.map((one) => names.condition(one)).join(", "),
       });
+    // A weapon corroded on what it hit (1.498).
+    case "corroded":
+      return key(event.ammunition ? "corrodedAmmo" : event.destroyed ? "corrodedDestroyed" : "corroded", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        penalty: event.penalty,
+      });
     // A hydra's heads (1.497).
     case "headLost":
       return key("headLost", { actor: names.combatant(event.actorId), left: event.left });

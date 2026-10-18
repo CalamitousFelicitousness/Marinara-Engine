@@ -50,6 +50,9 @@ export interface GameInventoryStack {
   /** The charges an item holds, as a ruleset fight left them. Kept on a stack of one item only, as a
    *  loaded count is, and an item without one holds all it can. */
   charges?: number;
+  /** What a weapon has taken off its damage rolls for good (Capability API 1.498), corroded by what
+   *  it hit, as a ruleset fight left it. Kept on a stack of one item only, as charges are. */
+  corroded?: number;
   /** What is left of each of its further uses that counts its own (Capability API 1.466), by its
    *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full. */
   usesLeft?: Record<string, number>;
@@ -363,12 +366,14 @@ function makeStack(stack: {
   bound?: boolean;
   loaded?: number;
   charges?: number;
+  corroded?: number;
   usesLeft?: Record<string, number>;
   storedEntries?: GameInventoryStoredEntry[];
   on?: boolean;
   truly?: string;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
+  const { corroded } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -382,6 +387,7 @@ function makeStack(stack: {
     ...(bound ? { bound: true as const } : {}),
     ...(loaded !== undefined && quantity === 1 ? { loaded } : {}),
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
+    ...(corroded && quantity === 1 ? { corroded } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
     ...(storedEntries?.length && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
@@ -525,6 +531,10 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
           typeof source.charges === "number" && Number.isInteger(source.charges) && source.charges >= 0
             ? Math.min(GAME_INVENTORY_MAX_QUANTITY, source.charges)
             : undefined,
+        corroded:
+          typeof source.corroded === "number" && Number.isInteger(source.corroded) && source.corroded > 0
+            ? Math.min(100, source.corroded)
+            : undefined,
         usesLeft: readUsesLeft(source.usesLeft),
         storedEntries: readStoredEntries(source.storedEntries),
         on: source.on === true && quantity === 1,
@@ -607,6 +617,7 @@ export function revealGameInventoryFake(
       truly,
       loaded: _loaded,
       charges: _charges,
+      corroded: _corroded,
       usesLeft: _usesLeft,
       storedEntries: _stored,
       on: _on,
@@ -1496,6 +1507,7 @@ export function setGameInventoryStackQuantity(
     on: _on,
     loaded: _loaded,
     charges: _charges,
+    corroded: _corroded,
     usesLeft: _usesLeft,
     storedEntries: _stored,
     ...off
@@ -1578,6 +1590,7 @@ export function mergeGameInventoryStacks(
       const {
         loaded: _loaded,
         charges: _charges,
+        corroded: _corroded,
         usesLeft: _usesLeft,
         storedEntries: _stored,
         on: _on,

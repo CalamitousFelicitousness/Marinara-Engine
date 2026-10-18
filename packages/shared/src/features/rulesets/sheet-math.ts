@@ -281,6 +281,8 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
+  /** What a weapon has taken off its damage rolls for good (1.498), corroded, as the stack keeps it. */
+  corroded?: number;
   /** What is left of its further uses that count their own (1.466), as the stack keeps them. */
   usesLeft?: Record<string, number>;
   /** What is stored in it (1.471), as the stack keeps it. */

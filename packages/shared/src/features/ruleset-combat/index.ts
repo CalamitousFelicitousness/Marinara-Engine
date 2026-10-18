@@ -234,6 +234,7 @@ export {
   rulesetAimLegal,
   rulesetAnswerDeflects,
   rulesetAreaTargets,
+  rulesetActionQualities,
   rulesetAroundTargets,
   rulesetLegendaryMoveCells,
   rulesetEngulfCells,

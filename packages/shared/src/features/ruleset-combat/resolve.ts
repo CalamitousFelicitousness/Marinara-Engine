@@ -223,6 +223,7 @@ import {
   rulesetWarded,
   type RulesetAreaLay,
   rulesetAreaTargets,
+  rulesetActionQualities,
   rulesetAroundTargets,
   rulesetAttackMode,
   rulesetCombatOptions,
@@ -10431,6 +10432,11 @@ function openMoment(
       (one) =>
         rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
           ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+          ...("optionId" in trigger
+            ? {
+                qualities: rulesetActionQualities(source?.actions.find((entry) => entry.id === trigger.optionId)),
+              }
+            : {}),
           ...(trigger.kind === "falls" && trigger.fallerIds ? { targetIds: trigger.fallerIds } : {}),
           ...(trigger.kind === "aimed" && trigger.blow ? { blow: trigger.blow } : {}),
           ...("optionId" in trigger && source?.block && !("catalog" in trigger && trigger.catalog)
@@ -10742,6 +10748,7 @@ function hitAnswers(
       (one) =>
         rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, "hit", actor.id, {
           targetIds: [target.id],
+          qualities: rulesetActionQualities(action),
           ...(!action.catalog && actor.block ? { action: action.label } : {}),
           ...(action.catalog ? { catalog: action.catalog } : {}),
           ...(action.entry ? { entry: action.entry } : {}),

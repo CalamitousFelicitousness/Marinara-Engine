@@ -2255,6 +2255,8 @@ export interface RulesetReactionAlso {
   missed?: true;
   /** Only when whoever caused it is this (1.369). */
   sourceIs?: RulesetTargetIs;
+  /** Only for one holding an item with one of these tags (1.511): a shield guardian's amulet. */
+  forHolds?: string[];
 }
 
 /** Who a use attacked, hit or missed, the ones it missed, and the kind of blow each was (1.369). */
@@ -2268,6 +2270,8 @@ export interface RulesetAttackedRecord {
  *  it, and for a hit, the kind of blow. */
 export interface RulesetMomentCause {
   targetIds?: string[];
+  /** What the action that caused it carries (1.511). */
+  qualities?: string[];
   action?: string;
   catalog?: string;
   entry?: string;
@@ -2291,6 +2295,8 @@ export interface RulesetMomentCause {
  *  `entries` (`<catalog>/<entry>`, 1.117). Either is enough. */
 export interface RulesetReactionAgainst {
   actions?: string[];
+  /** Anything carrying one of these qualities (1.511): Rock Catching. */
+  qualities?: string[];
   catalogs?: string[];
   entries?: string[];
 }

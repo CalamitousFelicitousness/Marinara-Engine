@@ -3919,12 +3919,19 @@ const rulesetReactionAgainstSchema = z
     catalogs: z.array(sheetId).min(1).max(12).optional(),
     entries: z.array(catalogEntryRef).min(1).max(12).optional(),
     actions: z.array(z.string().trim().min(1).max(80)).min(1).max(12).optional(),
+    /** Or anything carrying one of these qualities (Capability API 1.511), on a stat block's action,
+     *  its damage, a catalog entry or an item: Rock Catching's "rock or similar object". */
+    qualities: z.array(sheetId).min(1).max(8).optional(),
   })
   .strict()
   .refine(
-    (against) => against.catalogs !== undefined || against.entries !== undefined || against.actions !== undefined,
+    (against) =>
+      against.catalogs !== undefined ||
+      against.entries !== undefined ||
+      against.actions !== undefined ||
+      against.qualities !== undefined,
     {
-      message: '"against" names catalogs, entries or both, or creature actions',
+      message: '"against" names catalogs, entries or both, or creature actions, or qualities',
     },
   );
 
@@ -3959,6 +3966,9 @@ const rulesetMomentNarrowing = {
    *  Killer's Large or larger creature. */
   // Declared further down, with the other target tests.
   sourceIs: z.lazy(() => targetIsSchema).optional(),
+  /** Only when the one it answers for holds an item, worn or carried, with one of these tags
+   *  (Capability API 1.511): a shield guardian's Shield, for whoever wears its amulet. */
+  forHolds: z.array(sheetId).min(1).max(8).optional(),
 };
 const blowOnlyOnHit = (
   moment: {

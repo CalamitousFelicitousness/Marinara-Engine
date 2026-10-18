@@ -4792,8 +4792,15 @@ export function rulesetWindowOptions(
   if (!moment) return [];
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
   const trigger = window.trigger;
+  // What the action behind it carries (1.511): Rock Catching's rock.
+  const qualities = rulesetActionQualities(
+    "optionId" in trigger
+      ? rulesetCombatant(state, source)?.actions.find((one) => one.id === trigger.optionId)
+      : undefined,
+  );
   const cause: RulesetMomentCause = {
     ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+    ...(qualities.length ? { qualities } : {}),
     ...("optionId" in trigger && rulesetCombatant(state, source)?.block && !("catalog" in trigger && trigger.catalog)
       ? { action: trigger.label }
       : {}),
@@ -4900,7 +4907,16 @@ function momentAnswers(
   moment: RulesetReactionAlso,
   cause: RulesetMomentCause,
 ): boolean {
-  if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action)) return false;
+  if (!rulesetAgainstMatches(moment.against, cause.catalog, cause.entry, cause.action, cause.qualities)) return false;
+  // Only for one who holds such an item (1.511): a shield guardian's amulet.
+  if (
+    moment.forHolds &&
+    !(cause.targetIds ?? []).some((id) => {
+      const one = rulesetCombatant(state, id);
+      return (one?.sheet?.items ?? []).some((held) => held.item.tags?.some((tag) => moment.forHolds!.includes(tag)));
+    })
+  )
+    return false;
   // Its holder's own hit, or somebody else's (1.241): never both.
   if (moment.on === "hit" && (moment.by === "self") !== (sourceId === holder.id)) return false;
   // Only the one who caught it throws it back (1.363).
@@ -4952,6 +4968,12 @@ export function rulesetNeededComponents(
   return waived.size ? needs.filter((component) => !waived.has(component)) : needs;
 }
 
+/** What an action carries, its own and its damage's (1.511): what a reaction's `against.qualities`
+ *  reads. */
+export function rulesetActionQualities(action: RulesetCombatAction | undefined): string[] {
+  return [...new Set([...(action?.qualities ?? []), ...(action?.damage?.qualities ?? [])])];
+}
+
 /** Whether what caused a moment is something this `against` answers: from one of its catalogs, or
  *  one of its entries by name. Nothing narrows a reaction that names neither. */
 function rulesetAgainstMatches(
@@ -4959,9 +4981,11 @@ function rulesetAgainstMatches(
   catalog: string | undefined,
   entry: string | undefined,
   action: string | undefined,
+  qualities: readonly string[] = [],
 ): boolean {
   if (!against) return true;
   return (
+    (against.qualities ?? []).some((one) => qualities.includes(one)) ||
     (catalog !== undefined && (against.catalogs ?? []).includes(catalog)) ||
     (entry !== undefined && (against.entries ?? []).includes(entry)) ||
     (action !== undefined && (against.actions ?? []).some((name) => name.toLowerCase() === action.toLowerCase()))

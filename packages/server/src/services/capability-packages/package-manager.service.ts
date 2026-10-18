@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A reaction narrowed by qualities, or by what the one it answers for holds (1.511). */
+function carriesReactionQualities511(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReactionQualities511(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.forHolds !== undefined) return true;
+  if (plainRecord(record.against)?.qualities !== undefined) return true;
+  return featureValues(record).some((one) => carriesReactionQualities511(one, depth + 1));
+}
+
 /** A heal shared out among its targets (1.510): Preserve Life. */
 function carriesSharedHeal510(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7113,6 +7124,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Reactions narrowed by qualities or by what the one answered for holds, 1.511.
+  if (
+    !declaresApi(511) &&
+    (carriesReactionQualities511(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesReactionQualities511(document)))
+  ) {
+    return "A ruleset with a reaction narrowed by qualities or by what the one it answers for holds (against.qualities, forHolds) requires schemaVersion 2 and capabilityApi 1.511 or newer";
+  }
   // A heal shared out among its targets, 1.510.
   if (
     !declaresApi(510) &&

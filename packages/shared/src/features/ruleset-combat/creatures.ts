@@ -49,6 +49,7 @@ export function rulesetReactionAnswers(
           against: {
             ...(moment.against.catalogs ? { catalogs: [...moment.against.catalogs] } : {}),
             ...(moment.against.actions ? { actions: [...moment.against.actions] } : {}),
+            ...(moment.against.qualities ? { qualities: [...moment.against.qualities] } : {}),
             ...(moment.against.entries ? { entries: [...moment.against.entries] } : {}),
           },
         }
@@ -69,6 +70,7 @@ export function rulesetReactionAnswers(
     ...(moment.freeSlot ? { freeSlot: moment.freeSlot } : {}),
     ...(moment.missed ? { missed: true as const } : {}),
     ...(moment.sourceIs ? { sourceIs: structuredClone(moment.sourceIs) } : {}),
+    ...(moment.forHolds ? { forHolds: [...moment.forHolds] } : {}),
   });
   return {
     ...narrowing(reaction),

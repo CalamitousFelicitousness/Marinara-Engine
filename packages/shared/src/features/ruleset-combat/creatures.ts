@@ -451,7 +451,11 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.sheet ? { sheet: structuredClone(creature.sheet) } : {}),
     ...(creature.spellcasting ? { spellcasting: structuredClone(creature.spellcasting) } : {}),
     ...(creature.stores ? { stores: structuredClone(creature.stores) } : {}),
-    actions: actions.filter((action): action is RulesetStatBlockAction => action !== null),
+    // What it does as it dies (1.487), last among them and never on its menu.
+    actions: [
+      ...actions.filter((action): action is RulesetStatBlockAction => action !== null),
+      ...(creature.onDeath ? [{ ...creatureAction(creature.onDeath), onDeath: true as const }] : []),
+    ],
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
     ...(creature.speeds ? { speeds: { ...creature.speeds } } : {}),
     ...(creature.hover ? { hover: true as const } : {}),

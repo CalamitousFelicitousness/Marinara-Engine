@@ -1785,6 +1785,7 @@ function dropToZero(
   endConditionsFromSource(ctx, target);
   if (rulesetDiesAtZero(target)) {
     ctx.events.push({ type: "defeated", actorId: target.id });
+    dies(ctx, target);
     return;
   }
   const dying = ctx.combat.dying;
@@ -8905,6 +8906,26 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     unconjureAll(ctx, actor);
     endConditionsFromSource(ctx, actor);
     ctx.events.push({ type: "defeated", actorId: actor.id });
+    dies(ctx, actor);
+  }
+}
+
+/** What a creature does as it dies (1.487): its own burst around it, on whoever it catches, never
+ *  held for an answer. A mephit's Death Burst, a balor's Death Throes. */
+function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
+  const action = dead.actions.find((entry) => entry.onDeath);
+  if (!action?.around || dead.dismissed) return;
+  const caught = rulesetAroundTargets(ctx.state, dead, action).filter(
+    (one) => !one.defeated && !rulesetSealedApart(ctx.definition, ctx.state, dead, one),
+  );
+  ctx.events.push({ type: "deathBurst", actorId: dead.id, label: action.label });
+  const before = ctx.summonStriking;
+  ctx.summonStriking = true;
+  try {
+    resolveAction(ctx, dead, action, caught);
+  } finally {
+    if (before) ctx.summonStriking = before;
+    else delete ctx.summonStriking;
   }
 }
 

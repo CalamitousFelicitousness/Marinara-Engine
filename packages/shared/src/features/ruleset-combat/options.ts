@@ -2741,6 +2741,8 @@ function optionFrom(
   /** What the actor's conditions do to the economy, worked out once for a whole menu. */
   economy = rulesetConditionEconomy(definition, combat, actor, state),
 ): RulesetCombatOption | null {
+  // What its holder does as it dies (1.487) is never chosen.
+  if (action.onDeath) return null;
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
   if (action.signature) return null;

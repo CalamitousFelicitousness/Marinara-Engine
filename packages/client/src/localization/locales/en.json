@@ -2086,6 +2086,7 @@
   "game.combat.ruleset.event.damageUntyped": "{{target}} takes {{amount}} damage, and is on {{health}} of {{maxHealth}}.",
   "game.combat.ruleset.event.damageVulnerable": "Vulnerable to it.",
   "game.combat.ruleset.event.daze": "{{target}} is dazed: {{damage}} damage exceeds {{over}}. Their next turn is skipped.",
+  "game.combat.ruleset.event.deathBurst": "As {{actor}} dies, {{label}}.",
   "game.combat.ruleset.event.defeated": "{{target}} is out of the fight.",
   "game.combat.ruleset.event.delayCompleted": "{{actor}} completes {{label}}.",
   "game.combat.ruleset.event.delayHeld": "{{actor}} is slowed: {{roll}} against {{needed}}, so {{label}} waits for their next turn.",

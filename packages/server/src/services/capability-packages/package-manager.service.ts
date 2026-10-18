@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A creature's burst as it dies (1.487): a mephit's Death Burst. */
+function carriesOnDeath487(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOnDeath487(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.onDeath) && Array.isArray(record.actions)) return true;
+  return featureValues(record).some((one) => carriesOnDeath487(one, depth + 1));
+}
+
 /** A summons that strikes by itself, or stays past 100 rounds (1.486): Faithful Hound. */
 function carriesStrikingSummons486(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6848,6 +6858,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's burst as it dies, 1.487.
+  if (
+    !declaresApi(487) &&
+    (carriesOnDeath487(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOnDeath487(document)))
+  ) {
+    return "A ruleset with a creature that bursts as it dies (onDeath) requires schemaVersion 2 and capabilityApi 1.487 or newer";
+  }
   // A summons that strikes by itself, 1.486.
   if (
     !declaresApi(486) &&

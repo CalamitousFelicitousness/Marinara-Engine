@@ -4020,6 +4020,7 @@ function blockActions(
     kind: "block" as const,
     label: action.name,
     budget: action.budget,
+    ...(action.onDeath ? { onDeath: true as const } : {}),
     // A sequence may be pointed at as many targets as all of its parts together, so a caller can
     // send each strike somewhere else. Fewer is legal too: every part takes the ones it was given.
     // One that lands on the creature itself points at nobody: its effect is its own.

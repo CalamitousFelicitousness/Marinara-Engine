@@ -411,6 +411,8 @@ export interface RulesetStatBlockAction {
   /** The block's own id when it has one, so a bestiary keeps its names across a reload. A sequence
    *  names its parts by this id, so a block with sequences needs them. */
   id?: string;
+  /** What it does as it dies (1.487), never on its menu: a mephit's Death Burst. */
+  onDeath?: true;
   name: string;
   budget: string;
   toHit?: number;
@@ -848,6 +850,8 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
+  /** What its holder does as it dies (1.487), never on a menu: a mephit's Death Burst. */
+  onDeath?: true;
   /** Its holder's other actions whose effects happen too as this one does (1.482), each on whom its
    *  burst around them catches, spending nothing of theirs: Thunder and Lightning's Thunderclap. */
   alongside?: string[];
@@ -3280,6 +3284,8 @@ export type RulesetCombatEvent =
   | { type: "extraTurn"; actorId: string; initiative: number; label: string }
   /** Its maker adds this to the blow that just hit (1.241): Divine Smite. */
   | { type: "added"; actorId: string; targetId: string; label: string; to: string }
+  /** What a creature does as it dies (1.487): a mephit's Death Burst. */
+  | { type: "deathBurst"; actorId: string; label: string }
   /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */
   | { type: "alongside"; actorId: string; label: string; to: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */

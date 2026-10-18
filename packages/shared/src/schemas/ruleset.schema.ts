@@ -7997,6 +7997,10 @@ const creatureFields = {
     })
     .strict()
     .optional(),
+  /** What it does as it dies (Capability API 1.487): an action of its own, never on its menu, a
+   *  burst centred on it (`area.around`) resolved on whoever it catches as it is out of the fight.
+   *  5e's mephits' Death Burst and a balor's Death Throes. Its `budget` is never spent. */
+  onDeath: creatureActionSchema.optional(),
   /** It does not move while any of its cells is in one of these lights (Capability API 1.319): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
   stillIn: z
@@ -18025,6 +18029,19 @@ function creatureIssues(
     }
   }
 
+  // What it does as it dies (1.487) is a burst around it, with the ruleset's own saves and conditions.
+  if (creature.onDeath) {
+    const path = [...at, "onDeath"];
+    if (!creature.onDeath.area?.around)
+      add([...path, "area"], "What it does as it dies is a burst centred on it (area around)");
+    const save = creature.onDeath.save?.save;
+    if (save !== undefined && !definition.sheet.saves.some((one) => one.id === save))
+      add([...path, "save", "save"], `Unknown save "${save}"`);
+    creature.onDeath.applies?.forEach((entry, index) => {
+      if (!definition.sheet.live.conditions.some((one) => one.id === entry.condition))
+        add([...path, "applies", index, "condition"], `Unknown condition "${entry.condition}"`);
+    });
+  }
   // Every rider names this block's own actions and this ruleset's own damage types.
   const riderIds = new Set<string>();
   creature.riders?.forEach((rider, index) => {

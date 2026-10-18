@@ -921,6 +921,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["shaped", say({ type: "shaped", targetId: "lurker", condition: "polymorph", form: "Toad", refused: true })],
     ["sentAway", say({ type: "sentAway", actorId: "brenna", ids: ["lurker"], reason: "rounds" })],
     ["turnedOn", say({ type: "turnedOn", actorId: "brenna", ids: ["lurker"] })],
+    ["deathBurst", say({ type: "deathBurst", actorId: "lurker", label: "Death Burst" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker", out: true })],
     ["mount", say({ type: "mount", riderId: "brenna", mountId: "lurker" })],

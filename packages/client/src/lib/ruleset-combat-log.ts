@@ -621,6 +621,9 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // What a creature does as it dies (1.487): a mephit's Death Burst.
+    case "deathBurst":
+      return key("deathBurst", { actor: names.combatant(event.actorId), label: event.label });
     // Another use's effect beside the one used (1.482): Thunderclap with Lightning Strike.
     case "alongside":
       return key("alongside", { actor: names.combatant(event.actorId), label: event.label, to: event.to });

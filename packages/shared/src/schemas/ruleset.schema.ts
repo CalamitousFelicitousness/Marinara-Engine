@@ -6035,6 +6035,13 @@ const catalogMechanicsObject = z
         onSuccess: z.enum(["none", "half", "negates"]),
         ignoresCover: z.literal(true).optional(),
         ...saveExtrasShape,
+        /** A failure by at least `atLeast` puts these on in place of its `applies` (Capability API
+         *  1.539), as an aura's does: a Wand of Wonder's petrification, petrified outright on a
+         *  failure by 5 or more. */
+        failedBy: z
+          .object({ atLeast: z.number().int().min(1).max(50), applies: z.array(catalogAppliesSchema).min(1).max(4) })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -21134,6 +21141,14 @@ export function rulesetCatalogEntryIssues(
       if (!liveConditions.has(applies.condition)) {
         add([index, "mechanics", "appliesSelf", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
       }
+    });
+    // What a failure by a margin puts on (1.539), the sheet's conditions too.
+    mechanics?.save?.failedBy?.applies.forEach((applies, appliesIndex) => {
+      if (!liveConditions.has(applies.condition))
+        add(
+          [index, "mechanics", "save", "failedBy", "applies", appliesIndex, "condition"],
+          `Unknown condition "${applies.condition}"`,
+        );
     });
     mechanics?.applies?.forEach((applies, appliesIndex) => {
       const path = [index, "mechanics", "applies", appliesIndex];

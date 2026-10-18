@@ -14717,8 +14717,19 @@ function resolveActionBodyIn(
         !target.defeated &&
         healthNow <= action.killsAtMost;
       if (slain) slay(ctx, target, actor.id, action.label);
+      // Failed by enough, something worse goes on instead (1.539): a Wand of Wonder's petrifying.
+      const failedBy = action.save?.failedBy;
+      const missed = failedBy
+        ? [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === target.id)
+        : undefined;
+      const worse =
+        failedBy &&
+        missed?.type === "save" &&
+        !missed.automatic &&
+        missed.difficulty - missed.total >= failedBy.atLeast;
+      const putting = worse ? failedBy.applies : (action.applies ?? []);
       // Not on whoever it catches where it goes on what it calls (1.426).
-      for (const applies of slain || action.appliesToCalled ? [] : (action.applies ?? [])) {
+      for (const applies of slain || action.appliesToCalled ? [] : putting) {
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;

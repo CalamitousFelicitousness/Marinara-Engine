@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An entry's or item use's save failed by a margin (1.539): a Wand of Wonder's petrification. */
+function carriesEntryFailedBy539(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEntryFailedBy539(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.onSuccess !== undefined && record.failedBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesEntryFailedBy539(one, depth + 1));
+}
+
 /** A rolled call kept, counted or spent, or an option's own rounds (1.538): an Efreeti Bottle. */
 function carriesLastingRoll538(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7427,6 +7437,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An entry's save failed by a margin, 1.539.
+  if (
+    !declaresApi(539) &&
+    (carriesEntryFailedBy539(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEntryFailedBy539(document)))
+  ) {
+    return "A ruleset with an entry's or item use's save failed by a margin (save.failedBy) requires schemaVersion 2 and capabilityApi 1.539 or newer";
+  }
   // A rolled call kept, counted or spent, 1.538.
   if (
     !declaresApi(538) &&

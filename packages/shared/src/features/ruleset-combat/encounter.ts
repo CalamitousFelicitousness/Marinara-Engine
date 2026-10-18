@@ -3494,6 +3494,14 @@ function mechanicsAction(
       ...(mechanics.save.modes ? { modes: structuredClone(mechanics.save.modes) } : {}),
       ...(mechanics.save.alliesMayFail ? { alliesMayFail: true as const } : {}),
       ...(mechanics.save.advantageIfFought ? { advantageIfFought: true as const } : {}),
+      ...(mechanics.save.failedBy
+        ? {
+            failedBy: {
+              atLeast: mechanics.save.failedBy.atLeast,
+              applies: mechanics.save.failedBy.applies.map((one) => ({ ...one })),
+            },
+          }
+        : {}),
     };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;

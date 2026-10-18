@@ -87,8 +87,8 @@ The **Rendered preview** at the bottom shows the persona built from example answ
 2. Add the character. To get a new persona out of it, select the **Create your persona** row at the top of **Your Persona**. It names the card it belongs to. Any other choice (or **None**) skips the persona and keeps yours.
 3. Click **Next**. The questions window opens whenever a card in the chat has character questions, whether or not you are creating a persona.
 4. Answer the questions. **Character questions** come first, with one section per card, then **About you** when a persona is being made. Follow-up questions appear as soon as your answers make them relevant.
-5. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
-6. Before creating a persona, you can click **Review persona** to see the name and fields your answers produce, exactly as they will be saved. The preview writes nothing; only **Create persona** does.
+5. Click **Review persona** to see the name and fields your answers produce, exactly as they will be saved. The parts your answers filled in are highlighted. The preview writes nothing; only **Create persona** does.
+6. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
 
 Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the Conversation setup, and starting a chat straight from a character card do not ask them yet. A chat started that way still fills in each question's first option, so `{{relationshipToUser}}` resolves instead of showing the tag. Answering in the wizard replaces that default, for that chat only.
 

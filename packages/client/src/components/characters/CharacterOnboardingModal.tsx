@@ -30,6 +30,7 @@ import {
 import { Modal } from "../ui/Modal";
 import { ChoiceOptionsField } from "../presets/ChoiceOptionsField";
 import { useCreatePersona } from "../../hooks/use-characters";
+import { highlightAnswerValues } from "../../lib/onboarding-preview-highlight";
 import { cn } from "../../lib/utils";
 import { ONBOARDING_FIELD_COPY } from "./onboarding-field-copy";
 
@@ -44,6 +45,9 @@ const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--secondary)] px-4 py-2 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
 const PREVIEW_FIELD_CLASS =
   "whitespace-pre-wrap break-words rounded-lg bg-[var(--secondary)]/60 p-2.5 text-xs font-sans leading-relaxed text-[var(--foreground)] ring-1 ring-[var(--border)]/60";
+// The player's own words inside a field: a soft accent wash with no padding, so
+// a highlighted run keeps the pre-wrap layout exactly as the persona will save it.
+const HIGHLIGHT_CLASS = "rounded-[3px] bg-[var(--primary)]/20 text-[var(--foreground)] [box-decoration-break:clone]";
 
 /** The answer namespace for the persona's own questions, which belong to no card. */
 const PERSONA_ANSWER_SCOPE = "\u0000persona";
@@ -220,6 +224,26 @@ export function CharacterOnboardingModal({
     [withPersona, personaOnboarding, personaAnswers],
   );
   const previewFields = personaPreview ? ONBOARDING_PERSONA_FIELDS.filter((field) => personaPreview[field] !== "") : [];
+  // The values the answers inserted into those fields, so the preview can mark
+  // them. Labels and values are both offered because a blank option value means
+  // "same as the label"; the highlighter keeps only the ones that occur.
+  const answerValues = useMemo(() => {
+    if (!personaPreview) return [];
+    const values: string[] = [];
+    for (const variable of personaVariables) {
+      const answer = personaAnswers[variable.variableName];
+      if (!answer) continue;
+      if ("text" in answer) {
+        values.push(answer.text);
+        continue;
+      }
+      for (const option of variable.options) {
+        if (!answer.optionIds.includes(option.id)) continue;
+        values.push(option.label, option.value);
+      }
+    }
+    return values;
+  }, [personaPreview, personaVariables, personaAnswers]);
   const [reviewing, setReviewing] = useState(false);
   // The questions window can close underneath the preview (its card drops out, or
   // the wizard is dismissed); a preview left open would outlive what it previews.
@@ -535,26 +559,45 @@ export function CharacterOnboardingModal({
             <p className="text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.onboarding.reviewHelp")}
             </p>
-            {personaPreview.name || previewFields.length > 0 ? (
-              <>
-                {personaPreview.name && (
-                  <section className="flex flex-col gap-1.5">
-                    <h3 className="text-xs font-semibold text-[var(--foreground)]">
-                      {localizeUi("ui.characters.onboarding.reviewName")}
-                    </h3>
-                    <p className={PREVIEW_FIELD_CLASS}>{personaPreview.name}</p>
-                  </section>
+            {previewFields.length > 0 && (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.characters.onboarding.reviewHighlight")}
+              </p>
+            )}
+            {/* Always listed, whether or not the template repeats it in the
+                description: the name is the persona's own field. */}
+            <section className="flex flex-col gap-1.5">
+              <h3 className="text-xs font-semibold text-[var(--foreground)]">
+                {localizeUi("ui.characters.onboarding.reviewName")}
+              </h3>
+              <p className={PREVIEW_FIELD_CLASS}>
+                {personaPreview.name || (
+                  <span className="text-[var(--muted-foreground)]">
+                    {localizeUi("ui.characters.onboarding.reviewNameEmpty")}
+                  </span>
                 )}
-                {previewFields.map((field) => (
-                  <section key={field} className="flex flex-col gap-1.5">
-                    <h3 className="text-xs font-semibold text-[var(--foreground)]">
-                      {localizeUi(ONBOARDING_FIELD_COPY[field].title)}
-                    </h3>
-                    <pre className={PREVIEW_FIELD_CLASS}>{personaPreview[field]}</pre>
-                  </section>
-                ))}
-              </>
-            ) : (
+              </p>
+            </section>
+            {previewFields.map((field) => (
+              <section key={field} className="flex flex-col gap-1.5">
+                <h3 className="text-xs font-semibold text-[var(--foreground)]">
+                  {localizeUi(ONBOARDING_FIELD_COPY[field].title)}
+                </h3>
+                <pre className={PREVIEW_FIELD_CLASS}>
+                  {highlightAnswerValues(personaPreview[field], answerValues, personaOnboarding?.[field] ?? "").map(
+                    (segment, index) =>
+                      segment.yours ? (
+                        <mark key={index} className={HIGHLIGHT_CLASS}>
+                          {segment.text}
+                        </mark>
+                      ) : (
+                        segment.text
+                      ),
+                  )}
+                </pre>
+              </section>
+            ))}
+            {!personaPreview.name && previewFields.length === 0 && (
               <p role="status" className="text-xs text-[var(--muted-foreground)]">
                 {localizeUi("ui.characters.onboarding.reviewEmpty")}
               </p>

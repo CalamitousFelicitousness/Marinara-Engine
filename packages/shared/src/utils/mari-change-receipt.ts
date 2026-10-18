@@ -237,8 +237,8 @@ function nestedExcerpt(field: string, before: unknown, after: unknown): Extract<
   return {
     field,
     kind: "nested",
-    // Uncapped, so two runs on the same object can still be merged into the exact distinct union.
-    keys: changed.map((key) => clip(key, MARI_RECEIPT_LIMITS.name)),
+    // Uncapped and unclipped, so two runs on the same object merge into the exact distinct union.
+    keys: changed,
     count: changed.length,
     ...(onboarding ? { onboarding } : {}),
   };

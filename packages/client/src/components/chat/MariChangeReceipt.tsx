@@ -229,15 +229,13 @@ function ListBody({ change }: { change: Extract<MariChangeExcerpt, { kind: "list
 function NestedBody({ change }: { change: Extract<MariChangeExcerpt, { kind: "nested" }> }) {
   const { t } = useUiTranslation();
   const onboarding = change.onboarding;
+  // Both question counts always show, zero included: "On · 0 persona questions" says the onboarding is
+  // empty, which omitting them would hide.
   const facts = onboarding
     ? [
         t(onboarding.enabled ? "ui.chat.marichangereceipt.onboardingOn" : "ui.chat.marichangereceipt.onboardingOff"),
-        ...(onboarding.personaQuestions > 0
-          ? [t("ui.chat.marichangereceipt.onboardingPersonaQuestions", { count: onboarding.personaQuestions })]
-          : []),
-        ...(onboarding.characterQuestions > 0
-          ? [t("ui.chat.marichangereceipt.onboardingCharacterQuestions", { count: onboarding.characterQuestions })]
-          : []),
+        t("ui.chat.marichangereceipt.onboardingPersonaQuestions", { count: onboarding.personaQuestions }),
+        t("ui.chat.marichangereceipt.onboardingCharacterQuestions", { count: onboarding.characterQuestions }),
       ]
     : [];
   // The receipt keeps every changed key so merges stay exact; the card shows the first few and counts the rest.

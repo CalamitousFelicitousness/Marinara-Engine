@@ -13426,9 +13426,16 @@ const combatObjectSchema = z
     jumping: combatJumpingSchema.optional(),
     /** Where a character's languages are read (Capability API 1.508): each row of `list` whose
      *  `column` starts with `prefix` (when given) names one, the rest of it after the prefix. 5e's
-     *  `{"list": "proficiencies", "column": "name", "prefix": "Languages: "}`. */
+     *  `{"list": "proficiencies", "column": "name", "prefix": "Languages: "}`. A row may name several,
+     *  split on any of `split` (Capability API 1.536): 5e's `[", ", " and "]`, so "Languages: Common
+     *  and Dwarvish" names two. A sheet with no such row has its languages unwritten. */
     languages: z
-      .object({ list: sheetId, column: sheetId, prefix: promptSafeText(40).optional() })
+      .object({
+        list: sheetId,
+        column: sheetId,
+        prefix: promptSafeText(40).optional(),
+        split: z.array(z.string().min(1).max(12)).min(1).max(4).optional(),
+      })
       .strict()
       .optional(),
     /** What a combatant is (Capability API 1.168): the types and tags a creature names and a target

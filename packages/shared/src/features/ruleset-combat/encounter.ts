@@ -1007,22 +1007,26 @@ export function rulesetTargetTypesAllow(
 }
 
 /** The languages a combatant understands (1.508), lower case: off their sheet's `combat.languages`
- *  list, or as their stat block writes them. Undefined where nothing says. */
+ *  list, each row split on its `split` (1.536), or as their stat block writes them. Undefined where
+ *  nothing says, a sheet with no such row among them (1.536). */
 export function rulesetLanguages(definition: RulesetDefinition, combatant: RulesetCombatant): string[] | undefined {
   const plain = (one: string) => one.trim().toLowerCase();
   if (combatant.sheet) {
     const rule = definition.combat?.languages;
     if (!rule) return undefined;
     const prefix = rule.prefix ? plain(rule.prefix) : "";
+    const separators = (rule.split ?? []).map((one) => one.toLowerCase());
     const rows = combatant.sheet.build.lists?.[rule.list] ?? [];
-    return rows.flatMap((row) => {
+    const names = rows.flatMap((row) => {
       const value = row[rule.column];
       if (typeof value !== "string") return [];
       const said = plain(value);
       if (prefix && !said.startsWith(prefix)) return [];
-      const name = said.slice(prefix.length).trim();
-      return name ? [name] : [];
+      let parts = [said.slice(prefix.length)];
+      for (const separator of separators) parts = parts.flatMap((part) => part.split(separator));
+      return parts.map(plain).filter((name) => name.length > 0);
     });
+    return names.length > 0 ? names : undefined;
   }
   return combatant.block?.languages?.map(plain);
 }

@@ -182327,6 +182327,16 @@
               "minLength": 1,
               "maxLength": 40
             },
+            "split": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
             "$comment": {}
           },
           "required": [

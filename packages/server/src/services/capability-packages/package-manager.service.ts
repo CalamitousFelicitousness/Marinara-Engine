@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Languages split out of one row (1.536): 5e's "Languages: Common and Dwarvish". */
+function carriesLanguageSplit536(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLanguageSplit536(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.list !== undefined && record.column !== undefined && record.split !== undefined) return true;
+  return featureValues(record).some((one) => carriesLanguageSplit536(one, depth + 1));
+}
+
 /** A condition that gives cover to its source or its source's caller (1.535): the Interposing Hand. */
 function carriesCoverFor535(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7388,6 +7398,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Languages split out of one row, 1.536.
+  if (
+    !declaresApi(536) &&
+    (carriesLanguageSplit536(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLanguageSplit536(document)))
+  ) {
+    return "A ruleset with several languages in one row (combat.languages.split) requires schemaVersion 2 and capabilityApi 1.536 or newer";
+  }
   // A condition that gives cover to its source, 1.535.
   if (
     !declaresApi(535) &&

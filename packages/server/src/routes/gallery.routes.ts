@@ -1982,10 +1982,17 @@ export async function galleryRoutes(app: FastifyInstance) {
         );
         return { image: { ...image, url }, replacedMessageIds, replacedKeyframeIds };
       } catch (err) {
+        let allUndone = true;
         for (const undo of undoSwaps.reverse()) {
-          await undo().catch((undoErr) =>
-            logger.warn(undoErr, "[gallery/regenerate] Could not restore a reference to image %s", original.id),
-          );
+          await undo().catch((undoErr) => {
+            allUndone = false;
+            logger.warn(undoErr, "[gallery/regenerate] Could not restore a reference to image %s", original.id);
+          });
+        }
+        // A reference that could not be restored still points at the new image, so keep it.
+        if (!allUndone) {
+          savedImageId = null;
+          savedFilePath = null;
         }
         if (savedImageId) {
           await storage

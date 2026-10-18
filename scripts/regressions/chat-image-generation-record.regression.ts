@@ -139,8 +139,31 @@ try {
     },
   });
   assert.deepEqual(spriteOnly, [], "a sprite-sourced persona never falls back to the avatar");
-  // A recorded avatar is sent again even if a character sheet was turned on since.
+  // A recorded avatar is sent again even if a character sheet was turned on since. The sheet has
+  // different bytes, so the old sheet-first order would return it instead.
+  const sheetPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+  mkdirSync(join(fixtureDir, "gallery", "personas", "fel"), { recursive: true });
+  writeFileSync(join(fixtureDir, "gallery", "personas", "fel", "sheet.png"), Buffer.from(sheetPng, "base64"));
+  const personaSheetGallery = {
+    getById: async (id: string) => (id === "sheet-1" ? { personaId: "fel", filePath: "personas/fel/sheet.png" } : null),
+  };
+  const currentPreference = await readRecordedReferenceImages({
+    characterIds: [],
+    personaId: "fel",
+    personaGallery: personaSheetGallery,
+    charactersStore: {
+      getById: async () => null,
+      getPersona: async (id) => ({
+        id,
+        avatarPath: "/api/avatars/file/arceana.png",
+        characterSheetImageId: "sheet-1",
+        useCharacterSheetAsReference: "true",
+      }),
+    },
+  });
+  assert.deepEqual(currentPreference, [sheetPng], "without a recorded source the sheet is preferred");
   const recordedAvatar = await readRecordedReferenceImages({
+    personaGallery: personaSheetGallery,
     characterIds: [],
     personaId: "fel",
     personaSource: "avatar",
@@ -381,6 +404,30 @@ try {
   }
   assert.equal((await gallery.listByChatId(chat.id)).length, galleryCountBefore, "the unused new row is removed");
 
+  // If the undo itself fails, the first message still points at the new image, so it is kept.
+  transactionCalls = 0;
+  db.transaction = ((fn: Parameters<typeof realTransaction>[0]) => {
+    transactionCalls += 1;
+    if (transactionCalls >= 2) return Promise.reject(new Error("simulated storage failure"));
+    return realTransaction(fn);
+  }) as typeof db.transaction;
+  let failedUndo;
+  try {
+    failedUndo = await app.inject({
+      method: "POST",
+      url: `/api/gallery/${chat.id}/images/${sharedImage.id}/regenerate`,
+      payload: { prompt: "shared, once more", messageId: firstShared.id },
+    });
+  } finally {
+    db.transaction = realTransaction as typeof db.transaction;
+  }
+  assert.equal(failedUndo.statusCode, 502, failedUndo.body);
+  const strandedExtra = (await chats.getMessage(firstShared.id))?.extra;
+  const strandedId = (typeof strandedExtra === "string" ? JSON.parse(strandedExtra) : strandedExtra).attachments[0]
+    .galleryId;
+  assert.notEqual(strandedId, sharedImage.id, "the failed undo left the first message on the new image");
+  assert.ok(await gallery.getById(strandedId, chat.id), "so the new image row is kept, not deleted");
+
   // Rejections: a picked connection that is gone, an unknown image, an empty prompt.
   const missingConnection = await app.inject({
     method: "POST",
@@ -396,7 +443,7 @@ try {
   assert.equal(missingImage.statusCode, 404, missingImage.body);
   const emptyPrompt = await app.inject({ method: "POST", url: regenerateUrl, payload: { prompt: "   " } });
   assert.notEqual(emptyPrompt.statusCode, 200, "an empty prompt is rejected");
-  assert.equal(imagePrompts.length, 5, "rejected requests never reach the provider");
+  assert.equal(imagePrompts.length, 6, "rejected requests never reach the provider");
 
   console.log("chat-image-generation-record: ok (record, storage round trip, regenerate route)");
 } finally {

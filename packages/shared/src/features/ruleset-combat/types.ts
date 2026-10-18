@@ -670,6 +670,8 @@ export interface RulesetStatBlock {
   splits?: { by: string[]; atLeast: number; smallest?: string };
   /** What it puts on itself when a blow of one of `by` deals it anything (1.489): Aversion of Fire. */
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
+  /** Budgets back in full as every turn starts, anybody's (1.496): a marilith's Reactive. */
+  refillsEveryTurn?: string[];
   /** Felling with a melee attack on its turn, a move and its action again (1.492): Rampage. */
   rampage?: { action: string; budget: string; move?: number };
   /** Rolled as each of its turns starts at low health (1.490): Berserk. */

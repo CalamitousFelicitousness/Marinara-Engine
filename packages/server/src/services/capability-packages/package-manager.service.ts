@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Budgets back every turn (1.496): a marilith's Reactive. */
+function carriesRefillsEveryTurn496(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRefillsEveryTurn496(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.refillsEveryTurn) && Array.isArray(record.actions)) return true;
+  return featureValues(record).some((one) => carriesRefillsEveryTurn496(one, depth + 1));
+}
+
 /** Hanging on as one of its forms (1.495): a vampire's Misty Escape. */
 function carriesHangsOnBecomes495(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6948,6 +6958,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Budgets back every turn, 1.496.
+  if (
+    !declaresApi(496) &&
+    (carriesRefillsEveryTurn496(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRefillsEveryTurn496(document)))
+  ) {
+    return "A ruleset with a creature whose budgets come back every turn (refillsEveryTurn) requires schemaVersion 2 and capabilityApi 1.496 or newer";
+  }
   // Hanging on as one of its forms, 1.495.
   if (
     !declaresApi(495) &&

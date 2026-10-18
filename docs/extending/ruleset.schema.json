@@ -54150,6 +54150,16 @@
                       ],
                       "additionalProperties": false
                     },
+                    "refillsEveryTurn": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
+                    },
                     "rampage": {
                       "type": "object",
                       "properties": {

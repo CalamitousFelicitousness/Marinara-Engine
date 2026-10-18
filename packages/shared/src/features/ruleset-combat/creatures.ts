@@ -507,6 +507,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.whenHarmedBy ? { whenHarmedBy: structuredClone(creature.whenHarmedBy) } : {}),
     ...(creature.rollsAtTurnStart ? { rollsAtTurnStart: structuredClone(creature.rollsAtTurnStart) } : {}),
     ...(creature.rampage ? { rampage: { ...creature.rampage } } : {}),
+    ...(creature.refillsEveryTurn ? { refillsEveryTurn: [...creature.refillsEveryTurn] } : {}),
     ...(creature.regenerates ? { regenerates: structuredClone(creature.regenerates) } : {}),
     ...(creature.riders?.length ? { riders: creature.riders.flatMap((rider) => riderOf(rider, ids)) } : {}),
   };

@@ -8058,6 +8058,10 @@ const creatureFields = {
     })
     .strict()
     .optional(),
+  /** Budgets of the fight's economy it has back in full as every turn starts, anybody's
+   *  (Capability API 1.496): 5e's marilith's Reactive, `["reaction"]`, "one reaction on every turn
+   *  in a combat". */
+  refillsEveryTurn: z.array(sheetId).min(1).max(4).optional(),
   /** When it drops a creature to 0 with a melee attack on its own turn, it spends `budget` (if it
    *  has it left) to move up to `move` of its speed, and its `action` is free once more this turn
    *  (Capability API 1.492): 5e's gnoll's Rampage, `{"action": "bite", "budget": "bonus", "move":
@@ -18170,6 +18174,11 @@ function creatureIssues(
     }
   }
 
+  // What it has back every turn (1.496) is the fight's own budgets.
+  creature.refillsEveryTurn?.forEach((budget, index) => {
+    if (definition.combat && !definition.combat.economy.budgets.some((one) => one.id === budget))
+      add([...at, "refillsEveryTurn", index], `Unknown budget "${budget}"`);
+  });
   // A rampage (1.492) is one of its own actions, bought with one of the fight's budgets.
   if (creature.rampage) {
     if (!creature.actions.some((one) => one.id === creature.rampage!.action))

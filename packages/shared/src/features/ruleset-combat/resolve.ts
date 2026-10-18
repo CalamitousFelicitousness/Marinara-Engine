@@ -14305,6 +14305,13 @@ function beginNextTurn(
   // so a strike made while somebody else is acting can still carry one; "round" waits for the round
   // to turn over. Everybody's, because a rider fires on its holder's blow, not on their turn.
   for (const combatant of ctx.state.combatants) clearSpentRiders(combatant, fresh);
+  // What some have back as every turn starts, anybody's (1.496): a marilith's reaction.
+  for (const combatant of ctx.state.combatants) {
+    for (const id of combatant.block?.refillsEveryTurn ?? []) {
+      const budget = combat.economy.budgets.find((one) => one.id === id);
+      if (budget) combatant.budgets[id] = Math.max(combatant.budgets[id] ?? 0, budget.count);
+    }
+  }
 
   const actor = currentRulesetActor(ctx.state);
   if (actor) {

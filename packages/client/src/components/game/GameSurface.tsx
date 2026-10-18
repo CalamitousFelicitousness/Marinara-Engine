@@ -9063,7 +9063,9 @@ function GameSurfaceComponent({
               ? "ui.game.gamesurfacecomponent.itemUseNoneLeft"
               : reason === "not-worn"
                 ? "ui.game.gamesurfacecomponent.itemUseNotWorn"
-                : "ui.game.gamesurfacecomponent.itemUseFailed",
+                : reason === "forbidden"
+                  ? "ui.game.gamesurfacecomponent.itemUseForbidden"
+                  : "ui.game.gamesurfacecomponent.itemUseFailed",
             { item: label },
           ),
         );

@@ -2869,6 +2869,7 @@ export interface RulesetConditionForbids {
   components?: string[];
   casts?: string[];
   concentration?: true;
+  items?: { tags?: string[] };
 }
 const conditionForbidsSchema: z.ZodType<RulesetConditionForbids, z.ZodTypeDef, unknown> = z
   .object({
@@ -2883,10 +2884,17 @@ const conditionForbidsSchema: z.ZodType<RulesetConditionForbids, z.ZodTypeDef, u
     /** Nothing needing concentration while it holds, and what its holder concentrates on ends as it
      *  comes on (Capability API 1.385). */
     concentration: z.literal(true).optional(),
+    /** No item used while it holds (Capability API 1.472): one with any of `tags`, or any at all
+     *  without them. Its weapon blows are still made. 5e's Feeblemind, "can't ... activate magic
+     *  items": `{ "tags": ["magical"] }`. */
+    items: z
+      .object({ tags: uniqueIds(8).optional() })
+      .strict()
+      .optional(),
   })
   .strict()
-  .refine((forbids) => forbids.components || forbids.casts || forbids.concentration, {
-    message: 'Say what it stops: "components", "casts", "concentration" or more than one',
+  .refine((forbids) => forbids.components || forbids.casts || forbids.concentration || forbids.items, {
+    message: 'Say what it stops: "components", "casts", "concentration", "items" or more than one',
   });
 export interface RulesetZoneWards {
   catalogs: string[];
@@ -6372,11 +6380,17 @@ const catalogMechanicsSchema: z.ZodType<
       message: '"killsAtMost" kills whoever fails its save: it goes with "save"',
     });
   }
-  if (!mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) > 6) {
+  // Up to 12 when each goes on only at the steps it is paid at (1.472): Branding Smite's 2d6 to 9d6.
+  if (
+    !mechanics.appliesOneOf &&
+    (mechanics.applies?.length ?? 0) > 6 &&
+    !mechanics.applies!.every((entry) => entry.paidSteps)
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["applies"],
-      message: 'An entry puts on up to 6 conditions; up to 12 with "appliesOneOf", which picks one',
+      message:
+        'An entry puts on up to 6 conditions; up to 12 with "appliesOneOf", which picks one, or when each says its "paidSteps"',
     });
   }
   if (mechanics.appliesOneOf && (mechanics.applies?.length ?? 0) < 2) {

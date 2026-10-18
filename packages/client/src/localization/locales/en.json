@@ -10177,6 +10177,7 @@
   "ui.game.gamesurfacecomponent.inventoryYouUsed": "You used {{item}}.",
   "ui.game.gamesurfacecomponent.itemUsedNotSent": "{{item}} was used, but the Game Master was not told. Say what happened in your next message.",
   "ui.game.gamesurfacecomponent.itemUseFailed": "{{item}} could not be used.",
+  "ui.game.gamesurfacecomponent.itemUseForbidden": "Something holding you keeps you from using {{item}}.",
   "ui.game.gamesurfacecomponent.itemUseNoneLeft": "{{item}} has nothing left to use.",
   "ui.game.gamesurfacecomponent.itemUseNotWorn": "{{item}} has to be worn to be used.",
   "ui.game.gamesurfacecomponent.journal": "Journal",

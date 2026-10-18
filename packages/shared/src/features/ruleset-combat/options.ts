@@ -2274,6 +2274,16 @@ export function rulesetActionAvailable(
     rulesetItemSuppressed(rulesetSuppressedOn(state, actor), actor.sheet?.items?.[action.itemUse.item]?.item)
   )
     return false;
+  // No item used while a condition forbids it (1.472): Feeblemind's magic items. Weapon blows go on.
+  const usedItem = action.itemUse && action.kind !== "attack" ? action.itemUse.item : action.storedIn?.item;
+  if (usedItem !== undefined && definition?.combat) {
+    const tags = actor.sheet?.items?.[usedItem]?.item.tags ?? [];
+    const stopped = rulesetActiveConditions(definition, definition.combat, actor, state).some((entry) => {
+      const forbidden = entry.forbids?.items;
+      return !!forbidden && (!forbidden.tags || forbidden.tags.some((tag) => tags.includes(tag)));
+    });
+    if (stopped) return false;
+  }
   // Cast from an item that stores it (1.471) only while it is worn, and not where it is suppressed.
   if (action.storedIn?.item !== undefined) {
     const held = actor.sheet?.items?.[action.storedIn.item];

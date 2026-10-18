@@ -32,6 +32,7 @@ import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
   raiseRulesetLiveAbilities,
+  readRulesetLive,
   readRulesetWoundPenalty,
   type RulesetLiveState,
   type RulesetSheetOp,
@@ -56,7 +57,9 @@ export type RulesetItemUseRefusal =
   /** It takes a slot or binds, and is not worn (and bound). */
   | "not-worn"
   /** None of its charges are left, or not as many as one use spends. */
-  | "none-left";
+  | "none-left"
+  /** A condition its user holds forbids using it (1.472): Feeblemind's magic items. */
+  | "forbidden";
 
 /** One thing a use did to its user's sheet. */
 export interface RulesetItemUsePart {
@@ -126,6 +129,15 @@ export function useRulesetItemOutsideFight(input: {
   if (!use) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
   if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(item))) return { ok: false, reason: "not-worn" };
+  // Nor while a condition they hold forbids it (1.472), as a fight keeps it off the menu.
+  const holding = readRulesetLive(definition, user.build, user.live).conditions.filter((one) => one.active);
+  const forbidding = (definition.combat?.conditions ?? []).some(
+    (entry) =>
+      !!entry.forbids?.items &&
+      holding.some((one) => one.id === entry.condition) &&
+      (!entry.forbids.items.tags || entry.forbids.items.tags.some((tag) => item.tags?.includes(tag))),
+  );
+  if (forbidding) return { ok: false, reason: "forbidden" };
   const facts = rulesetItemFacts(definition, chosen ? { ...item, use } : item).use;
   const max = facts?.charges?.max;
   if (use.charges !== undefined) {

@@ -2261,6 +2261,25 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that forbids using items, or more than six conditions an entry puts on each by the
+ *  steps it is paid at (1.472): Feeblemind, Branding Smite. */
+function carriesItemsForbidOrPaidApplies472(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemsForbidOrPaidApplies472(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.forbids)?.items) !== undefined) return true;
+  if (
+    Array.isArray(record.applies) &&
+    record.applies.length > 6 &&
+    record.appliesOneOf === undefined &&
+    record.applies.every((entry) => plainRecord(plainRecord(entry)?.paidSteps) !== undefined)
+  ) {
+    return true;
+  }
+  return featureValues(record).some((one) => carriesItemsForbidOrPaidApplies472(one, depth + 1));
+}
+
 /** An item or a creature that stores entries to be cast later (1.471): a Ring of Spell Storing. */
 function carriesStores471(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6642,6 +6661,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items a condition forbids, and more than six conditions put on by the steps paid, 1.472.
+  if (
+    !declaresApi(472) &&
+    (carriesItemsForbidOrPaidApplies472(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemsForbidOrPaidApplies472(document)))
+  ) {
+    return "A ruleset whose conditions forbid using items (forbids.items) or whose entries put on more than six conditions by the steps paid (paidSteps) requires schemaVersion 2 and capabilityApi 1.472 or newer";
+  }
   // What an item or a creature stores to be cast later, 1.471.
   if (
     !declaresApi(471) &&

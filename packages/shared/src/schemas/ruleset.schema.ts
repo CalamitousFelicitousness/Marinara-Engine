@@ -18380,7 +18380,9 @@ function attackIssues(
   }
   const pooled = definition.resolution.kind === "dice-pool";
   // A summed fight's hit already deals its dice; a pool fight's deals its successes, and dice on top.
-  if (!pooled && attack.damage.dice === undefined) add([...at, "damage", "dice"], "A weapon deals dice");
+  // Without dice (1.458) it deals its bonus alone, or only puts on what its hit does: a blowgun, a net.
+  if (!pooled && attack.damage.dice === undefined && attack.damage.bonus === undefined && !attack.onHit?.length)
+    add([...at, "damage", "dice"], "A weapon deals dice, a bonus, or what its hit puts on");
   if (pooled && attack.damage.rerollUpTo) {
     add([...at, "damage", "rerollUpTo"], "A pool fight's damage is successes, not faces, so it has nothing to reroll");
   }

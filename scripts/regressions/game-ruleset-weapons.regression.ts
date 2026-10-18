@@ -194,7 +194,7 @@ try {
         "no dice in a summed fight",
         emberText,
         attack("hand-axe", (a) => delete a.damage.dice),
-        /attack\.damage\.dice: A weapon deals dice/,
+        /attack\.damage\.dice: A weapon deals dice, a bonus, or what its hit puts on/,
       ],
       [
         "a target in a summed fight",
@@ -654,6 +654,19 @@ try {
     });
     const diceless = variant(emberText, (doc) => (itemEntry(doc, "hand-axe").item.attack.damage = { bonus: 1 }));
     assert.equal(getCapabilityPackageInstallIssue(at(457) as never, diceless), gate1458);
+    // And a ruleset file holding them is read (a bonus alone, or only an onHit), not refused.
+    const readOk = (doc: unknown) => {
+      const result = parseRulesetDefinition(doc);
+      assert.ok(result.ok, result.ok ? "" : result.issues.join("; "));
+    };
+    readOk(diceless);
+    readOk(
+      variant(emberText, (doc) => {
+        const attack = itemEntry(doc, "hand-axe").item.attack;
+        attack.damage = {};
+        attack.onHit = [{ condition: "pinned", atLeast: 0, checkEnds: { check: "brawn", difficulty: 10 } }];
+      }),
+    );
     assert.notEqual(getCapabilityPackageInstallIssue(at(458) as never, diceless), gate1458);
     const anyHit = variant(
       emberText,

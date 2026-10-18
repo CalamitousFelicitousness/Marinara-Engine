@@ -1621,6 +1621,8 @@ export interface RulesetCombatant {
   reaped?: true;
   /** Who called it into the fight (1.325). */
   calledBy?: string;
+  /** The catalog of the entry that called it (1.480): Conjure Animals' spells. */
+  calledFrom?: string;
   /** The action that called them (1.344), whose concentration ending sends them away. */
   calledWith?: string;
   /** The round, at their caller's turn, they leave in (1.344). */
@@ -1731,6 +1733,8 @@ export interface RulesetCombatant {
     left?: true;
     turns?: true;
     blinked?: true;
+    /** Set aside by a zone it was called into (1.480), back once it no longer covers them. */
+    setAside?: true;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
@@ -3208,6 +3212,8 @@ export type RulesetCombatEvent =
   | { type: "left"; actorId: string; label: string; by?: string }
   /** Back from where it was sent (1.236), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
+  /** A called creature set aside by a zone that covers it (1.480): Antimagic Field's summons. */
+  | { type: "setAside"; targetId: string; label: string }
   /** A foe's entry taken in by its only target (1.469): a Rod of Absorption's, its charges now. */
   | {
       type: "absorbed";
@@ -3793,7 +3799,7 @@ export interface RulesetCombatZoneRule {
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
   /** What does nothing inside it (1.468): conditions off these catalogs, items with these tags. */
-  suppresses?: { catalogs?: string[]; tags?: string[] };
+  suppresses?: { catalogs?: string[]; tags?: string[]; setsAsideCalled?: true };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */
   keepsOut?: {
     is: RulesetTargetIs;

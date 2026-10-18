@@ -86,6 +86,8 @@ export function rulesetCallCreatures(
     if (grid && !placements[combatant.id]) continue;
     combatant.side = caller.side;
     combatant.calledBy = caller.id;
+    // What called it (1.480), for a zone that sets aside what entries of its catalog call.
+    if (action.catalog) combatant.calledFrom = action.catalog;
     combatant.creature = { ...calls.creature };
     // Called kin that cannot call kin of their own (1.393).
     if (calls.cantCall) {

@@ -123,6 +123,7 @@ import {
   rulesetActionAsUsed,
   rulesetSuppressedAttack,
   rulesetSuppressedOn,
+  rulesetSetAsideBy,
   rulesetItemSuppressed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
@@ -469,6 +470,8 @@ function begin(
         endImmuneConditions(ctx, target);
         holderBound(ctx, target);
       }
+      // Called creatures a zone sets aside, and back where it no longer does (1.480).
+      setAsideCalled(ctx);
       // Riders where their mounts are, or off them (1.443).
       syncMounts(ctx);
       leaveWithCallers(ctx);
@@ -11501,6 +11504,28 @@ function timeStopReached(ctx: RulesetCombatContext): void {
   removeCondition(ctx, stopper, tracked.condition, "spent");
 }
 
+/** Called creatures set aside where a zone that suppresses what called them covers them, and back
+ *  where it stood once none does (1.480): Antimagic Field's "summoned creatures disappear". Set
+ *  aside, they are out of the fight as one sent away is, and nothing they hold up ends. */
+function setAsideCalled(ctx: RulesetCombatContext): void {
+  for (const one of ctx.state.combatants) {
+    if (one.calledFrom === undefined) continue;
+    const by = rulesetSetAsideBy(ctx.state, one);
+    if (one.away?.setAside) {
+      if (by) continue;
+      delete one.away;
+      one.defeated = false;
+      placeNearest(ctx, one);
+      ctx.events.push({ type: "returned", targetId: one.id });
+      continue;
+    }
+    if (!by || one.defeated || one.away) continue;
+    one.defeated = true;
+    one.away = { by: by.caster.id, label: by.label, setAside: true };
+    ctx.events.push({ type: "setAside", targetId: one.id, label: by.label });
+  }
+}
+
 /** Off the board as its turn ends, on its `blinks` die (1.453): Blink. Nothing it holds up ends. */
 function blinkAway(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
   if (holder.defeated || !rulesetCombatStanding(holder)) return;
@@ -14358,8 +14383,13 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   // Down at 0 while it may regenerate (1.346), a troll is not out of it yet.
   // An object called to take no turns (1.426) keeps no side standing.
   // Blinked away (1.453), back as their next turn starts, they are still in it.
+  // Set aside by a zone (1.480), it is still in it too.
   const out = (combatant: RulesetCombatant) =>
-    combatant.turnless || (!rulesetCombatStanding(combatant) && !combatant.regrowing && !combatant.away?.blinked);
+    combatant.turnless ||
+    (!rulesetCombatStanding(combatant) &&
+      !combatant.regrowing &&
+      !combatant.away?.blinked &&
+      !combatant.away?.setAside);
   if (enemies.length > 0 && enemies.every(out)) return "victory";
   if (party.length > 0 && party.every(out)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.

@@ -3081,7 +3081,7 @@ export interface RulesetCatalogZone {
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
-  suppresses?: { catalogs?: string[]; tags?: string[] };
+  suppresses?: { catalogs?: string[]; tags?: string[]; setsAsideCalled?: true };
   keepsOut?: RulesetZoneKeepsOut;
   hidden?: { check: string };
   detonates?: {
@@ -3463,9 +3463,20 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  from inside or at somebody inside. 5e's Antimagic Field, `{ "catalogs": ["spells"], "tags":
      *  ["magical"] }`, beside `forbids.casts` (no casting inside, Capability API 1.468) and a `wards` of every level. */
     suppresses: z
-      .object({ catalogs: uniqueIds(8).optional(), tags: uniqueIds(8).optional() })
+      .object({
+        catalogs: uniqueIds(8).optional(),
+        tags: uniqueIds(8).optional(),
+        /** Creatures called by entries of its `catalogs` are set aside while they are inside
+         *  (Capability API 1.480): out of the fight, and back where they stood once it no longer
+         *  covers them. Antimagic Field's "summoned creatures disappear". */
+        setsAsideCalled: z.literal(true).optional(),
+      })
       .strict()
       .refine((hush) => hush.catalogs || hush.tags, { message: "Say what it suppresses: catalogs, tags or both" })
+      .refine((hush) => !hush.setsAsideCalled || hush.catalogs, {
+        message: '"setsAsideCalled" sets aside what entries of its "catalogs" called, so it names them',
+        path: ["setsAsideCalled"],
+      })
       .optional(),
     /** Kinds of creature it keeps out (Capability API 1.399): they cannot walk into it, their attacks
      *  into it may have disadvantage, and they cannot put `cantGive` on whoever is inside. With

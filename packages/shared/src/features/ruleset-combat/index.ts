@@ -121,6 +121,7 @@ export {
   rulesetActiveConditions,
   rulesetWardsOn,
   rulesetSuppressedOn,
+  rulesetSetAsideBy,
   rulesetItemSuppressed,
   rulesetSuppressedAttack,
   rulesetZoneConditions,

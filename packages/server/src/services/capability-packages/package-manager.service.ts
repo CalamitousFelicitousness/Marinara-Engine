@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone that sets aside called creatures inside it (1.480): Antimagic Field's summons. */
+function carriesSetsAsideCalled480(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSetsAsideCalled480(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.suppresses)?.setsAsideCalled !== undefined) return true;
+  return featureValues(record).some((one) => carriesSetsAsideCalled480(one, depth + 1));
+}
+
 /** An item's use centred on its user (1.479): the Staff of Thunder and Lightning's Thunderclap. */
 function carriesItemUseAround479(value: unknown, depth = 0, inItem = false): boolean {
   if (!value || depth > 40) return false;
@@ -6741,6 +6751,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone that sets aside called creatures, 1.480.
+  if (
+    !declaresApi(480) &&
+    (carriesSetsAsideCalled480(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSetsAsideCalled480(document)))
+  ) {
+    return "A ruleset with a zone that sets aside creatures called into it (suppresses setsAsideCalled) requires schemaVersion 2 and capabilityApi 1.480 or newer";
+  }
   // An item's use centred on its user, 1.479.
   if (
     !declaresApi(479) &&

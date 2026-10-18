@@ -777,6 +777,20 @@ export function rulesetSuppressedOn(
   };
 }
 
+/** The zone that sets this called creature aside where it stands (1.480), if any: one that suppresses
+ *  the catalog of the entry that called it. Antimagic Field's summons. */
+export function rulesetSetAsideBy(
+  state: RulesetEncounterState,
+  combatant: RulesetCombatant,
+): { caster: RulesetCombatant; label: string } | undefined {
+  const from = combatant.calledFrom;
+  if (from === undefined) return undefined;
+  const found = zonesStoodIn(state, combatant).find(
+    ({ rule }) => rule.suppresses?.setsAsideCalled && rule.suppresses.catalogs?.includes(from),
+  );
+  return found ? { caster: found.caster, label: found.label } : undefined;
+}
+
 /** Whether an item is suppressed where its holder stands (1.468): any of its tags is. */
 export function rulesetItemSuppressed(
   hush: { tags: Set<string> } | null | undefined,
@@ -2246,6 +2260,7 @@ export function rulesetZoneAction(
     out.suppresses = {
       ...(zone.suppresses.catalogs ? { catalogs: [...zone.suppresses.catalogs] } : {}),
       ...(zone.suppresses.tags ? { tags: [...zone.suppresses.tags] } : {}),
+      ...(zone.suppresses.setsAsideCalled ? { setsAsideCalled: true as const } : {}),
     };
   }
   if (zone.wards) {

@@ -621,6 +621,9 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // Set aside by a zone (1.480): Antimagic Field's summons.
+    case "setAside":
+      return key("setAside", { target: names.combatant(event.targetId), label: event.label });
     // Stored to be cast later (1.471): a Ring of Spell Storing's.
     case "stored":
       return key("stored", {

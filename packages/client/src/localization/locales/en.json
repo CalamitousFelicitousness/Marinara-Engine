@@ -2228,6 +2228,7 @@
   "game.combat.ruleset.event.sectionBroken": "{{actor}}'s {{label}} strikes the {{wall}} for {{dealt}} and breaks that section.",
   "game.combat.ruleset.event.sectionMiss": "{{actor}}'s {{label}} misses the {{wall}}.",
   "game.combat.ruleset.event.sentAway": "{{names}}, called by {{actor}}, leave the fight.",
+  "game.combat.ruleset.event.setAside": "{{target}} disappears inside {{label}}.",
   "game.combat.ruleset.event.shaped": "{{actor}} takes the shape of a {{form}}.",
   "game.combat.ruleset.event.shapeGone": "{{actor}} is no longer a {{form}}.",
   "game.combat.ruleset.event.shapeRefused": "{{actor}} cannot take the shape of a {{form}}.",

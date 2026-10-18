@@ -41864,6 +41864,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "setsAsideCalled": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -59553,6 +59557,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "setsAsideCalled": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -78318,6 +78326,10 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "setsAsideCalled": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -94259,6 +94271,10 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "setsAsideCalled": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },

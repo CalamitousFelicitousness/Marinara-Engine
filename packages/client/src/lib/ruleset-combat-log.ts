@@ -621,6 +621,9 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // Another use's effect beside the one used (1.482): Thunderclap with Lightning Strike.
+    case "alongside":
+      return key("alongside", { actor: names.combatant(event.actorId), label: event.label, to: event.to });
     // Set aside by a zone (1.480): Antimagic Field's summons.
     case "setAside":
       return key("setAside", { target: names.combatant(event.targetId), label: event.label });

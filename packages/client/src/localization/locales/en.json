@@ -1980,6 +1980,7 @@
   "game.combat.ruleset.event.absorbed": "{{target}}'s {{by}} takes in {{label}}, which does nothing.",
   "game.combat.ruleset.event.absorbedCharges": "{{target}}'s {{by}} takes in {{label}}, which does nothing ({{now}} of {{max}} charges).",
   "game.combat.ruleset.event.added": "{{actor}} adds {{label}} to the {{to}} that hit {{target}}.",
+  "game.combat.ruleset.event.alongside": "{{actor}}'s {{label}} goes off with {{to}}.",
   "game.combat.ruleset.event.altered": "{{actor}} uses {{label}} with {{alters}}.",
   "game.combat.ruleset.event.area": "{{actor}} aims {{label}} at {{x}}, {{y}}, covering {{cells}} cells.",
   "game.combat.ruleset.event.ashore": "{{actor}} cannot stop on the water and comes out at {{x}}, {{y}}.",

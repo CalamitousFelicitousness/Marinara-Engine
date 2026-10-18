@@ -12279,6 +12279,19 @@ function resolveActionBody(
       styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
     );
   }
+  // Other uses' effects beside it (1.482), each on whom its burst around its user catches, spending
+  // nothing of theirs: Thunder and Lightning's Thunderclap.
+  if (action.alongside && !held) {
+    for (const id of action.alongside) {
+      const part = actor.actions.find((one) => one.id === id);
+      if (!part || actor.defeated) continue;
+      const caught = rulesetAroundTargets(ctx.state, actor, part).filter(
+        (one) => !rulesetSealedApart(ctx.definition, ctx.state, actor, one),
+      );
+      ctx.events.push({ type: "alongside", actorId: actor.id, label: part.label, to: action.label });
+      resolveAction(ctx, actor, part, caught, payWith);
+    }
+  }
   // What a creature deals with both hands, or bloodied, is read as the blow is made (1.102).
   if (action.damage?.alternatives) {
     action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };

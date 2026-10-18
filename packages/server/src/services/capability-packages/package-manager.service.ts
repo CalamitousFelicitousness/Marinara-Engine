@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item's use with others' effects beside it (1.482): Thunder and Lightning. */
+function carriesAlongside482(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAlongside482(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.alongside !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesAlongside482(one, depth + 1));
+}
+
 /** A weapon hit's spend with its own uses, a save or drain, conditions only, or conditions with a
  *  clock beside a save or on its wielder's turns (1.481): a Rod of Lordly Might's properties. */
 function carriesSpendUses481(value: unknown, depth = 0): boolean {
@@ -6778,6 +6789,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use with others' effects beside it, 1.482.
+  if (
+    !declaresApi(482) &&
+    (carriesAlongside482(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAlongside482(document)))
+  ) {
+    return "A ruleset with an item's use that sets off others beside it (moreUses alongside) requires schemaVersion 2 and capabilityApi 1.482 or newer";
+  }
   // A weapon hit's spend with its own uses, a save, a drain or conditions alone, 1.481.
   if (
     !declaresApi(481) &&

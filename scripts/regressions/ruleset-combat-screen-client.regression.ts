@@ -1068,6 +1068,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["setAside", say({ type: "setAside", targetId: "lurker", label: "Antimagic Field" })],
+    ["alongside", say({ type: "alongside", actorId: "brenna", label: "Staff: Thunderclap", to: "Staff: Both" })],
   ];
   const printed = new Map(table);
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");

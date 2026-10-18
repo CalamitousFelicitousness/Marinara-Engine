@@ -848,6 +848,9 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
+  /** Its holder's other actions whose effects happen too as this one does (1.482), each on whom its
+   *  burst around them catches, spending nothing of theirs: Thunder and Lightning's Thunderclap. */
+  alongside?: string[];
   /** What it adds is kept off by the one hit's made `save`, and its maker regains `drain` of what it
    *  dealt (1.481): a Rod of Lordly Might's Drain Life. */
   addsWith?: { save?: { save: string; difficulty: number }; drain?: number };
@@ -3263,6 +3266,8 @@ export type RulesetCombatEvent =
   | { type: "extraTurn"; actorId: string; initiative: number; label: string }
   /** Its maker adds this to the blow that just hit (1.241): Divine Smite. */
   | { type: "added"; actorId: string; targetId: string; label: string; to: string }
+  /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */
+  | { type: "alongside"; actorId: string; label: string; to: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */
   | {
       type: "charged";

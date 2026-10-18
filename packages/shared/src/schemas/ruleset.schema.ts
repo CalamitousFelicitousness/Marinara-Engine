@@ -9335,6 +9335,7 @@ export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
 export interface RulesetItemMoreUse {
   label: string;
   use: RulesetItemUse;
+  alongside?: string[];
   uses?: {
     max: number;
     recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
@@ -9344,6 +9345,10 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
   .object({
     label: promptSafeText(40),
     use: rulesetItemUseSchema,
+    /** The item's other uses, by their labels, whose effects happen too as this one is used, each
+     *  centred on its user and spending nothing of its own (Capability API 1.482): a Staff of Thunder
+     *  and Lightning's Thunder and Lightning, its Lightning Strike with Thunderclap beside it. */
+    alongside: z.array(promptSafeText(40)).min(1).max(3).optional(),
     /** Its own count of uses, spent in place of the item's charges (Capability API 1.466), kept on the
      *  stack: a Staff of Thunder and Lightning's once a dawn for each property, a Helm of Brilliance's
      *  gems. `recharge` brings them back on the rests it names, all of them or an amount. */
@@ -18245,6 +18250,22 @@ function itemIssues(
     // Its own uses are what it spends (1.466), never the item's charges as well.
     if (more.uses && more.use.charges !== undefined)
       add([...at, "moreUses", index, "uses"], "A use with its own uses spends those, not the item's charges");
+    // Other uses' effects beside it (1.482): another of the item's, centred on its user, none beside
+    // anything itself.
+    more.alongside?.forEach((label, at2) => {
+      const where = [...at, "moreUses", index, "alongside", at2];
+      const wanted = label.trim().toLowerCase();
+      const named =
+        item.use?.label?.trim().toLowerCase() === wanted
+          ? item.use
+          : item.moreUses?.find((other) => other !== more && other.label.trim().toLowerCase() === wanted)?.use;
+      const self = more.label.trim().toLowerCase() === wanted;
+      if (!named || self) add(where, self ? "A use is never beside itself" : `No other use of the item is "${label}"`);
+      else if (!named.area?.around)
+        add(where, "A use beside another is centred on its user (area around), so nothing is aimed twice");
+      else if (item.moreUses?.some((other) => other.use === named && other.alongside))
+        add(where, "A use beside another has nothing beside it itself");
+    });
     more.uses?.recharge?.rests.forEach((rest, at2) => {
       if (!definition.rests.some((entry) => entry.id === rest))
         add([...at, "moreUses", index, "uses", "recharge", "rests", at2], `Unknown rest "${rest}"`);

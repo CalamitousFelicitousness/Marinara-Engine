@@ -106188,6 +106188,16 @@
                               }
                             ]
                           },
+                          "alongside": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "minItems": 1,
+                            "maxItems": 3
+                          },
                           "uses": {
                             "type": "object",
                             "properties": {

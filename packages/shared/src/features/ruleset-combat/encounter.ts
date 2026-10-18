@@ -1997,6 +1997,20 @@ function itemUseActions(
         more.uses ? { more: n + 1, max: more.uses.max } : undefined,
       ),
     );
+    // Other uses' effects beside one (1.482), by the ids they were built under: Thunder and Lightning.
+    item.moreUses?.forEach((more, n) => {
+      if (!more.alongside) return;
+      const action = actions.find((one) => one.id === `use:${index}:${n + 1}`);
+      if (!action) return;
+      const ids = more.alongside.flatMap((label) => {
+        const wanted = label.trim().toLowerCase();
+        if (item.use?.label?.trim().toLowerCase() === wanted) return [`use:${index}`];
+        const at = item.moreUses!.findIndex((other) => other.label.trim().toLowerCase() === wanted);
+        return at >= 0 ? [`use:${index}:${at + 1}`] : [];
+      });
+      const built = ids.filter((id) => actions.some((one) => one.id === id));
+      if (built.length) action.alongside = built;
+    });
   });
   return actions;
 

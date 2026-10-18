@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition spent by its holder's next weapon hit, or one whose holder's hits put something on
+ *  whoever they hit (1.450): Branding Smite. */
+function carriesOwnHit450(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOwnHit450(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsAfter === "own-hit") return true;
+  if (record.condition !== undefined && plainRecord(record.onHit)) return true;
+  return featureValues(record).some((one) => carriesOwnHit450(one, depth + 1));
+}
+
 /** A condition spent by its source's attack, or attacks at its holder narrowed to its source (1.449):
  *  True Strike. */
 function carriesSourceAttacked449(value: unknown, depth = 0): boolean {
@@ -6394,6 +6406,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition spent by its holder's next weapon hit, or whose holder's hits put something on, 1.450.
+  if (
+    !declaresApi(450) &&
+    (carriesOwnHit450(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnHit450(document)))
+  ) {
+    return "A ruleset whose conditions end on their holder's next hit or put something on whoever it hits (endsAfter own-hit, a condition's onHit) requires schemaVersion 2 and capabilityApi 1.450 or newer";
+  }
   // A condition spent by its source's attack, or attacks at it narrowed to its source, 1.449.
   if (
     !declaresApi(449) &&

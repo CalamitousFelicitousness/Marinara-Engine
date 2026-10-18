@@ -4351,7 +4351,7 @@ export interface RulesetCatalogApplies {
   condition: string;
   duration: z.infer<typeof catalogDurationSchema>;
   saveEnds?: RulesetCatalogSaveEnds;
-  endsAfter?: "own-attack" | "attacked" | "attacked-by-source" | "own-save";
+  endsAfter?: "own-attack" | "own-hit" | "attacked" | "attacked-by-source" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
   endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   escapeDc?: number | "save";
@@ -4453,8 +4453,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  the next attack roll made against them, or their own next save. Whatever clock it has still
      *  runs beside it, so "on its next attack before the end of its next turn" is both.
      *  `"attacked-by-source"` (Capability API 1.449): the next attack roll whoever put it on makes
-     *  against them, 5e's True Strike. */
-    endsAfter: z.enum(["own-attack", "attacked", "attacked-by-source", "own-save"]).optional(),
+     *  against them, 5e's True Strike. `"own-hit"` (Capability API 1.450): their own next weapon
+     *  attack that hits, a miss leaving it on, 5e's smites. */
+    endsAfter: z.enum(["own-attack", "own-hit", "attacked", "attacked-by-source", "own-save"]).optional(),
     /** It comes off once its holder has made an attack (`attacks`), or used an entry of one of the
      *  catalogs `casts` names, or an item's use that casts one (Capability API 1.180): 5e's
      *  Invisibility, which ends for a target that attacks or casts a spell. What the attack or the
@@ -10632,6 +10633,22 @@ const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, u
   })
   .strict();
 
+/** What its holder's own hits put on whoever they hit (Capability API 1.450): only a weapon's blow with
+ *  `weapon`, only one struck so with `blow`. Each `applies` goes on the one hit, from the holder, once
+ *  the blow is over. 5e's Branding Smite, a condition that keeps its target from being unseen. */
+export interface RulesetConditionOnHit {
+  weapon?: true;
+  blow?: "melee" | "ranged";
+  applies: RulesetCatalogApplies[];
+}
+const conditionOnHitSchema: z.ZodType<RulesetConditionOnHit, z.ZodTypeDef, unknown> = z
+  .object({
+    weapon: z.literal(true).optional(),
+    blow: z.enum(["melee", "ranged"]).optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4),
+  })
+  .strict();
+
 /** Its holder's speed is not lowered by what entries of these catalogs put on them (Capability API
  *  1.433): a slowing, a halving or a stop that a spell put on does nothing to their walk, and the
  *  same from anything else still does. 5e's Freedom of Movement, `{ "catalogs": ["spells"] }`. */
@@ -10745,6 +10762,8 @@ const combatConditionSchema = z
      *  `applies`, held as long as this condition's own concentration. 5e's Holy Aura: a fiend or
      *  undead hitting its holder in melee saves with Constitution or is blinded until the spell ends. */
     whenHit: conditionWhenHitSchema.optional(),
+    /** What its holder's own hits put on whoever they hit (Capability API 1.450): Branding Smite. */
+    onHit: conditionOnHitSchema.optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -15415,6 +15434,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
         if (entry.whenHit.from) targetIsIssues(def, entry.whenHit.from, [...where, "from"], issue);
       }
+      // What its holder's hits put on is the ruleset's own (1.450).
+      entry.onHit?.applies.forEach((applied, appliedIndex) => {
+        if (!conditions.has(applied.condition))
+          issue([...path, "onHit", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+      });
       // What a called creature pays with is a budget of the fight's (1.435).
       if (entry.lendsStrikes && !combat.economy.budgets.some((one) => one.id === entry.lendsStrikes!.budget))
         issue([...path, "lendsStrikes", "budget"], `Unknown budget "${entry.lendsStrikes.budget}"`);

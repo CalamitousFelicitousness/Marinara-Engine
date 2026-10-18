@@ -1046,6 +1046,30 @@ function answerHit(
   }
 }
 
+/** What the attacker's own conditions put on whoever their hit landed on (1.450): Branding Smite. */
+function ownHit(
+  ctx: RulesetCombatContext,
+  attacker: RulesetCombatant,
+  target: RulesetCombatant,
+  action: RulesetCombatAction,
+): void {
+  if (!ctx.combat.conditions?.some((entry) => entry.onHit) || attacker.id === target.id) return;
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, attacker, ctx.state)) {
+    const rule = entry.onHit;
+    if (!rule || target.defeated) continue;
+    if (rule.weapon && !rulesetWeaponBlow(action)) continue;
+    if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
+    const own = attacker.tracked.find((one) => one.condition === entry.condition);
+    for (const applies of rule.applies) {
+      applyConditionId(ctx, target, applies.condition, applies, {
+        sourceId: attacker.id,
+        ...(own?.concentration ? { concentration: true } : {}),
+        ...(own?.catalog ? { catalog: own.catalog } : {}),
+      });
+    }
+  }
+}
+
 /** The condition an aura spread this from (1.438), as its holder holds it: whose it is, the entry
  *  that put it on, and the concentration holding it. Holy Aura's ward, given to each nearby ally. */
 function auraOrigin(ctx: RulesetCombatContext, spread: RulesetTrackedCondition): RulesetTrackedCondition | undefined {
@@ -11862,6 +11886,13 @@ function resolveActionBody(
       if (!used) return;
       spendOneUse(ctx, actor, used.mine);
       spendOneUse(ctx, target, used.theirs);
+      // A hit that was rolled for (1.450): what the attacker's conditions put on whoever it hit, and
+      // what lasted until their next weapon hit.
+      if (landed) {
+        const smites = rulesetWeaponBlow(action) ? oneUseConditions(actor, "own-hit") : [];
+        ownHit(ctx, actor, target, action);
+        spendOneUse(ctx, actor, smites);
+      }
     };
     // How the roll finally leaned, which is one of the things a rider may ask about. An action
     // nobody rolls for leaned no way at all.

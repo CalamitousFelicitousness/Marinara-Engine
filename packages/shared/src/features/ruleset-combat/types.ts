@@ -235,7 +235,7 @@ export interface RulesetSheetBounds {
 
 /** What takes a condition off after it has been used once: the holder's own next attack roll, the
  *  next attack roll made against the holder, or the holder's own next save. */
-export type RulesetConditionEnding = "own-attack" | "attacked" | "attacked-by-source" | "own-save";
+export type RulesetConditionEnding = "own-attack" | "own-hit" | "attacked" | "attacked-by-source" | "own-save";
 
 /** One side of a contest as it was thrown: the check it added, and, when a condition made it more or
  *  less than one throw or changed the number, how. */

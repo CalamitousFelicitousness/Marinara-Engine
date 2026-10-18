@@ -299,7 +299,10 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
   // A wall's section it may strike instead counts (1.200).
   return (
     option.targets.count > 0 &&
-    (option.targetIds.length > 0 || (option.walls?.length ?? 0) > 0 || (option.dispels?.length ?? 0) > 0)
+    (option.targetIds.length > 0 ||
+      (option.walls?.length ?? 0) > 0 ||
+      (option.dispels?.length ?? 0) > 0 ||
+      (option.cuts?.length ?? 0) > 0)
   );
 }
 

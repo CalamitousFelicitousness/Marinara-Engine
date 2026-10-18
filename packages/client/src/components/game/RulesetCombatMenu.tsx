@@ -1007,6 +1007,36 @@ export function RulesetCombatMenu({
               </span>
             </button>
           ))}
+          {/* A condition to cut away instead (1.478): a net. */}
+          {(option.cuts ?? []).map((cut) => (
+            <button
+              key={`${cut.holderId}:${cut.condition}`}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                closeStep();
+                onChoose(
+                  option.id,
+                  [],
+                  step.payWith,
+                  { cut: { holderId: cut.holderId, condition: cut.condition } },
+                  step.style,
+                  step.mode,
+                  step.amount,
+                  step.alters,
+                );
+              }}
+              className={cn(buttonClass, "border-violet-300/30 bg-violet-500/10 text-white/85 hover:bg-violet-500/20")}
+            >
+              <span className="block font-semibold">
+                {t("game.combat.ruleset.target.cut", {
+                  condition: cut.label,
+                  target: view.combatants.find((one) => one.id === cut.holderId)?.name ?? cut.holderId,
+                  left: cut.left,
+                })}
+              </span>
+            </button>
+          ))}
           {sections.map((section, index) => (
             <button
               ref={index === 0 && targets.length === 0 ? first : undefined}

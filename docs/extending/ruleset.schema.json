@@ -121870,6 +121870,37 @@
                 "type": "boolean",
                 "const": true
               },
+              "cutFree": {
+                "type": "object",
+                "properties": {
+                  "defense": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "health": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "damageTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "defense",
+                  "health"
+                ],
+                "additionalProperties": false
+              },
               "suppressedWhenHarmed": {
                 "type": "string",
                 "const": "until-own-turn-start"

@@ -6081,6 +6081,8 @@ function applyChoice(
   }
   // A wall's section struck at instead of a creature (1.200).
   if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
+  // A condition struck at to cut it away (1.478): a net.
+  if (choice.cut !== undefined) return strikeCut(definition, combat, state, actor, option, choice, roller);
   // A lasting area to end instead of a creature (1.374), one the menu offered; and what to end on a
   // target, picked from what the menu offered for them.
   const dispel =
@@ -6802,6 +6804,96 @@ function breakProp(
     health: left,
     ...(left <= 0 ? { broken: true as const } : {}),
   });
+}
+
+const CUT_ID = "cut-free";
+
+/**
+ * A blow struck at a condition to cut it away (1.478), paid for as any attack is: the condition stands
+ * in as a thing with its `cutFree` defense and what is left of it, for that blow only. Only damage of
+ * the types it names wears it down; with none left, it ends on its holder.
+ */
+function strikeCut(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const asked = choice.cut;
+  const offered =
+    asked && typeof asked === "object"
+      ? option.cuts?.find((one) => one.holderId === asked.holderId && one.condition === asked.condition)
+      : undefined;
+  const rule = combat.conditions?.find((entry) => entry.condition === offered?.condition)?.cutFree;
+  if (!offered || !rule || choice.targetIds.length > 0 || choice.mode !== undefined) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
+  const own = actor.actions.find((entry) => entry.id === option.id)!;
+  const styles = rulesetAttackStyles(combat, actor, own);
+  if (choice.style !== undefined && !styles.some((style) => style.id === choice.style)) {
+    return refusal(state, choice.actorId, "unknown-style", option.id);
+  }
+  const style = styles.find((one) => one.id === choice.style) ?? styles[0];
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  const holder = rulesetCombatant(ctx.state, offered.holderId)!;
+  const action = working.actions.find((entry) => entry.id === option.id)!;
+  if (option.budget) spendBudget(ctx, working, option.budget);
+  countAttack(ctx, working);
+  const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
+  if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
+  if (paid.live && working.sheet) working.sheet.live = paid.live;
+  countRulesetSpend(working, paid.cost);
+  for (const entry of paid.cost) {
+    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+  }
+  spendAvailability(ctx, working, action);
+  const held = holder.tracked.filter((one) => one.condition === offered.condition);
+  const before = held[0]?.cutLeft ?? rule.health;
+  const at = rulesetPositionOf(holder);
+  const stand = objectStandIn(CUT_ID, offered.label, working, rule, before, at ?? { x: 0, y: 0 });
+  if (!at) {
+    delete stand.x;
+    delete stand.y;
+  }
+  const from = ctx.events.length;
+  ctx.state.combatants.push(stand);
+  resolveAction(
+    ctx,
+    working,
+    action,
+    [stand],
+    choice.payWith,
+    undefined,
+    style?.id,
+    style?.spends ? working.initiative : undefined,
+  );
+  ctx.state.combatants = ctx.state.combatants.filter((one) => one !== stand);
+  const byType = dealtByType(ctx, from, CUT_ID);
+  const { roll, dealt } = objectBlows(ctx, from, [CUT_ID])[CUT_ID]!;
+  const cutting = rule.damageTypes
+    ? rule.damageTypes.reduce((total, type) => total + (byType.get(type.trim().toLowerCase()) ?? 0), 0)
+    : dealt;
+  const outcome = roll?.outcome === "miss" || roll?.outcome === "critical" ? roll.outcome : "hit";
+  const left = Math.max(0, before - cutting);
+  for (const one of held) one.cutLeft = left;
+  ctx.events.push({
+    type: "cut",
+    actorId: working.id,
+    holderId: holder.id,
+    label: action.label,
+    condition: offered.label,
+    outcome,
+    dealt: cutting,
+    left,
+    ...(left <= 0 ? { freed: true as const } : {}),
+  });
+  if (left <= 0) removeCondition(ctx, holder, offered.condition, "freed");
+  noteOutcome(ctx);
+  return finish();
 }
 
 /**

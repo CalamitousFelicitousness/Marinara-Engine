@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that may be cut away (1.478): a net. */
+function carriesCutFree478(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCutFree478(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.cutFree !== undefined) return true;
+  return featureValues(record).some((one) => carriesCutFree478(one, depth + 1));
+}
+
 /** A target test that excepts what it never is (1.477): a net's formless creatures. */
 function carriesTargetExcept477(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6712,6 +6722,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that may be cut away, 1.478.
+  if (
+    !declaresApi(478) &&
+    (carriesCutFree478(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCutFree478(document)))
+  ) {
+    return "A ruleset whose conditions may be struck at and cut away (cutFree) requires schemaVersion 2 and capabilityApi 1.478 or newer";
+  }
   // A target test with an exception, 1.477.
   if (
     !declaresApi(477) &&

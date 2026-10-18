@@ -760,6 +760,16 @@ export function rulesetCombatEventLine(
       });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
+    // Struck at to cut it away (1.478): a net.
+    case "cut":
+      return key(event.outcome === "miss" ? "cutMiss" : event.freed ? "cutFreed" : "cut", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.holderId),
+        label: event.label,
+        condition: event.condition,
+        dealt: event.dealt,
+        left: event.left,
+      });
     case "section":
       return key(event.outcome === "miss" ? "sectionMiss" : event.broken ? "sectionBroken" : "section", {
         actor: names.combatant(event.actorId),

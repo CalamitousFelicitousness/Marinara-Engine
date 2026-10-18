@@ -11443,6 +11443,19 @@ const combatConditionSchema = z
     /** Its holder is never surprised (Capability API 1.237): 5e's Foresight. Read as the fight
      *  begins. */
     cannotBeSurprised: z.literal(true).optional(),
+    /** It may be struck at as a thing of its own and cut away (Capability API 1.478): an attack
+     *  aimed at it rolls against `defense`, and once `health` of damage of `damageTypes` (any, when
+     *  left out) has reached it, it ends on its holder. 5e's net, "dealing 5 slashing damage to the
+     *  net (AC 10) also frees the creature": `{ "defense": 10, "health": 5, "damageTypes":
+     *  ["slashing"] }`. */
+    cutFree: z
+      .object({
+        defense: z.number().int().min(0).max(100),
+        health: z.number().int().min(1).max(1000),
+        damageTypes: z.array(promptSafeText(40)).min(1).max(8).optional(),
+      })
+      .strict()
+      .optional(),
     /** Damage taken stops it working until its holder's next turn starts (Capability API 1.461),
      *  ended or not: 5e's Cloak of Displacement. */
     suppressedWhenHarmed: z.literal("until-own-turn-start").optional(),

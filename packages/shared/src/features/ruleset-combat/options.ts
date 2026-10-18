@@ -681,6 +681,44 @@ export function rulesetDispelTargets(
 }
 
 /**
+ * Conditions an attack may be struck at instead of a creature, to cut them away (1.478): those with
+ * `cutFree` on a standing creature it reaches, friend or foe, or on its own maker, when it rolls to hit,
+ * deals damage of a type that cuts it, and is no area, contest or sequence. A net on its holder.
+ */
+export function rulesetCutTargets(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): NonNullable<RulesetCombatOption["cuts"]> {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.cutFree)) return [];
+  if (action.toHit === undefined || !action.damage || action.area || action.contest || action.sequence) return [];
+  if (action.targets.count < 1) return [];
+  const type = action.damage.type?.trim().toLowerCase();
+  // Whoever it may reach, friend or foe: a net is cut from an ally.
+  const targetIds = rulesetOptionTargets(definition, state, actor.id, {
+    id: action.id,
+    targets: { ...action.targets, side: "any" },
+  });
+  const cuts: NonNullable<RulesetCombatOption["cuts"]> = [];
+  for (const holder of state.combatants) {
+    if (holder.defeated || (holder.id !== actor.id && !targetIds.includes(holder.id))) continue;
+    for (const entry of rulesetActiveConditions(definition, combat, holder, state)) {
+      const rule = entry.cutFree;
+      if (!rule) continue;
+      if (rule.damageTypes && !rule.damageTypes.some((one) => one.trim().toLowerCase() === type)) continue;
+      const held = holder.tracked.find((one) => one.condition === entry.condition);
+      if (!held) continue;
+      const label =
+        definition.sheet.live.conditions.find((live) => live.id === entry.condition)?.label ?? entry.condition;
+      cuts.push({ holderId: holder.id, condition: entry.condition, label, left: held.cutLeft ?? rule.health });
+    }
+  }
+  return cuts;
+}
+
+/**
  * The cells of standing wall sections, and of props (1.316), an attack may be pointed at instead of a
  * creature (1.200):
  * one aimed at a single foe or anybody, dealing damage, not an area, a contest or a sequence, with the
@@ -2896,6 +2934,9 @@ function optionFrom(
     // Lasting areas it may end instead (1.374): Dispel Magic on a Wall of Fire.
     const dispels = rulesetDispelTargets(state, actor, action);
     if (dispels.length > 0) option.dispels = dispels;
+    // Conditions it may cut away instead (1.478): a net.
+    const cuts = definition ? rulesetCutTargets(definition, state, actor, action) : [];
+    if (cuts.length > 0) option.cuts = cuts;
     // What it may be stored in instead (1.471): a Ring of Spell Storing.
     const stores = rulesetStoreTargets(state, actor, action);
     if (stores.length > 0) option.storesIn = stores;

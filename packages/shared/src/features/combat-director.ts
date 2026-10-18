@@ -65,6 +65,8 @@ export type DirectedCommand =
       wall?: { x: number; y: number };
       /** A lasting area ended instead of a creature (1.374): one of the option's `dispels`. */
       dispel?: { casterId: string; actionId: string };
+      /** A condition struck at and cut away instead of a creature (1.478): one of the option's `cuts`. */
+      cut?: { holderId: string; condition: string };
       /** Which of its target's conditions it ends (1.374), from the option's `endsChoices`. */
       ends?: string[];
       /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */

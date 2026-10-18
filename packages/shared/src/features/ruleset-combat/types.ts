@@ -1447,6 +1447,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** What is left of it to cut away (1.478), once something has been struck at it. */
+  cutLeft?: number;
   /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */
   raisedMax?: number;
   /** Turns its `stopsTime` has still to give (1.454), once rolled: time is stopped while it is set. */
@@ -3256,6 +3258,18 @@ export type RulesetCombatEvent =
   | { type: "healthPool"; actorId: string; label: string; rolls: number[]; total: number; affected: string[] }
   /** A wall's section struck at (1.200): by whom, with what, whether it landed, what it took and
    *  what it has left; `broken` when that was the last of it. */
+  /** A blow struck at a condition to cut it away (1.478): `left` of it after, `freed` when none is. */
+  | {
+      type: "cut";
+      actorId: string;
+      holderId: string;
+      label: string;
+      condition: string;
+      outcome: "hit" | "miss" | "critical";
+      dealt: number;
+      left: number;
+      freed?: true;
+    }
   | {
       type: "section";
       actorId: string;
@@ -3459,6 +3473,9 @@ export interface RulesetCombatOption {
   /** Lasting areas it may be aimed at instead of a creature, to end them (1.374): Dispel Magic on a
    *  Wall of Fire. The choice names one as `dispel`. */
   dispels?: Array<{ casterId: string; actionId: string; label: string }>;
+  /** Conditions it may strike at instead of a creature, to cut them away (1.478): a net on its
+   *  holder, with what is left of it. The choice names one as `cut`. */
+  cuts?: Array<{ holderId: string; condition: string; label: string; left: number }>;
   /** What its user may pick to end on each target, by target id (1.374): the conditions entries of
    *  its catalogs put on them. The choice names them as `ends`; left out, the highest end first. */
   endsChoices?: Record<string, Array<{ condition: string; label: string; level?: number }>>;
@@ -3599,6 +3616,9 @@ export interface RulesetCombatChoice {
   wall?: RulesetCombatCell;
   /** A lasting area to end instead of a creature (1.374): one the option's `dispels` offers. */
   dispel?: { casterId: string; actionId: string };
+  /** A condition to strike at and cut away instead of a creature (1.478): one the option's `cuts`
+   *  offers. */
+  cut?: { holderId: string; condition: string };
   /** Which of its target's conditions to end (1.374), from the option's `endsChoices`. */
   ends?: string[];
   /** Lay a wall whose area allows it as a ring around `at` instead (1.177). */

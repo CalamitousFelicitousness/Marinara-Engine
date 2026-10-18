@@ -116,6 +116,8 @@ export type RulesetCellChoice = {
   wall?: RulesetCombatCell;
   /** A lasting area ended instead of a creature (1.374). */
   dispel?: { casterId: string; actionId: string };
+  /** A condition struck at to cut it away (1.478). */
+  cut?: { holderId: string; condition: string };
   /** Which of its target's conditions it ends (1.374). */
   ends?: string[];
   /** Who goes along on a teleport (1.276). */
@@ -330,7 +332,8 @@ export function rulesetNothingInReach(view: DirectedRulesetView): boolean {
       option.targetIds.length === 0 &&
       (option.aim?.length ?? 0) === 0 &&
       (option.walls?.length ?? 0) === 0 &&
-      (option.dispels?.length ?? 0) === 0,
+      (option.dispels?.length ?? 0) === 0 &&
+      (option.cuts?.length ?? 0) === 0,
   );
 }
 

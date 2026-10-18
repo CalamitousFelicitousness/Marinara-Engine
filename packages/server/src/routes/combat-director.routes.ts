@@ -240,6 +240,8 @@ const command = z.discriminatedUnion("type", [
     wall: coord.optional(),
     /** A lasting area ended instead of a creature (1.374), checked by the resolver. */
     dispel: z.object({ casterId: key, actionId: key }).strict().optional(),
+    /** A condition struck at to cut it away (1.478), checked against the menu by the resolver. */
+    cut: z.object({ holderId: key, condition: key }).strict().optional(),
     /** Which of its target's conditions it ends (1.374), checked by the resolver. */
     ends: z.array(key).max(16).optional(),
     /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */

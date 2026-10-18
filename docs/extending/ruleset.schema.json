@@ -41415,6 +41415,16 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "casts": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -41455,6 +41465,33 @@
                             "catalogs",
                             "maxLevel"
                           ],
+                          "additionalProperties": false
+                        },
+                        "suppresses": {
+                          "type": "object",
+                          "properties": {
+                            "catalogs": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
                           "additionalProperties": false
                         },
                         "keepsOut": {
@@ -58039,6 +58076,16 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "casts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -58079,6 +58126,33 @@
                                   "catalogs",
                                   "maxLevel"
                                 ],
+                                "additionalProperties": false
+                              },
+                              "suppresses": {
+                                "type": "object",
+                                "properties": {
+                                  "catalogs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "$comment": {}
+                                },
                                 "additionalProperties": false
                               },
                               "keepsOut": {
@@ -75105,6 +75179,16 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "casts": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -75145,6 +75229,33 @@
                                 "catalogs",
                                 "maxLevel"
                               ],
+                              "additionalProperties": false
+                            },
+                            "suppresses": {
+                              "type": "object",
+                              "properties": {
+                                "catalogs": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "tags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
                               "additionalProperties": false
                             },
                             "keepsOut": {
@@ -90129,6 +90240,16 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "casts": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -90169,6 +90290,33 @@
                                       "catalogs",
                                       "maxLevel"
                                     ],
+                                    "additionalProperties": false
+                                  },
+                                  "suppresses": {
+                                    "type": "object",
+                                    "properties": {
+                                      "catalogs": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "$comment": {}
+                                    },
                                     "additionalProperties": false
                                   },
                                   "keepsOut": {

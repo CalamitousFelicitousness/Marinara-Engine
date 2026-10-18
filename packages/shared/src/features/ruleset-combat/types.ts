@@ -1185,6 +1185,9 @@ export interface RulesetCombatAction {
    *  weapon (the ranged ones with `ranged`) roll with `mode` (1.192). `item` is this weapon's place
    *  in `sheet.items`. */
   othersWhileMarked?: { condition: string; mode: "advantage" | "disadvantage"; ranged?: true; item: number };
+  /** What a weapon item adds of its own (1.468): its to-hit and damage bonus, off as an antimagic
+   *  zone suppresses it. */
+  itemBonus?: { toHit: number; damage: number };
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {
@@ -3723,9 +3726,11 @@ export interface RulesetCombatZoneRule {
     save?: { save: string; ignoresUntilLeaves: true };
   };
   /** Components nothing used from inside it may need (1.179). */
-  forbids?: { components?: string[]; teleport?: true };
+  forbids?: { components?: string[]; teleport?: true; casts?: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
+  /** What does nothing inside it (1.468): conditions off these catalogs, items with these tags. */
+  suppresses?: { catalogs?: string[]; tags?: string[] };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */
   keepsOut?: {
     is: RulesetTargetIs;

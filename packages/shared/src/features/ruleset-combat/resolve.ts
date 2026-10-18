@@ -115,6 +115,8 @@ import {
   rulesetCheckSkill,
   rulesetCheckTakenModes,
   rulesetActionAsUsed,
+  rulesetSuppressedAttack,
+  rulesetSuppressedOn,
   rulesetImmuneToCondition,
   writeRulesetSheet,
   type RulesetCombatHealth,
@@ -9706,8 +9708,16 @@ function openAimed(
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
-  // A fake does what it truly does (1.79).
-  const own = found && rulesetActionAsUsed(found);
+  // A fake does what it truly does (1.79), and a weapon suppressed is a plain one (1.468): made from
+  // inside an antimagic zone, or at somebody inside one.
+  const asUsed = found && rulesetActionAsUsed(found);
+  const hushed =
+    asUsed?.itemTags && actor
+      ? [actor, ...(resume.targetIds ?? []).flatMap((id) => rulesetCombatant(ctx.state, id) ?? [])]
+          .map((one) => rulesetSuppressedOn(ctx.state, one))
+          .find((hush) => hush && asUsed.itemTags!.some((tag) => hush.tags.has(tag)))
+      : undefined;
+  const own = asUsed && hushed ? rulesetSuppressedAttack(asUsed, hushed) : asUsed;
   // Picked up in the mode it was made in, and with what it was altered with (1.253).
   const moded = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
   let action =

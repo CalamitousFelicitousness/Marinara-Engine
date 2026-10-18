@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone that suppresses conditions off some catalogs, or items with some tags (1.468): Antimagic Field. */
+function carriesSuppresses468(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSuppresses468(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const zone = plainRecord(record.zone);
+  if (plainRecord(zone?.suppresses) !== undefined || plainRecord(zone?.forbids)?.casts !== undefined) return true;
+  return featureValues(record).some((one) => carriesSuppresses468(one, depth + 1));
+}
+
 /** A condition that wards its holder from entries of a level or lower (1.467): a rakshasa's. */
 function carriesConditionWards467(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6598,6 +6609,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones that suppress magic, 1.468.
+  if (
+    !declaresApi(468) &&
+    (carriesSuppresses468(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSuppresses468(document)))
+  ) {
+    return "A ruleset whose zones suppress conditions or items inside them (a zone's suppresses or forbids casts) requires schemaVersion 2 and capabilityApi 1.468 or newer";
+  }
   // Conditions that ward their holders, 1.467.
   if (
     !declaresApi(467) &&

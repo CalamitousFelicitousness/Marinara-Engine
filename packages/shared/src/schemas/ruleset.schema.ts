@@ -2847,6 +2847,7 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
 export interface RulesetForbids {
   components?: string[];
   teleport?: true;
+  casts?: string[];
 }
 const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z
   .object({
@@ -2854,10 +2855,13 @@ const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z
     /** Nobody it works on inside teleports into it, out of it or within it, nor leaves the fight by
      *  teleporting from inside it (Capability API 1.414): Hallow's Extradimensional Interference. */
     teleport: z.literal(true).optional(),
+    /** Nothing from these catalogs is cast from inside it (Capability API 1.468): 5e's Antimagic
+     *  Field, `["spells"]`. */
+    casts: uniqueIds(8).optional(),
   })
   .strict()
-  .refine((forbids) => forbids.components || forbids.teleport, {
-    message: 'Say what it stops: "components", "teleport" or both',
+  .refine((forbids) => forbids.components || forbids.teleport || forbids.casts, {
+    message: 'Say what it stops: "components", "teleport", "casts" or more than one',
   });
 /** What a condition stops its holder using (1.179), and, from Capability API 1.385, casting from
  *  these catalogs or concentrating at all: 5e's Rage. */
@@ -3018,6 +3022,7 @@ export interface RulesetCatalogZone {
   inside?: RulesetZoneInside;
   forbids?: RulesetForbids;
   wards?: RulesetZoneWards;
+  suppresses?: { catalogs?: string[]; tags?: string[] };
   keepsOut?: RulesetZoneKeepsOut;
   hidden?: { check: string };
   detonates?: {
@@ -3392,6 +3397,17 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** What is cast from outside it at this level or lower, off these catalogs, does not reach whoever
      *  is inside (1.179): 5e's Globe of Invulnerability, spells of 5th level or lower. */
     wards: zoneWardsSchema.optional(),
+    /** What does nothing inside it (Capability API 1.468): conditions put on by entries of these
+     *  `catalogs`, on whoever is inside; and items with any of these `tags`, held by whoever is
+     *  inside, whose worn and carried effects stop, whose uses are not offered, and whose attacks
+     *  lose their own to-hit and damage bonus, their extra damage and those tags as qualities, made
+     *  from inside or at somebody inside. 5e's Antimagic Field, `{ "catalogs": ["spells"], "tags":
+     *  ["magical"] }`, beside `forbids.casts` (no casting inside, Capability API 1.468) and a `wards` of every level. */
+    suppresses: z
+      .object({ catalogs: uniqueIds(8).optional(), tags: uniqueIds(8).optional() })
+      .strict()
+      .refine((hush) => hush.catalogs || hush.tags, { message: "Say what it suppresses: catalogs, tags or both" })
+      .optional(),
     /** Kinds of creature it keeps out (Capability API 1.399): they cannot walk into it, their attacks
      *  into it may have disadvantage, and they cannot put `cantGive` on whoever is inside. With
      *  `way: "out"` it keeps them in: they cannot walk out of it, and (Capability API 1.405) their
@@ -17118,6 +17134,12 @@ function zoneInsideIssues(
   const catalogs = new Set((definition.catalogs ?? []).map((catalog) => catalog.id));
   zone.wards?.catalogs.forEach((catalog, index) => {
     if (!catalogs.has(catalog)) add([...at, "wards", "catalogs", index], `Unknown catalog "${catalog}"`);
+  });
+  zone.forbids?.casts?.forEach((catalog, index) => {
+    if (!catalogs.has(catalog)) add([...at, "forbids", "casts", index], `Unknown catalog "${catalog}"`);
+  });
+  zone.suppresses?.catalogs?.forEach((catalog, index) => {
+    if (!catalogs.has(catalog)) add([...at, "suppresses", "catalogs", index], `Unknown catalog "${catalog}"`);
   });
 }
 

@@ -52,6 +52,8 @@ import {
   currentRulesetActor,
   rulesetActedThisRound,
   rulesetActiveConditions,
+  rulesetItemSuppressed,
+  rulesetSuppressedOn,
   rulesetChosenKind,
   rulesetWardsOn,
   rulesetTargetHasSenses,
@@ -2227,6 +2229,13 @@ export function rulesetActionAvailable(
   if (action.uses && rulesetActionUses(actor, action, state) < 1) return false;
   // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
   if (!rulesetShotsAvailable(actor, action)) return false;
+  // An item's use is not offered where it is suppressed (1.468): a wand in an antimagic field.
+  if (
+    action.itemUse &&
+    action.kind !== "attack" &&
+    rulesetItemSuppressed(rulesetSuppressedOn(state, actor), actor.sheet?.items?.[action.itemUse.item]?.item)
+  )
+    return false;
   // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
   if (action.offHandOf !== undefined && (actor.flags.offHand ?? action.offHandOf) === action.offHandOf) return false;
   return !actor.spent.includes(action.id);

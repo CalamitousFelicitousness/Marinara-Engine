@@ -410,14 +410,29 @@ export function writeRulesetSheet(
 
 /** Every condition on this combatant. A party member's are the sheet's own, so one they walked into
  *  the fight with counts from the first turn and one the fight applied is still there afterwards. */
-export function rulesetCombatConditions(definition: RulesetDefinition, combatant: RulesetCombatant): string[] {
-  const ids = new Set(combatant.tracked.map((entry) => entry.condition));
+export function rulesetCombatConditions(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  /** What the zones they stand in suppress (1.468). */
+  hush?: { catalogs: Set<string>; tags: Set<string> } | null,
+): string[] {
+  // Put on only by entries of a catalog suppressed here (1.468): a spell's, in an antimagic field.
+  const tracked = hush?.catalogs.size
+    ? combatant.tracked.filter(
+        (entry) =>
+          !(entry.catalog && hush.catalogs.has(entry.catalog)) ||
+          combatant.tracked.some(
+            (other) => other.condition === entry.condition && !(other.catalog && hush.catalogs.has(other.catalog)),
+          ),
+      )
+    : combatant.tracked;
+  const ids = new Set(tracked.map((entry) => entry.condition));
   if (combatant.sheet) {
     const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
     for (const condition of live.conditions) if (condition.active) ids.add(condition.id);
     // And what their items keep on them (1.460), for as long as each is worn or carried.
     if (combatant.sheet.items?.length)
-      for (const source of heldSources(definition, combatant)) for (const id of source.keepsOn ?? []) ids.add(id);
+      for (const source of heldSources(definition, combatant, hush)) for (const id of source.keepsOn ?? []) ids.add(id);
   }
   return [...ids];
 }
@@ -542,7 +557,9 @@ export function rulesetActiveConditions(
   state?: RulesetEncounterState,
   rawLevels = false,
 ): RulesetActiveCondition[] {
-  const active = new Set(rulesetCombatConditions(definition, combatant));
+  // What an antimagic zone they stand in suppresses (1.468).
+  const hush = rulesetSuppressedOn(state, combatant);
+  const active = new Set(rulesetCombatConditions(definition, combatant, hush));
   // Standing in a zone that says so (1.179): its conditions are on whoever is there, and what it
   // keeps off or stops reads as one more source, named for the zone.
   // Nor through a sphere (1.314), into it or out of it: read off what holds each of them, as a zone's
@@ -560,14 +577,21 @@ export function rulesetActiveConditions(
   }
   const zoned = inside.flatMap(({ label, rule, zone }): RulesetActiveCondition[] => {
     const works = insideWorksOn(definition, combatant, zone, rule);
-    return (works && rule.inside?.immune) || rule.forbids?.components
+    return (works && rule.inside?.immune) || rule.forbids?.components || rule.forbids?.casts
       ? [
           {
             condition: label,
             zone: true,
             effects: [],
             ...(works && rule.inside?.immune ? { immune: [...rule.inside.immune] } : {}),
-            ...(rule.forbids?.components ? { forbids: { components: [...rule.forbids.components] } } : {}),
+            ...(rule.forbids?.components || rule.forbids?.casts
+              ? {
+                  forbids: {
+                    ...(rule.forbids.components ? { components: [...rule.forbids.components] } : {}),
+                    ...(rule.forbids.casts ? { casts: [...rule.forbids.casts] } : {}),
+                  },
+                }
+              : {}),
           },
         ]
       : [];
@@ -594,7 +618,7 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
-  const held = heldSources(definition, combatant);
+  const held = heldSources(definition, combatant, hush);
   // Held off, not ended, by another that holds (1.275): Calm Emotions' charm and fright. Or by an
   // item (1.424): the Periapt of Health's diseases.
   const suppressed = new Set([...conditions, ...held].flatMap((entry) => entry.suppresses ?? []));
@@ -690,7 +714,7 @@ function zonesStoodIn(
   return state.combatants.flatMap((caster) =>
     (caster.zones ?? []).flatMap((zone) => {
       const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
-      if (!rule || (!rule.inside && !rule.forbids && !rule.wards)) return [];
+      if (!rule || (!rule.inside && !rule.forbids && !rule.wards && !rule.suppresses)) return [];
       // Any cell they fill (1.194).
       const inIt =
         grid && at
@@ -715,6 +739,29 @@ export function rulesetZoneConditions(
       ),
     ),
   ];
+}
+
+/** What the zones they stand in suppress (1.468): conditions off these catalogs, items with these tags.
+ *  Null when they stand in none that does. */
+export function rulesetSuppressedOn(
+  state: RulesetEncounterState | undefined,
+  combatant: RulesetCombatant,
+): { catalogs: Set<string>; tags: Set<string> } | null {
+  if (!state) return null;
+  const rules = zonesStoodIn(state, combatant).flatMap(({ rule }) => (rule.suppresses ? [rule.suppresses] : []));
+  if (rules.length === 0) return null;
+  return {
+    catalogs: new Set(rules.flatMap((rule) => rule.catalogs ?? [])),
+    tags: new Set(rules.flatMap((rule) => rule.tags ?? [])),
+  };
+}
+
+/** Whether an item is suppressed where its holder stands (1.468): any of its tags is. */
+export function rulesetItemSuppressed(
+  hush: { tags: Set<string> } | null | undefined,
+  item: Pick<RulesetCatalogItem, "tags"> | undefined,
+): boolean {
+  return !!hush && hush.tags.size > 0 && !!item?.tags?.some((tag) => hush.tags.has(tag));
 }
 
 /** The zones warding whoever stands in them (1.179), each by its caster and action, with what it
@@ -904,12 +951,20 @@ export function rulesetAbilityScore(
 
 /** What a fighter's items do, as they hold them in this fight: see `rulesetItemSources`. A requirement
  *  reads the sheet with the live state as it stands. Nothing for a fighter with no sheet or no items. */
-function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant): RulesetCheckSource[] {
+function heldSources(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  /** What the zones they stand in suppress (1.468): an item with a tag of these does nothing. */
+  hush?: { tags: Set<string> } | null,
+): RulesetCheckSource[] {
   const sheet = combatant.sheet;
   if (!sheet?.items?.length) return [];
-  // What lies where it was dropped (1.266) does nothing for them.
+  // What lies where it was dropped (1.266) does nothing for them, nor what is suppressed (1.468).
   const dropped = rulesetDroppedItems(combatant);
-  const items = dropped.size ? sheet.items.filter((_, index) => !dropped.has(index)) : sheet.items;
+  const items =
+    dropped.size || hush?.tags.size
+      ? sheet.items.filter((held, index) => !dropped.has(index) && !rulesetItemSuppressed(hush, held.item))
+      : sheet.items;
   let evaluated: EvaluatedRulesetSheet | undefined;
   return rulesetItemSources(
     definition,
@@ -2148,6 +2203,15 @@ export function rulesetZoneAction(
       ...(zone.forbids.components ? { components: [...zone.forbids.components] } : {}),
       // No teleporting into, out of or within it (1.414).
       ...(zone.forbids.teleport ? { teleport: true as const } : {}),
+      // No casting from these catalogs inside it (1.468): an antimagic field's spells.
+      ...(zone.forbids.casts ? { casts: [...zone.forbids.casts] } : {}),
+    };
+  }
+  // What does nothing inside it (1.468): Antimagic Field.
+  if (zone.suppresses) {
+    out.suppresses = {
+      ...(zone.suppresses.catalogs ? { catalogs: [...zone.suppresses.catalogs] } : {}),
+      ...(zone.suppresses.tags ? { tags: [...zone.suppresses.tags] } : {}),
     };
   }
   if (zone.wards) {
@@ -2219,6 +2283,32 @@ export const RULESET_FAKE_EFFECT_KEYS = [
 
 /** The action a use resolves as: for a fake (1.79), the one offered with what it truly does in place
  *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
+/** A weapon item's attack made where it is suppressed (1.468), from inside an antimagic zone or at
+ *  somebody inside: a plain weapon, without its own bonus, its extra damage or the suppressed tags. */
+export function rulesetSuppressedAttack(
+  action: RulesetCombatAction,
+  hush: { tags: Set<string> } | null,
+): RulesetCombatAction {
+  if (!action.itemTags?.some((tag) => hush?.tags.has(tag))) return action;
+  const bonus = action.itemBonus ?? { toHit: 0, damage: 0 };
+  const plain = (damage: NonNullable<RulesetCombatAction["damage"]>) => {
+    const { plus: _plus, ...rest } = damage;
+    const qualities = rest.qualities?.filter((tag) => !hush!.tags.has(tag));
+    return {
+      ...rest,
+      flat: Math.max(0, rest.flat - bonus.damage),
+      ...(qualities ? { qualities } : {}),
+    };
+  };
+  const { itemBonus: _bonus, slay: _slay, ...rest } = action;
+  return {
+    ...rest,
+    ...(rest.toHit !== undefined ? { toHit: rest.toHit - bonus.toHit } : {}),
+    ...(rest.damage ? { damage: plain(rest.damage) } : {}),
+    itemTags: rest.itemTags!.filter((tag) => !hush!.tags.has(tag)),
+  };
+}
+
 export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
   const does = action.itemUse?.fake?.does;
   if (!does) return action;
@@ -2394,7 +2484,9 @@ function itemAttackActions(
       attack.damage.sheetBonus !== undefined && !(attack.damage.oneHanded && twoHanded)
         ? Math.trunc(resolveRulesetValueRef(definition, build, attack.damage.sheetBonus, evaluated))
         : 0;
-    const bonus = number(read(attack.damage.bonus)) + (Number.isFinite(sheetDamage) ? sheetDamage : 0);
+    const ownDamage = number(read(attack.damage.bonus));
+    const ownHit = pooled ? 0 : number(read(attack.toHit?.bonus));
+    const bonus = ownDamage + (Number.isFinite(sheetDamage) ? sheetDamage : 0);
     const typeRead = read(attack.damage.type);
     const type = typeof typeRead === "string" && typeRead.trim() ? typeRead.trim() : undefined;
     const strikes = attack.strikes
@@ -2590,6 +2682,10 @@ function itemAttackActions(
       ...(attack.othersWhileMarked ? { othersWhileMarked: { ...attack.othersWhileMarked, item: index } } : {}),
       // What comes after the attack action reads the weapon's tags (1.246).
       ...(item.tags?.length ? { itemTags: [...item.tags] } : {}),
+      // Its own bonus, off where it is suppressed (1.468).
+      ...(item.tags?.length && (ownHit !== 0 || ownDamage !== 0)
+        ? { itemBonus: { toHit: ownHit, damage: ownDamage } }
+        : {}),
     };
     // What the sheet's entries do to it (1.244), as they do to a row: a monk's quarterstaff.
     const ruled = (action: RulesetCombatAction, full: boolean) => {

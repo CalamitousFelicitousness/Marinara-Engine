@@ -156,7 +156,7 @@ try {
   }
 
   // ── Refusals ──
-  refused(fiveE({ forbids: {} }), /Say what it stops: "components", "teleport" or both/);
+  refused(fiveE({ forbids: {} }), /Say what it stops: "components", "teleport", "casts" or more than one/);
 
   // ── The install gate ──
   {

@@ -64,6 +64,44 @@ export function rulesetChargesStart(charges: { rolled?: string }, max: number, s
   return Math.max(0, Math.min(max, total));
 }
 
+/** What a stack of an item that stores is found holding (1.523): its `found.levels` dice, thrown once
+ *  for that stack as its rolled charges are (never past what it holds), filled out of `found.from` in
+ *  an order drawn for that stack too, each that still fits, up to how many it holds. */
+export function rulesetFoundStored(
+  stores: {
+    levels: number;
+    count?: number;
+    found?: { levels: string; from: ReadonlyArray<{ entry: string; level: number; label?: string }> };
+  },
+  stackId: string | undefined,
+): Array<{ entry: string; level: number; label?: string }> {
+  const found = stores.found;
+  if (!found) return [];
+  const dice = parseRulesetCombatDice(found.levels);
+  if (!dice) return [];
+  const face = (place: string, sides: number) => {
+    let hash = 0x811c9dc5;
+    for (const char of `${stackId ?? ""}:${place}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    return hash % Math.max(1, sides);
+  };
+  let left = dice.flat;
+  for (let at = 0; at < dice.count; at++) left += 1 + face(`found:${at}`, dice.sides);
+  left = Math.max(0, Math.min(stores.levels, left));
+  const order = found.from
+    .map((one, at) => ({ one, key: face(`found-order:${at}`, 0x7fffffff) }))
+    .sort((a, b) => a.key - b.key)
+    .map((pair) => pair.one);
+  const held: Array<{ entry: string; level: number; label?: string }> = [];
+  const most = stores.count ?? 20;
+  for (const one of order) {
+    if (held.length >= most || left < 1) break;
+    if (one.level > left) continue;
+    held.push({ entry: one.entry, level: one.level, ...(one.label ? { label: one.label } : {}) });
+    left -= one.level;
+  }
+  return held;
+}
+
 export function sumOf(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }

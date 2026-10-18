@@ -84368,6 +84368,52 @@
                           ],
                           "additionalProperties": false
                         },
+                        "found": {
+                          "type": "object",
+                          "properties": {
+                            "levels": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                            },
+                            "from": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "entry": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9][a-z0-9_-]*$"
+                                  },
+                                  "level": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 40
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "entry",
+                                  "level"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 40
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "levels",
+                            "from"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -152075,6 +152121,52 @@
                           },
                           "required": [
                             "on"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "found": {
+                          "type": "object",
+                          "properties": {
+                            "levels": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                            },
+                            "from": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "entry": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9][a-z0-9_-]*$"
+                                  },
+                                  "level": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 40
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "entry",
+                                  "level"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 40
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "levels",
+                            "from"
                           ],
                           "additionalProperties": false
                         },

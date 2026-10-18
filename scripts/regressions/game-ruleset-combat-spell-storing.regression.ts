@@ -7,6 +7,8 @@
  *   - The ring's stack keeps what it holds after the fight, and the next fight reads it.
  *   - A shield guardian beside the mage takes one spell and casts it itself.
  *   - Stored before the fight (`standing` with `into`). Refusals and the install gate.
+ *   - Found holding some (1.523, `stores.found`): each stack's rolled levels drawn from its list,
+ *     the same at every reading, until a fight changes them; emptied, it stays empty.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -25,6 +27,8 @@ import {
   rulesetCombatHealth,
   rulesetCombatOptions,
   rulesetItemBook,
+  rulesetFoundStored,
+  rulesetSheetItems,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -241,7 +245,7 @@ try {
     );
     assert.equal(stacks?.stacks[0]?.storedEntries?.[0]?.entry, "spells/bolt");
     const emptied = applyRulesetFightItemChanges(stacks!.stacks, rulesetFightItemChanges(stored.state, cast.state));
-    assert.equal(emptied?.stacks[0]?.storedEntries, undefined, "cast, it holds nothing");
+    assert.deepEqual(emptied?.stacks[0]?.storedEntries, [], "cast, it holds nothing, and says so (1.523)");
   }
   // ── Too high a level; a ring not worn ──
   {
@@ -319,6 +323,82 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, document()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, document()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, JSON.parse(fiveEText)), gate);
+  }
+
+  // ── Found holding some (1.523) ──
+  {
+    const found = {
+      levels: "1d6-1",
+      from: [
+        { entry: "spells/bolt", level: 3, label: "Bolt" },
+        { entry: "spells/great", level: 1, label: "Spark" },
+        { entry: "spells/great", level: 2, label: "Flare" },
+      ],
+    };
+    const doc = document((one) => (one.catalogs.at(-1).entries[0].item.stores.found = found));
+    const withFound = parsed(doc);
+    const foundBook = rulesetItemBook(withFound, {
+      gear: withFound.catalogs!.find((one) => one.id === "gear")!.entries!,
+    });
+    const stores = foundBook.itemOf("gear/ring")!.entry.item!.stores!;
+    const draws = Array.from({ length: 40 }, (_, at) => rulesetFoundStored(stores, `ring-${at}`));
+    for (const held of draws) {
+      const levels = held.reduce((total, one) => total + one.level, 0);
+      assert.ok(levels <= 5, JSON.stringify(held));
+    }
+    assert.ok(
+      draws.some((held) => held.length === 0),
+      "a 1d6 - 1 can come up empty",
+    );
+    assert.ok(new Set(draws.map((held) => JSON.stringify(held))).size > 3, "stacks differ");
+    assert.deepEqual(rulesetFoundStored(stores, "ring-7"), draws[7], "the same again");
+    const at = draws.findIndex((held) => held.length > 0);
+    const sheet = rulesetSheetItems(
+      foundBook,
+      [{ id: `ring-${at}`, name: "Ring of Spell Storing", item: "gear/ring", quantity: 1, equipped: true }],
+      undefined,
+    );
+    assert.deepEqual(sheet[0]!.storedEntries, draws[at], "a sheet reads what it was found holding");
+    const kept = rulesetSheetItems(
+      foundBook,
+      [
+        {
+          id: `ring-${at}`,
+          name: "Ring of Spell Storing",
+          item: "gear/ring",
+          quantity: 1,
+          equipped: true,
+          storedEntries: [],
+        },
+      ],
+      undefined,
+    );
+    assert.deepEqual(kept[0]!.storedEntries, [], "emptied, it stays empty");
+    refusedDoc(
+      document(
+        (one) =>
+          (one.catalogs.at(-1).entries[0].item.stores.found = { ...found, from: [{ entry: "prayers/x", level: 1 }] }),
+      ),
+      /"prayers\/x" is not of a catalog it stores/,
+    );
+    const gate =
+      "A ruleset with an item found holding stored entries (stores.found) requires schemaVersion 2 and capabilityApi 1.523 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(522) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(523) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, document()), gate);
   }
 
   console.log(

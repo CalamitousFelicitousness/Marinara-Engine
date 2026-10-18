@@ -3035,6 +3035,7 @@ export interface RulesetStores {
   levels: number;
   count?: number;
   castsOn?: { on: "harmed" | "down"; at?: "self" | "source" };
+  found?: { levels: string; from: Array<{ entry: string; level: number; label?: string }> };
 }
 const storesSchema: z.ZodType<RulesetStores, z.ZodTypeDef, unknown> = z
   .object({
@@ -3048,6 +3049,27 @@ const storesSchema: z.ZodType<RulesetStores, z.ZodTypeDef, unknown> = z
      *  shield guardian's stored spell cast at a moment set beforehand. */
     castsOn: z
       .object({ on: z.enum(["harmed", "down"]), at: z.enum(["self", "source"]).optional() })
+      .strict()
+      .optional(),
+    /** Found already holding some (Capability API 1.523): `levels` dice of them, rolled once for
+     *  each stack, drawn for it out of `from` (each an entry of its catalogs at a level) until no more
+     *  fit. A Ring of Spell Storing's "1d6 - 1 levels of stored spells chosen by the DM". */
+    found: z
+      .object({
+        levels: catalogDice,
+        from: z
+          .array(
+            z
+              .object({
+                entry: z.string().regex(/^[a-z][a-z0-9_]*\/[a-z0-9][a-z0-9_-]*$/u),
+                level: z.number().int().min(1).max(40),
+                label: promptSafeText(80).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(40),
+      })
       .strict()
       .optional(),
   })
@@ -19017,6 +19039,13 @@ function itemIssues(
       add([...at, "moreUses", index, "use", "rollsTable"], 'Only the item\'s own "use" rolls its table');
   });
   // What it stores (1.471) is off the ruleset's own catalogs.
+  // What it is found holding (1.523): entries of its own catalogs, none past what it holds.
+  item.stores?.found?.from.forEach((one, index) => {
+    const at2 = [...at, "stores", "found", "from", index];
+    if (!item.stores!.catalogs.includes(one.entry.split("/")[0]!))
+      add([...at2, "entry"], `"${one.entry}" is not of a catalog it stores`);
+    if (one.level > item.stores!.levels) add([...at2, "level"], "Found holding more levels than it holds");
+  });
   item.stores?.catalogs.forEach((catalog, index) => {
     if (!definition.catalogs?.some((one) => one.id === catalog))
       add([...at, "stores", "catalogs", index], `Unknown catalog "${catalog}"`);

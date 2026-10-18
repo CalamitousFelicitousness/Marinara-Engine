@@ -37,6 +37,7 @@ import {
   gameInventoryStackLabel,
   rulesetOwnUsesMax,
   rulesetChargesStart,
+  rulesetFoundStored,
   type GameInventoryBearerStatus,
   type GameInventoryWear,
   type RulesetDefinition,
@@ -1336,6 +1337,9 @@ function RulesetItemDetails({
   const { facts } = details;
   const clip = facts.attack?.clip;
   const chargesMax = facts.use?.charges?.max;
+  const heldStored =
+    storedEntries ??
+    (details.entry.item?.stores?.found ? rulesetFoundStored(details.entry.item.stores, stackId) : undefined);
   const binds = details.entry.item?.binds;
   const kind = [facts.category, facts.rarity, ...facts.tags].filter((word): word is string => !!word);
   const stats = rulesetItemStatsLine(facts);
@@ -1381,15 +1385,16 @@ function RulesetItemDetails({
           </div>
         );
       })}
-      {/* What it stores to be cast later (1.471): a Ring of Spell Storing's spells. */}
+      {/* What it stores to be cast later (1.471): a Ring of Spell Storing's spells, or what it was found
+          holding (1.523) until a fight changed them. */}
       {details.entry.item?.stores && (
         <div className="text-[0.65rem] leading-tight text-white/70">
-          {storedEntries?.length
+          {heldStored?.length
             ? localizeUi("ui.game.gameinventory.stored", {
-                entries: storedEntries
+                entries: heldStored
                   .map((one) => `${one.label ?? one.entry.slice(one.entry.indexOf("/") + 1)} (${one.level})`)
                   .join(", "),
-                levels: storedEntries.reduce((total, one) => total + one.level, 0),
+                levels: heldStored.reduce((total, one) => total + one.level, 0),
                 max: details.entry.item.stores.levels,
               })
             : localizeUi("ui.game.gameinventory.storedNone", { max: details.entry.item.stores.levels })}

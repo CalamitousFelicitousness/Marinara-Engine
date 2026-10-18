@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item found holding stored entries (1.523): a Ring of Spell Storing's 1d6 - 1 levels. */
+function carriesStoresFound523(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStoresFound523(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.stores)?.found !== undefined) return true;
+  return featureValues(record).some((one) => carriesStoresFound523(one, depth + 1));
+}
+
 /** An item that changes form (1.522): a Rod of Lordly Might. */
 function carriesItemForms522(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7242,6 +7252,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item found holding stored entries, 1.523.
+  if (
+    !declaresApi(523) &&
+    (carriesStoresFound523(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStoresFound523(document)))
+  ) {
+    return "A ruleset with an item found holding stored entries (stores.found) requires schemaVersion 2 and capabilityApi 1.523 or newer";
+  }
   // An item that changes form, 1.522.
   if (
     !declaresApi(522) &&

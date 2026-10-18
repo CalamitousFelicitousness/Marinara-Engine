@@ -93,6 +93,7 @@ export {
   rollRulesetDice,
   rulesetOwnUsesMax,
   rulesetChargesStart,
+  rulesetFoundStored,
   rulesetAverageAmount,
   rulesetAverageDamage,
   rulesetCombatRoller,

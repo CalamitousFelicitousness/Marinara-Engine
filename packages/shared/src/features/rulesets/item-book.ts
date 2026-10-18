@@ -6,7 +6,7 @@
 // screen and the Game Master are shown about it. The server builds the book from the catalogs it
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
-import { parseRulesetCombatDice, rulesetChargesStart } from "../ruleset-combat/dice.js";
+import { parseRulesetCombatDice, rulesetChargesStart, rulesetFoundStored } from "../ruleset-combat/dice.js";
 import {
   rulesetCoinAmount,
   RULESET_ITEM_CHARGES_MAX,
@@ -1397,7 +1397,12 @@ export function rulesetSheetItems(
         ...(stack.corroded ? { corroded: stack.corroded } : {}),
         ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),
-        ...(stack.storedEntries ? { storedEntries: stack.storedEntries } : {}),
+        // Found holding some (1.523) until a fight stores or casts out of it.
+        ...(stack.storedEntries
+          ? { storedEntries: stack.storedEntries }
+          : item.stores?.found
+            ? { storedEntries: rulesetFoundStored(item.stores, stack.id) }
+            : {}),
         ...(truly ? { truly } : {}),
       },
     ];

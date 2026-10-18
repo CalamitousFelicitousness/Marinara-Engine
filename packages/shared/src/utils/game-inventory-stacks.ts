@@ -407,7 +407,7 @@ function makeStack(stack: {
     ...(form && quantity === 1 ? { form } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
     ...(waits && Object.keys(waits).length > 0 && quantity === 1 ? { waits } : {}),
-    ...(storedEntries?.length && quantity === 1 ? { storedEntries } : {}),
+    ...(storedEntries && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
   };
@@ -489,7 +489,8 @@ function readStoredEntries(raw: unknown): GameInventoryStoredEntry[] | undefined
       },
     ];
   });
-  return kept.length > 0 ? kept : undefined;
+  // Kept empty too (1.523): an item found holding some that has been emptied stays empty.
+  return kept;
 }
 
 /** A stack's own uses left (1.466) as stored: whole counts by a further use's place, from 1. */

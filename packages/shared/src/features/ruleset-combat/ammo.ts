@@ -519,7 +519,8 @@ export function applyRulesetFightItemChanges(
     next[at] = {
       ...kept,
       quantity,
-      ...(change.storedEntries?.length && quantity === 1 ? { storedEntries: change.storedEntries } : {}),
+      // Kept even empty (1.523), so an item found holding some is not found holding them again.
+      ...(change.storedEntries && quantity === 1 ? { storedEntries: change.storedEntries } : {}),
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
       ...(change.corroded && quantity === 1 ? { corroded: change.corroded } : {}),

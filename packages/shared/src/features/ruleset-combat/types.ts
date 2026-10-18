@@ -488,6 +488,10 @@ export interface RulesetStatBlockAction {
     cantCall?: true;
     /** Its caller may send them away as an action (1.396). */
     dismissible?: true;
+    /** Raised from a corpse (1.501): Create Specter. */
+    atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
+    /** No more than this many stand at once (1.501). */
+    atMost?: number;
   };
   /** The forms it changes into (1.342), found in the bestiary as the fight begins. */
   forms?: RulesetShapeForms;
@@ -1177,6 +1181,10 @@ export interface RulesetCombatAction {
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
     cantCall?: true;
+    /** Raised from a corpse that died within `withinRounds` and is `is` (1.501): Create Specter. */
+    atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
+    /** No more than this many of them stand at once (1.501). */
+    atMost?: number;
   };
   /** A burst centred on its user, never aimed (1.282): everybody within `size` cells of them is
    *  caught, they are not, behind walls too with `throughWalls`, their own side not with
@@ -1684,6 +1692,8 @@ export interface RulesetCombatant {
   hungOnBy?: Record<string, number>;
   /** Felled on Held Ground (1.323): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
+  /** Its corpse rose as something else (1.501), and is gone from the board. */
+  corpseRaised?: true;
   reaped?: true;
   /** Who called it into the fight (1.325). */
   calledBy?: string;

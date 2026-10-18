@@ -7463,9 +7463,26 @@ const creatureActionSchema = z
         endsWithCaller: z.literal(true).optional(),
         cantCall: z.literal(true).optional(),
         dismissible: z.literal(true).optional(),
+        /** Raised from a corpse (Capability API 1.501): aimed at one creature that died no more than
+         *  `withinRounds` rounds ago and is `is` (when given), within the action's reach; the called
+         *  creature rises in its space and the corpse is gone. 5e's wraith's Create Specter,
+         *  `{"withinRounds": 10, "is": {"types": ["humanoid"]}}`. */
+        atCorpse: z
+          .object({ withinRounds: z.number().int().min(1).max(14400), is: targetIsSchema.optional() })
+          .strict()
+          .optional(),
+        /** No more than this many it called with this action stand at once (Capability API 1.501): a
+         *  wraith's seven specters. */
+        atMost: z.number().int().min(1).max(32).optional(),
       })
       .strict()
       .superRefine((calls, ctx) => {
+        if (calls.atCorpse && calls.options)
+          ctx.addIssue({
+            code: "custom",
+            path: ["atCorpse"],
+            message: "A call raised from a corpse names one creature",
+          });
         if ((calls.creature === undefined) === (calls.options === undefined))
           ctx.addIssue({
             code: "custom",

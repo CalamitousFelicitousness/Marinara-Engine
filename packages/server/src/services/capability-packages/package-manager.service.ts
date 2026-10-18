@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Calls raised from a corpse, or held to a most (1.501): a wraith's Create Specter. */
+function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCorpseCalls501(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls && (calls.atCorpse !== undefined || calls.atMost !== undefined)) return true;
+  return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
+}
+
 /** More than 320 conditions (1.499): 5e's magic items outgrew them. */
 function carriesConditions640499(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7001,6 +7012,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Calls raised from a corpse or held to a most, 1.501.
+  if (
+    !declaresApi(501) &&
+    (carriesCorpseCalls501(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCorpseCalls501(document)))
+  ) {
+    return "A ruleset with a call raised from a corpse or held to a most (calls.atCorpse, calls.atMost) requires schemaVersion 2 and capabilityApi 1.501 or newer";
+  }
   // More than 320 conditions, 1.499.
   if (
     !declaresApi(499) &&

@@ -1922,9 +1922,12 @@ export function rulesetOptionTargets(
     state.combatants
       .filter((combatant) => {
         if (pinned !== undefined && combatant.id !== pinned) return false;
-        // Bringing back the dead is aimed at the dead, and only them (1.176).
+        // Bringing back the dead is aimed at the dead, and only them (1.176), and so is raising one
+        // from a corpse (1.501).
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
+        } else if (cure?.calls?.atCorpse) {
+          if (!rulesetRaisableCorpse(definition, state, cure.calls.atCorpse, combatant)) return false;
         } else if (combatant.defeated) return false;
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
         // Only on somebody it holds itself (1.500): a pin on "a creature grappled by you".
@@ -2228,6 +2231,23 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // No more of them than it may hold at once (1.501): a wraith's seven specters.
+  const most = action.calls?.atMost;
+  if (
+    most !== undefined &&
+    state &&
+    state.combatants.filter((one) => one.calledBy === actor.id && one.calledWith === action.id && !one.defeated)
+      .length >= most
+  )
+    return false;
+  // Only with a corpse to raise (1.501).
+  if (
+    action.calls?.atCorpse &&
+    definition &&
+    state &&
+    !state.combatants.some((one) => rulesetRaisableCorpse(definition, state, action.calls!.atCorpse!, one))
+  )
+    return false;
   // A strike made before a teleport (1.280) has what both of them have left.
   if (
     action.pairedWith?.some((id) => {
@@ -2594,6 +2614,21 @@ export function rulesetTargetMoment(
   if (!state) return false;
   const took = state.tookTurn ?? (state.round > 1 ? null : []);
   return !!took && !took.includes(target.id);
+}
+
+/** Whether a call may raise its creature from this one's corpse (1.501): dead no longer ago than it
+ *  says, of the kind it says, and not raised already. */
+export function rulesetRaisableCorpse(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  rule: { withinRounds: number; is?: RulesetTargetIs },
+  combatant: RulesetCombatant,
+): boolean {
+  if (!combatant.defeated || combatant.corpseRaised || combatant.object || combatant.diedRound === undefined)
+    return false;
+  if (combatant.dismissed || combatant.away) return false;
+  if (state.round - combatant.diedRound > rule.withinRounds) return false;
+  return !rule.is || rulesetTargetIs(definition, combatant, rule.is);
 }
 
 /** Whether `target` holds one of `conditions` that `sourceId` put on them (1.500): grappled by them. */

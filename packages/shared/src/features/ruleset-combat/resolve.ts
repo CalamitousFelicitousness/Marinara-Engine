@@ -274,6 +274,7 @@ import {
   rulesetAimCells,
   rulesetNeededComponents,
   rulesetRowsReach,
+  rulesetRaisableCorpse,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -10346,7 +10347,12 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
           .map((id) => rulesetCombatant(ctx.state, id))
           .filter(
             (target): target is RulesetCombatant =>
-              !!target && (!target.defeated || rulesetCanRevive(ctx.state, action, target)),
+              !!target &&
+              (!target.defeated ||
+                rulesetCanRevive(ctx.state, action, target) ||
+                // A corpse to raise from (1.501).
+                (!!action.calls?.atCorpse &&
+                  rulesetRaisableCorpse(ctx.definition, ctx.state, action.calls.atCorpse, target))),
           );
   // Props its area covers (1.316) take it as anybody caught does, from the same roll, first: nothing
   // answers for a prop, so none of it waits on a window.
@@ -11566,7 +11572,18 @@ function resolveAction(
       : payWith
         ? rulesetCostSteps(ctx.definition, action, payWith, actor)
         : 0;
-    callCreatures(ctx, actor, action, undefined, steps);
+    // Risen from a corpse (1.501): in its space, and the corpse gone.
+    const corpse = action.calls.atCorpse
+      ? targets.find((one) => rulesetRaisableCorpse(ctx.definition, ctx.state, action.calls!.atCorpse!, one))
+      : undefined;
+    if (action.calls.atCorpse && !corpse) return null;
+    const cells = corpse ? rulesetFootprint(corpse) : undefined;
+    if (corpse) {
+      corpse.corpseRaised = true;
+      delete corpse.x;
+      delete corpse.y;
+    }
+    callCreatures(ctx, actor, action, cells, steps);
     // And what it puts on its user (1.434): Find Familiar's bond with what it called.
     if (!held) applySelf(ctx, actor, action, payWith, steps);
     return null;

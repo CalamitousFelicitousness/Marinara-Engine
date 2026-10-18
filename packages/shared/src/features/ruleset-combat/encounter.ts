@@ -5703,7 +5703,11 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
         ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
         ...(source.calls.cantCall ? { cantCall: true as const } : {}),
+        ...(source.calls.atCorpse ? { atCorpse: structuredClone(source.calls.atCorpse) } : {}),
+        ...(source.calls.atMost ? { atMost: source.calls.atMost } : {}),
       };
+      // Aimed at the corpse it rises from (1.501).
+      if (source.calls.atCorpse) action.targets = { side: "any", count: 1 };
     });
   }
   // Who a catalog entry or an item use calls (1.344), the same way; its options as modes.

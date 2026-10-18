@@ -64409,6 +64409,100 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "atCorpse": {
+                              "type": "object",
+                              "properties": {
+                                "withinRounds": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 14400
+                                },
+                                "is": {
+                                  "type": "object",
+                                  "properties": {
+                                    "types": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "tags": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "except": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "withinRounds"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 32
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -74533,6 +74627,100 @@
                               "dismissible": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "atCorpse": {
+                                "type": "object",
+                                "properties": {
+                                  "withinRounds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "is": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "except": {
+                                        "type": "object",
+                                        "properties": {
+                                          "types": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "tags": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 20
+                                          },
+                                          "upToSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "atLeastSize": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "withinRounds"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "atMost": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 32
                               },
                               "$comment": {}
                             },

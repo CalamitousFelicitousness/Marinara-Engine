@@ -307,6 +307,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
             ...(action.calls.dismissible ? { dismissible: true as const } : {}),
+            ...(action.calls.atCorpse ? { atCorpse: structuredClone(action.calls.atCorpse) } : {}),
+            ...(action.calls.atMost ? { atMost: action.calls.atMost } : {}),
           },
         }
       : {}),

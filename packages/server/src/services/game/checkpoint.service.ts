@@ -21,6 +21,7 @@ import { gameCheckpoints, gameStateSnapshots, spatialContextSnapshots } from "..
 import { createGameEngineStateStorage } from "../storage/game-engine-state.storage.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { readMetadata } from "./game-inventory.service.js";
+import { sameGameDataValue } from "./game-data-edit.service.js";
 import { gamePartySheetRevision } from "./game-party-sheet.service.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { logger } from "../../lib/logger.js";
@@ -205,6 +206,8 @@ export interface CheckpointWorldEditsRestore {
  * the game's story as it stands after the rest of the load — the story is restored by the same load,
  * so the pair that fit when the checkpoint was taken still fits afterwards. `metadataAfterRestore`
  * is the chat metadata the load's other keys produce; the layer itself is never written by hand.
+ * When the current layer already is the captured one there is nothing to write, so no lock and no
+ * snapshot re-save are spent on a load that changes nothing (#7783 review).
  */
 export function buildCheckpointWorldEditsRestore(
   captured: unknown,
@@ -219,6 +222,9 @@ export function buildCheckpointWorldEditsRestore(
   const parsed = rawEdits == null ? null : worldEditsSchema.safeParse(rawEdits);
   if (parsed && !parsed.success) return { patch: null, refusal: "the saved hand edits do not read" };
   const edits = parsed?.success && !worldEditsEmpty(parsed.data) ? worldEditsVersioned(parsed.data) : undefined;
+  // Nothing to put back: the chat already carries the captured layer. Then a load writes no world and
+  // re-saves no snapshot for it, so the common rewind (the layer unchanged) costs nothing here.
+  if (sameGameDataValue((storedWorld as { edits?: unknown }).edits, edits)) return nothing;
 
   const game = gameWorldFromMetadata(metadataAfterRestore);
   if (!game) return { patch: null, refusal: "this game's world cannot be read" };

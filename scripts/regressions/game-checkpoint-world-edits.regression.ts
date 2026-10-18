@@ -120,6 +120,19 @@ const { buildCheckpointWorldEditsRestore, captureCheckpointWorldEdits } =
   assert.ok(cleared.patch);
   assert.equal(Object.hasOwn(cleared.patch!.gameWorld, "edits"), false, "empty edits clear the layer");
 
+  // A load that would put back the layer the chat already carries writes nothing (no lock, no
+  // snapshot re-save): the common rewind where only the tracker and story moved.
+  assert.deepEqual(
+    buildCheckpointWorldEditsRestore({ edits: withOdda }, atSave),
+    { patch: null, refusal: null },
+    "the chat already carries the captured layer",
+  );
+  assert.deepEqual(
+    buildCheckpointWorldEditsRestore({ edits: null }, { gameWorldKit: kit, gameWorld: worldRecipe }),
+    { patch: null, refusal: null },
+    "an empty capture over a world with no layer changes nothing",
+  );
+
   // Nothing to put back: no capture (a checkpoint from before the field) or no world now.
   assert.equal(buildCheckpointWorldEditsRestore(null, atSave).patch, null, "a legacy capture leaves it alone");
   assert.equal(
@@ -259,6 +272,21 @@ try {
       false,
       "edits added after an empty capture are cleared",
     );
+  }
+
+  // ── Part 4: a world from a generator this Engine no longer reads keeps its layer ──
+  {
+    const { chatId, checkpointId } = await seedGame("a world from an older generator", {
+      gameWorldKit: kit,
+      gameWorld: { ...worldRecipe, edits: withOdda },
+    });
+    // The chat now carries a world version this Engine cannot make again, so applying the saved layer
+    // would have to reshape that world: the load must leave it exactly as it is (and still succeed).
+    const older = { ...worldRecipe, generatorVersion: 0 };
+    await chats.patchMetadata(chatId, { gameWorld: older });
+
+    await loadCheckpoint(chatId, checkpointId);
+    assert.deepEqual((await metadataOf(chatId)).gameWorld, older, "an unreadable world is left untouched");
   }
 
   console.log("Game checkpoint world edits regression checks passed.");

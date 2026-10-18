@@ -592,7 +592,13 @@ type IllustrationCharacterAssetMaps = {
    * Reference image (base64) or avatar path -> "character:<id>" / "persona:<id>", keyed by the image itself
    * so a fuzzy name match records whoever owns the image that was actually sent (#7767).
    */
-  charOwnerByReference: Map<string, string>;
+  charOwnerByReference: Map<string, ReferenceOwner>;
+};
+
+type ReferenceOwner = {
+  kind: "character" | "persona";
+  id: string;
+  source: "character-sheet" | "avatar" | "sprite";
 };
 
 type IllustrationCharacterAssetDetail = {
@@ -610,6 +616,7 @@ type IllustrationCharacterAssets = {
   requestedNames: string[];
   referenceCharacterIds: string[];
   referencePersonaId: string | null;
+  referencePersonaSource: ReferenceOwner["source"] | null;
 };
 
 type StoryboardCharacterContext = IllustrationCharacterAssetMaps & {
@@ -624,11 +631,11 @@ function emptyIllustrationCharacterAssetMaps(): IllustrationCharacterAssetMaps {
     charReferenceSourceByName: new Map<string, "character-sheet" | "avatar" | "sprite">(),
     charAvatarByName: new Map<string, string>(),
     charDescriptionByName: new Map<string, string>(),
-    charOwnerByReference: new Map<string, string>(),
+    charOwnerByReference: new Map<string, ReferenceOwner>(),
   };
 }
 
-function addReferenceOwner(maps: IllustrationCharacterAssetMaps, reference: string, owner: string): void {
+function addReferenceOwner(maps: IllustrationCharacterAssetMaps, reference: string, owner: ReferenceOwner): void {
   // First owner wins: two cards sharing one image can't be told apart, and either re-reads the same picture.
   if (!maps.charOwnerByReference.has(reference)) maps.charOwnerByReference.set(reference, owner);
 }
@@ -671,11 +678,15 @@ async function addCharacterRowIllustrationAssets(
     if (preferredReference) {
       addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
       addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
-      addReferenceOwner(maps, preferredReference.base64, `character:${character.id}`);
+      addReferenceOwner(maps, preferredReference.base64, {
+        kind: "character",
+        id: character.id,
+        source: preferredReference.source,
+      });
     }
     if (character.avatarPath) {
       addNameLookupEntry(maps.charAvatarByName, name, character.avatarPath);
-      addReferenceOwner(maps, character.avatarPath, `character:${character.id}`);
+      addReferenceOwner(maps, character.avatarPath, { kind: "character", id: character.id, source: "avatar" });
     }
 
     const appearanceText = extractCharacterAppearanceText(parsed);
@@ -734,11 +745,15 @@ export async function addPersonaIllustrationAssets(
   if (preferredReference) {
     addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
     addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
-    addReferenceOwner(maps, preferredReference.base64, `persona:${persona.id}`);
+    addReferenceOwner(maps, preferredReference.base64, {
+      kind: "persona",
+      id: persona.id,
+      source: preferredReference.source,
+    });
   }
   if (persona.avatarPath) {
     addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
-    addReferenceOwner(maps, persona.avatarPath, `persona:${persona.id}`);
+    addReferenceOwner(maps, persona.avatarPath, { kind: "persona", id: persona.id, source: "avatar" });
   }
 
   // #7053: the persona row carries the image-prompt override as TOP-LEVEL text
@@ -883,7 +898,7 @@ function collectIllustrationCharacterAssets(opts: {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
-  charOwnerByReference?: Map<string, string>;
+  charOwnerByReference?: Map<string, ReferenceOwner>;
   includeReferenceImages?: boolean;
   includeCharacterDescriptions?: boolean;
   maxReferenceImages?: number;
@@ -922,11 +937,15 @@ function collectIllustrationCharacterAssets(opts: {
   const described = new Set<string>();
   const referenceCharacterIds: string[] = [];
   let referencePersonaId: string | null = null;
+  let referencePersonaSource: ReferenceOwner["source"] | null = null;
   // Only library characters and the persona can be re-read later; NPC avatars are not recorded.
   const recordReferenceOwner = (reference: string) => {
     const owner = opts.charOwnerByReference?.get(reference);
-    if (owner?.startsWith("character:")) referenceCharacterIds.push(owner.slice("character:".length));
-    else if (owner?.startsWith("persona:")) referencePersonaId ??= owner.slice("persona:".length);
+    if (owner?.kind === "character") referenceCharacterIds.push(owner.id);
+    else if (owner?.kind === "persona" && !referencePersonaId) {
+      referencePersonaId = owner.id;
+      referencePersonaSource = owner.source;
+    }
   };
   const includeReferenceImages = opts.includeReferenceImages !== false;
   const includeCharacterDescriptions = opts.includeCharacterDescriptions !== false;
@@ -984,6 +1003,7 @@ function collectIllustrationCharacterAssets(opts: {
     requestedNames: uniqueNames,
     referenceCharacterIds: Array.from(new Set(referenceCharacterIds)),
     referencePersonaId,
+    referencePersonaSource,
   };
 }
 
@@ -14874,6 +14894,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               characterPrompts: illustration.characterPrompts,
               referenceCharacterIds: illustrationAssets.referenceCharacterIds,
               referencePersonaId: illustrationAssets.referencePersonaId,
+              referencePersonaSource: illustrationAssets.referencePersonaSource,
               locationImageId: spatialLocationReferenceImage ? storyboardSpatialProjection?.referenceImageId : null,
             }),
           });
@@ -16226,6 +16247,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                 negativePrompt: sentIllustrationNegativePrompt,
                 referenceCharacterIds: illustrationAssets.referenceCharacterIds,
                 referencePersonaId: illustrationAssets.referencePersonaId,
+                referencePersonaSource: illustrationAssets.referencePersonaSource,
                 locationImageId: spatialLocationReferenceImage ? ownerSpatialProjection?.referenceImageId : null,
               }),
             });

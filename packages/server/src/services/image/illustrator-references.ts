@@ -482,6 +482,8 @@ export async function readPreferredPersonaReferenceImage(args: {
 export async function readRecordedReferenceImages(args: {
   characterIds: readonly string[];
   personaId: string | null;
+  /** The persona picture first sent; "sprite" skips the avatar like Game mode's lookup does. */
+  personaSource?: "character-sheet" | "avatar" | "sprite" | null;
   charactersStore: {
     getById: (id: string) => Promise<CharacterRowLike | null>;
     getPersona: (id: string) => Promise<{
@@ -518,6 +520,7 @@ export async function readRecordedReferenceImages(args: {
           useCharacterSheetAsReference:
             persona.useCharacterSheetAsReference === true || persona.useCharacterSheetAsReference === "true",
           personaGallery: args.personaGallery,
+          ...(args.personaSource === "sprite" ? { loaders: { avatar: () => undefined } } : {}),
         })
       : null;
     if (image) images.push(image.base64);

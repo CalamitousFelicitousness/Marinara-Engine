@@ -1821,7 +1821,12 @@ export async function galleryRoutes(app: FastifyInstance) {
       const negativePrompt = (input.negativePrompt ?? record?.negativePrompt ?? "").trim();
       const characterPrompts = input.characterPrompts ?? record?.characterPrompts ?? [];
 
-      const references = record?.references ?? { characterIds: [], personaId: null, locationImageId: null };
+      const references = record?.references ?? {
+        characterIds: [],
+        personaId: null,
+        personaSource: null,
+        locationImageId: null,
+      };
       const locationImage = references.locationImageId
         ? await readSpatialLocationReferenceImageById({
             db: app.db,
@@ -1834,6 +1839,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         await readRecordedReferenceImages({
           characterIds: references.characterIds,
           personaId: references.personaId,
+          personaSource: references.personaSource,
           charactersStore: characters,
           characterGallery,
           personaGallery,
@@ -1900,6 +1906,7 @@ export async function galleryRoutes(app: FastifyInstance) {
             characterPrompts,
             referenceCharacterIds: references.characterIds,
             referencePersonaId: references.personaId,
+            referencePersonaSource: references.personaSource,
             locationImageId: references.locationImageId,
           }),
         });
@@ -1922,23 +1929,20 @@ export async function galleryRoutes(app: FastifyInstance) {
 
         const url = buildGalleryImageUrl(image, chatId);
         const attachmentPatch = { url, prompt, galleryId: image.id };
-        let candidateMessageIds: string[];
-        if (input.messageId) {
-          const message = await chats.getMessage(input.messageId);
-          candidateMessageIds = message?.chatId === chatId ? [message.id] : [];
-        } else {
-          // Opened from the gallery: the image may sit in the active mirror or only in an inactive swipe.
-          const mentionsImage = (row: { extra: unknown }) =>
-            (typeof row.extra === "string" ? row.extra : JSON.stringify(row.extra ?? {})).includes(original.id);
-          const messages = await chats.listMessages(chatId);
-          const swipes = await chats.listSwipesByMessageIds(messages.map((message) => message.id));
-          candidateMessageIds = Array.from(
-            new Set([
-              ...messages.filter(mentionsImage).map((message) => message.id),
-              ...swipes.filter(mentionsImage).map((swipe) => swipe.messageId),
-            ]),
-          );
-        }
+        // Every message showing the image is updated, in its active mirror or an inactive swipe;
+        // the message it was opened from (if any) goes first.
+        const mentionsImage = (row: { extra: unknown }) =>
+          (typeof row.extra === "string" ? row.extra : JSON.stringify(row.extra ?? {})).includes(original.id);
+        const messages = await chats.listMessages(chatId);
+        const swipes = await chats.listSwipesByMessageIds(messages.map((message) => message.id));
+        const openedFrom = messages.some((message) => message.id === input.messageId) ? [input.messageId!] : [];
+        const candidateMessageIds = Array.from(
+          new Set([
+            ...openedFrom,
+            ...messages.filter(mentionsImage).map((message) => message.id),
+            ...swipes.filter(mentionsImage).map((swipe) => swipe.messageId),
+          ]),
+        );
         const replacedMessageIds: string[] = [];
         for (const messageId of candidateMessageIds) {
           if (await chats.replaceGalleryImageAttachment(messageId, original.id, attachmentPatch)) {

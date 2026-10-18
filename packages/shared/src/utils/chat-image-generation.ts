@@ -26,10 +26,14 @@ export interface ChatImageGenerationRecord {
   references: {
     characterIds: string[];
     personaId: string | null;
+    /** Which persona picture was sent; null when unknown (re-read in the default sheet/avatar/sprite order). */
+    personaSource: ChatImageReferenceSource | null;
     /** Maps location reference id (chat gallery id or `global-gallery:<id>`). */
     locationImageId: string | null;
   };
 }
+
+export type ChatImageReferenceSource = "character-sheet" | "avatar" | "sprite";
 
 export type ChatImageGenerationRecordInput = {
   prompt?: string | null;
@@ -38,8 +42,13 @@ export type ChatImageGenerationRecordInput = {
   characterPrompts?: readonly SceneIllustrationCharacterPrompt[] | null;
   referenceCharacterIds?: readonly string[] | null;
   referencePersonaId?: string | null;
+  referencePersonaSource?: ChatImageReferenceSource | null;
   locationImageId?: string | null;
 };
+
+function readReferenceSource(value: unknown): ChatImageReferenceSource | null {
+  return value === "character-sheet" || value === "avatar" || value === "sprite" ? value : null;
+}
 
 function readTrimmed(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -86,6 +95,7 @@ export function buildChatImageGenerationRecord(input: ChatImageGenerationRecordI
     references: {
       characterIds: readIds(input.referenceCharacterIds),
       personaId: readTrimmed(input.referencePersonaId),
+      personaSource: readTrimmed(input.referencePersonaId) ? readReferenceSource(input.referencePersonaSource) : null,
       locationImageId: readTrimmed(input.locationImageId),
     },
   };
@@ -118,6 +128,7 @@ export function parseChatImageGenerationRecord(value: unknown): ChatImageGenerat
       : [],
     referenceCharacterIds: Array.isArray(references.characterIds) ? (references.characterIds as string[]) : [],
     referencePersonaId: typeof references.personaId === "string" ? references.personaId : null,
+    referencePersonaSource: readReferenceSource(references.personaSource),
     locationImageId: typeof references.locationImageId === "string" ? references.locationImageId : null,
   });
 }

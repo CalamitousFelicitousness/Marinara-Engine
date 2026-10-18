@@ -69,7 +69,12 @@ try {
     connectionId: "conn-1",
     negativePrompt: "lowres, bad hands",
     characterPrompts: [{ name: "Arceana", prompt: "tall elf queen", position: { x: 0.7, y: 0.5 } }],
-    references: { characterIds: ["char-a", "char-b"], personaId: null, locationImageId: "global-gallery:loc-1" },
+    references: {
+      characterIds: ["char-a", "char-b"],
+      personaId: null,
+      personaSource: null,
+      locationImageId: "global-gallery:loc-1",
+    },
   });
 
   // Unknown, empty and malformed values read as "no record".
@@ -119,6 +124,27 @@ try {
     },
   });
   assert.deepEqual(references, [png, png]);
+  // A persona first sent as a sprite skips the avatar on re-roll (no sprite here, so nothing is sent).
+  const spriteOnly = await readRecordedReferenceImages({
+    characterIds: [],
+    personaId: "fel",
+    personaSource: "sprite",
+    charactersStore: {
+      getById: async () => null,
+      getPersona: async (id) => ({
+        id,
+        avatarPath: "/api/avatars/file/arceana.png",
+        useCharacterSheetAsReference: "false",
+      }),
+    },
+  });
+  assert.deepEqual(spriteOnly, [], "a sprite-sourced persona never falls back to the avatar");
+  assert.equal(
+    parseChatImageGenerationRecord(
+      JSON.stringify(buildChatImageGenerationRecord({ referencePersonaId: "fel", referencePersonaSource: "sprite" })),
+    )?.references.personaSource,
+    "sprite",
+  );
 
   // ── Regenerate route ──
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
@@ -206,6 +232,16 @@ try {
   }
   assert.ok(await gallery.getById(illustration.id, chat.id), "the old image stays in the gallery");
 
+  // A second message showing the same image (e.g. a copied reply) is updated too, even when
+  // the re-roll was opened from the first message.
+  const copiedMessage = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "Copied reply.",
+    extra: { attachments: [{ type: "image", url: result.image.url, galleryId: result.image.id }] },
+  } as never);
+  assert.ok(copiedMessage?.id);
+
   // Editing negative and character prompts, and pointing at the message directly.
   const edited = await app.inject({
     method: "POST",
@@ -222,7 +258,11 @@ try {
   assert.equal(imagePrompts[1], "2girls, throne room, night\n\nArceana: elf queen, crown", "no doubled captions");
   const editedRecord = parseChatImageGenerationRecord(editedResult.image.generation);
   assert.equal(editedRecord?.negativePrompt, "", "an empty negative prompt clears it");
-  assert.deepEqual(editedResult.replacedMessageIds, [message.id]);
+  assert.deepEqual(
+    editedResult.replacedMessageIds,
+    [message.id, copiedMessage.id],
+    "opened message first, then the rest",
+  );
 
   // An image left behind on an inactive swipe is still found from the gallery (no messageId).
   const swipedImage = await gallery.create({

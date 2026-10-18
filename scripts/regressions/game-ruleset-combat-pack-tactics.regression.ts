@@ -309,10 +309,7 @@ try {
       withBeast(creature("odd", { attackModes: [{ mode: "advantage", allyAdjacent: false }] })),
       /attackModes/,
     );
-    refusedDoc(
-      withBeast(creature("odd", { attackModes: [{ mode: "advantage" }] })),
-      /allyAdjacent, targetHurt or melee/,
-    );
+    refusedDoc(withBeast(creature("odd", { attackModes: [{ mode: "advantage" }] })), /allyAdjacent, targetHurt, melee/);
     refusedDoc(
       withBeast(
         creature("odd", { riders: [{ id: "r", name: "R", on: "hit", oncePer: "own-round", amount: { flat: 1 } }] }),

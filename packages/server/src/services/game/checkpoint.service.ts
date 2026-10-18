@@ -107,6 +107,8 @@ export const CHECKPOINT_GAME_METADATA_KEYS = [
   // have to re-save, so a load leaves it as it is (a known gap, see docs/game/sessions-and-saves.md).
   "gameStory",
   "gameWidgetState",
+  // Its own setting, not a count of the widgets: setup can keep widgets with it off.
+  "enableCustomWidgets",
 ] as const;
 
 /**
@@ -165,10 +167,6 @@ export function buildCheckpointGameMetadataRestore(
   }
   if (Object.hasOwn(patch, "gamePartySheet")) patch.gamePartySheetRevision = gamePartySheetRevision(current) + 1;
   if (Object.hasOwn(patch, "gameInventory")) patch.gameInventoryTurn = null;
-  // The widgets route keeps this flag beside the widgets: restored widgets turn it back on, none turns it off.
-  if (Object.hasOwn(patch, "gameWidgetState")) {
-    patch.enableCustomWidgets = Array.isArray(patch.gameWidgetState) && patch.gameWidgetState.length > 0;
-  }
   return patch;
 }
 

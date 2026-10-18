@@ -74,9 +74,14 @@ import { eq } from "../../packages/server/src/db/file-query.js";
   assert.equal(patch.gameInventoryTurn, null, "the turn record of replaced stacks is dropped");
   assert.equal(Object.hasOwn(patch, "gameMorale"), false, "a key absent then and now is left alone");
 
-  // The State Editor's story script and HUD widgets rewind with it (#7743); the widgets' flag follows them.
+  // The State Editor's story script and HUD widgets rewind with it (#7743), and the custom-widgets setting
+  // is restored as it was, not worked out from the widgets: setup can keep widgets with it off.
   const widget = { id: "courage", type: "progress_bar", label: "Courage", position: "hud_left", config: {} };
-  const editorCaptured = captureCheckpointGameMetadata({ gameStory: { storyVersion: 1 }, gameWidgetState: [widget] })!;
+  const editorCaptured = captureCheckpointGameMetadata({
+    gameStory: { storyVersion: 1 },
+    gameWidgetState: [widget],
+    enableCustomWidgets: false,
+  })!;
   const rewound = buildCheckpointGameMetadataRestore(editorCaptured, {
     gameStory: { storyVersion: 1, events: ["added after the save"] },
     gameWidgetState: [],
@@ -84,13 +89,13 @@ import { eq } from "../../packages/server/src/db/file-query.js";
   });
   assert.deepEqual(rewound.gameStory, { storyVersion: 1 }, "the story script is restored");
   assert.deepEqual(rewound.gameWidgetState, [widget], "the widgets are restored");
-  assert.equal(rewound.enableCustomWidgets, true, "and custom widgets are on again");
+  assert.equal(rewound.enableCustomWidgets, false, "and the setting as it was, though it had widgets");
   const cleared = buildCheckpointGameMetadataRestore(captureCheckpointGameMetadata({ gameNpcs: [] })!, {
     gameWidgetState: [widget],
     gameStory: { storyVersion: 1 },
   });
   assert.equal(cleared.gameWidgetState, null, "widgets added after the save are cleared");
-  assert.equal(cleared.enableCustomWidgets, false, "and custom widgets go off with them");
+  assert.equal(Object.hasOwn(cleared, "enableCustomWidgets"), false, "the setting is left alone when it had none");
   assert.equal(cleared.gameStory, null, "a story added after the save is cleared");
 
   // A capture from before the State Editor's keys joined the list names no keys: it never saw a story
@@ -114,8 +119,7 @@ import { eq } from "../../packages/server/src/db/file-query.js";
     assert.ok(
       (CHECKPOINT_GAME_METADATA_KEYS as readonly string[]).includes(key) ||
         key === "gamePartySheetRevision" ||
-        key === "gameInventoryTurn" ||
-        key === "enableCustomWidgets",
+        key === "gameInventoryTurn",
       `the restore only writes allow-listed keys and their companions (${key})`,
     );
   }

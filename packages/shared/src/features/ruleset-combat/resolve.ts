@@ -542,6 +542,8 @@ function begin(
       // On the side of whoever controls them, or back on their own (1.524); and a controller whose
       // host died throws to live.
       syncControl(ctx);
+      // Off once its source cannot keep it up, or its holder cannot hear them (1.531): Enthrall.
+      endUnkeptConditions(ctx);
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
         ctx.events.push({
@@ -556,6 +558,34 @@ function begin(
       return { state: next, events: ctx.events };
     },
   };
+}
+
+/** A condition that comes off through its source (1.531): once they do one of its `effects` or hold
+ *  one of its `conditions`, are stopped from using one of its `components`, or its holder lacks one
+ *  of its `holderLacks`. 5e's Enthrall, ended by its caster's incapacitation or silence, or by its
+ *  holder going deaf. */
+function endUnkeptConditions(ctx: RulesetCombatContext): void {
+  const rules = new Map(
+    (ctx.combat.conditions ?? []).filter((one) => one.endsWhenSource).map((one) => [one.condition, one]),
+  );
+  if (rules.size === 0) return;
+  for (const holder of ctx.state.combatants) {
+    for (const entry of [...holder.tracked]) {
+      const rule = rules.get(entry.condition)?.endsWhenSource;
+      if (!rule || !entry.source) continue;
+      const source = rulesetCombatant(ctx.state, entry.source);
+      if (!source) continue;
+      const theirs = rulesetActiveConditions(ctx.definition, ctx.combat, source, ctx.state);
+      const ends =
+        (rule.effects && theirs.some((one) => one.effects.some((effect) => rule.effects!.includes(effect)))) ||
+        (rule.conditions &&
+          rulesetCombatConditions(ctx.definition, source).some((id) => rule.conditions!.includes(id))) ||
+        (rule.components &&
+          theirs.some((one) => one.forbids?.components?.some((component) => rule.components!.includes(component)))) ||
+        (rule.holderLacks && !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, rule.holderLacks));
+      if (ends) removeCondition(ctx, holder, entry.condition, "expired");
+    }
+  }
 }
 
 /** Who holds a condition that `controls` them fights on its source's side while it holds and the

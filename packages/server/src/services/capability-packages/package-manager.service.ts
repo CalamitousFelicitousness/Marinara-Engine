@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that ends through its source (1.531): Enthrall. */
+function carriesEndsWhenSource531(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsWhenSource531(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.endsWhenSource !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsWhenSource531(one, depth + 1));
+}
+
 /** An item's use that repeats (1.530): a scroll of Telekinesis. Any `use` or `moreUses` with
  *  `repeats`. */
 function carriesItemRepeats530(value: unknown, depth = 0, underUse = false): boolean {
@@ -7335,6 +7345,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that ends through its source, 1.531.
+  if (
+    !declaresApi(531) &&
+    (carriesEndsWhenSource531(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsWhenSource531(document)))
+  ) {
+    return "A ruleset with a condition that ends when its source is stopped or unheard (endsWhenSource) requires schemaVersion 2 and capabilityApi 1.531 or newer";
+  }
   // An item's use that repeats, 1.530.
   if (
     !declaresApi(530) &&

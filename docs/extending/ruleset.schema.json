@@ -169086,6 +169086,78 @@
               "endsWhenSourceDown": {
                 "type": "boolean"
               },
+              "endsWhenSource": {
+                "type": "object",
+                "properties": {
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "own-attacks-advantage",
+                        "own-attacks-disadvantage",
+                        "attacks-against-advantage",
+                        "attacks-against-disadvantage",
+                        "attacks-against-no-advantage",
+                        "attacks-against-adjacent-advantage",
+                        "attacks-against-far-disadvantage",
+                        "attacks-from-adjacent-critical",
+                        "criticals-against-normal",
+                        "cannot-act",
+                        "cannot-react",
+                        "speed-zero",
+                        "half-move-to-stand",
+                        "ends-on-damage",
+                        "own-saves-advantage",
+                        "own-saves-disadvantage",
+                        "own-checks-advantage",
+                        "own-checks-disadvantage",
+                        "resist-all",
+                        "cannot-target-source",
+                        "cannot-target-source-side",
+                        "cannot-approach-source",
+                        "cannot-heal",
+                        "cannot-heal-nonmagical",
+                        "cannot-harm"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "components": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 6
+                  },
+                  "holderLacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 4
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "endsWhen": {
                 "type": "array",
                 "items": {

@@ -12163,6 +12163,23 @@ const combatConditionSchema = z
       .optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** It comes off once whoever applied it does one of `effects` or holds one of `conditions`, is
+     *  stopped from using one of `components`, or its holder lacks one of `holderLacks` (Capability API
+     *  1.531): 5e's Enthrall, which ends if its caster is incapacitated or can no longer speak, and
+     *  holds only those who can hear them: `{ "effects": ["cannot-act"], "components": ["verbal"],
+     *  "holderLacks": ["hearing"] }`. */
+    endsWhenSource: z
+      .object({
+        effects: z.array(combatConditionEffectSchema).min(1).max(12).optional(),
+        conditions: z.array(sheetId).min(1).max(12).optional(),
+        components: z.array(sheetId).min(1).max(6).optional(),
+        holderLacks: z.array(sheetId).min(1).max(4).optional(),
+      })
+      .strict()
+      .refine((rule) => rule.effects || rule.conditions || rule.components || rule.holderLacks, {
+        message: 'Say what ends it: "effects", "conditions", "components" or "holderLacks"',
+      })
+      .optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
      *  it or their side. Source-side harm finishes resolving before the condition ends. Or
      *  (Capability API 1.278) an attack roll at its holder, from anybody, or harm to one of its
@@ -16776,6 +16793,24 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());
       if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
         issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
+      }
+      // What ends it through its source (1.531): conditions, components and senses of the ruleset's.
+      const sourceRule = entry.endsWhenSource;
+      if (sourceRule) {
+        const knownComponents = new Set((combat.components ?? []).map((one) => one.id));
+        const knownSenses = new Set((combat.senses ?? []).map((one) => one.id));
+        const knownConditions = new Set(def.sheet.live.conditions.map((one) => one.id));
+        sourceRule.conditions?.forEach((id, at) => {
+          if (!knownConditions.has(id))
+            issue([...path, "endsWhenSource", "conditions", at], `Unknown condition "${id}"`);
+        });
+        sourceRule.components?.forEach((id, at) => {
+          if (!knownComponents.has(id))
+            issue([...path, "endsWhenSource", "components", at], `Unknown component "${id}"`);
+        });
+        sourceRule.holderLacks?.forEach((id, at) => {
+          if (!knownSenses.has(id)) issue([...path, "endsWhenSource", "holderLacks", at], `Unknown sense "${id}"`);
+        });
       }
       // The save its source throws as its holder dies (1.524), one the sheet has.
       if (entry.holderDies && !def.sheet.saves.some((one) => one.id === entry.holderDies!.save)) {

@@ -2570,8 +2570,27 @@ export function rulesetWeaponNow(
 
 /** Whether a change to attacks narrowed to a kind of blow (1.247) reaches this one: a weapon's or a
  *  spell's, struck in reach or from afar. Nothing narrowed reaches a roll it cannot read. */
+/** Whether a target is surprised, or has not yet taken a turn in the fight (1.491). A fight from
+ *  before 1.491, past its first round, counts everybody as having acted. */
+export function rulesetTargetMoment(
+  state: RulesetEncounterState | undefined,
+  target: RulesetCombatant | undefined,
+  when: "surprised" | "not-yet-acted",
+): boolean {
+  if (!target) return false;
+  if (when === "surprised") return !!target.surprised;
+  if (!state) return false;
+  const took = state.tookTurn ?? (state.round > 1 ? null : []);
+  return !!took && !took.includes(target.id);
+}
+
 export function rulesetAttackModifierReaches(
-  modifier: { attacks?: "weapon" | "spell" | "any"; blow?: "melee" | "ranged"; atTypesIn?: string[] },
+  modifier: {
+    attacks?: "weapon" | "spell" | "any";
+    blow?: "melee" | "ranged";
+    atTypesIn?: string[];
+    whenTarget?: "surprised" | "not-yet-acted";
+  },
   state: RulesetEncounterState | undefined,
   actor: RulesetCombatant,
   target: RulesetCombatant | undefined,
@@ -2579,6 +2598,8 @@ export function rulesetAttackModifierReaches(
   /** Read for a change narrowed to what the holder's sheet chose (1.376); without it, none reaches. */
   definition?: RulesetDefinition,
 ): boolean {
+  // Only at a target surprised, or not yet acted (1.491): Assassinate.
+  if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
   // Only at a target of a kind the holder's sheet chose (1.376): Foe Slayer's favored enemies.
   if (
     modifier.atTypesIn &&
@@ -2621,6 +2642,8 @@ export function rulesetDamageModifiers(
       // At a kind the holder's sheet chose (1.376).
       if (modifier.atTypesIn && (!target || !rulesetChosenKind(definition, actor, modifier.atTypesIn, target)))
         return false;
+      // At a target surprised, or not yet acted (1.491): a bugbear's Surprise Attack.
+      if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
       return (
         !modifier.fromSource ||
         (!item &&
@@ -3391,6 +3414,8 @@ export function rulesetAttackMode(
     // Pack Tactics and Blood Frenzy (1.343): who stands beside the target, and how hurt it is.
     if (rule.allyAdjacent && !rulesetAllyBeside(definition, combat, where?.state, actor, target)) continue;
     if (rule.targetHurt && !rulesetCombatHurt(definition, combat, target)) continue;
+    // Ambusher (1.491): at a target surprised, or not yet acted.
+    if (rule.whenTarget && !rulesetTargetMoment(where?.state, target, rule.whenTarget)) continue;
     // Melee attacks only (1.349): a sahuagin's Blood Frenzy, never its thrown spear.
     if (
       rule.melee &&

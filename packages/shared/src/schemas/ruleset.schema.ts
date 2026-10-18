@@ -4843,9 +4843,19 @@ const riderCoreShape = {
   /** The one moment a rider fires. More of them arrive with the slice that builds windows. */
   on: z.literal("hit"),
   when: z
-    .array(z.enum(["advantage", "ally-adjacent", "ally-adjacent-no-disadvantage", "target-hurt"]))
+    .array(
+      z.enum([
+        "advantage",
+        "ally-adjacent",
+        "ally-adjacent-no-disadvantage",
+        "target-hurt",
+        // A target surprised, or one that has not yet taken a turn in the fight (1.491).
+        "target-surprised",
+        "target-not-yet-acted",
+      ]),
+    )
     .min(1)
-    .max(4)
+    .max(6)
     .optional(),
   oncePer: z.enum(["turn", "round", "own-turn"]),
   // Marked so the published JSON Schema can find it by name rather than by guessing from its keys,
@@ -7891,12 +7901,23 @@ const creatureFields = {
           allyAdjacent: z.literal(true).optional(),
           targetHurt: z.literal(true).optional(),
           melee: z.literal(true).optional(),
+          /** Only at a target surprised, or not yet acted in the fight (Capability API 1.491): a
+           *  doppelganger's Ambusher. */
+          whenTarget: z.enum(["surprised", "not-yet-acted"]).optional(),
         })
         .strict()
         .refine(
-          (rule) => rule.sight || rule.light || rule.terrain || rule.allyAdjacent || rule.targetHurt || rule.melee,
+          (rule) =>
+            rule.sight ||
+            rule.light ||
+            rule.terrain ||
+            rule.allyAdjacent ||
+            rule.targetHurt ||
+            rule.melee ||
+            rule.whenTarget,
           {
-            message: "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent, targetHurt or melee",
+            message:
+              "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent, targetHurt, melee or whenTarget",
           },
         ),
     )
@@ -10256,10 +10277,21 @@ const combatModifierSchema = z
     afterHitBy: z.literal(true).optional(),
     /** Attacks-taken only on an opportunity attack (Capability API 1.377): 5e's Escape the Horde. */
     opportunity: z.literal(true).optional(),
+    /** The holder's own attacks or damage only at a target that is surprised, or that has not yet
+     *  taken a turn in the fight (Capability API 1.491): 5e's Assassinate and a bugbear's Surprise
+     *  Attack. */
+    whenTarget: z.enum(["surprised", "not-yet-acted"]).optional(),
+    /** A hit by the holder's attack is a critical hit (Capability API 1.491), where the change
+     *  reaches: Assassinate's "any hit you score against a creature that is surprised". */
+    critical: z.literal(true).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (modifier.whenTarget !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
+      add("whenTarget", '"whenTarget" narrows the holder\'s own attacks or damage');
+    if (modifier.critical && modifier.to !== "attacks")
+      add("critical", '"critical" makes the holder\'s hits criticals');
     if (modifier.afterHitBy && modifier.to !== "defense")
       add("afterHitBy", '"afterHitBy" narrows defense to attackers that have hit already');
     if (modifier.opportunity && modifier.to !== "attacks-taken")
@@ -10289,7 +10321,8 @@ const combatModifierSchema = z
       modifier.diceTimes === undefined &&
       modifier.criticalDice === undefined &&
       modifier.add === undefined &&
-      modifier.mode === undefined
+      modifier.mode === undefined &&
+      !modifier.critical
     ) {
       add(
         "to",

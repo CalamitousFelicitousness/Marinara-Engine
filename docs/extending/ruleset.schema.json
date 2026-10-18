@@ -39998,6 +39998,17 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "whenTarget": {
+                                "type": "string",
+                                "enum": [
+                                  "surprised",
+                                  "not-yet-acted"
+                                ]
+                              },
+                              "critical": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -52881,11 +52892,13 @@
                               "advantage",
                               "ally-adjacent",
                               "ally-adjacent-no-disadvantage",
-                              "target-hurt"
+                              "target-hurt",
+                              "target-surprised",
+                              "target-not-yet-acted"
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 4
+                          "maxItems": 6
                         },
                         "oncePer": {
                           "type": "string",
@@ -53339,6 +53352,13 @@
                           "melee": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "whenTarget": {
+                            "type": "string",
+                            "enum": [
+                              "surprised",
+                              "not-yet-acted"
+                            ]
                           },
                           "$comment": {}
                         },
@@ -76940,11 +76960,13 @@
                                 "advantage",
                                 "ally-adjacent",
                                 "ally-adjacent-no-disadvantage",
-                                "target-hurt"
+                                "target-hurt",
+                                "target-surprised",
+                                "target-not-yet-acted"
                               ]
                             },
                             "minItems": 1,
-                            "maxItems": 4
+                            "maxItems": 6
                           },
                           "oncePer": {
                             "type": "string",
@@ -78159,6 +78181,17 @@
                                 "const": true
                               },
                               "opportunity": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "whenTarget": {
+                                "type": "string",
+                                "enum": [
+                                  "surprised",
+                                  "not-yet-acted"
+                                ]
+                              },
+                              "critical": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -79870,6 +79903,17 @@
                                 "const": true
                               },
                               "opportunity": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "whenTarget": {
+                                "type": "string",
+                                "enum": [
+                                  "surprised",
+                                  "not-yet-acted"
+                                ]
+                              },
+                              "critical": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -81768,6 +81812,17 @@
                                       "const": true
                                     },
                                     "opportunity": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "whenTarget": {
+                                      "type": "string",
+                                      "enum": [
+                                        "surprised",
+                                        "not-yet-acted"
+                                      ]
+                                    },
+                                    "critical": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -89279,6 +89334,17 @@
                                     "const": true
                                   },
                                   "opportunity": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "whenTarget": {
+                                    "type": "string",
+                                    "enum": [
+                                      "surprised",
+                                      "not-yet-acted"
+                                    ]
+                                  },
+                                  "critical": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -105254,6 +105320,17 @@
                                           "const": true
                                         },
                                         "opportunity": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "whenTarget": {
+                                          "type": "string",
+                                          "enum": [
+                                            "surprised",
+                                            "not-yet-acted"
+                                          ]
+                                        },
+                                        "critical": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -129308,6 +129385,17 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "whenTarget": {
+                      "type": "string",
+                      "enum": [
+                        "surprised",
+                        "not-yet-acted"
+                      ]
+                    },
+                    "critical": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "$comment": {}
                   },
                   "required": [
@@ -143306,6 +143394,17 @@
                       "const": true
                     },
                     "opportunity": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "whenTarget": {
+                      "type": "string",
+                      "enum": [
+                        "surprised",
+                        "not-yet-acted"
+                      ]
+                    },
+                    "critical": {
                       "type": "boolean",
                       "const": true
                     },

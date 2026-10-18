@@ -2261,6 +2261,19 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Attacks and damage only at a surprised or not-yet-acted target, and hits made criticals (1.491):
+ *  Assassinate, a bugbear's Surprise Attack. */
+function carriesSurpriseStrikes491(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSurpriseStrikes491(one, depth + 1));
+  if (value === "target-surprised" || value === "target-not-yet-acted") return true;
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.whenTarget === "surprised" || record.whenTarget === "not-yet-acted") return true;
+  if (record.critical === true && record.to === "attacks") return true;
+  return featureValues(record).some((one) => carriesSurpriseStrikes491(one, depth + 1));
+}
+
 /** A golem's Berserk (1.490): a low-health roll as its turn starts, a condition that sends its
  *  holder at the nearest creature, or one that ends at full health. */
 function carriesBerserk490(value: unknown, depth = 0): boolean {
@@ -6895,6 +6908,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Strikes at a surprised or not-yet-acted target, 1.491.
+  if (
+    !declaresApi(491) &&
+    (carriesSurpriseStrikes491(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSurpriseStrikes491(document)))
+  ) {
+    return "A ruleset with attacks or damage narrowed to a surprised or not-yet-acted target (whenTarget, target-surprised, target-not-yet-acted) or hits made criticals (critical) requires schemaVersion 2 and capabilityApi 1.491 or newer";
+  }
   // A golem's Berserk, 1.490.
   if (
     !declaresApi(490) &&

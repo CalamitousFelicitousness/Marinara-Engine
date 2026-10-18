@@ -184,6 +184,7 @@ import {
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
+  rulesetTargetMoment,
   rulesetBorrowedTurn,
   rulesetLegendaryMoveCells,
   rulesetLentMovement,
@@ -11217,7 +11218,12 @@ function firingRider(
           ? mode === "advantage"
           : when === "target-hurt"
             ? hurt
-            : allyAdjacent(ctx, actor, target) && (when !== "ally-adjacent-no-disadvantage" || mode !== "disadvantage"),
+            : when === "target-surprised"
+              ? rulesetTargetMoment(ctx.state, target, "surprised")
+              : when === "target-not-yet-acted"
+                ? rulesetTargetMoment(ctx.state, target, "not-yet-acted")
+                : allyAdjacent(ctx, actor, target) &&
+                  (when !== "ally-adjacent-no-disadvantage" || mode !== "disadvantage"),
       )
     ) {
       continue;
@@ -12949,6 +12955,20 @@ function resolveActionBody(
         if (outcome === "hit" && rulesetCriticalFromAdjacent(ctx.definition, ctx.combat, ctx.state, actor, target)) {
           outcome = "critical";
         }
+        // A change on the attacker that makes its hit a critical where it reaches (1.491): Assassinate.
+        if (
+          outcome === "hit" &&
+          rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some((entry) =>
+            entry.modifiers?.some(
+              (modifier) =>
+                modifier.to === "attacks" &&
+                modifier.critical &&
+                rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action, ctx.definition),
+            ),
+          )
+        ) {
+          outcome = "critical";
+        }
         // Missed, what its maker spends to hit all the same (1.249): Stroke of Luck.
         if (outcome === "miss" && rescueEntry(ctx, actor, "attacks", "success")) outcome = "hit";
         // No critical lands on its holder (1.457): Adamantine Armor.
@@ -14213,6 +14233,8 @@ function beginNextTurn(
     delete actor.trail;
     if (!actor.dazed) ctx.events.push({ type: "turn", actorId: actor.id, round });
     if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
+    // And at all this fight (1.491).
+    if (!ctx.state.tookTurn?.includes(actor.id)) (ctx.state.tookTurn ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
     // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.

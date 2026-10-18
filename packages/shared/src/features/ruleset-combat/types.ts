@@ -358,7 +358,14 @@ export interface RulesetCombatRider {
   actions?: string[];
   /** Any-of: one of them being true is enough. "ally-adjacent-no-disadvantage" (Capability API
    *  1.126) also needs the roll's final mode not to be disadvantage. */
-  when?: Array<"advantage" | "ally-adjacent" | "ally-adjacent-no-disadvantage" | "target-hurt">;
+  when?: Array<
+    | "advantage"
+    | "ally-adjacent"
+    | "ally-adjacent-no-disadvantage"
+    | "target-hurt"
+    | "target-surprised"
+    | "target-not-yet-acted"
+  >;
   /** "own-turn" (1.343): only on its holder's own turn, once in it. */
   oncePer: "turn" | "round" | "own-turn";
   amount: RulesetCombatAmount;
@@ -2005,6 +2012,8 @@ export interface RulesetEncounterState {
   heldGround?: RulesetHeldGround;
   /** Who has begun a turn this round (1.327), the one going on included. */
   acted?: string[];
+  /** Who has begun a turn at all this fight (1.491): Assassinate's "hasn't taken a turn". */
+  tookTurn?: string[];
   /** How many creatures have been called into the fight (1.325), for their ids. */
   called?: number;
 }
@@ -2435,6 +2444,8 @@ export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & {
   targetHurt?: true;
   /** Melee attacks only (1.349). */
   melee?: true;
+  /** Only at a target surprised, or not yet acted in the fight (1.491). */
+  whenTarget?: "surprised" | "not-yet-acted";
 };
 
 /**

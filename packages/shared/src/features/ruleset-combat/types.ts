@@ -1992,6 +1992,8 @@ export interface RulesetCombatant {
   baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };
   /** Moving only up and down, never across (1.345): Levitate. */
   levitating?: true;
+  /** No walk while a condition's speeds are their only ways of moving (1.502): Gaseous Form. */
+  noWalk?: true;
   /** Ground hard going of itself, the board's terrain and its growth, costs them a plain step
    *  (1.379): 5e's Land's Stride. A lasting area's hard going still counts. */
   ignoresHardGround?: true;
@@ -3882,6 +3884,8 @@ export interface RulesetCombatZoneRule {
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
   /** A wall nobody moves or sees through (1.177). */
   blocks?: { move?: boolean; sight?: boolean };
+  /** Cover it gives what lies on its far side (1.502): 5e's Blade Barrier. */
+  cover?: "half" | "three-quarters";
   /** A wall's one side (1.177): cells within `distance` of it there catch as `triggers` say. */
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   /** Sections `every` cells long, each struck at and broken apart (1.200); a broken one stops

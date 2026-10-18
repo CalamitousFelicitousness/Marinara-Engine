@@ -2570,7 +2570,10 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
  *  Constitution modifier; never on a creature). Harm of a kind in `stoppedBy` keeps it off at the
  *  start of their next turn (fire and acid on a troll). `atMostHalf` works only at half health or
  *  less, `notAtZero` never at 0. `keepsUp`: at 0 its holder is down rather than out, and is out only
- *  if it starts its turn at 0 and does not regenerate (a troll, a vampire). */
+ *  if it starts its turn at 0 and does not regenerate (a troll, a vampire). `notIn` (Capability API
+ *  1.502) keeps it off while its holder starts a turn in one of these `light`s where they stand, or on
+ *  a tile or a board whose place one of `terrain` names: a vampire's "isn't in sunlight or running
+ *  water". */
 export interface RulesetRegeneration {
   flat?: number;
   dice?: string;
@@ -2579,6 +2582,7 @@ export interface RulesetRegeneration {
   atMostHalf?: true;
   notAtZero?: true;
   keepsUp?: true;
+  notIn?: { light?: Array<"sunlight" | "bright" | "dim" | "dark">; terrain?: string[] };
 }
 /** A face of the fight's own dice its holder rolls again, once, on their own rolls of these kinds
  *  (Capability API 1.355), keeping the new face: a halfling's Lucky, `{"face": 1}`. Every kind when
@@ -2613,6 +2617,18 @@ export const regenerationSchema: z.ZodType<RulesetRegeneration, z.ZodTypeDef, un
     atMostHalf: z.literal(true).optional(),
     notAtZero: z.literal(true).optional(),
     keepsUp: z.literal(true).optional(),
+    notIn: z
+      .object({
+        light: z
+          .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+          .min(1)
+          .max(4)
+          .optional(),
+        terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+      })
+      .strict()
+      .refine((where) => where.light || where.terrain, { message: 'Say where: "light", "terrain" or both' })
+      .optional(),
   })
   .strict()
   .refine((given) => given.dice !== undefined || given.flat !== undefined || given.add !== undefined, {
@@ -3083,6 +3099,7 @@ export interface RulesetCatalogZone {
   damageType?: string;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
   blocks?: Array<"move" | "sight">;
+  cover?: "half" | "three-quarters";
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
@@ -3509,6 +3526,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .max(2)
       .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
       .optional(),
+    /** Cover it gives (Capability API 1.502): an attack or effect whose line to its target crosses a
+     *  standing cell of it is against at least this much cover, as the ruleset's `combat.cover` grades
+     *  it. 5e's Blade Barrier, three-quarters. */
+    cover: z.enum(["half", "three-quarters"]).optional(),
     /** The wall stands in sections `every` long (Capability API 1.200), each struck at like a creature
      *  with this `defense` and `health`, taking double, half or none of the damage types it is
      *  `vulnerable` to, `resist`s or is `immune` to. One brought to 0 is broken: it stops blocking,
@@ -4045,18 +4066,33 @@ export interface RulesetTargetIs {
   tags?: string[];
   upToSize?: string;
   atLeastSize?: string;
+  /** Only one with a fly speed (Capability API 1.502), and only one holding one of these conditions
+   *  (`holding`), as well as whatever else it asks. */
+  flying?: true;
+  holding?: string[];
   /** Never one that is this (Capability API 1.477), whatever else it is: a net's "no effect on
    *  creatures that are formless", `{ "except": { "tags": ["formless"] } }`. */
-  except?: Omit<RulesetTargetIs, "except">;
+  except?: Omit<RulesetTargetIs, "except" | "anyOf">;
+  /** One that is at least one of these (Capability API 1.502), as well as whatever else it asks: 5e's
+   *  Wind Wall, tiny fliers or gases, `{"anyOf": [{"upToSize": "tiny", "flying": true}, {"holding":
+   *  ["gaseous_form"]}]}`. */
+  anyOf?: Array<Omit<RulesetTargetIs, "except" | "anyOf">>;
 }
 const targetIsShape = {
   types: z.array(sheetId).min(1).max(20).optional(),
   tags: z.array(sheetId).min(1).max(20).optional(),
   upToSize: sheetId.optional(),
   atLeastSize: sheetId.optional(),
+  flying: z.literal(true).optional(),
+  holding: z.array(sheetId).min(1).max(12).optional(),
 };
-const namesSomething = (test: Omit<RulesetTargetIs, "except">) =>
-  test.types !== undefined || test.tags !== undefined || test.upToSize !== undefined || test.atLeastSize !== undefined;
+const namesSomething = (test: Omit<RulesetTargetIs, "except" | "anyOf">) =>
+  test.types !== undefined ||
+  test.tags !== undefined ||
+  test.upToSize !== undefined ||
+  test.atLeastSize !== undefined ||
+  test.flying !== undefined ||
+  test.holding !== undefined;
 const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
   .object({
     ...targetIsShape,
@@ -4065,9 +4101,19 @@ const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
       .strict()
       .refine(namesSomething, { message: "What a target test excepts names types, tags or both, or a size" })
       .optional(),
+    anyOf: z
+      .array(
+        z
+          .object(targetIsShape)
+          .strict()
+          .refine(namesSomething, { message: "Each of anyOf names types, tags, a size, flying or holding" }),
+      )
+      .min(2)
+      .max(4)
+      .optional(),
   })
   .strict()
-  .refine((test) => namesSomething(test) || test.except !== undefined, {
+  .refine((test) => namesSomething(test) || test.except !== undefined || test.anyOf !== undefined, {
     message: "A target test names types, tags or both, or a size",
   });
 
@@ -6376,6 +6422,7 @@ function zoneIssue(mechanics: {
                 !zone.forbids &&
                 !zone.wards &&
                 !zone.keepsOut &&
+                !zone.cover &&
                 !zone.detonates &&
                 !zone.burns &&
                 !zone.lights &&
@@ -11646,6 +11693,10 @@ const combatConditionSchema = z
     speeds: conditionSpeedsSchema.optional(),
     hover: z.literal(true).optional(),
     levitates: z.literal(true).optional(),
+    /** Its `speeds` are its holder's only ways of moving while it holds (Capability API 1.502): their
+     *  walk and their own other speeds are 0. 5e's Gaseous Form, "its only method of movement is a
+     *  flying speed of 10 feet". */
+    onlySpeeds: z.literal(true).optional(),
     /** Ground hard going of itself costs its holder a plain step (Capability API 1.379): the board's
      *  terrain and its growth, 5e's Land's Stride over nonmagical difficult terrain and plants. Hard
      *  going a lasting area makes, a spell's, still counts. */
@@ -17354,6 +17405,12 @@ function targetIsIssues(
 ): void {
   if (!test) return;
   if (test.except) targetIsIssues(definition, test.except, [...at, "except"], add);
+  test.anyOf?.forEach((one, index) => targetIsIssues(definition, one, [...at, "anyOf", index], add));
+  // Conditions held (1.502) are the fight's own.
+  test.holding?.forEach((id, index) => {
+    if (!definition.combat?.conditions?.some((one) => one.condition === id))
+      add([...at, "holding", index], `Unknown combat condition "${id}"`);
+  });
   // Sizes (1.350) read combat.sizes.
   for (const key of ["upToSize", "atLeastSize"] as const) {
     const size = test[key];

@@ -1057,6 +1057,21 @@ export function rulesetCoverBonus(
           .flatMap((one) => rulesetFootprint(one).map((cell) => `${cell.x},${cell.y}`)),
       )
     : undefined;
+  // A wall that gives cover (1.502), in its standing cells: the most any of them gives.
+  const walls = new Map<string, number>();
+  for (const { caster, zone, action } of rulesetStandingZones(state)) {
+    const gives = action.zone?.cover;
+    if (!gives) continue;
+    const broken = new Set(
+      (zone.sections ?? [])
+        .filter((section) => section.health <= 0)
+        .flatMap((section) => section.cells.map((cell) => `${cell.x},${cell.y}`)),
+    );
+    for (const cell of rulesetZoneCells(state, caster, zone)) {
+      const key = `${cell.x},${cell.y}`;
+      if (!broken.has(key)) walls.set(key, Math.max(walls.get(key) ?? 0, gives === "three-quarters" ? 2 : 1));
+    }
+  }
   // Somebody bigger than one cell is as covered as the least covered cell they fill (1.194), from
   // whichever cell of the attacker's is nearest it.
   const order = ["none", "half", "three-quarters", "total"] as const;
@@ -1066,7 +1081,8 @@ export function rulesetCoverBonus(
     let best = -1;
     for (const cell of rulesetFootprint(target)) {
       const origin = attackerId ? (rulesetNearestCell(rulesetCombatant(state, attackerId), cell) ?? from) : from;
-      const here = order.indexOf(coverTier(grid, origin, cell, screens) as (typeof order)[number]);
+      let here = order.indexOf(coverTier(grid, origin, cell, screens) as (typeof order)[number]);
+      if (walls.size > 0 && here < 3) here = Math.max(here, wallCoverBetween(walls, origin, cell));
       const groundHere = rulesetCellCover(grid, cell) > 0;
       if (best < 0 || here < best || (here === best && ground && !groundHere)) {
         best = here;
@@ -1079,6 +1095,20 @@ export function rulesetCoverBonus(
   }
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
   return tier === "half" || (against === "attack" && ground) ? cover.bonus : 0;
+}
+
+/** The most cover a wall's cells give on the line between two cells' middles (1.502), never counting
+ *  either end. */
+function wallCoverBetween(walls: ReadonlyMap<string, number>, from: RulesetCombatCell, to: RulesetCombatCell): number {
+  const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) * 8;
+  let most = 0;
+  for (let step = 1; step < steps; step++) {
+    const x = Math.round(from.x + ((to.x - from.x) * step) / steps);
+    const y = Math.round(from.y + ((to.y - from.y) * step) / steps);
+    if ((x === from.x && y === from.y) || (x === to.x && y === to.y)) continue;
+    most = Math.max(most, walls.get(`${x},${y}`) ?? 0);
+  }
+  return most;
 }
 
 /** Whether one combatant stands on higher ground than another (combat C6b). Never without a board. */

@@ -140,6 +140,7 @@ import {
   rulesetHangsOn,
   rulesetMovesOnly,
   rulesetLightMatches,
+  rulesetModeRuleHolds,
   rulesetStepTimes,
 } from "./encounter.js";
 import {
@@ -9084,6 +9085,22 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
         if (one.notAtZero && health.value <= 0) continue;
         if (one.atMostHalf && health.value > Math.floor(health.max / 2)) continue;
         if (health.value >= health.max) continue;
+        // Not in sunlight or running water (1.502).
+        const notIn = one.notIn;
+        if (
+          notIn &&
+          ((notIn.light &&
+            rulesetModeRuleHolds(ctx.definition, ctx.combat, actor, ctx.state, {
+              mode: "advantage",
+              light: notIn.light,
+            })) ||
+            (notIn.terrain &&
+              rulesetModeRuleHolds(ctx.definition, ctx.combat, actor, ctx.state, {
+                mode: "advantage",
+                terrain: notIn.terrain,
+              })))
+        )
+          continue;
         const dice = one.dice ? parseRulesetCombatDice(one.dice) : null;
         const rolled = rollHealing(ctx, actor, {
           count: dice?.count ?? 0,

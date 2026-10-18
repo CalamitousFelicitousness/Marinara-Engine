@@ -912,19 +912,20 @@ export function rulesetTargetIs(
 ): boolean {
   if (!test) return true;
   // Never what it excepts (1.477), and anybody else when that is all it says.
-  if (test.except) {
-    if (rulesetTargetIs(definition, combatant, test.except)) return false;
-    const { except: _except, ...rest } = test;
-    if (
-      rest.types === undefined &&
-      rest.tags === undefined &&
-      rest.upToSize === undefined &&
-      rest.atLeastSize === undefined
-    )
-      return true;
-    return rulesetTargetIs(definition, combatant, rest);
-  }
+  if (test.except && rulesetTargetIs(definition, combatant, test.except)) return false;
+  // One of these at least (1.502); a flier; holding one of these conditions.
+  if (test.anyOf && !test.anyOf.some((one) => rulesetTargetIs(definition, combatant, one))) return false;
+  if (test.flying && !combatant.speeds?.fly) return false;
+  const holding = test.holding;
+  if (holding && !rulesetCombatConditions(definition, combatant).some((id) => holding.includes(id))) return false;
   // Of a size (1.350), as well as whatever else it asks.
+  if (
+    test.types === undefined &&
+    test.tags === undefined &&
+    test.upToSize === undefined &&
+    test.atLeastSize === undefined
+  )
+    return true;
   if (test.upToSize !== undefined || test.atLeastSize !== undefined) {
     const combat = definition.combat;
     const rank = combat ? rulesetSizeRank(combat, combatant) : undefined;
@@ -2242,6 +2243,7 @@ export function rulesetZoneAction(
       ...(blocks.includes("sight") ? { sight: true } : {}),
     };
   }
+  if (zone.cover) out.cover = zone.cover;
   const side = zone.side;
   if (side) {
     out.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };
@@ -4947,7 +4949,10 @@ export function rulesetSlipCost(
 
 /** The fastest way this combatant moves, walking included (1.113). */
 export function rulesetFastestSpeed(combatant: RulesetCombatant): number {
-  return Math.max(combatant.speed, ...Object.values(combatant.speeds ?? {}).map((speed) => speed ?? 0));
+  return Math.max(
+    combatant.noWalk ? 0 : combatant.speed,
+    ...Object.values(combatant.speeds ?? {}).map((speed) => speed ?? 0),
+  );
 }
 
 /** Each way somebody moves besides walking, and walking, as an allowance in cells (1.113). Undefined
@@ -4960,7 +4965,10 @@ export function rulesetModeAllowances(
 ): Partial<Record<RulesetMoveMode, number>> | undefined {
   if (!combatant.speeds) return undefined;
   const allowances: Partial<Record<RulesetMoveMode, number>> = {
-    walk: combatant.speed > 0 ? rulesetMovementAllowance(definition, combat, combatant, state, combatant.speed) : 0,
+    walk:
+      combatant.speed > 0 && !combatant.noWalk
+        ? rulesetMovementAllowance(definition, combat, combatant, state, combatant.speed)
+        : 0,
   };
   for (const mode of RULESET_MOVE_MODES) {
     const speed = combatant.speeds[mode];
@@ -6625,10 +6633,12 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
       ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),
       ...(combatant.hover ? { hover: true as const } : {}),
     };
-    const speeds: RulesetMoveSpeeds = { ...(own.speeds ?? {}) };
+    // Only what it gives (1.502): no walk, and none of their own.
+    const only = grants.some((entry) => entry.onlySpeeds && entry.speeds);
+    const speeds: RulesetMoveSpeeds = only ? {} : { ...(own.speeds ?? {}) };
     let hover = !!own.hover;
     let levitating = false;
-    for (const entry of grants) {
+    for (const entry of only ? grants.filter((one) => one.onlySpeeds && one.speeds) : grants) {
       for (const mode of RULESET_MOVE_MODES) {
         const given = entry.speeds?.[mode];
         const speed = given === "walk" ? combatant.speed : given;
@@ -6637,7 +6647,12 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
       if (entry.hover || entry.levitates) hover = true;
       if (entry.levitates) levitating = true;
     }
-    const before = { speeds: combatant.speeds, hover: combatant.hover, levitating: combatant.levitating };
+    const before = {
+      speeds: combatant.speeds,
+      hover: combatant.hover,
+      levitating: combatant.levitating,
+      noWalk: combatant.noWalk,
+    };
     const fastBefore = rulesetMovementAllowance(definition, combat, combatant, state);
     const modesBefore = rulesetModeAllowances(definition, combat, combatant, state);
     if (Object.keys(speeds).length) combatant.speeds = speeds;
@@ -6646,11 +6661,18 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     else delete combatant.hover;
     if (levitating) combatant.levitating = true;
     else delete combatant.levitating;
+    if (only) combatant.noWalk = true;
+    else delete combatant.noWalk;
     if (grants.length) combatant.baseSpeeds = own;
     else delete combatant.baseSpeeds;
     if (
       JSON.stringify(before) ===
-      JSON.stringify({ speeds: combatant.speeds, hover: combatant.hover, levitating: combatant.levitating })
+      JSON.stringify({
+        speeds: combatant.speeds,
+        hover: combatant.hover,
+        levitating: combatant.levitating,
+        noWalk: combatant.noWalk,
+      })
     )
       continue;
     changed.push(combatant.id);

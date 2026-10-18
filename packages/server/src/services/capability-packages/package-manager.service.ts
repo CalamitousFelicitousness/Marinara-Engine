@@ -2261,6 +2261,21 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Cover a wall gives, speeds that are the only ones, regeneration kept off somewhere, and target
+ *  tests of fliers, of conditions held or of alternatives (1.502): Blade Barrier, Gaseous Form, a
+ *  vampire, Wind Wall. */
+function carriesWallCoverAndOnlySpeeds502(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWallCoverAndOnlySpeeds502(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.zone)?.cover !== undefined) return true;
+  if (record.onlySpeeds !== undefined) return true;
+  if (plainRecord(record.regenerates)?.notIn !== undefined) return true;
+  if (record.anyOf !== undefined || record.flying !== undefined || Array.isArray(record.holding)) return true;
+  return featureValues(record).some((one) => carriesWallCoverAndOnlySpeeds502(one, depth + 1));
+}
+
 /** Calls raised from a corpse, or held to a most (1.501): a wraith's Create Specter. */
 function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7012,6 +7027,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Wall cover, only speeds, regeneration kept off, fliers and conditions held, 1.502.
+  if (
+    !declaresApi(502) &&
+    (carriesWallCoverAndOnlySpeeds502(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWallCoverAndOnlySpeeds502(document)))
+  ) {
+    return "A ruleset with a wall that gives cover, speeds that are the only ones, regeneration kept off somewhere, or a target test of fliers, conditions held or alternatives (zone.cover, onlySpeeds, regenerates.notIn, flying, holding, anyOf) requires schemaVersion 2 and capabilityApi 1.502 or newer";
+  }
   // Calls raised from a corpse or held to a most, 1.501.
   if (
     !declaresApi(501) &&

@@ -12,6 +12,7 @@ import { cn } from "../../../lib/utils";
 import {
   blankStateArrayItem,
   describeArrayItem,
+  hasDeclaredStateEntry,
   humanizeStateKey,
   setStateValueAtPath,
   shapeStateEntry,
@@ -147,10 +148,19 @@ function BooleanField({ value, onChange, label, readOnly }: LeafProps<boolean>) 
 }
 
 const SMALL_BUTTON =
-  "inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-default disabled:opacity-50";
+  "inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors pointer-coarse:min-h-11 pointer-coarse:px-3 hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-default disabled:opacity-50";
 
 /** A null leaf means the trackers didn't know; picking a kind is what turns it back into a field. */
-function NullField({ onPick, readOnly }: { onPick: (next: string | number | boolean) => void; readOnly?: boolean }) {
+function NullField({
+  onPick,
+  readOnly,
+  numberStart = 0,
+}: {
+  onPick: (next: string | number | boolean) => void;
+  readOnly?: boolean;
+  /** A cleared quantity starts at 1: the save path rejects 0 (indInvalidInventoryTrackerRow). */
+  numberStart?: number;
+}) {
   const { t: localizeUi } = useUiTranslation();
   if (readOnly) {
     return (
@@ -161,7 +171,7 @@ function NullField({ onPick, readOnly }: { onPick: (next: string | number | bool
   }
   const kinds: { key: string; value: string | number | boolean }[] = [
     { key: "ui.stateEditor.fields.kindText", value: "" },
-    { key: "ui.stateEditor.fields.kindNumber", value: 0 },
+    { key: "ui.stateEditor.fields.kindNumber", value: numberStart },
     { key: "ui.stateEditor.fields.kindBoolean", value: false },
   ];
   return (
@@ -248,6 +258,16 @@ export function StateFieldsView({
 
   const update = (path: StateEditorPath, next: unknown) => onChange(setStateValueAtPath(value, path, next));
 
+  /**
+   * The list a path is an item of, named the way the list's section names it: the last step for a plain
+   * key, the section's own root list for `[]`.
+   */
+  const listKeyAt = (candidate: StateEditorPath): string | undefined => {
+    const last = candidate[candidate.length - 1];
+    if (typeof last === "string") return last;
+    return candidate.length === 0 && sectionId ? SECTION_ROOT_LIST[sectionId] : undefined;
+  };
+
   const renderLeaf = (node: unknown, path: StateEditorPath, label: string) => {
     if (typeof node === "string")
       return <TextField value={node} onChange={(next) => update(path, next)} label={label} readOnly={readOnly} />;
@@ -258,7 +278,14 @@ export function StateFieldsView({
       return <BooleanField value={node} onChange={(next) => update(path, next)} label={label} readOnly={readOnly} />;
     }
     // null: the trackers left it empty, so offer the kinds it could become.
-    return <NullField onPick={(next) => update(path, next)} readOnly={readOnly} />;
+    const leafKey = path[path.length - 1];
+    return (
+      <NullField
+        onPick={(next) => update(path, next)}
+        readOnly={readOnly}
+        numberStart={leafKey === "qty" || leafKey === "quantity" ? 1 : 0}
+      />
+    );
   };
 
   const emptyNote = (
@@ -287,9 +314,10 @@ export function StateFieldsView({
           </span>
           <div className="flex min-w-0 items-start gap-1">
             <div className="min-w-0 flex-1">{renderLeaf(node, path, label)}</div>
-            {readOnly || node === null || path.length > 1 ? null : (
-              // Back to "no value", which is how the state records a field the trackers don't know.
-              // Only on the section's own fields: inside a card, the card's × already means "remove this".
+            {readOnly || node === null ? null : (
+              // Back to "no value", which is how the state records a field the trackers don't know. It
+              // is offered inside cards too: choosing a kind for a null field would otherwise be one-way,
+              // and the card's × removes the whole entry instead of emptying the one field.
               <button
                 type="button"
                 title={clearLabel}
@@ -338,14 +366,7 @@ export function StateFieldsView({
       };
       // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …); a
       // section that is one list has no key in the path, so it takes the one its section declares.
-      const listKey =
-        typeof path[path.length - 1] === "string"
-          ? (path[path.length - 1] as string)
-          : path.length === 0
-            ? sectionId
-              ? SECTION_ROOT_LIST[sectionId]
-              : undefined
-            : undefined;
+      const listKey = listKeyAt(path);
       const addItem =
         readOnly || (sectionId !== undefined && path.length === 0 && NO_ROOT_ADD.has(sectionId)) ? null : (
           <button
@@ -400,6 +421,15 @@ export function StateFieldsView({
     }
     if (isPlainRecord(node)) {
       const entries = Object.entries(node).filter(([, item]) => item !== undefined);
+      // Where the add control earns its space: the section itself, an object with nothing to show yet,
+      // and an entry of a list with no declared shape — without the last one a `{}` entry could only
+      // ever get a single field before this row disappeared.
+      const showAddField =
+        !readOnly &&
+        (path.length === 0 ||
+          entries.length === 0 ||
+          (typeof path[path.length - 1] === "number" &&
+            !hasDeclaredStateEntry(listKeyAt(path.slice(0, -1)), sectionId)));
       return (
         <>
           {entries.length === 0
@@ -407,13 +437,12 @@ export function StateFieldsView({
             : entries.map(([childKey, item]) =>
                 renderEntry(item, [...path, childKey], humanizeStateKey(childKey), childKey),
               )}
-          {/* Only where it earns its space: the section itself, or an object that has nothing to show yet. */}
-          {readOnly || (path.length > 0 && entries.length > 0) ? null : (
+          {showAddField ? (
             <AddFieldRow
               existingKeys={entries.map(([childKey]) => childKey)}
               onAdd={(childKey, fieldValue) => update(path, { ...node, [childKey]: fieldValue })}
             />
-          )}
+          ) : null}
         </>
       );
     }

@@ -324,6 +324,11 @@ function emptyStateEntry(key?: string, sectionId?: string): unknown {
   return (sectionId ? SECTION_EMPTY_STATE_ENTRIES[sectionId]?.[key] : undefined) ?? EMPTY_STATE_ENTRIES[key];
 }
 
+/** Whether this list's entries have a declared shape, i.e. an entry card shows known fields. */
+export function hasDeclaredStateEntry(key?: string, sectionId?: string): boolean {
+  return emptyStateEntry(key, sectionId) !== undefined;
+}
+
 /**
  * The entry an add control appends: the last item's shape, cleared; for an empty list, the shape its key
  * declares in this section; and for a list of unknown shape, `{}` for the "add field" row to fill in

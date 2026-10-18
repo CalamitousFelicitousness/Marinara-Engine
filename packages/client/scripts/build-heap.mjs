@@ -37,7 +37,8 @@ export function resolveDesktopClientBuildHeapMb({
   totalMemoryBytes = totalmem(),
   defaultHeapMb = Math.floor(getHeapStatistics().heap_size_limit / 1024 / 1024),
 } = {}) {
-  if (/--max-old-space-size/u.test(env.NODE_OPTIONS ?? "")) return null;
+  // Node reads - and _ in option names alike, so --max_old_space_size is the user's heap too.
+  if (/--max[-_]old[-_]space[-_]size/u.test(env.NODE_OPTIONS ?? "")) return null;
   const deviceCapMb = Math.floor(totalMemoryBytes / 1024 / 1024 / 2 / 128) * 128;
   const heapMb = Math.min(DESKTOP_BUILD_HEAP_TARGET_MB, deviceCapMb);
   return heapMb > defaultHeapMb ? heapMb : null;

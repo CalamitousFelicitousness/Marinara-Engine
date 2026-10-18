@@ -37,6 +37,7 @@ assert.equal(
   null,
   "a heap the user set in NODE_OPTIONS wins",
 );
+assert.equal(desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max_old_space_size=1800" }), null, "however they spell it");
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {

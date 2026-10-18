@@ -45,6 +45,7 @@ import {
   runInMediaProviderLane,
   runMediaGenerationRequest,
 } from "./image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -440,7 +441,11 @@ export async function generateImage(
           queue: false,
           signal: request.signal,
           priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-          task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+          // The shared GPU turn sits outside the request deadline, so waiting for it costs no render time.
+          task: () =>
+            withConnectionAdmission(admissionKey, primaryMode, () =>
+              runSharedGpuTurn("media", normalizedBaseUrl, physicalRequest, request.signal),
+            ),
         }),
     });
     outcome = "completed";

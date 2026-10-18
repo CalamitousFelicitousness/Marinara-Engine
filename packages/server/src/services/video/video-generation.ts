@@ -11,6 +11,7 @@ import {
   runInMediaProviderLane,
   runMediaGenerationRequest,
 } from "../image/image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import {
   COMFYUI_MAX_REFERENCE_IMAGES,
   numberedComfyReferencePlaceholder,
@@ -100,7 +101,13 @@ export async function generateVideo(
           connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
           queue: request.queue === true,
           signal: request.signal,
-          task: () => generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
+          task: () =>
+            runSharedGpuTurn(
+              "media",
+              baseUrl,
+              () => generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
+              request.signal,
+            ),
         }),
     });
   } catch (error) {
@@ -408,6 +415,9 @@ function comfyUiVideoFetch(url: string | URL, init?: RequestInit, maxResponseByt
       allowLoopback: true,
       allowedProtocols: ["https:", "http:"],
     },
+    // ComfyUI may hold POST /prompt until the render finishes (a render gate), so Undici's
+    // five-minute default would fail any video whose render passes it.
+    agentOptions: { headersTimeout: VIDEO_GEN_TIMEOUT, bodyTimeout: VIDEO_GEN_TIMEOUT },
     maxResponseBytes,
     decodeCompressedResponse: true,
   });

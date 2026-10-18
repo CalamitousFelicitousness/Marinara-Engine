@@ -192,6 +192,7 @@ import {
 } from "../services/game/npc-avatar-utils.js";
 import {
   buildCheckpointGameMetadataRestore,
+  buildCheckpointWorldEditsRestore,
   readCheckpointCharacterIds,
   createCheckpointService,
   type CapturedEngineState,
@@ -16826,21 +16827,62 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const capturedGameMetadata = parseJsonField<Record<string, unknown> | null>(cp.gameMetadataData, null);
     const restoresGameMetadata =
       !!capturedGameMetadata && typeof capturedGameMetadata === "object" && !Array.isArray(capturedGameMetadata);
-    const restorePatch = (current: Record<string, unknown>): Record<string, unknown> => ({
-      ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
-      ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
-    });
+    // #7783: the world's hand-edits layer comes back in the same queued write, so the story this
+    // load restores and the edits it restores are put back together (a pair captured together
+    // fits). It goes through the checks and the snapshot re-save of PUT /world/edits, never a
+    // direct write to gameWorld; a capture from before the field leaves the layer as it is.
+    const capturedWorldEdits = parseJsonField<unknown>(cp.gameWorldEditsData, null);
+    let worldEditsWrite: { previous: unknown } | null = null;
+    let worldEditsRefusal: string | null = null;
+    const restorePatch = (current: Record<string, unknown>): Record<string, unknown> => {
+      const patch: Record<string, unknown> = {
+        ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
+        ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
+      };
+      if (capturedWorldEdits == null) return patch;
+      // Checked against the metadata this load produces, the restored story included.
+      const restored = buildCheckpointWorldEditsRestore(capturedWorldEdits, { ...current, ...patch });
+      if (restored.refusal) {
+        worldEditsRefusal = restored.refusal;
+        return patch;
+      }
+      if (!restored.patch) return patch;
+      worldEditsWrite = { previous: current.gameWorld };
+      return { ...patch, ...restored.patch };
+    };
     // The chat's characterIds column holds the party's library members, and session start trusts it
     // over gamePartyCharacterIds. So the load puts back the list it had at the save, in the same
     // queued write, or a member recruited after the save would come back at the next session.
     const capturedCharacterIds = parseJsonField<unknown>(cp.chatCharacterIdsData, null);
-    if (restoresGameMetadata && Array.isArray(capturedCharacterIds)) {
-      await chats.patchMetadataWithCharacterIds(input.chatId, (current) => ({
-        metadata: restorePatch(current),
-        characterIds: readCheckpointCharacterIds(capturedCharacterIds),
-      }));
-    } else if (cp.gameState || restoresGameMetadata) {
-      await chats.patchMetadata(input.chatId, (current) => ({ ...restorePatch(current) }));
+    const applyRestore = async () =>
+      restoresGameMetadata && Array.isArray(capturedCharacterIds)
+        ? await chats.patchMetadataWithCharacterIds(input.chatId, (current) => ({
+            metadata: restorePatch(current),
+            characterIds: readCheckpointCharacterIds(capturedCharacterIds),
+          }))
+        : cp.gameState || restoresGameMetadata || capturedWorldEdits != null
+          ? await chats.patchMetadata(input.chatId, (current) => ({ ...restorePatch(current) }))
+          : null;
+    // One save of a chat's edits at a time, the same lock PUT /world/edits holds.
+    const saved = await (capturedWorldEdits == null
+      ? applyRestore()
+      : withWorldLock(`edits:${input.chatId}`, applyRestore));
+    // Assigned only inside the queued updater, so read through a typed local.
+    const worldEditsWritten = worldEditsWrite as { previous: unknown } | null;
+    if (worldEditsWritten && saved) {
+      // The world with its restored layer is the snapshot from now on (W11). A snapshot it could not
+      // keep is taken back, so the recipe and the snapshot never disagree.
+      try {
+        await saveGameWorldSnapshot(app.db, input.chatId, parseMeta(saved.metadata));
+      } catch (err) {
+        await chats.patchMetadata(input.chatId, () => ({ gameWorld: worldEditsWritten.previous }));
+        throw err;
+      }
+    }
+    const worldEditsSkip = worldEditsRefusal as string | null;
+    if (worldEditsSkip) {
+      // The load still restores everything else; only the layer is left as it is.
+      logger.warn("[game/checkpoint] %s: World Edits not restored: %s", input.chatId, worldEditsSkip);
     }
 
     return { ok: true, messageId: restoreMsg.id };

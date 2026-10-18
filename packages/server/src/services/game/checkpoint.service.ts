@@ -5,6 +5,16 @@
 // listing, and loading for game mode.
 // ──────────────────────────────────────────────
 
+import {
+  compileGameWorld,
+  gameStoryFromMetadata,
+  gameWorldFromMetadata,
+  worldEditIssues,
+  worldEditsEmpty,
+  worldEditsSchema,
+  worldEditsVersioned,
+  worldTownEditIssues,
+} from "@marinara-engine/shared";
 import { and, eq, ne, desc, inArray } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameCheckpoints, gameStateSnapshots, spatialContextSnapshots } from "../../db/schema/index.js";
@@ -61,6 +71,7 @@ export interface StoredCheckpointRow extends CheckpointRow {
   engineStateData: string | null;
   gameMetadataData: string | null;
   chatCharacterIdsData: string | null;
+  gameWorldEditsData: string | null;
 }
 
 /** One captured game_engine_state blob inside a checkpoint's engineStateData array (#5102). */
@@ -103,8 +114,8 @@ const CHECKPOINT_GAME_METADATA_KEYS_V1 = [
 export const CHECKPOINT_GAME_METADATA_KEYS = [
   ...CHECKPOINT_GAME_METADATA_KEYS_V1,
   // The State Editor writes these too (#7743), so the checkpoint it takes before a save rewinds them.
-  // The world's edits layer is not here: it lives inside gameWorld, whose snapshot a load would also
-  // have to re-save, so a load leaves it as it is (a known gap, see docs/game/sessions-and-saves.md).
+  // The world's edits layer is not here: it lives inside gameWorld, which is never written wholesale,
+  // so it has its own capture and restore (gameWorldEditsData, #7783).
   "gameStory",
   "gameWidgetState",
   // Its own setting, not a count of the widgets: setup can keep widgets with it off.
@@ -168,6 +179,62 @@ export function buildCheckpointGameMetadataRestore(
   if (Object.hasOwn(patch, "gamePartySheet")) patch.gamePartySheetRevision = gamePartySheetRevision(current) + 1;
   if (Object.hasOwn(patch, "gameInventory")) patch.gameInventoryTurn = null;
   return patch;
+}
+
+/**
+ * The world's hand-edits layer at capture time (#7783): `{ edits }`, with `edits: null` for a world
+ * without any, so a load clears edits added after the save. Null for a chat with no world: there is
+ * nothing to put back, which is different from a world whose layer was empty.
+ */
+export function captureCheckpointWorldEdits(metadata: Record<string, unknown>): { edits: unknown } | null {
+  const world = metadata.gameWorld;
+  if (!world || typeof world !== "object" || Array.isArray(world)) return null;
+  return { edits: structuredClone((world as { edits?: unknown }).edits ?? null) };
+}
+
+export interface CheckpointWorldEditsRestore {
+  /** The `gameWorld` patch that puts the captured layer back, or null when nothing should change. */
+  patch: { gameWorld: Record<string, unknown> } | null;
+  /** Why a captured layer was left as it is (the load logs it), or null. */
+  refusal: string | null;
+}
+
+/**
+ * The `gameWorld` patch that puts a checkpoint's captured hand-edits layer back (#7783), checked the
+ * way `PUT /game/:chatId/world/edits` checks a layer: against the world and its towns, and against
+ * the game's story as it stands after the rest of the load — the story is restored by the same load,
+ * so the pair that fit when the checkpoint was taken still fits afterwards. `metadataAfterRestore`
+ * is the chat metadata the load's other keys produce; the layer itself is never written by hand.
+ */
+export function buildCheckpointWorldEditsRestore(
+  captured: unknown,
+  metadataAfterRestore: Record<string, unknown>,
+): CheckpointWorldEditsRestore {
+  const nothing: CheckpointWorldEditsRestore = { patch: null, refusal: null };
+  if (!captured || typeof captured !== "object" || Array.isArray(captured)) return nothing;
+  const storedWorld = metadataAfterRestore.gameWorld;
+  if (!storedWorld || typeof storedWorld !== "object" || Array.isArray(storedWorld)) return nothing;
+
+  const rawEdits = (captured as { edits?: unknown }).edits;
+  const parsed = rawEdits == null ? null : worldEditsSchema.safeParse(rawEdits);
+  if (parsed && !parsed.success) return { patch: null, refusal: "the saved hand edits do not read" };
+  const edits = parsed?.success && !worldEditsEmpty(parsed.data) ? worldEditsVersioned(parsed.data) : undefined;
+
+  const game = gameWorldFromMetadata(metadataAfterRestore);
+  if (!game) return { patch: null, refusal: "this game's world cannot be read" };
+  if (edits) {
+    const issues = [...worldEditIssues(game, edits), ...worldTownEditIssues(game, edits)];
+    if (issues.length) return { patch: null, refusal: issues[0] ?? "the saved hand edits do not fit this world" };
+  }
+  // The story is restored by the same load: check it against the world as these edits leave it, so a
+  // corrupt capture cannot bring back a pair that no longer fits (that story would read as inactive).
+  const restoredGame = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
+  if (metadataAfterRestore.gameStory != null && !gameStoryFromMetadata(metadataAfterRestore, restoredGame)) {
+    return { patch: null, refusal: "the game's story no longer fits the saved hand edits" };
+  }
+
+  const { edits: _current, ...stored } = storedWorld as Record<string, unknown>;
+  return { patch: { gameWorld: edits ? { ...stored, edits } : stored }, refusal: null };
 }
 
 /** Auto-checkpoints fire at session start/end and on every combat start/end, and only manual
@@ -298,7 +365,9 @@ export function createCheckpointService(db: DB) {
       );
 
       const chat = await createChatsStorage(db).getById(input.chatId);
-      const capturedGameMetadata = chat ? captureCheckpointGameMetadata(readMetadata(chat.metadata)) : null;
+      const capturedMetadata = chat ? readMetadata(chat.metadata) : null;
+      const capturedGameMetadata = capturedMetadata ? captureCheckpointGameMetadata(capturedMetadata) : null;
+      const capturedWorldEdits = capturedMetadata ? captureCheckpointWorldEdits(capturedMetadata) : null;
 
       const id = newId();
       // Serialize the insert + prune per chat so concurrent automatic creates cannot race on the
@@ -319,6 +388,8 @@ export function createCheckpointService(db: DB) {
             capturedGameMetadata ?? { [CHECKPOINT_CAPTURED_KEYS_FIELD]: [...CHECKPOINT_GAME_METADATA_KEYS] },
           ),
           chatCharacterIdsData: chat ? JSON.stringify(readCheckpointCharacterIds(chat.characterIds)) : null,
+          // Null when there was no world; `{ edits: null }` when there was one and it had no layer.
+          gameWorldEditsData: capturedWorldEdits ? JSON.stringify(capturedWorldEdits) : null,
           messageId: input.messageId,
           label: input.label,
           triggerType: input.triggerType,

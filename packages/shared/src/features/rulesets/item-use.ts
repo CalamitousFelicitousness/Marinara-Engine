@@ -16,7 +16,7 @@ import {
 } from "../../utils/game-inventory-stacks.js";
 import type { RulesetCatalogItem, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
-import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
+import { parseRulesetCombatDice, rulesetOwnUsesMax } from "../ruleset-combat/dice.js";
 import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
 import {
   rollRulesetCheckModifiers,
@@ -147,7 +147,9 @@ export function useRulesetItemOutsideFight(input: {
   }
   // Its own uses (1.466), kept on the stack by its place.
   const own = chosen?.uses;
-  const ownNow = own ? Math.min(own.max, stack.usesLeft?.[String(input.more)] ?? own.max) : undefined;
+  // Its most, rolled for this stack where it is (1.483).
+  const ownMax = own ? rulesetOwnUsesMax(own, stack.id, input.more!) : undefined;
+  const ownNow = own ? Math.min(ownMax!, stack.usesLeft?.[String(input.more)] ?? ownMax!) : undefined;
   if (ownNow !== undefined && ownNow < 1) return { ok: false, reason: "none-left" };
 
   // Its gate first, as a fight rolls it once the item is spent: failed, the item is spent below and
@@ -330,7 +332,7 @@ export function useRulesetItemOutsideFight(input: {
       ...(gate ? { gate } : {}),
       left:
         ownNow !== undefined && own
-          ? { uses: ownNow - 1, max: own.max }
+          ? { uses: ownNow - 1, max: ownMax! }
           : after !== undefined && max !== undefined
             ? { charges: after, max }
             : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
@@ -520,13 +522,15 @@ export function rechargeRulesetItems(input: {
       const own = more.uses;
       const key = String(n + 1);
       if (!own?.recharge?.rests.includes(input.rest)) return;
-      const before = Math.min(own.max, next.usesLeft?.[key] ?? own.max);
-      if (before >= own.max) return;
-      const now = Math.max(before, Math.min(own.max, before + gain(own.recharge.amount, own.max)));
+      // Back to its stack's own count, rolled where it is (1.483).
+      const most = rulesetOwnUsesMax(own, stack.id, n + 1);
+      const before = Math.min(most, next.usesLeft?.[key] ?? most);
+      if (before >= most) return;
+      const now = Math.max(before, Math.min(most, before + gain(own.recharge.amount, most)));
       if (now === before) return;
-      recharged.push({ item: `${entry!.name}: ${more.label}`, now, max: own.max, uses: true });
+      recharged.push({ item: `${entry!.name}: ${more.label}`, now, max: most, uses: true });
       const { [key]: _was, ...others } = next.usesLeft ?? {};
-      const usesLeft = now >= own.max ? others : { ...others, [key]: now };
+      const usesLeft = now >= most ? others : { ...others, [key]: now };
       const { usesLeft: _usesLeft, ...plain } = next;
       next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
     });

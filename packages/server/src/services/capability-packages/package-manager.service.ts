@@ -2261,6 +2261,20 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A further use whose count is rolled for each stack (1.483): a Helm of Brilliance's gems. */
+function carriesRolledUses483(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRolledUses483(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.moreUses) &&
+    record.moreUses.some((one) => plainRecord(plainRecord(one)?.uses)?.rolled !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesRolledUses483(one, depth + 1));
+}
+
 /** An item's use with others' effects beside it (1.482): Thunder and Lightning. */
 function carriesAlongside482(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6789,6 +6803,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A further use whose count is rolled, 1.483.
+  if (
+    !declaresApi(483) &&
+    (carriesRolledUses483(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRolledUses483(document)))
+  ) {
+    return "A ruleset with an item's further use whose count is rolled for each item (moreUses uses rolled) requires schemaVersion 2 and capabilityApi 1.483 or newer";
+  }
   // An item's use with others' effects beside it, 1.482.
   if (
     !declaresApi(482) &&

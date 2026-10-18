@@ -74,7 +74,14 @@ import {
   rulesetCreatureBlock,
   rulesetReactionAnswers,
 } from "./creatures.js";
-import { parseRulesetCombatDice, rollRulesetDice, rulesetAverageDamage, rulesetCombatRoller, sumOf } from "./dice.js";
+import {
+  parseRulesetCombatDice,
+  rollRulesetDice,
+  rulesetAverageDamage,
+  rulesetCombatRoller,
+  rulesetOwnUsesMax,
+  sumOf,
+} from "./dice.js";
 import {
   rulesetCellBlocked,
   rulesetCellDistance,
@@ -1994,7 +2001,8 @@ function itemUseActions(
         `use:${index}:${n + 1}`,
         more.use,
         more.label,
-        more.uses ? { more: n + 1, max: more.uses.max } : undefined,
+        // Its own count, rolled for its stack where it is (1.483).
+        more.uses ? { more: n + 1, max: rulesetOwnUsesMax(more.uses, held.stack?.id, n + 1) } : undefined,
       ),
     );
     // Other uses' effects beside one (1.482), by the ids they were built under: Thunder and Lightning.

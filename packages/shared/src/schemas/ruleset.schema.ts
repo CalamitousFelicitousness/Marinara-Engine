@@ -9338,6 +9338,7 @@ export interface RulesetItemMoreUse {
   alongside?: string[];
   uses?: {
     max: number;
+    rolled?: string;
     recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
   };
 }
@@ -9355,6 +9356,10 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
     uses: z
       .object({
         max: z.number().int().min(1).max(100),
+        /** How many an item has, rolled once for each stack of it as it is made (Capability API
+         *  1.483), `max` the most that may come up: a Helm of Brilliance's "1d10 diamonds", a
+         *  Necklace of Prayer Beads' "1d4 + 2". */
+        rolled: catalogDice.optional(),
         recharge: z
           .object({
             rests: z.array(sheetId).min(1).max(12),
@@ -18270,6 +18275,15 @@ function itemIssues(
       if (!definition.rests.some((entry) => entry.id === rest))
         add([...at, "moreUses", index, "uses", "recharge", "rests", at2], `Unknown rest "${rest}"`);
     });
+    // Rolled dice (1.483), whose most is its `max`.
+    const rolled = more.uses?.rolled ? /^(\d+)d(\d+)([+-]\d+)?$/.exec(more.uses.rolled) : null;
+    if (rolled && more.uses) {
+      if (Number(rolled[1]) * Number(rolled[2]) + Number(rolled[3] ?? 0) > more.uses.max)
+        add(
+          [...at, "moreUses", index, "uses", "rolled"],
+          "A rolled count never comes up past its max, so max is its most",
+        );
+    }
   });
   // Its own uses are one item's, as charges are (1.466).
   if (item.moreUses?.some((more) => more.uses) && !item.charges && item.stack !== 1)

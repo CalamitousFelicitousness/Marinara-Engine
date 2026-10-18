@@ -35,6 +35,7 @@ import {
   gameInventoryBearerStatus,
   gameInventoryItemId,
   gameInventoryStackLabel,
+  rulesetOwnUsesMax,
   type GameInventoryBearerStatus,
   type GameInventoryWear,
   type RulesetDefinition,
@@ -782,6 +783,7 @@ export function GameInventory({
                 loaded={selectedInventoryItem?.loaded}
                 charges={selectedInventoryItem?.charges}
                 usesLeft={selectedInventoryItem?.usesLeft}
+                stackId={selectedInventoryItem?.id}
                 storedEntries={selectedInventoryItem?.storedEntries}
               />
             )}
@@ -1275,6 +1277,7 @@ function RulesetItemDetails({
   loaded,
   charges,
   usesLeft,
+  stackId,
   storedEntries,
 }: {
   details: RulesetItemBookEntry;
@@ -1282,6 +1285,8 @@ function RulesetItemDetails({
   loaded?: number;
   charges?: number;
   usesLeft?: Record<string, number>;
+  /** Its stack, whose own rolled counts it reads (1.483). */
+  stackId?: string;
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -1319,17 +1324,19 @@ function RulesetItemDetails({
           })}
         </div>
       )}
-      {details.entry.item?.moreUses?.map((more, n) =>
-        more.uses ? (
+      {details.entry.item?.moreUses?.map((more, n) => {
+        if (!more.uses) return null;
+        const most = rulesetOwnUsesMax(more.uses, stackId, n + 1);
+        return (
           <div key={more.label} className="text-[0.65rem] leading-tight text-white/70">
             {localizeUi("ui.game.gameinventory.usesLeft", {
               label: more.label,
-              now: Math.min(usesLeft?.[String(n + 1)] ?? more.uses.max, more.uses.max),
-              max: more.uses.max,
+              now: Math.min(usesLeft?.[String(n + 1)] ?? most, most),
+              max: most,
             })}
           </div>
-        ) : null,
-      )}
+        );
+      })}
       {/* What it stores to be cast later (1.471): a Ring of Spell Storing's spells. */}
       {details.entry.item?.stores && (
         <div className="text-[0.65rem] leading-tight text-white/70">

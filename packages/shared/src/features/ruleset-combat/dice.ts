@@ -28,6 +28,26 @@ export function rollRulesetDice(roll: RulesetCombatRoller, count: number, sides:
   return rolls;
 }
 
+/** How many uses one item of its stack has in all (1.483): its `rolled` dice where it has them, thrown
+ *  once for that stack and the same at every reading after (each die's face from the stack's id and
+ *  the use's place), never past `max`; otherwise `max`. A Helm of Brilliance's 1d10 diamonds. */
+export function rulesetOwnUsesMax(
+  uses: { max: number; rolled?: string },
+  stackId: string | undefined,
+  place: number | string,
+): number {
+  const dice = uses.rolled ? parseRulesetCombatDice(uses.rolled) : null;
+  if (!dice) return uses.max;
+  let total = dice.flat;
+  for (let at = 0; at < dice.count; at++) {
+    // FNV-1a over what names this die, so each stack keeps the count it was made with.
+    let hash = 0x811c9dc5;
+    for (const char of `${stackId ?? ""}:${place}:${at}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    total += 1 + (hash % Math.max(1, dice.sides));
+  }
+  return Math.max(1, Math.min(uses.max, total));
+}
+
 export function sumOf(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }

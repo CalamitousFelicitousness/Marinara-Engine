@@ -12,7 +12,9 @@ import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
 import { blocksSight, climbCost, elevationAt, hasLineOfSight } from "../tactical-combat/math.js";
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetActionDropped, rulesetShotsAvailable } from "./ammo.js";
+import { rulesetAbilityModifier } from "../rulesets/sheet-math.js";
 import {
+  rulesetAbilityScore,
   rulesetActiveConditions,
   rulesetCombatant,
   rulesetCombatEffects,
@@ -374,6 +376,145 @@ export function rulesetDragging(
     if (smaller === undefined || own === undefined || rank === undefined || own - rank < smaller) out.halves = true;
   }
   return out;
+}
+
+/** How far this combatant jumps now (1.446), in cells: a long jump and a high one, at their full
+ *  distance with a run-up walked this turn just before it, else as `standing` says; and whether it
+ *  had one. Null in a fight with no jumping or no distance. */
+export function rulesetJumpReach(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  jumper: RulesetCombatant,
+): { long: number; high: number; running: boolean } | null {
+  const combat = definition.combat;
+  const rule = combat?.jumping;
+  const perCell = combat?.distance?.perCell;
+  if (!rule || !perCell) return null;
+  const at = rulesetPositionOf(jumper);
+  const trail = jumper.trail ?? [];
+  const last = trail[trail.length - 1];
+  const running =
+    !!at && trail.length - 1 >= Math.ceil(rule.runUp / perCell) && !!last && last.x === at.x && last.y === at.y;
+  const read = (ability: string, of: "score" | "modifier") => {
+    const score = rulesetAbilityScore(definition, jumper, ability);
+    if (score === undefined) return 0;
+    return of === "score" ? score : rulesetAbilityModifier(definition, score);
+  };
+  const keys = rulesetActiveConditions(definition, combat, jumper, state).flatMap((entry) =>
+    entry.jumps ? [entry.jumps] : [],
+  );
+  const times = keys.reduce((most, one) => Math.max(most, one.times ?? 1), 1);
+  const span = (which: "long" | "high") => {
+    const base = Math.max(0, read(rule[which].ability, rule[which].of) + (rule[which].plus ?? 0)) * times;
+    const plus = running
+      ? keys.reduce(
+          (sum, one) =>
+            one.plus && (which === "long" || !one.plus.long)
+              ? sum + Math.max(0, read(one.plus.ability, "modifier"))
+              : sum,
+          0,
+        )
+      : 0;
+    const feet = base + plus;
+    return Math.floor((running || rule.standing !== "half" ? feet : feet / 2) / perCell);
+  };
+  return { long: span("long"), high: span("high"), running };
+}
+
+/**
+ * Where this combatant may jump to now (1.446): a straight line in one of the eight directions, two
+ * cells or more and no further than its long jump or what is left of its movement, each cell of it a
+ * cell of movement. It goes over hard going, water and pits, over friends and ground no higher than
+ * its high jump clears, never through a wall or a foe; it lands where it could stand, no more than a
+ * level down. Nobody jumps who cannot walk, rides, is inside somebody, up in the air, held to or kept
+ * from somewhere, or drags somebody.
+ */
+export function rulesetJumpCells(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetReachableCell[] {
+  const combat = definition.combat;
+  const grid = state.board?.grid;
+  const actor = rulesetCombatant(state, actorId);
+  const from = rulesetPositionOf(actor);
+  if (!combat?.jumping || !grid || !actor || !from) return [];
+  if (actor.levitating || actor.insideOf || actor.mountedOn || rulesetAirborne(grid, actor)) return [];
+  if (rulesetDragging(definition, state, actor).ids.length) return [];
+  const active = rulesetActiveConditions(definition, combat, actor, state);
+  if (
+    active.some(
+      (entry) =>
+        entry.behavior?.moves || entry.behavior?.keepsOut !== undefined || entry.behavior?.keepsIn !== undefined,
+    ) ||
+    rulesetKeptBy(definition, state, actor).length
+  )
+    return [];
+  // Kept from getting any nearer to somebody (5e's frightened): no cell of the jump nearer them.
+  const held: Array<{ source: RulesetCombatant; away: number }> = [];
+  for (const entry of active) {
+    if (!entry.effects.includes("cannot-approach-source")) continue;
+    const sourceId = actor.tracked.find((tracked) => tracked.condition === entry.condition)?.source;
+    const source = sourceId ? rulesetCombatant(state, sourceId) : undefined;
+    if (rulesetPositionOf(source)) held.push({ source: source!, away: rulesetGap(actor, source) });
+  }
+  const reach = rulesetJumpReach(definition, state, actor);
+  const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
+  const far = Math.min(reach?.long ?? 0, budget);
+  if (far < 2) return [];
+  const levelCells = state.board?.levelCells ?? 1;
+  const ground = elevationAt(grid, from.x, from.y);
+  const span = rulesetSpanOf(actor);
+  const foes = new Set<string>();
+  const occupied = new Set<string>();
+  for (const one of state.combatants) {
+    if (one.id === actor.id || !rulesetCombatStanding(one) || one.insideOf || one.mountedOn) continue;
+    for (const cell of rulesetFootprint(one)) {
+      occupied.add(`${cell.x},${cell.y}`);
+      if (one.side !== actor.side) foes.add(`${cell.x},${cell.y}`);
+    }
+  }
+  const clears = (x: number, y: number) =>
+    inBounds(grid, x, y) &&
+    (!rulesetCellBlocked(grid, x, y) || isWater(grid, x, y)) &&
+    !foes.has(`${x},${y}`) &&
+    (elevationAt(grid, x, y) - ground) * levelCells <= reach!.high;
+  const threats = rulesetThreateningEnemies(definition, combat, state, actor);
+  const out: RulesetReachableCell[] = [];
+  for (const [dx, dy] of STEPS) {
+    const path: RulesetCombatCell[] = [];
+    for (let step = 1; step <= far; step++) {
+      const x = from.x + dx * step;
+      const y = from.y + dy * step;
+      const cells = rulesetFootprintAt({ x, y }, span);
+      if (!cells.every((cell) => clears(cell.x, cell.y))) break;
+      if (held.some((one) => rulesetGapFrom({ x, y }, span, one.source) < one.away)) break;
+      path.push({ x, y });
+      if (step < 2) continue;
+      const lands = cells.every((cell) => {
+        const rise = elevationAt(grid, cell.x, cell.y) - ground;
+        return !occupied.has(`${cell.x},${cell.y}`) && rise >= -1 && !rulesetCellSolidFor(grid, cell.x, cell.y, actor);
+      });
+      if (!lands || rulesetOnlyCrosses(grid, { x, y }, actor)) continue;
+      out.push({ x, y, cost: step, path: [...path], provokes: provokedBy(threats, from, path) });
+    }
+  }
+  return out.sort((a, b) => a.cost - b.cost || a.y - b.y || a.x - b.x);
+}
+
+/** Whether landing here is landing on hard going (1.446): ground that costs more than a step, of
+ *  itself or by a lasting area on it. */
+export function rulesetHardLanding(
+  grid: TacticalGrid,
+  state: RulesetEncounterState,
+  jumper: RulesetCombatant,
+  at: RulesetCombatCell,
+): boolean {
+  if (jumper.ignoresHardGround) return false;
+  const slowed = rulesetSlowedCells(state, jumper);
+  return rulesetFootprintAt(at, rulesetSpanOf(jumper)).some(
+    (cell) => rulesetCellEnterCost(grid, cell.x, cell.y) > 1 || slowed.has(`${cell.x},${cell.y}`),
+  );
 }
 
 /** Solid ground this mover walks through (1.442): Incorporeal Movement. */

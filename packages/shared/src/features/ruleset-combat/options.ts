@@ -117,6 +117,7 @@ import {
   rulesetGap,
   rulesetUnderwater,
   rulesetUnderwaterSpares,
+  rulesetJumpCells,
   rulesetNearestCell,
   rulesetSpanOf,
   rulesetCellSolidFor,
@@ -467,6 +468,8 @@ export const RULESET_CLIMB_OUT_OPTION = "move:climb-out";
 export const RULESET_MOUNT_OPTION_PREFIX = "move:mount:";
 /** Getting down off a mount (1.443). */
 export const RULESET_DISMOUNT_OPTION = "move:dismount";
+/** A long jump in a straight line (1.446), to one of its `cells`. */
+export const RULESET_JUMP_OPTION = "move:jump";
 /** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
 /** Lighting a prop again (1.332), followed by its id. */
@@ -3425,6 +3428,17 @@ function movementOptions(
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
   }
+  // A jump (1.446), where there is anywhere to land.
+  const jumps = rulesetJumpCells(definition, state, actor.id);
+  if (jumps.length > 0) {
+    options.push({
+      id: RULESET_JUMP_OPTION,
+      kind: "move",
+      label: "Jump",
+      targets: { side: "self", count: 0 },
+      cells: jumps,
+    });
+  }
   // Mounting a willing creature of their side beside them (1.443), for half their speed.
   const cost = rulesetStandCost(actor);
   if (left >= cost) {
@@ -3483,6 +3497,7 @@ export function rulesetCombatOptions(
       (option) =>
         option.kind === "end-turn" ||
         option.id === RULESET_MOVE_OPTION ||
+        option.id === RULESET_JUMP_OPTION ||
         (option.kind === "standard" &&
           option.id.startsWith("standard:") &&
           named.includes(rulesetStandardName(option.id) as never)),

@@ -2262,6 +2262,8 @@ export interface RulesetWalkResume {
   /** An engulf (1.350): the action it is, and whoever it has entered so far, each taken in or pushed
    *  out of its way once the walk ends. */
   engulf?: { actionId: string; entered: string[] };
+  /** A jump (1.446): a cell of movement a cell, touching the ground only where it lands. */
+  jump?: true;
 }
 
 /** The board, as the fight keeps it: the tactical engine's own grid and where it came from. The
@@ -2954,6 +2956,8 @@ export type RulesetCombatEvent =
       left: number;
       /** How far the move got, when a strike on the way stopped it short. */
       stopped?: boolean;
+      /** A jump (1.446). */
+      jumped?: true;
     }
   /** What a summoned weapon did, from its appearance to its ending (1.122). */
   | { type: "summon"; actorId: string; label: string; outcome: "appeared" | "struck" | "ended" }

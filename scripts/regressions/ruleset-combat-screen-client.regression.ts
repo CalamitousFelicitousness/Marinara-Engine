@@ -926,6 +926,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["breath", say({ type: "breath", actorId: "brenna", held: 3, lasts: 0 })],
     ["breath", say({ type: "breath", actorId: "brenna", held: 0, lasts: 2 })],
     ["breath", say({ type: "breath", actorId: "brenna", held: 0, lasts: 0 })],
+    [
+      "move",
+      say({
+        type: "move",
+        actorId: "brenna",
+        from: { x: 1, y: 2 },
+        to: { x: 3, y: 2 },
+        path: [
+          { x: 2, y: 2 },
+          { x: 3, y: 2 },
+        ],
+        cost: 2,
+        left: 4,
+        jumped: true,
+      }),
+    ],
     ["mount", say({ type: "mount", riderId: "brenna", mountId: "lurker", off: true })],
     ["mount", say({ type: "mount", riderId: "brenna", mountId: "lurker", off: true, fell: true })],
     ["regenerates", say({ type: "regenerates", actorId: "lurker", amount: 10 })],

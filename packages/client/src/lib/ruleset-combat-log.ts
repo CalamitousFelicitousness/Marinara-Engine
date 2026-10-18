@@ -1178,7 +1178,7 @@ export function rulesetCombatEventLine(
       if (event.path.length === 0) {
         return key("moveStood", { actor: names.combatant(event.actorId), cost: names.distance(event.cost) });
       }
-      return key(event.stopped ? "moveStopped" : "move", {
+      return key(event.stopped ? "moveStopped" : event.jumped ? "jumped" : "move", {
         actor: names.combatant(event.actorId),
         x: event.to.x,
         y: event.to.y,

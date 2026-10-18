@@ -3445,6 +3445,50 @@ export interface RulesetCatalogRays {
   dice: string;
   rows: Array<{ atMost: number; label: string; damageType?: string; applies?: string[]; again?: number }>;
 }
+/** A condition's `shape`: see the combat condition's own. */
+export interface RulesetConditionShape {
+  health?: "form" | "own";
+  keepsSaves?: string[];
+  keepsChecks?: string[];
+  keeps?: string[];
+  revert?: string;
+  betterOf?: true;
+}
+const conditionShapeSchema: z.ZodType<RulesetConditionShape, z.ZodTypeDef, unknown> = z
+  .object({
+    health: z.enum(["form", "own"]).optional(),
+    keepsSaves: uniqueIds(12).optional(),
+    keepsChecks: uniqueIds(32).optional(),
+    keeps: z.array(z.string().trim().min(1).max(200)).max(24).optional(),
+    revert: sheetId.optional(),
+    /** Each save and contest check its holder's sheet is proficient in (by the skill a check
+     *  reads) is the better of the form's own and the form's ability with the holder's proficiency
+     *  (Capability API 1.351, read this way since 1.352); everything else is the form's. Wild
+     *  Shape's "you retain all of your skill and saving throw proficiencies ... if the bonus in its
+     *  stat block is higher than yours, use the creature's bonus instead of yours". What they keep
+     *  is still their own. */
+    betterOf: z.literal(true).optional(),
+  })
+  .strict();
+
+/** A condition's `jumps` (1.446): see the combat condition's own. */
+export interface RulesetConditionJumps {
+  times?: number;
+  plus?: { ability: string; long?: true };
+}
+const conditionJumpsSchema: z.ZodType<RulesetConditionJumps, z.ZodTypeDef, unknown> = z
+  .object({
+    times: z.number().int().min(2).max(10).optional(),
+    plus: z
+      .object({ ability: sheetId, long: z.literal(true).optional() })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((rule) => rule.times !== undefined || rule.plus !== undefined, {
+    message: "jumps says how much further: times or plus",
+  });
+
 /** Walking through solid ground (1.442), and what ending a turn inside it deals. */
 export interface RulesetPassesObjects {
   harm?: { dice?: string; flat?: number; damageType?: string };
@@ -10676,23 +10720,7 @@ const combatConditionSchema = z
      *  any excess damage carries over"); `"own"` keeps their own (Change Shape). `revert` offers
      *  ending it on that budget (Wild Shape's bonus action). It ends as the condition does, and when
      *  they go down. */
-    shape: z
-      .object({
-        health: z.enum(["form", "own"]).optional(),
-        keepsSaves: uniqueIds(12).optional(),
-        keepsChecks: uniqueIds(32).optional(),
-        keeps: z.array(z.string().trim().min(1).max(200)).max(24).optional(),
-        revert: sheetId.optional(),
-        /** Each save and contest check its holder's sheet is proficient in (by the skill a check
-         *  reads) is the better of the form's own and the form's ability with the holder's proficiency
-         *  (Capability API 1.351, read this way since 1.352); everything else is the form's. Wild
-         *  Shape's "you retain all of your skill and saving throw proficiencies ... if the bonus in its
-         *  stat block is higher than yours, use the creature's bonus instead of yours". What they keep
-         *  is still their own. */
-        betterOf: z.literal(true).optional(),
-      })
-      .strict()
-      .optional(),
+    shape: conditionShapeSchema.optional(),
     /** Ways of moving it gives its holder while it holds (Capability API 1.345), in the ruleset's own
      *  distance, or `"walk"` for as fast as they walk: 5e's Fly `{"fly": 60}`, Dragon Wings
      *  `{"fly": "walk"}`, an item use's Wings of Flying. A faster one of their own stays theirs.
@@ -10739,6 +10767,11 @@ const combatConditionSchema = z
       .object({ unlessSmaller: z.number().int().min(1).max(9).optional() })
       .strict()
       .optional(),
+    /** Its holder jumps further (Capability API 1.446): `times` over, 5e's Jump and Boots of Striding
+     *  and Springing (3) and Step of the Wind (2); and, on a jump with a run-up, `plus` an ability's
+     *  modifier more, to the long jump only with `long`: Remarkable Athlete (Strength, long) and
+     *  Second-Story Work (Dexterity). */
+    jumps: conditionJumpsSchema.optional(),
     /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
      *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
      *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */
@@ -11556,6 +11589,45 @@ const combatUnderwaterSchema: z.ZodType<RulesetCombatUnderwater, z.ZodTypeDef, u
     message: "underwater says what being under water does: melee, ranged, resist or breath",
   });
 
+/** Jumping (Capability API 1.446). A long jump goes `long` far and a high jump clears `high`, each an
+ *  ability's score or modifier plus `plus`, in the ruleset's own distance: 5e's Strength score, and 3
+ *  plus the Strength modifier. Either is that far only with a run-up of `runUp` walked this turn just
+ *  before it; without one, `standing: "half"` halves it. A jump is a move in a straight line, every
+ *  cell of it a cell of movement whatever the ground, over hard going, water and pits and anything no
+ *  higher than the high jump clears, never over a foe. Landing on hard going, whoever jumped makes the
+ *  `hardLanding` check against its difficulty or takes its condition: 5e's DC 10 Acrobatics, prone. */
+export interface RulesetJumpSpan {
+  ability: string;
+  of: "score" | "modifier";
+  plus?: number;
+}
+export interface RulesetCombatJumping {
+  long: RulesetJumpSpan;
+  high: RulesetJumpSpan;
+  runUp: number;
+  standing?: "half";
+  hardLanding?: { check: string; difficulty: number; applies: string };
+}
+const jumpSpanSchema = z
+  .object({
+    ability: sheetId,
+    of: z.enum(["score", "modifier"]),
+    plus: z.number().int().min(-100).max(100).optional(),
+  })
+  .strict();
+const combatJumpingSchema: z.ZodType<RulesetCombatJumping, z.ZodTypeDef, unknown> = z
+  .object({
+    long: jumpSpanSchema,
+    high: jumpSpanSchema,
+    runUp: z.number().int().min(0).max(1000),
+    standing: z.literal("half").optional(),
+    hardLanding: z
+      .object({ check: sheetId, difficulty: z.number().int().min(1).max(100), applies: sheetId })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 /** Holding an effect together while the fight goes on. The text field is where it is written down,
  *  so the sheet shows what a character is holding after the battle as well as during it. */
 const combatConcentrationSchema = z
@@ -11920,6 +11992,8 @@ const combatObjectSchema = z
     mounts: combatMountsSchema.optional(),
     /** Fighting under water and holding breath (Capability API 1.445). */
     underwater: combatUnderwaterSchema.optional(),
+    /** Long and high jumps (Capability API 1.446). */
+    jumping: combatJumpingSchema.optional(),
     /** What a combatant is (Capability API 1.168): the types and tags a creature names and a target
      *  test reads. A character takes its type from `field` (a text or choice field holding a type id)
      *  or else `default`; a creature from its own `type` and `tags`. */
@@ -14894,6 +14968,29 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const switchBudget = combat.sight.darkness.carried?.budget;
       if (switchBudget !== undefined && !combat.economy.budgets.some((budget) => budget.id === switchBudget))
         issue(at("sight", "darkness", "carried", "budget"), `Unknown budget "${switchBudget}"`);
+    }
+    // Under water (1.445): the ability breath reads and the conditions that spare it.
+    const breath = combat.underwater?.breath;
+    for (const key of ["holds", "then"] as const) {
+      const ability = breath?.[key].perMod?.ability;
+      if (ability !== undefined && !abilityIds.has(ability))
+        issue(at("underwater", "breath", key, "perMod", "ability"), `Unknown ability "${ability}"`);
+    }
+    breath?.exempt?.conditions?.forEach((id, index) => {
+      if (!conditions.has(id))
+        issue(at("underwater", "breath", "exempt", "conditions", index), `Unknown condition "${id}"`);
+    });
+    // Jumping (1.446): the abilities it reads, and the check and condition of a hard landing.
+    if (combat.jumping) {
+      for (const key of ["long", "high"] as const) {
+        if (!abilityIds.has(combat.jumping[key].ability))
+          issue(at("jumping", key, "ability"), `Unknown ability "${combat.jumping[key].ability}"`);
+      }
+      const landing = combat.jumping.hardLanding;
+      if (landing && !contestChecks.has(landing.check))
+        issue(at("jumping", "hardLanding", "check"), `Unknown contest check "${landing.check}"`);
+      if (landing && !conditions.has(landing.applies))
+        issue(at("jumping", "hardLanding", "applies"), `Unknown condition "${landing.applies}"`);
     }
     // Hiding (1.287): the checks it throws are the fight's own, and so are the components it hears.
     if (combat.hiding) {

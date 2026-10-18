@@ -146,6 +146,7 @@ import {
   rulesetCrowdedStep,
   rulesetDragging,
   rulesetUnderwater,
+  rulesetHardLanding,
   rulesetThroughSolid,
   rulesetLevelOf,
   rulesetSlowedCells,
@@ -182,6 +183,7 @@ import {
   RULESET_CLIMB_OUT_OPTION,
   RULESET_MOUNT_OPTION_PREFIX,
   RULESET_DISMOUNT_OPTION,
+  RULESET_JUMP_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   rulesetRelightCells,
@@ -5606,11 +5608,12 @@ function applyChoice(
 
   // Walking, and getting back up: a positioned fight's own two options. Neither spends a budget.
   if (option.kind === "move") {
-    const cell = option.id === RULESET_MOVE_OPTION ? destinationOf(option, choice.to) : null;
-    if (option.id === RULESET_MOVE_OPTION && !cell) return refusal(state, choice.actorId, "unreachable", option.id);
+    const walks = option.id === RULESET_MOVE_OPTION || option.id === RULESET_JUMP_OPTION;
+    const cell = walks ? destinationOf(option, choice.to) : null;
+    if (walks && !cell) return refusal(state, choice.actorId, "unreachable", option.id);
     const { ctx, finish } = begin(definition, combat, state, roller);
     const walking = rulesetCombatant(ctx.state, actor.id)!;
-    if (cell) resolveMove(ctx, walking, cell);
+    if (cell) resolveMove(ctx, walking, cell, option.id === RULESET_JUMP_OPTION);
     else if (option.id === RULESET_FLY_UP_OPTION || option.id === RULESET_FLY_DOWN_OPTION) {
       resolveFly(ctx, walking, option);
     } else if (option.id === RULESET_CLIMB_OUT_OPTION) resolveClimbOut(ctx, walking, option);
@@ -9036,7 +9039,13 @@ function zonesEntered(
   }
 }
 
-function resolveMove(ctx: RulesetCombatContext, actor: RulesetCombatant, destination: { path: RulesetCombatCell[] }) {
+function resolveMove(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  destination: { path: RulesetCombatCell[] },
+  /** A jump (1.446): a cell of movement a cell, touching nothing on the way but where it lands. */
+  jump = false,
+) {
   walkOn(ctx, actor, {
     kind: "walk",
     actorId: actor.id,
@@ -9045,6 +9054,7 @@ function resolveMove(ctx: RulesetCombatContext, actor: RulesetCombatant, destina
     path: [...destination.path],
     asked: [],
     spent: 0,
+    ...(jump ? { jump: true as const } : {}),
   });
 }
 
@@ -9134,6 +9144,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
+            ...(resume.jump ? { jump: true as const } : {}),
           },
         });
         return;
@@ -9148,7 +9159,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // With other ways of moving (1.113) the same choice the menu made, on what this walk has spent.
     // Ground a lasting area makes hard going costs what the menu priced it at (1.173).
     // Through solid ground, and into another's space, as the menu priced them (1.442).
-    if (grid) {
+    if (resume.jump) spent += 1;
+    else if (grid) {
       const plain = rulesetThroughSolid(grid, cell.x, cell.y, actor)
         ? 2
         : (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y));
@@ -9227,6 +9239,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
+            ...(resume.jump ? { jump: true as const } : {}),
           },
         });
         return;
@@ -9237,7 +9250,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
     // Into a zone, or a zone carried onto somebody (1.172), and ground that hurts to cross (1.173).
     // Nothing harms one that nothing can (1.283).
-    if (!legendary?.untouchable) {
+    // A jump touches the ground only where it lands (1.446).
+    if (!legendary?.untouchable && (!resume.jump || rest.length === 0)) {
       zonesEntered(ctx, actor, before);
       zoneGround(ctx, actor, cell);
     }
@@ -9275,8 +9289,22 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     cost: spent,
     left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
+    ...(resume.jump ? { jumped: true as const } : {}),
   });
   if (ashore) ctx.events.push({ type: "ashore", actorId: actor.id, to: { ...ashore } });
+  // Landed on hard going (1.446): the check, or its condition. 5e's DC 10 Acrobatics, or prone.
+  const landing = ctx.combat.jumping?.hardLanding;
+  if (
+    resume.jump &&
+    landing &&
+    grid &&
+    rest.length === 0 &&
+    rulesetCombatStanding(actor) &&
+    rulesetHardLanding(grid, ctx.state, actor, at) &&
+    hidingCheck(ctx, actor, landing.check).total < landing.difficulty
+  ) {
+    applyConditionId(ctx, actor, landing.applies, { condition: landing.applies, duration: "instant" }, {});
+  }
   // Whoever an engulf walked into (1.350), once it has stopped.
   if (engulfing && engulfAction && rulesetCombatStanding(actor)) {
     engulfLands(

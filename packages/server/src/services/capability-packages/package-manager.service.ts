@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Jumping (1.446): the combat block's jumping, or a condition whose holder jumps further. */
+function carriesJumping446(ruleset: unknown, depth = 0): boolean {
+  const record = plainRecord(ruleset);
+  if (depth === 0 && plainRecord(record?.combat)?.jumping !== undefined) return true;
+  if (!ruleset || depth > 40) return false;
+  if (Array.isArray(ruleset)) return ruleset.some((one) => carriesJumping446(one, depth + 1));
+  if (!record) return false;
+  if (record.condition !== undefined && record.jumps !== undefined) return true;
+  return featureValues(record).some((one) => carriesJumping446(one, depth + 1));
+}
+
 /** Fighting under water and holding breath (1.445): the combat block's underwater. */
 function carriesUnderwater445(ruleset: unknown): boolean {
   return plainRecord(plainRecord(ruleset)?.combat)?.underwater !== undefined;
@@ -6349,6 +6360,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Jumping, 1.446.
+  if (
+    !declaresApi(446) &&
+    (carriesJumping446(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesJumping446(document, 1)))
+  ) {
+    return "A ruleset whose combatants jump (combat jumping, a condition's jumps) requires schemaVersion 2 and capabilityApi 1.446 or newer";
+  }
   // Fighting under water and holding breath, 1.445.
   if (!declaresApi(445) && carriesUnderwater445(ruleset)) {
     return "A ruleset whose fights go on under water (combat underwater) requires schemaVersion 2 and capabilityApi 1.445 or newer";

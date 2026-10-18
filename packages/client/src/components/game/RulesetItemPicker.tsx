@@ -48,6 +48,7 @@ const FIGHT_EFFECT_KEYS: Record<string, string> = {
   "attacks-against-far-disadvantage": "ui.game.gameinventory.effectAttacksAgainstFarDisadvantage",
   "attacks-against-no-advantage": "ui.game.gameinventory.effectAttacksAgainstNoAdvantage",
   "attacks-from-adjacent-critical": "ui.game.gameinventory.effectAttacksFromAdjacentCritical",
+  "criticals-against-normal": "ui.game.gameinventory.effectCriticalsAgainstNormal",
   "cannot-act": "ui.game.gameinventory.effectCannotAct",
   "cannot-react": "ui.game.gameinventory.effectCannotReact",
   "speed-zero": "ui.game.gameinventory.effectSpeedZero",

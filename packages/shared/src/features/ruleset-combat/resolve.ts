@@ -12347,6 +12347,12 @@ function resolveActionBody(
         }
         // Missed, what its maker spends to hit all the same (1.249): Stroke of Luck.
         if (outcome === "miss" && rescueEntry(ctx, actor, "attacks", "success")) outcome = "hit";
+        // No critical lands on its holder (1.457): Adamantine Armor.
+        if (
+          outcome === "critical" &&
+          rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("criticals-against-normal")
+        )
+          outcome = "hit";
         ctx.events.push({
           type: "attack",
           actorId: actor.id,

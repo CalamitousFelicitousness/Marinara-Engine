@@ -9565,6 +9565,7 @@
   "ui.game.gameinventory.effectAttacksFromAdjacentCritical": "a hit on them from next to them is critical",
   "ui.game.gameinventory.effectCannotAct": "cannot act",
   "ui.game.gameinventory.effectCannotReact": "cannot react",
+  "ui.game.gameinventory.effectCriticalsAgainstNormal": "Critical hits against the wearer are normal hits",
   "ui.game.gameinventory.effectDefense": "{{change}} defense",
   "ui.game.gameinventory.effectDefenseFloor": "Defense at least {{value}}",
   "ui.game.gameinventory.effectDefenseNamed": "{{change}} {{names}}",

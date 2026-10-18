@@ -2263,6 +2263,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A condition or worn item that turns critical hits on its holder into plain ones (1.457). */
+function carriesNoCriticals457(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value))
+    return value.includes("criticals-against-normal") || value.some((one) => carriesNoCriticals457(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  return featureValues(record).some((one) => carriesNoCriticals457(one, depth + 1));
+}
+
 /** A reaction that steps in front of an attack aimed at somebody else, or a defense or aimed moment
  *  narrowed to one kind of attack (1.456): Arrow-Catching Shield. */
 function carriesTakesAim456(value: unknown, depth = 0): boolean {
@@ -6475,6 +6485,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Critical hits on the holder made plain hits, 1.457.
+  if (
+    !declaresApi(457) &&
+    (carriesNoCriticals457(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesNoCriticals457(document)))
+  ) {
+    return "A ruleset whose conditions or worn items turn critical hits on their holder into plain hits (the criticals-against-normal effect) requires schemaVersion 2 and capabilityApi 1.457 or newer";
+  }
   // Stepping in front of an attack, and defense against one kind of attack, 1.456.
   if (
     !declaresApi(456) &&

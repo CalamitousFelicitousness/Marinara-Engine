@@ -9632,6 +9632,9 @@ const combatConditionEffectSchema = z.enum([
   "attacks-against-adjacent-advantage",
   "attacks-against-far-disadvantage",
   "attacks-from-adjacent-critical",
+  /** A critical hit on its holder is a plain hit (Capability API 1.457), whatever made it one: 5e's
+   *  Adamantine Armor, worn. */
+  "criticals-against-normal",
   "cannot-act",
   /** Reactions and movement are later slices; both are validated now so a ruleset can say it once. */
   "cannot-react",

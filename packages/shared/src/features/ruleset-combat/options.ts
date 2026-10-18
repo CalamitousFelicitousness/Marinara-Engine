@@ -1991,11 +1991,21 @@ export function rulesetWarded(
   const catalog = action.catalog;
   if (!catalog) return false;
   const wards = rulesetWardsOn(state, target);
-  if (wards.length === 0) return false;
+  // Its holder's own (1.467), from anybody but themselves: a rakshasa's Limited Magic Immunity.
+  const held =
+    actor.id !== target.id && definition.combat
+      ? rulesetActiveConditions(definition, definition.combat, target, state).flatMap((entry) =>
+          entry.wards ? [entry.wards] : [],
+        )
+      : [];
+  if (wards.length === 0 && held.length === 0) return false;
   const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
   const paid = rulesetPaidLevel(definition, actor, action, payWith);
   // Its own base level, however it was paid (1.181): Globe of Invulnerability.
   const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(definition, actor, action);
+  if (held.some((ward) => ward.catalogs.includes(catalog) && (ward.by === "base" ? base : paid) <= ward.maxLevel)) {
+    return true;
+  }
   return wards.some(({ key, wards: ward, caster, zone }) => {
     if (own.has(key) || !ward.catalogs.includes(catalog)) return false;
     // Raised for each step the ward's own cast was paid above its base (1.181).

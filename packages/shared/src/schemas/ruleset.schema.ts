@@ -11299,6 +11299,11 @@ const combatConditionSchema = z
     /** Damage taken stops it working until its holder's next turn starts (Capability API 1.461),
      *  ended or not: 5e's Cloak of Displacement. */
     suppressedWhenHarmed: z.literal("until-own-turn-start").optional(),
+    /** What its holder is warded from, as a zone's `wards` keeps it off whoever stands inside
+     *  (Capability API 1.467): entries of these catalogs at this level or lower never reach them,
+     *  from anybody but themselves. 5e's rakshasa, kept on with `keepsOn`: Limited Magic Immunity,
+     *  `{ "catalogs": ["spells"], "maxLevel": 6 }`. */
+    wards: zoneWardsSchema.optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -16043,6 +16048,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "actions", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      // A ward on its holder (1.467): of the ruleset's own catalogs, and never raised by a cast's steps.
+      entry.wards?.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "wards", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
+      if (entry.wards?.maxLevelPerCostStep !== undefined) {
+        issue([...path, "wards", "maxLevelPerCostStep"], "A condition's ward is not cast, so it rises by no steps");
+      }
       if (entry.size && !combat.sizes) {
         issue([...path, "size"], "A condition that changes size needs combat.sizes");
       }

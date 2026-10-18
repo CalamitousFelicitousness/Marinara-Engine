@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that wards its holder from entries of a level or lower (1.467): a rakshasa's. */
+function carriesConditionWards467(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConditionWards467(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && plainRecord(record.wards) !== undefined) return true;
+  return featureValues(record).some((one) => carriesConditionWards467(one, depth + 1));
+}
+
 /** An item's further uses that count their own, or more than 8 of them (1.466): a Staff of Thunder and
  *  Lightning, a Helm of Brilliance. */
 function carriesOwnUses466(value: unknown, depth = 0): boolean {
@@ -6588,6 +6598,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions that ward their holders, 1.467.
+  if (
+    !declaresApi(467) &&
+    (carriesConditionWards467(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditionWards467(document)))
+  ) {
+    return "A ruleset whose conditions ward their holders from entries of a level or lower (a condition's wards) requires schemaVersion 2 and capabilityApi 1.467 or newer";
+  }
   // Further uses with their own counts, or more than 8, 1.466.
   if (
     !declaresApi(466) &&

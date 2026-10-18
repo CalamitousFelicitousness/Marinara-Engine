@@ -10649,6 +10649,24 @@ const conditionOnHitSchema: z.ZodType<RulesetConditionOnHit, z.ZodTypeDef, unkno
   })
   .strict();
 
+/** What its holder does to a creature whose space it enters (Capability API 1.451), the first time in
+ *  each of its turns: `harm` with no save, and `applies` from the holder. 5e's Fire Form, 1d10 fire
+ *  and set alight. */
+export interface RulesetConditionEntering {
+  harm?: { dice?: string; flat?: number; damageType?: string };
+  applies?: RulesetCatalogApplies[];
+}
+const conditionEnteringSchema: z.ZodType<RulesetConditionEntering, z.ZodTypeDef, unknown> = z
+  .object({
+    harm: z
+      .object({ ...catalogAmountShape, damageType: promptSafeText(40).optional() })
+      .strict()
+      .optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+  })
+  .strict()
+  .refine((rule) => rule.harm || rule.applies, { message: "entering does something: harm or applies" });
+
 /** Its holder's speed is not lowered by what entries of these catalogs put on them (Capability API
  *  1.433): a slowing, a halving or a stop that a spell put on does nothing to their walk, and the
  *  same from anything else still does. 5e's Freedom of Movement, `{ "catalogs": ["spells"] }`. */
@@ -10764,6 +10782,12 @@ const combatConditionSchema = z
     whenHit: conditionWhenHitSchema.optional(),
     /** What its holder's own hits put on whoever they hit (Capability API 1.450): Branding Smite. */
     onHit: conditionOnHitSchema.optional(),
+    /** Its holder walks into a hostile creature's space and may stop there (Capability API 1.451): 5e's
+     *  Air, Fire and Water Form. */
+    stopsInFoes: z.literal(true).optional(),
+    /** What its holder does to a creature whose space it enters, once a turn each (Capability API
+     *  1.451): Fire Form. */
+    entering: conditionEnteringSchema.optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -11539,7 +11563,7 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
 export interface RulesetCombatMounts {
   larger: number;
   controlled?: { standard: Array<"dash" | "disengage" | "dodge" | "help" | "hide" | "ready" | "search"> };
-  fall?: { save: string; difficulty: number; applies?: string; when?: string[] };
+  fall?: { save: string; difficulty: number; applies?: string; when?: string[]; landsWith?: string };
 }
 const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> = z
   .object({
@@ -11554,6 +11578,10 @@ const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> 
         difficulty: z.number().int().min(0).max(100),
         applies: sheetId.optional(),
         when: z.array(sheetId).min(1).max(8).optional(),
+        /** A rider whose mount comes to hold a condition of `when` spends one of this budget, while
+         *  they have one, to land on their feet beside it instead of throwing the save (Capability
+         *  API 1.451): 5e's reaction. Being pushed off their mount is still the save. */
+        landsWith: sheetId.optional(),
       })
       .strict()
       .optional(),
@@ -15074,6 +15102,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(id))
         issue(at("underwater", "breath", "exempt", "conditions", index), `Unknown condition "${id}"`);
     });
+    // What a rider lands on their feet with (1.451) is a budget of the fight's.
+    const landsWith = combat.mounts?.fall?.landsWith;
+    if (landsWith !== undefined && !combat.economy.budgets.some((one) => one.id === landsWith))
+      issue(at("mounts", "fall", "landsWith"), `Unknown budget "${landsWith}"`);
     // Jumping (1.446): the abilities it reads, and the check and condition of a hard landing.
     if (combat.jumping) {
       for (const key of ["long", "high"] as const) {
@@ -15434,10 +15466,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         });
         if (entry.whenHit.from) targetIsIssues(def, entry.whenHit.from, [...where, "from"], issue);
       }
-      // What its holder's hits put on is the ruleset's own (1.450).
+      // What its holder's hits put on is the ruleset's own (1.450), and what its entering does (1.451).
       entry.onHit?.applies.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition))
           issue([...path, "onHit", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+      });
+      entry.entering?.applies?.forEach((applied, appliedIndex) => {
+        if (!conditions.has(applied.condition))
+          issue(
+            [...path, "entering", "applies", appliedIndex, "condition"],
+            `Unknown condition "${applied.condition}"`,
+          );
       });
       // What a called creature pays with is a budget of the fight's (1.435).
       if (entry.lendsStrikes && !combat.economy.budgets.some((one) => one.id === entry.lendsStrikes!.budget))

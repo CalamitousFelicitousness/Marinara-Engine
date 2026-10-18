@@ -1042,11 +1042,14 @@ export function rulesetReachableCells(
 
   const blockers = new Set<string>();
   const occupied = new Set<string>();
+  // Into a foe's space and stopping there (1.451): Air Form. Only a friend's is somewhere not to stop.
+  const stopsInFoes = rulesetActiveConditions(definition, combat, actor, state).some((entry) => entry.stopsInFoes);
+  const friendly = new Set<string>();
   // Through a foe far enough apart in size, or through larger ones or anybody (1.442).
   const apart = combat.sizes?.passing?.apart;
   const ownRank = rulesetSizeRank(combat, actor);
   const walksThrough = (combatant: RulesetCombatant) => {
-    if (actor.passesCreatures === "any") return true;
+    if (actor.passesCreatures === "any" || stopsInFoes) return true;
     const rank = rulesetSizeRank(combat, combatant);
     if (rank === undefined || ownRank === undefined) return false;
     if (actor.passesCreatures === "larger" && rank > ownRank) return true;
@@ -1061,9 +1064,11 @@ export function rulesetReachableCells(
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
       occupied.add(`${at.x},${at.y}`);
+      if (combatant.side === actor.side) friendly.add(`${at.x},${at.y}`);
       if (combatant.side !== actor.side && !through) blockers.add(`${at.x},${at.y}`);
     }
   }
+  const taken = stopsInFoes ? friendly : occupied;
   // Another's space costs as hard going (1.442), and solid ground does to one who walks through it.
   const crowded = combat.sizes?.passing?.crowded;
   // Dragging somebody they hold (1.444): every step costs double, unless all are much smaller.
@@ -1208,7 +1213,7 @@ export function rulesetReachableCells(
       open.set(next, { x, y });
       // A friend can be walked past and not stood on, so their cell is searched through and never
       // offered as somewhere to stop.
-      if (occupied.has(next) || (span > 1 && !fits(x, y, occupied))) continue;
+      if (taken.has(next) || (span > 1 && !fits(x, y, taken))) continue;
       // Run across and never stopped on (1.379).
       if (rulesetOnlyCrosses(grid, { x, y }, actor)) continue;
       if (

@@ -1855,6 +1855,9 @@ export interface RulesetCombatant {
   runsAcross?: true;
   /** They walk through other creatures' spaces, larger ones or anybody's (1.442). */
   passesCreatures?: "larger" | "any";
+  /** Whose spaces they have entered in which turn (1.451), as `<round>:<turn>`: Fire Form's once a
+   *  turn each. */
+  entered?: { at: string; ids: string[] };
   /** They walk through solid ground as hard going and may stop inside it (1.442), taking `harm` as
    *  a turn of theirs ends there. */
   passesObjects?: { harm?: RulesetCombatAmount & { damageType?: string } };

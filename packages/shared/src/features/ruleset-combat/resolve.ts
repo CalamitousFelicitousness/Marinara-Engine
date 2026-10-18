@@ -1046,6 +1046,50 @@ function answerHit(
   }
 }
 
+/** What a mover's `entering` does to each creature whose space it now fills (1.451), the first time
+ *  in a turn: Fire Form's burn and its flames. */
+function entersSpaces(ctx: RulesetCombatContext, mover: RulesetCombatant): void {
+  if (!ctx.combat.conditions?.some((entry) => entry.entering)) return;
+  const rules = rulesetActiveConditions(ctx.definition, ctx.combat, mover, ctx.state).flatMap((entry) =>
+    entry.entering ? [{ entry, rule: entry.entering }] : [],
+  );
+  if (!rules.length) return;
+  const turn = `${ctx.state.round}:${ctx.state.turn}`;
+  if (mover.entered?.at !== turn) mover.entered = { at: turn, ids: [] };
+  const covered = new Set(rulesetFootprint(mover).map((cell) => `${cell.x},${cell.y}`));
+  for (const one of ctx.state.combatants) {
+    if (one.id === mover.id || one.defeated || one.insideOf || one.mountedOn || !rulesetPositionOf(one)) continue;
+    if (mover.entered.ids.includes(one.id)) continue;
+    if (!rulesetFootprint(one).some((cell) => covered.has(`${cell.x},${cell.y}`))) continue;
+    mover.entered.ids.push(one.id);
+    for (const { entry, rule } of rules) {
+      const own = mover.tracked.find((tracked) => tracked.condition === entry.condition);
+      const harm = rule.harm ? parseRulesetCombatDice(rule.harm.dice ?? "") : null;
+      if (rule.harm && (harm || rule.harm.flat !== undefined)) {
+        const rolls = harm ? rollRulesetDice(ctx.roll, harm.count, harm.sides) : [];
+        const flat = (harm?.flat ?? 0) + (rule.harm.flat ?? 0);
+        const dealt = applyDamage(ctx, one, {
+          sourceId: mover.id,
+          label:
+            ctx.definition.sheet.live.conditions.find((live) => live.id === entry.condition)?.label ?? entry.condition,
+          ...(rule.harm.damageType ? { damageType: rule.harm.damageType } : {}),
+          rolls,
+          flat,
+          amount: sumOf(rolls) + flat,
+        });
+        afterBlow(ctx, one, dealt, false);
+      }
+      for (const applies of rule.applies ?? []) {
+        if (one.defeated) break;
+        applyConditionId(ctx, one, applies.condition, applies, {
+          sourceId: mover.id,
+          ...(own?.concentration ? { concentration: true } : {}),
+        });
+      }
+    }
+  }
+}
+
 /** What the attacker's own conditions put on whoever their hit landed on (1.450): Branding Smite. */
 function ownHit(
   ctx: RulesetCombatContext,
@@ -2951,6 +2995,12 @@ function syncMounts(ctx: RulesetCombatContext): void {
       !!fall?.when?.some((id) => rulesetCombatConditions(ctx.definition, one).includes(id));
     if (fall && holds(rider)) {
       dismount(ctx, rider, true);
+      continue;
+    }
+    // Knocked down under them, they may land on their feet for a reaction instead (1.451).
+    if (fall?.landsWith && holds(mount!) && (rider.budgets[fall.landsWith] ?? 0) >= 1) {
+      rider.budgets[fall.landsWith]! -= 1;
+      dismount(ctx, rider);
       continue;
     }
     if (fall && (holds(mount!) || ctx.shakenMounts?.has(mount!.id))) {
@@ -9269,6 +9319,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     for (const inside of ctx.state.combatants) {
       if (inside.insideOf === actor.id || inside.mountedOn === actor.id) placeInside(actor, inside);
     }
+    // Into a creature's space (1.451): what its holder's entering does to them, once a turn each.
+    if (!legendary?.untouchable && (!resume.jump || rest.length === 0)) entersSpaces(ctx, actor);
     // Whoever an engulf walks into (1.350), taken in once the walk ends.
     if (engulfing) {
       const covered = new Set(rulesetFootprint(actor).map((one) => `${one.x},${one.y}`));

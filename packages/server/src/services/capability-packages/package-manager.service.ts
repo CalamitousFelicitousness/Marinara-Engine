@@ -2261,6 +2261,19 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
+ *  Air and Fire Form, a rider's reaction. */
+function carriesElementalForms451(ruleset: unknown, depth = 0): boolean {
+  const record = plainRecord(ruleset);
+  if (depth === 0 && plainRecord(plainRecord(plainRecord(record?.combat)?.mounts)?.fall)?.landsWith !== undefined)
+    return true;
+  if (!ruleset || depth > 40) return false;
+  if (Array.isArray(ruleset)) return ruleset.some((one) => carriesElementalForms451(one, depth + 1));
+  if (!record) return false;
+  if (record.condition !== undefined && (record.stopsInFoes !== undefined || plainRecord(record.entering))) return true;
+  return featureValues(record).some((one) => carriesElementalForms451(one, depth + 1));
+}
+
 /** A condition spent by its holder's next weapon hit, or one whose holder's hits put something on
  *  whoever they hit (1.450): Branding Smite. */
 function carriesOwnHit450(value: unknown, depth = 0): boolean {
@@ -6406,6 +6419,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Stopping in a foe's space and what entering one does, and landing from a fallen mount, 1.451.
+  if (
+    !declaresApi(451) &&
+    (carriesElementalForms451(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesElementalForms451(document, 1)))
+  ) {
+    return "A ruleset whose combatants stop in a foe's space, harm whoever's space they enter, or land from a fallen mount (stopsInFoes, entering, mounts fall landsWith) requires schemaVersion 2 and capabilityApi 1.451 or newer";
+  }
   // A condition spent by its holder's next weapon hit, or whose holder's hits put something on, 1.450.
   if (
     !declaresApi(450) &&

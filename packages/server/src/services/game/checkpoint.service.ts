@@ -78,7 +78,8 @@ export interface CapturedEngineState {
  * lifecycle keys, live combat, caches, write ordinals, and the world, story and maps, which keep
  * their own snapshots and checks.
  */
-export const CHECKPOINT_GAME_METADATA_KEYS = [
+/** The keys a checkpoint captured before #7743 added the State Editor's own (its captures name no keys). */
+const CHECKPOINT_GAME_METADATA_KEYS_V1 = [
   "gameCharacterCards",
   "gamePartyCharacterIds",
   "gamePartySheet",
@@ -97,12 +98,22 @@ export const CHECKPOINT_GAME_METADATA_KEYS = [
   "gameTime",
   "gameWeather",
   "gameMorale",
+] as const;
+
+export const CHECKPOINT_GAME_METADATA_KEYS = [
+  ...CHECKPOINT_GAME_METADATA_KEYS_V1,
   // The State Editor writes these too (#7743), so the checkpoint it takes before a save rewinds them.
   // The world's edits layer is not here: it lives inside gameWorld, whose snapshot a load would also
   // have to re-save, so a load leaves it as it is (a known gap, see docs/game/sessions-and-saves.md).
   "gameStory",
   "gameWidgetState",
 ] as const;
+
+/**
+ * Where a capture names the keys it covered. A load restores or clears only those: a checkpoint taken
+ * before a key joined the list never saw it, and must not read it as "added later" and clear it.
+ */
+export const CHECKPOINT_CAPTURED_KEYS_FIELD = "__capturedKeys";
 
 /** A chat's characterIds column (a JSON string or an array) as a clean list of unique ids. */
 export function readCheckpointCharacterIds(raw: unknown): string[] {
@@ -118,13 +129,21 @@ export function readCheckpointCharacterIds(raw: unknown): string[] {
   return Array.from(new Set(value.filter((id): id is string => typeof id === "string" && id.trim().length > 0)));
 }
 
-/** The allow-listed keys present in `metadata`, copied by value. Null when none are. */
-export function captureCheckpointGameMetadata(metadata: Record<string, unknown>): Record<string, unknown> | null {
+/** The allow-listed keys present in `metadata`, copied by value, and the list of keys it covered. */
+export function captureCheckpointGameMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   const captured: Record<string, unknown> = {};
   for (const key of CHECKPOINT_GAME_METADATA_KEYS) {
     if (metadata[key] !== undefined) captured[key] = metadata[key];
   }
-  return Object.keys(captured).length > 0 ? structuredClone(captured) : null;
+  return { ...structuredClone(captured), [CHECKPOINT_CAPTURED_KEYS_FIELD]: [...CHECKPOINT_GAME_METADATA_KEYS] };
+}
+
+/** The keys a capture covered: the ones it names, or the original list for a capture that names none. */
+function checkpointCapturedKeys(captured: Record<string, unknown>): readonly string[] {
+  const named = captured[CHECKPOINT_CAPTURED_KEYS_FIELD];
+  if (!Array.isArray(named)) return CHECKPOINT_GAME_METADATA_KEYS_V1;
+  // Never more than today's list: a key named here but since dropped from it is left alone.
+  return CHECKPOINT_GAME_METADATA_KEYS.filter((key) => named.includes(key));
 }
 
 /**
@@ -140,7 +159,7 @@ export function buildCheckpointGameMetadataRestore(
   current: Record<string, unknown>,
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
-  for (const key of CHECKPOINT_GAME_METADATA_KEYS) {
+  for (const key of checkpointCapturedKeys(captured)) {
     if (Object.hasOwn(captured, key)) patch[key] = structuredClone(captured[key]);
     else if (current[key] != null) patch[key] = null;
   }
@@ -296,9 +315,11 @@ export function createCheckpointService(db: DB) {
           snapshotData: JSON.stringify(capturedGameSnapshot),
           spatialSnapshotData: capturedSpatialSnapshot ? JSON.stringify(capturedSpatialSnapshot) : null,
           engineStateData: capturedEngineStates.length > 0 ? JSON.stringify(capturedEngineStates) : null,
-          // `{}` when the game had none of the keys yet, so a load still clears what came later;
-          // null stays reserved for checkpoints from before this field.
-          gameMetadataData: JSON.stringify(capturedGameMetadata ?? {}),
+          // Always the keys it covered, even with none of their values yet, so a load still clears what
+          // came later; null stays reserved for checkpoints from before this field.
+          gameMetadataData: JSON.stringify(
+            capturedGameMetadata ?? { [CHECKPOINT_CAPTURED_KEYS_FIELD]: [...CHECKPOINT_GAME_METADATA_KEYS] },
+          ),
           chatCharacterIdsData: chat ? JSON.stringify(readCheckpointCharacterIds(chat.characterIds)) : null,
           messageId: input.messageId,
           label: input.label,

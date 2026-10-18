@@ -5951,9 +5951,11 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       delete copy.appliesSelf;
       delete copy.reaction;
       delete copy.free;
-      // Paid for by the cast it repeats: no uses or recharge of its own.
+      // Paid for by the cast it repeats: no uses or recharge of its own, and an item's use (1.530)
+      // spends nothing of the item again: a scroll of Telekinesis is spent once.
       delete copy.uses;
       delete copy.recharge;
+      delete copy.itemUse;
       // Grown by what the cast was paid at, as a condition's action grows (1.300).
       const per = copy.use?.perCostStep;
       if (per) {

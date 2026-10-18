@@ -2261,6 +2261,21 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item's use that repeats (1.530): a scroll of Telekinesis. Any `use` or `moreUses` with
+ *  `repeats`. */
+function carriesItemRepeats530(value: unknown, depth = 0, underUse = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemRepeats530(one, depth + 1, underUse));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (underUse && record.repeats !== undefined) return true;
+  for (const [key, one] of Object.entries(record)) {
+    if (key === "use" && carriesItemRepeats530(one, depth + 1, true)) return true;
+    if (key === "moreUses" && carriesItemRepeats530(one, depth + 1, false)) return true;
+  }
+  return featureValues(record).some((one) => carriesItemRepeats530(one, depth + 1));
+}
+
 /** A save rolled with advantage by a target being fought (1.529): Charm Person. */
 function carriesAdvantageIfFought529(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7320,6 +7335,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use that repeats, 1.530.
+  if (
+    !declaresApi(530) &&
+    (carriesItemRepeats530(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemRepeats530(document)))
+  ) {
+    return "A ruleset with an item's use made again while its user concentrates (use.repeats) requires schemaVersion 2 and capabilityApi 1.530 or newer";
+  }
   // A save rolled with advantage by a target being fought, 1.529.
   if (
     !declaresApi(529) &&

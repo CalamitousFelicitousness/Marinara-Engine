@@ -107697,6 +107697,34 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "repeats": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "notSaved": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "sameTargets": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "group": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "budget"
+                          ],
+                          "additionalProperties": false
+                        },
                         "sustains": {
                           "type": "object",
                           "properties": {
@@ -126255,6 +126283,34 @@
                               "appliesToCalled": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "repeats": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "notSaved": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "sameTargets": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "group": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget"
+                                ],
+                                "additionalProperties": false
                               },
                               "sustains": {
                                 "type": "object",
@@ -144820,6 +144876,34 @@
                               "appliesToCalled": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "repeats": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "notSaved": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "sameTargets": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "group": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget"
+                                ],
+                                "additionalProperties": false
                               },
                               "sustains": {
                                 "type": "object",

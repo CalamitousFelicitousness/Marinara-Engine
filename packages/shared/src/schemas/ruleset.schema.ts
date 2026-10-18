@@ -9726,7 +9726,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     summons: true,
     scales: true,
     conjures: true,
-    repeats: true,
     standard: true,
     rider: true,
   })
@@ -9930,6 +9929,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     // An area that stays, as a scroll of the spell leaves one (1.174).
     const zone = zoneIssue(use);
     if (zone) issue("zone", zone);
+    // Made again while concentrated on (1.530), as the spell's own repeats.
+    if (use.repeats && !use.concentration) {
+      issue("repeats", '"repeats" is made again while its user concentrates on it, so it goes with "concentration"');
+    }
   });
 export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
 /** One more thing an item does when used (1.267), named for the menu. Typed by hand, as written out
@@ -19594,6 +19597,11 @@ function useIssues(
   if (!use.free && use.budget === undefined) add([...at, "budget"], "A use spends a budget, or is free");
   if (use.budget !== undefined && !combat.economy.budgets.some((budget) => budget.id === use.budget)) {
     add([...at, "budget"], `Unknown budget "${use.budget}"`);
+  }
+  // A scroll's spell made again (1.530): Telekinesis, Call Lightning.
+  const repeatBudget = use.repeats?.budget;
+  if (repeatBudget !== undefined && !combat.economy.budgets.some((budget) => budget.id === repeatBudget)) {
+    add([...at, "repeats", "budget"], `Unknown budget "${repeatBudget}"`);
   }
   // A worn item's rescue (1.259) takes a budget of the fight's own, as an entry's does.
   const rescueBudget = use.rescue?.budget;

@@ -8001,6 +8001,24 @@ const creatureFields = {
     })
     .strict()
     .optional(),
+  /** Rolled as each of its turns starts while its health is at most `healthAtMost` and it does not
+   *  hold all of `applies` already (Capability API 1.490): `atLeast` or more on `dice` puts them on
+   *  it. 5e's flesh golem's Berserk, `{"healthAtMost": 40, "dice": "1d6", "atLeast": 6, "applies":
+   *  [{"condition": "berserk", "duration": "until-dispelled"}]}`. */
+  rollsAtTurnStart: z
+    .array(
+      z
+        .object({
+          healthAtMost: z.number().int().min(0).max(100000),
+          dice: catalogDice,
+          atLeast: z.number().int().min(1).max(1000),
+          applies: z.array(catalogAppliesSchema).min(1).max(4),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(4)
+    .optional(),
   /** Conditions it puts on itself when a blow of one of `by` deals it anything (Capability API
    *  1.489), matched without case. 5e's flesh golem's Aversion of Fire, `{"by": ["fire"],
    *  "applies": [{"condition": "poisoned", "duration": {"rounds": 1}}]}`, and a water elemental's
@@ -10706,6 +10724,7 @@ export interface RulesetConditionBehavior {
   wastes?: { save: string; budget: string };
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
+  nearest?: true;
 }
 /** What its holder lets fall from their hands (1.266): Command's "drop", Fear. */
 export interface RulesetBehaviorDrops {
@@ -10814,6 +10833,11 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
       })
       .strict()
       .optional(),
+    /** As each of its holder's turns starts, the nearest other creature they can see, friend or foe,
+     *  is the only one they may attack that turn, and they are walked toward it first when it is
+     *  not beside them (Capability API 1.490): 5e's golems' Berserk, "attacks the nearest creature
+     *  it can see". Seeing nobody, the turn is their own. */
+    nearest: z.literal(true).optional(),
   })
   .strict()
   .refine((behavior) => Object.keys(behavior).length > 0, "A behavior says at least one thing")
@@ -11744,6 +11768,9 @@ const combatConditionSchema = z
     /** What it makes its holder do with their turn (Capability API 1.264): what the turn may hold,
      *  which way they walk from whoever put it on, or a table rolled as the turn starts. */
     behavior: conditionBehaviorSchema.optional(),
+    /** It ends as its holder is back at their full health (Capability API 1.490): Berserk's "until
+     *  the golem is destroyed or regains all its hit points". */
+    endsAtFullHealth: z.literal(true).optional(),
     /** Run out on its clock, it turns into this condition, with no clock of its own (Capability API
      *  1.261): an aboleth's Tentacle disease after its minute. Ended any other way, it does not. A
      *  fight that ends first lets the clock run out. */
@@ -18050,6 +18077,19 @@ function creatureIssues(
     }
   }
 
+  // What its turn's roll puts on it (1.490) is the ruleset's own conditions, and can be rolled.
+  creature.rollsAtTurnStart?.forEach((rule, ruleIndex) => {
+    rule.applies.forEach((entry, index) => {
+      if (!definition.sheet.live.conditions.some((one) => one.id === entry.condition))
+        add(
+          [...at, "rollsAtTurnStart", ruleIndex, "applies", index, "condition"],
+          `Unknown condition "${entry.condition}"`,
+        );
+    });
+    const top = /^(\d+)d(\d+)(?:\s*\+\s*(\d+))?$/.exec(rule.dice.trim());
+    if (top && rule.atLeast > Number(top[1]) * Number(top[2]) + Number(top[3] ?? 0))
+      add([...at, "rollsAtTurnStart", ruleIndex, "atLeast"], "No roll of its dice reaches it");
+  });
   // What harm puts on it (1.489) is the ruleset's own conditions.
   creature.whenHarmedBy?.forEach((rule, ruleIndex) =>
     rule.applies.forEach((entry, index) => {

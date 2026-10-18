@@ -1764,7 +1764,8 @@ export function rulesetForbiddenTargets(
     }
   }
   // A turn the dice made a strike at one creature (1.264): nobody else.
-  if (actor.flags.compelled === "strike" && actor.flags.compelledTarget) {
+  // Or at the nearest it sees (1.490).
+  if ((actor.flags.compelled === "strike" || actor.flags.compelled === "nearest") && actor.flags.compelledTarget) {
     for (const one of state.combatants) if (one.id !== actor.flags.compelledTarget) forbidden.add(one.id);
   }
   return forbidden;
@@ -1970,7 +1971,11 @@ export function rulesetOptionTargets(
         if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
         // A strike the dice aimed (1.264) is at whoever they picked, friend or foe.
-        if (actor.flags.compelled === "strike" && option.targets.side === "enemy" && combatant.id !== actor.id)
+        if (
+          (actor.flags.compelled === "strike" || actor.flags.compelled === "nearest") &&
+          option.targets.side === "enemy" &&
+          combatant.id !== actor.id
+        )
           return true;
         if (option.targets.side === "ally") return combatant.side === actor.side;
         if (option.targets.side === "enemy") return combatant.side !== actor.side;
@@ -3713,6 +3718,16 @@ function compelled(
       if (option.kind !== "attack" && option.kind !== "block") return false;
       const action = actor.actions.find((entry) => entry.id === option.id);
       if (!action || !rulesetIsAttack(action) || (action.range && action.reach === undefined)) return false;
+      return rulesetOptionTargets(definition, state, actor.id, option).includes(actor.flags.compelledTarget ?? "");
+    });
+  }
+  // At the nearest it sees (1.490): walking, and attacks at it, and nothing else.
+  if (turn === "nearest") {
+    kept = kept.filter((option) => {
+      if (option.kind === "end-turn" || option.id === RULESET_MOVE_OPTION) return true;
+      if (option.kind !== "attack" && option.kind !== "block") return false;
+      const action = actor.actions.find((entry) => entry.id === option.id);
+      if (!action || !rulesetIsAttack(action)) return false;
       return rulesetOptionTargets(definition, state, actor.id, option).includes(actor.flags.compelledTarget ?? "");
     });
   }

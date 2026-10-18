@@ -922,6 +922,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["sentAway", say({ type: "sentAway", actorId: "brenna", ids: ["lurker"], reason: "rounds" })],
     ["turnedOn", say({ type: "turnedOn", actorId: "brenna", ids: ["lurker"] })],
     ["deathBurst", say({ type: "deathBurst", actorId: "lurker", label: "Death Burst" })],
+    ["turnRoll", say({ type: "turnRoll", actorId: "lurker", roll: 6, atLeast: 6, conditions: ["berserk"] })],
+    ["goesAt", say({ type: "goesAt", actorId: "lurker", condition: "berserk", targetId: "lurker" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker", out: true })],
     ["mount", say({ type: "mount", riderId: "brenna", mountId: "lurker" })],

@@ -1446,6 +1446,13 @@ function dealHeal(
     maxHealth: after.max,
     ...(blocked ? { blocked: true as const } : {}),
   });
+  // Back at full health, what lasts only until then ends (1.490): Berserk.
+  if (amount > 0 && after.value >= after.max) {
+    for (const condition of rulesetCombatConditions(ctx.definition, target)) {
+      if (ctx.combat.conditions?.find((one) => one.condition === condition)?.endsAtFullHealth)
+        removeCondition(ctx, target, condition, "recovered");
+    }
+  }
   // Back up when the heal gave them something back: from nothing, or, for somebody taken out with
   // boxes still clear, a mark cleared.
   if (target.down && !target.defeated && after.value > 0 && after.value > before.value) revive(ctx, target);
@@ -14253,6 +14260,8 @@ function beginNextTurn(
         return;
       }
     }
+    // What its low health may set off as its turn starts (1.490): Berserk.
+    rollAtTurnStart(ctx, actor);
     // What a condition's table makes of this turn (1.264), once nothing else is left to change it.
     compelTurn(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.
@@ -14389,6 +14398,25 @@ function walkCompelled(
   return false;
 }
 
+/** A creature's low-health roll as its turn starts (1.490): a golem's Berserk, a 6 on a d6 at 40
+ *  hit points or fewer. Not rolled once it holds all of what it puts on. */
+function rollAtTurnStart(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  if (!rulesetCombatStanding(actor) || actor.defeated) return;
+  for (const rule of actor.block?.rollsAtTurnStart ?? []) {
+    if (healthOf(ctx, actor).value > rule.healthAtMost) continue;
+    const held = rulesetCombatConditions(ctx.definition, actor);
+    if (rule.applies.every((one) => held.includes(one.condition))) continue;
+    const dice = parseRulesetCombatDice(rule.dice);
+    if (!dice) continue;
+    const roll = rollAmount(ctx, dice).total;
+    const conditions = rule.applies.map((one) => one.condition);
+    ctx.events.push({ type: "turnRoll", actorId: actor.id, roll, atLeast: rule.atLeast, conditions });
+    if (roll < rule.atLeast) continue;
+    for (const applies of rule.applies)
+      applyConditionId(ctx, actor, applies.condition, applies, { sourceId: actor.id });
+  }
+}
+
 /**
  * A condition's table rolled as its holder's turn starts (1.264): 5e's Confusion. The first table
  * among what they hold decides the turn. `wander` walks as far as their speed goes one way a d8
@@ -14420,6 +14448,38 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   // A turn that starts with nowhere to walk is its own where a condition says so (1.266): Fear.
   if (active.some((entry) => entry.behavior?.onlyWhenStuck === "any")) {
     actor.flags.stuck = rulesetReachableCells(ctx.definition, ctx.state, actor.id).length === 0;
+  }
+  // At the nearest creature it sees, walked to it first (1.490): Berserk.
+  const nearest = active.find((entry) => entry.behavior?.nearest);
+  if (nearest) {
+    const seen = ctx.state.combatants
+      .filter(
+        (one) =>
+          one.id !== actor.id &&
+          !one.defeated &&
+          rulesetPositionOf(one) &&
+          rulesetCanSee(ctx.definition, ctx.state, actor, one),
+      )
+      .sort((a, b) => rulesetGap(actor, a) - rulesetGap(actor, b) || (a.id < b.id ? -1 : 1));
+    const target = seen[0];
+    if (target) {
+      actor.flags.compelled = "nearest";
+      actor.flags.compelledTarget = target.id;
+      ctx.events.push({ type: "goesAt", actorId: actor.id, condition: nearest.condition, targetId: target.id });
+      if (rulesetGap(actor, target) > 1) {
+        let best: ReturnType<typeof rulesetReachableCells>[number] | undefined;
+        let bestGap = rulesetGap(actor, target);
+        for (const cell of rulesetReachableCells(ctx.definition, ctx.state, actor.id)) {
+          const gap = rulesetGapFrom(cell, rulesetSpanOf(actor), target);
+          if (gap >= 1 && gap < bestGap) {
+            best = cell;
+            bestGap = gap;
+          }
+        }
+        if (best) resolveMove(ctx, actor, best);
+      }
+      return;
+    }
   }
   const rule = active.find((entry) => entry.behavior?.table);
   const table = rule?.behavior?.table;

@@ -659,6 +659,8 @@ export interface RulesetStatBlock {
   splits?: { by: string[]; atLeast: number; smallest?: string };
   /** What it puts on itself when a blow of one of `by` deals it anything (1.489): Aversion of Fire. */
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
+  /** Rolled as each of its turns starts at low health (1.490): Berserk. */
+  rollsAtTurnStart?: Array<{ healthAtMost: number; dice: string; atLeast: number; applies: RulesetCombatApplies[] }>;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
@@ -1724,7 +1726,7 @@ export interface RulesetCombatant {
     /** Zones placed this turn do not spend a round at its end (1.172). */
     freshZones?: string[];
     /** What a condition's table made of this turn (1.264), and whom a `strike` is at. */
-    compelled?: "wander" | "wandered" | "nothing" | "strike";
+    compelled?: "wander" | "wandered" | "nothing" | "strike" | "nearest";
     compelledTarget?: string;
     /** The turn began with nowhere a condition let them walk (1.266). */
     stuck?: boolean;
@@ -3290,6 +3292,10 @@ export type RulesetCombatEvent =
   | { type: "added"; actorId: string; targetId: string; label: string; to: string }
   /** What a creature does as it dies (1.487): a mephit's Death Burst. */
   | { type: "deathBurst"; actorId: string; label: string }
+  /** Its low-health roll as its turn starts (1.490): Berserk's d6. */
+  | { type: "turnRoll"; actorId: string; roll: number; atLeast: number; conditions: string[] }
+  /** Made to go at the nearest creature it sees (1.490). */
+  | { type: "goesAt"; actorId: string; condition: string; targetId: string }
   /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */
   | { type: "alongside"; actorId: string; label: string; to: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */

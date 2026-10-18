@@ -2261,6 +2261,23 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A golem's Berserk (1.490): a low-health roll as its turn starts, a condition that sends its
+ *  holder at the nearest creature, or one that ends at full health. */
+function carriesBerserk490(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBerserk490(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.rollsAtTurnStart) && (record.health !== undefined || Array.isArray(record.actions)))
+    return true;
+  if (
+    typeof record.condition === "string" &&
+    (record.endsAtFullHealth === true || plainRecord(record.behavior)?.nearest === true)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesBerserk490(one, depth + 1));
+}
+
 /** Conditions harm puts on a creature (1.489): a flesh golem's Aversion of Fire. */
 function carriesWhenHarmedBy489(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6878,6 +6895,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A golem's Berserk, 1.490.
+  if (
+    !declaresApi(490) &&
+    (carriesBerserk490(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBerserk490(document)))
+  ) {
+    return "A ruleset with a low-health roll at turn start (rollsAtTurnStart), a condition sending its holder at the nearest creature (behavior nearest) or ending at full health (endsAtFullHealth) requires schemaVersion 2 and capabilityApi 1.490 or newer";
+  }
   // Conditions harm puts on a creature, 1.489.
   if (
     !declaresApi(489) &&

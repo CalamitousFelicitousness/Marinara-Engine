@@ -5986,6 +5986,10 @@ const catalogMechanicsObject = z
     /** The creatures it is aimed at must all stand within this distance of each other (Capability
      *  API 1.267): 5e's Command, "within 30 feet of each other when you target them". */
     targetsWithin: z.number().finite().gt(0).optional(),
+    /** Each creature after the first must stand within this distance of the first one picked
+     *  (Capability API 1.541): 5e's Chain Lightning, "each of which must be within 30 feet of the
+     *  first target". */
+    targetsWithinFirst: z.number().finite().gt(0).optional(),
     /** Only a creature its maker can see may be picked (Capability API 1.178): 5e's "a creature you
      *  can see within range". Who sees whom is the fight's `sight`, obscuring zones and senses. */
     seen: z.literal(true).optional(),
@@ -21148,6 +21152,12 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "appliesSelf", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
       }
     });
+    // Near the first or near each other (1.541), not both.
+    if (mechanics?.targetsWithinFirst !== undefined && mechanics.targetsWithin !== undefined)
+      add(
+        [index, "mechanics", "targetsWithinFirst"],
+        '"targetsWithinFirst" and "targetsWithin" each say how near the targets stand, so it takes one',
+      );
     // Times so many, and split among those caught (1.540): an amount, and for a split an area with
     // no attack roll or save.
     if (mechanics?.amountTimes !== undefined && !mechanics.amount)

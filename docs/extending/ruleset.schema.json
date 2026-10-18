@@ -37589,6 +37589,10 @@
                       "type": "number",
                       "exclusiveMinimum": 0
                     },
+                    "targetsWithinFirst": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
                     "seen": {
                       "type": "boolean",
                       "const": true
@@ -97789,6 +97793,10 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
+                        "targetsWithinFirst": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
                         "seen": {
                           "type": "boolean",
                           "const": true
@@ -117803,6 +117811,10 @@
                             "type": "object",
                             "properties": {
                               "targetsWithin": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              "targetsWithinFirst": {
                                 "type": "number",
                                 "exclusiveMinimum": 0
                               },
@@ -137826,6 +137838,10 @@
                             "type": "object",
                             "properties": {
                               "targetsWithin": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              "targetsWithinFirst": {
                                 "type": "number",
                                 "exclusiveMinimum": 0
                               },

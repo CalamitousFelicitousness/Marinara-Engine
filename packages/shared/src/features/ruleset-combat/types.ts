@@ -814,6 +814,8 @@ export interface RulesetCombatAction {
   needsAny?: true;
   /** Cells its targets must all stand within of each other (1.267): Command. */
   targetsWithin?: number;
+  /** Cells each target after the first must stand within of the first (1.541): Chain Lightning. */
+  targetsWithinFirst?: number;
   /** Only a creature its maker can see may be picked (1.178). */
   seen?: true;
   /** What using it needs, by the ids of `combat.components` (1.179). */
@@ -2748,7 +2750,7 @@ export type RulesetCombatRefusal =
   | "compelled"
   /** What it is made with lies where it was dropped (1.266). */
   | "dropped"
-  /** The creatures picked stand too far from each other (1.267). */
+  /** The creatures picked stand too far from each other (1.267), or from the first (1.541). */
   | "targets-apart";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";

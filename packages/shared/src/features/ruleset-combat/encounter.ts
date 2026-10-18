@@ -3480,6 +3480,9 @@ function mechanicsAction(
   if (mechanics.targetsWithin !== undefined && perCell !== undefined) {
     action.targetsWithin = rulesetInCells(mechanics.targetsWithin, perCell);
   }
+  if (mechanics.targetsWithinFirst !== undefined && perCell !== undefined) {
+    action.targetsWithinFirst = rulesetInCells(mechanics.targetsWithinFirst, perCell);
+  }
   if (mechanics.seen) action.seen = true;
   if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;

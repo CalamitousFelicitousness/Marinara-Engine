@@ -2618,7 +2618,7 @@ function rulesetRefusalMessage(reason: string): string {
     "bad-alter": "It cannot be changed that way right now.",
     compelled: "Something on them decides what this turn may hold.",
     dropped: "What it is made with lies where it was dropped.",
-    "targets-apart": "The ones picked stand too far from each other for this.",
+    "targets-apart": "The ones picked stand too far from each other, or from the first one picked, for this.",
     "unknown-creature": "That opponent is not in any bestiary this game can read.",
     "no-health": "That opponent's sheet gives it no health, so it was left out of the fight.",
     unreachable: "They cannot walk to that square.",

@@ -5918,8 +5918,15 @@ function pickTargets(
     targets.push(rulesetCombatant(state, id)!);
   }
   // All within so far of each other (1.267): Command's extra creatures.
-  const within = actor.actions.find((entry) => entry.id === option.id)?.targetsWithin;
+  const own = actor.actions.find((entry) => entry.id === option.id);
+  const within = own?.targetsWithin;
   if (within !== undefined && targets.some((one) => targets.some((other) => rulesetGap(one, other) > within))) {
+    return "targets-apart";
+  }
+  // Each after the first within so far of the first (1.541): Chain Lightning's leaps.
+  const first = targets[0];
+  const nearFirst = own?.targetsWithinFirst;
+  if (first && nearFirst !== undefined && targets.slice(1).some((one) => rulesetGap(first, one) > nearFirst)) {
     return "targets-apart";
   }
   return targets;

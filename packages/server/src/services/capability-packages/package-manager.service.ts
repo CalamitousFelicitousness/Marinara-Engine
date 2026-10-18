@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Targets each within a distance of the first (1.541): Chain Lightning. */
+function carriesTargetsNearFirst541(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTargetsNearFirst541(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.targetsWithinFirst === "number") return true;
+  return featureValues(record).some((one) => carriesTargetsNearFirst541(one, depth + 1));
+}
+
 /** An amount times so many, or split among those caught (1.540): a Wand of Wonder's gems. */
 function carriesDividedAmount540(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7448,6 +7458,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Targets each within a distance of the first, 1.541.
+  if (
+    !declaresApi(541) &&
+    (carriesTargetsNearFirst541(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTargetsNearFirst541(document)))
+  ) {
+    return "A ruleset with targets each within a distance of the first (targetsWithinFirst) requires schemaVersion 2 and capabilityApi 1.541 or newer";
+  }
   // An amount times so many, or split among those caught, 1.540.
   if (
     !declaresApi(540) &&

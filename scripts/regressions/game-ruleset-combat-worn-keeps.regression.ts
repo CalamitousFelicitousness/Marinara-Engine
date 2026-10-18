@@ -1,9 +1,12 @@
 /**
- * Items that keep conditions on and lengthen jumps (Capability API 1.460).
+ * Items that keep conditions on and lengthen jumps (Capability API 1.460), and conditions damage
+ * stops until their holder's next turn (1.461).
  *
  *   - Boots of Striding and Springing: worn, a jump three times as far; carried, nothing.
  *   - Ioun Stone of Awareness: worn, a condition on its holder that is never written to the sheet,
  *     and gone once it is taken off.
+ *   - Cloak of Displacement: attacks at its wearer lean against the attacker until a blow lands, and
+ *     again from the wearer's next turn (1.461).
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -12,11 +15,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetActiveConditions,
   rulesetCombatant,
   rulesetCombatConditions,
+  rulesetCombatOptions,
   rulesetJumpReach,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
@@ -42,7 +47,15 @@ try {
   const fiveE = (worn: Record<string, unknown> = boots): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.sheet.live.conditions.push({ id: "alert", label: "Awareness" });
-    doc.combat.conditions.push({ condition: "alert", effects: [], cannotBeSurprised: true });
+    doc.sheet.live.conditions.push({ id: "displaced", label: "Displaced" });
+    doc.combat.conditions.push(
+      { condition: "alert", effects: [], cannotBeSurprised: true },
+      {
+        condition: "displaced",
+        effects: ["attacks-against-disadvantage"],
+        suppressedWhenHarmed: "until-own-turn-start",
+      },
+    );
     doc.combat.jumping = {
       long: { ability: "str", of: "score" },
       high: { ability: "str", of: "modifier", plus: 3 },
@@ -91,7 +104,18 @@ try {
             fields: { level: 5, ac: 12, speed: 30, hp_max: 40 },
           }),
         },
-        { id: "foe", name: "Foe", side: "enemy", block: { health: 10, defense: 10, speed: 30, actions: [] } as never },
+        {
+          id: "foe",
+          name: "Foe",
+          side: "enemy",
+          block: {
+            health: 10,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [{ id: "claw", name: "Claw", budget: "action", reach: 60, toHit: 30, damage: { flat: 2 } }],
+          } as never,
+        },
       ],
       board: {
         grid: { width: 12, height: 1, tiles: [Array(12).fill("plains")] } as never,
@@ -130,11 +154,55 @@ try {
     assert.equal(alert(), false, "taken off, it goes");
   }
 
+  // ── Cloak of Displacement: a blow that lands stops it until the wearer's next turn (1.461) ──
+  {
+    const state = fight();
+    hero(state).sheet!.items = [item("Cloak of Displacement", true, { keepsOn: ["displaced"] })];
+    const displaced = (now: RulesetEncounterState) =>
+      rulesetActiveConditions(definition, definition.combat!, hero(now), now).some(
+        (one) => one.condition === "displaced",
+      );
+    assert.equal(displaced(state), true);
+    const ended = applyRulesetCombatChoice(
+      definition,
+      state,
+      { actorId: "hero", optionId: "end-turn", targetIds: [] },
+      () => 10,
+    );
+    const option = rulesetCombatOptions(definition, ended.state, "foe").find((one) => one.label === "Claw");
+    assert.ok(option);
+    const clawed = applyRulesetCombatChoice(
+      definition,
+      ended.state,
+      { actorId: "foe", optionId: option.id, targetIds: ["hero"] },
+      () => 10,
+    );
+    assert.ok(
+      clawed.events.some((one) => one.type === "damage" && one.targetId === "hero"),
+      JSON.stringify(clawed.events),
+    );
+    assert.equal(displaced(clawed.state), false, "stopped by the blow");
+    assert.deepEqual(hero(clawed.state).harmStopped, ["displaced"]);
+    const back = applyRulesetCombatChoice(
+      definition,
+      clawed.state,
+      { actorId: "foe", optionId: "end-turn", targetIds: [] },
+      () => 10,
+    );
+    assert.equal(back.state.order[back.state.turn], "hero");
+    assert.equal(displaced(back.state), true, "working again as the wearer's turn starts");
+  }
+
   // ── Refusals ──
   refused(fiveE({ keepsOn: ["vigilant"] }), /Unknown condition "vigilant"/);
   refused(fiveE({ jumps: { plus: { ability: "luck" } } }), /Unknown ability "luck"/);
   refused(fiveE({ jumps: {} }), /times or plus/);
   refused(fiveE({ keepsOn: [] }), /keepsOn/);
+  {
+    const doc = fiveE();
+    doc.combat.conditions.find((one: any) => one.condition === "displaced").suppressedWhenHarmed = "until-healed";
+    refused(doc, /suppressedWhenHarmed/);
+  }
 
   // ── The install gate ──
   {
@@ -153,19 +221,32 @@ try {
       permissions: [],
       restartRequired: false,
     });
+    // Without the cloak's condition, whose own gate is newer.
+    const older = (worn: Record<string, unknown>) => {
+      const doc = fiveE(worn);
+      delete doc.combat.conditions.find((one: any) => one.condition === "displaced").suppressedWhenHarmed;
+      return doc;
+    };
     for (const worn of [boots, stone]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(459) as never, fiveE(worn)), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(460) as never, fiveE(worn)), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(459) as never, older(worn)), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(460) as never, older(worn)), gate);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(459) as never, fiveE({ fallsSafely: true })),
+      getCapabilityPackageInstallIssue(manifest(459) as never, older({ fallsSafely: true })),
       gate,
       "other item effects are older",
     );
+    const harmGate =
+      "A ruleset whose conditions stop working when their holder takes damage (suppressedWhenHarmed) requires schemaVersion 2 and capabilityApi 1.461 or newer";
+    const cloak = JSON.parse(fiveEText) as Record<string, any>;
+    cloak.combat.conditions[0].suppressedWhenHarmed = "until-own-turn-start";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(460) as never, cloak), harmGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(461) as never, cloak), harmGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(460) as never, JSON.parse(fiveEText)), harmGate);
   }
 
   console.log(
-    "Worn keeps: Boots of Striding and Springing triple a jump while worn, an Ioun Stone keeps its condition on while worn and never on the sheet; gated at 1.460.",
+    "Worn keeps: Boots of Striding and Springing triple a jump while worn, an Ioun Stone keeps its condition on while worn and never on the sheet, a Cloak of Displacement stops on a blow until its wearer's next turn; gated at 1.460 and 1.461.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

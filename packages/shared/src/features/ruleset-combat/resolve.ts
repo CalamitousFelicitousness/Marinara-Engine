@@ -993,6 +993,7 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   }
   const wasDown = !!target.down;
   endConditionsOnDamage(ctx, target);
+  stopConditionsOnDamage(ctx, target);
   const after = healthOf(ctx, target);
   const out = after.value <= 0 || overwhelmed || wasDown;
   // A blow that leaves somebody standing tests their concentration. One that takes them out does
@@ -3656,6 +3657,15 @@ function endConditionsOnHarm(
 }
 
 /** Conditions the ruleset says any damage ends. */
+/** What damage stops working until its holder's next turn starts (1.461), not ended: a Cloak of
+ *  Displacement. */
+function stopConditionsOnDamage(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
+    if (entry.suppressedWhenHarmed !== "until-own-turn-start") continue;
+    if (!(target.harmStopped ??= []).includes(entry.condition)) target.harmStopped.push(entry.condition);
+  }
+}
+
 function endConditionsOnDamage(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const ending = new Set(
     (ctx.combat.conditions ?? [])
@@ -13588,6 +13598,8 @@ function beginNextTurn(
     rollRulesetRecharges(ctx, actor);
     // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.
     regenerate(ctx, actor);
+    // What damage stopped works again (1.461).
+    delete actor.harmStopped;
     // Holding their breath under water, or out of it (1.445).
     holdBreath(ctx, actor);
     // A pact weapon left lying far off long enough is gone (1.427).

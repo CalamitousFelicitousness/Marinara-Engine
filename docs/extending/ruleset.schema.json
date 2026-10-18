@@ -116180,6 +116180,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "suppressedWhenHarmed": {
+                "type": "string",
+                "const": "until-own-turn-start"
+              },
               "fallsSafely": {
                 "type": "boolean",
                 "const": true

@@ -574,6 +574,8 @@ export function rulesetActiveConditions(
   });
   const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
+    // Stopped by damage until their next turn (1.461).
+    if (combatant.harmStopped?.includes(entry.condition)) return [];
     if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];
     if (entry.whileOffTerrain && onTerrain(combatant, state, entry.whileOffTerrain)) return [];
     const gate = entry.whileSourceInSight;

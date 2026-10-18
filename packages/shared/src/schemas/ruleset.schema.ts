@@ -3513,6 +3513,66 @@ const conditionWeaponSchema: z.ZodType<RulesetConditionWeapon, z.ZodTypeDef, unk
   )
   .refine((rule) => !(rule.ability && rule.abilityFrom), { message: "weapon takes ability or abilityFrom, not both" });
 
+/** A condition's `endsWhenHolder` (1.311): see the combat condition's own. */
+export interface RulesetConditionEndsWhenHolder {
+  moves?: true;
+  acts?: true;
+  attacks?: true;
+  casts?: string[];
+  castsAtFoes?: true;
+  downed?: true;
+  gains?: string[];
+}
+const conditionEndsWhenHolderSchema: z.ZodType<RulesetConditionEndsWhenHolder, z.ZodTypeDef, unknown> = z
+  .object({
+    moves: z.literal(true).optional(),
+    acts: z.literal(true).optional(),
+    /** Its holder attacking, or casting from these catalogs, only at a foe with `castsAtFoes`
+     *  (Capability API 1.373): 5e's Tranquility, held from a rest, ends as Sanctuary does. */
+    attacks: z.literal(true).optional(),
+    casts: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+      .optional(),
+    castsAtFoes: z.literal(true).optional(),
+    /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage. */
+    downed: z.literal(true).optional(),
+    /** Its holder coming to hold one of these conditions (Capability API 1.387): Rage. */
+    gains: uniqueIds(8).optional(),
+  })
+  .strict()
+  .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains, {
+    message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains" or more than one',
+  })
+  .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
+    message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
+  });
+
+/** A condition's `stopsTime` (1.454) and `blinks` (1.453): see the combat condition's own. */
+export interface RulesetConditionStopsTime {
+  dice?: string;
+  flat?: number;
+}
+const conditionStopsTimeSchema: z.ZodType<RulesetConditionStopsTime, z.ZodTypeDef, unknown> = z
+  .object(catalogAmountShape)
+  .strict()
+  .refine((rule) => rule.dice !== undefined || rule.flat !== undefined, {
+    message: "stopsTime says how many turns: dice, flat or both",
+  });
+export interface RulesetConditionBlinks {
+  sides?: number;
+  atLeast: number;
+}
+const conditionBlinksSchema: z.ZodType<RulesetConditionBlinks, z.ZodTypeDef, unknown> = z
+  .object({ sides: z.number().int().min(2).max(100).optional(), atLeast: z.number().int().min(1).max(100) })
+  .strict()
+  .refine((rule) => rule.atLeast <= (rule.sides ?? 20), {
+    message: "blinks atLeast is a face of its die",
+    path: ["atLeast"],
+  });
+
 /** A condition's `jumps` (1.446): see the combat condition's own. */
 export interface RulesetConditionJumps {
   times?: number;
@@ -10928,30 +10988,17 @@ const combatConditionSchema = z
     /** Illusory duplicates that draw attacks made against its holder (Capability API 1.452): Mirror
      *  Image. */
     duplicates: conditionDuplicatesSchema.optional(),
-    /** As each of its holder's turns ends, a `sides` die (a d20 unless said) at or over `atLeast` takes
-     *  them off the board until their next turn starts (Capability API 1.453): out of reach of
-     *  everything, and back as it starts where they vanished, or the nearest free place. 5e's Blink,
-     *  `{ "atLeast": 11 }`. */
     /** Its holder takes this many turns in a row once the turn it was put on in ends (Capability API
      *  1.454), rolled then: nobody else acts, reacts or counts down meanwhile. Whatever they do in them
      *  that reaches another creature (an attack at them, harm, a save to throw, a condition put on
      *  them) ends it there and then, and it ends after the last. 5e's Time Stop, `{ "dice": "1d4",
      *  "flat": 1 }`. */
-    stopsTime: z
-      .object(catalogAmountShape)
-      .strict()
-      .refine((rule) => rule.dice !== undefined || rule.flat !== undefined, {
-        message: "stopsTime says how many turns: dice, flat or both",
-      })
-      .optional(),
-    blinks: z
-      .object({ sides: z.number().int().min(2).max(100).optional(), atLeast: z.number().int().min(1).max(100) })
-      .strict()
-      .refine((rule) => rule.atLeast <= (rule.sides ?? 20), {
-        message: "blinks atLeast is a face of its die",
-        path: ["atLeast"],
-      })
-      .optional(),
+    stopsTime: conditionStopsTimeSchema.optional(),
+    /** As each of its holder's turns ends, a `sides` die (a d20 unless said) at or over `atLeast` takes
+     *  them off the board until their next turn starts (Capability API 1.453): out of reach of
+     *  everything, and back as it starts where they vanished, or the nearest free place. 5e's Blink,
+     *  `{ "atLeast": 11 }`. */
+    blinks: conditionBlinksSchema.optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -11129,6 +11176,9 @@ const combatConditionSchema = z
     /** Its holder is never surprised (Capability API 1.237): 5e's Foresight. Read as the fight
      *  begins. */
     cannotBeSurprised: z.literal(true).optional(),
+    /** Damage taken stops it working until its holder's next turn starts (Capability API 1.461),
+     *  ended or not: 5e's Cloak of Displacement. */
+    suppressedWhenHarmed: z.literal("until-own-turn-start").optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -11287,33 +11337,7 @@ const combatConditionSchema = z
     /** It comes off its holder, and off their sheet, once they move (`moves`) or do anything at all,
      *  reactions included (`acts`), however it was put on (Capability API 1.311): a ranger's
      *  camouflage for Hide in Plain Sight, made before the fight, gone on the first step. */
-    endsWhenHolder: z
-      .object({
-        moves: z.literal(true).optional(),
-        acts: z.literal(true).optional(),
-        /** Its holder attacking, or casting from these catalogs, only at a foe with `castsAtFoes`
-         *  (Capability API 1.373): 5e's Tranquility, held from a rest, ends as Sanctuary does. */
-        attacks: z.literal(true).optional(),
-        casts: z
-          .array(sheetId)
-          .min(1)
-          .max(8)
-          .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
-          .optional(),
-        castsAtFoes: z.literal(true).optional(),
-        /** Its holder going down or out of the fight (Capability API 1.385): 5e's Rage. */
-        downed: z.literal(true).optional(),
-        /** Its holder coming to hold one of these conditions (Capability API 1.387): Rage. */
-        gains: uniqueIds(8).optional(),
-      })
-      .strict()
-      .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains, {
-        message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains" or more than one',
-      })
-      .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
-        message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
-      })
-      .optional(),
+    endsWhenHolder: conditionEndsWhenHolderSchema.optional(),
     /** Whoever aims an attack or a harmful entry at its holder, an area aside, first makes this save
      *  (Capability API 1.370): failed, it goes to the nearest other creature it could be aimed at,
      *  or is lost. Its difficulty is the one it was put on with, else `difficulty` off its holder's

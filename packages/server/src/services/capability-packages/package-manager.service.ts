@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition damage stops working until its holder's next turn (1.461): a Cloak of Displacement. */
+function carriesHarmStopped461(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHarmStopped461(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.suppressedWhenHarmed !== undefined) return true;
+  return featureValues(record).some((one) => carriesHarmStopped461(one, depth + 1));
+}
+
 /** An item worn or carried that keeps conditions on its holder or lengthens their jumps (1.460):
  *  an Ioun Stone of Awareness, Boots of Striding and Springing. */
 function carriesItemKeepsOn460(value: unknown, depth = 0): boolean {
@@ -6523,6 +6533,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions damage stops until the holder's next turn, 1.461.
+  if (!declaresApi(461) && carriesHarmStopped461(ruleset)) {
+    return "A ruleset whose conditions stop working when their holder takes damage (suppressedWhenHarmed) requires schemaVersion 2 and capabilityApi 1.461 or newer";
+  }
   // Items that keep conditions on or lengthen jumps, 1.460.
   if (
     !declaresApi(460) &&

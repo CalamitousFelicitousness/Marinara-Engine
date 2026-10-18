@@ -1566,6 +1566,8 @@ export interface RulesetCombatant {
   insideOf?: string;
   /** Holding their breath under water (1.445): turns of it left, then turns lasted without it. */
   breath?: { held: number; lasts?: number };
+  /** Conditions damage stopped working until their next turn starts (1.461): a Cloak of Displacement. */
+  harmStopped?: string[];
   /** Riding this combatant (1.443): where it goes, they go, and they walk no way of their own. */
   mountedOn?: string;
   /** Ridden by this combatant (1.443); `mountControlled` when its rider controls it, moving and

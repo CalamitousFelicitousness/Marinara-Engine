@@ -12513,7 +12513,7 @@
                 ],
                 "additionalProperties": false
               },
-              "maxItems": 320,
+              "maxItems": 640,
               "default": []
             },
             "states": {
@@ -36764,7 +36764,7 @@
                       "maxLength": 40,
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
-                    "maxItems": 320
+                    "maxItems": 640
                   }
                 ],
                 "default": []
@@ -142765,7 +142765,7 @@
               }
             ]
           },
-          "maxItems": 320
+          "maxItems": 640
         },
         "levels": {
           "type": "array",

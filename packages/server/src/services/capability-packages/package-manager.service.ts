@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** More than 320 conditions (1.499): 5e's magic items outgrew them. */
+function carriesConditions640499(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConditions640499(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.conditions) && record.conditions.length > 320) return true;
+  return Object.values(record).some((one) => carriesConditions640499(one, depth + 1));
+}
+
 /** Weapons that corrode on hitting it (1.498): a rust monster's Rust Metal. */
 function carriesCorrodesWeapons498(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6979,6 +6989,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // More than 320 conditions, 1.499.
+  if (
+    !declaresApi(499) &&
+    (carriesConditions640499(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditions640499(document)))
+  ) {
+    return "A ruleset with more than 320 conditions requires schemaVersion 2 and capabilityApi 1.499 or newer";
+  }
   // Weapons that corrode on hitting it, 1.498.
   if (
     !declaresApi(498) &&

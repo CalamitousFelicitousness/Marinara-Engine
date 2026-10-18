@@ -257,8 +257,9 @@ const stepTableSchema = z
 const roundingSchema = z.enum(["down", "up", "nearest"]);
 
 /** How many conditions a sheet declares, a rest clears and a fight describes: 80 until Capability API
- *  1.188, which 5e's own list outgrew, and 160 until 1.269, which its monsters' traits outgrew. */
-export const RULESET_CONDITIONS_MAX = 320;
+ *  1.188, which 5e's own list outgrew, 160 until 1.269, which its monsters' traits outgrew, and 320
+ *  until 1.499, which its magic items outgrew. */
+export const RULESET_CONDITIONS_MAX = 640;
 
 const hideWhenValue = z.union([z.string().max(80), z.number().finite(), z.boolean()]);
 const HIDE_WHEN_COMPARISONS = ["equals", "notEquals", "in"] as const;

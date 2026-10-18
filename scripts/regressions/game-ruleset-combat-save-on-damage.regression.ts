@@ -355,6 +355,7 @@ try {
           "damaged",
           "action",
           "source-turn-start",
+          "days",
         ]);
         assert.deepEqual(node.then, { required: ["saveEnds"] });
       }

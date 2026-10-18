@@ -1,4 +1,4 @@
-import { applyClockCommandTags, type RulesetClocks } from "@marinara-engine/shared";
+import { applyClockCommandTags, rulesetChargesStart, type RulesetClocks } from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -5279,8 +5279,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // What each stack of an item that holds charges has left: its kept count, or all of them.
           const promptCharges = promptItemBook
             ? (stack: (typeof promptInventoryStacks)[number]) => {
-                const max = stack.item ? promptItemBook.itemOf(stack.item)?.facts.use?.charges?.max : undefined;
-                return max === undefined ? undefined : { now: Math.min(max, stack.charges ?? max), max };
+                const held = stack.item ? promptItemBook.itemOf(stack.item)?.facts.use?.charges : undefined;
+                const max = held?.max;
+                // Found with rolled charges (1.520) until something changed them.
+                const now = stack.charges ?? (held ? rulesetChargesStart(held, held.max, stack.id) : 0);
+                return max === undefined ? undefined : { now: Math.min(max, now), max };
               }
             : undefined;
           const formatReminder = resolvePromptMacros(

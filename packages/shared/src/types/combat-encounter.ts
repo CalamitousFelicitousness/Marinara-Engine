@@ -59,7 +59,8 @@ export interface CombatItemEffect {
   ruleset?: true;
   /** One of the ruleset's items that holds charges: what a use spends of the most it holds. A fight
    *  offers it while a use is left, and spends charges rather than the item. */
-  charges?: { cost: number; max: number };
+  /** `rolled` (1.520): the dice a stack is found holding, rather than full. */
+  charges?: { cost: number; max: number; rolled?: string };
   /** Set by the Engine on the one use whose gate its user failed: the item is spent and does nothing,
    *  and this is what the log says. */
   failed?: string;

@@ -5,6 +5,7 @@
 // used is not offered, and the model only guesses for the items that are not the ruleset's.
 
 import type { CombatItemEffect } from "../../types/combat-encounter.js";
+import { rulesetChargesStart } from "../ruleset-combat/dice.js";
 import {
   gameInventoryFightEffects,
   gameInventoryFightLines,
@@ -79,7 +80,15 @@ export function rulesetItemFightEffect(
     ...(use.damageType ? { element: use.damageType } : {}),
     ...(condition ? { status: { name: condition, emoji: helps ? "✨" : "💢", duration: rounds ?? 2 } } : {}),
     consumes: use.consumes === true,
-    ...(said.charges ? { charges: { cost: said.charges.cost, max: said.charges.max } } : {}),
+    ...(said.charges
+      ? {
+          charges: {
+            cost: said.charges.cost,
+            max: said.charges.max,
+            ...(said.charges.rolled ? { rolled: said.charges.rolled } : {}),
+          },
+        }
+      : {}),
     ...(wear.equipped || wear.bound ? { wear } : {}),
     ruleset: true,
   };
@@ -113,7 +122,12 @@ export function gameFightOffers(
     const charges = effect.charges;
     const uses = charges
       ? usable.reduce(
-          (total, stack) => total + Math.floor(Math.min(charges.max, stack.charges ?? charges.max) / charges.cost),
+          (total, stack) =>
+            total +
+            Math.floor(
+              Math.min(charges.max, stack.charges ?? rulesetChargesStart(charges, charges.max, stack.id)) /
+                charges.cost,
+            ),
           0,
         )
       : usable.reduce((total, stack) => total + stack.quantity, 0);

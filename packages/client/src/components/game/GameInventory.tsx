@@ -36,6 +36,7 @@ import {
   gameInventoryItemId,
   gameInventoryStackLabel,
   rulesetOwnUsesMax,
+  rulesetChargesStart,
   type GameInventoryBearerStatus,
   type GameInventoryWear,
   type RulesetDefinition,
@@ -1319,7 +1320,8 @@ function RulesetItemDetails({
       {chargesMax !== undefined && (
         <div className="text-[0.65rem] leading-tight text-white/70">
           {localizeUi("ui.game.gameinventory.chargesLeft", {
-            now: Math.min(charges ?? chargesMax, chargesMax),
+            // Found with rolled charges (1.520) until something changed them.
+            now: Math.min(charges ?? rulesetChargesStart(facts.use!.charges!, chargesMax, stackId), chargesMax),
             max: chargesMax,
           })}
         </div>

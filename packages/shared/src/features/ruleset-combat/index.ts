@@ -92,6 +92,7 @@ export {
   parseRulesetCombatDice,
   rollRulesetDice,
   rulesetOwnUsesMax,
+  rulesetChargesStart,
   rulesetAverageAmount,
   rulesetAverageDamage,
   rulesetCombatRoller,

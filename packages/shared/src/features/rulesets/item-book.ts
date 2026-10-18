@@ -6,7 +6,7 @@
 // screen and the Game Master are shown about it. The server builds the book from the catalogs it
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
-import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
+import { parseRulesetCombatDice, rulesetChargesStart } from "../ruleset-combat/dice.js";
 import {
   rulesetCoinAmount,
   RULESET_ITEM_CHARGES_MAX,
@@ -185,6 +185,8 @@ export interface RulesetItemUseFact {
   charges?: {
     cost: number;
     max: number;
+    /** The dice a stack is found holding (1.520), rather than full. */
+    rolled?: string;
     /** `after` (1.503): the days, and the hours (a sum, perhaps dice), it waits once run out. */
     recharge?: { rests: string[]; amount: "max" | string; after?: { days?: number; hours?: string } };
     /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
@@ -384,6 +386,7 @@ function rulesetItemUseFacts(
           charges: {
             cost: use.charges,
             max,
+            ...(item.charges?.rolled ? { rolled: item.charges.rolled } : {}),
             ...(item.charges?.recharge
               ? {
                   recharge: {
@@ -1338,6 +1341,15 @@ export function rulesetItemBearers(
   };
 }
 
+/** What a stack of an item with rolled charges holds before anything spent or gained them (1.520),
+ *  against its written most or its stat's. */
+function foundCharges(item: RulesetCatalogItem, stackId: string): number {
+  const most = item.charges?.max;
+  const read = typeof most === "number" ? most : most ? item.stats?.[most.stat] : undefined;
+  const max = typeof read === "number" && Number.isFinite(read) ? Math.max(0, Math.trunc(read)) : 0;
+  return rulesetChargesStart(item.charges ?? {}, Math.min(RULESET_ITEM_CHARGES_MAX, max), stackId);
+}
+
 /**
  * The items one bag holds, as a sheet reads them (`itemStat`): each stack of one of the ruleset's
  * items in it, with whether it is worn. An item that takes slots is worn while equipped, one that
@@ -1368,7 +1380,11 @@ export function rulesetSheetItems(
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
         ...(stack.on ? { on: true as const } : {}),
-        ...(stack.charges !== undefined ? { charges: stack.charges } : {}),
+        ...(stack.charges !== undefined
+          ? { charges: stack.charges }
+          : item.charges?.rolled
+            ? { charges: foundCharges(item, stack.id) }
+            : {}),
         ...(stack.corroded ? { corroded: stack.corroded } : {}),
         ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),

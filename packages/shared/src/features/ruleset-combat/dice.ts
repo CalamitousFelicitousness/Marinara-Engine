@@ -48,6 +48,22 @@ export function rulesetOwnUsesMax(
   return Math.max(1, Math.min(uses.max, total));
 }
 
+/** What a stack of an item with charges starts with (1.520): its `rolled` dice where it has them,
+ *  thrown once for that stack as its own uses' are (none below 0, none past `max`); otherwise `max`.
+ *  A Rod of Absorption's 1d10. */
+export function rulesetChargesStart(charges: { rolled?: string }, max: number, stackId: string | undefined): number {
+  if (!charges.rolled) return max;
+  const dice = parseRulesetCombatDice(charges.rolled);
+  if (!dice) return max;
+  let total = dice.flat;
+  for (let at = 0; at < dice.count; at++) {
+    let hash = 0x811c9dc5;
+    for (const char of `${stackId ?? ""}:charges:${at}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    total += 1 + (hash % Math.max(1, dice.sides));
+  }
+  return Math.max(0, Math.min(max, total));
+}
+
 export function sumOf(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }

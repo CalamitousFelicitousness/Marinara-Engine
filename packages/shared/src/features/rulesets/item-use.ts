@@ -21,7 +21,7 @@ import type {
   RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
-import { parseRulesetCombatDice, rulesetOwnUsesMax } from "../ruleset-combat/dice.js";
+import { parseRulesetCombatDice, rulesetChargesStart, rulesetOwnUsesMax } from "../ruleset-combat/dice.js";
 import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
 import {
   rollRulesetCheckModifiers,
@@ -147,7 +147,8 @@ export function useRulesetItemOutsideFight(input: {
   const max = facts?.charges?.max;
   if (use.charges !== undefined) {
     if (max === undefined) return { ok: false, reason: "none-left" };
-    const now = Math.min(max, stack.charges ?? max);
+    // A stack found with rolled charges (1.520) holds that many until something changes them.
+    const now = Math.min(max, stack.charges ?? rulesetChargesStart(facts!.charges!, max, stack.id));
     if (now < use.charges) return { ok: false, reason: "none-left" };
   }
   // Its own uses (1.466), kept on the stack by its place.
@@ -556,9 +557,10 @@ export function rechargeRulesetItems(input: {
     });
     const recharge = item.charges?.recharge;
     if (!recharge?.rests.includes(input.rest)) return next;
-    const max = rulesetItemFacts(input.definition, item).use?.charges?.max;
+    const facts = rulesetItemFacts(input.definition, item).use?.charges;
+    const max = facts?.max;
     if (max === undefined) return next;
-    const before = Math.min(max, next.charges ?? max);
+    const before = Math.min(max, next.charges ?? rulesetChargesStart(facts!, max, next.id));
     if (before >= max) return next;
     const now = Math.max(before, Math.min(max, before + gain(recharge.amount, max)));
     if (now === before) return next;

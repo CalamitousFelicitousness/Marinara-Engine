@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item found holding a rolled count of charges (1.520): a Rod of Absorption's 1d10. */
+function carriesRolledCharges520(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRolledCharges520(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.charges)?.rolled !== undefined && record.category !== undefined) return true;
+  return featureValues(record).some((one) => carriesRolledCharges520(one, depth + 1));
+}
+
 /** A worn item whose charges pay for a pool group's uses (1.519): a Rod of Absorption's spells. */
 function carriesPaysSlots519(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7211,6 +7221,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item found holding a rolled count of charges, 1.520.
+  if (
+    !declaresApi(520) &&
+    (carriesRolledCharges520(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRolledCharges520(document)))
+  ) {
+    return "A ruleset with an item found holding a rolled count of charges (charges.rolled) requires schemaVersion 2 and capabilityApi 1.520 or newer";
+  }
   // A worn item whose charges pay for a pool group's uses, 1.519.
   if (
     !declaresApi(519) &&

@@ -10009,6 +10009,9 @@ const catalogItemObjectSchema = z
          *  over `regains.atLeast` (Capability API 1.271), it gets back `regains.amount` charges, a
          *  Staff of the Magi's 1d12 + 1 on a 20. Either, or both. */
         breaksOn: itemLastChargeSchema.optional(),
+        /** Found holding a rolled count rather than full (Capability API 1.520): each stack starts
+         *  with these dice, rolled once for it and never past `max`. A Rod of Absorption's `"1d10"`. */
+        rolled: catalogDice.optional(),
       })
       .strict()
       .optional(),
@@ -19057,6 +19060,12 @@ function itemIssues(
     add([...at, "stack"], "An item whose uses count their own is one to a stack, so its stack is 1");
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
+    // Found with a rolled count (1.520), never past a written most.
+    const found = item.charges.rolled ? /^(\d+)d(\d+)([+-]\d+)?$/.exec(item.charges.rolled) : null;
+    if (found && typeof item.charges.max === "number") {
+      if (Number(found[1]) * Number(found[2]) + Number(found[3] ?? 0) > item.charges.max)
+        add([...at, "charges", "rolled"], "A rolled count never comes up past its max, so max is its most");
+    }
     // Or by its weapon slaying (1.187): a nine lives stealer's.
     // Or by one of its weapon's modes (1.190): a javelin of lightning's bolt.
     if (

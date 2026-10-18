@@ -2369,7 +2369,9 @@ function carriesWallCoverAndOnlySpeeds502(value: unknown, depth = 0): boolean {
   if (plainRecord(record.zone)?.cover !== undefined) return true;
   if (record.onlySpeeds !== undefined) return true;
   if (plainRecord(record.regenerates)?.notIn !== undefined) return true;
-  if (record.anyOf !== undefined || record.flying !== undefined || Array.isArray(record.holding)) return true;
+  // A bound item's needsWorn groups also say anyOf, but of item refs, not of target tests.
+  if (Array.isArray(record.anyOf) && record.anyOf.some((one) => plainRecord(one))) return true;
+  if (record.flying !== undefined || Array.isArray(record.holding)) return true;
   return featureValues(record).some((one) => carriesWallCoverAndOnlySpeeds502(one, depth + 1));
 }
 

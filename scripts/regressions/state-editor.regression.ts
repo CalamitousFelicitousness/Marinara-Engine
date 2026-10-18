@@ -12,6 +12,7 @@ import {
   searchStateSections,
   setStateValueAtPath,
   statePathKey,
+  tokenizeStateJson,
 } from "../../packages/client/src/lib/state-editor/state-editor-json.js";
 import {
   buildGameStateEditorPatch,
@@ -421,6 +422,45 @@ assert.deepEqual(
   [...new Set(Object.values(sectionByDrawer).flat())].sort(),
   [...GAME_STATE_EDITOR_SECTION_IDS].sort(),
   "and those sections are the game-state editor's own ids",
+);
+
+// ── JSON highlight tokens ──
+// StateJsonField draws the text through a coloured layer and makes the textarea's own text
+// transparent, so tokens that lose or misplace a character show up as invisible or overlapping
+// text while typing — nothing else in the repo would catch that.
+const tokenText = (text: string) =>
+  tokenizeStateJson(text)
+    .map((token) => token.text)
+    .join("");
+for (const sample of [
+  '{\n  "mood": "Watchful",\n  "hp": 78,\n  "ok": true,\n  "note": null\n}',
+  '{"escaped": "a \\"quoted\\" line", "unicode": "émoji 💠", "exp": -1.5e3}',
+  '{"half": "typed',
+  "[1, 2, 3]",
+  "",
+]) {
+  assert.equal(tokenText(sample), sample, `tokens reproduce the text exactly: ${JSON.stringify(sample)}`);
+}
+const kindsOf = (text: string, needle: string) =>
+  tokenizeStateJson(text)
+    .filter((token) => token.text === needle)
+    .map((token) => token.kind);
+const pinnedJson = '{"mood": "Watchful", "hp": 78, "ok": true, "none": null}';
+assert.deepEqual(kindsOf(pinnedJson, '"mood"'), ["key"], "an object key is a key, not a string");
+assert.deepEqual(kindsOf(pinnedJson, '"Watchful"'), ["string"], "a value string stays a string");
+assert.deepEqual(kindsOf(pinnedJson, "78"), ["number"], "numbers get their own colour");
+assert.deepEqual(kindsOf(pinnedJson, "true"), ["literal"], "true is a literal");
+assert.deepEqual(kindsOf(pinnedJson, "null"), ["literal"], "null is a literal");
+assert.deepEqual(kindsOf(pinnedJson, "{"), ["punctuation"], "braces are punctuation");
+assert.equal(
+  tokenizeStateJson('{"escaped": "a \\"quoted\\" line"}').filter((token) => token.kind === "string").length,
+  1,
+  "an escaped quote never splits one string into two tokens",
+);
+assert.deepEqual(
+  kindsOf('{"half": "typed', '"half"'),
+  ["key"],
+  "an unfinished value still leaves the key highlighted while typing",
 );
 
 console.log("state-editor regression passed");

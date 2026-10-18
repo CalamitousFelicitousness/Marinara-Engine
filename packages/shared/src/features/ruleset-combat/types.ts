@@ -848,6 +848,9 @@ export interface RulesetCombatAction {
   callChoice?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
+  /** What it adds is kept off by the one hit's made `save`, and its maker regains `drain` of what it
+   *  dealt (1.481): a Rod of Lordly Might's Drain Life. */
+  addsWith?: { save?: { save: string; difficulty: number }; drain?: number };
   /** Its holder's best melee strike at whoever caused its moment (1.369): Retaliation. */
   strikesWith?: "melee" | "ranged";
   /** A strike again for nothing (1.375), at somebody other than `targetId` and within `within` cells
@@ -1170,6 +1173,8 @@ export interface RulesetCombatAction {
     save?: { save: string; difficulty: number };
     /** It lasts until its holder makes this save at a turn's start or end (1.169). */
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
+    /** Its `rounds` counted on its maker's turns (1.481). */
+    of?: "source";
     /** Only on a target that is this (1.187). */
     targetIs?: RulesetTargetIs;
     /** At most once in any one turn (1.187). */
@@ -1230,7 +1235,7 @@ export interface RulesetCombatAction {
     };
     /** A further use that counts its own uses (1.466): its place in `moreUses` from 1, and its most.
      *  Each use spends one of those in place of the item's charges. */
-    ownUses?: { more: number; max: number };
+    ownUses?: { more: number | string; max: number };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
      *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
      *  gate here when the user's sheet was high enough to skip it. */
@@ -2248,10 +2253,15 @@ export interface RulesetStrikeGrant {
 /** Damage added to a held blow by its maker's answer (1.241), with what a higher payment adds. */
 export interface RulesetHeldAddition {
   label: string;
-  damage: RulesetCombatDamage;
+  /** None where all it does is its conditions (1.481): a Rod of Lordly Might's Paralyze. */
+  damage?: RulesetCombatDamage;
   extra?: { amount: RulesetCombatAmount; times: number };
   /** Conditions it puts on the one hit (1.273): a Staff of Withering's, against its save. */
   onHit?: NonNullable<RulesetCombatAction["onHit"]>;
+  /** A made save by the one hit keeps its damage off, and its maker regains `drain` of what it
+   *  dealt (1.481): a Rod of Lordly Might's Drain Life. */
+  save?: { save: string; difficulty: number };
+  drain?: number;
 }
 
 /** An attack held after its roll hit, while the one it hit is asked. It picks up exactly here: the
@@ -3262,8 +3272,6 @@ export type RulesetCombatEvent =
     }
   /** A pool of health rolled to share out among an action's targets (1.196), and whom it took. */
   | { type: "healthPool"; actorId: string; label: string; rolls: number[]; total: number; affected: string[] }
-  /** A wall's section struck at (1.200): by whom, with what, whether it landed, what it took and
-   *  what it has left; `broken` when that was the last of it. */
   /** A blow struck at a condition to cut it away (1.478): `left` of it after, `freed` when none is. */
   | {
       type: "cut";
@@ -3276,6 +3284,8 @@ export type RulesetCombatEvent =
       left: number;
       freed?: true;
     }
+  /** A wall's section struck at (1.200): by whom, with what, whether it landed, what it took and
+   *  what it has left; `broken` when that was the last of it. */
   | {
       type: "section";
       actorId: string;

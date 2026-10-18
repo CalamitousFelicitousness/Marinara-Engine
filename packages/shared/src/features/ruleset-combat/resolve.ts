@@ -740,6 +740,8 @@ interface RulesetDamageInput {
   pool?: Extract<RulesetCombatEvent, { type: "damage" }>["pool"];
   /** What it deals its maker gains as temporary points (1.187). */
   drains?: true;
+  /** This share of what it deals its maker regains (1.481): Drain Life's half. */
+  drainsBack?: number;
   /** The weapon's floor, when it raised `amount` to it. */
   floor?: number;
   /** A resistance to it counts for nothing (1.192): a vorpal sword's slashing. */
@@ -8173,10 +8175,11 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  // Added to its holder's own blow, held where it hit (1.241): rolled as that blow lands.
+  // Added to its holder's own blow, held where it hit (1.241): rolled as that blow lands. Or only
+  // its conditions (1.481).
   if (
     action.addsToBlow &&
-    action.damage &&
+    (action.damage || action.onHit?.length) &&
     trigger.kind === "hit" &&
     trigger.sourceId === taking.id &&
     holding?.kind === "action" &&
@@ -8185,10 +8188,14 @@ function takeReaction(
     const steps = choice.payWith ? rulesetCostSteps(definition, action, choice.payWith, taking) : 0;
     // A higher payment's dice, or a charge more's (1.273).
     const stepAmount = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
-    const { alternatives: _alternatives, ...damage } = structuredClone(action.damage);
+    const damage = action.damage
+      ? (({ alternatives: _alternatives, ...rest }) => rest)(structuredClone(action.damage))
+      : undefined;
     (holding.held.adds ??= []).push({
       label: action.label,
-      damage,
+      ...(damage ? { damage } : {}),
+      ...(action.addsWith?.save ? { save: { ...action.addsWith.save } } : {}),
+      ...(action.addsWith?.drain ? { drain: action.addsWith.drain } : {}),
       ...(stepAmount && steps > 0 ? { extra: { amount: { ...stepAmount }, times: steps } } : {}),
       ...(action.onHit?.length ? { onHit: structuredClone(action.onHit) } : {}),
     });
@@ -13071,6 +13078,8 @@ function resolveActionBody(
     let sappedDealt = 0;
     // What of it its maker drains back (1.281): Psychic Drain's all, Vampiric Touch's half.
     let drainDealt = 0;
+    // What its maker added to the blow drains back (1.481): Drain Life's half.
+    let addDrained = 0;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
         const amount = Math.max(0, Math.floor(part.amount));
@@ -13130,6 +13139,7 @@ function resolveActionBody(
         (!drain.damageType || drain.damageType.trim().toLowerCase() === part.damageType?.trim().toLowerCase())
       )
         drainDealt += partDealt;
+      if (part.drainsBack) addDrained += partDealt * part.drainsBack;
       // A compound hit marks once, using the most severe kind that actually landed.
       if (woundTrack && partDealt > 0) {
         const kind = woundTrack.kinds?.find(
@@ -13302,16 +13312,20 @@ function resolveActionBody(
     // higher payment adds, doubled by a critical, and each clause only on a target it reaches.
     const adds = held && target.id === held.targetId && !spends ? (held.adds ?? []) : [];
     for (const add of adds) {
+      // Only its conditions (1.481), or kept off by a made save of its own: Drain Life's.
+      if (!add.damage) continue;
+      if (add.save && rollSave(ctx, target, add.save.save, add.save.difficulty, actor.id, undefined, against)) continue;
+      const addDamage = add.damage;
       const amounts = [
-        { amount: add.damage as RulesetCombatAmount, type: add.damage.type, extra: add.extra },
-        ...(add.damage.plus ?? [])
+        { amount: addDamage as RulesetCombatAmount, type: addDamage.type, extra: add.extra },
+        ...(addDamage.plus ?? [])
           .filter(
             (clause) =>
               clauseReaches(ctx, actor, target, action, clause) &&
               (!clause.onCritical || critical) &&
               (clause.whileOn === undefined || rulesetItemOn(actor, clause.whileOn)),
           )
-          .map((clause) => ({ amount: clause as RulesetCombatAmount, type: clause.type ?? add.damage.type })),
+          .map((clause) => ({ amount: clause as RulesetCombatAmount, type: clause.type ?? addDamage.type })),
       ];
       for (const one of amounts) {
         const extraOf = "extra" in one ? one.extra : undefined;
@@ -13330,6 +13344,7 @@ function resolveActionBody(
           ...(halved ? { saved: true } : {}),
           ...(critical ? { critical: true } : {}),
           ...(rolled.pool ? { pool: rolled.pool } : {}),
+          ...(add.drain ? { drainsBack: add.drain } : {}),
         });
       }
     }
@@ -13458,7 +13473,7 @@ function resolveActionBody(
       dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: sappedDealt, amount: sappedDealt });
     }
     // What it dealt, its maker regains (1.281), with nothing taken off the target's maximum.
-    const drainBack = action.drain ? Math.floor(drainDealt * (action.drain.share ?? 1)) : 0;
+    const drainBack = (action.drain ? Math.floor(drainDealt * (action.drain.share ?? 1)) : 0) + Math.floor(addDrained);
     if (drainBack > 0) dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: drainBack, amount: drainBack });
     if (drained > 0) grantTemporary(ctx, actor, { sourceId: actor.id, rolls: [], flat: drained, amount: drained });
     // A blow that slays (1.187) kills somebody it left low enough, after what it dealt.
@@ -13490,7 +13505,12 @@ function resolveActionBody(
         entry.condition,
         {
           condition: entry.condition,
-          duration: entry.saveEnds ? "until-save" : entry.rounds ? { rounds: entry.rounds } : "instant",
+          // Some rounds at most beside a save that ends it, and on its maker's turns (1.481).
+          duration: entry.rounds
+            ? { rounds: entry.rounds, ...(entry.of ? { of: entry.of } : {}) }
+            : entry.saveEnds
+              ? "until-save"
+              : "instant",
           ...(entry.saveEnds ? { saveEnds: { save: entry.saveEnds.save, at: entry.saveEnds.at } } : {}),
           // Ended by its holder's own check (1.458): breaking out of a net.
           ...(entry.checkEnds ? { checkEnds: { ...entry.checkEnds } } : {}),

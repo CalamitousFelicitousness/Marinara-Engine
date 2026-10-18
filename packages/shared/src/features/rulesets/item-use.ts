@@ -530,6 +530,21 @@ export function rechargeRulesetItems(input: {
       const { usesLeft: _usesLeft, ...plain } = next;
       next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
     });
+    // And each hit's own uses (1.481), under "h" and its place among the spends.
+    item.attack?.spends?.forEach((spend, n) => {
+      const own = spend.uses;
+      const key = `h${n + 1}`;
+      if (!own?.recharge?.rests.includes(input.rest)) return;
+      const before = Math.min(own.max, next.usesLeft?.[key] ?? own.max);
+      if (before >= own.max) return;
+      const now = Math.max(before, Math.min(own.max, before + gain(own.recharge.amount, own.max)));
+      if (now === before) return;
+      recharged.push({ item: `${entry!.name}: ${spend.label}`, now, max: own.max, uses: true });
+      const { [key]: _was, ...others } = next.usesLeft ?? {};
+      const usesLeft = now >= own.max ? others : { ...others, [key]: now };
+      const { usesLeft: _usesLeft, ...plain } = next;
+      next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
+    });
     const recharge = item.charges?.recharge;
     if (!recharge?.rests.includes(input.rest)) return next;
     const max = rulesetItemFacts(input.definition, item).use?.charges?.max;

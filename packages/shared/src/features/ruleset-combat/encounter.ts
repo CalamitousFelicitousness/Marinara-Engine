@@ -2776,10 +2776,12 @@ function itemAttackActions(
     if (off) actions.push(ruled(off, !clipped));
     // Charges spent once it hits (1.273), each its holder's own answer to a hit with it: more harm
     // with the blow, more for each charge more, and what it puts on the one hit. One the item cannot
-    // count charges for is never offered.
+    // count charges for is never offered. One that counts its own uses (1.481) spends one of those,
+    // and one may put conditions on with no harm of its own.
     attack.spends?.forEach((spend, n) => {
-      const amount = amountOf(spend.amount);
-      if (!amount || !(chargesMax !== undefined && chargesMax >= 1)) return;
+      const amount = spend.amount ? amountOf(spend.amount) : null;
+      if (spend.amount ? !amount : !spend.onHit?.length) return;
+      if (!spend.uses && !(chargesMax !== undefined && chargesMax >= 1)) return;
       const step = spend.chargeStep ? amountOf(spend.chargeStep.amount) : null;
       const spendType = spend.type ?? type;
       actions.push({
@@ -2799,7 +2801,15 @@ function itemAttackActions(
           ...(spend.blow ? { blow: spend.blow } : {}),
         },
         addsToBlow: true,
-        damage: { ...amount, ...(spendType ? { type: spendType } : {}) },
+        ...(amount ? { damage: { ...amount, ...(spendType ? { type: spendType } : {}) } } : {}),
+        ...(spend.save || spend.drain
+          ? {
+              addsWith: {
+                ...(spend.save ? { save: { ...spend.save } } : {}),
+                ...(spend.drain ? { drain: spend.drain.share ?? 1 } : {}),
+              },
+            }
+          : {}),
         ...(spend.onHit?.length
           ? {
               onHit: spend.onHit.map((entry) => ({
@@ -2813,12 +2823,17 @@ function itemAttackActions(
           : {}),
         itemUse: {
           item: index,
-          charges: {
-            cost: spend.charges,
-            max: chargesMax,
-            ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
-            ...(spend.chargeStep && step ? { step: { max: spend.chargeStep.max, amount: step } } : {}),
-          },
+          // Its own uses (1.481), kept on the stack under "h" and its place among the spends from 1.
+          ...(spend.uses
+            ? { ownUses: { more: `h${n + 1}`, max: spend.uses.max } }
+            : {
+                charges: {
+                  cost: spend.charges ?? 1,
+                  max: chargesMax!,
+                  ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
+                  ...(spend.chargeStep && step ? { step: { max: spend.chargeStep.max, amount: step } } : {}),
+                },
+              }),
         },
       });
     });

@@ -2261,6 +2261,33 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A weapon hit's spend with its own uses, a save or drain, conditions only, or conditions with a
+ *  clock beside a save or on its wielder's turns (1.481): a Rod of Lordly Might's properties. */
+function carriesSpendUses481(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSpendUses481(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const spends = plainRecord(record.attack)?.spends;
+  if (
+    Array.isArray(spends) &&
+    spends.some((one) => {
+      const spend = plainRecord(one);
+      if (!spend) return false;
+      if (["uses", "save", "drain"].some((key) => spend[key] !== undefined) || spend.amount === undefined) return true;
+      return (
+        Array.isArray(spend.onHit) &&
+        spend.onHit.some((hit) => {
+          const entry = plainRecord(hit);
+          return !!entry && (entry.of !== undefined || (entry.rounds !== undefined && entry.saveEnds !== undefined));
+        })
+      );
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesSpendUses481(one, depth + 1));
+}
+
 /** A zone that sets aside called creatures inside it (1.480): Antimagic Field's summons. */
 function carriesSetsAsideCalled480(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6751,6 +6778,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A weapon hit's spend with its own uses, a save, a drain or conditions alone, 1.481.
+  if (
+    !declaresApi(481) &&
+    (carriesSpendUses481(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSpendUses481(document)))
+  ) {
+    return "A ruleset with a weapon hit spending its own uses, a save, a drain or only conditions (attack spends uses, save, drain) requires schemaVersion 2 and capabilityApi 1.481 or newer";
+  }
   // A zone that sets aside called creatures, 1.480.
   if (
     !declaresApi(480) &&

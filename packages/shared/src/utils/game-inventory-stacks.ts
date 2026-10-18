@@ -473,7 +473,8 @@ function readUsesLeft(raw: unknown): Record<string, number> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const kept = Object.entries(raw as Record<string, unknown>).filter(
     (entry): entry is [string, number] =>
-      /^(?:[1-9]|1[0-6])$/.test(entry[0]) &&
+      // A further use's place from 1, or a hit's spend's after "h" (1.481).
+      /^(?:[1-9]|1[0-6]|h[1-4])$/.test(entry[0]) &&
       typeof entry[1] === "number" &&
       Number.isInteger(entry[1]) &&
       entry[1] >= 0 &&

@@ -74058,6 +74058,65 @@
                                 "minimum": 1,
                                 "maximum": 100
                               },
+                              "uses": {
+                                "type": "object",
+                                "properties": {
+                                  "max": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100
+                                  },
+                                  "recharge": {
+                                    "type": "object",
+                                    "properties": {
+                                      "rests": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "amount": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "const": "max"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "dice": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                              },
+                                              "flat": {
+                                                "type": "integer"
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false
+                                          }
+                                        ]
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "rests",
+                                      "amount"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "max"
+                                ],
+                                "additionalProperties": false
+                              },
                               "amount": {
                                 "type": "object",
                                 "properties": {
@@ -74077,6 +74136,39 @@
                                 "type": "string",
                                 "minLength": 1,
                                 "maxLength": 40
+                              },
+                              "save": {
+                                "type": "object",
+                                "properties": {
+                                  "save": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "difficulty": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "save",
+                                  "difficulty"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "drain": {
+                                "type": "object",
+                                "properties": {
+                                  "share": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "blow": {
                                 "type": "string",
@@ -74130,6 +74222,10 @@
                                       "type": "integer",
                                       "minimum": 1,
                                       "maximum": 10000
+                                    },
+                                    "of": {
+                                      "type": "string",
+                                      "const": "source"
                                     },
                                     "save": {
                                       "type": "object",
@@ -74195,9 +74291,7 @@
                               "$comment": {}
                             },
                             "required": [
-                              "label",
-                              "charges",
-                              "amount"
+                              "label"
                             ],
                             "additionalProperties": false
                           },

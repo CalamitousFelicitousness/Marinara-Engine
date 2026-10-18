@@ -1047,6 +1047,27 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         label: "Arrow-Catching Shield",
       }),
     ],
+    [
+      "absorbed",
+      say({ type: "absorbed", targetId: "brenna", sourceId: "lurker", label: "Fire Bolt", level: 1, by: "Rod" }),
+    ],
+    ["stored", say({ type: "stored", actorId: "brenna", holderId: "brenna", label: "Shield", by: "Ring", level: 1 })],
+    ["turnedBack", say({ type: "turnedBack", targetId: "brenna", sourceId: "lurker", label: "Hold", by: "Ring" })],
+    [
+      "cut",
+      say({
+        type: "cut",
+        actorId: "brenna",
+        holderId: "corwin",
+        label: "Dagger",
+        condition: "netted",
+        outcome: "hit",
+        dealt: 5,
+        left: 0,
+        freed: true,
+      }),
+    ],
+    ["setAside", say({ type: "setAside", targetId: "lurker", label: "Antimagic Field" })],
   ];
   const printed = new Map(table);
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");

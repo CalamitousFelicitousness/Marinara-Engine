@@ -242,8 +242,10 @@ export interface RulesetItemAttackFact {
    *  conditions it puts on the one hit, by their labels. */
   spends?: Array<{
     label: string;
-    charges: number;
-    amount: string;
+    /** Or its own uses (1.481), and its amount none where it only puts conditions on. */
+    charges?: number;
+    uses?: number;
+    amount?: string;
     type?: string;
     more?: { max: number; amount: string };
     onHit?: Array<{ condition: string; rounds?: number; save?: { save: string; difficulty: number } }>;
@@ -582,8 +584,9 @@ function rulesetItemAttackFacts(
       ? {
           spends: attack.spends.map((spend) => ({
             label: spend.label,
-            charges: spend.charges,
-            amount: amountWords(spend.amount),
+            ...(spend.charges !== undefined ? { charges: spend.charges } : {}),
+            ...(spend.uses ? { uses: spend.uses.max } : {}),
+            ...(spend.amount ? { amount: amountWords(spend.amount) } : {}),
             ...(spend.type ? { type: spend.type } : {}),
             ...(spend.chargeStep
               ? { more: { max: spend.chargeStep.max, amount: amountWords(spend.chargeStep.amount) } }
@@ -1540,9 +1543,13 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
     ),
     ...(attack.spends ?? []).map(
       (spend) =>
-        `${spend.label}: on a hit, ${spend.charges} ${spend.charges === 1 ? "charge" : "charges"} for +${spend.amount}${
-          spend.type ? ` ${spend.type}` : ""
-        }${spend.more ? `, up to ${spend.more.max} more for +${spend.more.amount} each` : ""}${(spend.onHit ?? [])
+        `${spend.label}: on a hit, ${
+          spend.uses !== undefined
+            ? `one of its ${spend.uses} ${spend.uses === 1 ? "use" : "uses"}`
+            : `${spend.charges} ${spend.charges === 1 ? "charge" : "charges"}`
+        }${spend.amount ? ` for +${spend.amount}${spend.type ? ` ${spend.type}` : ""}` : ""}${spend.more ? `, up to ${spend.more.max} more for +${spend.more.amount} each` : ""}${(
+          spend.onHit ?? []
+        )
           .map(
             (entry) =>
               `, ${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""}${

@@ -8695,14 +8695,21 @@ const itemAttackDamageSchema: z.ZodType<RulesetItemAttackDamage, z.ZodTypeDef, u
  *  its Constitution save. Typed by hand, as the last-charge die is. */
 export interface RulesetItemAttackSpend {
   label: string;
-  charges: number;
-  amount: { dice?: string; flat?: number };
+  charges?: number;
+  uses?: {
+    max: number;
+    recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
+  };
+  amount?: { dice?: string; flat?: number };
   type?: string;
   blow?: "melee" | "ranged";
   chargeStep?: { max: number; amount: { dice?: string; flat?: number } };
+  save?: { save: string; difficulty: number };
+  drain?: { share?: number };
   onHit?: Array<{
     condition: string;
     rounds?: number;
+    of?: "source";
     save?: { save: string; difficulty: number };
     saveEnds?: { save: string; difficulty: number; at: "turn-end" | "turn-start" | "damaged" };
   }>;
@@ -8710,9 +8717,38 @@ export interface RulesetItemAttackSpend {
 const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unknown> = z
   .object({
     label: promptSafeText(40),
-    charges: z.number().int().min(1).max(100),
-    amount: z.object(catalogAmountShape).strict(),
+    charges: z.number().int().min(1).max(100).optional(),
+    /** Its own count of uses in place of the item's charges (Capability API 1.481), kept on the
+     *  stack as a further use's are and brought back by `recharge` on the rests it names: a Staff of
+     *  Thunder and Lightning's Lightning and Thunder, once a dawn each. */
+    uses: z
+      .object({
+        max: z.number().int().min(1).max(100),
+        recharge: z
+          .object({
+            rests: z.array(sheetId).min(1).max(12),
+            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    /** Left out (1.481) where all it does is its `onHit`: a Rod of Lordly Might's Paralyze. */
+    amount: z.object(catalogAmountShape).strict().optional(),
     type: promptSafeText(40).optional(),
+    /** A save the one it hit makes against its `amount`, a made one keeping all of it off (Capability
+     *  API 1.481): Drain Life's Constitution 17. */
+    save: z
+      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+      .strict()
+      .optional(),
+    /** Its wielder regains `share` (1 when left out) of what its `amount` dealt (Capability API
+     *  1.481): Drain Life's half. */
+    drain: z
+      .object({ share: z.number().finite().gt(0).max(1).optional() })
+      .strict()
+      .optional(),
     /** Only on a blow of this kind: a Staff of Striking's melee attack. */
     blow: z.enum(["melee", "ranged"]).optional(),
     /** Up to `max` more charges spent on the same hit, each adding `amount`: a Staff of Striking's
@@ -8727,7 +8763,11 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
         z
           .object({
             condition: sheetId,
+            /** Beside `saveEnds` (Capability API 1.481), the most it lasts: Paralyze's minute. */
             rounds: z.number().int().min(1).max(10000).optional(),
+            /** Its `rounds` counted on its wielder's turns (Capability API 1.481): Thunder's "until
+             *  the end of your next turn". */
+            of: z.literal("source").optional(),
             save: z
               .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
               .strict()
@@ -8742,9 +8782,9 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
               .optional(),
           })
           .strict()
-          .refine((entry) => entry.saveEnds === undefined || entry.rounds === undefined, {
-            message: "A condition that ends on a save lasts until it is made, not some rounds",
-            path: ["rounds"],
+          .refine((entry) => entry.of === undefined || entry.rounds !== undefined, {
+            message: 'Counted on its wielder\'s turns, it lasts some "rounds"',
+            path: ["of"],
           }),
       )
       .min(1)
@@ -8752,8 +8792,24 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
       .optional(),
   })
   .strict()
-  .refine((spend) => spend.amount.dice !== undefined || spend.amount.flat !== undefined, {
+  .refine((spend) => !spend.amount || spend.amount.dice !== undefined || spend.amount.flat !== undefined, {
     message: "What spending charges on a hit adds is dice, a flat amount, or both",
+    path: ["amount"],
+  })
+  .refine((spend) => spend.amount !== undefined || (spend.onHit?.length ?? 0) > 0, {
+    message: "What it does on a hit is an amount, conditions or both",
+    path: ["amount"],
+  })
+  .refine((spend) => (spend.charges === undefined) !== (spend.uses === undefined), {
+    message: 'A hit spends "charges" of the item or its own "uses": one of them',
+    path: ["uses"],
+  })
+  .refine((spend) => !spend.chargeStep || spend.charges !== undefined, {
+    message: "A charge more is the item's charges, so it spends some",
+    path: ["chargeStep"],
+  })
+  .refine((spend) => (!spend.save && !spend.drain) || spend.amount !== undefined, {
+    message: "A save against it or a drain is of its amount, so it has one",
     path: ["amount"],
   })
   .refine(
@@ -18205,7 +18261,7 @@ function itemIssues(
       item.use?.charges === undefined &&
       !item.attack?.slay?.some((entry) => entry.charges !== undefined) &&
       !item.attack?.modes?.some((mode) => mode.charges !== undefined) &&
-      !item.attack?.spends &&
+      !item.attack?.spends?.some((spend) => spend.charges !== undefined) &&
       // Or by what it takes in (1.469): an Ioun Stone of Absorption's, a Rod of Absorption's gained.
       !item.worn?.absorbs?.charges
     ) {
@@ -18902,7 +18958,16 @@ function attackIssues(
   // ruleset's.
   attack.spends?.forEach((spend, index) => {
     const where = [...at, "spends", index];
-    if (!item.charges) add([...where, "charges"], "Charges spent on a hit are the item's own, so it holds some");
+    if (spend.charges !== undefined && !item.charges)
+      add([...where, "charges"], "Charges spent on a hit are the item's own, so it holds some");
+    // Its own uses (1.481) are one item's, as a further use's are.
+    if (spend.uses && !item.charges && item.stack !== 1)
+      add([...where, "uses"], "An item whose hits count their own uses is one to a stack, so its stack is 1");
+    spend.uses?.recharge?.rests.forEach((rest, at2) => {
+      if (!definition.rests.some((entry) => entry.id === rest))
+        add([...where, "uses", "recharge", "rests", at2], `Unknown rest "${rest}"`);
+    });
+    if (spend.save && !saves.has(spend.save.save)) add([...where, "save", "save"], `Unknown save "${spend.save.save}"`);
     if (spend.type !== undefined && damageTypes && !damageTypes.includes(spend.type.trim().toLowerCase()))
       add([...where, "type"], `Unknown damage type "${spend.type}"`);
     spend.onHit?.forEach((entry, entryIndex) => {

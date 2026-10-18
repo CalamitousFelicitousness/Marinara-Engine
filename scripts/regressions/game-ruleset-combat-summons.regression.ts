@@ -521,11 +521,13 @@ try {
     if (node.properties?.summons) {
       found++;
       const summon = node.properties.summons;
-      assert.deepEqual(summon.required, ["budget", "rounds"]);
+      // No budget for one that strikes by itself as its summoner's turn starts (1.486).
+      assert.deepEqual(summon.required, ["rounds"]);
       assert.equal(summon.additionalProperties, false);
       assert.equal(summon.properties.rounds.type, "integer");
       assert.equal(summon.properties.rounds.minimum, 1);
-      assert.equal(summon.properties.rounds.maximum, 100);
+      // 100 rounds unless it strikes by itself (1.486), checked past the schema: up to a day.
+      assert.equal(summon.properties.rounds.maximum, 14400);
       for (const key of ["move", "reach"]) assert.equal(summon.properties[key].exclusiveMinimum, 0);
       assert.deepEqual(node.allOf.find((rule: any) => rule.if?.required?.[0] === "summons").then.properties, {
         kind: { const: "attack" },

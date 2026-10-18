@@ -410,7 +410,7 @@ try {
   walk(schema);
   assert.deepEqual(
     found,
-    { needs: 3, lacks: 1 },
+    { needs: 4, lacks: 1 },
     "the published schema carries the entry, creature action, aura and condition keys",
   );
   assert.equal(

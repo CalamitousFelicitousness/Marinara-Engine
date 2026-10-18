@@ -269,6 +269,64 @@ export function setStateValueAtPath(root: unknown, path: StateEditorPath, next: 
   return root;
 }
 
+/**
+ * A copy of `value` with nothing in it: what an added field or entry starts as. Cloning the shape
+ * instead of following a schema keeps it readable by the same tracker — the editor is never told what
+ * a section's entries look like, only what the entries already there look like.
+ */
+export function blankStateValueLike(value: unknown): unknown {
+  if (Array.isArray(value)) return [];
+  if (typeof value === "number") return 0;
+  if (typeof value === "boolean") return false;
+  if (isPlainRecord(value)) {
+    const blank: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) blank[key] = blankStateValueLike(item);
+    return blank;
+  }
+  return "";
+}
+
+/**
+ * What an entry starts as when its list is empty and there is nothing to copy. The shapes are the ones
+ * `GameState` declares in the shared package, so an entry added to a fresh tracker is still readable by
+ * it. Only id-free shapes are here: characters and quests need ids the editor can't invent safely, so
+ * those lists keep the generic "add field" row.
+ */
+const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
+  worldCustomFields: { name: "", value: "", icon: "" },
+  customTrackerFields: { name: "", value: "" },
+  stats: { name: "", value: 0, max: 0, color: "" },
+  inventory: { name: "", description: "", quantity: 1, location: "" },
+  inventoryTrackerInventory: { name: "", qty: 0, description: "", location: "" },
+  inventoryTrackerEquipped: { name: "", qty: 0, description: "", location: "" },
+  inventoryTrackerCurrencies: { name: "", qty: 0, description: "", location: "" },
+};
+
+/**
+ * The entry an add control appends: the last item's shape, cleared; for an empty list, the shape its key
+ * declares; and for a list of unknown shape, `{}` for the "add field" row to fill in (ponytail: a list of
+ * plain values that starts empty therefore gets an object; the JSON view is the way back).
+ */
+export function blankStateArrayItem(items: readonly unknown[], key?: string): unknown {
+  if (items.length > 0) return blankStateValueLike(items[items.length - 1]);
+  const template = key ? EMPTY_STATE_ENTRIES[key] : undefined;
+  return template ? structuredClone(template) : {};
+}
+
+/**
+ * How the Fields view shows one entry: the keys its list declares, with the stored values on top, so an
+ * entry the trackers only half-filled still shows the rows it is missing. A missing key reads as `null`
+ * ("No value"), and nothing reaches the draft until one of those rows is edited.
+ */
+export function shapeStateEntry(item: unknown, key?: string): unknown {
+  if (!key || !isPlainRecord(item)) return item;
+  const template = EMPTY_STATE_ENTRIES[key];
+  if (!template) return item;
+  const missing: Record<string, null> = {};
+  for (const declaredKey of Object.keys(template)) missing[declaredKey] = null;
+  return { ...missing, ...item };
+}
+
 /** "currentMood" and "current_mood" read as "Current mood", "maxHP" as "Max HP"; the raw key stays in the tooltip. */
 export function humanizeStateKey(key: string): string {
   const words = key

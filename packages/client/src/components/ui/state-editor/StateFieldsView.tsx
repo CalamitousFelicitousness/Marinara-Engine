@@ -2,15 +2,19 @@
 // State Editor — the Fields view: a section's simple values (text, numbers,
 // on/off) as inputs, grouped the way the JSON nests them. It writes the same
 // JSON draft as the JSON view, so both views always show the same edit.
-// Adding or removing entries stays in the JSON view.
+// Fields, entries and values can be added, filled in and removed here too; an
+// added entry copies the shape of the entry above it, so it stays readable.
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import {
+  blankStateArrayItem,
   describeArrayItem,
   humanizeStateKey,
   setStateValueAtPath,
+  shapeStateEntry,
   statePathKey,
 } from "../../../lib/state-editor/state-editor-json";
 import type { StateEditorPath } from "../../../lib/state-editor/state-editor.types";
@@ -124,6 +128,81 @@ function BooleanField({ value, onChange, label, readOnly }: LeafProps<boolean>) 
   );
 }
 
+const SMALL_BUTTON =
+  "inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-default disabled:opacity-50";
+
+/** A null leaf means the trackers didn't know; picking a kind is what turns it back into a field. */
+function NullField({ onPick, readOnly }: { onPick: (next: string | number | boolean) => void; readOnly?: boolean }) {
+  const { t: localizeUi } = useUiTranslation();
+  if (readOnly) {
+    return (
+      <span className="inline-flex min-h-9 items-center text-xs italic text-[var(--muted-foreground)]">
+        {localizeUi("ui.stateEditor.fields.noValueReadOnly")}
+      </span>
+    );
+  }
+  const kinds: { key: string; value: string | number | boolean }[] = [
+    { key: "ui.stateEditor.fields.kindText", value: "" },
+    { key: "ui.stateEditor.fields.kindNumber", value: 0 },
+    { key: "ui.stateEditor.fields.kindBoolean", value: false },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs italic text-[var(--muted-foreground)]">
+        {localizeUi("ui.stateEditor.fields.noValue")}
+      </span>
+      {kinds.map((kind) => (
+        <button key={kind.key} type="button" onClick={() => onPick(kind.value)} className={SMALL_BUTTON}>
+          {localizeUi(kind.key)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A name and a value, for an object that would otherwise only grow in the JSON view. */
+function AddFieldRow({ existingKeys, onAdd }: { existingKeys: string[]; onAdd: (key: string, value: string) => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+  const name = key.trim();
+  const canAdd = name.length > 0 && !existingKeys.includes(name);
+  const add = () => {
+    if (!canAdd) return;
+    onAdd(name, value);
+    setKey("");
+    setValue("");
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <input
+        value={key}
+        onChange={(event) => setKey(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") add();
+        }}
+        placeholder={localizeUi("ui.stateEditor.fields.fieldName")}
+        aria-label={localizeUi("ui.stateEditor.fields.fieldName")}
+        className={cn(INPUT, "h-9 w-40")}
+      />
+      <input
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") add();
+        }}
+        placeholder={localizeUi("ui.stateEditor.fields.value")}
+        aria-label={localizeUi("ui.stateEditor.fields.value")}
+        className={cn(INPUT, "h-9 min-w-32 flex-1")}
+      />
+      <button type="button" onClick={add} disabled={!canAdd} className={SMALL_BUTTON}>
+        <Plus className="h-3.5 w-3.5" />
+        {localizeUi("ui.stateEditor.fields.add")}
+      </button>
+    </div>
+  );
+}
+
 export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, readOnly }: StateFieldsViewProps) {
   const { t: localizeUi } = useUiTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,12 +230,8 @@ export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, re
     if (typeof node === "boolean") {
       return <BooleanField value={node} onChange={(next) => update(path, next)} label={label} readOnly={readOnly} />;
     }
-    // null: nothing to type into without guessing its kind.
-    return (
-      <span className="inline-flex min-h-9 items-center text-xs italic text-[var(--muted-foreground)]">
-        {localizeUi(readOnly ? "ui.stateEditor.fields.noValueReadOnly" : "ui.stateEditor.fields.noValue")}
-      </span>
-    );
+    // null: the trackers left it empty, so offer the kinds it could become.
+    return <NullField onPick={(next) => update(path, next)} readOnly={readOnly} />;
   };
 
   const emptyNote = (
@@ -169,16 +244,32 @@ export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, re
   const renderEntry = (node: unknown, path: StateEditorPath, label: string, title?: string) => {
     const key = statePathKey(path);
     if (!isContainer(node)) {
+      const clearLabel = localizeUi("ui.stateEditor.fields.clear");
       return (
         <div
           key={key}
           data-state-path={key}
-          className="grid gap-1 sm:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] sm:items-start sm:gap-3"
+          className="group/field grid gap-1 sm:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)] sm:items-start sm:gap-3"
         >
           <span title={title} className="truncate pt-0 text-xs font-medium text-[var(--muted-foreground)] sm:pt-2.5">
             {label}
           </span>
-          <div className="min-w-0">{renderLeaf(node, path, label)}</div>
+          <div className="flex min-w-0 items-start gap-1">
+            <div className="min-w-0 flex-1">{renderLeaf(node, path, label)}</div>
+            {readOnly || node === null || path.length > 1 ? null : (
+              // Back to "no value", which is how the state records a field the trackers don't know.
+              // Only on the section's own fields: inside a card, the card's × already means "remove this".
+              <button
+                type="button"
+                title={clearLabel}
+                aria-label={clearLabel}
+                onClick={() => update(path, null)}
+                className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] group-hover/field:opacity-100 max-md:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       );
     }
@@ -194,30 +285,96 @@ export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, re
 
   function renderChildren(node: unknown, path: StateEditorPath) {
     if (Array.isArray(node)) {
-      if (node.length === 0) return emptyNote;
-      return node.map((item, index) => {
-        const itemPath = [...path, index];
-        if (!isContainer(item)) return renderEntry(item, itemPath, `#${index + 1}`);
-        // A list of records reads as cards, each named like the search trail names it.
+      const removeLabel = localizeUi("ui.stateEditor.fields.removeItem");
+      const removeItem = (index: number) => {
+        if (readOnly) return null;
         return (
-          <div
-            key={statePathKey(itemPath)}
-            data-state-path={statePathKey(itemPath)}
-            className="flex min-w-0 flex-col gap-2 rounded-lg bg-[var(--secondary)]/40 p-3 ring-1 ring-[var(--border)]/60"
+          <button
+            type="button"
+            title={removeLabel}
+            aria-label={removeLabel}
+            onClick={() =>
+              update(
+                path,
+                node.filter((_, item) => item !== index),
+              )
+            }
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] group-hover/card:opacity-100 max-md:opacity-100"
           >
-            <span className="truncate text-xs font-semibold text-[var(--foreground)]">
-              {describeArrayItem(item, index)}
-            </span>
-            {renderChildren(item, itemPath)}
-          </div>
+            <X className="h-3.5 w-3.5" />
+          </button>
         );
-      });
+      };
+      // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …).
+      const listKey = typeof path[path.length - 1] === "string" ? (path[path.length - 1] as string) : undefined;
+      const addItem = readOnly ? null : (
+        <button
+          type="button"
+          onClick={() => update(path, [...node, blankStateArrayItem(node, listKey)])}
+          className={SMALL_BUTTON}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {localizeUi("ui.stateEditor.fields.addItem")}
+        </button>
+      );
+      if (node.length === 0) {
+        return (
+          <>
+            {emptyNote}
+            {addItem}
+          </>
+        );
+      }
+      return (
+        <>
+          {node.map((item, index) => {
+            const itemPath = [...path, index];
+            if (!isContainer(item)) {
+              return (
+                <div key={statePathKey(itemPath)} className="group/card flex items-start gap-1">
+                  <div className="min-w-0 flex-1">{renderEntry(item, itemPath, `#${index + 1}`)}</div>
+                  {removeItem(index)}
+                </div>
+              );
+            }
+            // A list of records reads as cards, each named like the search trail names it.
+            return (
+              <div
+                key={statePathKey(itemPath)}
+                data-state-path={statePathKey(itemPath)}
+                className="group/card flex min-w-0 flex-col gap-2 rounded-lg bg-[var(--secondary)]/40 p-3 ring-1 ring-[var(--border)]/60"
+              >
+                <div className="flex min-w-0 items-start gap-2">
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--foreground)]">
+                    {describeArrayItem(item, index)}
+                  </span>
+                  {removeItem(index)}
+                </div>
+                {renderChildren(shapeStateEntry(item, listKey), itemPath)}
+              </div>
+            );
+          })}
+          {addItem}
+        </>
+      );
     }
     if (isPlainRecord(node)) {
       const entries = Object.entries(node).filter(([, item]) => item !== undefined);
-      if (entries.length === 0) return emptyNote;
-      return entries.map(([childKey, item]) =>
-        renderEntry(item, [...path, childKey], humanizeStateKey(childKey), childKey),
+      return (
+        <>
+          {entries.length === 0
+            ? emptyNote
+            : entries.map(([childKey, item]) =>
+                renderEntry(item, [...path, childKey], humanizeStateKey(childKey), childKey),
+              )}
+          {/* Only where it earns its space: the section itself, or an object that has nothing to show yet. */}
+          {readOnly || (path.length > 0 && entries.length > 0) ? null : (
+            <AddFieldRow
+              existingKeys={entries.map(([childKey]) => childKey)}
+              onAdd={(childKey, fieldValue) => update(path, { ...node, [childKey]: fieldValue })}
+            />
+          )}
+        </>
       );
     }
     return null;

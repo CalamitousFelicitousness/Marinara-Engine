@@ -58259,6 +58259,14 @@
                           ],
                           "additionalProperties": false
                         },
+                        "ends": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "outright": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -176128,6 +176136,14 @@
                     ],
                     "additionalProperties": false
                   },
+                  "ends": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "outright": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -185776,6 +185792,14 @@
                       "form"
                     ],
                     "additionalProperties": false
+                  },
+                  "ends": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "outright": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "$comment": {}
                 },

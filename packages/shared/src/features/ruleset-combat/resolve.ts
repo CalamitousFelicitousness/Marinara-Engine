@@ -2020,6 +2020,27 @@ function becomeForm(
   applyConditionId(ctx, target, applies.condition, { ...applies, form: mode.form }, { sourceId: target.id });
 }
 
+/** Whether a way of hanging on spares its holder what would slay them outright without dealing
+ *  damage (1.543), paying for it as hanging on at 1 does: Death Ward against Power Word Kill. */
+function wardedOutright(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
+  if (target.defeated) return false;
+  for (const { from, hangs } of rulesetHangsOn(ctx.definition, ctx.combat, target, ctx.state)) {
+    if (!hangs.outright) continue;
+    const held = hangsOnNow(ctx, target, from, hangs, undefined);
+    if (!held) continue;
+    ctx.events.push({
+      type: "hangsOn",
+      actorId: target.id,
+      outright: true,
+      ...(hangs.label ? { label: hangs.label } : {}),
+      ...(held.left !== undefined ? { left: held.left } : {}),
+    });
+    if (hangs.ends && from !== null) removeCondition(ctx, target, from, "spent");
+    return true;
+  }
+  return false;
+}
+
 function dropToZero(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -2051,6 +2072,8 @@ function dropToZero(
       });
       // Into one of its own forms as it hangs on (1.495): Misty Escape.
       if (hangs.becomes) becomeForm(ctx, target, hangs.becomes);
+      // Worked, its condition is over (1.543): Death Ward.
+      if (hangs.ends && from !== null) removeCondition(ctx, target, from, "spent");
       if (hangs.extraTurn) {
         const at = ctx.state.turn + 1;
         ctx.state.order.splice(at, 0, target.id);
@@ -13682,7 +13705,8 @@ function resolveActionBodyIn(
     hitNow = null;
     // Killed outright (1.196): nothing else it does matters to the dead.
     if (action.kills) {
-      slay(ctx, target, actor.id, action.label);
+      // Unless warded against it (1.543): Death Ward.
+      if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);
       continue;
     }
     const endHarm = endConditionsOnHarm(
@@ -14120,7 +14144,7 @@ function resolveActionBodyIn(
       }
       // Failed, it dies (1.311), and its slayer gains what it says: Consume Life.
       if (!saved && action.slaysOnFailedSave) {
-        slay(ctx, target, actor.id, action.label);
+        if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);
         if (action.healsOnSlay && target.defeated) {
           const thrown = rollHealing(ctx, actor, action.healsOnSlay);
           dealHeal(ctx, actor, { sourceId: actor.id, rolls: thrown.rolls, flat: thrown.flat, amount: thrown.total });
@@ -14767,11 +14791,14 @@ function resolveActionBodyIn(
       if (cureUnseals) unsealHealth(ctx, actor, target);
       // Its health as it lands (1.397), read once: Divine Word's tiers, and its kill at the lowest.
       const healthNow = healthOf(ctx, target).value;
-      const slain =
+      const dies =
         action.killsAtMost !== undefined &&
         target.id !== actor.id &&
         !target.defeated &&
         healthNow <= action.killsAtMost;
+      // Warded against it (1.543), nothing of it takes: Death Ward against Divine Word.
+      const warded = dies && wardedOutright(ctx, target);
+      const slain = dies && !warded;
       if (slain) slay(ctx, target, actor.id, action.label);
       // Failed by enough, something worse goes on instead (1.539): a Wand of Wonder's petrifying.
       const failedBy = action.save?.failedBy;
@@ -14785,14 +14812,14 @@ function resolveActionBodyIn(
         missed.difficulty - missed.total >= failedBy.atLeast;
       const putting = worse ? failedBy.applies : (action.applies ?? []);
       // Not on whoever it catches where it goes on what it calls (1.426).
-      for (const applies of slain || action.appliesToCalled ? [] : putting) {
+      for (const applies of slain || warded || action.appliesToCalled ? [] : putting) {
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         if (applies.targetHealthAtMost !== undefined && healthNow > applies.targetHealthAtMost) continue;
         // Destroyed in its place, at or below the tier its applier reaches (1.266): Destroy Undead.
         if (destroyedByTier(ctx, actor, target, applies)) {
-          slay(ctx, target, actor.id, action.label);
+          if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);
           break;
         }
         // A number off its applier's sheet, fixed as it goes on (1.274): Heroism's modifier.

@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Hanging on that ends its condition, or wards off being slain outright (1.543): Death Ward. */
+function carriesDeathWard543(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDeathWard543(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const hangs = plainRecord(record.hangsOn);
+  if (hangs && (hangs.ends !== undefined || hangs.outright !== undefined)) return true;
+  return featureValues(record).some((one) => carriesDeathWard543(one, depth + 1));
+}
+
 /** A barrier that stops reach, or ends carried over one it keeps out (1.542): Antilife Shell. */
 function carriesReachBarrier542(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7469,6 +7480,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Hanging on that ends its condition, or wards off being slain outright, 1.543.
+  if (
+    !declaresApi(543) &&
+    (carriesDeathWard543(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDeathWard543(document)))
+  ) {
+    return "A ruleset with hanging on that ends its condition or wards off being slain outright (hangsOn ends, outright) requires schemaVersion 2 and capabilityApi 1.543 or newer";
+  }
   // A barrier that stops reach, or ends carried over one it keeps out, 1.542.
   if (
     !declaresApi(542) &&

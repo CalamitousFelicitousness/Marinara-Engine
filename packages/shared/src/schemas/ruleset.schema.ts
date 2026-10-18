@@ -2714,6 +2714,8 @@ export interface RulesetHangsOn {
   label?: string;
   whileHolding?: string[];
   becomes?: { action: string; form: string };
+  ends?: true;
+  outright?: true;
 }
 export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
   .object({
@@ -2749,11 +2751,27 @@ export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
       })
       .strict()
       .optional(),
+    /** Once it works, the condition it is on ends (Capability API 1.543): 5e's Death Ward, "and the
+     *  spell ends". On a combat condition only. */
+    ends: z.literal(true).optional(),
+    /** It works as well against what would slay its holder outright without dealing damage (Capability
+     *  API 1.543), which is then undone: Death Ward against Power Word Kill's `kills` and Divine
+     *  Word's `killsAtMost`, a failed save that slays, or a tier that destroys. */
+    outright: z.literal(true).optional(),
   })
   .strict()
   .refine((hangs) => hangs.uses !== undefined || hangs.spends !== undefined || hangs.save !== undefined, {
     message: 'Hanging on at 1 names "uses", "spends" or a "save", or it would work every time',
-  });
+  })
+  .refine(
+    (hangs) =>
+      !hangs.outright || (!hangs.save && !hangs.notFrom && !hangs.notCritical && hangs.dealtAtMost === undefined),
+    {
+      message:
+        '"outright" works against what deals no damage, so it reads no blow: no "save", "notFrom", "notCritical" or "dealtAtMost"',
+      path: ["outright"],
+    },
+  );
 
 /** Temporary points a combat condition gives its holder each turn (Capability API 1.274). Typed by
  *  hand, as its harm is. */
@@ -17360,6 +17378,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
+      if (entry.hangsOn?.ends)
+        issue([...path, "hangsOn", "ends"], '"ends" ends the combat condition it is on, so it goes on one');
     });
 
     if (combat.concentration) {
@@ -19581,6 +19601,7 @@ function hangsOnIssues(
     if (!conditions.has(condition)) add([...at, "whileHolding", index], `Unknown condition "${condition}"`);
   });
   if (creature) {
+    if (hangs.ends) add([...at, "ends"], '"ends" ends the combat condition it is on, so it goes on one');
     if (hangs.spends !== undefined) add([...at, "spends"], 'A creature has no sheet to spend "spends" off');
     if (hangs.save?.tally !== undefined) add([...at, "save", "tally"], 'A creature has no sheet to keep "tally" on');
     return;

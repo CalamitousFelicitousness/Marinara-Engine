@@ -2142,6 +2142,8 @@
   "game.combat.ruleset.event.hangsOnAgain": "{{actor}} hangs on at 1 instead of falling.",
   "game.combat.ruleset.event.hangsOnAgainNamed": "{{label}}: {{actor}} hangs on at 1 instead of falling.",
   "game.combat.ruleset.event.hangsOnNamed": "{{label}}: {{actor}} hangs on at 1 instead of falling ({{left}} left).",
+  "game.combat.ruleset.event.hangsOnOutright": "{{actor}} is spared being slain outright.",
+  "game.combat.ruleset.event.hangsOnOutrightNamed": "{{label}}: {{actor}} is spared being slain outright.",
   "game.combat.ruleset.event.hardness": "{{actor}}'s {{label}} lands on {{target}} with {{dice}} dice, below a hardness of {{hardness}}, and does nothing.",
   "game.combat.ruleset.event.headLost": "One of {{actor}}'s heads dies ({{left}} left).",
   "game.combat.ruleset.event.headsBurned": "{{actor}}'s heads do not grow back: they were burned.",

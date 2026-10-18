@@ -3125,8 +3125,9 @@ export type RulesetCombatEvent =
   | { type: "breath"; actorId: string; held: number; lasts: number }
   /** Up on a mount (1.443), or off it (`off`), thrown or fallen (`fell`). */
   | { type: "mount"; riderId: string; mountId: string; off?: true; fell?: true }
-  /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may. */
-  | { type: "hangsOn"; actorId: string; label?: string; left?: number }
+  /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may; with `outright`
+   *  (1.543), spared being slain outright instead. */
+  | { type: "hangsOn"; actorId: string; label?: string; left?: number; outright?: true }
   /** A prop lit again (1.332): who lit it, and how many cells it lights. */
   | { type: "relit"; actorId: string; propId: string; label: string; cells: number }
   /** Held Ground let go mid-fight (1.330): who died of it, and who went down instead. */

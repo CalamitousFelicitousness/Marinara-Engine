@@ -939,6 +939,12 @@ export function rulesetCombatEventLine(
       });
     // Hanging on at 1 (1.320): the Hourglass; with no count of uses (1.347), Undead Fortitude.
     case "hangsOn":
+      // Spared being slain outright (1.543): Death Ward.
+      if (event.outright)
+        return key(event.label ? "hangsOnOutrightNamed" : "hangsOnOutright", {
+          actor: names.combatant(event.actorId),
+          label: event.label ?? "",
+        });
       if (event.left === undefined)
         return key(event.label ? "hangsOnAgainNamed" : "hangsOnAgain", {
           actor: names.combatant(event.actorId),

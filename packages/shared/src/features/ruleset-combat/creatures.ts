@@ -476,6 +476,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
+    ...(creature.healedBy ? { healedBy: [...creature.healedBy] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
     ...(creature.keepsOn ? { keepsOn: [...creature.keepsOn] } : {}),
     ...(creature.held ? { held: creature.held.map((thing) => ({ ...thing, tags: [...thing.tags] })) } : {}),
@@ -697,7 +698,7 @@ export function clampRulesetStatBlock(
   const budgets = combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id);
   const mainBudget = budgets[0] ?? combat.economy.budgets[0]!.id;
 
-  const keepKnown = <K extends "resist" | "vulnerable" | "immune">(key: K) => {
+  const keepKnown = <K extends "resist" | "vulnerable" | "immune" | "healedBy">(key: K) => {
     const kept = onlyKnown<NonNullable<RulesetStatBlock[K]>[number]>(block[key], types);
     if (!kept) return;
     const dropped = (block[key]?.length ?? 0) - kept.length;
@@ -708,6 +709,7 @@ export function clampRulesetStatBlock(
   keepKnown("resist");
   keepKnown("vulnerable");
   keepKnown("immune");
+  keepKnown("healedBy");
   // A track some level reads may be shrugged off as a condition is (1.115).
   const leveled = new Set((combat.levels ?? []).flatMap((level) => (level.track ? [level.track] : [])));
   if (block.conditionImmunities) {

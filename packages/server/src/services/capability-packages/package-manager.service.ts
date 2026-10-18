@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Damage types that heal a creature instead (1.488): a flesh golem's Lightning Absorption. */
+function carriesHealedBy488(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealedBy488(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.healedBy) && (record.health !== undefined || Array.isArray(record.actions))) return true;
+  return featureValues(record).some((one) => carriesHealedBy488(one, depth + 1));
+}
+
 /** A creature's burst as it dies (1.487): a mephit's Death Burst. */
 function carriesOnDeath487(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6858,6 +6868,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Damage that heals a creature instead, 1.488.
+  if (
+    !declaresApi(488) &&
+    (carriesHealedBy488(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealedBy488(document)))
+  ) {
+    return "A ruleset with a creature healed by a damage type (healedBy) requires schemaVersion 2 and capabilityApi 1.488 or newer";
+  }
   // A creature's burst as it dies, 1.487.
   if (
     !declaresApi(487) &&

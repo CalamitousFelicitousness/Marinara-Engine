@@ -800,6 +800,17 @@ function applyDamage(
   ) {
     dealt = 0;
     adjust = "immune";
+  } else if (type && !input.unblockable && target.block?.healedBy?.some((one) => one.trim().toLowerCase() === type)) {
+    // A type that heals it instead (1.488): none taken, as much given back as the blow was.
+    dealHeal(ctx, target, {
+      ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+      rolls: input.rolls,
+      flat: input.flat,
+      amount: dealt,
+      magical: true,
+    });
+    dealt = 0;
+    adjust = "immune";
   } else {
     const resistant =
       !input.ignoresResistance &&

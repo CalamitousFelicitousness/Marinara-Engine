@@ -7937,6 +7937,10 @@ const creatureFields = {
   resist: z.array(creatureHideEntrySchema).max(30).optional(),
   vulnerable: z.array(promptSafeText(40)).max(30).optional(),
   immune: z.array(creatureHideEntrySchema).max(30).optional(),
+  /** Damage types, matched without case, that heal it instead (Capability API 1.488): it takes none
+   *  and regains as many hit points as the blow would have dealt. 5e's flesh golem's Lightning
+   *  Absorption, an iron golem's Fire Absorption. */
+  healedBy: z.array(promptSafeText(40)).min(1).max(12).optional(),
   /** The sheet's own condition ids this creature is never in. */
   conditionImmunities: z.array(sheetId).max(40).optional(),
   /** Conditions it has on through every fight (Capability API 1.263), as a sheet's `keepsOn` entry

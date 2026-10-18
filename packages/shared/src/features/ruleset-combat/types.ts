@@ -624,6 +624,8 @@ export interface RulesetStatBlock {
   resist?: RulesetCreatureHideEntry[];
   vulnerable?: string[];
   immune?: RulesetCreatureHideEntry[];
+  /** Damage types that heal it instead (1.488): a flesh golem's lightning. */
+  healedBy?: string[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.115). */
   conditionImmunities?: string[];
   /** Conditions it has on through every fight (1.263): an aura it spreads. */

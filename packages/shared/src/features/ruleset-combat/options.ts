@@ -1125,11 +1125,18 @@ export function rulesetCoverBonus(
   against: "attack" | "save" = "attack",
   /** Who it comes from, whose own cells never screen it (1.194). */
   attackerId?: string,
+  /** Whose effect a save is against, for the cover a condition of theirs gives (1.535). */
+  effectFrom?: string,
 ): number {
   const cover = combat.cover;
+  if (!cover) return 0;
+  // Cover a condition on whoever it comes from gives its target (1.535): the Interposing Hand.
+  const held = rulesetCoverFor(combat, state, target, attackerId ?? effectFrom);
+  const heldBonus =
+    held === "three-quarters" ? (cover.threeQuarters ?? cover.bonus) : held === "half" ? cover.bonus : 0;
   const grid = state.board?.grid;
   const at = rulesetPositionOf(target);
-  if (!cover || !grid || !at) return 0;
+  if (!grid || !at) return heldBonus;
   // Somebody standing in the way is half cover, friend or foe, when the ruleset says so.
   const screens = cover.creatures
     ? new Set(
@@ -1175,8 +1182,32 @@ export function rulesetCoverBonus(
   } else {
     ground = rulesetCellCover(grid, at) > 0;
   }
+  if (held && order.indexOf(held) > order.indexOf(tier)) tier = held;
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
   return tier === "half" || (against === "attack" && ground) ? cover.bonus : 0;
+}
+
+/** The most cover a condition on `fromId` gives `target` against it (1.535): one whose applier is
+ *  `target`, or with `who: "caller"` was called by `target`, while that applier stands. */
+function rulesetCoverFor(
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  target: RulesetCombatant,
+  fromId: string | undefined,
+): "half" | "three-quarters" | undefined {
+  const from = fromId ? rulesetCombatant(state, fromId) : undefined;
+  if (!from || !combat.conditions?.some((entry) => entry.coverFor)) return undefined;
+  let most: "half" | "three-quarters" | undefined;
+  for (const tracked of from.tracked) {
+    const rule = combat.conditions.find((entry) => entry.condition === tracked.condition)?.coverFor;
+    if (!rule || !tracked.source) continue;
+    const applier = rulesetCombatant(state, tracked.source);
+    if (!applier || !rulesetCombatStanding(applier)) continue;
+    const covered = rule.who === "caller" ? applier.calledBy : applier.id;
+    if (covered !== target.id) continue;
+    if (rule.tier === "three-quarters" || !most) most = rule.tier;
+  }
+  return most;
 }
 
 /** The most cover a wall's cells give on the line between two cells' middles (1.502), never counting

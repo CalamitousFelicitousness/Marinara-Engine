@@ -169124,6 +169124,30 @@
               "endsWhenSourceDown": {
                 "type": "boolean"
               },
+              "coverFor": {
+                "type": "object",
+                "properties": {
+                  "tier": {
+                    "type": "string",
+                    "enum": [
+                      "half",
+                      "three-quarters"
+                    ]
+                  },
+                  "who": {
+                    "type": "string",
+                    "enum": [
+                      "source",
+                      "caller"
+                    ]
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "tier"
+                ],
+                "additionalProperties": false
+              },
               "countsAs": {
                 "type": "array",
                 "items": {

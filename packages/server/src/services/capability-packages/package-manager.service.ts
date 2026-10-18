@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that gives cover to its source or its source's caller (1.535): the Interposing Hand. */
+function carriesCoverFor535(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCoverFor535(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.coverFor !== undefined) return true;
+  return featureValues(record).some((one) => carriesCoverFor535(one, depth + 1));
+}
+
 /** A contest with advantage by size, or a push read off a sheet (1.534): the Forceful Hand. */
 function carriesContestReads534(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7378,6 +7388,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that gives cover to its source, 1.535.
+  if (
+    !declaresApi(535) &&
+    (carriesCoverFor535(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCoverFor535(document)))
+  ) {
+    return "A ruleset with a condition that gives cover against its holder (coverFor) requires schemaVersion 2 and capabilityApi 1.535 or newer";
+  }
   // A contest with advantage by size, or a push read off a sheet, 1.534.
   if (
     !declaresApi(534) &&

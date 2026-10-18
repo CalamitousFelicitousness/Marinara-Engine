@@ -2470,7 +2470,7 @@ function throwSave(
   // Cover helps the saves the ruleset names, said before the roll it changes (combat C6a-2).
   const cover =
     from && ctx.combat.cover?.saves?.includes(save)
-      ? rulesetCoverBonus(ctx.combat, ctx.state, combatant, from, "save")
+      ? rulesetCoverBonus(ctx.combat, ctx.state, combatant, from, "save", undefined, source?.id)
       : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;

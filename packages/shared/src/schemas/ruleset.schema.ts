@@ -12175,6 +12175,14 @@ const combatConditionSchema = z
       .optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** Its holder's attacks and effects at whoever applied it, or with `who: "caller"` at the one
+     *  who called that creature, meet at least this cover while the applier stands (Capability API
+     *  1.535): 5e's Arcane Hand's Interposing Hand, `{ "tier": "half", "who": "caller" }` on the
+     *  creature it stands in front of. Needs `combat.cover`. */
+    coverFor: z
+      .object({ tier: z.enum(["half", "three-quarters"]), who: z.enum(["source", "caller"]).optional() })
+      .strict()
+      .optional(),
     /** Other conditions it counts as (Capability API 1.532): an immunity to one keeps it off, what
      *  holds one off holds it off, a save against one is a save against it, and what ends one ends
      *  it. 5e's Enthrall and Geas, `["charmed"]`. */
@@ -16843,6 +16851,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         else if (!def.sheet.live.conditions.some((one) => one.id === id))
           issue([...path, "countsAs", at], `Unknown condition "${id}"`);
       });
+      // Cover it gives its source (1.535), in a fight that has cover.
+      if (entry.coverFor && !combat.cover) {
+        issue([...path, "coverFor"], '"coverFor" gives cover, so the block declares "cover" too');
+      }
       // What ends it through its source (1.531): conditions, components and senses of the ruleset's. A
       // sense is one it declares or one a condition's `lacks` takes away: 5e's deafened, `hearing`.
       const sourceRule = entry.endsWhenSource;

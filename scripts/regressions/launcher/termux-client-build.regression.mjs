@@ -38,6 +38,16 @@ assert.equal(
   "a heap the user set in NODE_OPTIONS wins",
 );
 assert.equal(desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max_old_space_size=1800" }), null, "however they spell it");
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: '--require "./hooks/--max-old-space-size.cjs"' }),
+  3072,
+  "the same words inside another option's value are not a heap",
+);
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--require ./x.cjs --max-old-space-size 1800" }),
+  null,
+  "the flag with its value after a space is",
+);
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {

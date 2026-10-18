@@ -37,8 +37,9 @@ export function resolveDesktopClientBuildHeapMb({
   totalMemoryBytes = totalmem(),
   defaultHeapMb = Math.floor(getHeapStatistics().heap_size_limit / 1024 / 1024),
 } = {}) {
-  // Node reads - and _ in option names alike, so --max_old_space_size is the user's heap too.
-  if (/--max[-_]old[-_]space[-_]size/u.test(env.NODE_OPTIONS ?? "")) return null;
+  // The flag itself, as its own option (not the same words inside a --require path), however its
+  // name is spelled: Node reads - and _ in option names alike.
+  if (/(?:^|\s)--max[-_]old[-_]space[-_]size(?:[=\s]|$)/u.test(env.NODE_OPTIONS ?? "")) return null;
   const deviceCapMb = Math.floor(totalMemoryBytes / 1024 / 1024 / 2 / 128) * 128;
   const heapMb = Math.min(DESKTOP_BUILD_HEAP_TARGET_MB, deviceCapMb);
   return heapMb > defaultHeapMb ? heapMb : null;

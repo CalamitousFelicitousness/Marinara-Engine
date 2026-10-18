@@ -512,6 +512,11 @@ assert.deepEqual(
 );
 assert.deepEqual(blankStateValueLike({}), {}, "an empty object stays empty");
 assert.deepEqual(
+  blankStateArrayItem([], "customTrackerFields"),
+  { name: "", value: "" },
+  "a Custom Tracker Fields entry added to an empty section starts with a name and a value",
+);
+assert.deepEqual(
   blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventory"),
   { name: "", qty: 1, description: "", location: "" },
   "a cleared Inventory Tracker row keeps a quantity of 1, because the tracker reads qty as at least one",

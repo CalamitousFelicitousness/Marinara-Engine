@@ -33,6 +33,11 @@ interface StateFieldsViewProps {
    * trackers can't match to anything. Lists inside those cards (a character's stats) still add.
    */
   hideRootAddItem?: boolean;
+  /**
+   * The name of the list a section holds at its root, for the sections that are one list (Custom Tracker
+   * Fields). A path of [] has no key, and an empty list still needs the shape its entries have.
+   */
+  rootListKey?: string;
 }
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -218,6 +223,7 @@ export function StateFieldsView({
   onFocusHandled,
   readOnly,
   hideRootAddItem,
+  rootListKey,
 }: StateFieldsViewProps) {
   const { t: localizeUi } = useUiTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -283,7 +289,7 @@ export function StateFieldsView({
                 title={clearLabel}
                 aria-label={clearLabel}
                 onClick={() => update(path, null)}
-                className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/field:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+                className="relative mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity after:absolute after:-inset-2 after:content-[''] hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/field:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -318,14 +324,20 @@ export function StateFieldsView({
                 node.filter((_, item) => item !== index),
               )
             }
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+            className="relative grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity after:absolute after:-inset-2 after:content-[''] hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         );
       };
-      // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …).
-      const listKey = typeof path[path.length - 1] === "string" ? (path[path.length - 1] as string) : undefined;
+      // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …); a
+      // section that is one list has no key in the path, so it passes its own.
+      const listKey =
+        typeof path[path.length - 1] === "string"
+          ? (path[path.length - 1] as string)
+          : path.length === 0
+            ? rootListKey
+            : undefined;
       const addItem =
         readOnly || (hideRootAddItem && path.length === 0) ? null : (
           <button

@@ -123,6 +123,7 @@ import {
   rulesetAuraSpreaders,
   rulesetSyncAuras,
   rulesetSyncSizes,
+  rulesetSyncAbilities,
   rulesetSyncSpeeds,
   rulesetRegenerations,
   rulesetHangsOn,
@@ -497,6 +498,8 @@ function begin(
         const one = rulesetCombatant(next, id);
         if (one) groundFlier(ctx, one);
       }
+      // Their numbers worked out again as the conditions now held change their abilities (1.462).
+      rulesetSyncAbilities(definition, next);
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
         ctx.events.push({
@@ -1787,7 +1790,13 @@ function fellsGrant(ctx: RulesetCombatContext, target: RulesetCombatant): void {
           ctx.definition,
           feller.sheet.build,
           ref,
-          evaluateRulesetSheetLive(ctx.definition, feller.sheet.build, feller.sheet.live, feller.sheet.items),
+          evaluateRulesetSheetLive(
+            ctx.definition,
+            feller.sheet.build,
+            feller.sheet.live,
+            feller.sheet.items,
+            feller.abilityConditions,
+          ),
         )
       : (ref.const ?? 0);
     if (!Number.isFinite(amount) || amount <= 0) continue;
@@ -7092,7 +7101,8 @@ function checkFloors(
     const sheet = who.sheet;
     const tier =
       sheet && skill
-        ? evaluateRulesetSheetLive(ctx.definition, sheet.build, sheet.live, sheet.items).skillTiers[skill]
+        ? evaluateRulesetSheetLive(ctx.definition, sheet.build, sheet.live, sheet.items, who.abilityConditions)
+            .skillTiers[skill]
         : undefined;
     return (trained = rulesetTierAddsProficiency(ctx.definition, tier));
   };
@@ -8572,7 +8582,13 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
                 ctx.definition,
                 actor.sheet.build,
                 one.add,
-                evaluateRulesetSheetLive(ctx.definition, actor.sheet.build, actor.sheet.live, actor.sheet.items),
+                evaluateRulesetSheetLive(
+                  ctx.definition,
+                  actor.sheet.build,
+                  actor.sheet.live,
+                  actor.sheet.items,
+                  actor.abilityConditions,
+                ),
               )
             : 0;
         const amount = Math.max(0, rolled.total + (Number.isFinite(added) ? added : 0));

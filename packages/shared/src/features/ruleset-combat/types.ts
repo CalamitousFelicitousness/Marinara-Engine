@@ -1568,6 +1568,9 @@ export interface RulesetCombatant {
   breath?: { held: number; lasts?: number };
   /** Conditions damage stopped working until their next turn starts (1.461): a Cloak of Displacement. */
   harmStopped?: string[];
+  /** The conditions held that change their abilities (1.462), which their numbers were last worked
+   *  out with. */
+  abilityConditions?: string[];
   /** Riding this combatant (1.443): where it goes, they go, and they walk no way of their own. */
   mountedOn?: string;
   /** Ridden by this combatant (1.443); `mountControlled` when its rider controls it, moving and

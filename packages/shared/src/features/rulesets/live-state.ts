@@ -891,10 +891,24 @@ export function evaluateRulesetSheetLive(
   stored?: unknown,
   /** The items the character holds, which an `itemStat` reads; none outside a game. */
   items?: ReadonlyArray<RulesetSheetItem>,
+  /** Conditions a fight has on them besides the sheet's own (1.462), for what they do to abilities. */
+  conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
+  const live = readRulesetLive(definition, build, stored);
+  // What the conditions they hold do to their abilities (1.462): the sheet's own, and the fight's.
+  const held = new Set([
+    ...live.conditions.filter((condition) => condition.active).map((condition) => condition.id),
+    ...(conditions ?? []),
+  ]);
+  const conditionAbilities = held.size
+    ? (definition.combat?.conditions ?? []).flatMap((entry) =>
+        entry.abilities && held.has(entry.condition) ? [entry.abilities] : [],
+      )
+    : [];
   return evaluateRulesetSheet(definition, build, {
-    ...readRulesetLive(definition, build, stored),
+    ...live,
     ...(items ? { items } : {}),
+    ...(conditionAbilities.length ? { conditionAbilities } : {}),
   });
 }
 

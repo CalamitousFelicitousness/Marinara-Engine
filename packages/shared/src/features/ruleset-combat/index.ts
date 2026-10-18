@@ -121,6 +121,8 @@ export {
   rulesetWardsOn,
   rulesetZoneConditions,
   rulesetAbilityNarrowing,
+  rulesetAbilityScore,
+  rulesetSyncAbilities,
   rulesetCheckAbility,
   rulesetCheckSkill,
   rulesetLightMatches,

@@ -12,6 +12,7 @@ import {
   rulesetSheetEnvelopeSchema,
   type RulesetCatalogItem,
   type RulesetCombatAbilitySource,
+  type RulesetConditionAbilities,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetResolution,
@@ -249,6 +250,8 @@ export interface RulesetSheetLiveValues {
   states?: ReadonlyArray<{ id: string; value: string }>;
   /** The items the character holds, which an `itemStat` reads. None outside a game. */
   items?: ReadonlyArray<RulesetSheetItem>;
+  /** What the conditions they hold do to their abilities (Capability API 1.462), one per condition. */
+  conditionAbilities?: ReadonlyArray<Readonly<RulesetConditionAbilities>>;
 }
 
 /** One stack of the ruleset's items a character holds, as the sheet reads it: what the item is, how
@@ -289,17 +292,28 @@ export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["i
  *  `add`s, from each worn item's `worn` effect and each other item's `carried` one, one item once. */
 function itemAbilityChanges(
   items: ReadonlyArray<RulesetSheetItem> | undefined,
-): Map<string, { set?: number; add: number; topped: Array<{ add: number; max: number }> }> {
-  const changes = new Map<string, { set?: number; add: number; topped: Array<{ add: number; max: number }> }>();
+  conditions: ReadonlyArray<Readonly<RulesetConditionAbilities>> = [],
+): Map<string, { set?: number; to?: number; add: number; topped: Array<{ add: number; max: number }> }> {
+  const changes = new Map<
+    string,
+    { set?: number; to?: number; add: number; topped: Array<{ add: number; max: number }> }
+  >();
   const seen = new Set<unknown>();
+  const effects: Array<Readonly<RulesetConditionAbilities>> = [];
   for (const held of items ?? []) {
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
     if (!effect?.abilities || seen.has(effect)) continue;
     seen.add(effect);
-    for (const [id, change] of Object.entries(effect.abilities)) {
+    effects.push(effect.abilities);
+  }
+  // And what the conditions they hold do, the same way (1.462).
+  for (const abilities of [...effects, ...conditions]) {
+    for (const [id, change] of Object.entries(abilities)) {
       const current = changes.get(id) ?? { add: 0, topped: [] };
-      if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
+      // Made a number whatever it was (1.462): the lowest of them, Feeblemind's 1.
+      if ("to" in change) current.to = Math.min(current.to ?? change.to, change.to);
+      else if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
       // On top of the score sets leave, up to its most (1.313).
       else if (change.max !== undefined) current.topped.push({ add: change.add, max: change.max });
       else current.add += change.add;
@@ -488,7 +502,7 @@ export function evaluateRulesetSheet(
   const abilityMods: Record<string, number> = {};
   // What the character's items do to their abilities comes first, so everything reads the changed one:
   // a `set` is a floor a higher score keeps, the `add`s go on top, and the ability's own range holds.
-  const fromItems = itemAbilityChanges(live?.items);
+  const fromItems = itemAbilityChanges(live?.items, live?.conditionAbilities);
   for (const ability of sheet.abilities) {
     const base = finite(build.abilities?.[ability.id]) ?? ability.default;
     const change = fromItems.get(ability.id);
@@ -499,6 +513,8 @@ export function evaluateRulesetSheet(
     for (const top of change?.topped ?? []) {
       score = Math.max(score, Math.min(score + top.add, top.max, ability.max));
     }
+    // A condition that makes it a number makes it that, last (1.462).
+    if (change?.to !== undefined) score = Math.min(ability.max, Math.max(ability.min, change.to));
     abilityScores[ability.id] = score;
     abilityMods[ability.id] = rulesetAbilityModifier(definition, score);
   }

@@ -3513,6 +3513,20 @@ const conditionWeaponSchema: z.ZodType<RulesetConditionWeapon, z.ZodTypeDef, unk
   )
   .refine((rule) => !(rule.ability && rule.abilityFrom), { message: "weapon takes ability or abilityFrom, not both" });
 
+/** A condition's `abilities` (1.462): see the combat condition's own. */
+export type RulesetConditionAbilityChange = { set: number } | { to: number } | { add: number; max?: number };
+export type RulesetConditionAbilities = Record<string, RulesetConditionAbilityChange>;
+const conditionAbilitiesSchema: z.ZodType<RulesetConditionAbilities, z.ZodTypeDef, unknown> = z.record(
+  sheetId,
+  z.union([
+    z.object({ set: z.number().int() }).strict(),
+    z.object({ to: z.number().int() }).strict(),
+    z
+      .object({ add: z.number().int().min(-100).max(100), max: z.number().int().min(-1000).max(1000).optional() })
+      .strict(),
+  ]),
+);
+
 /** A condition's `endsWhenHolder` (1.311): see the combat condition's own. */
 export interface RulesetConditionEndsWhenHolder {
   moves?: true;
@@ -11070,6 +11084,13 @@ const combatConditionSchema = z
      *  modifier more, to the long jump only with `long`: Remarkable Athlete (Strength, long) and
      *  Second-Story Work (Dexterity). */
     jumps: conditionJumpsSchema.optional(),
+    /** What it does to its holder's abilities while it holds (Capability API 1.462), by ability id,
+     *  as an item's do: `set` lifts a score to at least a number, `add` goes on top (to no more than
+     *  `max`), and `to` makes it that number whatever it was. Held on the sheet, everything the sheet
+     *  works out reads it; put on in a fight, the fighter's attacks, saves, checks and defense are
+     *  worked out again, their health and speed staying as they are. 5e's Potion of Hill Giant
+     *  Strength, `{ "str": { "set": 21 } }`; Feeblemind, `{ "int": { "to": 1 }, "cha": { "to": 1 } }`. */
+    abilities: conditionAbilitiesSchema.optional(),
     /** Its holder's dying rolls are made with this (Capability API 1.447): 5e's Beacon of Hope,
      *  `"advantage"`. */
     deathSaves: z.enum(["advantage", "disadvantage"]).optional(),
@@ -15622,6 +15643,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
+      // The abilities it changes (1.462), at most 12, never by nothing.
+      const changed = Object.entries(entry.abilities ?? {});
+      if (changed.length > 12) issue([...path, "abilities"], "A condition changes at most 12 abilities");
+      for (const [id, change] of changed) {
+        if (!abilityIds.has(id)) issue([...path, "abilities", id], `Unknown ability "${id}"`);
+        if ("add" in change && change.add === 0) issue([...path, "abilities", id, "add"], "Adding 0 changes nothing");
+      }
       // The abilities a jump adds (1.446) and a weapon is made with (1.448), and the field naming one.
       const jumpAbility = entry.jumps?.plus?.ability;
       if (jumpAbility !== undefined && !abilityIds.has(jumpAbility))

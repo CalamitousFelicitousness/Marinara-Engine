@@ -359,7 +359,7 @@ export function rulesetCombatValue(
         definition,
         sheet.build,
         ref,
-        evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items),
+        evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items, actor.abilityConditions),
       )
     : ref.const;
   return value !== undefined && Number.isFinite(value) ? value : undefined;
@@ -888,6 +888,15 @@ export function rulesetAbilityScore(
 ): number | undefined {
   if (combatant.sheet) {
     if (!definition.sheet.abilities.some((entry) => entry.id === ability)) return undefined;
+    // As the conditions they hold in the fight change it (1.462).
+    if (combatant.abilityConditions?.length)
+      return evaluateRulesetSheetLive(
+        definition,
+        combatant.sheet.build,
+        combatant.sheet.live,
+        combatant.sheet.items,
+        combatant.abilityConditions,
+      ).abilityScores[ability];
     return resolveRulesetValueRef(definition, combatant.sheet.build, { abilityScore: ability } as RulesetValueRef);
   }
   return combatant.block?.abilities?.[ability];
@@ -906,7 +915,8 @@ function heldSources(definition: RulesetDefinition, combatant: RulesetCombatant)
     definition,
     sheet.build,
     items,
-    () => (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, items)),
+    () =>
+      (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, items, combatant.abilityConditions)),
   );
 }
 
@@ -990,9 +1000,13 @@ function activeLevels(
       return [];
     const value =
       level.derived !== undefined
-        ? ((derived ??= evaluateRulesetSheetLive(definition, sheet!.build, sheet!.live, sheet!.items).derived)[
-            level.derived
-          ] ?? 0)
+        ? ((derived ??= evaluateRulesetSheetLive(
+            definition,
+            sheet!.build,
+            sheet!.live,
+            sheet!.items,
+            combatant.abilityConditions,
+          ).derived)[level.derived] ?? 0)
         : live
           ? (live.tracks.find((track) => track.id === level.track)?.value ?? 0)
           : (combatant.tracks?.[level.track!] ?? 0);
@@ -1115,7 +1129,8 @@ function rulesetTrainedIn(
 ): boolean {
   const sheet = combatant.sheet;
   if (!sheet || skill === undefined) return false;
-  const tier = evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items).skillTiers[skill];
+  const tier = evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items, combatant.abilityConditions)
+    .skillTiers[skill];
   return rulesetTierAddsProficiency(definition, tier);
 }
 
@@ -3943,13 +3958,15 @@ function sheetCombatant(
     catalogs: RulesetCatalogEntriesById;
     perCell: number | undefined;
     items?: ReadonlyArray<RulesetSheetItem>;
+    /** Conditions the fight has on them that change their abilities (1.462). */
+    conditions?: readonly string[];
   },
 ): RulesetCombatant {
   const { build, perCell } = input;
   // Against the fighter's live state as the fight found it, so a value that reads a track or a pool
   // (a speed an injury slows) is the one this fight uses; and against what they hold, for a value
   // that reads their items (a defense their armor gives).
-  const evaluated = evaluateRulesetSheetLive(definition, build, input.live, input.items);
+  const evaluated = evaluateRulesetSheetLive(definition, build, input.live, input.items, input.conditions);
   const catalogs = narrowCatalogs(build, input.catalogs);
   // Initiative is a roll too, so `resolution.adjust` counts on it as it does on a check.
   const modifier = combat.initiative.modifier
@@ -4335,7 +4352,7 @@ function sheetCombatant(
             definition,
             build,
             combat.defense,
-            evaluateRulesetSheetLive(definition, build, input.live, without),
+            evaluateRulesetSheetLive(definition, build, input.live, without, input.conditions),
           ),
         );
         if (Number.isFinite(less) && whole - less !== 0) heldDefense[index] = whole - less;
@@ -4964,7 +4981,13 @@ function fillShapeForms(
           definition,
           sheet.build,
           ref,
-          (evaluated ??= evaluateRulesetSheetLive(definition, sheet.build, sheet.live, sheet.items)),
+          (evaluated ??= evaluateRulesetSheetLive(
+            definition,
+            sheet.build,
+            sheet.live,
+            sheet.items,
+            combatant.abilityConditions,
+          )),
         )
       : 0;
   const cap = forms.upTo?.at && sheet ? read(forms.upTo.at) : undefined;
@@ -5445,6 +5468,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   rulesetSyncSizes(definition, state);
   // And the ways of moving they were given (1.345).
   rulesetSyncSpeeds(definition, state);
+  // And the abilities the conditions they hold change (1.462).
+  rulesetSyncAbilities(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
   // What auras spread from where everybody stands (1.263).
   rulesetSyncAuras(definition, state);
@@ -5750,6 +5775,7 @@ export function rulesetInitiativeModifierNow(
     combatant.sheet.build,
     combatant.sheet.live,
     combatant.sheet.items,
+    combatant.abilityConditions,
   );
   return (
     resolveRulesetValueRef(definition, combatant.sheet.build, ref, evaluated) +
@@ -6079,6 +6105,68 @@ export function rulesetHangsOn(
       entry.hangsOn ? [{ from: entry.condition, hangs: entry.hangsOn }] : [],
     ),
   ];
+}
+
+/**
+ * The numbers a sheet fighter fights with worked out again as the conditions the fight has on them
+ * change their abilities (1.462): a Potion of Giant Strength drunk mid-fight. Their attacks' to-hit,
+ * damage, healing and save, their saves, checks and defense are read off the sheet again; health,
+ * speed and everything else stay as they are. The ids of those conditions are kept, so nothing is
+ * worked out again until they change. Returns whose numbers changed.
+ */
+export function rulesetSyncAbilities(definition: RulesetDefinition, state: RulesetEncounterState): string[] {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.abilities)) return [];
+  const changed: string[] = [];
+  for (const combatant of state.combatants) {
+    const sheet = combatant.sheet;
+    if (!sheet) continue;
+    const ids = [
+      ...new Set(
+        rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) =>
+          entry.abilities && !entry.item ? [entry.condition] : [],
+        ),
+      ),
+    ].sort();
+    if (ids.join("|") === (combatant.abilityConditions ?? []).join("|")) continue;
+    const before = combatant.abilityConditions;
+    if (ids.length) combatant.abilityConditions = ids;
+    else delete combatant.abilityConditions;
+    // Nothing to work out again at the start of a fight whose sheet already held them all.
+    if (
+      !before &&
+      ids.every((id) =>
+        readRulesetLive(definition, sheet.build, sheet.live).conditions.some((one) => one.id === id && one.active),
+      )
+    )
+      continue;
+    const fresh = sheetCombatant(definition, combat, {
+      id: combatant.id,
+      name: combatant.name,
+      side: combatant.side,
+      initiativeRoll: combatant.initiativeRoll,
+      roll: () => 1,
+      build: sheet.build,
+      live: sheet.live,
+      catalogs: sheet.catalogs,
+      perCell: combat.distance?.perCell,
+      ...(sheet.items ? { items: sheet.items } : {}),
+      conditions: ids,
+    });
+    combatant.defense = fresh.defense;
+    combatant.saves = fresh.saves;
+    if (fresh.checks) combatant.checks = fresh.checks;
+    for (const action of combatant.actions) {
+      const now = fresh.actions.find((one) => one.id === action.id);
+      if (!now) continue;
+      if (now.toHit !== undefined) action.toHit = now.toHit;
+      if (now.damage) action.damage = now.damage;
+      if (now.heal) action.heal = now.heal;
+      if (now.save) action.save = now.save;
+    }
+    changed.push(combatant.id);
+  }
+  return changed;
 }
 
 export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetEncounterState): string[] {

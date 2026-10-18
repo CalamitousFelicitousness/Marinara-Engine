@@ -39,7 +39,13 @@ export function rulesetFormAllowed(
   if (!cap || rank === undefined) return true;
   let most: number | undefined;
   if (target.sheet && cap.targetLevel) {
-    const evaluated = evaluateRulesetSheetLive(definition, target.sheet.build, target.sheet.live, target.sheet.items);
+    const evaluated = evaluateRulesetSheetLive(
+      definition,
+      target.sheet.build,
+      target.sheet.live,
+      target.sheet.items,
+      target.abilityConditions,
+    );
     most = resolveRulesetValueRef(definition, target.sheet.build, cap.targetLevel, evaluated);
   } else {
     most = target.ranks?.[cap.filter];
@@ -58,7 +64,13 @@ function rulesetProficiencies(
   const saves = new Map<string, { ability?: string; rank: number }>();
   const checks = new Map<string, { ability?: string; rank: number }>();
   if (!target.sheet) return { saves, checks };
-  const evaluated = evaluateRulesetSheetLive(definition, target.sheet.build, target.sheet.live, target.sheet.items);
+  const evaluated = evaluateRulesetSheetLive(
+    definition,
+    target.sheet.build,
+    target.sheet.live,
+    target.sheet.items,
+    target.abilityConditions,
+  );
   const rankOf = (tierId: string | undefined) => {
     const tier = definition.resolution.proficiencyTiers.find((entry) => entry.id === tierId);
     return tier ? roundRulesetNumber(tier.multiplier * evaluated.proficiencyBonus, tier.round) + tier.flat : 0;

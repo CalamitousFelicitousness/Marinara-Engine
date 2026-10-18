@@ -1139,7 +1139,7 @@ export function rulesetHolderValue(
       definition,
       build,
       atLeast,
-      evaluateRulesetSheetLive(definition, build, live, items),
+      evaluateRulesetSheetLive(definition, build, live, items, target.abilityConditions),
     );
     return Number.isFinite(value) ? Math.trunc(value) : undefined;
   }
@@ -2080,7 +2080,7 @@ export function rulesetSheetWithin(
     definition,
     build,
     bounds.value,
-    evaluateRulesetSheetLive(definition, build, live, items),
+    evaluateRulesetSheetLive(definition, build, live, items, combatant.abilityConditions),
   );
   return (
     (bounds.atLeast === undefined || value >= bounds.atLeast) && (bounds.atMost === undefined || value <= bounds.atMost)
@@ -2100,7 +2100,7 @@ export function rulesetSheetValue(
     definition,
     build,
     ref,
-    evaluateRulesetSheetLive(definition, build, live, items),
+    evaluateRulesetSheetLive(definition, build, live, items, combatant.abilityConditions),
   );
   return Number.isFinite(value) ? Math.trunc(value) : undefined;
 }

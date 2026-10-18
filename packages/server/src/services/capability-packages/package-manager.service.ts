@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that changes its holder's abilities (1.462): a Potion of Giant Strength, Feeblemind. */
+function carriesConditionAbilities462(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConditionAbilities462(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && plainRecord(record.abilities) !== undefined) return true;
+  return featureValues(record).some((one) => carriesConditionAbilities462(one, depth + 1));
+}
+
 /** A condition damage stops working until its holder's next turn (1.461): a Cloak of Displacement. */
 function carriesHarmStopped461(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6533,6 +6543,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions that change abilities, 1.462.
+  if (!declaresApi(462) && carriesConditionAbilities462(ruleset)) {
+    return "A ruleset whose conditions change their holder's abilities (a combat condition's abilities) requires schemaVersion 2 and capabilityApi 1.462 or newer";
+  }
   // Conditions damage stops until the holder's next turn, 1.461.
   if (!declaresApi(461) && carriesHarmStopped461(ruleset)) {
     return "A ruleset whose conditions stop working when their holder takes damage (suppressedWhenHarmed) requires schemaVersion 2 and capabilityApi 1.461 or newer";

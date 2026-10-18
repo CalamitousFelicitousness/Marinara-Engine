@@ -2296,6 +2296,7 @@ export function rulesetZoneAction(
     };
   }
   if (zone.cover) out.cover = zone.cover;
+  if (zone.turnsShots) out.turnsShots = zone.turnsShots.spares ? { spares: [...zone.turnsShots.spares] } : {};
   // Its stages (1.504), their amounts in the fight's own.
   if (zone.stages) {
     out.stages = zone.stages.map((stage) => {

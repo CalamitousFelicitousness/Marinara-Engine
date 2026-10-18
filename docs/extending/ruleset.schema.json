@@ -42981,6 +42981,23 @@
                             "three-quarters"
                           ]
                         },
+                        "turnsShots": {
+                          "type": "object",
+                          "properties": {
+                            "spares": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 60
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "sections": {
                           "type": "object",
                           "properties": {
@@ -66676,6 +66693,23 @@
                                 "three-quarters"
                               ]
                             },
+                            "turnsShots": {
+                              "type": "object",
+                              "properties": {
+                                "spares": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
+                            },
                             "sections": {
                               "type": "object",
                               "properties": {
@@ -78890,6 +78924,23 @@
                                   "half",
                                   "three-quarters"
                                 ]
+                              },
+                              "turnsShots": {
+                                "type": "object",
+                                "properties": {
+                                  "spares": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 60
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "sections": {
                                 "type": "object",
@@ -101438,6 +101489,23 @@
                                 "three-quarters"
                               ]
                             },
+                            "turnsShots": {
+                              "type": "object",
+                              "properties": {
+                                "spares": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
+                            },
                             "sections": {
                               "type": "object",
                               "properties": {
@@ -119975,6 +120043,23 @@
                                       "half",
                                       "three-quarters"
                                     ]
+                                  },
+                                  "turnsShots": {
+                                    "type": "object",
+                                    "properties": {
+                                      "spares": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 60
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "sections": {
                                     "type": "object",
@@ -138519,6 +138604,23 @@
                                       "half",
                                       "three-quarters"
                                     ]
+                                  },
+                                  "turnsShots": {
+                                    "type": "object",
+                                    "properties": {
+                                      "spares": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 60
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "sections": {
                                     "type": "object",

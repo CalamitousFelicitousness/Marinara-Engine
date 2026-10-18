@@ -4006,6 +4006,9 @@ export interface RulesetCombatZoneRule {
   }>;
   /** Cover it gives what lies on its far side (1.502): 5e's Blade Barrier. */
   cover?: "half" | "three-quarters";
+  /** Turns aside attacks from afar with a weapon that is not magical (1.528), but those `spares` names:
+   *  5e's Wind Wall. */
+  turnsShots?: { spares?: string[] };
   /** A wall's one side (1.177): cells within `distance` of it there catch as `triggers` say. */
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   /** Sections `every` cells long, each struck at and broken apart (1.200); a broken one stops

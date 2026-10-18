@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone that turns shots aside (1.528): Wind Wall. */
+function carriesTurnsShots528(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTurnsShots528(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.turnsShots !== undefined) return true;
+  return featureValues(record).some((one) => carriesTurnsShots528(one, depth + 1));
+}
+
 /** A zone stage that shakes concentration or is a wind (1.527): Storm of Vengeance. */
 function carriesStageWind527(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7300,6 +7310,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone that turns shots aside, 1.528.
+  if (
+    !declaresApi(528) &&
+    (carriesTurnsShots528(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTurnsShots528(document)))
+  ) {
+    return "A ruleset with a zone that turns aside attacks from afar with weapons that are not magical (turnsShots) requires schemaVersion 2 and capabilityApi 1.528 or newer";
+  }
   // A zone stage that shakes concentration or is a wind, 1.527.
   if (
     !declaresApi(527) &&

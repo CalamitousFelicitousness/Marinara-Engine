@@ -659,7 +659,34 @@ export function rulesetTargetRefusal(
   // Into, out of or across a storm's stage where no ranged weapon is shot (1.504).
   if (own && target && reach.max > 1 && rulesetStormStops(state, own, from, rulesetPositionOf(target) ?? to))
     return "no-line-of-sight";
+  // Into, out of or across a wall that turns shots aside (1.528): Wind Wall.
+  if (own && target && reach.max > 1 && rulesetShotsTurned(state, own, from, rulesetPositionOf(target) ?? to))
+    return "no-line-of-sight";
   return null;
+}
+
+/** Whether a zone that turns shots aside stops this attack between two cells (1.528): one from afar
+ *  with a weapon that is not magical, into, out of or across it, unless the zone spares it by label.
+ *  5e's Wind Wall, which a giant's hurled Rock goes through. */
+export function rulesetShotsTurned(
+  state: RulesetEncounterState,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+): boolean {
+  if (action.toHit === undefined || action.area || rulesetIsSpell(action)) return false;
+  if ((action.qualities ?? action.damage?.qualities)?.includes("magical")) return false;
+  const walls = rulesetStandingZones(state).filter(({ action: made }) => {
+    const rule = made.zone?.turnsShots;
+    if (!rule) return false;
+    const name = action.label.trim().toLowerCase();
+    return !rule.spares?.some((one) => one.trim().toLowerCase() === name);
+  });
+  if (walls.length === 0) return false;
+  const path = new Set([from, to, ...rulesetPathCells(from, to)].map((cell) => `${cell.x},${cell.y}`));
+  return walls.some(({ caster, zone }) =>
+    rulesetZoneCells(state, caster, zone).some((cell) => path.has(`${cell.x},${cell.y}`)),
+  );
 }
 
 /** Whether a zone's stage stops an attack with a ranged weapon between two cells (1.504): one into,

@@ -3201,6 +3201,7 @@ export interface RulesetCatalogZone {
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
   blocks?: Array<"move" | "sight">;
   cover?: "half" | "three-quarters";
+  turnsShots?: { spares?: string[] };
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
@@ -3691,6 +3692,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  standing cell of it is against at least this much cover, as the ruleset's `combat.cover` grades
      *  it. 5e's Blade Barrier, three-quarters. */
     cover: z.enum(["half", "three-quarters"]).optional(),
+    /** Turns aside every attack from afar with a weapon that is not magical, made into, out of or
+     *  across it (Capability API 1.528), but those its `spares` names by label: 5e's Wind Wall, sparing
+     *  a giant's hurled Rock. */
+    turnsShots: z
+      .object({ spares: z.array(promptSafeText(60)).min(1).max(12).optional() })
+      .strict()
+      .optional(),
     /** The wall stands in sections `every` long (Capability API 1.200), each struck at like a creature
      *  with this `defense` and `health`, taking double, half or none of the damage types it is
      *  `vulnerable` to, `resist`s or is `immune` to. One brought to 0 is broken: it stops blocking,
@@ -6704,6 +6712,7 @@ function zoneIssue(mechanics: {
                 !zone.wards &&
                 !zone.keepsOut &&
                 !zone.cover &&
+                !zone.turnsShots &&
                 !zone.stages &&
                 !zone.detonates &&
                 !zone.burns &&

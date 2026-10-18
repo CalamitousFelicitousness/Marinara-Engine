@@ -888,6 +888,20 @@ export interface RulesetCombatAction {
    *  `modes` when it names options. */
   callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true };
   callChoice?: true;
+  /** Which call it makes is rolled as it is used (1.506), never picked: each as likely as its
+   *  `weight`, calling nobody without a `call`, those it calls joining the other side when `hostile`.
+   *  A Bag of Tricks, an Efreeti Bottle. */
+  callsRolled?: Array<{
+    weight: number;
+    label: string;
+    call?: NonNullable<RulesetCombatAction["calls"]>;
+    hostile?: true;
+  }>;
+  /** What it does is rolled as it is used (1.506): each row as likely as its `weight`, made as the
+   *  holder's action `id`, or nothing in the fight without one. A Wand of Wonder. */
+  rollsAmong?: Array<{ weight: number; label: string; id?: string }>;
+  /** Made only as a row another action rolled (1.506), never on a menu. */
+  rolledPart?: true;
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
   /** What its holder does as it dies (1.487), never on a menu: a mephit's Death Burst. */
@@ -3390,6 +3404,8 @@ export type RulesetCombatEvent =
   | { type: "goesAt"; actorId: string; condition: string; targetId: string }
   /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */
   | { type: "alongside"; actorId: string; label: string; to: string }
+  /** A table rolled as something was used (1.506): `roll` of `of`, and the row it came up. */
+  | { type: "rolledTable"; actorId: string; label: string; roll: number; of: number; result: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */
   | {
       type: "charged";

@@ -2222,6 +2222,7 @@
   "game.combat.ruleset.event.revealedSeen": "{{names}} spots {{actor}}.",
   "game.combat.ruleset.event.revived": "{{actor}} is back up on {{health}}.",
   "game.combat.ruleset.event.rider": "{{label}} catches {{target}} as well.",
+  "game.combat.ruleset.event.rolledTable": "{{actor}}'s {{label}} rolls {{roll}} of {{of}}: {{result}}.",
   "game.combat.ruleset.event.round": "Round {{round}}.",
   "game.combat.ruleset.event.sanctuary": "{{actor}} is turned from {{target}} by a sanctuary and makes {{label}} at {{instead}}.",
   "game.combat.ruleset.event.sanctuaryLost": "{{actor}} is turned from {{target}} by a sanctuary, and {{label}} is lost.",

@@ -9112,6 +9112,16 @@ function callCreatures(
   steps = 0,
 ): void {
   if (!action.calls) return;
+  // Which call comes is rolled (1.506): a Bag of Tricks' beast, an Efreeti Bottle's efreeti, which may
+  // turn on whoever let it out, or grant wishes and leave nobody behind.
+  let hostile = false;
+  if (action.callsRolled) {
+    const row = rollWeighted(ctx, actor, action.label, action.callsRolled);
+    if (!row?.call) return;
+    hostile = !!row.hostile;
+    action = { ...action, calls: row.call };
+  }
+  if (!action.calls) return;
   const per = action.calls.timesPerSteps;
   // And so many more for each step past the steps it needs (1.484): Animate Dead's two.
   const more = action.calls.perStep ? action.calls.perStep * Math.max(0, steps - (action.calls.fromStep ?? 0)) : 0;
@@ -9161,6 +9171,19 @@ function callCreatures(
     }
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+  // Come against whoever called them (1.506): the other side's from the start, never theirs.
+  if (hostile && ids.length) {
+    for (const id of ids) {
+      const called = rulesetCombatant(ctx.state, id);
+      if (!called) continue;
+      called.side = actor.side === "party" ? "enemy" : "party";
+      called.calledTurned = true;
+      delete called.calledWith;
+      delete called.calledEndsWithCaller;
+      delete called.calledCommand;
+    }
+    ctx.events.push({ type: "turnedOn", actorId: actor.id, ids });
+  }
   // What it puts on goes on them (1.426): Antipathy's condition on its object, the kind remembered.
   if (action.appliesToCalled) {
     for (const id of ids) {
@@ -9277,6 +9300,23 @@ function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
     if (before) ctx.summonStriking = before;
     else delete ctx.summonStriking;
   }
+}
+
+/** One row of a table rolled as something is used (1.506), each as likely as its weight: told, and
+ *  the row it came up. */
+function rollWeighted<Row extends { weight: number; label: string }>(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  label: string,
+  rows: readonly Row[],
+): Row | undefined {
+  const of = rows.reduce((sum, row) => sum + Math.max(0, row.weight), 0);
+  if (of < 1) return undefined;
+  const roll = ctx.roll(of);
+  let left = roll;
+  const row = rows.find((one) => (left -= Math.max(0, one.weight)) <= 0) ?? rows[rows.length - 1];
+  if (row) ctx.events.push({ type: "rolledTable", actorId: actor.id, label, roll, of, result: row.label });
+  return row;
 }
 
 /** Those bound to their caller (1.393) leave once it is out: a demon's summoned kin. */
@@ -12801,6 +12841,33 @@ function resolveActionBodyIn(
   }
   // Cast, a summons that strikes by itself only appears (1.486): its strikes come as turns start.
   if (action.summons?.strikesAtTurnStart && !ctx.summonStriking && !held) return null;
+  // What it does, rolled for (1.506): a Wand of Wonder's row, at whom it was aimed, centred there
+  // with an area, or on its user. A row that does nothing a fight can use is only told.
+  if (action.rollsAmong && !held) {
+    const row = rollWeighted(ctx, actor, action.label, action.rollsAmong);
+    const part = row?.id ? actor.actions.find((one) => one.id === row.id) : undefined;
+    if (!part || actor.defeated) return null;
+    const aimedOne = targets.find((one) => one.id !== actor.id && !one.defeated) ?? targets[0];
+    const at = (aimedOne && rulesetPositionOf(aimedOne)) || ctx.aimedAt;
+    const aimed = ctx.aimedAt;
+    const aimedAlso = ctx.aimedAlso;
+    delete ctx.aimedAlso;
+    if (at) ctx.aimedAt = { x: at.x, y: at.y };
+    const caught =
+      part.targets.side === "self"
+        ? [actor]
+        : part.area && at && ctx.state.board?.grid
+          ? rulesetAreaTargets(ctx.state, actor.id, part.id, at).flatMap((id) => rulesetCombatant(ctx.state, id) ?? [])
+          : targets;
+    try {
+      resolveAction(ctx, actor, part, caught, payWith);
+    } finally {
+      if (aimed) ctx.aimedAt = aimed;
+      else delete ctx.aimedAt;
+      if (aimedAlso) ctx.aimedAlso = aimedAlso;
+    }
+    return null;
+  }
   // Other uses' effects beside it (1.482), each on whom its burst around its user catches, spending
   // nothing of theirs: Thunder and Lightning's Thunderclap.
   if (action.alongside && !held) {

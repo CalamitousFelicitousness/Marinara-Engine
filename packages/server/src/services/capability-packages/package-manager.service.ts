@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A call or an item's use rolled for (1.506): a Bag of Tricks, a Wand of Wonder. */
+function carriesRolledTables506(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRolledTables506(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.rolled !== undefined) return true;
+  if (record.useTable !== undefined || record.rollsTable !== undefined) return true;
+  return featureValues(record).some((one) => carriesRolledTables506(one, depth + 1));
+}
+
 /** Creatures built from their caller, or commanded by them (1.505): Arcane Hand. */
 function carriesCommandedCalls505(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7058,6 +7069,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Calls and item uses rolled for, 1.506.
+  if (
+    !declaresApi(506) &&
+    (carriesRolledTables506(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRolledTables506(document)))
+  ) {
+    return "A ruleset with a call or an item's use rolled for (calls.rolled, useTable, rollsTable) requires schemaVersion 2 and capabilityApi 1.506 or newer";
+  }
   // Creatures built from their caller or commanded by them, 1.505.
   if (
     !declaresApi(505) &&

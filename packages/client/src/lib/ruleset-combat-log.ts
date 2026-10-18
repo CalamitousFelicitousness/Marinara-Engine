@@ -658,6 +658,15 @@ export function rulesetCombatEventLine(
     // Another use's effect beside the one used (1.482): Thunderclap with Lightning Strike.
     case "alongside":
       return key("alongside", { actor: names.combatant(event.actorId), label: event.label, to: event.to });
+    // A table rolled as something was used (1.506): a Wand of Wonder's d100.
+    case "rolledTable":
+      return key("rolledTable", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        roll: event.roll,
+        of: event.of,
+        result: event.result,
+      });
     // Set aside by a zone (1.480): Antimagic Field's summons.
     case "setAside":
       return key("setAside", { target: names.combatant(event.targetId), label: event.label });

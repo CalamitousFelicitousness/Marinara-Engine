@@ -2284,6 +2284,8 @@ export function rulesetActionAvailable(
   definition?: RulesetDefinition,
 ): boolean {
   if (!rulesetActionUsable(definition, actor, action)) return false;
+  // Made only as a row another action rolled (1.506).
+  if (action.rolledPart) return false;
   // No more of them than it may hold at once (1.501): a wraith's seven specters.
   const most = action.calls?.atMost;
   if (

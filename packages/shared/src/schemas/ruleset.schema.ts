@@ -5672,17 +5672,37 @@ const calledOptionsSchema = z
         creature: calledCreatureRef.optional(),
         from: catalogFromSchema.optional(),
         upTo: calledUpTo.optional(),
-        count: calledCount,
+        count: calledCount.optional(),
         label: promptSafeText(80).optional(),
         /** Offered only when paid this many steps of higher cost or more (Capability API 1.484):
          *  Create Undead's ghasts or wights from an 8th-level slot, `2`. */
         fromStep: z.number().int().min(1).max(20).optional(),
         /** This many more for each step of higher cost (1.484), beyond its own `fromStep`. */
         perStep: z.number().int().min(1).max(20).optional(),
+        /** How likely a `rolled` call comes up with it (Capability API 1.506), against the others'
+         *  weights: an Efreeti Bottle's service, `8` of `10`. */
+        weight: z.number().int().min(1).max(100).optional(),
+        /** Those it calls join the other side, against their caller (Capability API 1.506): an Efreeti
+         *  Bottle's efreeti that attacks you. */
+        hostile: z.literal(true).optional(),
+        /** It calls nobody into the fight (Capability API 1.506), only its `label` told: an Efreeti
+         *  Bottle's three wishes. Only in a `rolled` call. */
+        none: z.literal(true).optional(),
       })
       .strict()
-      .refine((option) => (option.creature === undefined) !== (option.from === undefined), {
+      .refine((option) => option.none || (option.creature === undefined) !== (option.from === undefined), {
         message: 'An option names one "creature" or reads "from" a catalog',
+      })
+      .refine(
+        (option) => !option.none || (option.creature === undefined && option.from === undefined && !!option.label),
+        {
+          message: 'An option that calls nobody names no creature, only its "label"',
+          path: ["none"],
+        },
+      )
+      .refine((option) => option.none || option.count !== undefined, {
+        message: 'An option says its "count"',
+        path: ["count"],
       })
       .refine((option) => !option.upTo || option.from !== undefined, {
         message: '"upTo" caps what is read "from" a catalog',
@@ -5746,9 +5766,29 @@ export const catalogCallsSchema = z
      *  first, their caller pays 1 of this budget, or the turn passes. With `"initiative": "after"`
      *  that turn comes right after their caller's. 5e's Arcane Hand, a bonus action. */
     commandedWith: sheetId.optional(),
+    /** Which of its `options` comes is rolled as it is used, never picked (Capability API 1.506), each
+     *  as likely as its `weight` against the rest (1 unless it says): a Bag of Tricks' d8 of beasts, an
+     *  Efreeti Bottle's d100. Each option names one `creature`, or calls nobody (`none`). */
+    rolled: z.literal(true).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
+    if (calls.rolled && !calls.options)
+      ctx.addIssue({ code: "custom", path: ["rolled"], message: 'A rolled call rolls among its "options"' });
+    calls.options?.forEach((option, index) => {
+      if (calls.rolled && option.from)
+        ctx.addIssue({
+          code: "custom",
+          path: ["options", index, "from"],
+          message: 'Each option of a rolled call names one "creature", or calls nobody',
+        });
+      if (!calls.rolled && (option.weight !== undefined || option.hostile || option.none))
+        ctx.addIssue({
+          code: "custom",
+          path: ["options", index],
+          message: '"weight", "hostile" and "none" are for an option a call is "rolled" among',
+        });
+    });
     const ways = [calls.creature, calls.from, calls.options].filter((one) => one !== undefined).length;
     if (ways !== 1)
       ctx.addIssue({
@@ -7645,6 +7685,14 @@ const creatureActionSchema = z
       })
       .strict()
       .superRefine((calls, ctx) => {
+        calls.options?.forEach((option, index) => {
+          if (option.weight !== undefined || option.hostile || option.none)
+            ctx.addIssue({
+              code: "custom",
+              path: ["options", index],
+              message: '"weight", "hostile" and "none" are for a catalog entry\'s or an item\'s rolled call',
+            });
+        });
         if (calls.atCorpse && calls.options)
           ctx.addIssue({
             code: "custom",
@@ -9522,6 +9570,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
      *  onto the score, and `max` onto the most it may be. Used outside a fight only; a fight never
      *  offers it. 5e's Manual of Gainful Exercise, `{ "str": { "by": 2, "max": 2 } }`. */
     raises: itemRaisesSchema.optional(),
+    /** Using it rolls on its item's `useTable` for what happens (Capability API 1.506): a Wand of
+     *  Wonder. */
+    rollsTable: z.literal(true).optional(),
     // A wall's thickness and a ring are a wand's or a scroll's too (1.177), and a line's width
     // (1.184): a scroll of Gust of Wind.
     area: z
@@ -9682,6 +9733,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.clears &&
       !use.calls &&
       !use.endsSpells &&
+      // Or rolls for what it does (1.506): a Wand of Wonder.
+      !use.rollsTable &&
       // Or breaks a layered wall's layer (1.441): a scroll of Passwall.
       !use.endsLayers &&
       (!use.zone || !use.area)
@@ -9713,6 +9766,19 @@ export const rulesetItemUseSchema = catalogMechanicsObject
 export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
 /** One more thing an item does when used (1.267), named for the menu. Typed by hand, as written out
  *  its inferred type is too long for the item schema around it to emit. */
+/** A row of an item's `useTable` (Capability API 1.506). */
+export interface RulesetItemUseTableRow {
+  weight: number;
+  label: string;
+  use?: RulesetItemUse;
+}
+const itemUseTableRowSchema: z.ZodType<RulesetItemUseTableRow, z.ZodTypeDef, unknown> = z
+  .object({
+    weight: z.number().int().min(1).max(100),
+    label: promptSafeText(80),
+    use: rulesetItemUseSchema.optional(),
+  })
+  .strict();
 export interface RulesetItemMoreUse {
   label: string;
   use: RulesetItemUse;
@@ -9803,6 +9869,12 @@ const catalogItemObjectSchema = z
     attack: rulesetItemAttackSchema.optional(),
     /** What it does when it is used: from the bag, or while worn where it takes a slot or binds. */
     use: rulesetItemUseSchema.optional(),
+    /** What its `use` may do, one rolled each time it is used (Capability API 1.506), each as likely
+     *  as its `weight` against the rest: a Wand of Wonder's d100. Each row's `use` happens at whom the
+     *  item's use was aimed (centred there, with an area), or on its user where it targets `self`; a
+     *  row with no `use` happens outside the fight, only its `label` told. The item's `use` says
+     *  `rollsTable`. */
+    useTable: z.array(itemUseTableRowSchema).min(2).max(24).optional(),
     /** Other things it does when used, each its own choice on the menu named by `label` and paid
      *  from the same charges (Capability API 1.267), or from its own `uses` (1.466): a wand of fear's
      *  Command beside its cone, a staff's spells. Only beside a `use`. Up to 8, or 16 (1.466). */
@@ -18751,6 +18823,23 @@ function itemIssues(
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
   if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  // What a use rolls for (1.506): its rows are uses of their own, none rolling again.
+  item.useTable?.forEach((row, index) => {
+    if (!row.use) return;
+    useIssues(definition, item, row.use, [...at, "useTable", index, "use"], add);
+    if (row.use.rollsTable)
+      add([...at, "useTable", index, "use", "rollsTable"], "A row of the table rolls nothing more");
+    if (row.use.charges !== undefined)
+      add([...at, "useTable", index, "use", "charges"], "A row is paid for by the use that rolled it");
+  });
+  if (item.use?.rollsTable && !item.useTable)
+    add([...at, "use", "rollsTable"], 'A use that rolls has its item\'s "useTable"');
+  if (item.useTable && !item.use?.rollsTable)
+    add([...at, "useTable"], 'A table is rolled by the item\'s "use", which says "rollsTable"');
+  item.moreUses?.forEach((more, index) => {
+    if (more.use.rollsTable)
+      add([...at, "moreUses", index, "use", "rollsTable"], 'Only the item\'s own "use" rolls its table');
+  });
   // What it stores (1.471) is off the ruleset's own catalogs.
   item.stores?.catalogs.forEach((catalog, index) => {
     if (!definition.catalogs?.some((one) => one.id === catalog))

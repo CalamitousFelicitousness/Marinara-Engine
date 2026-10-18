@@ -2028,6 +2028,18 @@ function itemUseActions(
       const built = ids.filter((id) => actions.some((one) => one.id === id));
       if (built.length) action.alongside = built;
     });
+    // What its use rolls for (1.506), each row its own action never on a menu: a Wand of Wonder. A row
+    // that does nothing a fight can use is only told.
+    const roller = item.use.rollsTable ? actions.find((one) => one.id === `use:${index}`) : undefined;
+    if (roller && item.useTable) {
+      roller.rollsAmong = item.useTable.map((row, k) => {
+        const id = `use:${index}:t${k + 1}`;
+        if (row.use) useOf(held, index, id, row.use, row.label);
+        const part = actions.find((one) => one.id === id);
+        if (part) part.rolledPart = true;
+        return { weight: row.weight, label: row.label, ...(part ? { id } : {}) };
+      });
+    }
   });
   return actions;
 
@@ -2966,6 +2978,13 @@ function targetsOf(mechanics: RulesetCatalogMechanics): RulesetCombatAction["tar
     const count = mechanics.area ? Math.max(1, mechanics.targetCount ?? 1) : 1;
     return { side: mechanics.targets ?? (mechanics.redirects ? "any" : "enemy"), count };
   }
+  // An item's use rolled for (1.506) is at whom it is aimed, either side unless it says: a Wand of
+  // Wonder's "choose a target".
+  if (mechanics.kind === "utility" && (mechanics as { rollsTable?: true }).rollsTable) {
+    return mechanics.targets === "self"
+      ? { side: "self", count: 0 }
+      : { side: mechanics.targets ?? "any", count: Math.max(1, mechanics.targetCount ?? 1) };
+  }
   if (mechanics.kind === "utility" && !cures) return { side: "self", count: 0 };
   if (mechanics.kind === "utility") {
     return { side: mechanics.targets ?? "ally", count: Math.max(1, mechanics.targetCount ?? 1) };
@@ -3107,7 +3126,9 @@ function mechanicsAction(
     // And casting other entries (1.421): Wish.
     !mechanics.duplicates &&
     // And breaking a layered wall's layer (1.438): Passwall.
-    !mechanics.endsLayers
+    !mechanics.endsLayers &&
+    // And an item's use rolled for (1.506): a Wand of Wonder.
+    !(mechanics as { rollsTable?: true }).rollsTable
   ) {
     return null;
   }
@@ -5220,7 +5241,7 @@ function fillCatalogCalls(
 ): void {
   const asTypes = action.callsOf!.asTypes;
   fillCatalogCallsAsWritten(definition, action, catalogs);
-  if (!asTypes?.length) return;
+  if (!asTypes?.length || action.callsRolled) return;
   // A type picked as well (1.434), each creature once for each: Find Familiar's celestial, fey or
   // fiend in place of a beast.
   const labels = new Map((definition.combat?.creatureTypes?.types ?? []).map((one) => [one.id, one.label]));
@@ -5304,6 +5325,26 @@ function fillCatalogCallsAsWritten(
       const call = found(ref, count, fromStep ? { fromStep } : {});
       return call ? [{ id: `call-${ref.split("/")[1]}`, label: `${call.name} ×${many(count)}`, call }] : [];
     });
+    return;
+  }
+  // Rolled among as it is used (1.506), never picked: a Bag of Tricks' beasts, an Efreeti Bottle's
+  // efreeti. The first that calls anybody stands for the call until the roll says which.
+  if (calls.rolled && calls.options) {
+    delete action.callChoice;
+    const rows = calls.options.map((option, index) => {
+      const call = option.creature ? found(option.creature, option.count) : null;
+      return {
+        weight: option.weight ?? 1,
+        label: option.label ?? (call ? `${call.name} ×${many(option.count)}` : `${index + 1}`),
+        ...(call ? { call } : {}),
+        ...(option.hostile ? { hostile: true as const } : {}),
+      };
+    });
+    const first = rows.find((row) => row.call);
+    if (first?.call) {
+      action.calls = first.call;
+      action.callsRolled = rows;
+    }
     return;
   }
   action.modes = (calls.options ?? []).flatMap((option, index) => {

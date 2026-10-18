@@ -249,12 +249,19 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
         await trackChatMetadataSave(chatId, async () => {
           switch (gameDataSectionRoute(sectionId)) {
             case "world":
-              await api.put(`/game/${chatId}/world/edits`, { edits: value });
+              // The layer the editor opened rides along, so a save by another writer meanwhile is refused
+              // rather than replaced by this older draft.
+              await api.put(`/game/${chatId}/world/edits`, {
+                edits: value,
+                expected: readGameDataRouteSection(metadata ?? {}, sectionId),
+              });
               return;
             case "story":
-              // Clearing the section takes the story away, as the story route's DELETE does.
-              if (value === null) await api.delete(`/game/${chatId}/story`);
-              else await api.put(`/game/${chatId}/story`, { story: value });
+              // Clearing the section takes the story away; either way the story the editor opened rides along.
+              await api.put(`/game/${chatId}/story`, {
+                story: value,
+                expected: readGameDataRouteSection(metadata ?? {}, sectionId),
+              });
               return;
             case "partySheet": {
               const revision = Number(metadata?.gamePartySheetRevision ?? 0);
@@ -262,12 +269,14 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
               return;
             }
             case "widgets":
-              await updateWidgets.mutateAsync({ chatId, widgets: (Array.isArray(value) ? value : []) as HudWidget[] });
+              // A typo in the JSON view must not read as "no widgets at all".
+              if (!Array.isArray(value)) throw new Error(localizeUi("ui.stateEditor.gameData.widgets.notList"));
+              await updateWidgets.mutateAsync({ chatId, widgets: value as HudWidget[] });
               return;
           }
         });
       } catch (error) {
-        if (stalePartySheet(error)) {
+        if (stalePartySheet(error) || (error instanceof ApiError && error.status === 409)) {
           setNotice("stale");
           throw new Error(localizeUi("ui.stateEditor.gameData.routeStale", { section: label }));
         }

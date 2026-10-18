@@ -22,7 +22,14 @@ interface GameCheckpointsModalProps {
   chatId: string;
 }
 
-const WHEN = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+/** The app's own language, not the browser's: a player who picks a language sees its dates. */
+function useWhen() {
+  const { i18n } = useUiTranslation();
+  return useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }),
+    [i18n.language],
+  );
+}
 
 export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsModalProps) {
   const { t: localizeUi } = useUiTranslation();
@@ -30,6 +37,7 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
   /** The checkpoint a load or delete is running for; both buttons wait while it does. */
   const [busyId, setBusyId] = useState<string | null>(null);
   const queryKey = useMemo(() => ["game-checkpoints", chatId] as const, [chatId]);
+  const when = useWhen();
   const checkpoints = useQuery({
     queryKey,
     queryFn: () => api.get<GameCheckpoint[]>(`/game/${chatId}/checkpoints`),
@@ -51,8 +59,10 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
         await api.post("/game/checkpoint/load", { chatId, checkpointId: checkpoint.id });
         // The game the tracker draws is the restored one, now: the game surface only fetches it when
         // the store holds none for this chat, so it has to be replaced here rather than left stale.
-        const restored = await api.get<GameState | null>(`/chats/${chatId}/game-state`).catch(() => undefined);
-        if (restored !== undefined) useGameStateStore.getState().setGameState(restored);
+        // Its own failure is the load's: showing the pre-restore tracker as if it were the restored one
+        // would be worse than saying the load did not finish.
+        const restored = await api.get<GameState | null>(`/chats/${chatId}/game-state`);
+        useGameStateStore.getState().setGameState(restored);
         // And the rest: the chat, its messages, and the game surface's own caches.
         void qc.invalidateQueries({ queryKey: chatKeys.all });
         void qc.invalidateQueries({ queryKey: gameKeys.all });
@@ -121,7 +131,7 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
                 <div className="truncate text-sm text-[var(--foreground)]">{checkpoint.label}</div>
                 <div className="truncate text-xs text-[var(--muted-foreground)]">
                   {localizeUi(`ui.game.checkpoints.triggers.${checkpoint.triggerType}`)} ·{" "}
-                  {WHEN.format(new Date(checkpoint.createdAt))}
+                  {when.format(new Date(checkpoint.createdAt))}
                   {checkpoint.location ? (
                     <>
                       {" · "}

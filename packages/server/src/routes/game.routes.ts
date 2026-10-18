@@ -41,7 +41,7 @@ import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
 import { gameDataEditRequestSchema, type GameDataEditIssue } from "@marinara-engine/shared";
-import { buildGameDataEditPatch } from "../services/game/game-data-edit.service.js";
+import { buildGameDataEditPatch, sameGameDataValue } from "../services/game/game-data-edit.service.js";
 // ──────────────────────────────────────────────
 // Routes: Game Mode
 // ──────────────────────────────────────────────
@@ -11616,9 +11616,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   });
 
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
+  //
+  // A caller that read the layer first may pass it as `expected`, the "Last write wins" of a maker
+  // screen made safe: the layer is compared with it inside the write itself, so one saved by another
+  // writer meanwhile is refused instead of replaced by this draft (#7743).
   app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
     const { chatId } = req.params;
-    const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
+    const body = (req.body ?? {}) as { edits?: unknown; expected?: unknown };
+    const parsed = worldEditsSchema.safeParse(body.edits);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
@@ -11637,6 +11642,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;
+    let stale: { edits: unknown } | null = null;
     let previous: unknown;
     // One save of a chat's edits at a time, so taking back one that failed never undoes another's.
     const updated = await withWorldLock(`edits:${chatId}`, async () => {
@@ -11644,6 +11650,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         // The world is the same one the edits were checked against: a world is written once, at creation.
         if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
           throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
+        }
+        // The baseline, compared where the write happens: a layer saved since is newer than this draft.
+        if ("expected" in body) {
+          const stored = (fresh.gameWorld as { edits?: unknown }).edits ?? null;
+          if (!sameGameDataValue(stored, body.expected)) {
+            stale = { edits: stored };
+            return {};
+          }
         }
         const now = gameWorldFromMetadata(fresh);
         storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
@@ -11664,6 +11678,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return saved;
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    // Read through a typed local: assigned only inside the updater, so TS would narrow it to null here.
+    const staleEdits = stale as { edits: unknown } | null;
+    if (staleEdits)
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The edits were saved by someone else meanwhile.", ...staleEdits });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
@@ -11778,7 +11798,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     };
   });
 
-  // PUT /game/:chatId/story {story}
+  // PUT /game/:chatId/story {story, expected} — `story: null` takes the story away.
+  //
+  // A caller that read the story first may pass it as `expected`: compared inside the write itself, so a
+  // story saved by another writer meanwhile is refused instead of replaced (#7743).
   app.put<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
     const { chatId } = req.params;
     const chats = createChatsStorage(app.db);
@@ -11786,11 +11809,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    const input = (req.body as { story?: unknown } | undefined)?.story;
+    const body = (req.body ?? {}) as { story?: unknown; expected?: unknown };
+    const input = body.story;
     // Checked against the world as it is when the story is written: hand edits saved meanwhile count.
     let refusal = null as { error: string; issues: string[] } | null;
+    let stale = null as { story: unknown } | null;
     let story = null as StoryScript | null;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
+      if ("expected" in body) {
+        const stored = fresh.gameStory ?? null;
+        if (!sameGameDataValue(stored, body.expected)) {
+          stale = { story: stored };
+          return {};
+        }
+      }
+      if (input === null) return { gameStory: null };
       // A world from an earlier generator is checked as its snapshot keeps it.
       const now = worldMadeByThisGenerator(game) ? gameWorldFromMetadata(fresh) : game;
       const checked = now ? checkStoryScript(now, input) : null;
@@ -11803,6 +11836,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return { gameStory: checked.story };
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    const staleStory = stale as { story: unknown } | null;
+    if (staleStory)
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The story was saved by someone else meanwhile.", ...staleStory });
     if (refusal) return reply.status(400).send(refusal);
     logger.info("[game/story] %s: story saved", chatId);
     return { story };

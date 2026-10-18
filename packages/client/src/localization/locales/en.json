@@ -14257,6 +14257,7 @@
   "ui.stateEditor.gameData.staleNotice": "The game changed some of this data while you were editing, and saving would undo that. Reload to see its changes; your drafts will be discarded.",
   "ui.stateEditor.gameData.title": "Game Data",
   "ui.stateEditor.gameData.warning": "Hand edits can break a game. Every change is checked before it saves, and names can't change here.",
+  "ui.stateEditor.gameData.widgets.notList": "HUD Widgets has to stay a list of widgets.",
   "ui.stateEditor.gameState.loadFailed": "Couldn't load this chat's game state.",
   "ui.stateEditor.gameState.loading": "Loading game state…",
   "ui.stateEditor.gameState.noState": "This chat has no game state yet. It appears once the tracker agents have run on a reply.",

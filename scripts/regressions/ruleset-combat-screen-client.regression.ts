@@ -976,6 +976,25 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
 
     ["summon", say({ type: "summon", actorId: "corwin", label: "Spiritual Weapon", outcome: "appeared" })],
     ["flew", say({ type: "flew", actorId: "lurker", from: 0, to: 1, cost: 1, left: 5 })],
+    [
+      "rolledTable",
+      say({ type: "rolledTable", actorId: "corwin", label: "Confusion", roll: 7, of: 10, result: "Wanders" }),
+    ],
+    [
+      "carried",
+      say({
+        type: "carried",
+        actorId: "corwin",
+        targetId: "lurker",
+        label: "Telekinesis",
+        from: { x: 3, y: 1 },
+        to: { x: 5, y: 1 },
+        rises: 1,
+      }),
+    ],
+    ["lifted", say({ type: "lifted", targetId: "lurker", from: 0, to: 20 })],
+    ["seenThrough", say({ type: "seenThrough", actorId: "brenna", targetId: "lurker", label: "Fire Bolt" })],
+    ["storedCast", say({ type: "storedCast", actorId: "brenna", label: "Cure Wounds", targetId: "brenna" })],
     ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
     ["casting", say({ type: "casting", actorId: "corwin", label: "Symbol", outcome: "continued", left: 3 })],
     [

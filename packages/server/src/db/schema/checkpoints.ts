@@ -19,6 +19,18 @@ export const gameCheckpoints = fileTable("game_checkpoints", {
    *  legacy createdAt re-lookup, which same-anchor rewrites (experience saves, silent turn
    *  games) invalidate. Null on checkpoints from before this field or with no engine state. */
   engineStateData: text("engine_state_data"),
+  /** Immutable JSON object of the game's own chat-metadata keys at capture time (party cards, NPCs,
+   *  journal, inventory, …; see CHECKPOINT_GAME_METADATA_KEYS), so a load rewinds them too (#7742).
+   *  `{}` when the game had none of them yet; null on checkpoints from before this field. */
+  gameMetadataData: text("game_metadata_data"),
+  /** Immutable JSON array of the chat's characterIds column at capture time: the party's library
+   *  members, which session start trusts over gamePartyCharacterIds. A load rewinds it in the same
+   *  write as gameMetadataData (#7742). Null on checkpoints from before this field. */
+  chatCharacterIdsData: text("chat_character_ids_data"),
+  /** Immutable JSON object `{ edits }` of the world's hand-edits layer (gameWorld.edits) at capture
+   *  time (#7783): `edits: null` for a world without any, so a load clears what was added later.
+   *  Null for a chat with no world, and on checkpoints from before this field. */
+  gameWorldEditsData: text("game_world_edits_data"),
   /** FK to messages.id — the message this checkpoint was taken at */
   messageId: text("message_id").notNull(),
 
@@ -26,7 +38,16 @@ export const gameCheckpoints = fileTable("game_checkpoints", {
   label: text("label").notNull(),
   /** What triggered this checkpoint */
   triggerType: text("trigger_type", {
-    enum: ["manual", "session_start", "session_end", "combat_start", "combat_end", "location_change", "auto_interval"],
+    enum: [
+      "manual",
+      "session_start",
+      "session_end",
+      "combat_start",
+      "combat_end",
+      "location_change",
+      "auto_interval",
+      "state_editor_save",
+    ],
   }).notNull(),
 
   /** Denormalised context for UI display (avoids joining snapshot) */

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir, totalmem } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkClientBuild } from "../../check-client-build.mjs";
-import { resolveClientBuildHeapMb } from "../../../packages/client/scripts/build-heap.mjs";
+import { resolveClientBuildHeapMb, splitNodeOptions } from "../../../packages/client/scripts/build-heap.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -13,7 +13,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../.
 // capped at half of device memory, but never less than the 1280 MiB it needs.
 const GiB = 1024 ** 3;
 const buildHeap = (totalMemoryBytes, env = {}, lowMemory = true) =>
-  resolveClientBuildHeapMb({ lowMemory, env, totalMemoryBytes });
+  resolveClientBuildHeapMb({ lowMemory, env, totalMemoryBytes, constrainedMemoryBytes: 0 });
 assert.equal(buildHeap(8 * GiB), 1536);
 assert.equal(buildHeap(3 * GiB), 1536);
 assert.equal(buildHeap(2.75 * GiB), 1408);
@@ -22,9 +22,40 @@ assert.equal(buildHeap(8 * GiB, { MARINARA_EXPLICIT_NODE_HEAP: "1" }), null, "a 
 // Desktop builds also generate the PWA, which needs 1536 MiB; Node's default is lower on small machines.
 assert.equal(buildHeap(8 * GiB, {}, false), 2048);
 assert.equal(buildHeap(2 * GiB, {}, false), 1536, "a small desktop still gets the heap the build needs");
-for (const NODE_OPTIONS of ["--max-old-space-size=4096", "--trace-warnings --max_old_space_size=1024"]) {
-  assert.equal(buildHeap(8 * GiB, { NODE_OPTIONS }, false), null, "a desktop heap in NODE_OPTIONS is the user's");
+for (const NODE_OPTIONS of [
+  "--max-old-space-size=4096",
+  "--trace-warnings --max_old_space_size=1024",
+  '"--max-old-space-size=1024"',
+  "--max-old-space-size-percentage=50",
+  "--require ./x.cjs --max-old-space-size 1800",
+]) {
+  assert.equal(
+    buildHeap(8 * GiB, { NODE_OPTIONS }, false),
+    null,
+    `a desktop heap in NODE_OPTIONS is the user's: ${NODE_OPTIONS}`,
+  );
 }
+assert.equal(
+  buildHeap(8 * GiB, { NODE_OPTIONS: '--require "./hooks/--max-old-space-size.cjs"' }, false),
+  2048,
+  "the same words inside another option's value are not a heap",
+);
+// In a container, half of its memory limit, not of the machine's.
+const containerHeap = (constrainedMemoryBytes) =>
+  resolveClientBuildHeapMb({ lowMemory: false, env: {}, totalMemoryBytes: 32 * GiB, constrainedMemoryBytes });
+assert.equal(containerHeap(3.5 * GiB), 1792);
+assert.equal(containerHeap(8 * GiB), 2048);
+assert.equal(containerHeap(2 ** 62), 2048, "a limit above the machine's memory is no limit");
+// NODE_OPTIONS read as Node reads it: quotes group an option, spaces included, and a backslash inside
+// them keeps the next character.
+assert.deepEqual(splitNodeOptions('--require "./my hooks/x.cjs"  --max-old-space-size=900'), [
+  "--require",
+  "./my hooks/x.cjs",
+  "--max-old-space-size=900",
+]);
+assert.deepEqual(splitNodeOptions('"--title=a \\"b\\""'), ['--title=a "b"']);
+assert.deepEqual(splitNodeOptions('  ""  '), [""], "an empty quoted option is still one");
+assert.deepEqual(splitNodeOptions(""), []);
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {
@@ -84,7 +115,7 @@ try {
   const android = `--import=${pathToFileURL(join(fixture, "android.mjs")).href}`;
   const baseEnv = { ...process.env, MARINARA_LOW_MEMORY_BUILD: "0", NODE_OPTIONS: serverHeap };
   for (const name of ["SKIP_PWA", "MARINARA_EXPLICIT_NODE_HEAP", "MARINARA_CLIENT_BUILD_SCRIPT"]) delete baseEnv[name];
-  const raisedHeap = heapLimitFor(buildHeap(totalmem()));
+  const raisedHeap = heapLimitFor(resolveClientBuildHeapMb({ lowMemory: true, env: {} }));
   const serverHeapLimit = heapLimitFor(1024);
   const build = (label, command, args, env, expectedSteps) => {
     write("steps", "");
@@ -150,7 +181,7 @@ try {
   );
 
   // Desktop builds keep PWA generation and leave type checking to `pnpm lint`.
-  const desktopHeap = heapLimitFor(buildHeap(totalmem(), {}, false));
+  const desktopHeap = heapLimitFor(resolveClientBuildHeapMb({ lowMemory: false, env: {} }));
   build("desktop", process.execPath, ["scripts/build.mjs"], { NODE_OPTIONS: "" }, `vite::${desktopHeap}\nguest\n`);
   assert.doesNotThrow(() => checkClientBuild(join(fixture, "dist")), "desktop retains PWA policy");
   build(

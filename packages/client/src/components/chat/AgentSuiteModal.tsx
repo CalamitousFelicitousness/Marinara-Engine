@@ -1037,7 +1037,13 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                       </h4>
                       <button
                         type="button"
-                        onClick={() => useUIStore.getState().openModal("game-state-editor", { chatId: chat.id })}
+                        onClick={() =>
+                          useUIStore.getState().openModal("game-state-editor", {
+                            chatId: chat.id,
+                            // The selected agent's tracker is one section of the editor: open there.
+                            initialSectionId: selectedAgent?.id,
+                          })
+                        }
                         className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
                       >
                         <Braces size="0.6875rem" />

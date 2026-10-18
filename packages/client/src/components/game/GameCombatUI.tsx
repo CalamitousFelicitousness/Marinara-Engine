@@ -630,6 +630,7 @@ function buildCombatVoiceConfigSignature(config?: TTSConfig | null, resolvedConn
     config.skipTagContent ? "skip-tags" : "read-tags",
     config.skipCodeBlocks !== false ? "skip-code" : "read-code",
     config.skipBracketedText ? "skip-brackets" : "read-brackets",
+    config.roleplaySpeakerExtractorEmotionsEnabled ? "emotions" : "no-emotions",
     config.narratorVoiceEnabled ? "narrator-voice" : "narrator-global",
     config.narratorVoice,
     config.voiceMode,

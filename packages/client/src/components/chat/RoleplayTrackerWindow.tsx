@@ -32,7 +32,9 @@ import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { TrackerLockProvider } from "../../features/tracker-panel/components/TrackerLockContext";
+import { TrackerStateEditorButton } from "../../features/tracker-panel/components/TrackerStateEditorButton";
 import { TrackerWindowCharacters } from "../../features/tracker-panel/components/TrackerWindowCharacters";
+import type { GameStateEditorSectionId } from "../../lib/state-editor/game-state-editor-source";
 import {
   partitionTrackerCapabilityPackages,
   useInstalledCapabilityPackages,
@@ -199,6 +201,8 @@ function TrackerDrawer({
   summary,
   banner,
   defaultOpen = true,
+  chatId,
+  stateEditorSection,
   children,
 }: {
   id: string;
@@ -207,6 +211,10 @@ function TrackerDrawer({
   summary?: ReactNode;
   banner?: ReactNode;
   defaultOpen?: boolean;
+  /** The chat whose game state the drawer's popped-out window can open in the State Editor. */
+  chatId?: string;
+  /** That tracker's game-state section, so the State Editor opens on it (game-state trackers only). */
+  stateEditorSection?: GameStateEditorSectionId;
   children: (collapse: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useRememberedDrawer(id, defaultOpen);
@@ -219,6 +227,11 @@ function TrackerDrawer({
       banner={banner}
       open={open}
       onOpenChange={setOpen}
+      detachedHeaderControls={
+        chatId && stateEditorSection ? (
+          <TrackerStateEditorButton chatId={chatId} sectionId={stateEditorSection} />
+        ) : undefined
+      }
       bodyClassName="px-0 pb-1 pt-0"
     >
       {children(() => setOpen(false))}
@@ -340,6 +353,7 @@ function TrackerWindow({
         </>
       }
       closeLabel={t("chat.trackerWindow.close")}
+      headerControls={<TrackerStateEditorButton chatId={chatId} />}
       minimizable={{
         icon: <TrackerPanelIcon size="0.875rem" />,
         label: t("chat.trackerWindow.title"),
@@ -359,6 +373,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("world-state") && (
             <TrackerDrawer
               id="tracker-world"
+              chatId={chatId}
+              stateEditorSection="world-state"
               title={t("ui.panels.appearancesettings.worldState")}
               icon={<MapPin size="0.75rem" />}
               summary={
@@ -394,6 +410,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("persona-stats") && (
             <TrackerDrawer
               id="tracker-persona"
+              chatId={chatId}
+              stateEditorSection="persona-stats"
               title={t("ui.chat.personastatswidget.personaStats")}
               icon={<BarChart3 size="0.75rem" />}
               summary={
@@ -418,6 +436,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("character-tracker") && (
             <TrackerDrawer
               id="tracker-characters"
+              chatId={chatId}
+              stateEditorSection="character-tracker"
               title={t("ui.chat.characterswidget.presentCharacters")}
               icon={<PersonStanding size="0.75rem" />}
               summary={
@@ -442,6 +462,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("quest") && (
             <TrackerDrawer
               id="tracker-quests"
+              chatId={chatId}
+              stateEditorSection="quest"
               title={t("ui.chat.questswidget.activeQuests")}
               icon={<Scroll size="0.75rem" />}
               summary={
@@ -464,6 +486,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("inventory-tracker") && (
             <TrackerDrawer
               id="tracker-inventory"
+              chatId={chatId}
+              stateEditorSection="inventory-tracker"
               title={t("ui.chat.inventoryTracker.title")}
               icon={<Backpack size="0.75rem" />}
               summary={
@@ -494,6 +518,8 @@ function TrackerWindow({
           {enabledAgentTypes.has("custom-tracker") && (
             <TrackerDrawer
               id="tracker-custom"
+              chatId={chatId}
+              stateEditorSection="custom-tracker"
               title={t("ui.chat.customtrackerwidget.customTracker")}
               icon={<SlidersHorizontal size="0.75rem" />}
               summary={

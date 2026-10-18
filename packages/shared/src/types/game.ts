@@ -1041,7 +1041,14 @@ export interface PartyDialogueLine {
 // ── Checkpoints ──
 
 export type CheckpointTrigger =
-  "manual" | "session_start" | "session_end" | "combat_start" | "combat_end" | "location_change" | "auto_interval";
+  | "manual"
+  | "session_start"
+  | "session_end"
+  | "combat_start"
+  | "combat_end"
+  | "location_change"
+  | "auto_interval"
+  | "state_editor_save";
 
 export interface GameCheckpoint {
   id: string;

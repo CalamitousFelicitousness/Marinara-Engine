@@ -161,7 +161,7 @@ export interface ResolveMacroOptions {
   maxMacroDepth?: number;
   /** Maximum macro replacement operations in one resolution tree. */
   maxMacroExpansions?: number;
-  /** Maximum resolved output length. */
+  /** Absolute output cap; defaults to the input length plus 200,000 characters of expansion. */
   maxMacroOutputLength?: number;
 }
 
@@ -3202,12 +3202,18 @@ export function expandLorebookIncludes(
  *  - {{#if char == "Name" || "Other"}}...{{else}}...{{/if}} — conditional block with OR/AND logic
  */
 export function resolveMacros(template: string, ctx: MacroContext, options: ResolveMacroOptions = {}): string {
+  // Keep authored text intact. Bound additional expansion once per resolution tree,
+  // and share that limit with nested calls without pinning it on reused caller options.
+  options = {
+    ...options,
+    macroBudget: getMacroBudget(options),
+    maxMacroOutputLength: options.maxMacroOutputLength ?? template.length + MAX_MACRO_OUTPUT_LENGTH,
+  };
   const macroDepth = options.macroDepth ?? 0;
   if (macroDepth > macroLimit(options, "maxMacroDepth")) {
     getMacroBudget(options).exceeded = true;
     return clampMacroOutput(template, options);
   }
-  getMacroBudget(options);
   // #3104: content with no macro syntax has nothing to resolve. Every step below
   // is triggered by "{{" (live macros), the "\x1e" deferred-character token
   // sentinel, or the "\x00" trim-marker sentinel, so a template containing none

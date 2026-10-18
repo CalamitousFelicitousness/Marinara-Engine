@@ -49,6 +49,8 @@ export interface DrawerProps {
   banner?: ReactNode;
   /** Extra controls between the help tip and the arrow, before the pop-out button. */
   actions?: ReactNode;
+  /** Controls for the window a popped-out drawer opens in (its title bar), not shown in the drawer header. */
+  detachedHeaderControls?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** A chat control keeps its existing window id and content owner when leaving its docked section. */
@@ -107,6 +109,7 @@ export function Drawer({
   summary,
   banner,
   actions,
+  detachedHeaderControls,
   open,
   onOpenChange,
   onPopOut,
@@ -141,6 +144,7 @@ export function Drawer({
         banner={banner}
         help={help}
         fillWindow={fillWindow}
+        headerControls={detachedHeaderControls}
         className={className}
         bodyClassName={bodyClassName}
         rootAttributes={rootAttributes}
@@ -361,6 +365,8 @@ interface DetachedDrawerWindowProps {
   banner?: ReactNode;
   help?: string;
   fillWindow: boolean;
+  /** Buttons for this window's title bar, before minimize, pin, lock and close. */
+  headerControls?: ReactNode;
   className?: string;
   bodyClassName?: string;
   rootAttributes?: Record<`data-${string}`, string | undefined>;
@@ -393,6 +399,7 @@ function DetachedDrawerWindow({
   banner,
   help,
   fillWindow,
+  headerControls,
   className,
   bodyClassName,
   rootAttributes,
@@ -443,6 +450,7 @@ function DetachedDrawerWindow({
             title={title}
             titleIcon={icon ? <span className="mari-drawer__icon flex shrink-0">{icon}</span> : undefined}
             titleAccessory={help ? <HelpTooltip text={help} side="bottom" /> : undefined}
+            headerControls={headerControls}
             closeLabel={t("window.controls.close")}
             closeAccessory={
               <button

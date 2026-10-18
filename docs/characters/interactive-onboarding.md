@@ -20,6 +20,10 @@ Onboarding uses the existing macro syntax. It runs no scripts.
 
 Turning the switch off hides the onboarding fields but keeps what you wrote.
 
+### Let Professor Mari write it
+
+You can also ask [Professor Mari](../home/professor-mari.md) to write the onboarding, for example: "Write a fun onboarding for Queen Ayrene, with a template persona." She writes the questions and the persona fields and turns onboarding on. The app checks her work before it is saved, so a misspelled name, a `{{name}}` without a question, or a condition missing its `#` is sent back to her to fix. For a character question, she also adds its `{{name}}` to one of the card's own fields. Her changes show up on a change card you can review or undo, like her other edits.
+
 ### Add questions
 
 Under **Persona Questions**, click **Add Question**. Each question works like a preset variable. See [Presets](../prompts/presets.md). A card can have up to 100 questions.
@@ -83,7 +87,8 @@ The **Rendered preview** at the bottom shows the persona built from example answ
 2. Add the character. To get a new persona out of it, select the **Create your persona** row at the top of **Your Persona**. It names the card it belongs to. Any other choice (or **None**) skips the persona and keeps yours.
 3. Click **Next**. The questions window opens whenever a card in the chat has character questions, whether or not you are creating a persona.
 4. Answer the questions. **Character questions** come first, with one section per card, then **About you** when a persona is being made. Follow-up questions appear as soon as your answers make them relevant.
-5. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
+5. Click **Review persona** to see the name and fields your answers produce, exactly as they will be saved. The parts your answers filled in are highlighted. The preview writes nothing; only **Create persona** does.
+6. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
 
 Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the Conversation setup, and starting a chat straight from a character card do not ask them yet. A chat started that way still fills in each question's first option, so `{{relationshipToUser}}` resolves instead of showing the tag. Answering in the wizard replaces that default, for that chat only.
 

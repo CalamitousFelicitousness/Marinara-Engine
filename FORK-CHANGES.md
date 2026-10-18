@@ -195,10 +195,14 @@ gate open.
 `packages/client/scripts/build.mjs` runs only `vite build` and the multiplayer guest build; `tsc -b`
 moved into the client `lint` script, beside the server's `tsc --noEmit`, so `pnpm check` and CI still
 type-check through `pnpm lint`. `packages/client/scripts/build-heap.mjs` now also gives desktop builds
-a heap: 2048 MiB, or half of device memory but never under 1536 MiB, unless `NODE_OPTIONS` already
-carries `--max-old-space-size`.
+a heap: 2048 MiB, or half of device (or container) memory but never under 1536 MiB, unless
+`NODE_OPTIONS` already sets one. The `NODE_OPTIONS` reading (`splitNodeOptions`, quoted and
+`-percentage` forms) and the container limit come from upstream #7786.
 
-Upstream type-checks in every client build and sets a heap only on Termux. The client tsconfig has
+Upstream type-checks in every client build and gives desktop builds 3072 MiB through
+`resolveDesktopClientBuildHeapMb`, which the fork drops: without `tsc` the build needs only Vite's
+heap, and that function keeps Node's default whenever half of memory does not exceed it, with no
+1536 MiB floor. The client tsconfig has
 `noEmit`, so in a launcher or in-app-updater build the check produces nothing, yet a full
 `tsc -b --force` runs out of memory at 2048 MiB and passes at 2560. Node's default limit is about
 2 GiB on an 8 GB machine, so `start.sh` failed with `JavaScript heap out of memory` while rebuilding
@@ -2024,6 +2028,11 @@ gain.
 Patches to upstream files: `packages/client/src/components/game/GameNarration.tsx` and
 `GameCombatUI.tsx`, both net-negative. Pinned by `tts-synthesis-policy.regression.ts`, which asserts
 neither file reaches past the engine into the blob cache or the raw generator.
+
+Upstream's `game-tts-emotion.regression.ts` lifts these functions out of both components by name and
+stubs `ttsService.generateAudio`. The fork's copy of that lane extracts `GAME_VOICE_SYNTHESIS_POLICY`
+in place of the deleted helpers and stubs `synthesize`; expect it to conflict when upstream edits the
+lane.
 
 ### TTS has a provider layer instead of five parallel ternary chains
 

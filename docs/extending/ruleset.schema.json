@@ -53154,6 +53154,16 @@
                         }
                       ]
                     },
+                    "sharesHeal": {
+                      "type": [
+                        "boolean",
+                        "string"
+                      ],
+                      "enum": [
+                        true,
+                        "half"
+                      ]
+                    },
                     "healthPoolSkips": {
                       "type": "object",
                       "properties": {
@@ -111097,6 +111107,16 @@
                           },
                           "additionalProperties": false
                         },
+                        "sharesHeal": {
+                          "type": [
+                            "boolean",
+                            "string"
+                          ],
+                          "enum": [
+                            true,
+                            "half"
+                          ]
+                        },
                         "healthPoolSkips": {
                           "type": "object",
                           "properties": {
@@ -129507,6 +129527,16 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "sharesHeal": {
+                                "type": [
+                                  "boolean",
+                                  "string"
+                                ],
+                                "enum": [
+                                  true,
+                                  "half"
+                                ]
                               },
                               "healthPoolSkips": {
                                 "type": "object",
@@ -147924,6 +147954,16 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "sharesHeal": {
+                                "type": [
+                                  "boolean",
+                                  "string"
+                                ],
+                                "enum": [
+                                  true,
+                                  "half"
+                                ]
                               },
                               "healthPoolSkips": {
                                 "type": "object",

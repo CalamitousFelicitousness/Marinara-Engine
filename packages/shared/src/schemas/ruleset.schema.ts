@@ -6354,6 +6354,11 @@ const catalogMechanicsObject = z
      *  left first, each affected only while their health is no more than what remains of it, which
      *  they then use up; the rest are left alone. 5e's Sleep and Color Spray. `perCostStep` adds to it. */
     healthPool: catalogHealthPoolSchema.optional(),
+    /** What it heals is one amount shared out among its targets in the order they were picked, each
+     *  healed up to their maximum, or with `"half"` up to half of it, until it runs out (Capability
+     *  API 1.510): 5e's Preserve Life, "divide those hit points among them ... no more than half of
+     *  its hit point maximum". Needs a heal. */
+    sharesHeal: z.union([z.literal(true), z.literal("half")]).optional(),
     /** Whom the pool passes over, using none of it and leaving them alone (Capability API 1.199):
      *  whoever holds one of `conditions` (5e's Sleep ignores the unconscious), and with `unseeing`
      *  whoever cannot see its maker (Color Spray ignores those that can't see). */
@@ -7094,6 +7099,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["perCostStepsEvery"],
       message: '"perCostStepsEvery" spaces out what "perCostStep" adds, so it has one',
+    });
+  }
+  if (mechanics.sharesHeal && (mechanics.kind !== "heal" || (!mechanics.amount && !mechanics.amountAdd))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["sharesHeal"],
+      message: '"sharesHeal" shares out what it heals, so it is a "heal" with an amount',
     });
   }
   if (mechanics.healthPoolSkips && !mechanics.healthPool) {

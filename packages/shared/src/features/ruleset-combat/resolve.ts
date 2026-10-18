@@ -13180,6 +13180,8 @@ function resolveActionBodyIn(
     );
   const healAdded = healMore(action.healAdd);
   let healsSelf = action.healsSelf ? healMore(action.healsSelf) : 0;
+  // One amount shared out among them (1.510): Preserve Life.
+  let shareLeft = action.sharesHeal && heal ? heal().total + healAdded : 0;
   const temporary = once(action.temporary);
   const restore = once(action.restore?.amount);
 
@@ -14225,7 +14227,21 @@ function resolveActionBodyIn(
     // What a catalog's entries put on them, ended (1.371): Dispel Magic, Cleansing Touch.
     if (action.endsSpells)
       endSpellsOn(ctx, actor, action, target, rulesetPaidLevel(ctx.definition, actor, action, payWith));
-    if (heal) {
+    if (heal && action.sharesHeal) {
+      // As much as is left, up to their maximum or half of it.
+      const now = healthOf(ctx, target);
+      const most = action.sharesHeal === "half" ? Math.floor(now.max / 2) : now.max;
+      const given = Math.max(0, Math.min(shareLeft, most - now.value));
+      shareLeft -= given;
+      if (given > 0)
+        dealHeal(ctx, target, {
+          sourceId: actor.id,
+          rolls: [],
+          flat: given,
+          amount: given,
+          magical: magicalAction(action),
+        });
+    } else if (heal) {
       const rolled = healing && !action.healsMax && healedMax(ctx, target) ? maxAmount(healing, extra) : heal();
       dealHeal(ctx, target, {
         sourceId: actor.id,

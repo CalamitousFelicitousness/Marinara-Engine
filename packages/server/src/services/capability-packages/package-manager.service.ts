@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A heal shared out among its targets (1.510): Preserve Life. */
+function carriesSharedHeal510(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSharedHeal510(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sharesHeal !== undefined) return true;
+  return featureValues(record).some((one) => carriesSharedHeal510(one, depth + 1));
+}
+
 /** A condition that harms its holder for attacking whoever put it on (1.509): Geas. */
 function carriesDefianceHarm509(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7103,6 +7113,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A heal shared out among its targets, 1.510.
+  if (
+    !declaresApi(510) &&
+    (carriesSharedHeal510(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSharedHeal510(document)))
+  ) {
+    return "A ruleset with a heal shared out among its targets (sharesHeal) requires schemaVersion 2 and capabilityApi 1.510 or newer";
+  }
   // Harm for attacking whoever put a condition on, 1.509.
   if (
     !declaresApi(509) &&

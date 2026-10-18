@@ -3268,6 +3268,7 @@ function mechanicsAction(
   if (temporary) action.temporary = temporary;
   const healthPool = amountOf(mechanics.healthPool);
   if (healthPool) action.healthPool = healthPool;
+  if (mechanics.sharesHeal) action.sharesHeal = mechanics.sharesHeal;
   const skips = mechanics.healthPoolSkips;
   if (healthPool && skips) {
     action.healthPoolSkips = {

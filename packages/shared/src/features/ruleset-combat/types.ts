@@ -829,6 +829,9 @@ export interface RulesetCombatAction {
   temporary?: RulesetCombatAmount;
   /** Health shared out among its targets, least health first (1.196); the rest are left alone. */
   healthPool?: RulesetCombatAmount;
+  /** Its heal one amount shared out among its targets, each up to their maximum or half of it
+   *  (1.510): Preserve Life. */
+  sharesHeal?: true | "half";
   /** Whom the pool passes over (1.199): holders of these conditions, and those who cannot see its
    *  maker when `unseeing`. */
   healthPoolSkips?: { conditions?: string[]; unseeing?: true };

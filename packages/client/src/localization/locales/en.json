@@ -2277,6 +2277,7 @@
   "game.combat.ruleset.event.timeStopEnded": "{{actor}}'s {{label}} ends: what they did reached somebody else.",
   "game.combat.ruleset.event.timeStopOver": "{{actor}}'s {{label}} is over, and time moves again.",
   "game.combat.ruleset.event.timeStopped": "{{actor}}'s {{label}} stops time: {{turns}} turns in a row.",
+  "game.combat.ruleset.event.tookAim": "{{actor}} steps in with {{label}}: {{source}}'s attack at {{target}} is aimed at them instead.",
   "game.combat.ruleset.event.trackDown": "{{actor}} takes {{target}}'s {{track}} down from {{from}} to {{to}}.",
   "game.combat.ruleset.event.trackUp": "{{actor}} raises {{target}}'s {{track}} from {{from}} to {{to}}.",
   "game.combat.ruleset.event.turn": "{{actor}} takes their turn.",

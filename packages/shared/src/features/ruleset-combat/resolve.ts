@@ -7766,7 +7766,7 @@ function takeReaction(
     !("catalog" in trigger && trigger.catalog)
       ? { action: trigger.label }
       : {}),
-    ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
+    ...(trigger.kind === "hit" || trigger.kind === "aimed" ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
@@ -7864,6 +7864,24 @@ function takeReaction(
       label: trigger.kind === "aimed" || trigger.kind === "used" ? trigger.label : action.label,
       byId: taking.id,
     });
+  }
+  // Stepping in to be its target instead (1.456): the one within reach it was aimed at.
+  if (action.takesAim && trigger.kind === "aimed" && ctx.state.window?.resume?.kind === "action") {
+    const held = ctx.state.window.resume;
+    // The one its moment was about: aimed at, on its holder's side and within its reach.
+    const instead = about !== taking.id && about && held.targetIds.includes(about) ? about : undefined;
+    if (instead && !held.targetIds.includes(taking.id)) {
+      held.targetIds = held.targetIds.map((id) => (id === instead ? taking.id : id));
+      if (ctx.state.window.trigger.kind === "aimed" && ctx.state.window.trigger.targetIds)
+        ctx.state.window.trigger.targetIds = held.targetIds.slice();
+      ctx.events.push({
+        type: "tookAim",
+        actorId: taking.id,
+        targetId: instead,
+        sourceId: held.actorId,
+        label: action.label,
+      });
+    }
   }
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
   // A hit's own maker is asked again while they hold more for it (1.241); a pass lets it go on.
@@ -9585,6 +9603,7 @@ function openMoment(
         rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
           ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
           ...(trigger.kind === "falls" && trigger.fallerIds ? { targetIds: trigger.fallerIds } : {}),
+          ...(trigger.kind === "aimed" && trigger.blow ? { blow: trigger.blow } : {}),
           ...("optionId" in trigger && source?.block && !("catalog" in trigger && trigger.catalog)
             ? { action: trigger.label }
             : {}),
@@ -9618,6 +9637,10 @@ function openAimed(
   const targets = resume.targetIds
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+  // The kind of attack it is (1.456), for an answer only to ranged ones.
+  const aimed = actor.actions.find((one) => one.id === resume.optionId);
+  const blow =
+    aimed && aimed.toHit !== undefined && targets[0] ? rulesetBlowKind(ctx.state, actor, targets[0], aimed) : undefined;
   return openMoment(
     ctx,
     {
@@ -9626,6 +9649,7 @@ function openAimed(
       sourceId: actor.id,
       optionId: resume.optionId,
       label,
+      ...(blow ? { blow } : {}),
       ...(catalog ? { catalog } : {}),
       ...(entry ? { entry } : {}),
     },

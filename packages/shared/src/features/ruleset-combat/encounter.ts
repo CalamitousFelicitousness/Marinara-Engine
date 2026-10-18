@@ -2842,6 +2842,8 @@ function mechanicsAction(
     // So is a strike back, or a missed attack sent on (1.369).
     !mechanics.strikesWith &&
     !mechanics.redirects &&
+    // So is stepping in front of an attack (1.456).
+    !mechanics.takesAim &&
     // So is steering a condition (1.411).
     !mechanics.steers &&
     // And casting other entries (1.421): Wish.
@@ -2869,6 +2871,7 @@ function mechanicsAction(
     !mechanics.calls &&
     !mechanics.strikesWith &&
     !mechanics.redirects &&
+    !mechanics.takesAim &&
     !mechanics.steers &&
     !mechanics.duplicates;
   const { build, evaluated, perCell } = from;
@@ -2973,6 +2976,7 @@ function mechanicsAction(
   // Or strikes over an area (1.375): Whirlwind Attack, Volley.
   if (mechanics.strikesWith && (moment || mechanics.area)) action.strikesWith = mechanics.strikesWith;
   if (mechanics.redirects && moment) action.redirects = true;
+  if (mechanics.takesAim && moment) action.takesAim = true;
   // Or one die off the sheet where it is the better (1.367): Martial Arts' die.
   if (mechanics.throwsCaught && moment) {
     const die = mechanics.throwsCaught === true ? undefined : mechanics.throwsCaught.die;

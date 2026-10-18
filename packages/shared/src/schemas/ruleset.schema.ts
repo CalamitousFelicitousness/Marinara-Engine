@@ -3663,11 +3663,13 @@ const blowOnlyOnHit = (
   ctx: z.RefinementCtx,
   path: (string | number)[],
 ) => {
-  if (moment.blow && moment.on !== "hit" && moment.on !== "attacked") {
+  // On an attack aimed (1.456), the kind it is: Arrow-Catching Shield's ranged attacks.
+  if (moment.blow && moment.on !== "hit" && moment.on !== "attacked" && moment.on !== "aimed") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [...path, "blow"],
-      message: '"blow" says what kind of hit or attack opens the moment, so it is on a "hit" or "attacked" moment',
+      message:
+        '"blow" says what kind of hit or attack opens the moment, so it is on a "hit", "attacked" or "aimed" moment',
     });
   }
   if (moment.missed && moment.on !== "attacked") {
@@ -5443,6 +5445,10 @@ const catalogMechanicsObject = z
      *  attacked makes that same attack again at the creature its holder picks, never themself:
      *  Stand Against the Tide. */
     redirects: z.literal(true).optional(),
+    /** Taken at an `"aimed"` moment for somebody else within reach (Capability API 1.456), its holder
+     *  becomes the target of what was aimed in their place: 5e's Arrow-Catching Shield, on a ranged
+     *  attack at a creature within 5 feet. */
+    takesAim: z.literal(true).optional(),
     throwsCaught: z
       .union([
         z.literal(true),
@@ -6500,6 +6506,24 @@ const catalogMechanicsSchema: z.ZodType<
         code: z.ZodIssueCode.custom,
         path: ["lowersRoll"],
         message: '"lowersRoll" is taken as somebody else\'s attack hits: reaction "hit" without "by" or "also"',
+      });
+    }
+  }
+  if (mechanics.takesAim) {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (
+      moment?.on !== "aimed" ||
+      !moment.for ||
+      moment.for === "self" ||
+      moment.cancels ||
+      mechanics.amount ||
+      mechanics.attackRoll
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["takesAim"],
+        message:
+          '"takesAim" is taken at an "aimed" moment for somebody else ("for" an ally or anyone, "within"), calls nothing off and deals nothing of its own',
       });
     }
   }
@@ -9882,10 +9906,11 @@ const combatModifierSchema = z
     for (const key of ["damageType", "alsoUnrolled"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
     }
-    for (const key of ["attacks", "blow"] as const) {
-      if (modifier[key] !== undefined && !damage && modifier.to !== "attacks")
-        add(key, `"${key}" narrows damage or attacks only`);
-    }
+    // Defense against one kind of attack (1.456): Arrow-Catching Shield's +2 against ranged ones.
+    if (modifier.attacks !== undefined && !damage && modifier.to !== "attacks")
+      add("attacks", '"attacks" narrows damage or attacks only');
+    if (modifier.blow !== undefined && !damage && modifier.to !== "attacks" && modifier.to !== "defense")
+      add("blow", '"blow" narrows damage, attacks or defense only');
     if (modifier.ability !== undefined && !damage && modifier.to !== "attacks") {
       add("ability", '"ability" narrows damage or attacks only');
     }

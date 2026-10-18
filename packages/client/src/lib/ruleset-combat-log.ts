@@ -1126,6 +1126,13 @@ export function rulesetCombatEventLine(
         label: event.label,
         turns: event.turns ?? 0,
       });
+    case "tookAim":
+      return key("tookAim", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        source: names.combatant(event.sourceId),
+        label: event.label,
+      });
     case "blink":
       return key(event.vanished ? "blinkVanished" : "blinkStayed", {
         actor: names.combatant(event.actorId),

@@ -1030,9 +1030,50 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     // A prop lit again (1.332).
     ["relit", say({ type: "relit", actorId: "brenna", propId: "p1", label: "Bonfire", cells: 9 })],
+    // Illusory duplicates (1.452), a blink (1.453), stopped time (1.454), stepping in (1.456).
+    [
+      "duplicate",
+      say({ type: "duplicate", actorId: "lurker", targetId: "brenna", roll: 6, needed: 6, diverted: true }),
+    ],
+    ["blink", say({ type: "blink", actorId: "brenna", label: "Blink", roll: 14, needed: 11, vanished: true })],
+    ["timeStop", say({ type: "timeStop", actorId: "brenna", label: "Time Stop", turns: 3 })],
+    [
+      "tookAim",
+      say({
+        type: "tookAim",
+        actorId: "brenna",
+        targetId: "corwin",
+        sourceId: "lurker",
+        label: "Arrow-Catching Shield",
+      }),
+    ],
   ];
   const printed = new Map(table);
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
+  assert.equal(printed.get("duplicate"), "Thorn Lurker's attack turns onto one of Brenna's duplicates (6, needing 6).");
+  assert.equal(
+    say({
+      type: "duplicate",
+      actorId: "lurker",
+      targetId: "brenna",
+      roll: 6,
+      needed: 6,
+      diverted: true,
+      lost: true,
+      left: 2,
+    }),
+    "Thorn Lurker destroys one of Brenna's duplicates; 2 left.",
+  );
+  assert.equal(printed.get("blink"), "Brenna rolls 14 for Blink (needing 11) and vanishes until their next turn.");
+  assert.equal(printed.get("timeStop"), "Brenna's Time Stop stops time: 3 turns in a row.");
+  assert.equal(
+    say({ type: "timeStop", actorId: "brenna", label: "Time Stop", ended: "affected" }),
+    "Brenna's Time Stop ends: what they did reached somebody else.",
+  );
+  assert.equal(
+    printed.get("tookAim"),
+    "Brenna steps in with Arrow-Catching Shield: Thorn Lurker's attack at Corwin is aimed at them instead.",
+  );
   assert.equal(
     printed.get("heldGroundReleased"),
     "The Wheel lets go: death is held here no longer. Thorn Lurker died. Down and dying now: Brenna.",

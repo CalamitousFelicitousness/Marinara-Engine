@@ -3213,7 +3213,13 @@ console.info("game ruleset combat core regressions passed.");
   const aimed = act(fiveE, endTurn(fiveE, state, "corwin").state, swing);
   const window = aimed.state.window;
   assert.ok(window, "the swing is held while the one it is aimed at is asked");
-  assert.deepEqual(window.trigger, { kind: "aimed", sourceId: "snag", optionId: "scimitar", label: "Scimitar" });
+  assert.deepEqual(window.trigger, {
+    kind: "aimed",
+    sourceId: "snag",
+    optionId: "scimitar",
+    label: "Scimitar",
+    blow: "melee",
+  });
   assert.deepEqual(window.waiting, ["corwin"]);
   assert.equal(eventsOf(aimed.events, "attack").length, 0, "and nothing is rolled until it is answered");
   // Paid for before the asking: the budget is gone whatever the answer turns out to be.

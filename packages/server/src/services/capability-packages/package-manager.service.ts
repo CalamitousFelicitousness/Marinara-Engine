@@ -2263,6 +2263,19 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A reaction that steps in front of an attack aimed at somebody else, or a defense or aimed moment
+ *  narrowed to one kind of attack (1.456): Arrow-Catching Shield. */
+function carriesTakesAim456(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTakesAim456(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.takesAim !== undefined) return true;
+  if (record.to === "defense" && record.blow !== undefined) return true;
+  if (record.on === "aimed" && record.blow !== undefined) return true;
+  return featureValues(record).some((one) => carriesTakesAim456(one, depth + 1));
+}
+
 /** A condition whose answer to a hit harms the hitter, reaches only so far, or asks no save (1.455):
  *  Fire Shield, an azer's Heated Body. */
 function carriesHitBack455(value: unknown, depth = 0): boolean {
@@ -6462,6 +6475,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Stepping in front of an attack, and defense against one kind of attack, 1.456.
+  if (
+    !declaresApi(456) &&
+    (carriesTakesAim456(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTakesAim456(document)))
+  ) {
+    return "A ruleset whose reactions step in front of an attack aimed at somebody else, or whose defense counts against one kind of attack (takesAim, blow on a defense modifier or an aimed moment) requires schemaVersion 2 and capabilityApi 1.456 or newer";
+  }
   // Harm dealt back on a hit, a reach for it, or no save before it, 1.455.
   if (
     !declaresApi(455) &&

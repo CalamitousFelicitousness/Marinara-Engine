@@ -40199,6 +40199,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "takesAim": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "throwsCaught": {
                       "anyOf": [
                         {
@@ -73691,6 +73695,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "takesAim": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "throwsCaught": {
                           "anyOf": [
                             {
@@ -88615,6 +88623,10 @@
                                 ]
                               },
                               "redirects": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "takesAim": {
                                 "type": "boolean",
                                 "const": true
                               },

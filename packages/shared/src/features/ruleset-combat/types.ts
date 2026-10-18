@@ -840,6 +840,8 @@ export interface RulesetCombatAction {
   strikeAgain?: { targetId: string; within: number };
   /** Whoever missed its holder attacks the one its holder picks instead (1.369). */
   redirects?: true;
+  /** Taken for somebody an attack is aimed at, it is aimed at its holder instead (1.456). */
+  takesAim?: true;
   /** Throws back the missile its holder just caught, with that missile's damage (1.363), or one die
    *  of `sides` where that is the better (1.367): Martial Arts' die. */
   throwsCaught?: true | { sides: number };
@@ -1988,6 +1990,8 @@ export type RulesetWindowTrigger =
       sourceId: string;
       optionId: string;
       label: string;
+      /** The kind of attack it is (1.456), where it is one. */
+      blow?: RulesetBlowKind;
       catalog?: string;
       entry?: string;
     }
@@ -2788,6 +2792,8 @@ export type RulesetCombatEvent =
   /** Time stopped for `actorId` (1.454): `turns` in a row rolled, or `ended` early by what reached
    *  somebody else, or `over` after the last. */
   | { type: "timeStop"; actorId: string; label: string; turns?: number; ended?: "affected" | "over" }
+  /** `actorId` stepped in to be the target of what `sourceId` aimed at `targetId` (1.456). */
+  | { type: "tookAim"; actorId: string; targetId: string; sourceId: string; label: string }
   /** The die its holder's `blinks` rolled as their turn ended (1.453), and whether they vanished. */
   | { type: "blink"; actorId: string; label: string; roll: number; needed: number; vanished: boolean }
   /** An attack on somebody with duplicates (1.452): whether the die turned it onto one, and `lost`

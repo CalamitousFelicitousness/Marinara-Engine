@@ -1072,8 +1072,13 @@ export function rulesetDefenseAgainst(
   const modifiers = rulesetConditionModifiers(definition, combat, target, "defense", state).filter(
     // Only against an attacker that has hit them already this turn (1.377): Multiattack Defense.
     ({ modifier }) =>
-      !modifier.afterHitBy ||
-      (!!attacker && target.hitBy?.at === `${state.round}:${state.turn}` && target.hitBy.ids.includes(attacker.id)),
+      (!modifier.afterHitBy ||
+        (!!attacker &&
+          target.hitBy?.at === `${state.round}:${state.turn}` &&
+          target.hitBy.ids.includes(attacker.id))) &&
+      // Only against one kind of attack (1.456): Arrow-Catching Shield's ranged ones.
+      (!modifier.blow ||
+        (!!attacker && !!action && rulesetBlowKind(state, attacker, target, action) === modifier.blow)),
   );
   const guards = modifiers
     .filter(({ modifier }) => modifier.atLeast === undefined)
@@ -4477,7 +4482,7 @@ export function rulesetWindowOptions(
       : {}),
     ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
     ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
-    ...(trigger.kind === "hit" && trigger.blow ? { blow: trigger.blow } : {}),
+    ...((trigger.kind === "hit" || trigger.kind === "aimed") && trigger.blow ? { blow: trigger.blow } : {}),
     ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
     ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
     ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),

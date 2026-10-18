@@ -657,6 +657,8 @@ export interface RulesetStatBlock {
   regenerates?: RulesetRegeneration;
   /** Harmed by one of `by` with `atLeast` health left, it splits in two (1.422): Black Pudding. */
   splits?: { by: string[]; atLeast: number; smallest?: string };
+  /** What it puts on itself when a blow of one of `by` deals it anything (1.489): Aversion of Fire. */
+  whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
   /** What this creature adds to the first qualifying hit of a period, all by itself. */

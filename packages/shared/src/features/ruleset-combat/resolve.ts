@@ -1034,6 +1034,8 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   if (!out) concentrationFromDamage(ctx, target, dealt);
   // Split in two by what harmed it (1.422): a Black Pudding.
   if (!out) splitOnHarm(ctx, target, new Set([...kinds, ...subjected]));
+  // What the harm puts on it (1.489): a flesh golem's Aversion of Fire.
+  if (!out) harmedInto(ctx, target, kinds);
   if (out) {
     if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds });
     else if (target.dying && !target.defeated) {
@@ -1216,6 +1218,15 @@ function applySelf(
       action: [action.id, action.label],
       ...(action.concentration ? { concentration: true } : {}),
     });
+  }
+}
+
+/** What a creature puts on itself when a blow of one of its types deals it anything (1.489). */
+function harmedInto(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: ReadonlySet<string>): void {
+  for (const rule of target.block?.whenHarmedBy ?? []) {
+    if (!rule.by.some((kind) => kinds.has(kind.trim().toLowerCase()))) continue;
+    for (const applies of rule.applies)
+      applyConditionId(ctx, target, applies.condition, applies, { sourceId: target.id });
   }
 }
 

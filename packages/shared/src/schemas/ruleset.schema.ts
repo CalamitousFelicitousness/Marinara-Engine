@@ -8001,6 +8001,22 @@ const creatureFields = {
     })
     .strict()
     .optional(),
+  /** Conditions it puts on itself when a blow of one of `by` deals it anything (Capability API
+   *  1.489), matched without case. 5e's flesh golem's Aversion of Fire, `{"by": ["fire"],
+   *  "applies": [{"condition": "poisoned", "duration": {"rounds": 1}}]}`, and a water elemental's
+   *  Freeze. */
+  whenHarmedBy: z
+    .array(
+      z
+        .object({
+          by: z.array(promptSafeText(40)).min(1).max(8),
+          applies: z.array(catalogAppliesSchema).min(1).max(4),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(4)
+    .optional(),
   /** What it does as it dies (Capability API 1.487): an action of its own, never on its menu, a
    *  burst centred on it (`area.around`) resolved on whoever it catches as it is out of the fight.
    *  5e's mephits' Death Burst and a balor's Death Throes. Its `budget` is never spent. With a
@@ -18034,6 +18050,16 @@ function creatureIssues(
     }
   }
 
+  // What harm puts on it (1.489) is the ruleset's own conditions.
+  creature.whenHarmedBy?.forEach((rule, ruleIndex) =>
+    rule.applies.forEach((entry, index) => {
+      if (!definition.sheet.live.conditions.some((one) => one.id === entry.condition))
+        add(
+          [...at, "whenHarmedBy", ruleIndex, "applies", index, "condition"],
+          `Unknown condition "${entry.condition}"`,
+        );
+    }),
+  );
   // What it does as it dies (1.487) is a burst around it, with the ruleset's own saves and conditions.
   if (creature.onDeath) {
     const path = [...at, "onDeath"];

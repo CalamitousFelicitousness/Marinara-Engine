@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Conditions harm puts on a creature (1.489): a flesh golem's Aversion of Fire. */
+function carriesWhenHarmedBy489(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWhenHarmedBy489(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.whenHarmedBy) && (record.health !== undefined || Array.isArray(record.actions))) return true;
+  return featureValues(record).some((one) => carriesWhenHarmedBy489(one, depth + 1));
+}
+
 /** Damage types that heal a creature instead (1.488): a flesh golem's Lightning Absorption. */
 function carriesHealedBy488(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6868,6 +6878,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions harm puts on a creature, 1.489.
+  if (
+    !declaresApi(489) &&
+    (carriesWhenHarmedBy489(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWhenHarmedBy489(document)))
+  ) {
+    return "A ruleset with a creature that harm puts conditions on (whenHarmedBy) requires schemaVersion 2 and capabilityApi 1.489 or newer";
+  }
   // Damage that heals a creature instead, 1.488.
   if (
     !declaresApi(488) &&

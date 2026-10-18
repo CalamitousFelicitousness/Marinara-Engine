@@ -6013,6 +6013,12 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
+    /** `amount`'s roll times this (Capability API 1.540): a Wand of Wonder's "1d4 × 10 gems". */
+    amountTimes: z.number().int().min(2).max(100).optional(),
+    /** `amount`'s roll split evenly, rounded down, among the creatures its area catches (Capability
+     *  API 1.540), with no attack roll or save: the Wand of Wonder's gems, "the total damage of the
+     *  gems is divided equally among all creatures in the line". */
+    dividedAmong: z.literal("caught").optional(),
     /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.83): 5e's
      *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
     amountAdd: rulesetValueRefSchema.optional(),
@@ -21142,6 +21148,18 @@ export function rulesetCatalogEntryIssues(
         add([index, "mechanics", "appliesSelf", appliesIndex, "condition"], `Unknown condition "${applies.condition}"`);
       }
     });
+    // Times so many, and split among those caught (1.540): an amount, and for a split an area with
+    // no attack roll or save.
+    if (mechanics?.amountTimes !== undefined && !mechanics.amount)
+      add([index, "mechanics", "amountTimes"], '"amountTimes" multiplies "amount", so the entry has one');
+    if (mechanics?.dividedAmong) {
+      if (!mechanics.amount)
+        add([index, "mechanics", "dividedAmong"], '"dividedAmong" splits "amount", so the entry has one');
+      if (!mechanics.area)
+        add([index, "mechanics", "dividedAmong"], '"dividedAmong" splits among those an "area" catches');
+      if (mechanics.attackRoll || mechanics.save)
+        add([index, "mechanics", "dividedAmong"], "A split amount is rolled with no attack roll or save");
+    }
     // What a failure by a margin puts on (1.539), the sheet's conditions too.
     mechanics?.save?.failedBy?.applies.forEach((applies, appliesIndex) => {
       if (!liveConditions.has(applies.condition))

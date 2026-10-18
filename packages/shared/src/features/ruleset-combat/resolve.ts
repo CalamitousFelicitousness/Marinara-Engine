@@ -13542,7 +13542,7 @@ function resolveActionBodyIn(
   // Added to the first damage roll of the use (1.361): every target of a roll they share, the first
   // of one rolled for each. Empowered Evocation.
   let onceLeft = action.damageOnce ?? 0;
-  const damage =
+  const whole =
     rollDamage && onceLeft !== 0
       ? () => {
           const rolled = rollDamage();
@@ -13554,6 +13554,20 @@ function resolveActionBodyIn(
           return rolled;
         }
       : rollDamage;
+  // Times so many, and split evenly among everybody it catches (1.540): the Wand of Wonder's gems.
+  let split: Rolled | null = null;
+  const damage =
+    whole && (action.damageTimes !== undefined || action.damageDivided)
+      ? () => {
+          if (split) return split;
+          const rolled = whole();
+          const among = action.damageDivided ? Math.max(1, targets.length) : 1;
+          const total = Math.floor((rolled.total * (action.damageTimes ?? 1)) / among);
+          const share = { rolls: [...rolled.rolls], flat: total - sumOf(rolled.rolls), total };
+          if (!perTarget) split = share;
+          return share;
+        }
+      : whole;
   // Careful (1.253): up to so many of its user and their allies it catches make its save outright,
   // the ones its user picked (1.254), else in the order it caught them. Heightened: its first target
   // rolls its first save at disadvantage.

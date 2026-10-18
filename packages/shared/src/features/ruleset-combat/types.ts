@@ -1013,6 +1013,10 @@ export interface RulesetCombatAction {
   healsSelf?: RulesetCombatHealAdd[];
   /** Added to one damage roll of each use (1.361): Empowered Evocation. */
   damageOnce?: number;
+  /** Its damage roll times this (1.540), and split evenly among those it catches: a Wand of Wonder's
+   *  gems. */
+  damageTimes?: number;
+  damageDivided?: true;
   /** A miss deals half its damage, and nothing else it does on a hit (1.255). */
   halfOnMiss?: true;
   /** The alterations already set on it (1.253), so they are never set twice. */

@@ -38838,6 +38838,15 @@
                       },
                       "additionalProperties": false
                     },
+                    "amountTimes": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 100
+                    },
+                    "dividedAmong": {
+                      "type": "string",
+                      "const": "caught"
+                    },
                     "amountAdd": {
                       "type": "object",
                       "properties": {
@@ -99025,6 +99034,15 @@
                           },
                           "additionalProperties": false
                         },
+                        "amountTimes": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 100
+                        },
+                        "dividedAmong": {
+                          "type": "string",
+                          "const": "caught"
+                        },
                         "amountAdd": {
                           "type": "object",
                           "properties": {
@@ -119032,6 +119050,15 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "amountTimes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 100
+                              },
+                              "dividedAmong": {
+                                "type": "string",
+                                "const": "caught"
                               },
                               "amountAdd": {
                                 "type": "object",
@@ -139046,6 +139073,15 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "amountTimes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 100
+                              },
+                              "dividedAmong": {
+                                "type": "string",
+                                "const": "caught"
                               },
                               "amountAdd": {
                                 "type": "object",

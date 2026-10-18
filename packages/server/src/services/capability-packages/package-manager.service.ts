@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An amount times so many, or split among those caught (1.540): a Wand of Wonder's gems. */
+function carriesDividedAmount540(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDividedAmount540(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.amount !== undefined && (record.amountTimes !== undefined || record.dividedAmong !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesDividedAmount540(one, depth + 1));
+}
+
 /** An entry's or item use's save failed by a margin (1.539): a Wand of Wonder's petrification. */
 function carriesEntryFailedBy539(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7437,6 +7448,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An amount times so many, or split among those caught, 1.540.
+  if (
+    !declaresApi(540) &&
+    (carriesDividedAmount540(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDividedAmount540(document)))
+  ) {
+    return "A ruleset with an amount multiplied or split among those an area catches (amountTimes, dividedAmong) requires schemaVersion 2 and capabilityApi 1.540 or newer";
+  }
   // An entry's save failed by a margin, 1.539.
   if (
     !declaresApi(539) &&

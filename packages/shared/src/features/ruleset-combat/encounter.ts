@@ -3263,6 +3263,9 @@ function mechanicsAction(
     label: from.label,
     budget: from.budget,
     targets: grownTargets(targetsOf(mechanics as RulesetCatalogMechanics), mechanics, resolve),
+    // Times so many and split among those caught (1.540): the Wand of Wonder's gems.
+    ...(mechanics.amountTimes !== undefined ? { damageTimes: mechanics.amountTimes } : {}),
+    ...(mechanics.dividedAmong ? { damageDivided: true as const } : {}),
     ...(moment
       ? {
           reaction: {

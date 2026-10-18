@@ -1120,6 +1120,14 @@ export function rulesetCombatEventLine(
         kinds: event.kinds.join(", "),
         within: event.within,
       });
+    case "duplicate":
+      return key(event.lost ? "duplicateLost" : event.diverted ? "duplicateDrew" : "duplicateMissed", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        roll: event.roll,
+        needed: event.needed,
+        left: event.left ?? 0,
+      });
     case "chance":
       return key(
         event.outcome === "sure" ? "chanceSure" : event.outcome === "answered" ? "chanceAnswered" : "chanceFailed",

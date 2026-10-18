@@ -10667,6 +10667,79 @@ const conditionEnteringSchema: z.ZodType<RulesetConditionEntering, z.ZodTypeDef,
   .strict()
   .refine((rule) => rule.harm || rule.applies, { message: "entering does something: harm or applies" });
 
+/** Whoever aims an attack or a harmful entry at its holder first makes this save (Capability API
+ *  1.370); see the condition's `sanctuary`. */
+export interface RulesetConditionSanctuary {
+  save: string;
+  difficulty?: RulesetValueRef;
+  from?: RulesetTargetIs;
+  immuneOnSave?: true;
+  against?: { attacks?: true; casts?: string[] };
+}
+const conditionSanctuarySchema: z.ZodType<RulesetConditionSanctuary, z.ZodTypeDef, unknown> = z
+  .object({
+    save: sheetId,
+    difficulty: rulesetValueRefSchema.optional(),
+    from: targetIsSchema.optional(),
+    immuneOnSave: z.literal(true).optional(),
+    /** What it stops (Capability API 1.372), rather than every harmful entry: attacks, and harmful
+     *  entries cast from these catalogs. 5e's Sanctuary stops attacks and harmful spells, Nature's
+     *  Sanctuary only attacks. */
+    against: z
+      .object({
+        attacks: z.literal(true).optional(),
+        casts: z
+          .array(sheetId)
+          .min(1)
+          .max(8)
+          .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
+          .optional(),
+      })
+      .strict()
+      .refine((against) => against.attacks || against.casts, {
+        message: 'Say what it stops: "attacks", harmful entries it "casts" or both',
+      })
+      .optional(),
+  })
+  .strict();
+
+/** Illusory duplicates of its holder (Capability API 1.452). Each attack roll made against its holder
+ *  first rolls a `sides` die (a d20 unless said); at or over `thresholds[left - 1]`, where `left` is how
+ *  many are still there, the attack is made against a duplicate instead, whose defense is `defense.flat`
+ *  plus the holder's `defense.ability` modifier. A duplicate it hits is destroyed, and the condition ends
+ *  with the last. An attacker who can't see the holder, or who senses them with one of `pierced` within
+ *  its range, is never fooled. 5e's Mirror Image: `{ "count": 3, "thresholds": [11, 8, 6], "defense":
+ *  { "flat": 10, "ability": "dex" }, "pierced": ["blindsight", "truesight"] }`. */
+export interface RulesetConditionDuplicates {
+  count: number;
+  thresholds: number[];
+  sides?: number;
+  defense: { flat: number; ability?: string };
+  pierced?: string[];
+}
+const conditionDuplicatesSchema: z.ZodType<RulesetConditionDuplicates, z.ZodTypeDef, unknown> = z
+  .object({
+    count: z.number().int().min(1).max(10),
+    thresholds: z.array(z.number().int().min(1).max(100)).min(1).max(10),
+    sides: z.number().int().min(2).max(100).optional(),
+    defense: z.object({ flat: z.number().int().min(-100).max(100), ability: sheetId.optional() }).strict(),
+    pierced: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((senses) => new Set(senses).size === senses.length, { message: "Each sense is named once" })
+      .optional(),
+  })
+  .strict()
+  .refine((rule) => rule.thresholds.length === rule.count, {
+    message: "duplicates has one threshold for each number of duplicates left, from one up to count",
+    path: ["thresholds"],
+  })
+  .refine((rule) => rule.thresholds.every((one) => one <= (rule.sides ?? 20)), {
+    message: "A duplicates threshold is a face of its die",
+    path: ["thresholds"],
+  });
+
 /** Its holder's speed is not lowered by what entries of these catalogs put on them (Capability API
  *  1.433): a slowing, a halving or a stop that a spell put on does nothing to their walk, and the
  *  same from anything else still does. 5e's Freedom of Movement, `{ "catalogs": ["spells"] }`. */
@@ -10788,6 +10861,9 @@ const combatConditionSchema = z
     /** What its holder does to a creature whose space it enters, once a turn each (Capability API
      *  1.451): Fire Form. */
     entering: conditionEnteringSchema.optional(),
+    /** Illusory duplicates that draw attacks made against its holder (Capability API 1.452): Mirror
+     *  Image. */
+    duplicates: conditionDuplicatesSchema.optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
@@ -11155,33 +11231,7 @@ const combatConditionSchema = z
      *  or is lost. Its difficulty is the one it was put on with, else `difficulty` off its holder's
      *  sheet; `from` keeps it to attackers that are so, and `immuneOnSave` leaves one that saved
      *  free of it for the rest of the fight. 5e's Sanctuary, Tranquility, Nature's Sanctuary. */
-    sanctuary: z
-      .object({
-        save: sheetId,
-        difficulty: rulesetValueRefSchema.optional(),
-        from: targetIsSchema.optional(),
-        immuneOnSave: z.literal(true).optional(),
-        /** What it stops (Capability API 1.372), rather than every harmful entry: attacks, and harmful
-         *  entries cast from these catalogs. 5e's Sanctuary stops attacks and harmful spells, Nature's
-         *  Sanctuary only attacks. */
-        against: z
-          .object({
-            attacks: z.literal(true).optional(),
-            casts: z
-              .array(sheetId)
-              .min(1)
-              .max(8)
-              .refine((catalogs) => new Set(catalogs).size === catalogs.length, { message: "A catalog is named once" })
-              .optional(),
-          })
-          .strict()
-          .refine((against) => against.attacks || against.casts, {
-            message: 'Say what it stops: "attacks", harmful entries it "casts" or both',
-          })
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    sanctuary: conditionSanctuarySchema.optional(),
     /** Only a cure from one of these catalogs, at this level or higher as it is paid, ends it
      *  (Capability API 1.261): the aboleth's later disease, only by a 6th-level spell. */
     curedOnlyBy: z
@@ -15448,6 +15498,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const jumpAbility = entry.jumps?.plus?.ability;
       if (jumpAbility !== undefined && !abilityIds.has(jumpAbility))
         issue([...path, "jumps", "plus", "ability"], `Unknown ability "${jumpAbility}"`);
+      if (entry.duplicates?.defense.ability !== undefined && !abilityIds.has(entry.duplicates.defense.ability))
+        issue([...path, "duplicates", "defense", "ability"], `Unknown ability "${entry.duplicates.defense.ability}"`);
+      if (entry.duplicates) sightIssues(def, entry.duplicates.pierced, [...path, "duplicates"], issue);
       if (entry.weapon?.ability !== undefined && !abilityIds.has(entry.weapon.ability))
         issue([...path, "weapon", "ability"], `Unknown ability "${entry.weapon.ability}"`);
       const abilityFrom = entry.weapon?.abilityFrom;

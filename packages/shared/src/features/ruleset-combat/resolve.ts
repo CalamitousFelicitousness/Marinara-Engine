@@ -51,6 +51,7 @@ import {
   rulesetHidingTraits,
   rulesetLightAt,
   rulesetSeesCell,
+  rulesetSenseRanges,
   rulesetStaysHidden,
 } from "./sight.js";
 import {
@@ -72,6 +73,7 @@ import {
   refreshRulesetMovement,
   rulesetCombatant,
   rulesetCopyDispersed,
+  rulesetAbilityScore,
   rulesetActiveConditions,
   rulesetAuraDistance,
   rulesetTargetHasSenses,
@@ -2590,6 +2592,63 @@ function attackedConditions(target: RulesetCombatant, attacker: RulesetCombatant
     (entry) =>
       entry.endsAfter === "attacked" || (entry.endsAfter === "attacked-by-source" && entry.source === attacker.id),
   );
+}
+
+/** Whether an attack on `target` is turned onto one of its duplicates (1.452), with the defense it is
+ *  rolled against then: never by an attacker who can't see them, or who senses them past the trick. */
+function divertedToDuplicate(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+): { condition: string; defense: number; roll: number; needed: number } | null {
+  if (actor.id === target.id) return null;
+  const entry = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).find((one) => one.duplicates);
+  const rule = entry?.duplicates;
+  if (!entry || !rule) return null;
+  const tracked = target.tracked.find((one) => one.condition === entry.condition);
+  const left = Math.min(rule.count, tracked?.duplicatesLeft ?? rule.count);
+  if (left < 1) return null;
+  if (!rulesetCanSee(ctx.definition, ctx.state, actor, target)) return null;
+  if (rule.pierced) {
+    const ranges = rulesetSenseRanges(ctx.definition, actor, ctx.state);
+    const positioned = !!rulesetPositionOf(actor) && !!rulesetPositionOf(target);
+    const away = positioned ? rulesetGap(actor, target) : 0;
+    if (rule.pierced.some((sense) => (ranges[sense] ?? 0) > 0 && (ranges[sense] ?? 0) >= away)) return null;
+  }
+  const needed = rule.thresholds[left - 1]!;
+  const roll = ctx.roll(rule.sides ?? 20);
+  const diverted = roll >= needed;
+  ctx.events.push({ type: "duplicate", actorId: actor.id, targetId: target.id, roll, needed, diverted });
+  if (!diverted) return null;
+  const score = rule.defense.ability ? rulesetAbilityScore(ctx.definition, target, rule.defense.ability) : undefined;
+  const mod = typeof score === "number" ? rulesetAbilityModifier(ctx.definition, score) : 0;
+  return { condition: entry.condition, defense: rule.defense.flat + mod, roll, needed };
+}
+
+/** A duplicate an attack hit is destroyed (1.452), and its condition ends with the last of them. */
+function loseDuplicate(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  condition: string,
+  { roll, needed }: { roll: number; needed: number },
+): void {
+  const rule = ctx.combat.conditions?.find((one) => one.condition === condition)?.duplicates;
+  const tracked = target.tracked.find((one) => one.condition === condition);
+  if (!rule) return;
+  const left = Math.max(0, Math.min(rule.count, tracked?.duplicatesLeft ?? rule.count) - 1);
+  ctx.events.push({
+    type: "duplicate",
+    actorId: actor.id,
+    targetId: target.id,
+    roll,
+    needed,
+    diverted: true,
+    lost: true,
+    left,
+  });
+  if (tracked) tracked.duplicatesLeft = left;
+  if (left === 0 && tracked) removeCondition(ctx, target, condition, "spent");
 }
 
 /** Takes off exactly these, if they are still on. One the same blow put on afresh is a new one, not
@@ -11993,7 +12052,7 @@ function resolveActionBody(
       // What the weapon adds against what the target is (1.187).
       const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target, actor);
       // What the ground the target stands on is worth, said out loud before the roll it changed.
-      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor, action);
+      let guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor, action);
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }
@@ -12066,6 +12125,9 @@ function resolveActionBody(
         }
       } else {
         const dice = ctx.combat.attackRoll!.dice;
+        // Turned onto a duplicate (1.452): rolled against its defense, and whatever it hits is only it.
+        const duplicate = divertedToDuplicate(ctx, actor, target);
+        if (duplicate) guarded = { ...guarded, defense: duplicate.defense };
         const first = throwOwnDice(ctx, actor, "attacks", dice.count, dice.sides);
         const second = mode === "normal" ? null : throwOwnDice(ctx, actor, "attacks", dice.count, dice.sides);
         const kept = second
@@ -12152,6 +12214,10 @@ function resolveActionBody(
         // Help is spent by the attack it was given for, landed or not.
         actor.flags.helped = false;
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: attackedConditions(target, actor) };
+        if (duplicate && outcome !== "miss") {
+          loseDuplicate(ctx, actor, target, duplicate.condition, duplicate);
+          outcome = "miss";
+        }
         landed = outcome !== "miss";
         if (landed) noteHitBy(ctx, target, actor);
         if (landed) answerHit(ctx, target, actor, action);

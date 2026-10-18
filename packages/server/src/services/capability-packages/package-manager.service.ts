@@ -2263,6 +2263,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A condition with illusory duplicates that draw attacks (1.452): Mirror Image. */
+function carriesDuplicates452(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDuplicates452(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && plainRecord(record.duplicates)?.thresholds !== undefined) return true;
+  return featureValues(record).some((one) => carriesDuplicates452(one, depth + 1));
+}
+
 function carriesElementalForms451(ruleset: unknown, depth = 0): boolean {
   const record = plainRecord(ruleset);
   if (depth === 0 && plainRecord(plainRecord(plainRecord(record?.combat)?.mounts)?.fall)?.landsWith !== undefined)
@@ -6419,6 +6429,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Illusory duplicates that draw attacks, 1.452.
+  if (
+    !declaresApi(452) &&
+    (carriesDuplicates452(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDuplicates452(document)))
+  ) {
+    return "A ruleset whose conditions make illusory duplicates that draw attacks (a condition's duplicates) requires schemaVersion 2 and capabilityApi 1.452 or newer";
+  }
   // Stopping in a foe's space and what entering one does, and landing from a fallen mount, 1.451.
   if (
     !declaresApi(451) &&

@@ -1421,6 +1421,8 @@ export interface RulesetCombatAgainst {
 export interface RulesetTrackedCondition {
   /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */
   raisedMax?: number;
+  /** How many of its `duplicates` are left (1.452), once one has been destroyed. */
+  duplicatesLeft?: number;
   /** The catalog of the entry that put it on (1.371): a spell's, for Dispel Magic. */
   catalog?: string;
   /** Who saved against its sanctuary and is free of it for the rest of the fight (1.370). */
@@ -2772,6 +2774,18 @@ export type RulesetCombatEvent =
   /** What a presence sense tells its holder (1.391): which kinds are within `within`, none found
    *  when `kinds` is empty. */
   | { type: "presence"; actorId: string; condition: string; within: number; kinds: string[] }
+  /** An attack on somebody with duplicates (1.452): whether the die turned it onto one, and `lost`
+   *  once the attack hit it, with how many are `left`. */
+  | {
+      type: "duplicate";
+      actorId: string;
+      targetId: string;
+      roll: number;
+      needed: number;
+      diverted: boolean;
+      lost?: true;
+      left?: number;
+    }
   /** A use's chance rolled (1.388): `sure` when nothing needed rolling. */
   | {
       type: "chance";

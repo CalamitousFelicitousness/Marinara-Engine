@@ -64,11 +64,31 @@ import { eq } from "../../packages/server/src/db/file-query.js";
   assert.equal(patch.gamePartySheetRevision, 5, "the party sheet revision moves forward, never back");
   assert.equal(patch.gameInventoryTurn, null, "the turn record of replaced stacks is dropped");
   assert.equal(Object.hasOwn(patch, "gameMorale"), false, "a key absent then and now is left alone");
+
+  // The State Editor's story script and HUD widgets rewind with it (#7743); the widgets' flag follows them.
+  const widget = { id: "courage", type: "progress_bar", label: "Courage", position: "hud_left", config: {} };
+  const editorCaptured = captureCheckpointGameMetadata({ gameStory: { storyVersion: 1 }, gameWidgetState: [widget] })!;
+  const rewound = buildCheckpointGameMetadataRestore(editorCaptured, {
+    gameStory: { storyVersion: 1, events: ["added after the save"] },
+    gameWidgetState: [],
+    enableCustomWidgets: false,
+  });
+  assert.deepEqual(rewound.gameStory, { storyVersion: 1 }, "the story script is restored");
+  assert.deepEqual(rewound.gameWidgetState, [widget], "the widgets are restored");
+  assert.equal(rewound.enableCustomWidgets, true, "and custom widgets are on again");
+  const cleared = buildCheckpointGameMetadataRestore(captureCheckpointGameMetadata({ gameNpcs: [] })!, {
+    gameWidgetState: [widget],
+    gameStory: { storyVersion: 1 },
+  });
+  assert.equal(cleared.gameWidgetState, null, "widgets added after the save are cleared");
+  assert.equal(cleared.enableCustomWidgets, false, "and custom widgets go off with them");
+  assert.equal(cleared.gameStory, null, "a story added after the save is cleared");
   for (const key of Object.keys(patch)) {
     assert.ok(
       (CHECKPOINT_GAME_METADATA_KEYS as readonly string[]).includes(key) ||
         key === "gamePartySheetRevision" ||
-        key === "gameInventoryTurn",
+        key === "gameInventoryTurn" ||
+        key === "enableCustomWidgets",
       `the restore only writes allow-listed keys and their companions (${key})`,
     );
   }

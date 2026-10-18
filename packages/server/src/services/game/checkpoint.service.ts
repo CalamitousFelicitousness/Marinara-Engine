@@ -97,6 +97,11 @@ export const CHECKPOINT_GAME_METADATA_KEYS = [
   "gameTime",
   "gameWeather",
   "gameMorale",
+  // The State Editor writes these too (#7743), so the checkpoint it takes before a save rewinds them.
+  // The world's edits layer is not here: it lives inside gameWorld, whose snapshot a load would also
+  // have to re-save, so a load leaves it as it is (a known gap, see docs/game/sessions-and-saves.md).
+  "gameStory",
+  "gameWidgetState",
 ] as const;
 
 /** A chat's characterIds column (a JSON string or an array) as a clean list of unique ids. */
@@ -141,6 +146,10 @@ export function buildCheckpointGameMetadataRestore(
   }
   if (Object.hasOwn(patch, "gamePartySheet")) patch.gamePartySheetRevision = gamePartySheetRevision(current) + 1;
   if (Object.hasOwn(patch, "gameInventory")) patch.gameInventoryTurn = null;
+  // The widgets route keeps this flag beside the widgets: restored widgets turn it back on, none turns it off.
+  if (Object.hasOwn(patch, "gameWidgetState")) {
+    patch.enableCustomWidgets = Array.isArray(patch.gameWidgetState) && patch.gameWidgetState.length > 0;
+  }
   return patch;
 }
 

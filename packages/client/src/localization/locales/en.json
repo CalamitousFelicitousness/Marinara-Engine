@@ -14270,7 +14270,7 @@
   "ui.stateEditor.gameData.sections.widgets.label": "HUD Widgets",
   "ui.stateEditor.gameData.sections.world.description": "The world the game drew at setup: places, people and routes.",
   "ui.stateEditor.gameData.sections.world.label": "World",
-  "ui.stateEditor.gameData.sections.worldEdits.description": "Your hand edits over the world the game drew: renamed or moved places, added places and people, ground changes. The world itself never changes; empty edits clear them.",
+  "ui.stateEditor.gameData.sections.worldEdits.description": "Your hand edits over the world the game drew: renamed or moved places, added places and people, ground changes. The world itself never changes; empty edits clear them. Loading a checkpoint doesn't undo these.",
   "ui.stateEditor.gameData.sections.worldEdits.label": "World Edits",
   "ui.stateEditor.gameData.staleNotice": "The game changed some of this data while you were editing, and saving would undo that. Reload to see its changes; your drafts will be discarded.",
   "ui.stateEditor.gameData.title": "Game Data",

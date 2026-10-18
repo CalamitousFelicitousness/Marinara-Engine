@@ -11666,7 +11666,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
         return { gameWorld: edits ? { ...stored, edits } : stored };
       });
-      if (!saved || storyRefusal) return saved;
+      // Nothing was written for a stale or refused layer: no snapshot to save, and nothing to take back.
+      // (`previous` is only set on a write, so a failed snapshot here would roll the world back to nothing.)
+      if (!saved || stale || storyRefusal) return saved;
       // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
       // back, so the recipe and the snapshot never disagree.
       try {

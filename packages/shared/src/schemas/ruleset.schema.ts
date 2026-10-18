@@ -4496,7 +4496,8 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
 /** A save that ends a condition, and what counting them decides (1.258). */
 export interface RulesetCatalogSaveEnds {
   save: string;
-  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start";
+  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start" | "days";
+  days?: number;
   successes?: number;
   failures?: { count: number; becomes?: string; dismisses?: true };
   unseen?: true;
@@ -4584,8 +4585,10 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         /** `action` (Capability API 1.264): rolled when its holder spends their action on it, as 5e's
          *  Irresistible Dance allows. `source-turn-start` (Capability API 1.430): rolled as the turn
          *  of whoever put it on starts, Prismatic Spray's Violet ray's "at the start of your next
-         *  turn". */
-        at: z.enum(["turn-end", "turn-start", "damaged", "action", "source-turn-start"]),
+         *  turn". `days` (Capability API 1.473): never in a fight, but once each `days` of game time
+         *  that pass outside one, Feeblemind's "at the end of every 30 days". */
+        at: z.enum(["turn-end", "turn-start", "damaged", "action", "source-turn-start", "days"]),
+        days: z.number().int().min(1).max(3650).optional(),
         /** It takes this many successes, counted over the turns, to end it (Capability API 1.258):
          *  5e's Contagion, three. */
         successes: z.number().int().min(2).max(10).optional(),
@@ -4622,6 +4625,14 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .refine((ends) => !ends.bySource || ends.at === "damaged", {
         message: '"bySource" narrows a save rolled on damage: it goes with "at": "damaged"',
         path: ["bySource"],
+      })
+      .refine((ends) => (ends.at === "days") === (ends.days !== undefined), {
+        message: '"days" says how often a save "at": "days" is made, and goes only with it',
+        path: ["days"],
+      })
+      .refine((ends) => ends.at !== "days" || (ends.successes === undefined && ends.failures === undefined), {
+        message: 'A save made as days pass ends it on its first success: no "successes" or "failures"',
+        path: ["at"],
       })
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,

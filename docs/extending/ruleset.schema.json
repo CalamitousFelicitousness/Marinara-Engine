@@ -42025,8 +42025,14 @@
                                               "turn-start",
                                               "damaged",
                                               "action",
-                                              "source-turn-start"
+                                              "source-turn-start",
+                                              "days"
                                             ]
+                                          },
+                                          "days": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 3650
                                           },
                                           "successes": {
                                             "type": "integer",
@@ -47853,8 +47859,14 @@
                                   "turn-start",
                                   "damaged",
                                   "action",
-                                  "source-turn-start"
+                                  "source-turn-start",
+                                  "days"
                                 ]
+                              },
+                              "days": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 3650
                               },
                               "successes": {
                                 "type": "integer",
@@ -48987,8 +48999,14 @@
                                   "turn-start",
                                   "damaged",
                                   "action",
-                                  "source-turn-start"
+                                  "source-turn-start",
+                                  "days"
                                 ]
+                              },
+                              "days": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 3650
                               },
                               "successes": {
                                 "type": "integer",
@@ -54047,8 +54065,14 @@
                                         "turn-start",
                                         "damaged",
                                         "action",
-                                        "source-turn-start"
+                                        "source-turn-start",
+                                        "days"
                                       ]
+                                    },
+                                    "days": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 3650
                                     },
                                     "successes": {
                                       "type": "integer",
@@ -55493,8 +55517,14 @@
                                             "turn-start",
                                             "damaged",
                                             "action",
-                                            "source-turn-start"
+                                            "source-turn-start",
+                                            "days"
                                           ]
+                                        },
+                                        "days": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 3650
                                         },
                                         "successes": {
                                           "type": "integer",
@@ -58686,8 +58716,14 @@
                                                     "turn-start",
                                                     "damaged",
                                                     "action",
-                                                    "source-turn-start"
+                                                    "source-turn-start",
+                                                    "days"
                                                   ]
+                                                },
+                                                "days": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 3650
                                                 },
                                                 "successes": {
                                                   "type": "integer",
@@ -61165,8 +61201,14 @@
                                             "turn-start",
                                             "damaged",
                                             "action",
-                                            "source-turn-start"
+                                            "source-turn-start",
+                                            "days"
                                           ]
+                                        },
+                                        "days": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 3650
                                         },
                                         "successes": {
                                           "type": "integer",
@@ -70401,8 +70443,14 @@
                                             "turn-start",
                                             "damaged",
                                             "action",
-                                            "source-turn-start"
+                                            "source-turn-start",
+                                            "days"
                                           ]
+                                        },
+                                        "days": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 3650
                                         },
                                         "successes": {
                                           "type": "integer",
@@ -76055,8 +76103,14 @@
                                                   "turn-start",
                                                   "damaged",
                                                   "action",
-                                                  "source-turn-start"
+                                                  "source-turn-start",
+                                                  "days"
                                                 ]
+                                              },
+                                              "days": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 3650
                                               },
                                               "successes": {
                                                 "type": "integer",
@@ -81755,8 +81809,14 @@
                                       "turn-start",
                                       "damaged",
                                       "action",
-                                      "source-turn-start"
+                                      "source-turn-start",
+                                      "days"
                                     ]
+                                  },
+                                  "days": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 3650
                                   },
                                   "successes": {
                                     "type": "integer",
@@ -82889,8 +82949,14 @@
                                       "turn-start",
                                       "damaged",
                                       "action",
-                                      "source-turn-start"
+                                      "source-turn-start",
+                                      "days"
                                     ]
+                                  },
+                                  "days": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 3650
                                   },
                                   "successes": {
                                     "type": "integer",
@@ -91120,8 +91186,14 @@
                                                         "turn-start",
                                                         "damaged",
                                                         "action",
-                                                        "source-turn-start"
+                                                        "source-turn-start",
+                                                        "days"
                                                       ]
+                                                    },
+                                                    "days": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 3650
                                                     },
                                                     "successes": {
                                                       "type": "integer",
@@ -96820,8 +96892,14 @@
                                             "turn-start",
                                             "damaged",
                                             "action",
-                                            "source-turn-start"
+                                            "source-turn-start",
+                                            "days"
                                           ]
+                                        },
+                                        "days": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 3650
                                         },
                                         "successes": {
                                           "type": "integer",
@@ -97954,8 +98032,14 @@
                                             "turn-start",
                                             "damaged",
                                             "action",
-                                            "source-turn-start"
+                                            "source-turn-start",
+                                            "days"
                                           ]
+                                        },
+                                        "days": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 3650
                                         },
                                         "successes": {
                                           "type": "integer",
@@ -112779,8 +112863,14 @@
                                 "turn-start",
                                 "damaged",
                                 "action",
-                                "source-turn-start"
+                                "source-turn-start",
+                                "days"
                               ]
+                            },
+                            "days": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 3650
                             },
                             "successes": {
                               "type": "integer",
@@ -113957,8 +114047,14 @@
                                 "turn-start",
                                 "damaged",
                                 "action",
-                                "source-turn-start"
+                                "source-turn-start",
+                                "days"
                               ]
+                            },
+                            "days": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 3650
                             },
                             "successes": {
                               "type": "integer",
@@ -115126,8 +115222,14 @@
                                 "turn-start",
                                 "damaged",
                                 "action",
-                                "source-turn-start"
+                                "source-turn-start",
+                                "days"
                               ]
+                            },
+                            "days": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 3650
                             },
                             "successes": {
                               "type": "integer",
@@ -118754,8 +118856,14 @@
                                 "turn-start",
                                 "damaged",
                                 "action",
-                                "source-turn-start"
+                                "source-turn-start",
+                                "days"
                               ]
+                            },
+                            "days": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 3650
                             },
                             "successes": {
                               "type": "integer",
@@ -120353,8 +120461,14 @@
                                       "turn-start",
                                       "damaged",
                                       "action",
-                                      "source-turn-start"
+                                      "source-turn-start",
+                                      "days"
                                     ]
+                                  },
+                                  "days": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 3650
                                   },
                                   "successes": {
                                     "type": "integer",
@@ -121508,8 +121622,14 @@
                                           "turn-start",
                                           "damaged",
                                           "action",
-                                          "source-turn-start"
+                                          "source-turn-start",
+                                          "days"
                                         ]
+                                      },
+                                      "days": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 3650
                                       },
                                       "successes": {
                                         "type": "integer",
@@ -123214,8 +123334,14 @@
                                 "turn-start",
                                 "damaged",
                                 "action",
-                                "source-turn-start"
+                                "source-turn-start",
+                                "days"
                               ]
+                            },
+                            "days": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 3650
                             },
                             "successes": {
                               "type": "integer",

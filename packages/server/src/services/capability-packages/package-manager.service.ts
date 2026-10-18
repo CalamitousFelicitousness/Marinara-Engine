@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A save made as days pass outside a fight (1.473): Feeblemind's, every 30 days. */
+function carriesDaySaves473(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDaySaves473(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.saveEnds)?.at === "days") return true;
+  return featureValues(record).some((one) => carriesDaySaves473(one, depth + 1));
+}
+
 /** A condition that forbids using items, or more than six conditions an entry puts on each by the
  *  steps it is paid at (1.472): Feeblemind, Branding Smite. */
 function carriesItemsForbidOrPaidApplies472(value: unknown, depth = 0): boolean {
@@ -6661,6 +6671,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Saves made as days pass, 1.473.
+  if (
+    !declaresApi(473) &&
+    (carriesDaySaves473(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDaySaves473(document)))
+  ) {
+    return 'A ruleset with a save made as days pass (saveEnds "at": "days") requires schemaVersion 2 and capabilityApi 1.473 or newer';
+  }
   // Items a condition forbids, and more than six conditions put on by the steps paid, 1.472.
   if (
     !declaresApi(472) &&

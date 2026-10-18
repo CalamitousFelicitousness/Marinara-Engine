@@ -25,6 +25,7 @@ import {
 import {
   evaluateRulesetSheetLive,
   readRulesetLive,
+  rulesetLiveWithDaySave,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -3932,7 +3933,7 @@ function rollOutCountedSaves(ctx: RulesetCombatContext): void {
     if (holder.defeated) continue;
     for (const entry of [...holder.tracked]) {
       const ends = entry.saveEnds;
-      if (!ends || ends.at === "damaged" || entry.difficulty === undefined) continue;
+      if (!ends || ends.at === "damaged" || ends.at === "days" || entry.difficulty === undefined) continue;
       if (ends.successes === undefined && ends.failures === undefined) continue;
       for (let turn = 0; turn < COUNTED_SAVES_AFTER_FIGHT_MAX && holder.tracked.includes(entry); turn += 1) {
         const saved = rollSave(ctx, holder, ends.save, entry.difficulty, entry.source, undefined, {
@@ -7737,6 +7738,19 @@ export function liftRulesetFightEffects(
       if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
   };
   for (const combatant of state.combatants) {
+    // A save it is made against as days pass (1.473) goes onto the sheet it stays on: Feeblemind.
+    if (combatant.sheet && !combatant.defeated) {
+      for (const entry of combatant.tracked) {
+        const ends = entry.saveEnds;
+        if (ends?.at !== "days" || !ends.days || entry.difficulty === undefined || entry.rounds !== null) continue;
+        if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
+        combatant.sheet.live = rulesetLiveWithDaySave(combatant.sheet.live, entry.condition, {
+          save: ends.save,
+          difficulty: entry.difficulty,
+          every: ends.days,
+        });
+      }
+    }
     const dazed = combatant.dazed;
     delete combatant.dazed;
     if (dazed?.condition) lift(combatant, dazed.condition, "expired");

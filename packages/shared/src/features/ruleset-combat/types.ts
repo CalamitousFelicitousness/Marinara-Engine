@@ -121,8 +121,10 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
  *  only after `successes` of them, and after `failures.count` failures `becomes` another condition. */
 export interface RulesetCombatSaveEnds {
   save: string;
-  /** `action` (1.264): rolled when its holder spends their action on it. */
-  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start";
+  /** `action` (1.264): rolled when its holder spends their action on it. `days` (1.473): never in a
+   *  fight, but once each `days` of game time outside one. */
+  at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start" | "days";
+  days?: number;
   successes?: number;
   /** Or, with `dismisses` (1.430), its holder leaves the fight for good, alive. */
   failures?: { count: number; becomes?: string; dismisses?: true };

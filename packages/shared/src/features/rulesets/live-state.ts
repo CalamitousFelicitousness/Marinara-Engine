@@ -89,6 +89,17 @@ export interface RulesetLiveState {
   /** Days of game time counted since each spent row whose recharge takes days was spent (1.392),
    *  keyed by pool. */
   waited?: Record<string, number>;
+  /** Saves made as days pass (1.473), keyed by the condition they end: which save, against what,
+   *  how many days apart, and the days counted toward the next. Feeblemind's, every 30 days. */
+  daySaves?: Record<string, RulesetLiveDaySave>;
+}
+
+/** A save a held condition is made against as days pass (Capability API 1.473). */
+export interface RulesetLiveDaySave {
+  save: string;
+  difficulty: number;
+  every: number;
+  waited?: number;
 }
 
 /** Live state of every card, keyed by normalized name, plus RULESET_PARTY_KEY for the shared sheet. */
@@ -160,6 +171,15 @@ const liveAbilityRaiseSchema = z
   .object({ score: z.number().int().min(0).max(1000), max: z.number().int().min(0).max(1000) })
   .strict();
 
+const liveDaySaveSchema = z
+  .object({
+    save: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
+    difficulty: z.number().int().min(-100).max(1000),
+    every: z.number().int().min(1).max(3650),
+    waited: z.number().int().min(0).max(3650).optional(),
+  })
+  .strict();
+
 /** One character's live state. Unknown top-level keys are stripped rather than refused: a newer
  *  Engine's key must not make the whole game's state unwritable on an older one. */
 export const rulesetLiveStateSchema = z
@@ -176,6 +196,7 @@ export const rulesetLiveStateSchema = z
     abilities: boundedRecord(liveAbilityRaiseSchema, MAX_LIVE_CONDITIONS, "raised abilities").optional(),
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
+    daySaves: boundedRecord(liveDaySaveSchema, MAX_LIVE_CONDITIONS, "saves made as days pass").optional(),
   })
   .strip();
 
@@ -744,6 +765,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (usedOn) state.usedOn = usedOn;
   const waited = keepValid(source.waited, liveNumber, MAX_LIVE_POOLS);
   if (waited) state.waited = waited;
+  const daySaves = keepValid(source.daySaves, liveDaySaveSchema, MAX_LIVE_CONDITIONS);
+  if (daySaves) state.daySaves = daySaves;
   return state;
 }
 
@@ -761,8 +784,13 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   const held = new Set(state.conditions ?? []);
   const raised = Object.entries(state.raised ?? {}).filter(([condition, amount]) => held.has(condition) && amount > 0);
   if (raised.length > 0) normalized.raised = Object.fromEntries(raised);
+  // Raised for good (1.463): kept through every other change to the sheet.
+  if (state.abilities && Object.keys(state.abilities).length > 0) normalized.abilities = state.abilities;
   if (state.usedOn && Object.keys(state.usedOn).length > 0) normalized.usedOn = state.usedOn;
   if (state.waited && Object.keys(state.waited).length > 0) normalized.waited = state.waited;
+  // A save made as days pass (1.473) lasts while what it ends does.
+  const daySaves = Object.entries(state.daySaves ?? {}).filter(([condition]) => held.has(condition));
+  if (daySaves.length > 0) normalized.daySaves = Object.fromEntries(daySaves);
   return normalized;
 }
 
@@ -891,6 +919,17 @@ export function raiseRulesetLiveAbilities(
     abilities[id] = { score: Math.min(1000, now.score + raise.by), max: Math.min(1000, now.max + (raise.max ?? 0)) };
   }
   return { ...state, abilities };
+}
+
+/** A live state with a save its holder makes against `condition` as days pass (1.473), counted from
+ *  nothing: written as a fight that put it on is over. */
+export function rulesetLiveWithDaySave(
+  stored: unknown,
+  condition: string,
+  save: { save: string; difficulty: number; every: number },
+): RulesetLiveState {
+  const state = readStoredLiveStateAsIs(stored);
+  return { ...state, daySaves: { ...state.daySaves, [condition]: { ...save } } };
 }
 
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */
@@ -1459,6 +1498,43 @@ export function applyRulesetSheetOp(
       } else waited[pool.key] = counted;
       next.waited = waited;
     }
+    // A condition saved against as days pass (1.473): once each so many, until the first success.
+    const held = new Set(next.conditions ?? []);
+    const daySaves = { ...next.daySaves };
+    for (const [condition, owed] of Object.entries(daySaves)) {
+      if (!held.has(condition)) {
+        delete daySaves[condition];
+        continue;
+      }
+      let counted = (owed.waited ?? 0) + op.days;
+      const label = definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
+      const save = definition.sheet.saves.find((one) => one.id === owed.save);
+      const modifier = save
+        ? rulesetCheckModifier(evaluateRulesetSheetLive(definition, build, next, items), {
+            type: "save",
+            id: save.id,
+            label: save.label,
+            ...(save.ability ? { ability: save.ability } : {}),
+          })
+        : 0;
+      const { dice } = definition.resolution as { dice: { count: number; sides: number } };
+      let ended = false;
+      while (counted >= owed.every && !ended) {
+        counted -= owed.every;
+        let total = modifier;
+        if (roll) for (let index = 0; index < dice.count; index += 1) total += roll(dice.sides);
+        else total += Math.floor((dice.count * (dice.sides + 1)) / 2);
+        ended = total >= owed.difficulty;
+        back.push(
+          `${label}: ${save?.label ?? owed.save} ${total} against ${owed.difficulty}, ${ended ? "ended" : "failed"}`,
+        );
+      }
+      if (ended) {
+        next.conditions = (next.conditions ?? []).filter((id) => id !== condition);
+        delete daySaves[condition];
+      } else daySaves[condition] = { ...owed, waited: counted };
+    }
+    next.daySaves = daySaves;
     const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}`;
     return done(back.length ? `${days}: ${back.join(", ")}` : days);
   }

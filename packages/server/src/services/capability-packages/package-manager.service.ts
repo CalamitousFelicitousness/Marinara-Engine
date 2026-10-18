@@ -2263,6 +2263,19 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A condition whose answer to a hit harms the hitter, reaches only so far, or asks no save (1.455):
+ *  Fire Shield, an azer's Heated Body. */
+function carriesHitBack455(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHitBack455(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const whenHit = record.condition !== undefined ? plainRecord(record.whenHit) : undefined;
+  if (whenHit && (whenHit.harms !== undefined || whenHit.within !== undefined || whenHit.save === undefined))
+    return true;
+  return featureValues(record).some((one) => carriesHitBack455(one, depth + 1));
+}
+
 /** A condition that gives its holder turns in a row, time stopped (1.454): Time Stop. */
 function carriesStopsTime454(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6449,6 +6462,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Harm dealt back on a hit, a reach for it, or no save before it, 1.455.
+  if (
+    !declaresApi(455) &&
+    (carriesHitBack455(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHitBack455(document)))
+  ) {
+    return "A ruleset whose conditions harm whoever hits their holder, only so near, or with no save (whenHit harms, within, or no save) requires schemaVersion 2 and capabilityApi 1.455 or newer";
+  }
   // Turns in a row with time stopped, 1.454.
   if (
     !declaresApi(454) &&

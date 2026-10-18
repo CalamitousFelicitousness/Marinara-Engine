@@ -1030,14 +1030,46 @@ function answerHit(
     if (!rule || attacker.defeated) continue;
     if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
     if (rule.from && !rulesetTargetIs(ctx.definition, attacker, rule.from)) continue;
+    // Only a hitter this near (1.455), off a board everybody is.
+    const perCell = ctx.definition.combat?.distance?.perCell;
+    if (
+      rule.within !== undefined &&
+      perCell !== undefined &&
+      rulesetPositionOf(attacker) &&
+      rulesetPositionOf(target) &&
+      rulesetGap(attacker, target) > rulesetInCells(rule.within, perCell)
+    )
+      continue;
     const own = target.tracked.find((one) => one.condition === entry.condition);
+    // What it deals the hitter, no save, once the blow is over (1.455): Fire Shield.
+    const harm = rule.harms;
+    if (harm) {
+      const label =
+        ctx.definition.sheet.live.conditions.find((live) => live.id === entry.condition)?.label ?? entry.condition;
+      ctx.harmEndings.push(() => {
+        if (attacker.defeated) return;
+        const dice = harm.dice ? parseRulesetCombatDice(harm.dice) : null;
+        const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : [];
+        const flat = (dice?.flat ?? 0) + (harm.flat ?? 0);
+        const dealt = applyDamage(ctx, attacker, {
+          sourceId: target.id,
+          label,
+          ...(harm.damageType ? { damageType: harm.damageType } : {}),
+          rolls,
+          flat,
+          amount: sumOf(rolls) + flat,
+        });
+        afterBlow(ctx, attacker, dealt, false);
+      });
+    }
+    if (!rule.applies) continue;
     // Spread by another's aura (1.438): what put the aura's own condition on its holder.
     const held = own?.aura && !own.action ? (auraOrigin(ctx, own) ?? own) : own;
     const source = held?.source ? rulesetCombatant(ctx.state, held.source) : undefined;
     const by = held?.action ? source?.actions.find((one) => one.id === held.action![0]) : undefined;
-    const difficulty = rule.save.difficulty ?? by?.save?.difficulty ?? by?.saveDifficulty ?? 10;
+    const difficulty = rule.save?.difficulty ?? by?.save?.difficulty ?? by?.saveDifficulty ?? 10;
     const sourceId = source?.id ?? target.id;
-    if (rollSave(ctx, attacker, rule.save.save, difficulty, sourceId)) continue;
+    if (rule.save && rollSave(ctx, attacker, rule.save.save, difficulty, sourceId)) continue;
     for (const applies of rule.applies) {
       applyConditionId(ctx, attacker, applies.condition, applies, {
         sourceId,

@@ -10617,21 +10617,42 @@ const conditionImmunitiesFromSchema = z
   .max(10);
 
 /** What a condition does to whoever hits its holder, by itself (1.436). Typed by hand, to keep the
- *  condition's inferred type short enough to emit. */
+ *  condition's inferred type short enough to emit.
+ *  `harms` (Capability API 1.455) deals the hitter that much with no save, once the blow is over, and
+ *  `within` keeps it all to a hitter that near, in the ruleset's distance: 5e's Fire Shield, 2d8 fire
+ *  on a melee hit from within 5 feet; an azer's Heated Body. With neither `save` nor `harms`, what it
+ *  `applies` goes on with no save. */
 export interface RulesetConditionWhenHit {
   blow?: "melee" | "ranged";
   from?: RulesetTargetIs;
-  save: { save: string; difficulty?: number };
-  applies: RulesetCatalogApplies[];
+  save?: { save: string; difficulty?: number };
+  applies?: RulesetCatalogApplies[];
+  harms?: { dice?: string; flat?: number; damageType?: string };
+  within?: number;
 }
 const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, unknown> = z
   .object({
     blow: z.enum(["melee", "ranged"]).optional(),
     from: targetIsSchema.optional(),
-    save: z.object({ save: sheetId, difficulty: z.number().int().min(0).max(1000).optional() }).strict(),
-    applies: z.array(catalogAppliesSchema).min(1).max(4),
+    save: z
+      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000).optional() })
+      .strict()
+      .optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+    harms: z
+      .object({ ...catalogAmountShape, damageType: promptSafeText(40).optional() })
+      .strict()
+      .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+        message: "whenHit harms says how much: dice, flat or both",
+      })
+      .optional(),
+    within: z.number().finite().gt(0).max(10000).optional(),
   })
-  .strict();
+  .strict()
+  .refine((rule) => rule.applies || rule.harms, { message: "whenHit does something: applies, harms or both" })
+  .refine((rule) => !rule.save || rule.applies, {
+    message: "A whenHit save is against what it applies, so it goes with applies",
+  });
 
 /** What its holder's own hits put on whoever they hit (Capability API 1.450): only a weapon's blow with
  *  `weapon`, only one struck so with `blow`. Each `applies` goes on the one hit, from the holder, once
@@ -15535,9 +15556,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       // Who is hit saves with a save of the sheet's, or takes conditions it has (1.436).
       if (entry.whenHit) {
         const where = [...path, "whenHit"];
-        if (!def.sheet.saves.some((one) => one.id === entry.whenHit!.save.save))
+        if (entry.whenHit.save && !def.sheet.saves.some((one) => one.id === entry.whenHit!.save!.save))
           issue([...where, "save", "save"], `Unknown save "${entry.whenHit.save.save}"`);
-        entry.whenHit.applies.forEach((applied, appliedIndex) => {
+        const harmed = entry.whenHit.harms?.damageType;
+        if (
+          harmed !== undefined &&
+          combat.damageTypes &&
+          !combat.damageTypes.some((type) => type.trim().toLowerCase() === harmed.trim().toLowerCase())
+        )
+          issue([...where, "harms", "damageType"], `Unknown damage type "${harmed}"`);
+        entry.whenHit.applies?.forEach((applied, appliedIndex) => {
           if (!conditions.has(applied.condition))
             issue([...where, "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
         });

@@ -12,6 +12,7 @@
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import type { RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
@@ -327,6 +328,8 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
   usesLeft?: Record<string, number>;
+  /** What is stored in it now (1.471), when the fight stored or cast something. */
+  storedEntries?: RulesetStoredEntry[];
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
   /** It became another item when its last charge was spent (1.272): that item, and its name. */
@@ -357,7 +360,8 @@ export function rulesetFightItemChanges(
         !combatant.charges &&
         !combatant.usesLeft &&
         !combatant.on &&
-        !combatant.became)
+        !combatant.became &&
+        !combatant.actions.some((action) => action.storedIn?.item !== undefined))
     ) {
       continue;
     }
@@ -377,12 +381,16 @@ export function rulesetFightItemChanges(
         }),
       );
       const usesSpent = Object.keys(usesLeft).length > 0;
+      // What it stores (1.471), stored or cast since `before`.
+      const storedNow = held.item.stores ? rulesetStoredNow(combatant, index) : [];
+      const storedBefore = earlier ? rulesetStoredNow(earlier, index) : (held.storedEntries ?? []);
+      const restored = !!held.item.stores && JSON.stringify(storedNow) !== JSON.stringify(storedBefore);
       const on = combatant.on?.[index];
       const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !usesSpent && !switched && !turned) return;
+      if (taken === 0 && !reloaded && !spent && !usesSpent && !restored && !switched && !turned) return;
       // The stack holds what it became from the step after it turned, so later changes name that.
       const ref = earlier?.became?.[index] ?? held.stack.ref;
       changes.push({
@@ -392,6 +400,7 @@ export function rulesetFightItemChanges(
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
         ...(usesSpent ? { usesLeft } : {}),
+        ...(restored ? { storedEntries: storedNow } : {}),
         ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
         ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
@@ -450,15 +459,18 @@ export function applyRulesetFightItemChanges(
     const on = change.on ?? wasOn === true;
     // Become another item (1.272): the stack holds that item now, under its name, with no charges.
     if (change.becomes) {
-      const { charges: _charges, loaded: _loaded, usesLeft: _usesLeft, ...plain } = kept;
+      const { charges: _charges, loaded: _loaded, usesLeft: _usesLeft, storedEntries: _stored, ...plain } = kept;
       journal.push({ item: stack.name, action: "lost", quantity: 1 });
       journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
       next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
       continue;
     }
+    // What it stores (1.471), as the fight left it: nothing kept once it is empty.
+    if (change.storedEntries) delete kept.storedEntries;
     next[at] = {
       ...kept,
       quantity,
+      ...(change.storedEntries?.length && quantity === 1 ? { storedEntries: change.storedEntries } : {}),
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
@@ -466,6 +478,16 @@ export function applyRulesetFightItemChanges(
     };
   }
   return { stacks: next, journal };
+}
+
+/** What an item a combatant holds stores now (1.471), at `item` on their sheet, or what a creature
+ *  that stores holds, with no `item`: each stored entry not yet cast, in the order it was stored. */
+export function rulesetStoredNow(combatant: RulesetCombatant, item?: number): RulesetStoredEntry[] {
+  return combatant.actions.flatMap((action) =>
+    action.storedIn && action.storedIn.item === item && (combatant.uses[action.id] ?? 0) > 0
+      ? [{ ...action.storedIn.record }]
+      : [],
+  );
 }
 
 /** The option that picks something dropped back up (1.266), followed by what it picks up. */

@@ -296,7 +296,17 @@ export function RulesetCombatMenu({
     }
     afterMode(option, style);
   };
-  const take = (option: DirectedRulesetOption) => {
+  /** Stored instead of done (1.471), paid with `payWith`. */
+  const store = (option: DirectedRulesetOption, place: { holderId: string; item?: number }, payWith?: string) => {
+    closeStep();
+    onChoose(option.id, [], payWith, { storesIn: place });
+  };
+  const take = (option: DirectedRulesetOption, cast = false) => {
+    // Whether to store it instead comes first (1.471): a Ring of Spell Storing.
+    if (!cast && option.storesIn?.length) {
+      setStep({ stage: "store", option, targets: [] });
+      return;
+    }
     // Where attacks move initiative, how the attack is made comes first: it decides what it does.
     if (option.styles && option.styles.length > 0) {
       setStep({ stage: "style", option, targets: [] });
@@ -306,6 +316,10 @@ export function RulesetCombatMenu({
   };
   const paid = (payWith?: string) => {
     if (!step) return;
+    if (step.storesIn) {
+      store(step.option, step.storesIn, payWith);
+      return;
+    }
     // A pool that lets it take more targets aims at as many as it lets it (1.171).
     const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
     const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
@@ -331,6 +345,51 @@ export function RulesetCombatMenu({
     }
     setStep({ ...step, targets });
   };
+
+  // ── Casting it now, or storing it (1.471) ──
+  if (step?.stage === "store") {
+    const option = step.option;
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-store-prompt">
+          {t("game.combat.ruleset.store.prompt", { label: rulesetOptionLabel(option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-store-prompt">
+          <button
+            ref={first}
+            type="button"
+            disabled={busy}
+            onClick={() => take(option, true)}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.store.now")}
+          </button>
+          {(option.storesIn ?? []).map((place) => {
+            const at = { holderId: place.holderId, ...(place.item !== undefined ? { item: place.item } : {}) };
+            return (
+              <button
+                key={`${place.holderId}:${place.item ?? "self"}`}
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  option.payWith?.length
+                    ? setStep({ stage: "pay", option, targets: [], storesIn: at })
+                    : store(option, at)
+                }
+                className={cn(
+                  buttonClass,
+                  "border-violet-300/30 bg-violet-500/10 text-white/85 hover:bg-violet-500/20",
+                )}
+              >
+                {t("game.combat.ruleset.store.into", { place: place.label, room: place.room })}
+              </button>
+            );
+          })}
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
 
   // ── Making an attack in one of the ruleset's initiative styles ──
   const styles = step?.stage === "style" ? (step.option.styles ?? []) : [];

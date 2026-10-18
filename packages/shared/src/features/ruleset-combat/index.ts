@@ -68,6 +68,7 @@ export {
   rulesetThingsToDrop,
   rulesetFightItemChanges,
   rulesetLoaded,
+  rulesetStoredNow,
   type RulesetFightItemChange,
 } from "./ammo.js";
 export {
@@ -126,6 +127,7 @@ export {
   rulesetAbilityNarrowing,
   rulesetAbilityScore,
   rulesetSyncAbilities,
+  rulesetStoredAction,
   rulesetCheckAbility,
   rulesetCheckSkill,
   rulesetLightMatches,
@@ -217,6 +219,7 @@ export {
 export {
   planRulesetCombatCost,
   rulesetActionAvailable,
+  rulesetStoreTargets,
   rulesetAimCells,
   rulesetTeleportCells,
   rulesetTeleportPassengers,

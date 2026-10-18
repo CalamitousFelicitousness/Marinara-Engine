@@ -64,6 +64,7 @@ import {
   type EvaluatedRulesetSheet,
   type RulesetCheckTarget,
   type RulesetSheetItem,
+  type RulesetStoredEntry,
 } from "../rulesets/sheet-math.js";
 import {
   findRulesetCreatureEntry,
@@ -3692,6 +3693,104 @@ function innateActions(
   });
 }
 
+/** An entry stored in an item or a creature (1.471), cast once from there by its holder for nothing:
+ *  at the level it was paid at, with its caster's save difficulty and attack, needing none of its
+ *  components. `item` is the item's place on the holder's sheet, none for a creature that stores;
+ *  `by` names what it is cast from. Null for an entry with nothing to do in a fight. */
+export function rulesetStoredAction(
+  definition: RulesetDefinition,
+  entry: RulesetCatalogEntry,
+  record: RulesetStoredEntry,
+  item: number | undefined,
+  by: string,
+  id: string,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+): RulesetCombatAction | null {
+  if (!entry.mechanics || !definition.combat) return null;
+  const catalogId = record.entry.slice(0, record.entry.indexOf("/"));
+  const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
+  const source = definition.combat.abilities?.find((ability) => entry.rows?.some((row) => row.list === ability.list));
+  const action = mechanicsAction(definition, entry.mechanics, {
+    id,
+    kind: "ability",
+    label: `${by}: ${entry.label}`,
+    budget: entry.mechanics.budget ?? source?.budget ?? definition.combat.economy.budgets[0]!.id,
+    toHit: record.toHit ?? 0,
+    ...(record.saveDifficulty !== undefined ? { saveDifficulty: record.saveDifficulty } : {}),
+    build,
+    evaluated,
+    perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+  });
+  if (!action) return null;
+  action.catalog = catalogId;
+  action.entry = record.entry;
+  const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
+  action.innate = { level: Math.max(record.level, baseLevel), baseLevel };
+  action.uses = { per: "encounter", count: 1 };
+  delete action.components;
+  action.storedIn = { ...(item !== undefined ? { item } : {}), record: { ...record } };
+  return action;
+}
+
+/** What is stored in each item a member holds that stores (1.471), as its stack keeps it. */
+function storedItemActions(
+  definition: RulesetDefinition,
+  items: ReadonlyArray<RulesetSheetItem> | undefined,
+  byRef: ReturnType<typeof rulesetCatalogEntriesByRef>,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+): RulesetCombatAction[] {
+  return (items ?? []).flatMap((held, index) =>
+    held.item.stores
+      ? (held.storedEntries ?? []).flatMap((record, n) => {
+          const entry = byRef.get(record.entry);
+          const action = entry
+            ? rulesetStoredAction(
+                definition,
+                entry,
+                record,
+                index,
+                held.name ?? held.stack?.ref ?? "",
+                `stored:${index}:${n}`,
+                build,
+                evaluated,
+                perCell,
+              )
+            : null;
+          return action ? [action] : [];
+        })
+      : [],
+  );
+}
+
+/** What a creature that stores holds as the fight starts (1.471). */
+function storedBlockActions(
+  definition: RulesetDefinition,
+  block: RulesetStatBlock,
+  name: string,
+  stored: readonly RulesetStoredEntry[] | undefined,
+  catalogs: RulesetCatalogEntriesById,
+  perCell: number | undefined,
+): RulesetCombatAction[] {
+  if (!block.stores || !stored?.length) return [];
+  const build = block.sheet ?? rulesetSheetBuildSchema.parse({});
+  const evaluated = evaluateRulesetSheetLive(definition, build, {});
+  const byRef = rulesetCatalogEntriesByRef({
+    ...Object.fromEntries((definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
+    ...catalogs,
+  });
+  return stored.slice(0, block.stores.count ?? 20).flatMap((record, n) => {
+    const entry = byRef.get(record.entry);
+    const action = entry
+      ? rulesetStoredAction(definition, entry, record, undefined, name, `stored:self:${n}`, build, evaluated, perCell)
+      : null;
+    return action ? [action] : [];
+  });
+}
+
 /** What the conditions of the fight let their holder use while they hold (1.236), put on everybody's
  *  list now and offered only while they hold it: 5e's Dispel Evil and Good, whose Break Enchantment
  *  and Dismissal are its caster's. Their numbers are the holder's own, as their spells' are; a
@@ -4158,6 +4257,8 @@ function sheetCombatant(
     ...carriedSwitchActions(combat),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
+    // What the items they hold store (1.471), each cast once.
+    ...storedItemActions(definition, input.items, byRef, build, evaluated, perCell),
   ];
   // What a spell glyph may store (1.401): each of its caster's own entries paid off the sheet, as a
   // mode; its level, the first or higher and no higher than the glyph is paid at, is checked as it is
@@ -5208,6 +5309,14 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ...combatant.actions,
           ...blockActions(definition, block, perCell),
           ...innateActions(definition, block, input.bestiary ?? {}, perCell),
+          ...storedBlockActions(
+            definition,
+            block,
+            entry.name,
+            "stored" in entry ? entry.stored : undefined,
+            input.bestiary ?? {},
+            perCell,
+          ),
         ];
         combatant.uses = startingUses(combatant.actions);
         if (block.signaturePoints !== undefined) {
@@ -5255,6 +5364,14 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       const actions = [
         ...blockActions(definition, block, perCell),
         ...innateActions(definition, block, input.bestiary ?? {}, perCell),
+        ...storedBlockActions(
+          definition,
+          block,
+          entry.name,
+          "stored" in entry ? entry.stored : undefined,
+          input.bestiary ?? {},
+          perCell,
+        ),
       ];
       state.combatants.push({
         id: entry.id,

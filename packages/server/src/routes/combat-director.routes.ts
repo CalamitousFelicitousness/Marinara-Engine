@@ -119,6 +119,7 @@ const directedCombatantFields = z.object({
           on: z.array(z.string().min(1).max(200)).max(12).optional(),
           kind: z.string().min(1).max(80).optional(),
           mode: z.string().min(1).max(200).optional(),
+          into: z.string().min(1).max(200).optional(),
         })
         .strict(),
     )
@@ -245,6 +246,11 @@ const command = z.discriminatedUnion("type", [
     carries: z.array(key).max(8).optional(),
     /** Whom a layered wall spares (1.439), checked against the menu by the resolver. */
     designates: z.array(key).max(20).optional(),
+    /** Stored instead of done (1.471), in a place the menu offers, checked by the resolver. */
+    storesIn: z
+      .object({ holderId: key, item: z.number().int().min(0).max(500).optional() })
+      .strict()
+      .optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */

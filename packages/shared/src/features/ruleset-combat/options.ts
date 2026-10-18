@@ -34,6 +34,7 @@ import {
   rulesetLoaded,
   rulesetModedAction,
   rulesetShotsAvailable,
+  rulesetStoredNow,
   rulesetItemChargesLeft,
 } from "./ammo.js";
 import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
@@ -2128,6 +2129,43 @@ export function rulesetSustainedOn(actor: RulesetCombatant, of: string, combatan
   );
 }
 
+/**
+ * Where an entry its user pays for off their sheet may be stored instead of done (1.471): an item of
+ * their own that stores entries of its catalog, worn or carried, or one an ally beside them holds,
+ * or an ally beside them that stores entries itself; each with room left for another entry, and the
+ * levels still free there. Whether the level it is paid at fits is checked as it is stored.
+ */
+export function rulesetStoreTargets(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): NonNullable<RulesetCombatOption["storesIn"]> {
+  const catalog = action.catalog;
+  if (!catalog || !action.entry || !action.use || action.storedIn || action.innate || !actor.sheet) return [];
+  const free =
+    (stores: { catalogs: string[]; levels: number; count?: number } | undefined, item?: number) =>
+    (holder: RulesetCombatant) => {
+      if (!stores?.catalogs.includes(catalog)) return 0;
+      const now = rulesetStoredNow(holder, item);
+      if (now.length >= (stores.count ?? 20)) return 0;
+      return stores.levels - now.reduce((total, one) => total + one.level, 0);
+    };
+  const places: NonNullable<RulesetCombatOption["storesIn"]> = [];
+  for (const holder of state.combatants) {
+    const own = holder.id === actor.id;
+    if (!rulesetCombatStanding(holder) || (!own && (holder.side !== actor.side || rulesetGap(actor, holder) > 1))) {
+      continue;
+    }
+    (holder.sheet?.items ?? []).forEach((held, index) => {
+      const room = free(held.item.stores, index)(holder);
+      if (room >= 1) places.push({ holderId: holder.id, item: index, label: held.name ?? held.stack?.ref ?? "", room });
+    });
+    const room = own ? 0 : free(holder.block?.stores)(holder);
+    if (room >= 1) places.push({ holderId: holder.id, label: holder.name, room });
+  }
+  return places;
+}
+
 export function rulesetActionAvailable(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
@@ -2236,6 +2274,11 @@ export function rulesetActionAvailable(
     rulesetItemSuppressed(rulesetSuppressedOn(state, actor), actor.sheet?.items?.[action.itemUse.item]?.item)
   )
     return false;
+  // Cast from an item that stores it (1.471) only while it is worn, and not where it is suppressed.
+  if (action.storedIn?.item !== undefined) {
+    const held = actor.sheet?.items?.[action.storedIn.item];
+    if (!held?.worn || rulesetItemSuppressed(rulesetSuppressedOn(state, actor), held.item)) return false;
+  }
   // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
   if (action.offHandOf !== undefined && (actor.flags.offHand ?? action.offHandOf) === action.offHandOf) return false;
   return !actor.spent.includes(action.id);
@@ -2843,6 +2886,9 @@ function optionFrom(
     // Lasting areas it may end instead (1.374): Dispel Magic on a Wall of Fire.
     const dispels = rulesetDispelTargets(state, actor, action);
     if (dispels.length > 0) option.dispels = dispels;
+    // What it may be stored in instead (1.471): a Ring of Spell Storing.
+    const stores = rulesetStoreTargets(state, actor, action);
+    if (stores.length > 0) option.storesIn = stores;
   }
   // Whom a layered wall it leaves may spare, picked as it is cast (1.439): Prismatic Wall.
   const spares = action.zone?.layers?.spares;

@@ -7,8 +7,10 @@
 // player or from the Game Master.
 
 import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets/check-effects.js";
+import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import {
   rulesetPoolMaxSuccesses,
+  rulesetSheetBuildSchema,
   type RulesetAbsorbs,
   type RulesetTurns,
   type RulesetBehaviorDrops,
@@ -44,6 +46,7 @@ import {
   rulesetItemChargesLeft,
   spendRulesetShots,
   rulesetShotsAvailable,
+  rulesetStoredNow,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
@@ -129,6 +132,7 @@ import {
   rulesetSyncAuras,
   rulesetSyncSizes,
   rulesetSyncAbilities,
+  rulesetStoredAction,
   rulesetSyncSpeeds,
   rulesetRegenerations,
   rulesetHangsOn,
@@ -4176,6 +4180,97 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   return true;
 }
 
+/** An entry stored instead of done (1.471): in a place its option offers, at the level it is paid at,
+ *  which must be the first or higher and fit the room left there. Paid for, and its budget spent, as
+ *  a cast is; it does nothing now. */
+function storeChoice(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const asked = choice.storesIn;
+  const place =
+    asked && typeof asked === "object"
+      ? option.storesIn?.find((one) => one.holderId === asked.holderId && one.item === asked.item)
+      : undefined;
+  if (!place || choice.targetIds.length > 0) return refusal(state, choice.actorId, "bad-target", option.id);
+  if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
+    return refusal(state, choice.actorId, "bad-pool", option.id);
+  }
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  const working = rulesetCombatant(ctx.state, actor.id)!;
+  const holder = rulesetCombatant(ctx.state, place.holderId);
+  const action = working.actions.find((entry) => entry.id === option.id);
+  if (!holder || !action) return refusal(state, choice.actorId, "bad-target", option.id);
+  const level = rulesetPaidLevel(definition, working, action, choice.payWith);
+  if (level < 1 || level > place.room) return refusal(state, choice.actorId, "insufficient", option.id);
+  const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
+  if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
+  if (paid.live && working.sheet) working.sheet.live = paid.live;
+  countRulesetSpend(working, paid.cost);
+  for (const entry of paid.cost) {
+    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+  }
+  spendAvailability(ctx, working, action);
+  if (!storeInto(ctx, working, action, holder, place.item, level)) {
+    return refusal(state, choice.actorId, "bad-target", option.id);
+  }
+  noteOutcome(ctx);
+  return finish();
+}
+
+/** An entry its caster has paid for, stored in `holder`'s item at `item`, or in `holder` itself when
+ *  it is a creature that stores (1.471): to be cast from there once, at `level`, with the caster's
+ *  numbers. False when its entry cannot be read. */
+function storeInto(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  action: RulesetCombatAction,
+  holder: RulesetCombatant,
+  item: number | undefined,
+  level: number,
+): boolean {
+  const entry = action.entry
+    ? rulesetCatalogEntriesByRef({
+        ...Object.fromEntries((ctx.definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
+        ...(caster.sheet?.catalogs ?? {}),
+      }).get(action.entry)
+    : undefined;
+  if (!entry || !action.entry) return false;
+  const record = {
+    entry: action.entry,
+    label: entry.label,
+    level,
+    ...(action.save ? { saveDifficulty: action.save.difficulty } : {}),
+    ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
+  };
+  const build = holder.sheet?.build ?? holder.block?.sheet ?? rulesetSheetBuildSchema.parse({});
+  const evaluated = evaluateRulesetSheetLive(ctx.definition, build, holder.sheet?.live ?? {}, holder.sheet?.items);
+  const count = (holder.storedCount ?? 0) + 1;
+  const by = item !== undefined ? (holder.sheet?.items?.[item]?.name ?? "") : holder.name;
+  const stored = rulesetStoredAction(
+    ctx.definition,
+    entry,
+    record,
+    item,
+    by,
+    `stored:${item ?? "self"}:+${count}`,
+    build,
+    evaluated,
+    ctx.combat.distance?.perCell,
+  );
+  if (!stored) return false;
+  holder.storedCount = count;
+  holder.actions.push(stored);
+  holder.uses[stored.id] = 1;
+  ctx.events.push({ type: "stored", actorId: caster.id, holderId: holder.id, label: action.label, by, level });
+  return true;
+}
+
 /** A spell glyph's stored entry, cast as it goes off (1.401): at whoever set it off, or, for one with
  *  an area, at everybody it reaches centred on them. Paid for as the glyph was cast, so it costs
  *  nothing now; whatever it would hold its caster's concentration for lasts its full time. */
@@ -5878,6 +5973,9 @@ function applyChoice(
     if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
   }
+
+  // Stored instead of done (1.471): in one of the places its option offers, paid for as it is cast.
+  if (choice.storesIn !== undefined) return storeChoice(definition, combat, state, actor, option, choice, roller);
 
   // An area lands on a CELL, and everybody standing in the shape is caught by it. Its own
   // `targetCount` says nothing here: the shape decides how many it reaches.
@@ -8688,6 +8786,9 @@ export interface RulesetStandingZone {
   kind?: string;
   /** The mode an entry is done in (1.434), by id or name: the creature Find Familiar calls. */
   mode?: string;
+  /** Cast into something that stores it (1.471), by name: an item of theirs, or of the one `on`
+   *  names first, or that creature itself. Paid for off their sheet at its own level. */
+  into?: string;
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -8748,6 +8849,44 @@ export function rulesetStandingAtStart(
       : undefined;
     if (one.mode && !picked) {
       skipped.push(`${caster.name}'s ${action.label} has no "${one.mode}", so it is not done.`);
+      continue;
+    }
+    // Stored before the fight (1.471): in an item, or a creature that stores, as it is named.
+    if (one.into) {
+      const holder = one.on?.[0]
+        ? ctx.state.combatants.find((other) => other.id === one.on![0] || lower(other.name) === lower(one.on![0]!))
+        : caster;
+      const index = (holder?.sheet?.items ?? []).findIndex(
+        (held) =>
+          !!held.item.stores &&
+          [held.name ?? "", held.stack?.ref ?? ""].some((name) => lower(name) === lower(one.into!)),
+      );
+      const stores =
+        index >= 0
+          ? holder!.sheet!.items![index]!.item.stores
+          : holder && lower(holder.name) === lower(one.into)
+            ? holder.block?.stores
+            : undefined;
+      const item = index >= 0 ? index : undefined;
+      const level = rulesetPaidLevel(definition, caster, action);
+      const held = holder && stores ? rulesetStoredNow(holder, item) : [];
+      const fits =
+        !!holder &&
+        !!stores &&
+        !!action.catalog &&
+        stores.catalogs.includes(action.catalog) &&
+        held.length < (stores.count ?? 20) &&
+        level >= 1 &&
+        level + held.reduce((total, entry) => total + entry.level, 0) <= stores.levels;
+      if (!fits) {
+        skipped.push(`${caster.name}'s ${action.label} cannot be stored in "${one.into}", so nothing is stored.`);
+        continue;
+      }
+      const before = caster.sheet?.live;
+      if (!pay(caster, action) || !storeInto(ctx, caster, action, holder!, item, level)) {
+        if (caster.sheet && before !== undefined) caster.sheet.live = before;
+        skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it is not stored.`);
+      }
       continue;
     }
     if (!action.zone) {

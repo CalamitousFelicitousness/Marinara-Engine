@@ -2928,6 +2928,22 @@ const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** What an item or a creature holds to be cast later (Capability API 1.471): entries of `catalogs`,
+ *  each of the first level or higher, their levels together no more than `levels`, and no more than
+ *  `count` of them. */
+export interface RulesetStores {
+  catalogs: string[];
+  levels: number;
+  count?: number;
+}
+const storesSchema: z.ZodType<RulesetStores, z.ZodTypeDef, unknown> = z
+  .object({
+    catalogs: uniqueIds(8),
+    levels: z.number().int().min(1).max(40),
+    count: z.number().int().min(1).max(20).optional(),
+  })
+  .strict();
+
 /** What its holder turns back at its caster (Capability API 1.470): a Ring of Spell Turning. */
 export interface RulesetTurns {
   catalogs: string[];
@@ -7918,6 +7934,9 @@ const creatureFields = {
   /** Catalog spells cast without spending anything off a sheet (Capability API 1.123). Omitted
    *  uses means at will; a coven spell shares its uses while enough members stand nearby. */
   spellcasting: creatureSpellcastingSchema.optional(),
+  /** Entries cast into it to be cast again later by itself (Capability API 1.471), as an item's
+   *  `stores` holds them: 5e's shield guardian, `{ "catalogs": ["spells"], "levels": 4, "count": 1 }`. */
+  stores: storesSchema.optional(),
   /** What this creature adds to the first qualifying hit of a period, all by itself. */
   riders: z.array(creatureRiderSchema).min(1).max(RULESET_CREATURE_MAX_RIDERS).optional(),
 };
@@ -9322,6 +9341,10 @@ const catalogItemObjectSchema = z
       })
       .strict()
       .optional(),
+    /** Entries cast into it to be cast again later by whoever wears it (Capability API 1.471), at the
+     *  level they were paid at and with their caster's numbers, for nothing: 5e's Ring of Spell
+     *  Storing, `{ "catalogs": ["spells"], "levels": 5 }`. What it holds is kept on its stack. */
+    stores: storesSchema.optional(),
   })
   .strict();
 
@@ -18044,6 +18067,11 @@ function itemIssues(
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
   if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  // What it stores (1.471) is off the ruleset's own catalogs.
+  item.stores?.catalogs.forEach((catalog, index) => {
+    if (!definition.catalogs?.some((one) => one.id === catalog))
+      add([...at, "stores", "catalogs", index], `Unknown catalog "${catalog}"`);
+  });
   // What it takes in moves its charges (1.469), so it holds some.
   if (item.worn?.absorbs?.charges && !item.charges)
     add([...at, "worn", "absorbs", "charges"], "What it takes in spends or gains its charges, so it holds some");
@@ -19475,6 +19503,10 @@ export function rulesetCatalogEntryIssues(
         `Catalog "${catalog.id}" holds ${holds}, so an entry cannot carry ${kind === "creatures" ? "a creature" : "an item"}`,
       );
     }
+    entry.creature?.stores?.catalogs.forEach((catalogId, catalogIndex) => {
+      if (!definition.catalogs?.some((one) => one.id === catalogId))
+        add([index, "creature", "stores", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+    });
     if (entry.creature?.spellcasting) {
       const creature = entry.creature;
       const casting = creature.spellcasting!;

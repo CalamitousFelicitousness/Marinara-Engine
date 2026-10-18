@@ -24,7 +24,7 @@ import type {
   RulesetCatalogWhere,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
-import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
+import type { RulesetSheetItem, RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type { TacticalBattlefieldProvenance, TacticalGrid, TacticalTerrain } from "../tactical-combat/types.js";
 
 /** A die roller: one call, one die, a face from 1 to `sides`. Every random number a fight needs
@@ -585,6 +585,8 @@ export interface RulesetStatBlock {
   hiding?: RulesetHidingTraits;
   /** Spells cast without slots, kept beside the block's own actions (1.123). */
   spellcasting?: RulesetCreature["spellcasting"];
+  /** What it holds to cast later (1.471), stored in it in the fight or before it: a shield guardian. */
+  stores?: RulesetCreature["stores"];
   /** The creature described in the ruleset's OWN terms: a character sheet, as partial as it likes,
    *  keyed by the ids the ruleset declares. An opponent built from one is built the way a party
    *  member is, so its health, defense, saves, speed, initiative and the abilities on its lists all
@@ -686,7 +688,14 @@ export type RulesetCombatantInput =
       items?: ReadonlyArray<RulesetSheetItem>;
     }
   /** A stat block, on either side (1.344): an ally beside the party is built as an opponent is. */
-  | { id: string; name: string; side: "enemy" | "party"; block: RulesetStatBlock }
+  | {
+      id: string;
+      name: string;
+      side: "enemy" | "party";
+      block: RulesetStatBlock;
+      /** What is stored in it as the fight starts, for a block that `stores` (1.471). */
+      stored?: RulesetStoredEntry[];
+    }
   /** A creature out of a bestiary, looked up in the catalogs the encounter was handed. */
   | {
       id: string;
@@ -695,6 +704,8 @@ export type RulesetCombatantInput =
       creature: { catalogId: string; entryId: string };
       /** Where its live tracks stand as the fight begins (1.115), as a bestiary creature has none. */
       tracks?: Record<string, number>;
+      /** What is stored in it as the fight starts, for a creature that `stores` (1.471). */
+      stored?: RulesetStoredEntry[];
     };
 
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
@@ -1056,6 +1067,9 @@ export interface RulesetCombatAction {
   range?: RulesetCombatRange;
   /** The level of a spell cast without slots, and the base it scales from (1.123). */
   innate?: { level: number; baseLevel: number; coven?: { id: string; size: number; within: number } };
+  /** Cast from what it was stored in (1.471): the item's place on its holder's sheet, none for the
+   *  holder itself, and the stored entry. Offered once, and from an item only while it is worn. */
+  storedIn?: { item?: number; record: RulesetStoredEntry };
   /** What this leaves to strike on later turns (1.122), with distances already in cells. */
   summons?: { budget: string; rounds: number; move?: number; reach?: number };
   /** The area stays (1.172): for how many of its caster's turns, where it is held, and when it does
@@ -1799,6 +1813,8 @@ export interface RulesetCombatant {
   charges?: Record<string, number>;
   /** What is left of each further use that counts its own (1.466), keyed `<item>:<more>`. */
   usesLeft?: Record<string, number>;
+  /** How many entries were stored on them this fight (1.471), for the ids of the next. */
+  storedCount?: number;
   /** The items that broke when their last charge was spent, keyed as the rest are. */
   broken?: Record<string, true>;
   /** What an item becomes on its last charge (1.272), read as the fight began: what it is, its name,
@@ -3194,6 +3210,8 @@ export type RulesetCombatEvent =
       by: string;
       charges?: { now: number; max: number };
     }
+  /** An entry stored in an item or a creature to be cast later (1.471), at the level it was paid at. */
+  | { type: "stored"; actorId: string; holderId: string; label: string; by: string; level: number }
   /** A foe's entry its only target turned back at its user on the save's top face (1.470): a Ring
    *  of Spell Turning's. */
   | { type: "turnedBack"; targetId: string; sourceId: string; label: string; by: string }
@@ -3444,6 +3462,10 @@ export interface RulesetCombatOption {
   /** Whom a layered wall may spare (1.439), picked as it is cast: at most `count` of `ids`. The
    *  choice names them as `designates`. */
   designates?: { count: number; ids: string[] };
+  /** What it may be stored in instead of done (1.471): its user's own item (`item`, its place on
+   *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
+   *  levels still free there. The choice names one as `storesIn`. */
+  storesIn?: Array<{ holderId: string; item?: number; label: string; room: number }>;
   /** The second half of an action already made this turn (1.280), and so free. */
   followUp?: true;
   /** What it costs in the actor's own points, and how many they have. A signature option spends no
@@ -3558,6 +3580,8 @@ export interface RulesetCombatChoice {
   carries?: string[];
   /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
   designates?: string[];
+  /** Stored instead of done (1.471): one of its option's `storesIn`. */
+  storesIn?: { holderId: string; item?: number };
   /** Which way a wall runs from `at` (1.177): toward this cell. Across the line to its maker when
    *  left out. A ring ignores it. */
   toward?: RulesetCombatCell;

@@ -62564,6 +62564,37 @@
                         }
                       ]
                     },
+                    "stores": {
+                      "type": "object",
+                      "properties": {
+                        "catalogs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "levels": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 40
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "catalogs",
+                        "levels"
+                      ],
+                      "additionalProperties": false
+                    },
                     "riders": {
                       "type": "array",
                       "items": {
@@ -102136,6 +102167,37 @@
                       "required": [
                         "label",
                         "budget"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "stores": {
+                      "type": "object",
+                      "properties": {
+                        "catalogs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "levels": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 40
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "catalogs",
+                        "levels"
                       ],
                       "additionalProperties": false
                     },

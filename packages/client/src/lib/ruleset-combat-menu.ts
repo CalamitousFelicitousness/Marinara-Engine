@@ -53,7 +53,7 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "climbOut" | "flyUp" 
 };
 
 export interface RulesetMenuStep {
-  stage: "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare" | "heighten";
+  stage: "store" | "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare" | "heighten";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
@@ -75,6 +75,8 @@ export interface RulesetMenuStep {
   spared?: string[];
   /** Who it could heighten, while that is picked (1.255). */
   heighten?: { ids: string[] };
+  /** Where it is being stored instead of done (1.471), while what pays for it is picked. */
+  storesIn?: { holderId: string; item?: number };
 }
 
 /** A shape half laid on the board: the cell it was first set down on, further copies of it, and for

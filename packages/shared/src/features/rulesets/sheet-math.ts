@@ -258,6 +258,17 @@ export interface RulesetSheetLiveValues {
 
 /** One stack of the ruleset's items a character holds, as the sheet reads it: what the item is, how
  *  many, and whether it is worn (on, and bound where it must be). */
+/** An entry stored in an item or a creature (Capability API 1.471): which, the level it was paid at,
+ *  and its caster's numbers, which whoever casts it from there uses. */
+export interface RulesetStoredEntry {
+  entry: string;
+  /** Its name as it was stored, for a list of what the item holds. */
+  label?: string;
+  level: number;
+  saveDifficulty?: number;
+  toHit?: number;
+}
+
 export interface RulesetSheetItem {
   item: RulesetCatalogItem;
   quantity: number;
@@ -272,6 +283,8 @@ export interface RulesetSheetItem {
   charges?: number;
   /** What is left of its further uses that count their own (1.466), as the stack keeps them. */
   usesLeft?: Record<string, number>;
+  /** What is stored in it (1.471), as the stack keeps it. */
+  storedEntries?: RulesetStoredEntry[];
   /** Its switch is on, as the stack keeps it (1.170). */
   on?: true;
   /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as

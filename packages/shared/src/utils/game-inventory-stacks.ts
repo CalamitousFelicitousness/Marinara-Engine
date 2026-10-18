@@ -53,6 +53,9 @@ export interface GameInventoryStack {
   /** What is left of each of its further uses that counts its own (Capability API 1.466), by its
    *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full. */
   usesLeft?: Record<string, number>;
+  /** What is stored in it to be cast later (Capability API 1.471): a Ring of Spell Storing's spells.
+   *  Kept on a stack of one item only, as charges are. */
+  storedEntries?: GameInventoryStoredEntry[];
   /** Its switch is on (Capability API 1.170): a flame tongue's flames. Kept on a stack of one item
    *  only, as charges are; off without it. */
   on?: true;
@@ -361,10 +364,12 @@ function makeStack(stack: {
   loaded?: number;
   charges?: number;
   usesLeft?: Record<string, number>;
+  storedEntries?: GameInventoryStoredEntry[];
   on?: boolean;
   truly?: string;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
+  const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
     id,
@@ -378,6 +383,7 @@ function makeStack(stack: {
     ...(loaded !== undefined && quantity === 1 ? { loaded } : {}),
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
+    ...(storedEntries?.length && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
   };
@@ -424,6 +430,42 @@ export function newGameInventoryStackId(stacks: readonly { id?: string }[]): str
     const id = `st-${Math.random().toString(36).slice(2, 10)}`;
     if (!taken.has(id)) return id;
   }
+}
+
+/** An entry stored in an item (Capability API 1.471): which (`<catalog>/<entry>`), the level it was
+ *  paid at, and its caster's save difficulty and attack, which whoever casts it from the item uses. */
+export interface GameInventoryStoredEntry {
+  entry: string;
+  /** Its name as it was stored. */
+  label?: string;
+  level: number;
+  saveDifficulty?: number;
+  toHit?: number;
+}
+
+/** What a stack stores (1.471) as stored: up to 20 entries, each naming one and a whole level. */
+function readStoredEntries(raw: unknown): GameInventoryStoredEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const whole = (value: unknown, min: number, max: number) =>
+    typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+  const kept = raw.slice(0, 20).flatMap((one): GameInventoryStoredEntry[] => {
+    if (!one || typeof one !== "object" || Array.isArray(one)) return [];
+    const source = one as Record<string, unknown>;
+    if (typeof source.entry !== "string" || !/^[^/\s]{1,80}\/[^/\s]{1,120}$/.test(source.entry)) return [];
+    if (!whole(source.level, 0, 40)) return [];
+    return [
+      {
+        entry: source.entry,
+        ...(typeof source.label === "string" && source.label.trim() && source.label.length <= 120
+          ? { label: source.label.trim() }
+          : {}),
+        level: source.level as number,
+        ...(whole(source.saveDifficulty, 1, 60) ? { saveDifficulty: source.saveDifficulty as number } : {}),
+        ...(whole(source.toHit, -50, 100) ? { toHit: source.toHit as number } : {}),
+      },
+    ];
+  });
+  return kept.length > 0 ? kept : undefined;
 }
 
 /** A stack's own uses left (1.466) as stored: whole counts by a further use's place, from 1. */
@@ -483,6 +525,7 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
             ? Math.min(GAME_INVENTORY_MAX_QUANTITY, source.charges)
             : undefined,
         usesLeft: readUsesLeft(source.usesLeft),
+        storedEntries: readStoredEntries(source.storedEntries),
         on: source.on === true && quantity === 1,
         quantity,
         stored,
@@ -559,7 +602,15 @@ export function revealGameInventoryFake(
 ): GameInventoryStack[] {
   return stacks.map((stack) => {
     if (stack.id !== id || !stack.truly) return stack;
-    const { truly, loaded: _loaded, charges: _charges, usesLeft: _usesLeft, on: _on, ...rest } = stack;
+    const {
+      truly,
+      loaded: _loaded,
+      charges: _charges,
+      usesLeft: _usesLeft,
+      storedEntries: _stored,
+      on: _on,
+      ...rest
+    } = stack;
     return makeStack({ ...rest, item: truly, name: rules?.itemOf(truly)?.name ?? rest.name });
   });
 }
@@ -1440,7 +1491,14 @@ export function setGameInventoryStackQuantity(
   if (next <= limit) return stacks.map((each, i) => (i === index ? { ...each, quantity: next } : each));
   const beside = single ? stackLimit(gameInventoryItemId(stack), rules) : limit;
   if (Math.ceil((next - limit) / beside) > GAME_INVENTORY_MAX_NEW_STACKS) return stacks;
-  const { on: _on, loaded: _loaded, charges: _charges, usesLeft: _usesLeft, ...off } = unworn(stack);
+  const {
+    on: _on,
+    loaded: _loaded,
+    charges: _charges,
+    usesLeft: _usesLeft,
+    storedEntries: _stored,
+    ...off
+  } = unworn(stack);
   const rest: GameInventoryStack[] = [];
   for (let left = next - limit; left > 0; left -= beside) {
     rest.push({ ...off, id: newId(), quantity: Math.min(left, beside) });
@@ -1516,7 +1574,14 @@ export function mergeGameInventoryStacks(
   return stacks.flatMap((stack) => {
     if (stack.id === intoId) {
       // Several now, and a loaded count or charges are one item's: each of them reads as full.
-      const { loaded: _loaded, charges: _charges, usesLeft: _usesLeft, on: _on, ...rest } = stack;
+      const {
+        loaded: _loaded,
+        charges: _charges,
+        usesLeft: _usesLeft,
+        storedEntries: _stored,
+        on: _on,
+        ...rest
+      } = stack;
       return [{ ...rest, quantity: stack.quantity + moved }];
     }
     if (stack.id !== fromId) return [stack];

@@ -74,6 +74,8 @@ export interface InventoryItem {
   charges?: number;
   /** What is left of its further uses that count their own (1.466), by place. Absent reads as full. */
   usesLeft?: Record<string, number>;
+  /** What it stores to be cast later (1.471), as a fight left it. */
+  storedEntries?: Array<{ entry: string; label?: string; level: number }>;
   /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
 }
@@ -780,6 +782,7 @@ export function GameInventory({
                 loaded={selectedInventoryItem?.loaded}
                 charges={selectedInventoryItem?.charges}
                 usesLeft={selectedInventoryItem?.usesLeft}
+                storedEntries={selectedInventoryItem?.storedEntries}
               />
             )}
             {onRenameItem && selectedInventoryItem && (
@@ -1272,12 +1275,14 @@ function RulesetItemDetails({
   loaded,
   charges,
   usesLeft,
+  storedEntries,
 }: {
   details: RulesetItemBookEntry;
   bound: boolean;
   loaded?: number;
   charges?: number;
   usesLeft?: Record<string, number>;
+  storedEntries?: Array<{ entry: string; label?: string; level: number }>;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { facts } = details;
@@ -1324,6 +1329,20 @@ function RulesetItemDetails({
             })}
           </div>
         ) : null,
+      )}
+      {/* What it stores to be cast later (1.471): a Ring of Spell Storing's spells. */}
+      {details.entry.item?.stores && (
+        <div className="text-[0.65rem] leading-tight text-white/70">
+          {storedEntries?.length
+            ? localizeUi("ui.game.gameinventory.stored", {
+                entries: storedEntries
+                  .map((one) => `${one.label ?? one.entry.slice(one.entry.indexOf("/") + 1)} (${one.level})`)
+                  .join(", "),
+                levels: storedEntries.reduce((total, one) => total + one.level, 0),
+                max: details.entry.item.stores.levels,
+              })
+            : localizeUi("ui.game.gameinventory.storedNone", { max: details.entry.item.stores.levels })}
+        </div>
       )}
       {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
       {details.invented && (

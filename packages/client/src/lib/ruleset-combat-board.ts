@@ -122,6 +122,8 @@ export type RulesetCellChoice = {
   carries?: string[];
   /** Whom a layered wall spares (1.439). */
   designates?: string[];
+  /** Stored instead of done (1.471). */
+  storesIn?: { holderId: string; item?: number };
 } & Partial<RulesetAimChoice>;
 
 /** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */

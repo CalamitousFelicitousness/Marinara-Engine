@@ -71,6 +71,8 @@ export type DirectedCommand =
       carries?: string[];
       /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
       designates?: string[];
+      /** Stored instead of done (1.471). */
+      storesIn?: { holderId: string; item?: number };
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
       /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */

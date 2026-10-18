@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item or a creature that stores entries to be cast later (1.471): a Ring of Spell Storing. */
+function carriesStores471(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStores471(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.stores) !== undefined) return true;
+  return featureValues(record).some((one) => carriesStores471(one, depth + 1));
+}
+
 /** A condition or worn item that turns a foe's entry back, or a save change against an entry aimed
  *  at its holder alone (1.470): a Ring of Spell Turning. */
 function carriesTurns470(value: unknown, depth = 0): boolean {
@@ -6632,6 +6642,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What an item or a creature stores to be cast later, 1.471.
+  if (
+    !declaresApi(471) &&
+    (carriesStores471(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStores471(document)))
+  ) {
+    return "A ruleset whose items or creatures store entries to be cast later (stores) requires schemaVersion 2 and capabilityApi 1.471 or newer";
+  }
   // What a holder turns back, and saves against what is aimed at them alone, 1.470.
   if (
     !declaresApi(470) &&

@@ -621,6 +621,14 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // Stored to be cast later (1.471): a Ring of Spell Storing's.
+    case "stored":
+      return key("stored", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        by: event.by,
+        level: event.level,
+      });
     // Turned back at its user (1.470): a Ring of Spell Turning's.
     case "turnedBack":
       return key("turnedBack", {

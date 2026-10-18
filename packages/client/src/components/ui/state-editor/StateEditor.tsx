@@ -42,13 +42,6 @@ import type {
   StateEditorSection,
 } from "../../../lib/state-editor/state-editor.types";
 
-/** The list a section holds at its root, for the sections that are one list rather than an object. */
-const SECTION_ROOT_LIST: Record<string, string | undefined> = {
-  "character-tracker": "presentCharacters",
-  "custom-tracker": "customTrackerFields",
-  quest: "activeQuests",
-};
-
 interface StateEditorProps {
   sections: StateEditorSection[];
   /** Saves the changed sections. Throw to keep the drafts and show the error. */
@@ -439,8 +432,7 @@ export function StateEditor({
             focusPath={focusPath}
             onFocusHandled={clearFocusPath}
             readOnly={readOnly}
-            hideRootAddItem={activeSection.id === "character-tracker" || activeSection.id === "quest"}
-            rootListKey={SECTION_ROOT_LIST[activeSection.id]}
+            sectionId={activeSection.id}
           />
         )}
       </div>

@@ -517,7 +517,7 @@ assert.deepEqual(
   "a Custom Tracker Fields entry added to an empty section starts with a name and a value",
 );
 assert.deepEqual(
-  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventory"),
+  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventory", "inventory-tracker"),
   { name: "", qty: 1, description: "", location: "" },
   "a cleared Inventory Tracker row keeps a quantity of 1, because the tracker reads qty as at least one",
 );
@@ -527,9 +527,23 @@ assert.equal(
   "a currency row added to an empty list starts at 1 too",
 );
 assert.deepEqual(
-  shapeStateEntry({ name: "Rope", qty: 2 }, "inventory"),
+  shapeStateEntry({ name: "Rope", qty: 2 }, "inventory", "inventory-tracker"),
   { name: "Rope", qty: 2, description: null, location: null },
   "an Inventory Tracker row shows the fields its section declares, not only the stored ones",
+);
+
+// ── The same list name, two contracts ──
+// "inventory" is PlayerStats.inventory in Persona Stats (rows count `quantity`) and an Inventory Tracker
+// row list in the Inventory Tracker (rows carry `qty`). The section decides which shape a row gets.
+assert.deepEqual(
+  blankStateArrayItem([], "inventory"),
+  { name: "", description: "", quantity: 1, location: "" },
+  "a persona inventory item starts with the quantity its contract counts",
+);
+assert.deepEqual(
+  blankStateArrayItem([], "inventory", "inventory-tracker"),
+  { name: "", qty: 1, description: "", location: "" },
+  "an Inventory Tracker row in the same position starts with qty instead",
 );
 
 // ── A half-filled entry still shows the rows it is missing ──

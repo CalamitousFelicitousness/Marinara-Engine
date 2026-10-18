@@ -27,18 +27,23 @@ interface StateFieldsViewProps {
   onFocusHandled?: () => void;
   /** Values show as non-editable inputs, for a section the source can't save. */
   readOnly?: boolean;
-  /**
-   * No add control at the section's own list. Characters and quests are identified by an id the editor
-   * can't invent, and the save path stores whatever row it is given, so an added row would be a card the
-   * trackers can't match to anything. Lists inside those cards (a character's stats) still add.
-   */
-  hideRootAddItem?: boolean;
-  /**
-   * The name of the list a section holds at its root, for the sections that are one list (Custom Tracker
-   * Fields). A path of [] has no key, and an empty list still needs the shape its entries have.
-   */
-  rootListKey?: string;
+  /** The open section: its list names differ between sections (see the maps below). */
+  sectionId?: string;
 }
+
+/** The list a section holds at its root, for the sections that are one list rather than an object. */
+const SECTION_ROOT_LIST: Record<string, string | undefined> = {
+  "character-tracker": "presentCharacters",
+  "custom-tracker": "customTrackerFields",
+  quest: "activeQuests",
+};
+
+/**
+ * No add control at the section's own list. Characters and quests are identified by an id the editor
+ * can't invent, and the save path stores whatever row it is given, so an added row would be a card the
+ * trackers can't match to anything. Lists inside those cards (a character's stats) still add.
+ */
+const NO_ROOT_ADD = new Set(["character-tracker", "quest"]);
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -222,8 +227,7 @@ export function StateFieldsView({
   focusPath,
   onFocusHandled,
   readOnly,
-  hideRootAddItem,
-  rootListKey,
+  sectionId,
 }: StateFieldsViewProps) {
   const { t: localizeUi } = useUiTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -331,18 +335,20 @@ export function StateFieldsView({
         );
       };
       // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …); a
-      // section that is one list has no key in the path, so it passes its own.
+      // section that is one list has no key in the path, so it takes the one its section declares.
       const listKey =
         typeof path[path.length - 1] === "string"
           ? (path[path.length - 1] as string)
           : path.length === 0
-            ? rootListKey
+            ? sectionId
+              ? SECTION_ROOT_LIST[sectionId]
+              : undefined
             : undefined;
       const addItem =
-        readOnly || (hideRootAddItem && path.length === 0) ? null : (
+        readOnly || (sectionId !== undefined && path.length === 0 && NO_ROOT_ADD.has(sectionId)) ? null : (
           <button
             type="button"
-            onClick={() => update(path, [...node, blankStateArrayItem(node, listKey)])}
+            onClick={() => update(path, [...node, blankStateArrayItem(node, listKey, sectionId)])}
             className={SMALL_BUTTON}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -382,7 +388,7 @@ export function StateFieldsView({
                   </span>
                   {removeItem(index)}
                 </div>
-                {renderChildren(shapeStateEntry(item, listKey), itemPath)}
+                {renderChildren(shapeStateEntry(item, listKey, sectionId), itemPath)}
               </div>
             );
           })}

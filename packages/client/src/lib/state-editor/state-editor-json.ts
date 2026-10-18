@@ -286,41 +286,60 @@ export function blankStateValueLike(value: unknown): unknown {
   return "";
 }
 
+/** One Inventory Tracker row. `qty` is "at least one": the tracker stores it only above 1. */
+const INVENTORY_TRACKER_ROW = { name: "", qty: 1, description: "", location: "" };
+
 /**
- * What an entry starts as when its list is empty and there is nothing to copy. The shapes are the ones
- * `GameState` declares in the shared package, keyed by the name the section uses for the list — the
- * Inventory Tracker section exposes `playerStats.inventoryTracker*` as `currencies`, `equipped` and
- * `inventory` — so an entry added to a fresh tracker is still readable by it. Only id-free shapes are
- * here: characters and quests need ids the editor can't invent safely, so those lists keep the generic
- * "add field" row.
+ * What an entry starts as when its list is empty and there is nothing to copy, keyed by the name the
+ * section uses for the list. The shapes are the ones `GameState` declares in the shared package. Only
+ * id-free shapes are here: characters and quests need ids the editor can't invent safely, so those lists
+ * keep the generic "add field" row.
  */
 const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
   worldCustomFields: { name: "", value: "", icon: "" },
   customTrackerFields: { name: "", value: "" },
   stats: { name: "", value: 0, max: 0, color: "" },
-  currencies: { name: "", qty: 1, description: "", location: "" },
-  equipped: { name: "", qty: 1, description: "", location: "" },
-  inventory: { name: "", qty: 1, description: "", location: "" },
+  // Persona Stats shows playerStats.inventory, whose rows count `quantity`.
+  inventory: { name: "", description: "", quantity: 1, location: "" },
+  currencies: INVENTORY_TRACKER_ROW,
+  equipped: INVENTORY_TRACKER_ROW,
 };
 
-/** The Inventory Tracker reads qty as "at least one", so these lists can't start a row at 0. */
-const QTY_AT_LEAST_ONE = new Set(["currencies", "equipped", "inventory"]);
+/**
+ * The same list name can mean a different record in another section: `inventory` is `InventoryItem[]`
+ * in Persona Stats and an Inventory Tracker row list in the Inventory Tracker, where `playerStats.
+ * inventoryTracker*` is shown under that name. Sections that are objects build their own patch, so a row
+ * of the wrong contract would be stored as given.
+ */
+const SECTION_EMPTY_STATE_ENTRIES: Record<string, Record<string, unknown>> = {
+  "inventory-tracker": {
+    currencies: INVENTORY_TRACKER_ROW,
+    equipped: INVENTORY_TRACKER_ROW,
+    inventory: INVENTORY_TRACKER_ROW,
+  },
+};
+
+function emptyStateEntry(key?: string, sectionId?: string): unknown {
+  if (!key) return undefined;
+  return (sectionId ? SECTION_EMPTY_STATE_ENTRIES[sectionId]?.[key] : undefined) ?? EMPTY_STATE_ENTRIES[key];
+}
 
 /**
  * The entry an add control appends: the last item's shape, cleared; for an empty list, the shape its key
- * declares; and for a list of unknown shape, `{}` for the "add field" row to fill in (ponytail: a list of
- * plain values that starts empty therefore gets an object; the JSON view is the way back).
+ * declares in this section; and for a list of unknown shape, `{}` for the "add field" row to fill in
+ * (ponytail: a list of plain values that starts empty therefore gets an object; the JSON view is the way
+ * back).
  */
-export function blankStateArrayItem(items: readonly unknown[], key?: string): unknown {
+export function blankStateArrayItem(items: readonly unknown[], key?: string, sectionId?: string): unknown {
+  const shape = emptyStateEntry(key, sectionId);
   if (items.length > 0) {
     const blank = blankStateValueLike(items[items.length - 1]);
-    // The save path rejects a quantity below 1 (`findInvalidInventoryTrackerRow`), so a cleared row
-    // can't keep the 0 every other number clears to.
-    if (key && QTY_AT_LEAST_ONE.has(key) && isPlainRecord(blank) && blank.qty === 0) blank.qty = 1;
+    // The save path rejects a quantity below 1 (`findInvalidInventoryTrackerRow`), so a cleared row can't
+    // keep the 0 every other number clears to.
+    if (isPlainRecord(shape) && "qty" in shape && isPlainRecord(blank) && blank.qty === 0) blank.qty = 1;
     return blank;
   }
-  const template = key ? EMPTY_STATE_ENTRIES[key] : undefined;
-  return template ? structuredClone(template) : {};
+  return shape === undefined ? {} : structuredClone(shape);
 }
 
 /**
@@ -328,9 +347,9 @@ export function blankStateArrayItem(items: readonly unknown[], key?: string): un
  * entry the trackers only half-filled still shows the rows it is missing. A missing key reads as `null`
  * ("No value"), and nothing reaches the draft until one of those rows is edited.
  */
-export function shapeStateEntry(item: unknown, key?: string): unknown {
+export function shapeStateEntry(item: unknown, key?: string, sectionId?: string): unknown {
   if (!key || !isPlainRecord(item)) return item;
-  const template = EMPTY_STATE_ENTRIES[key];
+  const template = emptyStateEntry(key, sectionId);
   if (!template) return item;
   const missing: Record<string, null> = {};
   for (const declaredKey of Object.keys(template)) missing[declaredKey] = null;

@@ -84,6 +84,47 @@ export function stateValuesEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+// ── Syntax colouring ──
+
+/** What a JSON token is drawn as. `punctuation` also covers the gaps between tokens. */
+export type StateJsonTokenKind = "key" | "string" | "number" | "literal" | "punctuation";
+
+export interface StateJsonToken {
+  text: string;
+  kind: StateJsonTokenKind;
+}
+
+// A string (with a trailing colon it is a key), a number, true/false/null, or one punctuator.
+// Everything else — including half-typed text — falls through as punctuation, so an invalid draft
+// still renders instead of vanishing behind the textarea.
+const JSON_TOKEN_PATTERN =
+  /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}[\],:])/g;
+
+/**
+ * Splits JSON text into coloured tokens without parsing it. The token texts concatenate back to the
+ * exact input, which is what lets the highlight layer stay aligned behind the textarea while typing.
+ */
+export function tokenizeStateJson(text: string): StateJsonToken[] {
+  const tokens: StateJsonToken[] = [];
+  let cursor = 0;
+  for (let match = JSON_TOKEN_PATTERN.exec(text); match; match = JSON_TOKEN_PATTERN.exec(text)) {
+    if (match.index > cursor) tokens.push({ text: text.slice(cursor, match.index), kind: "punctuation" });
+    if (match[1] !== undefined) {
+      tokens.push({ text: match[1], kind: match[2] === undefined ? "string" : "key" });
+      if (match[2] !== undefined) tokens.push({ text: match[2], kind: "punctuation" });
+    } else if (match[3] !== undefined) {
+      tokens.push({ text: match[3], kind: "number" });
+    } else if (match[4] !== undefined) {
+      tokens.push({ text: match[4], kind: "literal" });
+    } else {
+      tokens.push({ text: match[5]!, kind: "punctuation" });
+    }
+    cursor = JSON_TOKEN_PATTERN.lastIndex;
+  }
+  if (cursor < text.length) tokens.push({ text: text.slice(cursor), kind: "punctuation" });
+  return tokens;
+}
+
 export type StateSectionDraftStatus =
   { kind: "clean" } | { kind: "changed"; value: unknown } | { kind: "invalid"; error: string };
 

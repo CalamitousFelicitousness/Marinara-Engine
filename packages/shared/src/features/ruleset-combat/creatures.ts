@@ -454,6 +454,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
     ...(creature.speeds ? { speeds: { ...creature.speeds } } : {}),
     ...(creature.hover ? { hover: true as const } : {}),
+    ...(creature.mountIndependent ? { mountIndependent: true as const } : {}),
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
     ...(creature.checks ? { checks: { ...creature.checks } } : {}),

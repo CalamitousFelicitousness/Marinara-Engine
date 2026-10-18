@@ -178,6 +178,8 @@ import {
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
+  RULESET_MOUNT_OPTION_PREFIX,
+  RULESET_DISMOUNT_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   rulesetRelightCells,
@@ -348,6 +350,8 @@ interface RulesetCombatContext {
   blowSubjected: Map<string, Set<string>>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
+  /** Mounts moved against their will this step (1.443), whose riders may come off. */
+  shakenMounts?: Set<string>;
   /** How many of `events` have been read for who was stirred (1.383). */
   stirredAt?: number;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
@@ -442,6 +446,8 @@ function begin(
         endImmuneConditions(ctx, target);
         holderBound(ctx, target);
       }
+      // Riders where their mounts are, or off them (1.443).
+      syncMounts(ctx);
       leaveWithCallers(ctx);
       for (const end of ctx.harmEndings.splice(0)) end();
       // What an alteration costs its user's health, once what it changed was cast (1.362).
@@ -2801,6 +2807,77 @@ function resolveClimbOut(ctx: RulesetCombatContext, actor: RulesetCombatant, opt
     });
   }
   if (corpse?.prone) layProne(ctx, actor);
+}
+
+/** `rider` gets up on `mount` (1.443) for `cost` of their walk. A controlled mount's turn comes
+ *  straight after its rider's from now on; one that already had its turn this round waits for the
+ *  next. */
+function mountOn(ctx: RulesetCombatContext, rider: RulesetCombatant, mount: RulesetCombatant, cost: number): void {
+  spendRulesetMovement(rider, cost);
+  rider.mountedOn = mount.id;
+  mount.riddenBy = rider.id;
+  if (ctx.combat.mounts?.controlled && !mount.sheet && !mount.block?.mountIndependent) {
+    mount.mountControlled = true;
+    const order = ctx.state.order;
+    const mountAt = order.indexOf(mount.id);
+    const riderAt = order.indexOf(rider.id);
+    if (mountAt >= 0 && riderAt >= 0 && mountAt !== riderAt + 1) {
+      order.splice(mountAt, 1);
+      order.splice(order.indexOf(rider.id) + 1, 0, mount.id);
+      if (mountAt < riderAt) {
+        ctx.state.turn -= 1;
+        mount.mountWaits = ctx.state.round;
+      }
+    }
+  }
+  if (rulesetPositionOf(mount) && rulesetPositionOf(rider)) placeInside(mount, rider);
+  ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount.id });
+}
+
+/** `rider` gets down beside their mount (1.443), or comes off it (`fell`). */
+function dismount(ctx: RulesetCombatContext, rider: RulesetCombatant, fell = false): void {
+  const mount = rider.mountedOn ? rulesetCombatant(ctx.state, rider.mountedOn) : undefined;
+  delete rider.mountedOn;
+  if (mount) {
+    delete mount.riddenBy;
+    delete mount.mountControlled;
+    delete mount.mountWaits;
+    if (ctx.state.board?.grid && rulesetPositionOf(mount) && rulesetPositionOf(rider)) setDownBeside(ctx, mount, rider);
+  }
+  ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount?.id ?? "", off: true, ...(fell ? { fell } : {}) });
+}
+
+/** Every rider where their mount is, or off it (1.443): a mount gone, down or no longer standing, or
+ *  a rider who is, parts them; a mount holding a condition of `fall.when`, or pushed, throws its rider
+ *  unless they make the save, and a rider holding one comes off. */
+function syncMounts(ctx: RulesetCombatContext): void {
+  const fall = ctx.combat.mounts?.fall;
+  for (const rider of ctx.state.combatants) {
+    if (!rider.mountedOn) continue;
+    const mount = rulesetCombatant(ctx.state, rider.mountedOn);
+    const gone = (one: RulesetCombatant | undefined) =>
+      !one || one.defeated || one.down || !rulesetCombatStanding(one) || !!one.insideOf;
+    if (gone(mount) || gone(rider) || mount!.riddenBy !== rider.id) {
+      dismount(ctx, rider);
+      continue;
+    }
+    const holds = (one: RulesetCombatant) =>
+      !!fall?.when?.some((id) => rulesetCombatConditions(ctx.definition, one).includes(id));
+    if (fall && holds(rider)) {
+      dismount(ctx, rider, true);
+      continue;
+    }
+    if (fall && (holds(mount!) || ctx.shakenMounts?.has(mount!.id))) {
+      const kept = rollSave(ctx, rider, fall.save, fall.difficulty);
+      dismount(ctx, rider, !kept);
+      if (!kept && fall.applies) {
+        applyConditionId(ctx, rider, fall.applies, { condition: fall.applies, duration: "instant" }, {});
+      }
+      continue;
+    }
+    if (rulesetPositionOf(mount) && rulesetPositionOf(rider)) placeInside(mount!, rider);
+  }
+  ctx.shakenMounts?.clear();
 }
 
 /** `target` is taken inside `holderId` (1.350): off the ground, where its holder is, and carried along
@@ -5496,7 +5573,13 @@ function applyChoice(
     else if (option.id === RULESET_FLY_UP_OPTION || option.id === RULESET_FLY_DOWN_OPTION) {
       resolveFly(ctx, walking, option);
     } else if (option.id === RULESET_CLIMB_OUT_OPTION) resolveClimbOut(ctx, walking, option);
-    else resolveStand(ctx, walking, option);
+    else if (option.id.startsWith(RULESET_MOUNT_OPTION_PREFIX)) {
+      const mount = rulesetCombatant(ctx.state, option.id.slice(RULESET_MOUNT_OPTION_PREFIX.length));
+      if (mount) mountOn(ctx, walking, mount, option.movementCost ?? 0);
+    } else if (option.id === RULESET_DISMOUNT_OPTION) {
+      spendRulesetMovement(walking, option.movementCost ?? 0);
+      dismount(ctx, walking);
+    } else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
     if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
@@ -6884,6 +6967,8 @@ function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: 
   if (!from || !to) return;
   target.x = to.x;
   target.y = to.y;
+  // A mount moved against its will may throw its rider (1.443).
+  if (target.riddenBy) (ctx.shakenMounts ??= new Set()).add(target.id);
   ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
   // Shoved off a step of two levels or more, which is where a push stops: a fall (combat C6b).
   const grid = ctx.state.board?.grid;
@@ -9043,8 +9128,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
-    // And whoever they hold inside (1.350), within them still.
-    for (const inside of ctx.state.combatants) if (inside.insideOf === actor.id) placeInside(actor, inside);
+    // And whoever they hold inside (1.350), within them still, and whoever rides them (1.443).
+    for (const inside of ctx.state.combatants) {
+      if (inside.insideOf === actor.id || inside.mountedOn === actor.id) placeInside(actor, inside);
+    }
     // Whoever an engulf walks into (1.350), taken in once the walk ends.
     if (engulfing) {
       const covered = new Set(rulesetFootprint(actor).map((one) => `${one.x},${one.y}`));

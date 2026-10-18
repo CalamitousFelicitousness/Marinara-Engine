@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Mounted combat (1.443): the combat block's mounts, or a creature that acts as it will ridden. */
+function carriesMounts443(ruleset: unknown, depth = 0): boolean {
+  const record = plainRecord(ruleset);
+  if (depth === 0 && plainRecord(record?.combat)?.mounts !== undefined) return true;
+  if (!ruleset || depth > 40) return false;
+  if (Array.isArray(ruleset)) return ruleset.some((one) => carriesMounts443(one, depth + 1));
+  if (!record) return false;
+  if (record.mountIndependent !== undefined) return true;
+  return featureValues(record).some((one) => carriesMounts443(one, depth + 1));
+}
+
 /** Walking through creatures or solid ground, and what a crowded cell costs (1.442). */
 function carriesPassing442(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6323,6 +6334,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Mounted combat, 1.443.
+  if (
+    !declaresApi(443) &&
+    (carriesMounts443(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMounts443(document, 1)))
+  ) {
+    return "A ruleset whose combatants ride one another (combat mounts, mountIndependent) requires schemaVersion 2 and capabilityApi 1.443 or newer";
+  }
   // Walking through creatures or solid ground, and what a crowded cell costs, 1.442.
   if (
     !declaresApi(442) &&

@@ -7470,6 +7470,9 @@ const creatureFields = {
   /** It flies without needing to keep moving (Capability API 1.113): what knocks a flier out of the
    *  air does not knock it out. Needs a `fly` speed. */
   hover: z.literal(true).optional(),
+  /** Ridden, it acts as it will, never controlled by its rider (Capability API 1.443): an
+   *  intelligent mount. */
+  mountIndependent: z.literal(true).optional(),
   initiativeModifier: z.number().int().min(-50).max(100),
   /** Scores, keyed by the sheet's own ability ids. Shown to the Game Master; a later slice asks a
    *  creature for a check with them. */
@@ -11409,6 +11412,37 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
+/** Mounted combat (Capability API 1.443): a combatant mounts a willing creature of its side beside it,
+ *  at least `larger` sizes bigger than itself, for half its speed, and dismounts the same way. The
+ *  rider goes where the mount goes. A mount with no sheet is controlled when `controlled` is given,
+ *  unless its block says `mountIndependent`: it acts on its rider's initiative, moving and taking only
+ *  the standard actions named. `fall`: while the mount holds a condition of `when` or is pushed, its
+ *  rider throws `save` against `difficulty` or comes off with `applies` on; one in `when` on the rider
+ *  brings them off too. */
+export interface RulesetCombatMounts {
+  larger: number;
+  controlled?: { standard: Array<"dash" | "disengage" | "dodge" | "help" | "hide" | "ready" | "search"> };
+  fall?: { save: string; difficulty: number; applies?: string; when?: string[] };
+}
+const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> = z
+  .object({
+    larger: z.number().int().min(1).max(9),
+    controlled: z
+      .object({ standard: z.array(combatStandardActionSchema).max(7) })
+      .strict()
+      .optional(),
+    fall: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(100),
+        applies: sheetId.optional(),
+        when: z.array(sheetId).min(1).max(8).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 /** Holding an effect together while the fight goes on. The text field is where it is written down,
  *  so the sheet shows what a character is holding after the battle as well as during it. */
 const combatConcentrationSchema = z
@@ -11781,6 +11815,8 @@ const combatObjectSchema = z
     contests: z.array(combatContestSchema).max(12).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.103). */
     sizes: combatSizesSchema.optional(),
+    /** Riding a willing creature of its side (Capability API 1.443). */
+    mounts: combatMountsSchema.optional(),
     /** What a combatant is (Capability API 1.168): the types and tags a creature names and a target
      *  test reads. A character takes its type from `field` (a text or choice field holding a type id)
      *  or else `default`; a creature from its own `type` and `tags`. */

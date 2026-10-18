@@ -784,6 +784,12 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         holder: names.combatant(event.holderId),
       });
+    // Up on a mount, down off it, or thrown (1.443).
+    case "mount":
+      return key(event.off ? (event.fell ? "thrown" : "dismounted") : "mounted", {
+        rider: names.combatant(event.riderId),
+        mount: names.combatant(event.mountId),
+      });
     case "regenerates":
       return key(event.stopped ? "regenerationStopped" : "regenerates", {
         actor: names.combatant(event.actorId),

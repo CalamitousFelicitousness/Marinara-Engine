@@ -838,6 +838,8 @@ export function rulesetReachableCells(
   if (actor.levitating) return [];
   // Inside somebody (1.350), even fallen (1.352): out is climbed, never walked.
   if (actor.insideOf) return [];
+  // Riding (1.443): the mount walks.
+  if (actor.mountedOn) return [];
   const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
   if (budget < 1) return [];
 
@@ -855,8 +857,9 @@ export function rulesetReachableCells(
   };
   for (const combatant of state.combatants) {
     if (combatant.id === actor.id || !rulesetCombatStanding(combatant)) continue;
-    // Inside somebody (1.350), they fill none of their own: whoever holds them fills it.
-    if (combatant.insideOf || passes?.(combatant)) continue;
+    // Inside somebody (1.350), they fill none of their own: whoever holds them fills it. Nor does a
+    // rider (1.443): their mount does.
+    if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
     const through = combatant.side !== actor.side && walksThrough(combatant);
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {

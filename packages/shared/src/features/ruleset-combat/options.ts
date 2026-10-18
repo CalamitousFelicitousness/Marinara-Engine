@@ -461,6 +461,10 @@ export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** Climbing out of whoever it was inside, once they have fallen (1.352): a purple worm's corpse. */
 export const RULESET_CLIMB_OUT_OPTION = "move:climb-out";
+/** Mounting a willing creature of its side (1.443): this, then the mount's id. */
+export const RULESET_MOUNT_OPTION_PREFIX = "move:mount:";
+/** Getting down off a mount (1.443). */
+export const RULESET_DISMOUNT_OPTION = "move:dismount";
 /** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
 /** Lighting a prop again (1.332), followed by its id. */
@@ -3270,6 +3274,26 @@ export function rulesetStandCost(combatant: RulesetCombatant): number {
   return Math.max(1, Math.ceil((combatant.movement ?? 0) / 2));
 }
 
+/** Whom this combatant may mount (1.443): a creature of their side beside them, standing, ridden by
+ *  nobody and riding nothing, at least `combat.mounts.larger` sizes bigger. */
+export function rulesetMountsFor(
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatant[] {
+  const rule = combat.mounts;
+  if (!rule || !rulesetPositionOf(actor) || actor.riddenBy || actor.insideOf) return [];
+  const own = rulesetSizeRank(combat, actor);
+  if (own === undefined) return [];
+  return state.combatants.filter((one) => {
+    if (one.id === actor.id || one.side !== actor.side || one.defeated || one.down) return false;
+    if (!rulesetCombatStanding(one) || one.riddenBy || one.mountedOn || one.insideOf) return false;
+    if (!rulesetPositionOf(one) || rulesetGap(actor, one) > 1) return false;
+    const rank = rulesetSizeRank(combat, one);
+    return rank !== undefined && rank - own >= rule.larger;
+  });
+}
+
 /** Which of the actor's conditions is the one holding them down. */
 export function rulesetProneCondition(
   definition: RulesetDefinition,
@@ -3311,6 +3335,20 @@ function movementOptions(
     return [];
   }
   const left = Math.max(0, Math.floor(actor.movementLeft ?? 0));
+  // Riding (1.443): the mount goes where they go, and getting down costs half their speed.
+  if (actor.mountedOn) {
+    const cost = rulesetStandCost(actor);
+    if (left < cost) return [];
+    return [
+      {
+        id: RULESET_DISMOUNT_OPTION,
+        kind: "move",
+        label: "Dismount",
+        targets: { side: "self", count: 0 },
+        movementCost: cost,
+      },
+    ];
+  }
   // Inside somebody (1.350): nothing but climbing out once they have fallen (1.352), for what that
   // costs of its walk, prone or not.
   if (actor.insideOf) {
@@ -3349,6 +3387,20 @@ function movementOptions(
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
   }
+  // Mounting a willing creature of their side beside them (1.443), for half their speed.
+  const cost = rulesetStandCost(actor);
+  if (left >= cost) {
+    for (const mount of rulesetMountsFor(combat, state, actor)) {
+      options.push({
+        id: `${RULESET_MOUNT_OPTION_PREFIX}${mount.id}`,
+        kind: "move",
+        label: `Mount ${mount.name}`,
+        mounts: mount.name,
+        targets: { side: "self", count: 0 },
+        movementCost: cost,
+      });
+    }
+  }
   // Up or down a level where it stands (1.114): a flier, on a board with levels, paying what a level
   // is worth out of what is left of its flight.
   const grid = state.board?.grid;
@@ -3382,7 +3434,23 @@ export function rulesetCombatOptions(
 ): RulesetCombatOption[] {
   const options = rulesetUncompelledOptions(definition, state, actorId);
   const actor = rulesetCombatant(state, actorId);
-  return actor && definition.combat ? compelled(definition, definition.combat, state, actor, options) : options;
+  if (!actor || !definition.combat) return options;
+  const kept = compelled(definition, definition.combat, state, actor, options);
+  // A controlled mount (1.443) moves and takes only the standard actions the ruleset names; mounted
+  // this round after its own turn, it waits for the next.
+  if (actor.mountControlled && actor.riddenBy) {
+    if (actor.mountWaits === state.round) return kept.filter((option) => option.kind === "end-turn");
+    const named = definition.combat.mounts?.controlled?.standard ?? [];
+    return kept.filter(
+      (option) =>
+        option.kind === "end-turn" ||
+        option.id === RULESET_MOVE_OPTION ||
+        (option.kind === "standard" &&
+          option.id.startsWith("standard:") &&
+          named.includes(rulesetStandardName(option.id) as never)),
+    );
+  }
+  return kept;
 }
 
 /**

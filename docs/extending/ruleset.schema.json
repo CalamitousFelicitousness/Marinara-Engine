@@ -52114,6 +52114,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "mountIndependent": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "initiativeModifier": {
                       "type": "integer",
                       "minimum": -50,
@@ -123422,6 +123426,83 @@
           },
           "required": [
             "order"
+          ],
+          "additionalProperties": false
+        },
+        "mounts": {
+          "type": "object",
+          "properties": {
+            "larger": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            },
+            "controlled": {
+              "type": "object",
+              "properties": {
+                "standard": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "dash",
+                      "disengage",
+                      "dodge",
+                      "help",
+                      "hide",
+                      "ready",
+                      "search"
+                    ]
+                  },
+                  "maxItems": 7
+                },
+                "$comment": {}
+              },
+              "required": [
+                "standard"
+              ],
+              "additionalProperties": false
+            },
+            "fall": {
+              "type": "object",
+              "properties": {
+                "save": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "difficulty": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "applies": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "when": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                },
+                "$comment": {}
+              },
+              "required": [
+                "save",
+                "difficulty"
+              ],
+              "additionalProperties": false
+            },
+            "$comment": {}
+          },
+          "required": [
+            "larger"
           ],
           "additionalProperties": false
         },

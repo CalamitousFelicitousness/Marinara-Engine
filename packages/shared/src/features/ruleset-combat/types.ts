@@ -596,6 +596,8 @@ export interface RulesetStatBlock {
   speeds?: RulesetMoveSpeeds;
   /** It flies without needing to keep moving, so nothing knocks it out of the air (1.113). */
   hover?: true;
+  /** Ridden, it acts as it will (1.443): an intelligent mount. */
+  mountIndependent?: true;
   /** Its hands are full, so a `twoHanded` alternative never holds (1.102). */
   shield?: true;
   /** One of `combat.sizes`, by id (1.103). */
@@ -1551,6 +1553,14 @@ export interface RulesetCombatant {
   legendaryResisted?: number;
   /** The creature it is inside of (1.350), engulfed: it moves with that creature. */
   insideOf?: string;
+  /** Riding this combatant (1.443): where it goes, they go, and they walk no way of their own. */
+  mountedOn?: string;
+  /** Ridden by this combatant (1.443); `mountControlled` when its rider controls it, moving and
+   *  taking only the standard actions the ruleset names, and `mountWaits` the round it was mounted in
+   *  after its own turn, so it does not act twice in it. */
+  riddenBy?: string;
+  mountControlled?: true;
+  mountWaits?: number;
   /** What those it holds inside have dealt it this turn (1.352), by who, for `releasedWhen`. */
   insideHurt?: { turn: string; by: Record<string, number> };
   /** How it climbs out once whoever holds it inside has fallen (1.352), from what took it in. */
@@ -2815,6 +2825,8 @@ export type RulesetCombatEvent =
     }
   /** Taken inside somebody (1.350), or let out beside them (`out`). */
   | { type: "inside"; targetId: string; holderId: string; out?: true }
+  /** Up on a mount (1.443), or off it (`off`), thrown or fallen (`fell`). */
+  | { type: "mount"; riderId: string; mountId: string; off?: true; fell?: true }
   /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may. */
   | { type: "hangsOn"; actorId: string; label?: string; left?: number }
   /** A prop lit again (1.332): who lit it, and how many cells it lights. */
@@ -3424,6 +3436,8 @@ export interface RulesetCombatOption {
   cells?: RulesetReachableCell[];
   /** What a `move` option that is not a step costs of the allowance: getting back up. */
   movementCost?: number;
+  /** The name of whom a mounting option mounts (1.443). */
+  mounts?: string;
   /** The shape this covers, in cells, and how far away it may be aimed. Present only in a
    *  positioned fight, and then the option is aimed at a cell rather than at anybody. */
   area?: {

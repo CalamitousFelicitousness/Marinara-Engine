@@ -6,6 +6,8 @@
 // carries, and keeps a player's picking inside the option's own list and count.
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import {
+  RULESET_DISMOUNT_OPTION,
+  RULESET_MOUNT_OPTION_PREFIX,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   RULESET_MOVE_OPTION,
@@ -135,6 +137,10 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       return t("game.combat.ruleset.menu.turnZone", { zone: option.label });
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
+    // Mounting a creature, named by it, and getting down (1.443).
+    if (option.id.startsWith(RULESET_MOUNT_OPTION_PREFIX) && option.mounts)
+      return t("game.combat.ruleset.board.mount", { name: option.mounts });
+    if (option.id === RULESET_DISMOUNT_OPTION) return t("game.combat.ruleset.board.dismount");
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }

@@ -3247,6 +3247,8 @@ export interface RulesetZoneStage {
   difficult?: true;
   obscures?: true;
   noRanged?: true;
+  breaksConcentration?: true;
+  disperses?: true;
 }
 const zoneStagesSchema: z.ZodType<RulesetZoneStage[], z.ZodTypeDef, unknown> = z
   .array(
@@ -3268,6 +3270,11 @@ const zoneStagesSchema: z.ZodType<RulesetZoneStage[], z.ZodTypeDef, unknown> = z
         difficult: z.literal(true).optional(),
         obscures: z.literal(true).optional(),
         noRanged: z.literal(true).optional(),
+        /** Whoever starts a turn inside while it lasts rolls the ruleset's concentration save against
+         *  the entry's own save difficulty, else 10, or loses it (Capability API 1.527). */
+        breaksConcentration: z.literal(true).optional(),
+        /** A wind while it lasts (Capability API 1.527): fog it reaches that is `dispersed` ends. */
+        disperses: z.literal(true).optional(),
       })
       .strict()
       .refine((stage) => !stage.onSave || stage.save, {
@@ -18127,6 +18134,9 @@ function zoneInsideIssues(
       add([...at, "stages", index, "damageType"], `Unknown damage type "${stage.damageType}"`);
     if (stage.save && !definition.sheet.saves.some((save) => save.id === stage.save))
       add([...at, "stages", index, "save"], `Unknown save "${stage.save}"`);
+    // Shaking concentration needs the ruleset's concentration save (1.527).
+    if (stage.breaksConcentration && !definition.combat?.concentration)
+      add([...at, "stages", index, "breaksConcentration"], "Nothing here is held by concentration to break");
   });
   const burnType = zone.burns?.damageType;
   if (burnType && types && !types.includes(burnType.trim().toLowerCase())) {

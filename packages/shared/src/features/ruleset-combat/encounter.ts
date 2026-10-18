@@ -2311,6 +2311,8 @@ export function rulesetZoneAction(
         ...(stage.difficult ? { difficult: true as const } : {}),
         ...(stage.obscures ? { obscures: true as const } : {}),
         ...(stage.noRanged ? { noRanged: true as const } : {}),
+        ...(stage.breaksConcentration ? { breaksConcentration: true as const } : {}),
+        ...(stage.disperses ? { disperses: true as const } : {}),
       };
     });
   }

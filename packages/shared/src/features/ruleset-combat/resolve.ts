@@ -4707,7 +4707,11 @@ function castStored(
  *  rounds running: 5e's Stinking Cloud. */
 function disperseFogs(ctx: RulesetCombatContext): void {
   if (!ctx.state.board?.grid) return;
-  const winds = rulesetStandingZones(ctx.state).filter(({ action }) => action.zone?.disperses);
+  // A wind, or a stage of one that is a wind now (1.527).
+  const winds = rulesetStandingZones(ctx.state).filter(
+    ({ action, zone }) =>
+      action.zone?.disperses || (zone.stage !== undefined && action.zone?.stages?.[zone.stage]?.disperses),
+  );
   const blown = new Set(
     winds.flatMap(({ caster, zone }) => rulesetZoneCells(ctx.state, caster, zone).map((cell) => `${cell.x},${cell.y}`)),
   );
@@ -5436,6 +5440,23 @@ function zoneShakes(ctx: RulesetCombatContext, action: RulesetCombatAction, targ
   } else endConcentration(ctx, target, "zone");
 }
 
+/** A stage that shakes concentration (1.527): whoever starts a turn inside while it lasts rolls the
+ *  ruleset's concentration save against the entry's own save difficulty, else 10. */
+function stageShakes(
+  ctx: RulesetCombatContext,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const stage = zone.stage !== undefined ? action.zone?.stages?.[zone.stage] : undefined;
+  const concentration = ctx.combat.concentration;
+  if (!stage?.breaksConcentration || !concentration || !target.concentrating) return;
+  const difficulty = action.save?.difficulty ?? action.saveDifficulty ?? 10;
+  if (rollSave(ctx, target, concentration.save, difficulty)) {
+    ctx.events.push({ type: "concentration", actorId: target.id, label: target.concentrating.label, state: "kept" });
+  } else endConcentration(ctx, target, "zone");
+}
+
 /** A zone that ends once it has dealt so much (1.174): what its own damage events since `from` took
  *  off, added to what it had dealt, and the zone gone once that reaches the cap. */
 function zoneDealt(
@@ -5472,6 +5493,8 @@ function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger
       : (zone.held ?? []).includes(actor.id);
     // Starting a turn inside, its save to shrug off what it does there (1.407).
     if (inside && trigger === "turn-start") insideSave(ctx, caster, zone, action, actor);
+    // And a stage that shakes concentration (1.527): Storm of Vengeance's wind and rain.
+    if (inside && trigger === "turn-start") stageShakes(ctx, zone, action, actor);
     if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
     else if (rulesetZoneHoldsOne(zone.sideCells ?? [], actor)) {
       zoneStrike(ctx, caster, zone, actor, trigger, "side");

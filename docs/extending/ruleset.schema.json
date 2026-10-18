@@ -44763,6 +44763,14 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "breaksConcentration": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "disperses": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -68450,6 +68458,14 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "breaksConcentration": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "disperses": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -80654,6 +80670,14 @@
                                       "const": true
                                     },
                                     "noRanged": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "breaksConcentration": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "disperses": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -103196,6 +103220,14 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "breaksConcentration": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "disperses": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -121723,6 +121755,14 @@
                                           "const": true
                                         },
                                         "noRanged": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "breaksConcentration": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "disperses": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -140259,6 +140299,14 @@
                                           "const": true
                                         },
                                         "noRanged": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "breaksConcentration": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "disperses": {
                                           "type": "boolean",
                                           "const": true
                                         },

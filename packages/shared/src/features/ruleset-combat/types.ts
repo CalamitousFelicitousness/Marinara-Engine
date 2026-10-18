@@ -4000,6 +4000,9 @@ export interface RulesetCombatZoneRule {
     difficult?: true;
     obscures?: true;
     noRanged?: true;
+    /** A concentration save as each turn starts inside, and a wind (1.527): Storm of Vengeance. */
+    breaksConcentration?: true;
+    disperses?: true;
   }>;
   /** Cover it gives what lies on its far side (1.502): 5e's Blade Barrier. */
   cover?: "half" | "three-quarters";

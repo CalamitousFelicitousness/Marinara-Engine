@@ -2261,6 +2261,23 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone stage that shakes concentration or is a wind (1.527): Storm of Vengeance. */
+function carriesStageWind527(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStageWind527(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.stages) &&
+    record.stages.some((stage) => {
+      const one = plainRecord(stage);
+      return !!one && (one.breaksConcentration !== undefined || one.disperses !== undefined);
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesStageWind527(one, depth + 1));
+}
+
 /** A zone's inside save thrown as it is cast (1.526): Reverse Gravity. */
 function carriesInsideOnCast526(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7283,6 +7300,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone stage that shakes concentration or is a wind, 1.527.
+  if (
+    !declaresApi(527) &&
+    (carriesStageWind527(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStageWind527(document)))
+  ) {
+    return "A ruleset with a zone stage that breaks concentration or disperses fog (stages breaksConcentration, disperses) requires schemaVersion 2 and capabilityApi 1.527 or newer";
+  }
   // A zone's inside save thrown as it is cast, 1.526.
   if (
     !declaresApi(526) &&

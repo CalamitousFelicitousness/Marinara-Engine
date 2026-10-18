@@ -8,6 +8,7 @@ import {
 import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import {
+  TTS_SETTINGS_KEY,
   normalizeGameDifficulty,
   normalizeWeatherType,
   combatWeatherSchema,
@@ -462,6 +463,7 @@ import {
   type PromptOverridesStorage,
 } from "../services/storage/prompt-overrides.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { gameTtsEmotionIndicatorsEnabled } from "../services/tts-emotion-guidance.js";
 import { applyStoryboardAgentSettings } from "../services/game/storyboard-agent-settings.js";
 import {
   STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
@@ -13403,6 +13405,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     }
     let systemPrompt = buildPartySystemPrompt({
+      ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(
+        await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY),
+      ),
       partyCards,
       playerName,
       gameActiveState,

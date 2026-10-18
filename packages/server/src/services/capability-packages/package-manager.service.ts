@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Languages, and a target test of who understands its user (1.508): Suggestion. */
+function carriesLanguages508(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLanguages508(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.understands !== undefined) return true;
+  if (plainRecord(record.languages)?.list !== undefined) return true;
+  if (Array.isArray(record.languages) && (record.health !== undefined || Array.isArray(record.actions))) return true;
+  return featureValues(record).some((one) => carriesLanguages508(one, depth + 1));
+}
+
 /** A creature that deals double damage to objects (1.507): Siege Monster. */
 function carriesDoubleToObjects507(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7079,6 +7091,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Languages and who understands whom, 1.508.
+  if (
+    !declaresApi(508) &&
+    (carriesLanguages508(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLanguages508(document)))
+  ) {
+    return "A ruleset with languages read in a fight (combat.languages, a creature's languages, targetTypes.understands) requires schemaVersion 2 and capabilityApi 1.508 or newer";
+  }
   // Creatures that deal double damage to objects, 1.507.
   if (
     !declaresApi(507) &&

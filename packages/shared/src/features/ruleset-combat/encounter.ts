@@ -961,6 +961,7 @@ export function rulesetTargetTypesAllow(
         abilityAtLeast?: Record<string, number>;
         notImmuneTo?: string[];
         calledBySelf?: true;
+        understands?: true;
       }
     | undefined,
   /** Who it is pointed by (1.434), for `calledBySelf`: nobody given, nobody passes it. */
@@ -970,6 +971,13 @@ export function rulesetTargetTypesAllow(
   // Only one its user called (1.434): Find Familiar's own familiar.
   // Never one that turned on them (1.485).
   if (targetTypes.calledBySelf && (!by || combatant.calledBy !== by.id || combatant.calledTurned)) return false;
+  // Only one that understands a language its user speaks (1.508): Suggestion. Either one's languages
+  // not written down keeps nobody out.
+  if (targetTypes.understands && by && by.id !== combatant.id) {
+    const theirs = rulesetLanguages(definition, combatant);
+    const ours = rulesetLanguages(definition, by);
+    if (theirs && ours && !theirs.some((one) => ours.includes(one))) return false;
+  }
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
   // Its ability scores at most these (1.185); a score nobody wrote down keeps nobody out.
@@ -988,6 +996,27 @@ export function rulesetTargetTypesAllow(
     if (targetTypes.notImmuneTo.some((id) => immune.includes(id.trim().toLowerCase()))) return false;
   }
   return true;
+}
+
+/** The languages a combatant understands (1.508), lower case: off their sheet's `combat.languages`
+ *  list, or as their stat block writes them. Undefined where nothing says. */
+export function rulesetLanguages(definition: RulesetDefinition, combatant: RulesetCombatant): string[] | undefined {
+  const plain = (one: string) => one.trim().toLowerCase();
+  if (combatant.sheet) {
+    const rule = definition.combat?.languages;
+    if (!rule) return undefined;
+    const prefix = rule.prefix ? plain(rule.prefix) : "";
+    const rows = combatant.sheet.build.lists?.[rule.list] ?? [];
+    return rows.flatMap((row) => {
+      const value = row[rule.column];
+      if (typeof value !== "string") return [];
+      const said = plain(value);
+      if (prefix && !said.startsWith(prefix)) return [];
+      const name = said.slice(prefix.length).trim();
+      return name ? [name] : [];
+    });
+  }
+  return combatant.block?.languages?.map(plain);
 }
 
 /** One of a combatant's ability scores (1.185): off their sheet, or as their stat block writes it.

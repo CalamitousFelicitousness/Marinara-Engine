@@ -155,6 +155,7 @@ export {
   rulesetCreatureKind,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
+  rulesetLanguages,
   rulesetInitiativeModifierNow,
   rulesetImmuneToCondition,
   rulesetInitiativeOrder,

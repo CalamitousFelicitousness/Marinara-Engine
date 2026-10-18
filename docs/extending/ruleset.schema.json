@@ -38565,6 +38565,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "understands": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -56186,6 +56190,15 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "languages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "maxItems": 30
+                    },
                     "conditionImmunities": {
                       "type": "array",
                       "items": {
@@ -70017,6 +70030,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "understands": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -82173,6 +82190,10 @@
                                 "maxItems": 8
                               },
                               "calledBySelf": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "understands": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -96799,6 +96820,10 @@
                               "maxItems": 8
                             },
                             "calledBySelf": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "understands": {
                               "type": "boolean",
                               "const": true
                             },
@@ -115206,6 +115231,10 @@
                                     "maxItems": 8
                                   },
                                   "calledBySelf": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "understands": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -133619,6 +133648,10 @@
                                     "maxItems": 8
                                   },
                                   "calledBySelf": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "understands": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -171455,6 +171488,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "understands": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -180615,6 +180652,32 @@
             "long",
             "high",
             "runUp"
+          ],
+          "additionalProperties": false
+        },
+        "languages": {
+          "type": "object",
+          "properties": {
+            "list": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "column": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "prefix": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "$comment": {}
+          },
+          "required": [
+            "list",
+            "column"
           ],
           "additionalProperties": false
         },

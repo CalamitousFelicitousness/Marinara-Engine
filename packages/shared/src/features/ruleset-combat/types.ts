@@ -645,6 +645,8 @@ export interface RulesetStatBlock {
   healedBy?: string[];
   /** Double damage to objects (1.507): Siege Monster. */
   doubleToObjects?: true;
+  /** The languages it understands, by name (1.508). */
+  languages?: string[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.115). */
   conditionImmunities?: string[];
   /** Conditions it has on through every fight (1.263): an aura it spreads. */
@@ -817,6 +819,8 @@ export interface RulesetCombatAction {
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
     calledBySelf?: true;
+    /** Only one that understands a language its user does (1.508). */
+    understands?: true;
   };
   /** Dealt at its most to a target that is this (1.185). */
   maxAgainst?: RulesetTargetIs;

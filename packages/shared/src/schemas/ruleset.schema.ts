@@ -5291,6 +5291,7 @@ const catalogTargetTypesSchema: z.ZodType<
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
     calledBySelf?: true;
+    understands?: true;
   },
   z.ZodTypeDef,
   unknown
@@ -5312,10 +5313,15 @@ const catalogTargetTypesSchema: z.ZodType<
     /** Only a creature its user called into the fight (Capability API 1.434): 5e's "your familiar",
      *  for Voice of the Chain Master and seeing through its eyes. */
     calledBySelf: z.literal(true).optional(),
+    /** Only a creature that understands a language its user speaks (Capability API 1.508), read off
+     *  `combat.languages` and a creature's own `languages`: 5e's Suggestion, Command. One whose
+     *  languages are not written down is not kept out by it. */
+    understands: z.literal(true).optional(),
   })
   .strict()
   .refine(
     (types) =>
+      types.understands !== undefined ||
       types.is !== undefined ||
       types.not !== undefined ||
       types.abilityAtMost !== undefined ||
@@ -5324,7 +5330,7 @@ const catalogTargetTypesSchema: z.ZodType<
       types.calledBySelf !== undefined,
     {
       message:
-        '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf" or several',
+        '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf", "understands" or several',
     },
   );
 
@@ -8249,6 +8255,9 @@ const creatureFields = {
   /** It deals double damage to objects (Capability API 1.507): a wall's sections, a layered wall's
    *  layers and a board's props. 5e's Siege Monster. */
   doubleToObjects: z.literal(true).optional(),
+  /** The languages it understands (Capability API 1.508), by name, matched without case against a
+   *  character's `combat.languages`: what `targetTypes.understands` reads. */
+  languages: z.array(promptSafeText(60)).max(30).optional(),
   /** The sheet's own condition ids this creature is never in. */
   conditionImmunities: z.array(sheetId).max(40).optional(),
   /** Conditions it has on through every fight (Capability API 1.263), as a sheet's `keepsOn` entry
@@ -13161,6 +13170,13 @@ const combatObjectSchema = z
     underwater: combatUnderwaterSchema.optional(),
     /** Long and high jumps (Capability API 1.446). */
     jumping: combatJumpingSchema.optional(),
+    /** Where a character's languages are read (Capability API 1.508): each row of `list` whose
+     *  `column` starts with `prefix` (when given) names one, the rest of it after the prefix. 5e's
+     *  `{"list": "proficiencies", "column": "name", "prefix": "Languages: "}`. */
+    languages: z
+      .object({ list: sheetId, column: sheetId, prefix: promptSafeText(40).optional() })
+      .strict()
+      .optional(),
     /** What a combatant is (Capability API 1.168): the types and tags a creature names and a target
      *  test reads. A character takes its type from `field` (a text or choice field holding a type id)
      *  or else `default`; a creature from its own `type` and `tags`. */
@@ -16147,6 +16163,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(id))
         issue(at("underwater", "breath", "exempt", "conditions", index), `Unknown condition "${id}"`);
     });
+    // Where a character's languages are read (1.508): a list of the sheet's, and a column of it.
+    const tongues = combat.languages;
+    if (tongues) {
+      const list = def.sheet.lists.find((one) => one.id === tongues.list);
+      if (!list) issue(at("languages", "list"), `Unknown list "${tongues.list}"`);
+      else if (!list.columns.some((one) => one.id === tongues.column))
+        issue(at("languages", "column"), `"${tongues.list}" has no column "${tongues.column}"`);
+    }
     // What a rider lands on their feet with (1.451) is a budget of the fight's.
     const landsWith = combat.mounts?.fall?.landsWith;
     if (landsWith !== undefined && !combat.economy.budgets.some((one) => one.id === landsWith))

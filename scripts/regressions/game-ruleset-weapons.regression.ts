@@ -484,6 +484,7 @@ try {
         ability: "brawn",
         toHit: 2,
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },
+        damageAddsAbility: true,
       },
       {
         id: "item:1",
@@ -497,6 +498,7 @@ try {
         toHit: 2,
         // Both hands are full, so the spear deals its own die rather than its versatile one.
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },
+        damageAddsAbility: true,
       },
     ]);
     assert.ok(

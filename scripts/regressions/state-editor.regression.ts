@@ -2,6 +2,7 @@
 // searches keys and values with readable trails, tells real changes from reformatting, and folds several
 // game-state sections into one PATCH without one playerStats slice undoing another.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { GameState } from "@marinara-engine/shared";
 import {
   collectStateChanges,
@@ -387,6 +388,39 @@ assert.deepEqual(
   ]),
   { edits: [] },
   "sections with a route of their own never reach the data route",
+);
+
+// ── tracker windows open on their own section ──
+// The Trackers window and every tracker popped out into its own window name the section to open, so a
+// renamed or mistyped id would silently land on Scene. The ids are the agent types. Each drawer is read
+// from its own block, so a swap between two drawers fails as well as a missing one.
+const trackerWindowSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/RoleplayTrackerWindow.tsx", import.meta.url),
+  "utf8",
+);
+const sectionByDrawer: Record<string, string[]> = {};
+for (const drawerBlock of trackerWindowSource.split("<TrackerDrawer").slice(1)) {
+  const drawerId = drawerBlock.match(/id="([^"]+)"/u)?.[1];
+  const sectionId = drawerBlock.match(/stateEditorSection="([^"]+)"/u)?.[1];
+  if (!drawerId || !sectionId) continue;
+  (sectionByDrawer[drawerId] ??= []).push(sectionId);
+}
+assert.deepEqual(
+  sectionByDrawer,
+  {
+    "tracker-world": ["world-state"],
+    "tracker-persona": ["persona-stats"],
+    "tracker-characters": ["character-tracker"],
+    "tracker-quests": ["quest"],
+    "tracker-inventory": ["inventory-tracker"],
+    "tracker-custom": ["custom-tracker"],
+  },
+  "each game-state tracker drawer opens the State Editor on its own section, exactly once",
+);
+assert.deepEqual(
+  [...new Set(Object.values(sectionByDrawer).flat())].sort(),
+  [...GAME_STATE_EDITOR_SECTION_IDS].sort(),
+  "and those sections are the game-state editor's own ids",
 );
 
 console.log("state-editor regression passed");

@@ -3771,6 +3771,54 @@ export function createChatsStorage(db: DB) {
       });
     },
 
+    /**
+     * Point every attachment that shows a gallery image at its regenerated replacement (#7767),
+     * on the message mirror and on whichever swipe rows hold it. Other attachment fields are
+     * kept. Returns whether anything changed.
+     */
+    async replaceGalleryImageAttachment(
+      messageId: string,
+      oldGalleryId: string,
+      patch: { url: string; prompt: string; galleryId: string },
+    ): Promise<boolean> {
+      const swap = (extra: unknown): string | null => {
+        const existing = parseExtraRecord(extra);
+        if (!Array.isArray(existing.attachments)) return null;
+        let changed = false;
+        const attachments = existing.attachments.map((attachment) => {
+          if (!attachment || typeof attachment !== "object") return attachment;
+          if ((attachment as Record<string, unknown>).galleryId !== oldGalleryId) return attachment;
+          changed = true;
+          return { ...attachment, ...patch };
+        });
+        return changed ? JSON.stringify({ ...existing, attachments }) : null;
+      };
+      // Queue first, then the transaction (LOCK ORDER above), so the message and its swipe
+      // rows change together. Only plain reads/writes run inside the transaction.
+      return withPatchQueue(messageExtraPatchQueues, messageId, () =>
+        db.transaction(async (tx) => {
+          const msg = (await tx.select().from(messages).where(eq(messages.id, messageId)))[0];
+          if (!msg) return false;
+          let changed = false;
+          const nextMessageExtra = swap(msg.extra);
+          if (nextMessageExtra) {
+            await tx.update(messages).set({ extra: nextMessageExtra }).where(eq(messages.id, messageId));
+            changed = true;
+          }
+          for (const swipe of await tx.select().from(messageSwipes).where(eq(messageSwipes.messageId, messageId))) {
+            const nextSwipeExtra = swap(swipe.extra);
+            if (!nextSwipeExtra) continue;
+            await tx
+              .update(messageSwipes)
+              .set({ extra: nextSwipeExtra })
+              .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, swipe.id)));
+            changed = true;
+          }
+          return changed;
+        }),
+      );
+    },
+
     // ── Chat Connections ──
 
     /** Bidirectionally link two chats. */

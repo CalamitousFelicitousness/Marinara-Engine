@@ -270,7 +270,14 @@ export function ModalRenderer() {
       content = <ChatStatsModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
       break;
     case "game-state-editor":
-      content = <GameStateEditorModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
+      content = (
+        <GameStateEditorModal
+          open
+          onClose={closeModal}
+          chatId={(modal?.props?.chatId as string) ?? ""}
+          initialSectionId={(modal?.props?.initialSectionId as string) ?? undefined}
+        />
+      );
       break;
     case "chat-variables-editor":
       content = <ChatVariablesEditorModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;

@@ -26,6 +26,8 @@ interface GameStateEditorModalProps {
   open: boolean;
   onClose: () => void;
   chatId: string;
+  /** Opens on this section (a tracker window names its own), instead of the first one. */
+  initialSectionId?: string;
 }
 
 /** Section ids are agent types ("world-state"); localization keys are camelCase. */
@@ -141,7 +143,7 @@ function SnapshotLabel({ chatId, snapshot }: { chatId: string; snapshot: GameSta
   );
 }
 
-export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorModalProps) {
+export function GameStateEditorModal({ open, onClose, chatId, initialSectionId }: GameStateEditorModalProps) {
   const { t: localizeUi } = useUiTranslation();
   const qc = useQueryClient();
   const queryKey = useMemo(() => ["state-editor", "game-state", chatId] as const, [chatId]);
@@ -271,6 +273,7 @@ export function GameStateEditorModal({ open, onClose, chatId }: GameStateEditorM
         <StateEditor
           key={editorKey}
           sections={sections}
+          initialSectionId={initialSectionId}
           onSave={save}
           onDirtyChange={handleDirtyChange}
           reviewSubtitle={(count) => localizeUi("ui.stateEditor.gameState.reviewSubtitle", { count })}

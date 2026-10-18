@@ -168319,8 +168319,14 @@
                       "turn-start",
                       "turn-end",
                       "source-turn-start",
-                      "source-turn-end"
+                      "source-turn-end",
+                      "attacks-source",
+                      "attacks-source-side"
                     ]
+                  },
+                  "once": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "dice": {
                     "type": "string",

@@ -1539,6 +1539,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** Its `harms` has dealt its once (1.509): Geas. */
+  harmedOnce?: true;
   /** What is left of it to cut away (1.478), once something has been struck at it. */
   cutLeft?: number;
   /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */

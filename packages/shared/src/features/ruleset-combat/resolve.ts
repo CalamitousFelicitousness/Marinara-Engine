@@ -4196,6 +4196,36 @@ function temporaryFromCondition(
   if (amount > before) entry.gaveTemp = amount;
 }
 
+/** What a condition deals its holder as they attack whoever put it on, or their side (1.509), once
+ *  while it holds where it says: Geas. */
+function harmForDefiance(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+): void {
+  if (
+    !ctx.combat.conditions?.some((one) => one.harms?.at === "attacks-source" || one.harms?.at === "attacks-source-side")
+  )
+    return;
+  if (!rulesetIsAttack(action) && !action.damage) return;
+  for (const entry of [...actor.tracked]) {
+    const harms = ctx.combat.conditions.find((one) => one.condition === entry.condition)?.harms;
+    if (!harms || (harms.at !== "attacks-source" && harms.at !== "attacks-source-side")) continue;
+    if (harms.once && entry.harmedOnce) continue;
+    const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+    if (!source) continue;
+    const defied = targets.some(
+      (one) =>
+        one.id !== actor.id &&
+        (one.id === source.id || (harms.at === "attacks-source-side" && one.side === source.side)),
+    );
+    if (!defied || actor.defeated) continue;
+    if (harms.once) entry.harmedOnce = true;
+    harmFromCondition(ctx, actor, entry, harms.at);
+  }
+}
+
 /** A condition's own harm as a turn starts or ends (1.189), from whoever put it on. */
 function harmFromCondition(
   ctx: RulesetCombatContext,
@@ -11673,6 +11703,8 @@ function resolveAction(
 ): RulesetHitHold | null {
   // Where its events begin, for a cast that ends a condition only when it reaches a foe (1.372).
   const reachedFrom = ctx.events.length;
+  // Harmed for acting against who put a condition on (1.509): Geas.
+  if (!held) harmForDefiance(ctx, actor, action, targets);
   // What shakes surprise off, taken first (1.237): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   // Its light lit or put out (1.296), and nothing else: what it shows is asked as the step ends.

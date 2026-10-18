@@ -2571,7 +2571,8 @@ const conditionInsideSchema: z.ZodType<true | RulesetConditionInside, z.ZodTypeD
 /** Damage a combat condition deals its holder each turn (Capability API 1.189). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
 export interface RulesetConditionHarms {
-  at: "turn-start" | "turn-end" | "source-turn-start" | "source-turn-end";
+  at: "turn-start" | "turn-end" | "source-turn-start" | "source-turn-end" | "attacks-source" | "attacks-source-side";
+  once?: true;
   dice?: string;
   flat?: number;
   type?: string;
@@ -2582,7 +2583,21 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
   .object({
     /** As its holder's turns start or end, or (Capability API 1.350) as those of whoever put it on
      *  do: a gelatinous cube's 6d6 acid "at the start of each of the cube's turns". */
-    at: z.enum(["turn-start", "turn-end", "source-turn-start", "source-turn-end"]),
+    /** Or (Capability API 1.509) as its holder makes an attack, or anything that deals damage, at
+     *  whoever put it on (`attacks-source`) or at anybody of their side (`attacks-source-side`): 5e's
+     *  Geas, "takes 5d10 psychic damage each time it acts in a manner directly counter to your
+     *  instructions". */
+    at: z.enum([
+      "turn-start",
+      "turn-end",
+      "source-turn-start",
+      "source-turn-end",
+      "attacks-source",
+      "attacks-source-side",
+    ]),
+    /** It harms only once while it holds (Capability API 1.509): Geas's "no more than once each
+     *  day". */
+    once: z.literal(true).optional(),
     dice: catalogDice.optional(),
     flat: z.number().int().min(0).max(1000).optional(),
     type: promptSafeText(40).optional(),

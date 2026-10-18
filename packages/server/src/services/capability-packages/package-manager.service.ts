@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that harms its holder for attacking whoever put it on (1.509): Geas. */
+function carriesDefianceHarm509(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDefianceHarm509(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const harms = plainRecord(record.harms);
+  if (harms && (harms.at === "attacks-source" || harms.at === "attacks-source-side" || harms.once !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesDefianceHarm509(one, depth + 1));
+}
+
 /** Languages, and a target test of who understands its user (1.508): Suggestion. */
 function carriesLanguages508(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7091,6 +7103,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Harm for attacking whoever put a condition on, 1.509.
+  if (
+    !declaresApi(509) &&
+    (carriesDefianceHarm509(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDefianceHarm509(document)))
+  ) {
+    return "A ruleset with a condition that harms its holder for attacking whoever put it on (harms.at attacks-source, attacks-source-side, harms.once) requires schemaVersion 2 and capabilityApi 1.509 or newer";
+  }
   // Languages and who understands whom, 1.508.
   if (
     !declaresApi(508) &&

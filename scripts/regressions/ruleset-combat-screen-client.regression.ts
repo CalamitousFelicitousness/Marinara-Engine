@@ -927,7 +927,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["breath", say({ type: "breath", actorId: "brenna", held: 0, lasts: 2 })],
     ["breath", say({ type: "breath", actorId: "brenna", held: 0, lasts: 0 })],
     [
-      "move",
+      "jumped",
       say({
         type: "move",
         actorId: "brenna",
@@ -1247,6 +1247,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("refused"), "Brenna could not do that: They have nothing left to spend on it this turn.");
   assert.equal(printed.get("director"), "The fight stopped here: The rules are gone.");
   assert.equal(printed.get("move"), "Brenna moves to 4, 2 for 3 and has 3 left.");
+  assert.equal(printed.get("jumped"), "Brenna jumps to 3, 2 for 2 and has 4 left.");
   assert.equal(printed.get("opportunity"), "Thorn Lurker strikes at Brenna with Barbed claw as they move away.");
   assert.equal(printed.get("cover"), "Thorn Lurker is under cover, which adds 2 for a defense of 15.");
   assert.equal(printed.get("area"), "Corwin aims Fireball at 5, 3, covering 3 cells.");

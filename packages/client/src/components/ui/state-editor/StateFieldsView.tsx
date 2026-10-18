@@ -283,7 +283,7 @@ export function StateFieldsView({
                 title={clearLabel}
                 aria-label={clearLabel}
                 onClick={() => update(path, null)}
-                className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] group-hover/field:opacity-100 max-md:opacity-100"
+                className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/field:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -318,7 +318,7 @@ export function StateFieldsView({
                 node.filter((_, item) => item !== index),
               )
             }
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] group-hover/card:opacity-100 max-md:opacity-100"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--muted-foreground)] transition-opacity hover:text-[var(--destructive)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
           >
             <X className="h-3.5 w-3.5" />
           </button>

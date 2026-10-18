@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A contest's winner moving with the one it pushes (1.545): Forceful Hand. */
+function carriesContestFollows545(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesContestFollows545(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.onWin)?.follows !== undefined) return true;
+  return featureValues(record).some((one) => carriesContestFollows545(one, depth + 1));
+}
+
 /** More than 12 contests (1.544): 5e's Arcane Hand's own grasp. */
 function carriesContests16544(ruleset: unknown): boolean {
   const contests = plainRecord(plainRecord(ruleset)?.combat)?.contests;
@@ -7486,6 +7496,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A contest's winner moving with the one it pushes, 1.545.
+  if (
+    !declaresApi(545) &&
+    (carriesContestFollows545(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesContestFollows545(document)))
+  ) {
+    return "A ruleset with a contest whose winner moves with the one it pushes (onWin.follows) requires schemaVersion 2 and capabilityApi 1.545 or newer";
+  }
   // More than 12 contests, 1.544.
   if (!declaresApi(544) && carriesContests16544(ruleset)) {
     return "A ruleset with more than 12 contests requires schemaVersion 2 and capabilityApi 1.544 or newer";

@@ -8134,7 +8134,11 @@ function resolveContest(
   }
   // And farther by what is read off its sheet, or its caller's (1.534): the Forceful Hand.
   const pushed = (contest.push ?? 0) + contestPushRead(ctx, actor, contest);
-  if (contest.push !== undefined || pushed > 0) pushTarget(ctx, actor, target, pushed);
+  if (contest.push !== undefined || pushed > 0) {
+    const event = pushTarget(ctx, actor, target, pushed);
+    // And after them, into the last cell they left (1.545): the Forceful Hand.
+    if (contest.follows && event) followPushed(ctx, actor, target, event);
+  }
   // Treated in time (1.193): the DC 10 Medicine check that keeps the dying from dying.
   if (contest.stabilizes && target.dying && !target.stable && !target.defeated) {
     target.stable = true;
@@ -8194,21 +8198,55 @@ function carryTarget(
 
 /** Somebody pushed `cells` straight away from `actor`, as far as the way allows: by a contest won
  *  (combat C6b) or by an action that lands (1.182). */
-function pushTarget(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, cells: number): void {
+function pushTarget(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  cells: number,
+): Extract<RulesetCombatEvent, { type: "pushed" }> | undefined {
   const path = rulesetPushPath(ctx.state, actor.id, target.id, cells);
   const from = rulesetPositionOf(target);
   const to = path[path.length - 1];
-  if (!from || !to) return;
+  if (!from || !to) return undefined;
   target.x = to.x;
   target.y = to.y;
   // A mount moved against its will may throw its rider (1.443).
   if (target.riddenBy) (ctx.shakenMounts ??= new Set()).add(target.id);
-  ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
+  const event: Extract<RulesetCombatEvent, { type: "pushed" }> = {
+    type: "pushed",
+    actorId: actor.id,
+    targetId: target.id,
+    from,
+    to: { ...to },
+    path,
+  };
+  ctx.events.push(event);
   // Shoved off a step of two levels or more, which is where a push stops: a fall (combat C6b).
   const grid = ctx.state.board?.grid;
   const edge = path.length > 1 ? path[path.length - 2]! : from;
   const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
   if (levels >= 2) fall(ctx, actor, target, levels);
+  return event;
+}
+
+/** The pusher moved with the one it pushed (1.545), into the last cell they left on the way, unless
+ *  still beside them or with no room there. Drawing no strikes, as a push draws none. */
+function followPushed(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  pushed: Extract<RulesetCombatEvent, { type: "pushed" }>,
+): void {
+  const grid = ctx.state.board?.grid;
+  const from = rulesetPositionOf(actor);
+  if (!grid || !from || target.defeated || rulesetGap(actor, target) <= 1) return;
+  const into = pushed.path.length > 1 ? pushed.path[pushed.path.length - 2]! : pushed.from;
+  if (!rulesetRoomAt(ctx.state, grid, actor, into)) return;
+  const before = zonesAround(ctx);
+  actor.x = into.x;
+  actor.y = into.y;
+  pushed.followed = { from: { ...from }, to: { ...into } };
+  zonesEntered(ctx, actor, before);
 }
 
 /** Somebody spending `spends` to walk up to their speed toward `actor` (1.326), by the shortest

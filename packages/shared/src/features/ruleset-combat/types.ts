@@ -1510,6 +1510,8 @@ export interface RulesetCombatContest {
   advantageAtMostSize?: string;
   /** Added to `push`, read off the actor's sheet or its caller's, in the ruleset's distance (1.534). */
   pushRead?: RulesetValueRef;
+  /** The winner moves with the one it pushed (1.545): Forceful Hand. */
+  follows?: true;
   /** On loser and winner alike, while the target holds `whileTargetHolds` (1.500): a pin. */
   both?: { applies: string[]; whileTargetHolds: string };
   targetDying?: true;
@@ -3550,6 +3552,8 @@ export type RulesetCombatEvent =
       from: RulesetCombatCell;
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
+      /** Where the pusher moved with them (1.545). */
+      followed?: { from: RulesetCombatCell; to: RulesetCombatCell };
     }
   /** Teleported (1.276): the user, or one they carried (`by` names the user then). */
   | {

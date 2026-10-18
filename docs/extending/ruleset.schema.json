@@ -187382,6 +187382,10 @@
                       ]
                     }
                   },
+                  "follows": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "stabilizes": {
                     "type": "boolean",
                     "const": true

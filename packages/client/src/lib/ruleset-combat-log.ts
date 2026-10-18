@@ -1021,7 +1021,8 @@ export function rulesetCombatEventLine(
         },
       );
     case "pushed":
-      return key("pushed", {
+      // And moved with them (1.545): the Forceful Hand.
+      return key(event.followed ? "pushedFollowed" : "pushed", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
         distance: names.distance(event.path.length),

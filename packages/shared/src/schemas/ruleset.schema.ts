@@ -12891,6 +12891,10 @@ const combatContestBaseSchema = z
          *  none of its own (Capability API 1.534), in the ruleset's own distance: Arcane Hand's
          *  Forceful Hand, 5 feet plus five times its caster's spellcasting modifier. */
         pushRead: rulesetValueRefSchema.optional(),
+        /** The winner moves with the one it pushed, into the last cell they left, to stay beside them
+         *  (Capability API 1.545): Forceful Hand's "moves with the target to remain within 5 feet of
+         *  it". Drawing no strikes; nothing moves where there is no room. */
+        follows: z.literal(true).optional(),
         /** The target, if dying, is stable (Capability API 1.193). */
         stabilizes: z.literal(true).optional(),
         /** Conditions on the loser and the winner alike (Capability API 1.500), each lasting while the
@@ -16653,6 +16657,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       contest.onWin.ends?.forEach((entry, entryIndex) =>
         conditionId(entry.condition, [...path, "onWin", "ends", entryIndex, "condition"]),
       );
+      // Moving with the one it pushes (1.545) needs a push.
+      if (contest.onWin.follows && contest.onWin.push === undefined && contest.onWin.pushRead === undefined)
+        issue([...path, "onWin", "follows"], '"follows" moves after the one it pushes, so it goes with "push"');
       if (!combat.distance) {
         if (contest.reach !== undefined) {
           issue([...path, "reach"], '"reach" is measured in cells, so the block declares "distance" too');

@@ -3194,6 +3194,9 @@ export type RulesetCombatEvent =
       by: string;
       charges?: { now: number; max: number };
     }
+  /** A foe's entry its only target turned back at its user on the save's top face (1.470): a Ring
+   *  of Spell Turning's. */
+  | { type: "turnedBack"; targetId: string; sourceId: string; label: string; by: string }
   /** A check made to end a condition (1.313): Maze's way out, or no roll for one that always makes it. */
   | {
       type: "checkEnded";

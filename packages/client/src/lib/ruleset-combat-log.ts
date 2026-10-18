@@ -621,6 +621,14 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // Turned back at its user (1.470): a Ring of Spell Turning's.
+    case "turnedBack":
+      return key("turnedBack", {
+        target: names.combatant(event.targetId),
+        source: names.combatant(event.sourceId),
+        label: event.label,
+        by: event.by,
+      });
     // A foe's entry taken in by its only target (1.469): a Rod of Absorption's.
     case "absorbed":
       return key(event.charges ? "absorbedCharges" : "absorbed", {

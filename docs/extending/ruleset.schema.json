@@ -39220,6 +39220,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "alone": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false,
@@ -63253,6 +63257,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "alone": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false,
@@ -64447,6 +64455,39 @@
                           ],
                           "additionalProperties": false
                         },
+                        "turns": {
+                          "type": "object",
+                          "properties": {
+                            "catalogs": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "maxLevel": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "by": {
+                              "type": "string",
+                              "enum": [
+                                "base",
+                                "paid"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "catalogs",
+                            "maxLevel"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -64815,6 +64856,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "alone": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -66000,6 +66045,39 @@
                               "enum": [
                                 "spends",
                                 "gains"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "catalogs",
+                            "maxLevel"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "turns": {
+                          "type": "object",
+                          "properties": {
+                            "catalogs": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "maxLevel": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "by": {
+                              "type": "string",
+                              "enum": [
+                                "base",
+                                "paid"
                               ]
                             },
                             "$comment": {}
@@ -66565,6 +66643,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "alone": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -67750,6 +67832,39 @@
                                     "enum": [
                                       "spends",
                                       "gains"
+                                    ]
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "catalogs",
+                                  "maxLevel"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "turns": {
+                                "type": "object",
+                                "properties": {
+                                  "catalogs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "maxLevel": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "by": {
+                                    "type": "string",
+                                    "enum": [
+                                      "base",
+                                      "paid"
                                     ]
                                   },
                                   "$comment": {}
@@ -73228,6 +73343,10 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "alone": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -88289,6 +88408,10 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 8
+                                            },
+                                            "alone": {
+                                              "type": "boolean",
+                                              "const": true
                                             },
                                             "$comment": {}
                                           },
@@ -111557,6 +111680,10 @@
                           "minItems": 1,
                           "maxItems": 8
                         },
+                        "alone": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -117060,6 +117187,39 @@
                     "enum": [
                       "spends",
                       "gains"
+                    ]
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "catalogs",
+                  "maxLevel"
+                ],
+                "additionalProperties": false
+              },
+              "turns": {
+                "type": "object",
+                "properties": {
+                  "catalogs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "maxLevel": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "by": {
+                    "type": "string",
+                    "enum": [
+                      "base",
+                      "paid"
                     ]
                   },
                   "$comment": {}
@@ -124528,6 +124688,10 @@
                           },
                           "minItems": 1,
                           "maxItems": 8
+                        },
+                        "alone": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "$comment": {}
                       },

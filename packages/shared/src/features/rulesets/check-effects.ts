@@ -46,6 +46,8 @@ export interface RulesetSaveAgainst {
   action?: readonly string[];
   /** The catalog the entry it is against came from, or the one an item's use casts from (1.265). */
   catalog?: string;
+  /** Aimed at the saver alone, not an area (1.470). */
+  alone?: boolean;
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -62,7 +64,15 @@ export function rulesetSaveAgainstMatches(
   }
   // As do the catalogs it is cast from (1.265): a spell, and then whoever cast it.
   if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
-  if ((against.actions || against.casts) && !against.conditions && !against.damage && !against.magic && !against.from) {
+  // And aimed at its holder alone (1.470): a Ring of Spell Turning.
+  if (against.alone && !source.alone) return false;
+  if (
+    (against.actions || against.casts || against.alone) &&
+    !against.conditions &&
+    !against.damage &&
+    !against.magic &&
+    !against.from
+  ) {
     return true;
   }
   return !!(

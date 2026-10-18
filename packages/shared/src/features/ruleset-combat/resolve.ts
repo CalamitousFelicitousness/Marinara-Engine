@@ -10,6 +10,7 @@ import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets
 import {
   rulesetPoolMaxSuccesses,
   type RulesetAbsorbs,
+  type RulesetTurns,
   type RulesetBehaviorDrops,
   type RulesetCombat,
   type RulesetCreatureHideEntry,
@@ -372,6 +373,8 @@ interface RulesetCombatContext {
   /** Each target's one save against the rays striking them (1.415), read by every ray after the
    *  first. */
   raySaves?: Map<string, boolean>;
+  /** An entry turned back at its user (1.470), being resolved on them: it turns no further. */
+  turning?: true;
   /** Where further copies of the area were set down (1.178). */
   aimedAlso?: RulesetCombatCell[];
   /** A lasting area its endsSpells is aimed at instead of a creature (1.374). */
@@ -11927,6 +11930,50 @@ function absorbAction(
   return false;
 }
 
+/** Whether its only target turns a foe's entry back at its user (1.470): a condition's `turns`, or a
+ *  worn item's no antimagic zone suppresses, of the entry's catalog and at its level or lower, and
+ *  the save they just threw showing its top face. Said as it turns. */
+function turnsAction(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  payWith: string | undefined,
+): boolean {
+  const catalog = action.catalog;
+  if (!catalog || target.side === actor.side || target.id === actor.id || rulesetCombatIsPool(ctx.combat)) {
+    return false;
+  }
+  const dice = ctx.combat.attackRoll?.dice;
+  const thrown = [...ctx.events]
+    .reverse()
+    .find(
+      (one): one is Extract<RulesetCombatEvent, { type: "save" }> => one.type === "save" && one.actorId === target.id,
+    );
+  if (!dice || dice.count !== 1 || !thrown || thrown.automatic || thrown.kept !== dice.sides) return false;
+  const paid = rulesetPaidLevel(ctx.definition, actor, action, payWith);
+  const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(ctx.definition, actor, action);
+  const takes = (rule: RulesetTurns) =>
+    rule.catalogs.includes(catalog) && (rule.by === "base" ? base : paid) <= rule.maxLevel;
+  const said = (by: string) => {
+    ctx.events.push({ type: "turnedBack", targetId: target.id, sourceId: actor.id, label: action.label, by });
+    return true;
+  };
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
+    if (entry.turns && takes(entry.turns)) {
+      return said(
+        ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition,
+      );
+    }
+  }
+  const hush = rulesetSuppressedOn(ctx.state, target);
+  for (const held of target.sheet?.items ?? []) {
+    const rule = held.worn ? held.item.worn?.turns : undefined;
+    if (rule && takes(rule) && !rulesetItemSuppressed(hush, held.item)) return said(held.name ?? held.stack?.ref ?? "");
+  }
+  return false;
+}
+
 function resolveActionBody(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -12579,6 +12626,8 @@ function resolveActionBody(
       magic: magicalAction(action),
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
       ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
+      // Aimed at them alone (1.470).
+      ...(target === only ? { alone: true } : {}),
     };
     let saved = false;
     if (action.save && (careful.has(target.id) || savesOutright(ctx, target, action.save))) {
@@ -12630,6 +12679,17 @@ function resolveActionBody(
             : saveLean(ctx, target, action.save.modes),
         );
       ctx.raySaves?.set(target.id, saved);
+      // Turned back at its user on the save's top face (1.470): a Ring of Spell Turning.
+      if (target === only && !ctx.turning && turnsAction(ctx, actor, action, target, payWith)) {
+        spendUsed();
+        ctx.turning = true;
+        try {
+          resolveActionBody(ctx, actor, action, [actor], payWith);
+        } finally {
+          delete ctx.turning;
+        }
+        continue;
+      }
       if (saved) noteSaved(ctx.state, actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();

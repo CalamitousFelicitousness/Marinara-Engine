@@ -2928,6 +2928,21 @@ const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** What its holder turns back at its caster (Capability API 1.470): a Ring of Spell Turning. */
+export interface RulesetTurns {
+  catalogs: string[];
+  maxLevel: number;
+  by?: "base" | "paid";
+}
+const turnsSchema: z.ZodType<RulesetTurns, z.ZodTypeDef, unknown> = z
+  .object({
+    catalogs: uniqueIds(8),
+    maxLevel: z.number().int().min(0).max(20),
+    /** The level it reads, as a ward's `by` (1.181). */
+    by: z.enum(["base", "paid"]).optional(),
+  })
+  .strict();
+
 /** Some kinds kept out of a zone, or in it (Capability API 1.399): 5e's Magic Circle and Hallow. */
 export interface RulesetZoneKeepsOut {
   is: RulesetTargetIs;
@@ -9910,6 +9925,7 @@ export interface RulesetModifierAgainst {
   from?: RulesetTargetIs;
   actions?: string[];
   casts?: string[];
+  alone?: true;
 }
 const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unknown> = z
   .object({
@@ -9927,6 +9943,10 @@ const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unk
      *  one (Capability API 1.265), AND whatever else it names: Holy Nimbus, against spells cast
      *  by fiends or undead. */
     casts: z.array(sheetId).min(1).max(8).optional(),
+    /** Only a save against something aimed at its holder alone, never an area (Capability API
+     *  1.470), AND whatever else it names: a Ring of Spell Turning's "any spell that targets only
+     *  you (not in an area of effect)", `{ "casts": ["spells"], "alone": true }`. */
+    alone: z.literal(true).optional(),
   })
   .strict()
   .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic, from or actions");
@@ -11352,6 +11372,10 @@ const combatConditionSchema = z
      *  target, is taken in and does nothing (Capability API 1.469). On an item's `worn` it may spend
      *  or gain the item's charges. */
     absorbs: absorbsSchema.optional(),
+    /** An entry of these catalogs at this level or lower, used by a foe with its holder as its only
+     *  target, whose save its holder throws the top face on, does nothing to them and is turned back
+     *  at its user, its numbers as they were (Capability API 1.470). */
+    turns: turnsSchema.optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -11658,6 +11682,9 @@ const rulesetItemEffectObjectSchema = z
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 9, "charges": "gains" }`, and Ioun Stone of
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 4, "charges": "spends" }`. */
     absorbs: absorbsSchema.optional(),
+    /** A foe's entry aimed at its holder alone, turned back at its user on the save's top face
+     *  (Capability API 1.470): 5e's Ring of Spell Turning, `{ "catalogs": ["spells"], "maxLevel": 7 }`. */
+    turns: turnsSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -11680,13 +11707,14 @@ const rulesetItemEffectObjectSchema = z
       !entry.ignoresHardGround &&
       !entry.jumps &&
       !entry.keepsOn &&
-      !entry.absorbs
+      !entry.absorbs &&
+      !entry.turns
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on or what it takes in",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, or what it takes in or turns back",
       });
     }
     if (abilities.length > 12) {
@@ -16119,6 +16147,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.absorbs?.charges) {
         issue([...path, "absorbs", "charges"], "Only an item's worn effect moves its charges");
       }
+      entry.turns?.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "turns", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
       if (entry.wards?.maxLevelPerCostStep !== undefined) {
         issue([...path, "wards", "maxLevelPerCostStep"], "A condition's ward is not cast, so it rises by no steps");
       }
@@ -18108,6 +18141,11 @@ function itemHideIssues(
   effect.absorbs?.catalogs.forEach((catalog, index) => {
     if (!definition.catalogs?.some((one) => one.id === catalog))
       add([...at, "absorbs", "catalogs", index], `Unknown catalog "${catalog}"`);
+  });
+  // What it turns back (1.470), as well.
+  effect.turns?.catalogs.forEach((catalog, index) => {
+    if (!definition.catalogs?.some((one) => one.id === catalog))
+      add([...at, "turns", "catalogs", index], `Unknown catalog "${catalog}"`);
   });
   const jumpAbility = effect.jumps?.plus?.ability;
   if (jumpAbility !== undefined && !definition.sheet.abilities.some((one) => one.id === jumpAbility))

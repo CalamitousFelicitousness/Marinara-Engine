@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition or worn item that turns a foe's entry back, or a save change against an entry aimed
+ *  at its holder alone (1.470): a Ring of Spell Turning. */
+function carriesTurns470(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTurns470(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.turns) !== undefined) return true;
+  if (plainRecord(record.against)?.alone !== undefined) return true;
+  return featureValues(record).some((one) => carriesTurns470(one, depth + 1));
+}
+
 /** A condition or worn item that takes in a foe's entry aimed at its holder alone (1.469): a Rod of
  *  Absorption. */
 function carriesAbsorbs469(value: unknown, depth = 0): boolean {
@@ -6620,6 +6632,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What a holder turns back, and saves against what is aimed at them alone, 1.470.
+  if (
+    !declaresApi(470) &&
+    (carriesTurns470(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesTurns470(document)))
+  ) {
+    return "A ruleset whose conditions or worn items turn back an entry aimed at their holder alone (turns, against.alone) requires schemaVersion 2 and capabilityApi 1.470 or newer";
+  }
   // What a holder takes in, 1.469.
   if (
     !declaresApi(469) &&

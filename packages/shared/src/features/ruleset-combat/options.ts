@@ -2776,6 +2776,12 @@ function optionFrom(
 ): RulesetCombatOption | null {
   // What its holder does as it dies (1.487) is never chosen.
   if (action.onDeath) return null;
+  // Only in a shape it names (1.494): its own, or a form's.
+  if (action.inShape) {
+    const form = actor.shape?.form;
+    const now = form ? `${form.catalogId}/${form.entryId}` : "own";
+    if (!action.inShape.includes(now)) return null;
+  }
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
   if (action.signature) return null;

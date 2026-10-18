@@ -227,6 +227,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.concentration ? { concentration: true as const } : {}),
     // At the dying, and deadly to them (1.311): a will-o'-wisp's Consume Life.
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
+    ...(action.inShape ? { inShape: [...action.inShape] } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     // Who it fells on Held Ground stays down (1.323).

@@ -422,6 +422,8 @@ export interface RulesetStatBlockAction {
   id?: string;
   /** What it does as it dies (1.487), never on its menu: a mephit's Death Burst. */
   onDeath?: true;
+  /** Only in these shapes (1.494): "own", or a form's "catalog/entry". */
+  inShape?: string[];
   name: string;
   budget: string;
   toHit?: number;
@@ -869,6 +871,8 @@ export interface RulesetCombatAction {
   addsToBlow?: true;
   /** What its holder does as it dies (1.487), never on a menu: a mephit's Death Burst. */
   onDeath?: true;
+  /** Offered only while its holder is in one of these shapes (1.494): "own", or "catalog/entry". */
+  inShape?: string[];
   /** Its holder's other actions whose effects happen too as this one does (1.482), each on whom its
    *  burst around them catches, spending nothing of theirs: Thunder and Lightning's Thunderclap. */
   alongside?: string[];

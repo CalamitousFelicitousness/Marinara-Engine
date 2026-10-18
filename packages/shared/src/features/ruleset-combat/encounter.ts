@@ -4084,6 +4084,7 @@ function blockActions(
     ...(action.concentration ? { concentration: true } : {}),
     // Consume Life (1.311).
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
+    ...(action.inShape ? { inShape: [...action.inShape] } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),
     // A printed chance (1.388): a demon's summoning.

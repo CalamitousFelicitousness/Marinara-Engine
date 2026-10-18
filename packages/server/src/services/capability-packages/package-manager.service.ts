@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Actions only in a given shape (1.494): a wereboar's Charge. */
+function carriesInShape494(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInShape494(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.inShape) && typeof record.budget === "string") return true;
+  return featureValues(record).some((one) => carriesInShape494(one, depth + 1));
+}
+
 /** What follows a charge (1.493): a lion's Pounce. */
 function carriesChargeThen493(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6928,6 +6938,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Actions only in a given shape, 1.494.
+  if (
+    !declaresApi(494) &&
+    (carriesInShape494(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInShape494(document)))
+  ) {
+    return "A ruleset with creature actions only in a given shape (inShape) requires schemaVersion 2 and capabilityApi 1.494 or newer";
+  }
   // What follows a charge, 1.493.
   if (
     !declaresApi(493) &&

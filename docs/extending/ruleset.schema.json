@@ -63989,6 +63989,23 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "inShape": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": "own"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z0-9_-]+\\/[a-z0-9_-]+$"
+                              }
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "slaysOnFailedSave": {
                           "type": "boolean",
                           "const": true
@@ -74092,6 +74109,23 @@
                           "dyingOnly": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "inShape": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "const": "own"
+                                },
+                                {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9_-]+\\/[a-z0-9_-]+$"
+                                }
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
                           },
                           "slaysOnFailedSave": {
                             "type": "boolean",

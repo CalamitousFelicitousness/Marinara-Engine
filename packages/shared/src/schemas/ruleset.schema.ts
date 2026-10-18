@@ -7387,6 +7387,19 @@ const creatureActionSchema = z
     /** Only a creature at no health that is still alive may be picked (Capability API 1.311): a
      *  will-o'-wisp's Consume Life, at a dying or stable character. */
     dyingOnly: z.literal(true).optional(),
+    /** Offered only while its holder is in one of these shapes (Capability API 1.494): `"own"` for
+     *  its own, or a form's bestiary entry as `"<catalogId>/<entryId>"`. A wereboar's Charge in boar
+     *  or hybrid form, a mimic's Adhesive in object form. */
+    inShape: z
+      .array(
+        z.union([
+          z.literal("own"),
+          z.string().regex(/^[a-z0-9_-]+\/[a-z0-9_-]+$/i, 'A shape is "own" or a catalog/entry'),
+        ]),
+      )
+      .min(1)
+      .max(8)
+      .optional(),
     /** A target that fails its save dies (Capability API 1.311), and with `healsOnSlay` the creature
      *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
     slaysOnFailedSave: z.literal(true).optional(),

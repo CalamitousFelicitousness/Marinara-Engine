@@ -1927,6 +1927,12 @@ export function rulesetOptionTargets(
           if (!rulesetCanRevive(state, cure, combatant)) return false;
         } else if (combatant.defeated) return false;
         if (cure && !rulesetCureReaches(definition, cure, combatant, state)) return false;
+        // Only on somebody it holds itself (1.500): a pin on "a creature grappled by you".
+        if (
+          cure?.contest?.targetHeldBySelf &&
+          !combatant.tracked.some((entry) => entry.condition === cure.contest!.targetHolds && entry.source === actor.id)
+        )
+          return false;
         if (!rulesetTargetHasSenses(definition, state, combatant, needs, actionOf(actor, option.id)?.needsAny))
           return false;
         // Only somebody at no health and still alive (1.311): Consume Life.
@@ -2590,12 +2596,22 @@ export function rulesetTargetMoment(
   return !!took && !took.includes(target.id);
 }
 
+/** Whether `target` holds one of `conditions` that `sourceId` put on them (1.500): grappled by them. */
+export function rulesetHeldBy(
+  target: RulesetCombatant | undefined,
+  sourceId: string,
+  conditions: readonly string[],
+): boolean {
+  return !!target?.tracked.some((entry) => conditions.includes(entry.condition) && entry.source === sourceId);
+}
+
 export function rulesetAttackModifierReaches(
   modifier: {
     attacks?: "weapon" | "spell" | "any";
     blow?: "melee" | "ranged";
     atTypesIn?: string[];
     whenTarget?: "surprised" | "not-yet-acted";
+    targetHoldsFromSelf?: string[];
   },
   state: RulesetEncounterState | undefined,
   actor: RulesetCombatant,
@@ -2606,6 +2622,8 @@ export function rulesetAttackModifierReaches(
 ): boolean {
   // Only at a target surprised, or not yet acted (1.491): Assassinate.
   if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
+  // Only at somebody it holds itself (1.500): Grappler.
+  if (modifier.targetHoldsFromSelf && !rulesetHeldBy(target, actor.id, modifier.targetHoldsFromSelf)) return false;
   // Only at a target of a kind the holder's sheet chose (1.376): Foe Slayer's favored enemies.
   if (
     modifier.atTypesIn &&
@@ -2650,6 +2668,8 @@ export function rulesetDamageModifiers(
         return false;
       // At a target surprised, or not yet acted (1.491): a bugbear's Surprise Attack.
       if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
+      // At somebody it holds itself (1.500): Grappler.
+      if (modifier.targetHoldsFromSelf && !rulesetHeldBy(target, actor.id, modifier.targetHoldsFromSelf)) return false;
       return (
         !modifier.fromSource ||
         (!item &&
@@ -3440,6 +3460,8 @@ export function rulesetAttackMode(
     if (rule.targetHurt && !rulesetCombatHurt(definition, combat, target)) continue;
     // Ambusher (1.491): at a target surprised, or not yet acted.
     if (rule.whenTarget && !rulesetTargetMoment(where?.state, target, rule.whenTarget)) continue;
+    // Grappler (1.500): at somebody it holds itself.
+    if (rule.targetHoldsFromSelf && !rulesetHeldBy(target, actor.id, rule.targetHoldsFromSelf)) continue;
     // Melee attacks only (1.349): a sahuagin's Blood Frenzy, never its thrown spear.
     if (
       rule.melee &&

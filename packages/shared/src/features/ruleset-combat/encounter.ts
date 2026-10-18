@@ -4756,6 +4756,12 @@ function contestActions(
         ...(contest.targetDying ? { targetDying: true as const } : {}),
         ...(contest.pulls ? { pulls: true as const } : {}),
         ...(contest.onWin.stabilizes ? { stabilizes: true as const } : {}),
+        ...(contest.targetHeldBySelf ? { targetHeldBySelf: true as const } : {}),
+        ...(contest.onWin.both
+          ? {
+              both: { applies: [...contest.onWin.both.applies], whileTargetHolds: contest.onWin.both.whileTargetHolds },
+            }
+          : {}),
         ties: contest.ties,
         ...(contest.from ? { from: contest.from.holding } : {}),
         ...(contest.from?.escapable ? { escapable: true as const } : {}),

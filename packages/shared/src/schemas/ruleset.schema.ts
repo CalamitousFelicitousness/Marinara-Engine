@@ -7951,6 +7951,9 @@ const creatureFields = {
           /** Only at a target surprised, or not yet acted in the fight (Capability API 1.491): a
            *  doppelganger's Ambusher. */
           whenTarget: z.enum(["surprised", "not-yet-acted"]).optional(),
+          /** Only at a target holding one of these that it put on them (Capability API 1.500): a
+           *  mimic's Grappler, `["grappled"]`. */
+          targetHoldsFromSelf: z.array(sheetId).min(1).max(4).optional(),
         })
         .strict()
         .refine(
@@ -7961,10 +7964,11 @@ const creatureFields = {
             rule.allyAdjacent ||
             rule.targetHurt ||
             rule.melee ||
-            rule.whenTarget,
+            rule.whenTarget ||
+            rule.targetHoldsFromSelf,
           {
             message:
-              "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent, targetHurt, melee or whenTarget",
+              "A mode on attacks says where it holds: sight, light, terrain, allyAdjacent, targetHurt, melee, whenTarget or targetHoldsFromSelf",
           },
         ),
     )
@@ -10301,7 +10305,7 @@ const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unk
  *  and damage (the health maximum only halves), applied after additions. A change to checks may name
  *  the `skills` it is about, and one to saves the `saves`; either may roll twice (`mode`) where the
  *  ruleset rolls twice at all. */
-const combatModifierSchema = z
+const combatModifierBaseSchema = z
   .object({
     to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
     /** Damage dealt or taken on an attack hit (Capability API 1.133): narrowed to its kind,
@@ -10385,6 +10389,10 @@ const combatModifierSchema = z
      *  taken a turn in the fight (Capability API 1.491): 5e's Assassinate and a bugbear's Surprise
      *  Attack. */
     whenTarget: z.enum(["surprised", "not-yet-acted"]).optional(),
+    /** The holder's own attacks or damage only at a target holding one of these conditions that the
+     *  holder put on them (Capability API 1.500): 5e's Grappler, "advantage on attack rolls against a
+     *  creature you are grappling", `["grappled"]`. */
+    targetHoldsFromSelf: z.array(sheetId).min(1).max(4).optional(),
     /** A hit by the holder's attack is a critical hit (Capability API 1.491), where the change
      *  reaches: Assassinate's "any hit you score against a creature that is surprised". */
     critical: z.literal(true).optional(),
@@ -10394,6 +10402,8 @@ const combatModifierSchema = z
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
     if (modifier.whenTarget !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
       add("whenTarget", '"whenTarget" narrows the holder\'s own attacks or damage');
+    if (modifier.targetHoldsFromSelf !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
+      add("targetHoldsFromSelf", '"targetHoldsFromSelf" narrows the holder\'s own attacks or damage');
     if (modifier.critical && modifier.to !== "attacks")
       add("critical", '"critical" makes the holder\'s hits criticals');
     if (modifier.afterHitBy && modifier.to !== "defense")
@@ -10534,6 +10544,11 @@ const combatModifierSchema = z
       add("times", 'The health maximum is only halved: "times": 0.5 and nothing else');
     }
   });
+/** Named as an interface, so every schema that lists modifiers stays short enough for the compiler
+ *  to write (1.500). */
+export interface RulesetCombatModifierDeclaration extends z.infer<typeof combatModifierBaseSchema> {}
+const combatModifierSchema: z.ZodType<RulesetCombatModifierDeclaration, z.ZodTypeDef, unknown> =
+  combatModifierBaseSchema;
 
 /** What a condition does to saves has to be about saves: `saves` narrows the save effects and the
  *  modifiers to saves, and nothing else reads it. */
@@ -12202,6 +12217,9 @@ const combatContestBaseSchema = z
     targetHolds: sheetId.optional(),
     /** Offered only on a target that is dying and not yet stable (Capability API 1.193). */
     targetDying: z.literal(true).optional(),
+    /** With `targetHolds`, offered only where the actor put that condition on the target (Capability
+     *  API 1.500): 5e's Grappler's pin, on "a creature grappled by you". */
+    targetHeldBySelf: z.literal(true).optional(),
     /** Pulls the one `targetHolds` keeps inside another creature out (Capability API 1.354): it
      *  reaches through the holder's body to them, measured to the holder, and is rolled against the
      *  escape DC that hold names, else `difficulty`. Whoever tries takes the hold's `harmsPuller`,
@@ -12246,9 +12264,17 @@ const combatContestBaseSchema = z
         push: z.number().finite().gt(0).max(10000).optional(),
         /** The target, if dying, is stable (Capability API 1.193). */
         stabilizes: z.literal(true).optional(),
+        /** Conditions on the loser and the winner alike (Capability API 1.500), each lasting while the
+         *  target holds `whileTargetHolds`: 5e's Grappler's pin, "you and the creature are both
+         *  restrained until the grapple ends", `{"applies": ["restrained"], "whileTargetHolds":
+         *  "grappled"}`. */
+        both: z
+          .object({ applies: z.array(sheetId).min(1).max(4), whileTargetHolds: sheetId })
+          .strict()
+          .optional(),
       })
       .strict()
-      .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push || onWin.stabilizes), {
+      .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push || onWin.stabilizes || onWin.both), {
         message: "A contest's onWin applies, ends, pushes or stabilizes something",
       }),
   })
@@ -12263,6 +12289,10 @@ const combatContestBaseSchema = z
       path: ["difficulty"],
     },
   )
+  .refine((contest) => !contest.targetHeldBySelf || contest.targetHolds !== undefined, {
+    message: 'A contest on a target "held by self" names what they hold in "targetHolds"',
+    path: ["targetHeldBySelf"],
+  })
   .refine((contest) => !contest.pulls || (contest.targetHolds !== undefined && contest.from === undefined), {
     message: 'A contest that "pulls" names the hold it pulls out of in "targetHolds", and breaks no hold "from"',
     path: ["pulls"],

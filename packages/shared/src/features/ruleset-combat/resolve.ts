@@ -3687,6 +3687,13 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // What lasted only while they held it ends with it, on anybody (1.500): a pin with its grapple.
+  for (const one of ctx.state.combatants) {
+    for (const entry of [...one.tracked]) {
+      if (entry.whileHeld?.holderId !== target.id || entry.whileHeld.condition !== condition) continue;
+      if (one.tracked.includes(entry)) removeCondition(ctx, one, entry.condition, "linked");
+    }
+  }
   // The maximum it raised falls back, and health above it with it (1.420): Heroes' Feast.
   if (removed?.raisedMax && target.health && !target.sheet) {
     target.health.value = Math.min(target.health.value, healthOf(ctx, target).max);
@@ -7697,6 +7704,17 @@ function resolveContest(
       { condition: entry.condition, duration: entry.rounds !== undefined ? { rounds: entry.rounds } : "instant" },
       { sourceId: actor.id },
     );
+  }
+  // On both, while the target holds what it names (1.500): a pin's restraint.
+  if (contest.both) {
+    const tie = { holderId: target.id, condition: contest.both.whileTargetHolds };
+    for (const condition of contest.both.applies) {
+      for (const one of [target, actor]) {
+        applyConditionId(ctx, one, condition, { condition, duration: "instant" }, { sourceId: actor.id });
+        const put = one.tracked.find((entry) => entry.condition === condition && entry.source === actor.id);
+        if (put) put.whileHeld = { ...tie };
+      }
+    }
   }
   if (contest.push !== undefined) pushTarget(ctx, actor, target, contest.push);
   // Treated in time (1.193): the DC 10 Medicine check that keeps the dying from dying.

@@ -40005,6 +40005,16 @@
                                   "not-yet-acted"
                                 ]
                               },
+                              "targetHoldsFromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
                               "critical": {
                                 "type": "boolean",
                                 "const": true
@@ -53359,6 +53369,16 @@
                               "surprised",
                               "not-yet-acted"
                             ]
+                          },
+                          "targetHoldsFromSelf": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 4
                           },
                           "$comment": {}
                         },
@@ -78449,6 +78469,16 @@
                                   "not-yet-acted"
                                 ]
                               },
+                              "targetHoldsFromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
                               "critical": {
                                 "type": "boolean",
                                 "const": true
@@ -80170,6 +80200,16 @@
                                   "surprised",
                                   "not-yet-acted"
                                 ]
+                              },
+                              "targetHoldsFromSelf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
                               },
                               "critical": {
                                 "type": "boolean",
@@ -82079,6 +82119,16 @@
                                         "surprised",
                                         "not-yet-acted"
                                       ]
+                                    },
+                                    "targetHoldsFromSelf": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 4
                                     },
                                     "critical": {
                                       "type": "boolean",
@@ -89601,6 +89651,16 @@
                                       "surprised",
                                       "not-yet-acted"
                                     ]
+                                  },
+                                  "targetHoldsFromSelf": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
                                   },
                                   "critical": {
                                     "type": "boolean",
@@ -105587,6 +105647,16 @@
                                             "surprised",
                                             "not-yet-acted"
                                           ]
+                                        },
+                                        "targetHoldsFromSelf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 4
                                         },
                                         "critical": {
                                           "type": "boolean",
@@ -129650,6 +129720,16 @@
                         "not-yet-acted"
                       ]
                     },
+                    "targetHoldsFromSelf": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
+                    },
                     "critical": {
                       "type": "boolean",
                       "const": true
@@ -143682,6 +143762,16 @@
                         "not-yet-acted"
                       ]
                     },
+                    "targetHoldsFromSelf": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
+                    },
                     "critical": {
                       "type": "boolean",
                       "const": true
@@ -145488,6 +145578,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "targetHeldBySelf": {
+                "type": "boolean",
+                "const": true
+              },
               "pulls": {
                 "type": "boolean",
                 "const": true
@@ -145588,6 +145682,32 @@
                   "stabilizes": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "both": {
+                    "type": "object",
+                    "properties": {
+                      "applies": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 4
+                      },
+                      "whileTargetHolds": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "applies",
+                      "whileTargetHolds"
+                    ],
+                    "additionalProperties": false
                   },
                   "$comment": {}
                 },

@@ -2271,6 +2271,18 @@ function carriesConditions640499(value: unknown, depth = 0): boolean {
   return Object.values(record).some((one) => carriesConditions640499(one, depth + 1));
 }
 
+/** Held by self (1.500): Grappler's advantage and pin. */
+function carriesHeldBySelf500(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldBySelf500(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.targetHoldsFromSelf)) return true;
+  if (record.targetHeldBySelf !== undefined && record.attacker !== undefined) return true;
+  if (plainRecord(record.both) && plainRecord(record.both)?.whileTargetHolds !== undefined) return true;
+  return featureValues(record).some((one) => carriesHeldBySelf500(one, depth + 1));
+}
+
 /** Weapons that corrode on hitting it (1.498): a rust monster's Rust Metal. */
 function carriesCorrodesWeapons498(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6996,6 +7008,14 @@ export function getCapabilityPackageInstallIssue(
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditions640499(document)))
   ) {
     return "A ruleset with more than 320 conditions requires schemaVersion 2 and capabilityApi 1.499 or newer";
+  }
+  // Held by self, 1.500.
+  if (
+    !declaresApi(500) &&
+    (carriesHeldBySelf500(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldBySelf500(document)))
+  ) {
+    return "A ruleset with attacks or contests on a target held by its holder (targetHoldsFromSelf, targetHeldBySelf, onWin.both) requires schemaVersion 2 and capabilityApi 1.500 or newer";
   }
   // Weapons that corrode on hitting it, 1.498.
   if (

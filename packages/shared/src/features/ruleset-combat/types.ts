@@ -1426,6 +1426,10 @@ export interface RulesetCombatContest {
   difficulty?: number;
   /** Offered only on a target holding this, or only on one dying and not stable (1.193). */
   targetHolds?: string;
+  /** Only where the actor put `targetHolds` on the target (1.500): Grappler's pin. */
+  targetHeldBySelf?: true;
+  /** On loser and winner alike, while the target holds `whileTargetHolds` (1.500): a pin. */
+  both?: { applies: string[]; whileTargetHolds: string };
   targetDying?: true;
   /** Winning stabilizes a dying target (1.193). */
   stabilizes?: true;
@@ -1515,6 +1519,9 @@ export interface RulesetTrackedCondition {
   catalog?: string;
   /** Who saved against its sanctuary and is free of it for the rest of the fight (1.370). */
   immune?: string[];
+  /** Ends when `holderId` no longer holds `condition` (1.500): a pin's restraint, on both, with the
+   *  grapple it came from. */
+  whileHeld?: { holderId: string; condition: string };
   /** Removed once the action that opened its window finishes (1.131). */
   thisAction?: true;
   condition: string;
@@ -2479,6 +2486,8 @@ export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & {
   melee?: true;
   /** Only at a target surprised, or not yet acted in the fight (1.491). */
   whenTarget?: "surprised" | "not-yet-acted";
+  /** Only at a target holding one of these that it put on them (1.500): a mimic's Grappler. */
+  targetHoldsFromSelf?: string[];
 };
 
 /**

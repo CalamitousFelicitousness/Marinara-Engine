@@ -12711,6 +12711,9 @@ const combatContestBaseSchema = z
     /** Offered only to an actor holding every one of these conditions (Capability API 1.525): the
      *  Grappler feat's pin, offered to whoever has the feat's `keepsOn` condition. */
     actorHolds: z.array(sheetId).min(1).max(4).optional(),
+    /** The actor rolls with advantage against a target no bigger than this size of `combat.sizes`
+     *  (Capability API 1.534): Arcane Hand's Forceful Hand, against a Medium or smaller creature. */
+    advantageAtMostSize: sheetId.optional(),
     /** Pulls the one `targetHolds` keeps inside another creature out (Capability API 1.354): it
      *  reaches through the holder's body to them, measured to the holder, and is rolled against the
      *  escape DC that hold names, else `difficulty`. Whoever tries takes the hold's `harmsPuller`,
@@ -12753,6 +12756,10 @@ const combatContestBaseSchema = z
         /** How far the loser is pushed straight away from the winner, in the ruleset's own distance
          *  unit. Only a fight on a board moves anybody. */
         push: z.number().finite().gt(0).max(10000).optional(),
+        /** Added to `push`, read off the actor's sheet, or its caller's for a creature called with
+         *  none of its own (Capability API 1.534), in the ruleset's own distance: Arcane Hand's
+         *  Forceful Hand, 5 feet plus five times its caster's spellcasting modifier. */
+        pushRead: rulesetValueRefSchema.optional(),
         /** The target, if dying, is stable (Capability API 1.193). */
         stabilizes: z.literal(true).optional(),
         /** Conditions on the loser and the winner alike (Capability API 1.500), each lasting while the
@@ -12765,9 +12772,12 @@ const combatContestBaseSchema = z
           .optional(),
       })
       .strict()
-      .refine((onWin) => !!(onWin.applies || onWin.ends || onWin.push || onWin.stabilizes || onWin.both), {
-        message: "A contest's onWin applies, ends, pushes or stabilizes something",
-      }),
+      .refine(
+        (onWin) => !!(onWin.applies || onWin.ends || onWin.push || onWin.pushRead || onWin.stabilizes || onWin.both),
+        {
+          message: "A contest's onWin applies, ends, pushes or stabilizes something",
+        },
+      ),
   })
   .strict()
   .refine(
@@ -16458,6 +16468,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (contest.from) conditionId(contest.from.holding, [...path, "from", "holding"]);
       if (contest.targetHolds) conditionId(contest.targetHolds, [...path, "targetHolds"]);
       contest.actorHolds?.forEach((id, holdIndex) => conditionId(id, [...path, "actorHolds", holdIndex]));
+      // A size of the fight's own (1.534).
+      if (
+        contest.advantageAtMostSize !== undefined &&
+        !combat.sizes?.order.some((one) => one.id === contest.advantageAtMostSize)
+      )
+        issue(
+          [...path, "advantageAtMostSize"],
+          combat.sizes
+            ? `Unknown size "${contest.advantageAtMostSize}"`
+            : '"advantageAtMostSize" reads sizes, so the block declares "sizes" too',
+        );
       // Pulled out of a creature (1.354): the hold is one that keeps them inside it, and on a pool
       // fight's dice there is no number to meet.
       if (
@@ -16499,6 +16520,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
         if (contest.onWin.push !== undefined) {
           issue([...path, "onWin", "push"], '"push" is measured in cells, so the block declares "distance" too');
+        }
+        if (contest.onWin.pushRead !== undefined) {
+          issue(
+            [...path, "onWin", "pushRead"],
+            '"pushRead" is measured in cells, so the block declares "distance" too',
+          );
         }
       }
     });

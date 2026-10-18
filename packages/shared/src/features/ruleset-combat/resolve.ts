@@ -7934,6 +7934,33 @@ function checkFloors(
   return out;
 }
 
+/** How many more cells a contest's win pushes by (1.534), read off the actor's sheet, or its caller's
+ *  where it has none: Arcane Hand's Forceful Hand, its caster's 5 + 5 x modifier feet. */
+function contestPushRead(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  contest: NonNullable<RulesetCombatAction["contest"]>,
+): number {
+  const perCell = ctx.definition.combat?.distance?.perCell;
+  if (contest.pushRead === undefined || perCell === undefined) return 0;
+  const owner = actor.sheet ? actor : actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
+  const sheet = owner?.sheet;
+  const ref = contest.pushRead;
+  const value = sheet
+    ? resolveRulesetValueRef(
+        ctx.definition,
+        sheet.build,
+        ref,
+        evaluateRulesetSheetLive(ctx.definition, sheet.build, sheet.live, sheet.items, owner!.abilityConditions),
+      )
+    : typeof ref === "number"
+      ? ref
+      : typeof ref === "object" && ref && "const" in ref && typeof ref.const === "number"
+        ? ref.const
+        : 0;
+  return Number.isFinite(value) && value > 0 ? rulesetInCells(value, perCell) : 0;
+}
+
 function resolveContest(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -7946,7 +7973,15 @@ function resolveContest(
   // fight each side throws its check as a pool and the one with more net successes wins.
   const thrown = (who: RulesetCombatant, check: string, modifier: number) => throwCheck(ctx, who, check, modifier);
   const mine = rulesetContestCheck(actor, contest, "attacker");
-  const attacker = thrown(actor, mine.check, mine.modifier);
+  // With advantage at one no bigger than it says (1.534): the Forceful Hand at a Medium creature.
+  const atMost = contest.advantageAtMostSize
+    ? ctx.combat.sizes?.order.findIndex((one) => one.id === contest.advantageAtMostSize)
+    : undefined;
+  const targetSize = atMost !== undefined && atMost >= 0 ? rulesetSizeRank(ctx.combat, target) : undefined;
+  const attacker =
+    targetSize !== undefined && atMost !== undefined && targetSize <= atMost
+      ? throwCheck(ctx, actor, mine.check, mine.modifier, { advantage: true, disadvantage: false })
+      : thrown(actor, mine.check, mine.modifier);
   // Breaking free of a hold that names its escape DC (1.103): nobody throws for the holder, and the
   // actor wins on meeting the number.
   const escapeDc = rulesetEscapeDc(actor, contest, target);
@@ -8066,7 +8101,9 @@ function resolveContest(
       }
     }
   }
-  if (contest.push !== undefined) pushTarget(ctx, actor, target, contest.push);
+  // And farther by what is read off its sheet, or its caller's (1.534): the Forceful Hand.
+  const pushed = (contest.push ?? 0) + contestPushRead(ctx, actor, contest);
+  if (contest.push !== undefined || pushed > 0) pushTarget(ctx, actor, target, pushed);
   // Treated in time (1.193): the DC 10 Medicine check that keeps the dying from dying.
   if (contest.stabilizes && target.dying && !target.stable && !target.defeated) {
     target.stable = true;

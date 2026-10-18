@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A contest with advantage by size, or a push read off a sheet (1.534): the Forceful Hand. */
+function carriesContestReads534(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesContestReads534(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.onWin !== undefined && record.advantageAtMostSize !== undefined) return true;
+  if (record.pushRead !== undefined) return true;
+  return featureValues(record).some((one) => carriesContestReads534(one, depth + 1));
+}
+
 /** A called creature's action that keeps its caller's number off, or grows with the call (1.533):
  *  Arcane Hand's Clenched Fist. */
 function carriesCallerSteps533(value: unknown, depth = 0): boolean {
@@ -7367,6 +7378,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A contest with advantage by size, or a push read off a sheet, 1.534.
+  if (
+    !declaresApi(534) &&
+    (carriesContestReads534(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesContestReads534(document)))
+  ) {
+    return "A ruleset with a contest rolled with advantage by size or pushing by a sheet's value (advantageAtMostSize, onWin.pushRead) requires schemaVersion 2 and capabilityApi 1.534 or newer";
+  }
   // A called creature's action that keeps its caller's number off, or grows with the call, 1.533.
   if (
     !declaresApi(533) &&

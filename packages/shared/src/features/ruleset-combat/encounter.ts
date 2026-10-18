@@ -4915,6 +4915,8 @@ function contestActions(
         ...(contest.onWin.stabilizes ? { stabilizes: true as const } : {}),
         ...(contest.targetHeldBySelf ? { targetHeldBySelf: true as const } : {}),
         ...(contest.actorHolds ? { actorHolds: [...contest.actorHolds] } : {}),
+        ...(contest.advantageAtMostSize ? { advantageAtMostSize: contest.advantageAtMostSize } : {}),
+        ...(contest.onWin.pushRead !== undefined ? { pushRead: structuredClone(contest.onWin.pushRead) } : {}),
         ...(contest.onWin.both
           ? {
               both: { applies: [...contest.onWin.both.applies], whileTargetHolds: contest.onWin.both.whileTargetHolds },

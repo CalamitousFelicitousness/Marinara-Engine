@@ -1488,6 +1488,10 @@ export interface RulesetCombatContest {
   targetHeldBySelf?: true;
   /** Offered only to an actor holding every one of these (1.525): the Grappler feat's pin. */
   actorHolds?: string[];
+  /** The actor rolls with advantage at a target no bigger than this size (1.534). */
+  advantageAtMostSize?: string;
+  /** Added to `push`, read off the actor's sheet or its caller's, in the ruleset's distance (1.534). */
+  pushRead?: RulesetValueRef;
   /** On loser and winner alike, while the target holds `whileTargetHolds` (1.500): a pin. */
   both?: { applies: string[]; whileTargetHolds: string };
   targetDying?: true;

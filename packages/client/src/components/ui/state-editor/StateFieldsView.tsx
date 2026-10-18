@@ -134,8 +134,10 @@ function BooleanField({ value, onChange, label, readOnly }: LeafProps<boolean>) 
       >
         <span
           className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
-            value ? "translate-x-[1.125rem]" : "translate-x-0.5",
+            // left-0.5 anchors the knob: absolutely positioned inside a flex row it takes its static
+            // position from the track, so without it the knob starts already slid to the right.
+            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
+            value ? "translate-x-4" : "translate-x-0",
           )}
         />
       </span>

@@ -143,6 +143,8 @@ import {
   rulesetThreateningEnemies,
   rulesetAirborne,
   rulesetCellBlocked,
+  rulesetCrowdedStep,
+  rulesetThroughSolid,
   rulesetLevelOf,
   rulesetSlowedCells,
   rulesetSlowedStep,
@@ -4179,6 +4181,29 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     });
     afterBlow(ctx, actor, dealt, false);
   }
+}
+
+/** Whoever walks through solid ground and ends a turn of theirs inside it takes what it says, with
+ *  no save (1.442): a ghost's 1d10 force. */
+function insideGround(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const harm = actor.passesObjects?.harm;
+  const grid = ctx.state.board?.grid;
+  if (!harm || !grid || !rulesetCombatStanding(actor)) return;
+  if (!rulesetFootprint(actor).some((cell) => rulesetThroughSolid(grid, cell.x, cell.y, actor))) return;
+  const thrown = rulesetCombatIsPool(ctx.combat)
+    ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+        throwHarm(ctx, actor, harm, harm.damageType, 0),
+      )
+    : (() => {
+        const rolls = rollRulesetDice(ctx.roll, harm.count, harm.sides);
+        return { rolls, flat: harm.flat, amount: sumOf(rolls) + harm.flat };
+      })();
+  const dealt = applyDamage(ctx, actor, {
+    label: "Inside solid ground",
+    ...(harm.damageType ? { damageType: harm.damageType } : {}),
+    ...thrown,
+  });
+  afterBlow(ctx, actor, dealt, false);
 }
 
 /** A cast that stays leaves its area once the last reaction has been answered (1.172): the cells it
@@ -8994,16 +9019,14 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
     // With other ways of moving (1.113) the same choice the menu made, on what this walk has spent.
     // Ground a lasting area makes hard going costs what the menu priced it at (1.173).
-    spent += grid
-      ? rulesetSlowedStep(
-          grid,
-          cell,
-          rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y),
-          rulesetSlowedCells(ctx.state, actor),
-          at,
-          actor,
-        )
-      : 1;
+    // Through solid ground, and into another's space, as the menu priced them (1.442).
+    if (grid) {
+      const plain = rulesetThroughSolid(grid, cell.x, cell.y, actor)
+        ? 2
+        : (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y));
+      const slowedStep = rulesetSlowedStep(grid, cell, plain, rulesetSlowedCells(ctx.state, actor), at, actor);
+      spent += rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
+    } else spent += 1;
     walked.push(cell);
     // What a charge reads (1.186): where this turn's walking began, then each cell of it. A
     // legendary move is nobody's turn.
@@ -12843,6 +12866,8 @@ export function advanceRulesetTurn(
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
+    // Ending a turn inside solid ground (1.442): Incorporeal Movement.
+    insideGround(ctx, leaving);
     endsAway(ctx, leaving);
     endsIdle(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");

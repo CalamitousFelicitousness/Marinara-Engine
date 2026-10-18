@@ -18,6 +18,7 @@ import {
   rulesetCombatEffects,
   rulesetCombatStanding,
   rulesetSealedApart,
+  rulesetSizeRank,
   rulesetTargetIs,
 } from "./encounter.js";
 import type {
@@ -317,6 +318,30 @@ export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mo
 export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mover: RulesetCombatant): boolean {
   if (!mover.runsAcross || mover.speeds?.swim || mover.speeds?.fly) return false;
   return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
+}
+
+/** Solid ground this mover walks through (1.442): Incorporeal Movement. */
+export function rulesetThroughSolid(grid: TacticalGrid, x: number, y: number, mover: RulesetCombatant): boolean {
+  return !!mover.passesObjects && inBounds(grid, x, y) && rulesetCellSolidFor(grid, x, y, mover);
+}
+
+/** A step into a cell another creature fills, priced as hard going `combat.sizes.passing.crowded`
+ *  times over (1.442), from the step it would otherwise cost. */
+export function rulesetCrowdedStep(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  mover: RulesetCombatant,
+  cell: RulesetCombatCell,
+  plain: number,
+  step: number,
+): number {
+  const crowded = definition.combat?.sizes?.passing?.crowded;
+  const grid = state.board?.grid;
+  if (crowded === undefined || !grid) return step;
+  const filled = state.combatants.some(
+    (one) => one.id !== mover.id && !one.insideOf && rulesetCombatStanding(one) && rulesetFills(one, cell),
+  );
+  return filled ? Math.max(step, plain + Math.max(0, crowded - enterCostFor(grid, cell, mover))) : step;
 }
 
 /** What stepping into this cell costs this mover: a plain step over ground hard going of itself, for
@@ -818,24 +843,38 @@ export function rulesetReachableCells(
 
   const blockers = new Set<string>();
   const occupied = new Set<string>();
+  // Through a foe far enough apart in size, or through larger ones or anybody (1.442).
+  const apart = combat.sizes?.passing?.apart;
+  const ownRank = rulesetSizeRank(combat, actor);
+  const walksThrough = (combatant: RulesetCombatant) => {
+    if (actor.passesCreatures === "any") return true;
+    const rank = rulesetSizeRank(combat, combatant);
+    if (rank === undefined || ownRank === undefined) return false;
+    if (actor.passesCreatures === "larger" && rank > ownRank) return true;
+    return apart !== undefined && Math.abs(rank - ownRank) >= apart;
+  };
   for (const combatant of state.combatants) {
     if (combatant.id === actor.id || !rulesetCombatStanding(combatant)) continue;
     // Inside somebody (1.350), they fill none of their own: whoever holds them fills it.
     if (combatant.insideOf || passes?.(combatant)) continue;
+    const through = combatant.side !== actor.side && walksThrough(combatant);
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
       occupied.add(`${at.x},${at.y}`);
-      if (combatant.side !== actor.side) blockers.add(`${at.x},${at.y}`);
+      if (combatant.side !== actor.side && !through) blockers.add(`${at.x},${at.y}`);
     }
   }
+  // Another's space costs as hard going (1.442), and solid ground does to one who walks through it.
+  const crowded = combat.sizes?.passing?.crowded;
+  const solidFor = (x: number, y: number) =>
+    rulesetCellSolidFor(grid, x, y, actor) && !rulesetThroughSolid(grid, x, y, actor);
+  const insideSolid = (x: number, y: number) => rulesetThroughSolid(grid, x, y, actor);
   // Somebody bigger than one cell moves the whole of themselves (1.194): a step is taken by their
   // top-left cell, and every cell they would fill must be open. The cost is the ground their
   // top-left cell steps onto, the way the one cell of anybody else pays.
   const span = rulesetSpanOf(actor);
   const fits = (x: number, y: number, set: ReadonlySet<string>) =>
-    rulesetFootprintAt({ x, y }, span).every(
-      (cell) => !rulesetCellSolidFor(grid, cell.x, cell.y, actor) && !set.has(`${cell.x},${cell.y}`),
-    );
+    rulesetFootprintAt({ x, y }, span).every((cell) => !solidFor(cell.x, cell.y) && !set.has(`${cell.x},${cell.y}`));
 
   // Whoever this combatant may not get any nearer to, and how near they stand right now. A cell
   // closer than that is not offered at all, so the menu stays the one place legality lives.
@@ -917,7 +956,7 @@ export function rulesetReachableCells(
       const x = at.x + dx;
       const y = at.y + dy;
       const next = `${x},${y}`;
-      if (rulesetCellSolidFor(grid, x, y, actor) || blockers.has(next)) continue;
+      if (solidFor(x, y) || blockers.has(next)) continue;
       if (span > 1 && !fits(x, y, blockers)) continue;
       // Somebody this combatant may not approach is not walked PAST either. A route that dips
       // inside the ring and comes out the far side is still getting nearer, which is the thing the
@@ -948,18 +987,17 @@ export function rulesetReachableCells(
       )
         continue;
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
-      if (
-        dx !== 0 &&
-        dy !== 0 &&
-        rulesetCellSolidFor(grid, at.x + dx, at.y, actor) &&
-        rulesetCellSolidFor(grid, at.x, at.y + dy, actor)
-      )
-        continue;
-      // The cheapest way they move that takes this step on what that way has left (1.113).
-      const plain = rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
+      if (dx !== 0 && dy !== 0 && solidFor(at.x + dx, at.y) && solidFor(at.x, at.y + dy)) continue;
+      // The cheapest way they move that takes this step on what that way has left (1.113); through
+      // solid ground, two steps' worth (1.442).
+      const plain = insideSolid(x, y) ? 2 : rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
       if (plain === undefined) continue;
-      // Ground a lasting area makes hard going (1.173).
-      const step = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);
+      // Ground a lasting area makes hard going (1.173), and another's space (1.442).
+      const slowedStep = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);
+      const step =
+        crowded !== undefined && occupied.has(next)
+          ? Math.max(slowedStep, plain + Math.max(0, crowded - enterCostFor(grid, { x, y }, actor)))
+          : slowedStep;
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);

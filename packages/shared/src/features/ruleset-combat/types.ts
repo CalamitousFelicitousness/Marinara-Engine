@@ -1838,6 +1838,11 @@ export interface RulesetCombatant {
   /** On foot they take steps of any height and cross water, but never stop on water (1.379): 5e's
    *  Unarmored Movement at 9th level. */
   runsAcross?: true;
+  /** They walk through other creatures' spaces, larger ones or anybody's (1.442). */
+  passesCreatures?: "larger" | "any";
+  /** They walk through solid ground as hard going and may stop inside it (1.442), taking `harm` as
+   *  a turn of theirs ends there. */
+  passesObjects?: { harm?: RulesetCombatAmount & { damageType?: string } };
   /** What is left this turn of each way they move, in CELLS (1.113): every cell moved comes off all
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */

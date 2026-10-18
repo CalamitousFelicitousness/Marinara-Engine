@@ -1009,6 +1009,7 @@ function activeLevels(
         ...(level.strikesAgain ? { strikesAgain: level.strikesAgain } : {}),
         ...(level.ignoresHardGround ? { ignoresHardGround: true as const } : {}),
         ...(level.runsAcross ? { runsAcross: true as const } : {}),
+        ...(level.passesCreatures ? { passesCreatures: level.passesCreatures } : {}),
         ...(level.shapeKeeps ? { shapeKeeps: level.shapeKeeps } : {}),
         ...(level.waives ? { waives: level.waives } : {}),
         ...(level.rowsWhere ? { rowsWhere: level.rowsWhere } : {}),
@@ -6072,13 +6073,31 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
   const changed: string[] = [];
   for (const combatant of state.combatants) {
     const grants = rulesetActiveConditions(definition, combat, combatant, state).filter(
-      (entry) => entry.speeds || entry.hover || entry.levitates || entry.ignoresHardGround || entry.runsAcross,
+      (entry) =>
+        entry.speeds ||
+        entry.hover ||
+        entry.levitates ||
+        entry.ignoresHardGround ||
+        entry.runsAcross ||
+        entry.passesCreatures ||
+        entry.passesObjects,
     );
     // Ways over the ground (1.379): held only while what gives them holds.
     if (grants.some((entry) => entry.ignoresHardGround)) combatant.ignoresHardGround = true;
     else delete combatant.ignoresHardGround;
     if (grants.some((entry) => entry.runsAcross)) combatant.runsAcross = true;
     else delete combatant.runsAcross;
+    // Through others' spaces, and through solid ground (1.442): anybody's over only larger ones.
+    const passes = grants.flatMap((entry) => (entry.passesCreatures ? [entry.passesCreatures] : []));
+    if (passes.length) combatant.passesCreatures = passes.includes("any") ? "any" : "larger";
+    else delete combatant.passesCreatures;
+    const through = grants.find((entry) => entry.passesObjects)?.passesObjects;
+    if (through) {
+      const harm = amountOf(through.harm);
+      combatant.passesObjects = harm
+        ? { harm: { ...harm, ...(through.harm?.damageType ? { damageType: through.harm.damageType } : {}) } }
+        : {};
+    } else delete combatant.passesObjects;
     if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) continue;
     const own = combatant.baseSpeeds ?? {
       ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),

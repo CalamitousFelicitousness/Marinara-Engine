@@ -3445,6 +3445,19 @@ export interface RulesetCatalogRays {
   dice: string;
   rows: Array<{ atMost: number; label: string; damageType?: string; applies?: string[]; again?: number }>;
 }
+/** Walking through solid ground (1.442), and what ending a turn inside it deals. */
+export interface RulesetPassesObjects {
+  harm?: { dice?: string; flat?: number; damageType?: string };
+}
+const passesObjectsSchema: z.ZodType<RulesetPassesObjects, z.ZodTypeDef, unknown> = z
+  .object({
+    harm: z
+      .object({ ...catalogAmountShape, damageType: promptSafeText(40).optional() })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const catalogRaysSchema: z.ZodType<RulesetCatalogRays, z.ZodTypeDef, unknown> = z
   .object({
     dice: catalogDice,
@@ -9976,6 +9989,8 @@ const combatLevelSchema = z
      *  armor or shield is worn. */
     ignoresHardGround: z.literal(true).optional(),
     runsAcross: z.literal(true).optional(),
+    /** As on a condition (Capability API 1.442). */
+    passesCreatures: z.enum(["larger", "any"]).optional(),
     /** As on a condition (Capability API 1.382): what any shape its holder takes keeps of their own
      *  actions, and the components their uses need none of. */
     shapeKeeps: z.array(z.string().trim().min(1).max(200)).min(1).max(24).optional(),
@@ -10024,6 +10039,7 @@ const combatLevelSchema = z
       !entry.strikesAgain &&
       !entry.ignoresHardGround &&
       !entry.runsAcross &&
+      !entry.passesCreatures &&
       !entry.shapeKeeps &&
       !entry.waives
     ) {
@@ -10534,7 +10550,12 @@ const speedKeptFromSchema = z.object({ catalogs: z.array(sheetId).min(1).max(8) 
  *  for `cost` of their walk in the ruleset's own distance: one put on by an entry of `unlessCatalogs`
  *  holds. The walk a condition kept from them comes back as it ends. 5e's Freedom of Movement, 5 feet
  *  out of a grapple or a nonmagical restraint. */
-const slipsFreeSchema = z
+export interface RulesetSlipsFree {
+  conditions: string[];
+  cost: number;
+  unlessCatalogs?: string[];
+}
+const slipsFreeSchema: z.ZodType<RulesetSlipsFree, z.ZodTypeDef, unknown> = z
   .object({
     conditions: z.array(sheetId).min(1).max(12),
     cost: z.number().finite().min(0).max(10000),
@@ -10700,6 +10721,14 @@ const combatConditionSchema = z
      *  walls and across liquids without falling during the move. A walk cut short on water sets
      *  them down on the nearest open ground. */
     runsAcross: z.literal(true).optional(),
+    /** Its holder walks through other creatures' spaces, never stopping in one (Capability API
+     *  1.442): `"larger"` through any creature of a larger size than its own, 5e's Halfling
+     *  Nimbleness; `"any"` through anybody, a ghost's Incorporeal Movement. */
+    passesCreatures: z.enum(["larger", "any"]).optional(),
+    /** Its holder walks through solid ground as hard going and may stop inside it (Capability API
+     *  1.442), taking `harm`, with no save, when a turn of its own ends there: Incorporeal
+     *  Movement's 1d10 force. */
+    passesObjects: passesObjectsSchema.optional(),
     /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
      *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
      *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */
@@ -11344,6 +11373,7 @@ export interface RulesetCombatSizes {
   order: Array<{ id: string; label: string; cells?: number }>;
   sheet?: RulesetValueRef;
   default?: string;
+  passing?: { apart?: number; crowded?: number };
 }
 const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = z
   .object({
@@ -11363,6 +11393,19 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
       .max(10),
     sheet: rulesetValueRefSchema.optional(),
     default: sheetId.optional(),
+    /** Walking through other creatures (Capability API 1.442): a foe whose size is at least `apart`
+     *  steps from the mover's own may be walked through, 5e's 2; and a cell another creature fills
+     *  costs as ground hard going `crowded` times over, 5e's 2. Nobody stops in another's space. */
+    passing: z
+      .object({
+        apart: z.number().int().min(1).max(9).optional(),
+        crowded: z.number().int().min(2).max(4).optional(),
+      })
+      .strict()
+      .refine((passing) => passing.apart !== undefined || passing.crowded !== undefined, {
+        message: "passing says how far apart in size a foe may be walked through, or what a crowded cell costs",
+      })
+      .optional(),
   })
   .strict();
 

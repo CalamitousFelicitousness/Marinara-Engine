@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Walking through creatures or solid ground, and what a crowded cell costs (1.442). */
+function carriesPassing442(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPassing442(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.passesCreatures !== undefined || record.passesObjects !== undefined) return true;
+  if (record.order !== undefined && record.passing !== undefined) return true;
+  return featureValues(record).some((one) => carriesPassing442(one, depth + 1));
+}
+
 /** An item's use that breaks a layered wall's layer as an entry it names (1.441): a scroll of Passwall. */
 function carriesEndsLayersAs441(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6312,6 +6323,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Walking through creatures or solid ground, and what a crowded cell costs, 1.442.
+  if (
+    !declaresApi(442) &&
+    (carriesPassing442(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPassing442(document)))
+  ) {
+    return "A ruleset whose movers walk through other creatures or solid ground (sizes passing, passesCreatures, passesObjects) requires schemaVersion 2 and capabilityApi 1.442 or newer";
+  }
   // An item's use that breaks a layered wall's layer as an entry it names, 1.441.
   if (
     !declaresApi(441) &&

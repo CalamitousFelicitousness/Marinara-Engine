@@ -13,6 +13,8 @@ const TRACKERS_WINDOW_TESTS = [
   "a minimized World State window stays in view as a movable banner",
   "a dot on the Chat Settings button and the Trackers window shows while agents run",
   "Saved nameless custom tracker rows do not crash Roleplay on open or reload",
+  "Present Characters lock mode marks each field with a padlock",
+  "the Trackers window and its button reach the bottom beside the message box, never over it",
 ];
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

@@ -12646,6 +12646,9 @@ const combatContestBaseSchema = z
     /** With `targetHolds`, offered only where the actor put that condition on the target (Capability
      *  API 1.500): 5e's Grappler's pin, on "a creature grappled by you". */
     targetHeldBySelf: z.literal(true).optional(),
+    /** Offered only to an actor holding every one of these conditions (Capability API 1.525): the
+     *  Grappler feat's pin, offered to whoever has the feat's `keepsOn` condition. */
+    actorHolds: z.array(sheetId).min(1).max(4).optional(),
     /** Pulls the one `targetHolds` keeps inside another creature out (Capability API 1.354): it
      *  reaches through the holder's body to them, measured to the holder, and is rolled against the
      *  escape DC that hold names, else `difficulty`. Whoever tries takes the hold's `harmsPuller`,
@@ -16392,6 +16395,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       if (contest.from) conditionId(contest.from.holding, [...path, "from", "holding"]);
       if (contest.targetHolds) conditionId(contest.targetHolds, [...path, "targetHolds"]);
+      contest.actorHolds?.forEach((id, holdIndex) => conditionId(id, [...path, "actorHolds", holdIndex]));
       // Pulled out of a creature (1.354): the hold is one that keeps them inside it, and on a pool
       // fight's dice there is no number to meet.
       if (

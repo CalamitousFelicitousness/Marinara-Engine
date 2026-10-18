@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A contest offered only to an actor holding certain conditions (1.525): Grappler's pin. */
+function carriesActorHolds525(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesActorHolds525(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.actorHolds !== undefined && record.onWin !== undefined) return true;
+  return featureValues(record).some((one) => carriesActorHolds525(one, depth + 1));
+}
+
 /** A condition that puts its holder on its source's side, or whose source throws as its holder dies
  *  (1.524): Magic Jar. */
 function carriesControls524(value: unknown, depth = 0): boolean {
@@ -7263,6 +7273,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A contest offered only to an actor holding certain conditions, 1.525.
+  if (
+    !declaresApi(525) &&
+    (carriesActorHolds525(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesActorHolds525(document)))
+  ) {
+    return "A ruleset with a contest offered only to an actor holding a condition (actorHolds) requires schemaVersion 2 and capabilityApi 1.525 or newer";
+  }
   // A condition that controls its holder, or whose source throws as its holder dies, 1.524.
   if (
     !declaresApi(524) &&

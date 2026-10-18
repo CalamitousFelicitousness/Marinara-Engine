@@ -1476,6 +1476,8 @@ export interface RulesetCombatContest {
   targetHolds?: string;
   /** Only where the actor put `targetHolds` on the target (1.500): Grappler's pin. */
   targetHeldBySelf?: true;
+  /** Offered only to an actor holding every one of these (1.525): the Grappler feat's pin. */
+  actorHolds?: string[];
   /** On loser and winner alike, while the target holds `whileTargetHolds` (1.500): a pin. */
   both?: { applies: string[]; whileTargetHolds: string };
   targetDying?: true;

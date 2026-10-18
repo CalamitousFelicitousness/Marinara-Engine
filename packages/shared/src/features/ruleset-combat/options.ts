@@ -3036,6 +3036,12 @@ function optionFrom(
   if (!rulesetSequenceCanHappen(actor, action)) return null;
   // Breaking free is only there while something holds on.
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
+  // Only for one who holds what it asks for (1.525): the Grappler feat's pin.
+  if (
+    action.contest?.actorHolds &&
+    !action.contest.actorHolds.every((id) => rulesetCombatConditions(definition, actor).includes(id))
+  )
+    return null;
   if (!actionDoesSomething(action)) return null;
   // A teleport and nothing else (1.276) goes nowhere without a board.
   if (action.teleport && !positioned(state) && !action.teleport.leaves && !rulesetDoesMoreThanTeleport(action))

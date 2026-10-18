@@ -4902,6 +4902,7 @@ function contestActions(
         ...(contest.pulls ? { pulls: true as const } : {}),
         ...(contest.onWin.stabilizes ? { stabilizes: true as const } : {}),
         ...(contest.targetHeldBySelf ? { targetHeldBySelf: true as const } : {}),
+        ...(contest.actorHolds ? { actorHolds: [...contest.actorHolds] } : {}),
         ...(contest.onWin.both
           ? {
               both: { applies: [...contest.onWin.both.applies], whileTargetHolds: contest.onWin.both.whileTargetHolds },

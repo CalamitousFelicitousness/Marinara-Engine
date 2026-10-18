@@ -180816,6 +180816,16 @@
                 "type": "boolean",
                 "const": true
               },
+              "actorHolds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 4
+              },
               "pulls": {
                 "type": "boolean",
                 "const": true

@@ -8,7 +8,6 @@ import { resolveClientBuildHeapMb } from "./build-heap.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "..");
 const packageRequire = createRequire(resolve(PACKAGE_ROOT, "package.json"));
-const TSC_CLI = packageRequire.resolve("typescript/bin/tsc");
 const VITE_CLI = resolve(dirname(packageRequire.resolve("vite/package.json")), "bin/vite.js");
 const LOW_MEMORY_BUILD = process.platform === "android" || process.env.MARINARA_LOW_MEMORY_BUILD === "1";
 const BUILD_HEAP_MB = resolveClientBuildHeapMb({ lowMemory: LOW_MEMORY_BUILD });
@@ -31,11 +30,12 @@ function run(script, args, options = {}) {
   }
 }
 
+// Type checking runs in `pnpm lint`: the client emits nothing through tsc, and a full check needs
+// over 2 GiB of heap, more than launcher and updater builds get on smaller machines.
 if (LOW_MEMORY_BUILD) {
-  console.log("[build] Android/low-memory client build: skipping tsc and PWA generation.");
+  console.log("[build] Android/low-memory client build: skipping PWA generation.");
   run(VITE_CLI, ["build"], { env: { SKIP_PWA: "1" } });
 } else {
-  run(TSC_CLI, ["-b"]);
   run(VITE_CLI, ["build"]);
 }
 

@@ -190,6 +190,23 @@ their titles, and `playwright.config.ts`, an upstream file, passes them to `grep
 the desktop projects. `e2e/tracker-panel-only.e2e.ts` covers the dice instead and fails with the
 gate open.
 
+### Client builds skip the type check and size their own heap
+
+`packages/client/scripts/build.mjs` runs only `vite build` and the multiplayer guest build; `tsc -b`
+moved into the client `lint` script, beside the server's `tsc --noEmit`, so `pnpm check` and CI still
+type-check through `pnpm lint`. `packages/client/scripts/build-heap.mjs` now also gives desktop builds
+a heap: 2048 MiB, or half of device memory but never under 1536 MiB, unless `NODE_OPTIONS` already
+carries `--max-old-space-size`.
+
+Upstream type-checks in every client build and sets a heap only on Termux. The client tsconfig has
+`noEmit`, so in a launcher or in-app-updater build the check produces nothing, yet a full
+`tsc -b --force` runs out of memory at 2048 MiB and passes at 2560. Node's default limit is about
+2 GiB on an 8 GB machine, so `start.sh` failed with `JavaScript heap out of memory` while rebuilding
+the client. Vite with PWA generation runs out at 1280 MiB and passes at 1536; the build also drops
+from about 2.5 minutes to 35 seconds.
+
+Destined for upstream. Guarded by `scripts/regressions/launcher/termux-client-build.regression.mjs`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

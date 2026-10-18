@@ -19,7 +19,12 @@ assert.equal(buildHeap(3 * GiB), 1536);
 assert.equal(buildHeap(2.75 * GiB), 1408);
 assert.equal(buildHeap(2 * GiB), 1280, "a 2 GB phone still gets the heap the build needs");
 assert.equal(buildHeap(8 * GiB, { MARINARA_EXPLICIT_NODE_HEAP: "1" }), null, "a heap the user set wins");
-assert.equal(buildHeap(8 * GiB, {}, false), null, "desktop builds keep their heap");
+// Desktop builds also generate the PWA, which needs 1536 MiB; Node's default is lower on small machines.
+assert.equal(buildHeap(8 * GiB, {}, false), 2048);
+assert.equal(buildHeap(2 * GiB, {}, false), 1536, "a small desktop still gets the heap the build needs");
+for (const NODE_OPTIONS of ["--max-old-space-size=4096", "--trace-warnings --max_old_space_size=1024"]) {
+  assert.equal(buildHeap(8 * GiB, { NODE_OPTIONS }, false), null, "a desktop heap in NODE_OPTIONS is the user's");
+}
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {
@@ -144,8 +149,17 @@ try {
     "the old launcher's first build after updating must produce the complete client",
   );
 
-  build("desktop", process.execPath, ["scripts/build.mjs"], {}, `tsc\nvite::${serverHeapLimit}\nguest\n`);
-  assert.doesNotThrow(() => checkClientBuild(join(fixture, "dist")), "desktop retains typechecking and PWA policy");
+  // Desktop builds keep PWA generation and leave type checking to `pnpm lint`.
+  const desktopHeap = heapLimitFor(buildHeap(totalmem(), {}, false));
+  build("desktop", process.execPath, ["scripts/build.mjs"], { NODE_OPTIONS: "" }, `vite::${desktopHeap}\nguest\n`);
+  assert.doesNotThrow(() => checkClientBuild(join(fixture, "dist")), "desktop retains PWA policy");
+  build(
+    "desktop with a heap the user set",
+    process.execPath,
+    ["scripts/build.mjs"],
+    {},
+    `vite::${serverHeapLimit}\nguest\n`,
+  );
   build(
     "desktop direct vite build",
     process.execPath,
@@ -153,6 +167,8 @@ try {
     {},
     `vite::${serverHeapLimit}\n`,
   );
+  const clientPackage = JSON.parse(readFileSync(join(repositoryRoot, "packages/client/package.json"), "utf8"));
+  assert.match(clientPackage.scripts.lint, /&& tsc -b &&/u, "client type checking must run in pnpm lint");
   console.info("Termux, in-app update, old launcher and desktop client build regression passed.");
 } finally {
   rmSync(fixture, { recursive: true, force: true });

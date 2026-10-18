@@ -3,22 +3,26 @@ import { spawnSync } from "node:child_process";
 import { totalmem } from "node:os";
 import { fileURLToPath } from "node:url";
 
-// The client build needs about 1.2 GiB of Node.js heap: it runs out of memory at 1024 and
-// 1152 MiB and passes at 1280 MiB. Give it 1536 MiB when half the device's memory allows,
-// and never less than the 1280 MiB it needs.
-const BUILD_HEAP_TARGET_MB = 1536;
-const BUILD_HEAP_FLOOR_MB = 1280;
+// Measured Vite heap needs. Without PWA generation (low-memory) it runs out of memory at 1152 MiB
+// and passes at 1280 MiB; with it (desktop) it runs out at 1280 MiB and passes at 1536 MiB.
+// Each build gets its target when half the device's memory allows, and never less than its floor.
+const LOW_MEMORY_HEAP = { targetMb: 1536, floorMb: 1280 };
+const DESKTOP_HEAP = { targetMb: 2048, floorMb: 1536 };
+const HEAP_FLAG = /(?:^|\s)--max[-_]old[-_]space[-_]size\b/u;
 
 /**
- * The heap (MiB) a low-memory (Termux) client build runs with, or null to keep the inherited
- * limit. Termux starts the server with a smaller heap that every child inherits, including the
- * in-app updater's build, so the build sets its own. A heap the user set in NODE_OPTIONS wins:
- * start-termux.sh marks it with MARINARA_EXPLICIT_NODE_HEAP. Older launchers do not.
+ * The heap (MiB) the client build runs with, or null to keep the inherited limit. Node's default
+ * limit scales with device memory and falls below the build's needs on smaller machines.
+ * A heap the user set wins. Termux starts the server with its own smaller heap, so start-termux.sh
+ * marks the user's with MARINARA_EXPLICIT_NODE_HEAP; desktop launchers set none, so any heap in
+ * NODE_OPTIONS there is the user's.
  */
 export function resolveClientBuildHeapMb({ lowMemory, env = process.env, totalMemoryBytes = totalmem() }) {
-  if (!lowMemory || env.MARINARA_EXPLICIT_NODE_HEAP === "1") return null;
+  const explicitHeap = lowMemory ? env.MARINARA_EXPLICIT_NODE_HEAP === "1" : HEAP_FLAG.test(env.NODE_OPTIONS ?? "");
+  if (explicitHeap) return null;
+  const { targetMb, floorMb } = lowMemory ? LOW_MEMORY_HEAP : DESKTOP_HEAP;
   const deviceCapMb = Math.floor(totalMemoryBytes / 1024 / 1024 / 2 / 128) * 128;
-  return Math.min(BUILD_HEAP_TARGET_MB, Math.max(BUILD_HEAP_FLOOR_MB, deviceCapMb));
+  return Math.min(targetMb, Math.max(floorMb, deviceCapMb));
 }
 
 /**
@@ -28,8 +32,8 @@ export function resolveClientBuildHeapMb({ lowMemory, env = process.env, totalMe
  * builds the multiplayer guest bundle, and exit with its status.
  */
 export function delegateDirectAndroidBuild({ platform = process.platform, env = process.env } = {}) {
-  if (env.MARINARA_CLIENT_BUILD_SCRIPT === "1") return;
-  if (resolveClientBuildHeapMb({ lowMemory: platform === "android", env }) === null) return;
+  if (platform !== "android" || env.MARINARA_CLIENT_BUILD_SCRIPT === "1") return;
+  if (resolveClientBuildHeapMb({ lowMemory: true, env }) === null) return;
   const result = spawnSync(process.execPath, [fileURLToPath(new URL("./build.mjs", import.meta.url))], {
     env: { ...env, MARINARA_LOW_MEMORY_BUILD: "1" },
     stdio: "inherit",

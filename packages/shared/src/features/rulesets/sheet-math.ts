@@ -270,6 +270,8 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
+  /** What is left of its further uses that count their own (1.466), as the stack keeps them. */
+  usesLeft?: Record<string, number>;
   /** Its switch is on, as the stack keeps it (1.170). */
   on?: true;
   /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as

@@ -9657,6 +9657,7 @@
   "ui.game.gameinventory.useSaveHalf": "{{save}} for half",
   "ui.game.gameinventory.useSaveNegates": "{{save}} negates it",
   "ui.game.gameinventory.useSaveOf": "{{save}} save of {{difficulty}}",
+  "ui.game.gameinventory.usesLeft": "{{label}}: {{now}} of {{max}} uses left",
   "ui.game.gameinventory.useTemporary": "{{amount}} temporary",
   "ui.game.gameinventory.useToHit": "{{toHit}} to hit",
   "ui.game.gameinventory.useToHitAt": "{{toHit}} to hit at {{target}}",

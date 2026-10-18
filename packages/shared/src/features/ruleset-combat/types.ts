@@ -1209,6 +1209,9 @@ export interface RulesetCombatAction {
        *  each, in cells (1.271). */
       step?: { max: number; amount?: RulesetCombatAmount; targets?: number; push?: number };
     };
+    /** A further use that counts its own uses (1.466): its place in `moreUses` from 1, and its most.
+     *  Each use spends one of those in place of the item's charges. */
+    ownUses?: { more: number; max: number };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
      *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
      *  gate here when the user's sheet was high enough to skip it. */
@@ -1791,6 +1794,8 @@ export interface RulesetCombatant {
   recoverable?: Record<string, number>;
   /** What each item with charges holds now, keyed as the rest are. */
   charges?: Record<string, number>;
+  /** What is left of each further use that counts its own (1.466), keyed `<item>:<more>`. */
+  usesLeft?: Record<string, number>;
   /** The items that broke when their last charge was spent, keyed as the rest are. */
   broken?: Record<string, true>;
   /** What an item becomes on its last charge (1.272), read as the fight began: what it is, its name,

@@ -72,6 +72,8 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
+  /** What is left of its further uses that count their own (1.466), by place. Absent reads as full. */
+  usesLeft?: Record<string, number>;
   /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
 }
@@ -117,7 +119,7 @@ interface GameInventoryProps {
   /** Called when the user turns an item with a switch on or off (1.170). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
-  onUseItem?: (stackId: string, itemName: string) => void;
+  onUseItem?: (stackId: string, itemName: string, more?: number) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
   onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
   /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
@@ -223,8 +225,8 @@ export function GameInventory({
   }, []);
 
   const handleUse = useCallback(
-    (stackId: string, itemName: string) => {
-      onUseItem?.(stackId, itemName);
+    (stackId: string, itemName: string, more?: number) => {
+      onUseItem?.(stackId, itemName, more);
       setSelectedItem(null);
     },
     [onUseItem],
@@ -777,6 +779,7 @@ export function GameInventory({
                 bound={selectedInventoryItem?.bound === true}
                 loaded={selectedInventoryItem?.loaded}
                 charges={selectedInventoryItem?.charges}
+                usesLeft={selectedInventoryItem?.usesLeft}
               />
             )}
             {onRenameItem && selectedInventoryItem && (
@@ -1110,6 +1113,21 @@ export function GameInventory({
                   {localizeUi("ui.agents.agenteditor.use")}
                 </button>
               )}
+              {/* Its further uses (Capability API 1.466), each its own button. */}
+              {selectedInventoryItem &&
+                canInteract &&
+                onUseItem &&
+                selectedRulesetItem?.entry.item?.use &&
+                selectedRulesetItem.entry.item.moreUses?.map((more, n) => (
+                  <button
+                    key={more.label}
+                    onClick={() => handleUse(selectedInventoryItem.id, `${selectedLabel}: ${more.label}`, n + 1)}
+                    className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
+                  >
+                    <Wand2 size={12} />
+                    {more.label}
+                  </button>
+                ))}
             </div>
             {(typesItems || picksItems) && (
               <div className={cn("flex gap-1.5", selectedInventoryItem && "mt-2.5")}>
@@ -1253,11 +1271,13 @@ function RulesetItemDetails({
   bound,
   loaded,
   charges,
+  usesLeft,
 }: {
   details: RulesetItemBookEntry;
   bound: boolean;
   loaded?: number;
   charges?: number;
+  usesLeft?: Record<string, number>;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { facts } = details;
@@ -1293,6 +1313,17 @@ function RulesetItemDetails({
             max: chargesMax,
           })}
         </div>
+      )}
+      {details.entry.item?.moreUses?.map((more, n) =>
+        more.uses ? (
+          <div key={more.label} className="text-[0.65rem] leading-tight text-white/70">
+            {localizeUi("ui.game.gameinventory.usesLeft", {
+              label: more.label,
+              now: Math.min(usesLeft?.[String(n + 1)] ?? more.uses.max, more.uses.max),
+              max: more.uses.max,
+            })}
+          </div>
+        ) : null,
       )}
       {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
       {details.invented && (

@@ -126,6 +126,12 @@ export function rulesetLoaded(actor: RulesetCombatant, clip: NonNullable<Ruleset
 export function rulesetItemUseLeft(actor: RulesetCombatant, use: NonNullable<RulesetCombatAction["itemUse"]>): number {
   const held = actor.sheet?.items?.[use.item];
   if (use.consumes) return Math.max(0, (held?.quantity ?? 0) - (actor.itemsUsed?.[use.item] ?? 0));
+  // Its own uses (1.466): as this fight left them, else as its stack kept them, else all of them.
+  if (use.ownUses) {
+    const { more, max } = use.ownUses;
+    const now = actor.usesLeft?.[`${use.item}:${more}`] ?? held?.usesLeft?.[String(more)] ?? max;
+    return Math.max(0, Math.min(max, now));
+  }
   if (!use.charges) return Number.POSITIVE_INFINITY;
   const now = actor.charges?.[use.item] ?? held?.charges ?? use.charges.max;
   return Math.max(0, Math.min(use.charges.max, now));
@@ -137,7 +143,7 @@ export function rulesetItemUseLeft(actor: RulesetCombatant, use: NonNullable<Rul
 export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.itemUse) {
     const left = rulesetItemUseLeft(actor, action.itemUse);
-    return action.itemUse.consumes ? left >= 1 : left >= (action.itemUse.charges?.cost ?? 0);
+    return action.itemUse.consumes || action.itemUse.ownUses ? left >= 1 : left >= (action.itemUse.charges?.cost ?? 0);
   }
   if (action.kind === "reload") {
     if (!action.clip || rulesetLoaded(actor, action.clip) >= action.clip.max) return false;
@@ -178,8 +184,14 @@ export function spendRulesetShots(
 ): RulesetCombatEvent | null {
   if (action.kind === "reload") return null;
   const use = action.itemUse;
-  if (use && (use.consumes || use.charges)) {
+  if (use && (use.consumes || use.charges || use.ownUses)) {
     const said = { type: "uses" as const, actorId: actor.id, optionId: action.id, label: action.label };
+    // One of its own uses (1.466), never the item's charges.
+    if (use.ownUses) {
+      const left = Math.max(0, rulesetItemUseLeft(actor, use) - 1);
+      (actor.usesLeft ??= {})[`${use.item}:${use.ownUses.more}`] = left;
+      return { ...said, left, of: use.ownUses.max };
+    }
     if (use.consumes) {
       const quantity = actor.sheet?.items?.[use.item]?.quantity ?? 0;
       (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
@@ -313,6 +325,8 @@ export interface RulesetFightItemChange {
   loaded?: number;
   /** What an item with charges holds now. */
   charges?: number;
+  /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
+  usesLeft?: Record<string, number>;
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
   /** It became another item when its last charge was spent (1.272): that item, and its name. */
@@ -338,7 +352,12 @@ export function rulesetFightItemChanges(
     if (
       combatant.side !== "party" ||
       !items ||
-      (!combatant.itemsUsed && !combatant.loaded && !combatant.charges && !combatant.on && !combatant.became)
+      (!combatant.itemsUsed &&
+        !combatant.loaded &&
+        !combatant.charges &&
+        !combatant.usesLeft &&
+        !combatant.on &&
+        !combatant.became)
     ) {
       continue;
     }
@@ -350,12 +369,20 @@ export function rulesetFightItemChanges(
       const reloaded = loaded !== undefined && loaded !== earlier?.loaded?.[index];
       const charges = combatant.charges?.[index];
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
+      // Its own uses spent (1.466), since `before`.
+      const usesLeft = Object.fromEntries(
+        Object.entries(combatant.usesLeft ?? {}).flatMap(([key, left]) => {
+          const [at, more] = key.split(":");
+          return Number(at) === index && left !== earlier?.usesLeft?.[key] ? [[more!, left]] : [];
+        }),
+      );
+      const usesSpent = Object.keys(usesLeft).length > 0;
       const on = combatant.on?.[index];
       const switched = on !== undefined && on !== (earlier?.on?.[index] ?? held.on === true);
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !switched && !turned) return;
+      if (taken === 0 && !reloaded && !spent && !usesSpent && !switched && !turned) return;
       // The stack holds what it became from the step after it turned, so later changes name that.
       const ref = earlier?.became?.[index] ?? held.stack.ref;
       changes.push({
@@ -364,6 +391,7 @@ export function rulesetFightItemChanges(
         taken,
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
+        ...(usesSpent ? { usesLeft } : {}),
         ...(switched ? { on } : {}),
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
         ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
@@ -422,7 +450,7 @@ export function applyRulesetFightItemChanges(
     const on = change.on ?? wasOn === true;
     // Become another item (1.272): the stack holds that item now, under its name, with no charges.
     if (change.becomes) {
-      const { charges: _charges, loaded: _loaded, ...plain } = kept;
+      const { charges: _charges, loaded: _loaded, usesLeft: _usesLeft, ...plain } = kept;
       journal.push({ item: stack.name, action: "lost", quantity: 1 });
       journal.push({ item: change.becomes.name, action: "acquired", quantity: 1 });
       next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
@@ -433,6 +461,7 @@ export function applyRulesetFightItemChanges(
       quantity,
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
+      ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
     };
   }

@@ -1884,7 +1884,16 @@ function itemUseActions(
     if (!item.use) return;
     // Its first use, then any more it has (1.267), each its own choice paid from the same charges.
     useOf(held, index, `use:${index}`, item.use, item.use.label);
-    item.moreUses?.forEach((more, n) => useOf(held, index, `use:${index}:${n + 1}`, more.use, more.label));
+    item.moreUses?.forEach((more, n) =>
+      useOf(
+        held,
+        index,
+        `use:${index}:${n + 1}`,
+        more.use,
+        more.label,
+        more.uses ? { more: n + 1, max: more.uses.max } : undefined,
+      ),
+    );
   });
   return actions;
 
@@ -1894,6 +1903,8 @@ function itemUseActions(
     id: string,
     use: NonNullable<RulesetCatalogItem["use"]>,
     named?: string,
+    /** Its own count of uses (1.466). */
+    ownUses?: { more: number; max: number },
   ): void {
     const { item } = held;
     // Raising an ability for good is for outside a fight (1.463).
@@ -1929,6 +1940,7 @@ function itemUseActions(
       item: index,
       ...(held.truly ? { fake: { name: held.truly.name, ...(real ? { does: real } : { dud: true as const }) } } : {}),
       ...(use.consumes ? { consumes: true as const } : {}),
+      ...(ownUses ? { ownUses } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {
             charges: {

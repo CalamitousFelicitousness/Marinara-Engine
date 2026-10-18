@@ -9021,7 +9021,7 @@ function GameSurfaceComponent({
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
    *  in an `[item_used]` block. Anything else is simply said, and the Game Master decides. */
   const handleUseInventoryStack = useCallback(
-    async (stackId: string, label: string) => {
+    async (stackId: string, label: string, more?: number) => {
       setInventoryOpen(false);
       const stack = inventoryItemsRef.current.find((entry) => entry.id === stackId);
       const said = () => sendMessage(`I use my ${label}.`);
@@ -9045,7 +9045,7 @@ function GameSurfaceComponent({
             line: string;
             revealed?: string;
             playerStats?: PlayerStats;
-          }>("/game/inventory/use", { chatId, stackId }),
+          }>("/game/inventory/use", { chatId, stackId, ...(more !== undefined ? { more } : {}) }),
         );
       } catch (error) {
         const reason =

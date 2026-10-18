@@ -9151,9 +9151,32 @@ export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
 export interface RulesetItemMoreUse {
   label: string;
   use: RulesetItemUse;
+  uses?: {
+    max: number;
+    recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
+  };
 }
 const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = z
-  .object({ label: promptSafeText(40), use: rulesetItemUseSchema })
+  .object({
+    label: promptSafeText(40),
+    use: rulesetItemUseSchema,
+    /** Its own count of uses, spent in place of the item's charges (Capability API 1.466), kept on the
+     *  stack: a Staff of Thunder and Lightning's once a dawn for each property, a Helm of Brilliance's
+     *  gems. `recharge` brings them back on the rests it names, all of them or an amount. */
+    uses: z
+      .object({
+        max: z.number().int().min(1).max(100),
+        recharge: z
+          .object({
+            rests: z.array(sheetId).min(1).max(12),
+            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  })
   .strict();
 
 const catalogItemObjectSchema = z
@@ -9212,9 +9235,9 @@ const catalogItemObjectSchema = z
     /** What it does when it is used: from the bag, or while worn where it takes a slot or binds. */
     use: rulesetItemUseSchema.optional(),
     /** Other things it does when used, each its own choice on the menu named by `label` and paid
-     *  from the same charges (Capability API 1.267): a wand of fear's Command beside its cone, a
-     *  staff's spells. Only beside a `use`. */
-    moreUses: z.array(itemMoreUseSchema).min(1).max(8).optional(),
+     *  from the same charges (Capability API 1.267), or from its own `uses` (1.466): a wand of fear's
+     *  Command beside its cone, a staff's spells. Only beside a `use`. Up to 8, or 16 (1.466). */
+    moreUses: z.array(itemMoreUseSchema).min(1).max(16).optional(),
     /** How many charges it holds, which its use spends. The count is kept on its stack. */
     charges: z
       .object({
@@ -17906,7 +17929,17 @@ function itemIssues(
   item.moreUses?.forEach((more, index) => {
     if (more.use.label !== undefined)
       add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");
+    // Its own uses are what it spends (1.466), never the item's charges as well.
+    if (more.uses && more.use.charges !== undefined)
+      add([...at, "moreUses", index, "uses"], "A use with its own uses spends those, not the item's charges");
+    more.uses?.recharge?.rests.forEach((rest, at2) => {
+      if (!definition.rests.some((entry) => entry.id === rest))
+        add([...at, "moreUses", index, "uses", "recharge", "rests", at2], `Unknown rest "${rest}"`);
+    });
   });
+  // Its own uses are one item's, as charges are (1.466).
+  if (item.moreUses?.some((more) => more.uses) && !item.charges && item.stack !== 1)
+    add([...at, "stack"], "An item whose uses count their own is one to a stack, so its stack is 1");
   if (item.charges) {
     itemValueChecker(definition, add)(item.charges.max, "number", [...at, "charges", "max"]);
     // Or by its weapon slaying (1.187): a nine lives stealer's.

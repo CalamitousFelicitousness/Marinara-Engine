@@ -101,6 +101,8 @@ function useForCarrier(
   stackId: string,
   live: RulesetLiveStates,
   roll: (sides: number) => number,
+  /** One of its further uses (1.267, 1.466), by its place in `moreUses` from 1. */
+  more?: number,
 ): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates; revealed?: string } {
   const stack = stacks.find((each) => each.id === stackId);
   const holder = stack?.holder;
@@ -123,6 +125,7 @@ function useForCarrier(
     stackId,
     user: { name, build: card?.build ?? defaultRulesetSheetBuild(context.definition), live: live[key] },
     roll,
+    ...(more !== undefined ? { more } : {}),
   });
   if (!outcome.ok && revealed) {
     // What it truly does is nothing the rules work out: it is still found out, and the Game Master
@@ -249,6 +252,8 @@ export async function useGameRulesetItem(
   chatId: string,
   stackId: string,
   roll: (sides: number) => number = rollDieSecurely,
+  /** One of its further uses (1.267, 1.466), by its place in `moreUses` from 1. */
+  more?: number,
 ): Promise<GameItemUseResult> {
   // Read before the chat's queue is held, as every other inventory change reads them.
   const context = await loadGameRulesetSheetContext(db, chatId);
@@ -269,7 +274,7 @@ export async function useGameRulesetItem(
         const stored: RulesetLiveStates = parseStoredRulesetLive(row.rulesetLive) ?? {};
         let next: RulesetLiveStates = stored;
         committed = await applyGameInventoryChangeHeld(db, chatId, (stacks) => {
-          const done = useForCarrier(context, book.itemOf, stacks, stackId, stored, roll);
+          const done = useForCarrier(context, book.itemOf, stacks, stackId, stored, roll, more);
           if (!done.outcome.ok) throw new ItemUseRefused(done.outcome.reason);
           outcome = done.outcome;
           revealed = done.revealed;

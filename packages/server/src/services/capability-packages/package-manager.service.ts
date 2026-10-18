@@ -2261,6 +2261,21 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item's further uses that count their own, or more than 8 of them (1.466): a Staff of Thunder and
+ *  Lightning, a Helm of Brilliance. */
+function carriesOwnUses466(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOwnUses466(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.moreUses) &&
+    (record.moreUses.length > 8 || record.moreUses.some((one) => plainRecord(one)?.uses !== undefined))
+  )
+    return true;
+  return featureValues(record).some((one) => carriesOwnUses466(one, depth + 1));
+}
+
 /** A condition anybody next to its holder may end with their own check (1.465): dousing a fire. */
 function carriesCheckEndsByAny465(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6573,6 +6588,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Further uses with their own counts, or more than 8, 1.466.
+  if (
+    !declaresApi(466) &&
+    (carriesOwnUses466(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOwnUses466(document)))
+  ) {
+    return "A ruleset whose items have further uses that count their own, or more than 8 of them (moreUses uses), requires schemaVersion 2 and capabilityApi 1.466 or newer";
+  }
   // Conditions anybody next to the holder may end, 1.465.
   if (
     !declaresApi(465) &&

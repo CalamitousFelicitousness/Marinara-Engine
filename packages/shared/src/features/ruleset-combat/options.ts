@@ -2783,8 +2783,8 @@ function optionFrom(
   if (action.uses) option.left = rulesetActionUses(actor, action, state);
   if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
   if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
-  // What an item has left to use: its stack, or its charges.
-  if (action.itemUse && (action.itemUse.consumes || action.itemUse.charges)) {
+  // What an item has left to use: its stack, its charges, or a use's own (1.466).
+  if (action.itemUse && (action.itemUse.consumes || action.itemUse.charges || action.itemUse.ownUses)) {
     option.left = rulesetItemUseLeft(actor, action.itemUse);
   }
   if (action.offHandOf !== undefined) option.offHand = true;

@@ -76,8 +76,8 @@ export interface RulesetItemUseSaid {
   parts: RulesetItemUsePart[];
   /** What it does to somebody else, which the Engine leaves to the story. */
   aimed?: string;
-  /** What is left of it: how many in the stack, or its charges. */
-  left: { count: number } | { charges: number; max: number };
+  /** What is left of it: how many in the stack, its charges, or the uses of its own (1.466). */
+  left: { count: number } | { charges: number; max: number } | { uses: number; max: number };
   /** It spent its last charge and its `breaksOn` die said it breaks: the face rolled. */
   broke?: number;
   /** It spent its last charge and its `breaksOn` die gave some back (1.271): the face, and how many. */
@@ -110,6 +110,8 @@ export function useRulesetItemOutsideFight(input: {
   stackId: string;
   user: { name: string; build: RulesetSheetBuild; live: unknown };
   roll: (sides: number) => number;
+  /** One of its further uses (1.267), by its place in `moreUses` from 1; its first use without it. */
+  more?: number;
 }): RulesetItemUseOutcome {
   const { definition, stacks, user, roll } = input;
   const stack = stacks.find((each) => each.id === input.stackId);
@@ -117,17 +119,24 @@ export function useRulesetItemOutsideFight(input: {
   const entry = stack.item ? input.itemOf(stack.item) : undefined;
   const item = entry?.entry.item;
   if (!stack.item || !item) return { ok: false, reason: "not-ruleset-item" };
-  const use = item.use;
+  // One of its further uses, as its own menu choice in a fight is (1.267).
+  const chosen = input.more !== undefined ? item.moreUses?.[input.more - 1] : undefined;
+  if (input.more !== undefined && (!chosen || !item.use)) return { ok: false, reason: "no-use" };
+  const use = chosen?.use ?? item.use;
   if (!use) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
   if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(item))) return { ok: false, reason: "not-worn" };
-  const facts = rulesetItemFacts(definition, item).use;
+  const facts = rulesetItemFacts(definition, chosen ? { ...item, use } : item).use;
   const max = facts?.charges?.max;
   if (use.charges !== undefined) {
     if (max === undefined) return { ok: false, reason: "none-left" };
     const now = Math.min(max, stack.charges ?? max);
     if (now < use.charges) return { ok: false, reason: "none-left" };
   }
+  // Its own uses (1.466), kept on the stack by its place.
+  const own = chosen?.uses;
+  const ownNow = own ? Math.min(own.max, stack.usesLeft?.[String(input.more)] ?? own.max) : undefined;
+  if (ownNow !== undefined && ownNow < 1) return { ok: false, reason: "none-left" };
 
   // Its gate first, as a fight rolls it once the item is spent: failed, the item is spent below and
   // nothing it does happens. A difficulty read off a stat the item does not give is a use the Engine
@@ -283,6 +292,7 @@ export function useRulesetItemOutsideFight(input: {
       name: stack.name,
       taken: use.consumes || broke !== undefined ? 1 : 0,
       ...(after !== undefined ? { charges: after } : {}),
+      ...(ownNow !== undefined ? { usesLeft: { [String(input.more)]: ownNow - 1 } } : {}),
       ...(broke !== undefined ? { broke: true as const } : {}),
       ...(becomes ? { becomes } : {}),
     },
@@ -299,7 +309,7 @@ export function useRulesetItemOutsideFight(input: {
     live: live as RulesetLiveState,
     said: {
       user: user.name,
-      item: entry.name,
+      item: chosen ? `${entry.name}: ${chosen.label}` : entry.name,
       parts,
       ...(aimed ? { aimed } : {}),
       ...(broke !== undefined ? { broke } : {}),
@@ -307,9 +317,11 @@ export function useRulesetItemOutsideFight(input: {
       ...(becomes ? { becomes: { name: becomes.name, roll: cracked! } } : {}),
       ...(gate ? { gate } : {}),
       left:
-        after !== undefined && max !== undefined
-          ? { charges: after, max }
-          : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
+        ownNow !== undefined && own
+          ? { uses: ownNow - 1, max: own.max }
+          : after !== undefined && max !== undefined
+            ? { charges: after, max }
+            : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
     },
   };
 }
@@ -446,9 +458,11 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
           ? `Its last charge spent, it gets ${said.recharged.amount} back (a ${said.recharged.roll} on its die).`
           : "charges" in said.left
             ? `${said.left.charges} of ${said.left.max} charges left.`
-            : said.left.count > 0
-              ? `${said.left.count} left.`
-              : "None left.";
+            : "uses" in said.left
+              ? `${said.left.uses} of ${said.left.max} uses of it left.`
+              : said.left.count > 0
+                ? `${said.left.count} left.`
+                : "None left.";
   return `${said.user} uses ${said.item}: ${gate}${does}. ${left}`;
 }
 
@@ -457,6 +471,8 @@ export interface RulesetItemRecharge {
   item: string;
   now: number;
   max: number;
+  /** A further use's own uses (1.466), not the item's charges. */
+  uses?: true;
 }
 
 /**
@@ -479,22 +495,39 @@ export function rechargeRulesetItems(input: {
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return stack;
     const entry = input.itemOf(stack.item);
     const item = entry?.entry.item;
-    const recharge = item?.charges?.recharge;
-    if (!item || !recharge?.rests.includes(input.rest)) return stack;
-    const max = rulesetItemFacts(input.definition, item).use?.charges?.max;
-    if (max === undefined) return stack;
-    const before = Math.min(max, stack.charges ?? max);
-    if (before >= max) return stack;
-    let gained = max;
-    if (recharge.amount !== "max") {
-      const dice = recharge.amount.dice ? parseRulesetCombatDice(recharge.amount.dice) : null;
+    if (!item) return stack;
+    const gain = (amount: "max" | { dice?: string; flat?: number }, max: number) => {
+      if (amount === "max") return max;
+      const dice = amount.dice ? parseRulesetCombatDice(amount.dice) : null;
       const rolls = Array.from({ length: dice?.count ?? 0 }, () => input.roll(dice!.sides));
-      gained = rolls.reduce((sum, face) => sum + face, 0) + (dice?.flat ?? 0) + (recharge.amount.flat ?? 0);
-    }
-    const now = Math.max(before, Math.min(max, before + gained));
-    if (now === before) return stack;
+      return rolls.reduce((sum, face) => sum + face, 0) + (dice?.flat ?? 0) + (amount.flat ?? 0);
+    };
+    let next = stack;
+    // Each further use's own uses (1.466), on the rests its own recharge names.
+    item.moreUses?.forEach((more, n) => {
+      const own = more.uses;
+      const key = String(n + 1);
+      if (!own?.recharge?.rests.includes(input.rest)) return;
+      const before = Math.min(own.max, next.usesLeft?.[key] ?? own.max);
+      if (before >= own.max) return;
+      const now = Math.max(before, Math.min(own.max, before + gain(own.recharge.amount, own.max)));
+      if (now === before) return;
+      recharged.push({ item: `${entry!.name}: ${more.label}`, now, max: own.max, uses: true });
+      const { [key]: _was, ...others } = next.usesLeft ?? {};
+      const usesLeft = now >= own.max ? others : { ...others, [key]: now };
+      const { usesLeft: _usesLeft, ...plain } = next;
+      next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
+    });
+    const recharge = item.charges?.recharge;
+    if (!recharge?.rests.includes(input.rest)) return next;
+    const max = rulesetItemFacts(input.definition, item).use?.charges?.max;
+    if (max === undefined) return next;
+    const before = Math.min(max, next.charges ?? max);
+    if (before >= max) return next;
+    const now = Math.max(before, Math.min(max, before + gain(recharge.amount, max)));
+    if (now === before) return next;
     recharged.push({ item: entry!.name, now, max });
-    const { charges: _charges, ...rest } = stack;
+    const { charges: _charges, ...rest } = next;
     return now >= max ? rest : { ...rest, charges: now };
   });
   return { stacks: recharged.length > 0 ? stacks : [...input.stacks], recharged };
@@ -502,5 +535,7 @@ export function rechargeRulesetItems(input: {
 
 /** What a rest gave back, in words for the Game Master: "Dawn bell regains its charges (3 of 3)". */
 export function rulesetItemRechargeLine(recharged: readonly RulesetItemRecharge[]): string {
-  return recharged.map((entry) => `${entry.item} regains charges (${entry.now} of ${entry.max})`).join(", ");
+  return recharged
+    .map((entry) => `${entry.item} regains ${entry.uses ? "uses" : "charges"} (${entry.now} of ${entry.max})`)
+    .join(", ");
 }

@@ -16804,11 +16804,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         else if (!def.sheet.live.conditions.some((one) => one.id === id))
           issue([...path, "countsAs", at], `Unknown condition "${id}"`);
       });
-      // What ends it through its source (1.531): conditions, components and senses of the ruleset's.
+      // What ends it through its source (1.531): conditions, components and senses of the ruleset's. A
+      // sense is one it declares or one a condition's `lacks` takes away: 5e's deafened, `hearing`.
       const sourceRule = entry.endsWhenSource;
       if (sourceRule) {
         const knownComponents = new Set((combat.components ?? []).map((one) => one.id));
-        const knownSenses = new Set((combat.senses ?? []).map((one) => one.id));
+        const knownSenses = new Set([
+          ...(combat.senses ?? []).map((one) => one.id),
+          ...(combat.conditions ?? []).flatMap((one) => one.lacks ?? []),
+        ]);
         const knownConditions = new Set(def.sheet.live.conditions.map((one) => one.id));
         sourceRule.conditions?.forEach((id, at) => {
           if (!knownConditions.has(id))

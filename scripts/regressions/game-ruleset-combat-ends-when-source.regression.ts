@@ -44,7 +44,7 @@ try {
   };
   const document = (edit: (doc: any) => void = () => {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
-    doc.combat.senses = [{ id: "hearing", label: "Hearing" }];
+    // `hearing` is no declared sense: it is what deafness `lacks` (5e's own shape).
     doc.combat.components = [{ id: "verbal", label: "Verbal" }];
     for (const id of ["enthralled", "silenced", "deaf", "invisible_bard"])
       doc.sheet.live.conditions.push({ id, label: id });

@@ -8,6 +8,7 @@ import { checkClientBuild } from "../../check-client-build.mjs";
 import {
   resolveClientBuildHeapMb,
   resolveDesktopClientBuildHeapMb,
+  splitNodeOptions,
 } from "../../../packages/client/scripts/build-heap.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -46,8 +47,23 @@ assert.equal(
 assert.equal(
   desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--require ./x.cjs --max-old-space-size 1800" }),
   null,
-  "the flag with its value after a space is",
+  "the flag as its own option is (Node refuses a value after a space there; the build leaves it to Node)",
 );
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: '"--max-old-space-size=1024"' }),
+  null,
+  "and so is a quoted one, which Node reads as the same option",
+);
+// NODE_OPTIONS read as Node reads it: quotes group an option, spaces included, and a backslash inside
+// them keeps the next character.
+assert.deepEqual(splitNodeOptions('--require "./my hooks/x.cjs"  --max-old-space-size=900'), [
+  "--require",
+  "./my hooks/x.cjs",
+  "--max-old-space-size=900",
+]);
+assert.deepEqual(splitNodeOptions('"--title=a \\"b\\""'), ['--title=a "b"']);
+assert.deepEqual(splitNodeOptions('  ""  '), [""], "an empty quoted option is still one");
+assert.deepEqual(splitNodeOptions(""), []);
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {

@@ -29,6 +29,35 @@ export function resolveClientBuildHeapMb({ lowMemory, env = process.env, totalMe
 const DESKTOP_BUILD_HEAP_TARGET_MB = 3072;
 
 /**
+ * NODE_OPTIONS split into options as Node reads it: whitespace separates them, double quotes group
+ * one (spaces included), and a backslash inside quotes takes the next character as it is.
+ */
+export function splitNodeOptions(nodeOptions) {
+  const options = [];
+  let current = "";
+  let quoted = false;
+  let started = false;
+  for (let index = 0; index < nodeOptions.length; index += 1) {
+    const char = nodeOptions[index];
+    if (quoted && char === "\\" && index + 1 < nodeOptions.length) {
+      current += nodeOptions[(index += 1)];
+    } else if (char === '"') {
+      quoted = !quoted;
+      started = true;
+    } else if (!quoted && /\s/u.test(char)) {
+      if (started) options.push(current);
+      current = "";
+      started = false;
+    } else {
+      current += char;
+      started = true;
+    }
+  }
+  if (started) options.push(current);
+  return options;
+}
+
+/**
  * The heap (MiB) a desktop client build runs with, or null to keep the inherited limit: when Node's
  * own default is already enough, or when NODE_OPTIONS already sets a heap (the user's, which wins).
  */
@@ -37,9 +66,10 @@ export function resolveDesktopClientBuildHeapMb({
   totalMemoryBytes = totalmem(),
   defaultHeapMb = Math.floor(getHeapStatistics().heap_size_limit / 1024 / 1024),
 } = {}) {
-  // The flag itself, as its own option (not the same words inside a --require path), however its
-  // name is spelled: Node reads - and _ in option names alike.
-  if (/(?:^|\s)--max[-_]old[-_]space[-_]size(?:[=\s]|$)/u.test(env.NODE_OPTIONS ?? "")) return null;
+  // The flag itself, as one of the options Node reads (quoted or not; not the same words inside a
+  // --require path), however its name is spelled: Node reads - and _ in option names alike.
+  const options = splitNodeOptions(env.NODE_OPTIONS ?? "");
+  if (options.some((option) => /^--max[-_]old[-_]space[-_]size(?:=|$)/u.test(option))) return null;
   const deviceCapMb = Math.floor(totalMemoryBytes / 1024 / 1024 / 2 / 128) * 128;
   const heapMb = Math.min(DESKTOP_BUILD_HEAP_TARGET_MB, deviceCapMb);
   return heapMb > defaultHeapMb ? heapMb : null;

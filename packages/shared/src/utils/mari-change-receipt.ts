@@ -306,6 +306,7 @@ export function buildMariChangeExcerpts(input: {
   children?: ReadonlyArray<{ field: string; change: MariDbRowChange }>;
 }): { changes: MariChangeExcerpt[]; moreChanges: number } {
   const changes: MariChangeExcerpt[] = [];
+  let unshown = 0;
   const direct = input.direct;
   if (direct?.after) {
     const nested = isRecord(direct.after.data);
@@ -318,7 +319,11 @@ export function buildMariChangeExcerpts(input: {
     const rank = (key: string) => (FIELD_ORDER.includes(key) ? FIELD_ORDER.indexOf(key) : FIELD_ORDER.length);
     keys.sort((a, b) => rank(a) - rank(b));
     for (const key of keys) {
-      changes.push(...fieldExcerpts(key, before?.[key], after[key]));
+      const excerpts = fieldExcerpts(key, before?.[key], after[key]);
+      // A change the card cannot draw (a list whose only difference is its order) still counts, so
+      // the field never disappears from an applied receipt.
+      if (excerpts.length === 0) unshown += 1;
+      changes.push(...excerpts);
     }
   }
   const lists = new Map<
@@ -341,7 +346,7 @@ export function buildMariChangeExcerpts(input: {
   }
   // A created record leads with its text and lists (what it is), then its switches and numbers.
   if (!direct?.before) changes.sort((a, b) => Number(a.kind === "value") - Number(b.kind === "value"));
-  return capChanges(changes, 0);
+  return capChanges(changes, unshown);
 }
 
 function capChanges(changes: MariChangeExcerpt[], moreChanges: number) {

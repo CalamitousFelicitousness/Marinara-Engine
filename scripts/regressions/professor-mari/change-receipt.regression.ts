@@ -316,6 +316,22 @@ const addedNested = addedOnboarding?.changes?.find((change) => change.field === 
 assert.ok(addedNested?.kind === "nested");
 assert.deepEqual(addedNested.keys, ["description", "variables", "cardVariables"]);
 
+// A list whose only difference is its order cannot be drawn: it still counts, so the receipt is not empty.
+const reordered = buildMariWorkspaceActionResult(
+  "preset.update",
+  applied([
+    {
+      table: "prompt_presets",
+      id: "reorder",
+      action: "update",
+      before: { id: "reorder", name: "Reorder", parameters: { stopStrings: ["a", "b"] } },
+      after: { id: "reorder", name: "Reorder", parameters: { stopStrings: ["b", "a"] } },
+    },
+  ]),
+);
+assert.equal(reordered?.changes?.length, 0, "an order-only list change has no excerpt");
+assert.equal(reordered?.moreChanges, 1, "but it is still counted as changed");
+
 // Any other deeper object gets the general fallback: its changed keys by name.
 const plugin = buildMariWorkspaceActionResult(
   "character.update",

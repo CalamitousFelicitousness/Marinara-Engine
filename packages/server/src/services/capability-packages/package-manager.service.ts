@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition held off while its holder holds others or cannot move (1.475): Cloak of Displacement. */
+function carriesHeldOffWhile475(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldOffWhile475(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.heldOffWhile !== undefined) return true;
+  return featureValues(record).some((one) => carriesHeldOffWhile475(one, depth + 1));
+}
+
 /** A condition that answers whoever touches its holder (1.474): an azer's Heated Body. */
 function carriesTouches474(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6681,6 +6691,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition held off while others hold, 1.475.
+  if (
+    !declaresApi(475) &&
+    (carriesHeldOffWhile475(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldOffWhile475(document)))
+  ) {
+    return "A ruleset whose conditions are held off while their holder holds others or does what they name (heldOffWhile) requires schemaVersion 2 and capabilityApi 1.475 or newer";
+  }
   // A condition answering a touch, 1.474.
   if (
     !declaresApi(474) &&

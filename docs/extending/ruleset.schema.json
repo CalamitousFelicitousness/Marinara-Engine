@@ -116361,6 +116361,58 @@
                 "minItems": 1,
                 "maxItems": 12
               },
+              "heldOffWhile": {
+                "type": "object",
+                "properties": {
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "own-attacks-advantage",
+                        "own-attacks-disadvantage",
+                        "attacks-against-advantage",
+                        "attacks-against-disadvantage",
+                        "attacks-against-no-advantage",
+                        "attacks-against-adjacent-advantage",
+                        "attacks-against-far-disadvantage",
+                        "attacks-from-adjacent-critical",
+                        "criticals-against-normal",
+                        "cannot-act",
+                        "cannot-react",
+                        "speed-zero",
+                        "half-move-to-stand",
+                        "ends-on-damage",
+                        "own-saves-advantage",
+                        "own-saves-disadvantage",
+                        "own-checks-advantage",
+                        "own-checks-disadvantage",
+                        "resist-all",
+                        "cannot-target-source",
+                        "cannot-target-source-side",
+                        "cannot-approach-source",
+                        "cannot-heal",
+                        "cannot-heal-nonmagical",
+                        "cannot-harm"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "suppresses": {
                 "type": "array",
                 "items": {

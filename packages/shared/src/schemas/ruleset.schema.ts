@@ -11261,6 +11261,20 @@ const combatConditionSchema = z
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:
      *  `["water"]`. */
     whileOffTerrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+    /** Held off, not ended, while its holder holds one of `conditions`, or another condition on them
+     *  does one of `effects` (Capability API 1.475); it holds again once neither is so. 5e's Cloak
+     *  of Displacement, "suppressed while you are incapacitated, restrained, or otherwise unable to
+     *  move": `{ "conditions": ["restrained"], "effects": ["cannot-act", "speed-zero"] }`. */
+    heldOffWhile: z
+      .object({
+        conditions: z.array(sheetId).min(1).max(12).optional(),
+        effects: z.array(combatConditionEffectSchema).min(1).max(12).optional(),
+      })
+      .strict()
+      .refine((rule) => rule.conditions || rule.effects, {
+        message: 'Say what holds it off: "conditions", "effects" or both',
+      })
+      .optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API
      *  1.275): what they do stops and their clocks run on, and they hold again once this ends.
      *  Calm Emotions' charm and fright, Mindless Rage's. */
@@ -16222,6 +16236,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
       entry.suppresses?.forEach((held, heldIndex) => {
         if (!conditions.has(held)) issue([...path, "suppresses", heldIndex], `Unknown condition "${held}"`);
+      });
+      entry.heldOffWhile?.conditions?.forEach((held, heldIndex) => {
+        if (!conditions.has(held)) {
+          issue([...path, "heldOffWhile", "conditions", heldIndex], `Unknown condition "${held}"`);
+        } else if (held === entry.condition) {
+          issue([...path, "heldOffWhile", "conditions", heldIndex], "A condition is held off by others, not itself");
+        }
       });
       // A shape (1.342): its revert's budget, and the saves it keeps, are the ruleset's own.
       if (entry.shape?.revert && !combat.economy.budgets.some((budget) => budget.id === entry.shape!.revert)) {

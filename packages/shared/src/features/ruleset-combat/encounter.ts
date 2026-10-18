@@ -621,6 +621,24 @@ export function rulesetActiveConditions(
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
   });
+  // Held off while its holder holds another, or another does what it names (1.475): Cloak of
+  // Displacement's, while they are restrained or cannot move. Read off the others before any is.
+  if (conditions.some((entry) => entry.heldOffWhile)) {
+    const others = [...conditions];
+    for (let at = conditions.length - 1; at >= 0; at -= 1) {
+      const rule = conditions[at]!.heldOffWhile;
+      if (!rule) continue;
+      const own = conditions[at]!.condition;
+      const off = others.some(
+        (other) =>
+          other.condition !== own &&
+          !other.heldOffWhile &&
+          (rule.conditions?.includes(other.condition) ||
+            other.effects.some((effect) => rule.effects?.includes(effect))),
+      );
+      if (off) conditions.splice(at, 1);
+    }
+  }
   const held = heldSources(definition, combatant, hush);
   // Held off, not ended, by another that holds (1.275): Calm Emotions' charm and fright. Or by an
   // item (1.424): the Periapt of Health's diseases.

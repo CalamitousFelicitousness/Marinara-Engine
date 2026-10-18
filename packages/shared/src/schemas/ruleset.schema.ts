@@ -10772,6 +10772,12 @@ const combatConditionSchema = z
      *  modifier more, to the long jump only with `long`: Remarkable Athlete (Strength, long) and
      *  Second-Story Work (Dexterity). */
     jumps: conditionJumpsSchema.optional(),
+    /** Its holder's dying rolls are made with this (Capability API 1.447): 5e's Beacon of Hope,
+     *  `"advantage"`. */
+    deathSaves: z.enum(["advantage", "disadvantage"]).optional(),
+    /** Healing its holder gets is at its most (Capability API 1.447), every die of it its highest
+     *  face: 5e's Beacon of Hope. */
+    healedMax: z.literal(true).optional(),
     /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
      *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
      *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */
@@ -11642,7 +11648,20 @@ const combatConcentrationSchema = z
   .strict();
 
 /** What happens to a character at zero. A ruleset without this block simply has them go down. */
-const combatDyingSchema = z.discriminatedUnion("kind", [
+/** How a combatant down at 0 lives or dies: see the combat block's `dying`. */
+export interface RulesetCombatDyingSaves {
+  kind: "saves";
+  successes: string;
+  failures: string;
+  dice: { count: number; sides: number };
+  succeedAt: number;
+  naturals: { max: "revive-1" | "success" | "none"; min: "two-failures" | "one-failure" | "none" };
+  damageWhileDown: "one-failure" | "two-failures" | "none";
+  criticalWhileDown: "one-failure" | "two-failures" | "none";
+  condition?: string;
+  asSave?: true;
+}
+const combatDyingSchema: z.ZodType<RulesetCombatDyingSaves, z.ZodTypeDef, unknown> = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("saves"),
@@ -11662,6 +11681,10 @@ const combatDyingSchema = z.discriminatedUnion("kind", [
       criticalWhileDown: z.enum(["one-failure", "two-failures", "none"]).default("none"),
       /** The condition a character is in while they are down, when the sheet declares one. */
       condition: sheetId.optional(),
+      /** The dying roll is a save (Capability API 1.447): what changes every save of its holder's,
+       *  narrowed to none, changes it too, its numbers and its advantage alike. 5e's death saving
+       *  throw, which Bless and a paladin's Aura of Protection add to. */
+      asSave: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -16024,7 +16047,7 @@ export type RulesetCombatDistance = NonNullable<RulesetCombat["distance"]>;
 /** A distance carried by one column of an attack list, or the same on every row of it. */
 export type RulesetCombatDistanceSource = z.infer<typeof combatDistanceSourceSchema>;
 export type RulesetCombatConcentration = NonNullable<RulesetCombat["concentration"]>;
-export type RulesetCombatDying = NonNullable<RulesetCombat["dying"]>;
+export type RulesetCombatDying = RulesetCombatDyingSaves;
 export type RulesetCombatThreatTier = NonNullable<RulesetCombat["threat"]>["tiers"][number];
 /** Where a community ruleset was imported from. `url` is null for a file the user picked. */
 export type CommunityRulesetSource = { kind: "repository" | "local"; url: string | null };

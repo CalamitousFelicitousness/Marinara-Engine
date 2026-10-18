@@ -1327,7 +1327,7 @@ export function rulesetCombatEventLine(
       if (event.result === "revived") return key("dyingRevived", { actor: names.combatant(event.actorId) });
       return key(event.result === "success" ? "dyingSuccess" : "dyingFailure", {
         actor: names.combatant(event.actorId),
-        roll: rulesetRollText({ ...event, modifier: 0, total: event.kept }, t),
+        roll: rulesetRollText({ ...event, modifier: 0, total: event.total ?? event.kept }, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
         successes: event.successes,
         failures: event.failures,

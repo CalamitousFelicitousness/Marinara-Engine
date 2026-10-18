@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Dying rolls made as saves, and conditions on them or on healing (1.447): Beacon of Hope. */
+function carriesDeathSaves447(ruleset: unknown, depth = 0): boolean {
+  const record = plainRecord(ruleset);
+  if (depth === 0 && plainRecord(plainRecord(record?.combat)?.dying)?.asSave !== undefined) return true;
+  if (!ruleset || depth > 40) return false;
+  if (Array.isArray(ruleset)) return ruleset.some((one) => carriesDeathSaves447(one, depth + 1));
+  if (!record) return false;
+  if (record.condition !== undefined && (record.deathSaves !== undefined || record.healedMax !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesDeathSaves447(one, depth + 1));
+}
+
 /** Jumping (1.446): the combat block's jumping, or a condition whose holder jumps further. */
 function carriesJumping446(ruleset: unknown, depth = 0): boolean {
   const record = plainRecord(ruleset);
@@ -6360,6 +6372,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Dying rolls made as saves, and conditions on them or on healing, 1.447.
+  if (
+    !declaresApi(447) &&
+    (carriesDeathSaves447(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDeathSaves447(document, 1)))
+  ) {
+    return "A ruleset whose dying rolls are saves, or whose conditions change them or healing (dying asSave, deathSaves, healedMax), requires schemaVersion 2 and capabilityApi 1.447 or newer";
+  }
   // Jumping, 1.446.
   if (
     !declaresApi(446) &&

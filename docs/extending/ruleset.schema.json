@@ -112919,6 +112919,17 @@
                 },
                 "additionalProperties": false
               },
+              "deathSaves": {
+                "type": "string",
+                "enum": [
+                  "advantage",
+                  "disadvantage"
+                ]
+              },
+              "healedMax": {
+                "type": "boolean",
+                "const": true
+              },
               "shapeKeeps": {
                 "type": "array",
                 "items": {
@@ -124402,6 +124413,10 @@
                   "type": "string",
                   "maxLength": 40,
                   "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "asSave": {
+                  "type": "boolean",
+                  "const": true
                 },
                 "$comment": {}
               },

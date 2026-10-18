@@ -3229,6 +3229,11 @@ export type RulesetCombatEvent =
       actorId: string;
       rolls: number[];
       kept: number;
+      /** Rolled twice (1.447): Beacon of Hope. */
+      mode?: RulesetCombatRollMode;
+      /** What was added to it as a save, and its total with them (1.447): Bless. */
+      bonuses?: RulesetConditionBonus[];
+      total?: number;
       difficulty: number;
       successes: number;
       failures: number;

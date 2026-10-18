@@ -54,6 +54,7 @@ import {
   rulesetStaysHidden,
 } from "./sight.js";
 import {
+  rulesetCombatAdvantage,
   rulesetCombatIsPool,
   rulesetCombatPenalty,
   rulesetSoakOf,
@@ -1242,6 +1243,21 @@ function magicalAction(action: RulesetCombatAction): boolean {
   return (action.qualities ?? action.damage?.qualities)?.includes("magical") === true;
 }
 
+/** Whether healing this combatant gets is at its most (1.447): Beacon of Hope. */
+function healedMax(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
+  return rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.healedMax);
+}
+
+/** Healing rolled for somebody, at its most where they are healed at it (1.447). */
+function rollHealing(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  amount: RulesetCombatAmount,
+  extra?: { amount: RulesetCombatAmount; times: number },
+): { rolls: number[]; flat: number; total: number } {
+  return healedMax(ctx, target) ? maxAmount(amount, extra) : rollAmount(ctx, amount, extra);
+}
+
 function dealHeal(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -1795,8 +1811,34 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
 function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const dying = ctx.combat.dying;
   if (!dying) return;
-  const rolls = rollRulesetDice(ctx.roll, dying.dice.count, dying.dice.sides);
-  const kept = sumOf(rolls);
+  // Rolled twice where a condition says (1.447): Beacon of Hope; and, as a save, as every save is.
+  const leans = new Set(
+    rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).flatMap((entry) =>
+      entry.deathSaves ? [entry.deathSaves] : [],
+    ),
+  );
+  const lean = leans.size === 1 ? [...leans][0] : undefined;
+  const mode =
+    leans.size > 1
+      ? "normal"
+      : dying.asSave
+        ? rulesetSaveMode(ctx.definition, ctx.combat, actor, "", ctx.state, undefined, lean)
+        : rulesetCombatAdvantage(ctx.combat)
+          ? (lean ?? "normal")
+          : "normal";
+  const first = rollRulesetDice(ctx.roll, dying.dice.count, dying.dice.sides);
+  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dying.dice.count, dying.dice.sides);
+  const rolls = second ? [...first, ...second] : first;
+  const kept = second
+    ? mode === "advantage"
+      ? Math.max(sumOf(first), sumOf(second))
+      : Math.min(sumOf(first), sumOf(second))
+    : sumOf(first);
+  // What adds to every save adds to it as a save (1.447): Bless.
+  const bonuses = dying.asSave
+    ? rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "saves", ctx.state, ""), actor)
+    : [];
+  const total = kept + bonusTotal(bonuses);
   const single = dying.dice.count === 1;
   const top = single && kept === dying.dice.sides;
   const bottom = single && kept === 1;
@@ -1806,6 +1848,8 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
       actorId: actor.id,
       rolls,
       kept,
+      ...(mode === "normal" ? {} : { mode }),
+      ...(bonuses.length > 0 ? { bonuses, total } : {}),
       difficulty: dying.succeedAt,
       successes: trackValue(ctx, actor, dying.successes),
       failures: trackValue(ctx, actor, dying.failures),
@@ -1822,7 +1866,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (bottom && dying.naturals.min === "two-failures") failures = 2;
   else if (bottom && dying.naturals.min === "one-failure") failures = 1;
   else if (top && dying.naturals.max === "success") successes = 1;
-  else if (kept >= dying.succeedAt) successes = 1;
+  else if (total >= dying.succeedAt) successes = 1;
   else failures = 1;
 
   if (failures > 0) {
@@ -8309,7 +8353,7 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
         if (one.atMostHalf && health.value > Math.floor(health.max / 2)) continue;
         if (health.value >= health.max) continue;
         const dice = one.dice ? parseRulesetCombatDice(one.dice) : null;
-        const rolled = rollAmount(ctx, {
+        const rolled = rollHealing(ctx, actor, {
           count: dice?.count ?? 0,
           sides: dice?.sides ?? 0,
           flat: (dice?.flat ?? 0) + (one.flat ?? 0),
@@ -12157,7 +12201,7 @@ function resolveActionBody(
       if (!saved && action.slaysOnFailedSave) {
         slay(ctx, target, actor.id, action.label);
         if (action.healsOnSlay && target.defeated) {
-          const thrown = rollAmount(ctx, action.healsOnSlay);
+          const thrown = rollHealing(ctx, actor, action.healsOnSlay);
           dealHeal(ctx, actor, { sourceId: actor.id, rolls: thrown.rolls, flat: thrown.flat, amount: thrown.total });
         }
         spendUsed();
@@ -12704,7 +12748,7 @@ function resolveActionBody(
       target.down = true;
       target.dying = false;
       target.stable = false;
-      const rolled = rollAmount(ctx, action.revives.amount);
+      const rolled = rollHealing(ctx, target, action.revives.amount);
       dealHeal(ctx, target, {
         sourceId: actor.id,
         rolls: rolled.rolls,
@@ -12733,7 +12777,7 @@ function resolveActionBody(
     if (action.endsSpells)
       endSpellsOn(ctx, actor, action, target, rulesetPaidLevel(ctx.definition, actor, action, payWith));
     if (heal) {
-      const rolled = heal();
+      const rolled = healing && !action.healsMax && healedMax(ctx, target) ? maxAmount(healing, extra) : heal();
       dealHeal(ctx, target, {
         sourceId: actor.id,
         rolls: rolled.rolls,

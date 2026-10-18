@@ -507,6 +507,28 @@ export function rulesetSectionGroups<T extends { section?: string }>(
  *  reads; without it they read 0, which is right only where the format refuses them (a maximum, the
  *  proficiency bonus, a catalog's scaling). Anything a player or the Game Master sees, and anything a
  *  check or a fight reads, goes through `evaluateRulesetSheetLive`, which supplies it. */
+/** A creature's own scores as the conditions it holds change them (1.462), as a sheet's are: for a
+ *  stat block with no sheet. A score past the sheet's most stays where it was printed. */
+export function rulesetChangedAbilityScores(
+  definition: RulesetDefinition,
+  scores: Readonly<Record<string, number>>,
+  conditions: ReadonlyArray<Readonly<RulesetConditionAbilities>>,
+): Record<string, number> {
+  const changes = itemAbilityChanges(undefined, conditions);
+  const out = { ...scores };
+  for (const ability of definition.sheet.abilities) {
+    const base = scores[ability.id];
+    const change = changes.get(ability.id);
+    if (base === undefined || !change) continue;
+    const most = Math.max(ability.max, base);
+    let score = Math.min(most, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)));
+    for (const top of change.topped) score = Math.max(score, Math.min(score + top.add, top.max, most));
+    if (change.to !== undefined) score = Math.min(most, Math.max(ability.min, change.to));
+    out[ability.id] = score;
+  }
+  return out;
+}
+
 export function evaluateRulesetSheet(
   definition: RulesetDefinition,
   stored: RulesetSheetBuild,

@@ -199,6 +199,38 @@ try {
     assert.equal(after.amount, before.amount + 5, "+5 damage, though the sheet holds it too");
   }
   {
+    // On a stat block with no sheet: Feeblemind on a monster, its scores and its saves.
+    const state = fight();
+    const foe = rulesetCombatant(state, "foe")!;
+    foe.block = { ...foe.block!, abilities: { str: 10, int: 18, cha: 14 }, saves: { int_save: 6 } };
+    foe.saves = { int_save: 6 };
+    foe.tracked.push({ condition: "feebleminded", rounds: null, source: "hero" });
+    const settled = applyRulesetCombatChoice(
+      definition,
+      state,
+      { actorId: "hero", optionId: "end-turn", targetIds: [] },
+      () => 10,
+    ).state;
+    const now = rulesetCombatant(settled, "foe")!;
+    assert.deepEqual(now.abilityConditions, ["feebleminded"]);
+    assert.equal(rulesetAbilityScore(definition, now, "int"), 1);
+    assert.equal(rulesetAbilityScore(definition, now, "cha"), 1);
+    assert.equal(now.saves.int_save, 6 - 9, "from +4 to -5");
+    assert.equal(now.saves.cha_save, -7, "from +2 to -5, though it printed none");
+    assert.equal(now.saves.str_save, undefined, "and nothing else");
+    now.tracked = now.tracked.filter((one) => one.condition !== "feebleminded");
+    const ended = applyRulesetCombatChoice(
+      definition,
+      settled,
+      { actorId: settled.order[settled.turn]!, optionId: "end-turn", targetIds: [] },
+      () => 10,
+    ).state;
+    const back = rulesetCombatant(ended, "foe")!;
+    assert.equal(back.abilityScores, undefined);
+    assert.equal(back.saves.int_save, 6, "back as printed");
+    assert.equal(rulesetAbilityScore(definition, back, "int"), 18);
+  }
+  {
     // Drunk before the fight, on the sheet: the fight starts with it.
     const state = fight({ conditions: ["giant_strength"] });
     assert.equal(rulesetAbilityScore(definition, hero(state), "str"), 21);

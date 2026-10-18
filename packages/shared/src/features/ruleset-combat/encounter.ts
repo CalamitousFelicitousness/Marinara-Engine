@@ -65,6 +65,8 @@ import {
   type RulesetCheckTarget,
   type RulesetSheetItem,
   type RulesetStoredEntry,
+  rulesetAbilityModifier,
+  rulesetChangedAbilityScores,
 } from "../rulesets/sheet-math.js";
 import {
   findRulesetCreatureEntry,
@@ -947,7 +949,7 @@ export function rulesetAbilityScore(
       ).abilityScores[ability];
     return resolveRulesetValueRef(definition, combatant.sheet.build, { abilityScore: ability } as RulesetValueRef);
   }
-  return combatant.block?.abilities?.[ability];
+  return combatant.abilityScores?.[ability] ?? combatant.block?.abilities?.[ability];
 }
 
 /** What a fighter's items do, as they hold them in this fight: see `rulesetItemSources`. A requirement
@@ -6353,7 +6355,7 @@ export function rulesetSyncAbilities(
   const changed: string[] = [];
   for (const combatant of state.combatants) {
     const sheet = combatant.sheet;
-    if (!sheet) continue;
+    if (!sheet && !combatant.block?.abilities) continue;
     const ids = [
       ...new Set(
         rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) =>
@@ -6362,6 +6364,13 @@ export function rulesetSyncAbilities(
       ),
     ].sort();
     if (ids.join("|") === (combatant.abilityConditions ?? []).join("|")) continue;
+    // A stat block with no sheet (1.462): its scores changed, and its saves and checks by what that
+    // does to their modifiers. Feeblemind on a monster.
+    if (!sheet) {
+      syncBlockAbilities(definition, combat, combatant, ids);
+      changed.push(combatant.id);
+      continue;
+    }
     const before = combatant.abilityConditions;
     if (ids.length) combatant.abilityConditions = ids;
     else delete combatant.abilityConditions;
@@ -6401,6 +6410,41 @@ export function rulesetSyncAbilities(
     changed.push(combatant.id);
   }
   return changed;
+}
+
+/** A stat block's scores, saves and checks as the conditions `ids` change its abilities (1.462): each
+ *  save and each check that reads an ability's modifier moves by as much as that modifier does. */
+function syncBlockAbilities(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  ids: string[],
+): void {
+  const block = combatant.block!;
+  const printed = block.abilities ?? {};
+  if (ids.length) combatant.abilityConditions = ids;
+  else delete combatant.abilityConditions;
+  const changes = (combat.conditions ?? []).flatMap((entry) =>
+    entry.abilities && ids.includes(entry.condition) ? [entry.abilities] : [],
+  );
+  const now = rulesetChangedAbilityScores(definition, printed, changes);
+  if (ids.length) combatant.abilityScores = now;
+  else delete combatant.abilityScores;
+  const moved = (ability: string | undefined) =>
+    ability !== undefined && printed[ability] !== undefined && now[ability] !== undefined
+      ? rulesetAbilityModifier(definition, now[ability]) - rulesetAbilityModifier(definition, printed[ability])
+      : 0;
+  for (const save of definition.sheet.saves) {
+    const by = moved(save.ability);
+    if (by !== 0 || block.saves?.[save.id] !== undefined || combatant.saves[save.id] !== undefined) {
+      combatant.saves[save.id] = (block.saves?.[save.id] ?? 0) + by;
+    }
+  }
+  if (combatant.checks) {
+    for (const check of combat.checks ?? []) {
+      combatant.checks[check.id] = (block.checks?.[check.id] ?? 0) + moved(check.value.abilityMod);
+    }
+  }
 }
 
 export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetEncounterState): string[] {

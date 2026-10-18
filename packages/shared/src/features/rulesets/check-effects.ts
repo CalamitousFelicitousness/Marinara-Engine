@@ -13,6 +13,7 @@ import type {
   RulesetContextualCheck,
   RulesetContextualCost,
   RulesetCombatCondition,
+  RulesetConditionJumps,
   RulesetCreatureHideEntry,
   RulesetDefinition,
   RulesetItemUse,
@@ -103,6 +104,10 @@ export interface RulesetCheckSource {
   suppresses?: readonly string[];
   /** Hard going costs no more than plain ground (Capability API 1.436 on an item). */
   ignoresHardGround?: true;
+  /** How much further its holder jumps (Capability API 1.460 on an item). */
+  jumps?: Readonly<RulesetConditionJumps>;
+  /** The conditions it keeps on its holder in a fight (Capability API 1.460 on an item). */
+  keepsOn?: readonly string[];
   /** Conditions kept off by who or what would put them on (Capability API 1.433 on an item). */
   conditionImmunitiesFrom?: readonly RulesetConditionImmunityFrom[];
   /** What entries of these catalogs put on its holder does not lower their speed (Capability API 1.433). */

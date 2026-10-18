@@ -2261,6 +2261,20 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item worn or carried that keeps conditions on its holder or lengthens their jumps (1.460):
+ *  an Ioun Stone of Awareness, Boots of Striding and Springing. */
+function carriesItemKeepsOn460(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemKeepsOn460(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const key of ["worn", "carried"]) {
+    const effect = plainRecord(record[key]);
+    if (effect && (effect.keepsOn !== undefined || effect.jumps !== undefined)) return true;
+  }
+  return featureValues(record).some((one) => carriesItemKeepsOn460(one, depth + 1));
+}
+
 /** A breath rule for creatures that breathe only water (1.459): a shark out of the sea. */
 function carriesWaterOnly459(ruleset: unknown): boolean {
   const combat = plainRecord(plainRecord(ruleset)?.combat);
@@ -6509,6 +6523,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items that keep conditions on or lengthen jumps, 1.460.
+  if (
+    !declaresApi(460) &&
+    (carriesItemKeepsOn460(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemKeepsOn460(document)))
+  ) {
+    return "A ruleset whose items keep conditions on their holder or lengthen their jumps (an item effect's keepsOn or jumps) requires schemaVersion 2 and capabilityApi 1.460 or newer";
+  }
   // Breathing only water, 1.459.
   if (!declaresApi(459) && carriesWaterOnly459(ruleset)) {
     return "A ruleset whose creatures breathe only water (underwater breath waterOnly) requires schemaVersion 2 and capabilityApi 1.459 or newer";

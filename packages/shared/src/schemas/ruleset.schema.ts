@@ -11475,6 +11475,13 @@ export const rulesetItemEffectSchema = z
     /** Conditions its holder may slip free of for some of their walk, as a condition's (Capability
      *  API 1.433). */
     slipsFree: slipsFreeSchema.optional(),
+    /** Its holder jumps further, as a condition's `jumps` (Capability API 1.460): 5e's Boots of
+     *  Striding and Springing, `{ "times": 3 }`. */
+    jumps: conditionJumpsSchema.optional(),
+    /** The sheet's own conditions on its holder for as long as this applies (Capability API 1.460),
+     *  never written to the sheet: 5e's Ioun Stone of Awareness, Ring of Water Walking, Cloak of
+     *  Displacement, each a condition that does what the item says. */
+    keepsOn: uniqueIds(4).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -11494,13 +11501,15 @@ export const rulesetItemEffectSchema = z
       !entry.conditionImmunitiesFrom &&
       !entry.speedKeptFrom &&
       !entry.slipsFree &&
-      !entry.ignoresHardGround
+      !entry.ignoresHardGround &&
+      !entry.jumps &&
+      !entry.keepsOn
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, or a walk it keeps or slips free with",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens or conditions it keeps on",
       });
     }
     if (abilities.length > 12) {
@@ -17863,6 +17872,13 @@ function itemHideIssues(
     if (!conditions.has(condition) && !kinds.has(condition))
       add([...at, "suppresses", index], `Unknown condition "${condition}"`);
   });
+  // What it keeps on (1.460) is the sheet's own conditions, and a jump reads one of its abilities.
+  effect.keepsOn?.forEach((condition, index) => {
+    if (!conditions.has(condition)) add([...at, "keepsOn", index], `Unknown condition "${condition}"`);
+  });
+  const jumpAbility = effect.jumps?.plus?.ability;
+  if (jumpAbility !== undefined && !definition.sheet.abilities.some((one) => one.id === jumpAbility))
+    add([...at, "jumps", "plus", "ability"], `Unknown ability "${jumpAbility}"`);
   freedomIssues(definition, effect, at, add);
 }
 

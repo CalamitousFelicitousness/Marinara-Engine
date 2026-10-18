@@ -64145,6 +64145,47 @@
                           ],
                           "additionalProperties": false
                         },
+                        "jumps": {
+                          "type": "object",
+                          "properties": {
+                            "times": {
+                              "type": "integer",
+                              "minimum": 2,
+                              "maximum": 10
+                            },
+                            "plus": {
+                              "type": "object",
+                              "properties": {
+                                "ability": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "long": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "ability"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "keepsOn": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -65626,6 +65667,47 @@
                             "cost"
                           ],
                           "additionalProperties": false
+                        },
+                        "jumps": {
+                          "type": "object",
+                          "properties": {
+                            "times": {
+                              "type": "integer",
+                              "minimum": 2,
+                              "maximum": 10
+                            },
+                            "plus": {
+                              "type": "object",
+                              "properties": {
+                                "ability": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "long": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "ability"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
+                        "keepsOn": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
                         },
                         "$comment": {}
                       },
@@ -67295,6 +67377,47 @@
                                   "cost"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "jumps": {
+                                "type": "object",
+                                "properties": {
+                                  "times": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 10
+                                  },
+                                  "plus": {
+                                    "type": "object",
+                                    "properties": {
+                                      "ability": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "long": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "ability"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "keepsOn": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
                               },
                               "$comment": {}
                             },

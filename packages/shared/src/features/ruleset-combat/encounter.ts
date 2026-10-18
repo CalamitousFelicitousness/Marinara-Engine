@@ -415,6 +415,9 @@ export function rulesetCombatConditions(definition: RulesetDefinition, combatant
   if (combatant.sheet) {
     const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
     for (const condition of live.conditions) if (condition.active) ids.add(condition.id);
+    // And what their items keep on them (1.460), for as long as each is worn or carried.
+    if (combatant.sheet.items?.length)
+      for (const source of heldSources(definition, combatant)) for (const id of source.keepsOn ?? []) ids.add(id);
   }
   return [...ids];
 }
@@ -624,6 +627,14 @@ export function rulesetActiveConditions(
       : {}),
     ...(source.speedKeptFrom ? { speedKeptFrom: { catalogs: [...source.speedKeptFrom.catalogs] } } : {}),
     ...(source.ignoresHardGround ? { ignoresHardGround: true as const } : {}),
+    ...(source.jumps
+      ? {
+          jumps: {
+            ...(source.jumps.times !== undefined ? { times: source.jumps.times } : {}),
+            ...(source.jumps.plus ? { plus: { ...source.jumps.plus } } : {}),
+          },
+        }
+      : {}),
     ...(source.slipsFree
       ? {
           slipsFree: {

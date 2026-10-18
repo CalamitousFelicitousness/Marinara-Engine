@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that puts its holder on its source's side, or whose source throws as its holder dies
+ *  (1.524): Magic Jar. */
+function carriesControls524(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesControls524(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && (record.controls !== undefined || record.holderDies !== undefined)) return true;
+  return featureValues(record).some((one) => carriesControls524(one, depth + 1));
+}
+
 /** An item found holding stored entries (1.523): a Ring of Spell Storing's 1d6 - 1 levels. */
 function carriesStoresFound523(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7252,6 +7263,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that controls its holder, or whose source throws as its holder dies, 1.524.
+  if (
+    !declaresApi(524) &&
+    (carriesControls524(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesControls524(document)))
+  ) {
+    return "A ruleset with a condition that puts its holder under its source's control (controls, holderDies) requires schemaVersion 2 and capabilityApi 1.524 or newer";
+  }
   // An item found holding stored entries, 1.523.
   if (
     !declaresApi(523) &&

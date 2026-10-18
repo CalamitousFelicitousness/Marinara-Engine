@@ -2071,6 +2071,8 @@
   "game.combat.ruleset.event.contestEscapeWon": "{{actor}} tries {{label}} against {{target}}'s hold: {{roll}} with {{check}} against escape DC {{dc}}, and breaks free.",
   "game.combat.ruleset.event.contestLost": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against {{against}} with {{targetCheck}}, and fails.",
   "game.combat.ruleset.event.contestWon": "{{actor}} tries {{label}} on {{target}}: {{roll}} with {{check}} against {{against}} with {{targetCheck}}, and wins.",
+  "game.combat.ruleset.event.controlled": "{{source}} takes control of {{target}}, who fights on their side now.",
+  "game.combat.ruleset.event.controlReleased": "{{target}} is free of {{source}}'s control and back on their own side.",
   "game.combat.ruleset.event.corroded": "{{actor}}'s {{label}} corrodes on {{target}}: -{{penalty}} to its damage now.",
   "game.combat.ruleset.event.corrodedAmmo": "{{target}} eats away {{actor}}'s {{label}}: it will not be won back.",
   "game.combat.ruleset.event.corrodedDestroyed": "{{actor}}'s {{label}} corrodes away on {{target}}.",

@@ -993,6 +993,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["lifted", say({ type: "lifted", targetId: "lurker", from: 0, to: 20 })],
+    ["controlled", say({ type: "controlled", targetId: "lurker", sourceId: "brenna", active: true })],
     ["reformed", say({ type: "reformed", actorId: "brenna", label: "Rod of Lordly Might", form: "Flame tongue" })],
     ["seenThrough", say({ type: "seenThrough", actorId: "brenna", targetId: "lurker", label: "Fire Bolt" })],
     ["storedCast", say({ type: "storedCast", actorId: "brenna", label: "Cure Wounds", targetId: "brenna" })],

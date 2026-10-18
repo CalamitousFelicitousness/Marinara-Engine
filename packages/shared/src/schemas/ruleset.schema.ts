@@ -12038,6 +12038,14 @@ const combatConditionSchema = z
      *  of the area", 100 feet: a lasting area's `inside.conditions`, its Dexterity save the grab at
      *  something fixed. */
     lifts: z.number().finite().gt(0).max(10000).optional(),
+    /** Whoever holds it fights on the side of whoever put it on, and back on their own once it ends
+     *  (Capability API 1.524): 5e's Magic Jar, "Once you possess a creature's body, you control it". */
+    controls: z.literal(true).optional(),
+    /** As its holder dies while it holds, whoever put it on throws `save` against `difficulty`, read
+     *  off their own sheet (a number for one without), and dies on a failure (Capability API 1.524):
+     *  Magic Jar's "If the host body dies while you're in it ... you must make a Charisma saving
+     *  throw against your own spellcasting DC ... Otherwise, you die." */
+    holderDies: z.object({ save: sheetId, difficulty: rulesetValueRefSchema }).strict().optional(),
     /** Its `speeds` are its holder's only ways of moving while it holds (Capability API 1.502): their
      *  walk and their own other speeds are 0. 5e's Gaseous Form, "its only method of movement is a
      *  flying speed of 10 feet". */
@@ -16735,6 +16743,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const damageTypes = combat.damageTypes?.map((type) => type.trim().toLowerCase());
       if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
         issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
+      }
+      // The save its source throws as its holder dies (1.524), one the sheet has.
+      if (entry.holderDies && !def.sheet.saves.some((one) => one.id === entry.holderDies!.save)) {
+        issue([...path, "holderDies", "save"], `Unknown save "${entry.holderDies.save}"`);
       }
       // The save that spares it (1.350), one the sheet has.
       const harmSave = entry.harms?.save?.save;

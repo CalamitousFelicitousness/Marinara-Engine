@@ -1439,6 +1439,12 @@ export function rulesetCombatEventLine(
           });
     case "switch":
       return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
+    // Taken over, or let go (1.524).
+    case "controlled":
+      return key(event.active ? "controlled" : "controlReleased", {
+        source: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+      });
     // An item turned into another of its forms (1.522).
     case "reformed":
       return key("reformed", { actor: names.combatant(event.actorId), label: event.label, form: event.form });

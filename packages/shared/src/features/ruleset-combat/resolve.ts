@@ -539,6 +539,9 @@ function begin(
       }
       // Their numbers worked out again as the conditions now held change their abilities (1.462).
       rulesetSyncAbilities(definition, next);
+      // On the side of whoever controls them, or back on their own (1.524); and a controller whose
+      // host died throws to live.
+      syncControl(ctx);
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
         ctx.events.push({
@@ -553,6 +556,66 @@ function begin(
       return { state: next, events: ctx.events };
     },
   };
+}
+
+/** Who holds a condition that `controls` them fights on its source's side while it holds and the
+ *  source stands, and on their own again after (1.524): Magic Jar. As a holder of one with
+ *  `holderDies` dies, its source throws that save against the difficulty off their own sheet, and dies
+ *  on a failure. */
+function syncControl(ctx: RulesetCombatContext): void {
+  const rules = new Map((ctx.combat.conditions ?? []).map((one) => [one.condition, one]));
+  if (![...rules.values()].some((one) => one.controls || one.holderDies)) return;
+  for (const one of ctx.state.combatants) {
+    // Its host dead, its controller throws.
+    if (one.defeated) {
+      for (const entry of one.tracked) {
+        const rule = rules.get(entry.condition);
+        const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+        if (!rule?.holderDies || entry.holderDiedThrown || !source || source.defeated) continue;
+        entry.holderDiedThrown = true;
+        const ref = rule.holderDies.difficulty;
+        const difficulty = source.sheet
+          ? resolveRulesetValueRef(
+              ctx.definition,
+              source.sheet.build,
+              ref,
+              evaluateRulesetSheetLive(
+                ctx.definition,
+                source.sheet.build,
+                source.sheet.live,
+                source.sheet.items,
+                source.abilityConditions,
+              ),
+            )
+          : typeof ref === "number"
+            ? ref
+            : typeof ref === "object" && ref && "const" in ref && typeof ref.const === "number"
+              ? ref.const
+              : 10;
+        const label =
+          ctx.definition.sheet.live.conditions.find((known) => known.id === entry.condition)?.label ?? entry.condition;
+        if (!rollSave(ctx, source, rule.holderDies.save, Math.round(difficulty))) slay(ctx, source, one.id, label);
+      }
+    }
+    const holding = one.defeated
+      ? undefined
+      : one.tracked.find((entry) => {
+          if (!rules.get(entry.condition)?.controls || !entry.source || entry.source === one.id) return false;
+          const source = rulesetCombatant(ctx.state, entry.source);
+          return !!source && !source.defeated;
+        });
+    const controller = holding ? rulesetCombatant(ctx.state, holding.source!) : undefined;
+    if (controller && controller.side !== one.side) {
+      one.ownSide ??= one.side;
+      one.side = controller.side;
+      ctx.events.push({ type: "controlled", targetId: one.id, sourceId: controller.id, active: true });
+    } else if (!controller && one.ownSide !== undefined) {
+      const sourceId = one.tracked.find((entry) => rules.get(entry.condition)?.controls)?.source ?? one.id;
+      one.side = one.ownSide;
+      delete one.ownSide;
+      ctx.events.push({ type: "controlled", targetId: one.id, sourceId, active: false });
+    }
+  }
 }
 
 /** Whether a list of damage types holds this one. An entry that names what gets through it does not

@@ -1557,6 +1557,8 @@ export interface RulesetCombatAgainst {
 export interface RulesetTrackedCondition {
   /** Its `harms` has dealt its once (1.509): Geas. */
   harmedOnce?: true;
+  /** Its `holderDies` save has been thrown (1.524), its holder dead. */
+  holderDiedThrown?: true;
   /** What is left of it to cut away (1.478), once something has been struck at it. */
   cutLeft?: number;
   /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */
@@ -1973,6 +1975,9 @@ export interface RulesetCombatant {
    *  `forms.into` from 1 (0 as it was made): the item then, and the actions it is made with. Keyed as
    *  the rest are. */
   itemFormed?: Record<string, Array<{ item: RulesetCatalogItem; actions: RulesetCombatAction[] }>>;
+  /** The side they fight on of their own, while something that `controls` them has them on another
+   *  (1.524): Magic Jar. */
+  ownSide?: "party" | "enemy";
   /** The form each item that changed form in this fight is in now (1.522), 0 as it was made. */
   itemForms?: Record<string, number>;
   /** Whom an entry used once a creature until a rest went to (1.304), for one without a sheet: keyed
@@ -3543,6 +3548,8 @@ export type RulesetCombatEvent =
   | { type: "reload"; actorId: string; optionId: string; label: string; loaded: number; of: number; drew?: number }
   /** An item switched on or off (1.170). */
   | { type: "switch"; actorId: string; optionId: string; label: string; on: boolean }
+  /** Taken over by whoever put a condition on (1.524), now on their side, or back on their own. */
+  | { type: "controlled"; targetId: string; sourceId: string; active: boolean }
   /** An item turned into another of its forms (1.522): a Rod of Lordly Might made a flame tongue. */
   | { type: "reformed"; actorId: string; label: string; form: string }
   /** Won back after the fight: some of what was shot out of one stack. */

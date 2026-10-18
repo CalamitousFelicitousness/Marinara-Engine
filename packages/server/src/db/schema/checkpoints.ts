@@ -27,6 +27,10 @@ export const gameCheckpoints = fileTable("game_checkpoints", {
    *  members, which session start trusts over gamePartyCharacterIds. A load rewinds it in the same
    *  write as gameMetadataData (#7742). Null on checkpoints from before this field. */
   chatCharacterIdsData: text("chat_character_ids_data"),
+  /** Immutable JSON object `{ edits }` of the world's hand-edits layer (gameWorld.edits) at capture
+   *  time (#7783): `edits: null` for a world without any, so a load clears what was added later.
+   *  Null for a chat with no world, and on checkpoints from before this field. */
+  gameWorldEditsData: text("game_world_edits_data"),
   /** FK to messages.id — the message this checkpoint was taken at */
   messageId: text("message_id").notNull(),
 

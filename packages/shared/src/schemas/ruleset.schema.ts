@@ -10679,6 +10679,10 @@ const combatModifierBaseSchema = z
     /** Narrows a change to the holder's own attacks to those against whoever put this on them
      *  (Capability API 1.185): 5e's Chill Touch, an undead's attacks against the caster. */
     atSource: z.literal(true).optional(),
+    /** Narrows a change to checks to those made to find anybody but whoever put this on its holder
+     *  (Capability API 1.514), the search for the hidden: 5e's Enthrall, disadvantage on Wisdom
+     *  (Perception) checks made to perceive any creature other than the caster. */
+    exceptSource: z.literal(true).optional(),
     /** Held back until the holder's own attack, save or check falls short, then added only where
      *  its most could make up the difference, and the condition it came from is spent (Capability
      *  API 1.249): 5e's Bardic Inspiration, Guidance and Resistance, added after seeing the roll. */

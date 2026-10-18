@@ -1481,6 +1481,8 @@ export function rulesetCheckMode(
   ability?: string,
   /** What whoever it is made against puts on it (1.290): `rulesetCheckTakenModes`. */
   taken?: { advantage: boolean; disadvantage: boolean },
+  /** Whom it is made to find (1.514), so what is narrowed to anybody but a condition's source counts. */
+  perceiving?: string,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   let advantage = !!taken?.advantage;
@@ -1491,6 +1493,13 @@ export function rulesetCheckMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "checks" || !modifier.mode || narrowedAway(modifier.skills ?? entry.skills)) continue;
       if (!rulesetAbilityNarrowing(modifier, "checks", ability)) continue;
+      // Only in looking for anybody but whoever put it on (1.514): Enthrall.
+      if (
+        modifier.exceptSource &&
+        (perceiving === undefined ||
+          combatant.tracked.some((held) => held.condition === entry.condition && held.source === perceiving))
+      )
+        continue;
       if (modifier.mode === "advantage") advantage = true;
       else disadvantage = true;
     }

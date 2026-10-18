@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A check mode narrowed to finding anybody but a condition's source (1.514): Enthrall. */
+function carriesExceptSource514(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesExceptSource514(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.exceptSource !== undefined) return true;
+  return featureValues(record).some((one) => carriesExceptSource514(one, depth + 1));
+}
+
 /** A condition that lifts its holder (1.513): Reverse Gravity. */
 function carriesLifts513(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7148,6 +7158,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A check mode for finding anybody but a condition's source, 1.514.
+  if (
+    !declaresApi(514) &&
+    (carriesExceptSource514(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesExceptSource514(document)))
+  ) {
+    return "A ruleset with a check modifier for finding anybody but whoever put the condition on (exceptSource) requires schemaVersion 2 and capabilityApi 1.514 or newer";
+  }
   // A condition that lifts its holder, 1.513.
   if (
     !declaresApi(513) &&

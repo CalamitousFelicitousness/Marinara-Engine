@@ -40269,6 +40269,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "exceptSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "rescue": {
                                 "type": "boolean",
                                 "const": true
@@ -85358,6 +85362,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "exceptSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "rescue": {
                                 "type": "boolean",
                                 "const": true
@@ -87339,6 +87347,10 @@
                                 "additionalProperties": false
                               },
                               "atSource": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "exceptSource": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -89510,6 +89522,10 @@
                                       "additionalProperties": false
                                     },
                                     "atSource": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "exceptSource": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -98668,6 +98684,10 @@
                                     "additionalProperties": false
                                   },
                                   "atSource": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "exceptSource": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -117186,6 +117206,10 @@
                                           "additionalProperties": false
                                         },
                                         "atSource": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "exceptSource": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -135710,6 +135734,10 @@
                                           "additionalProperties": false
                                         },
                                         "atSource": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "exceptSource": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -161930,6 +161958,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "exceptSource": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "rescue": {
                       "type": "boolean",
                       "const": true
@@ -177951,6 +177983,10 @@
                       "additionalProperties": false
                     },
                     "atSource": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "exceptSource": {
                       "type": "boolean",
                       "const": true
                     },

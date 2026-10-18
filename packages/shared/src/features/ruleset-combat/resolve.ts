@@ -7647,12 +7647,14 @@ function throwCheck(
   modifier: number,
   /** What whoever it is made against puts on it (1.290): a Cloak of Elvenkind on a Search. */
   taken?: { advantage: boolean; disadvantage: boolean },
+  /** Whom it is made to find (1.514): Enthrall. */
+  perceiving?: string,
 ): RulesetContestSide {
   // What is narrowed to the ability the check is made with counts (1.188): Rage's Strength. And,
   // since 1.290, what is narrowed to the skill it is read off: Stealth in heavy armor.
   const ability = rulesetCheckAbility(ctx.definition, check);
   const skill = rulesetCheckSkill(ctx.definition, check);
-  const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, skill, ability, taken);
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, skill, ability, taken, perceiving);
   const checkModifiers = () =>
     rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, skill, undefined, ability);
   if (rulesetCombatIsPool(ctx.combat)) {
@@ -11207,8 +11209,9 @@ function hidingCheck(
   who: RulesetCombatant,
   check: string,
   taken?: { advantage: boolean; disadvantage: boolean },
+  perceiving?: string,
 ): RulesetContestSide {
-  return throwCheck(ctx, who, check, who.checks?.[check] ?? 0, taken);
+  return throwCheck(ctx, who, check, who.checks?.[check] ?? 0, taken, perceiving);
 }
 
 /**
@@ -11252,10 +11255,10 @@ function search(
   for (const other of ctx.state.combatants) {
     if (!rulesetHiddenFrom(actor, other)) continue;
     const taken = rulesetCheckTakenModes(ctx.definition, ctx.combat, other, ctx.state, skill);
-    const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, skill, ability, taken);
+    const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, skill, ability, taken, other.id);
     let mine = check;
     if (mode !== plain) {
-      const own = throws.get(mode) ?? { ids: [], check: hidingCheck(ctx, actor, perception, taken) };
+      const own = throws.get(mode) ?? { ids: [], check: hidingCheck(ctx, actor, perception, taken, other.id) };
       own.ids.push(other.id);
       throws.set(mode, own);
       mine = own.check;

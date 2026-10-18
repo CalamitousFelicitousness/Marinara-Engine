@@ -9085,8 +9085,22 @@ export const rulesetItemUseSchema = catalogMechanicsObject
         copies: z.number().int().min(2).max(10).optional(),
         // Its copies spaced out (1.301): a scroll of Dancing Lights.
         copiesWithin: z.number().finite().gt(0).max(10000).optional(),
+        /** Centred on its user and never aimed (Capability API 1.479), as a catalog entry's is: the
+         *  Staff of Thunder and Lightning's Thunderclap, everybody within 60 feet but its wielder.
+         *  Only a single burst. */
+        around: z.literal(true).optional(),
+        /** Walls and corners do not stop it (Capability API 1.479). Only with `around`. */
+        throughWalls: z.literal(true).optional(),
       })
       .strict()
+      .refine((area) => !area.around || (area.shape === "burst" && area.copies === undefined), {
+        message: "Only a single burst is centred on its user",
+        path: ["around"],
+      })
+      .refine((area) => !area.throughWalls || area.around, {
+        message: "Only a burst centred on its user goes through walls",
+        path: ["throughWalls"],
+      })
       .refine((area) => area.copiesWithin === undefined || area.copies !== undefined, {
         message: '"copiesWithin" spaces out its copies, so it has "copies"',
         path: ["copiesWithin"],

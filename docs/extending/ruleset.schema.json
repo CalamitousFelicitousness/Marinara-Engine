@@ -75141,6 +75141,14 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "around": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "throughWalls": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -91074,6 +91082,14 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "around": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "throughWalls": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

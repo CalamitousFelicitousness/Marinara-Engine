@@ -2261,6 +2261,25 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item's use centred on its user (1.479): the Staff of Thunder and Lightning's Thunderclap. */
+function carriesItemUseAround479(value: unknown, depth = 0, inItem = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemUseAround479(one, depth + 1, inItem));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (inItem && plainRecord(record.area)?.around !== undefined) return true;
+  // An item's use and its more uses, wherever the item is.
+  const item = plainRecord(record.item);
+  if (item) {
+    const uses = [
+      item.use,
+      ...(Array.isArray(item.moreUses) ? item.moreUses.map((more) => plainRecord(more)?.use) : []),
+    ];
+    if (uses.some((use) => carriesItemUseAround479(use, depth + 1, true))) return true;
+  }
+  return featureValues(record).some((one) => carriesItemUseAround479(one, depth + 1, inItem));
+}
+
 /** A condition that may be cut away (1.478): a net. */
 function carriesCutFree478(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6722,6 +6741,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use centred on its user, 1.479.
+  if (
+    !declaresApi(479) &&
+    (carriesItemUseAround479(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemUseAround479(document)))
+  ) {
+    return "A ruleset with an item's use centred on its user (use area around) requires schemaVersion 2 and capabilityApi 1.479 or newer";
+  }
   // A condition that may be cut away, 1.478.
   if (
     !declaresApi(478) &&

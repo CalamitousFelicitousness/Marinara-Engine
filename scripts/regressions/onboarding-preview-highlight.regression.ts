@@ -34,6 +34,9 @@ assert.deepEqual(highlighted("Weakness: dragons", ["dragons"], "Weakness: {{weak
 assert.deepEqual(highlighted("Name: Crowny", ["Crown"], "Name: {{faction}}"), []);
 assert.deepEqual(highlighted("Name: Crown", ["Crown"], "Name: {{faction}}"), ["Crown"]);
 
+// a value the authored text only contains inside a longer word is still the player's
+assert.deepEqual(highlighted("Crowned heir of Crown.", ["Crown"], "Crowned heir of {{faction}}."), ["Crown"]);
+
 // the longest value wins, and touching runs are one mark
 assert.deepEqual(highlighted("Tall and sharp-featured", ["Tall", "Tall and sharp-featured"], "{{looks}}"), [
   "Tall and sharp-featured",

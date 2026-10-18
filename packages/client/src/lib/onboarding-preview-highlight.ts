@@ -56,7 +56,7 @@ export function highlightAnswerValues(
 ): AnswerHighlightSegment[] {
   const authored = authoredText(template);
   const candidates = [...new Set(values.map((value) => value.trim()))]
-    .filter((value) => value.length >= 2 && !authored.includes(value.toLowerCase()))
+    .filter((value) => value.length >= 2 && wholeOccurrences(authored, value.toLowerCase()).length === 0)
     .sort((a, b) => b.length - a.length || a.localeCompare(b));
 
   const spans: Array<{ start: number; end: number }> = [];

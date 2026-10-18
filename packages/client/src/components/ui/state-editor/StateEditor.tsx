@@ -424,11 +424,15 @@ export function StateEditor({
           </button>
         ) : (
           <StateFieldsView
+            // Remounting per section drops an unfinished "add field" draft, so it can't land in the
+            // section the user switched to.
+            key={activeSection.id}
             value={activeSection.id in searchValues ? searchValues[activeSection.id] : activeSection.value}
             onChange={(next) => setDraft(activeSection.id, layoutStateJson(next).text)}
             focusPath={focusPath}
             onFocusHandled={clearFocusPath}
             readOnly={readOnly}
+            sectionId={activeSection.id}
           />
         )}
       </div>

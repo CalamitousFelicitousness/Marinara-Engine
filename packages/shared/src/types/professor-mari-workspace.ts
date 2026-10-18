@@ -288,7 +288,7 @@ export type MariChangeExcerpt =
   | {
       field: string;
       kind: "nested";
-      /** The changed keys inside it, in object order (capped by `MARI_RECEIPT_LIMITS.nestedKeys`). */
+      /** The changed keys inside it, in object order (the card shows the first `MARI_RECEIPT_LIMITS.nestedKeys`). */
       keys: string[];
       /** How many of its keys changed; `keys` may show fewer. */
       count: number;

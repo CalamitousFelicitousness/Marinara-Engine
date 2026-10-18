@@ -373,6 +373,37 @@ assert.deepEqual(
 );
 assert.equal(reorderedBeside?.moreChanges, 1, "the list that cannot be drawn is still counted");
 
+// Two lists that cannot be drawn in one field count as two, with or without a drawable sibling.
+const twoUndrawn = buildMariWorkspaceActionResult(
+  "preset.update",
+  applied([
+    {
+      table: "prompt_presets",
+      id: "two",
+      action: "update",
+      before: { id: "two", name: "Two", parameters: { stopStrings: ["a", "b"], otherList: ["x", "y"] } },
+      after: { id: "two", name: "Two", parameters: { stopStrings: ["b", "a"], otherList: ["y", "x"] } },
+    },
+  ]),
+);
+assert.equal(twoUndrawn?.moreChanges, 2, "each undrawn change counts once");
+
+// Nested keys are stored uncapped so a merge can count the exact union; the card caps what it shows.
+const keyRange = (offset: number) => Array.from({ length: 8 }, (_, index) => `key${offset + index}`);
+const nestedResult = (keys: string[]): MariWorkspaceActionResult => ({
+  status: "updated",
+  resource: { kind: "character", id: "merge-keys", label: "Merge" },
+  changedFields: ["extensions"],
+  summary: "Updated character.",
+  changes: [{ field: "extensions.settings", kind: "nested", keys, count: keys.length }],
+});
+const [mergedKeys] = mergeMariActionResults([nestedResult(keyRange(0)), nestedResult(keyRange(7))]);
+const mergedNested = mergedKeys?.changes?.[0];
+assert.ok(mergedNested?.kind === "nested");
+assert.equal(mergedNested.count, 15, "8 + 8 keys with one shared count 15 once");
+assert.equal(mergedNested.keys.length, 15, "keys are kept uncapped for the merge");
+assert.ok(mergedNested.keys.length > MARI_RECEIPT_LIMITS.nestedKeys, "more keys than the card shows");
+
 // Any other deeper object gets the general fallback: its changed keys by name.
 const plugin = buildMariWorkspaceActionResult(
   "character.update",

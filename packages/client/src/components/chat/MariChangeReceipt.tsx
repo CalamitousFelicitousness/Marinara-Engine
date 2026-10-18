@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { AlertTriangle, Check, ChevronDown, ExternalLink, Undo2 } from "lucide-react";
 import {
+  MARI_RECEIPT_LIMITS,
   mariReceiptReviewIds,
   mariReceiptState,
   type MariChangeExcerpt,
@@ -239,7 +240,9 @@ function NestedBody({ change }: { change: Extract<MariChangeExcerpt, { kind: "ne
           : []),
       ]
     : [];
-  const hidden = Math.max(0, change.count - change.keys.length);
+  // The receipt keeps every changed key so merges stay exact; the card shows the first few and counts the rest.
+  const shownKeys = change.keys.slice(0, MARI_RECEIPT_LIMITS.nestedKeys);
+  const hidden = Math.max(0, change.count - shownKeys.length);
   // The onboarding question arrays are the player's "persona questions" and "character questions".
   const keyLabel = (key: string) => {
     if (!onboarding) return label(key);
@@ -251,7 +254,7 @@ function NestedBody({ change }: { change: Extract<MariChangeExcerpt, { kind: "ne
     <div className="mari-receipt__entries">
       {facts.length ? <span className="mari-receipt__entry-text">{facts.join(" · ")}</span> : null}
       <div className="mari-receipt__chips">
-        {change.keys.map((key) => (
+        {shownKeys.map((key) => (
           <span key={key} className="mari-receipt__chip">
             {keyLabel(key)}
           </span>

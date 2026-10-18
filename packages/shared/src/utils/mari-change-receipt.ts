@@ -237,7 +237,8 @@ function nestedExcerpt(field: string, before: unknown, after: unknown): Extract<
   return {
     field,
     kind: "nested",
-    keys: changed.slice(0, MARI_RECEIPT_LIMITS.nestedKeys).map((key) => clip(key, MARI_RECEIPT_LIMITS.name)),
+    // Uncapped, so two runs on the same object can still be merged into the exact distinct union.
+    keys: changed.map((key) => clip(key, MARI_RECEIPT_LIMITS.name)),
     count: changed.length,
     ...(onboarding ? { onboarding } : {}),
   };
@@ -333,7 +334,7 @@ export function buildMariChangeExcerpts(input: {
       const excerpts = fieldExcerpts(key, before?.[key], after[key], undrawn);
       // A change the card cannot draw (a list whose only difference is its order) still counts, so
       // the field never disappears from an applied receipt.
-      unshown += excerpts.length === 0 ? 1 : undrawn.count;
+      unshown += excerpts.length === 0 ? Math.max(1, undrawn.count) : undrawn.count;
       changes.push(...excerpts);
     }
   }
@@ -397,13 +398,10 @@ function mergeExcerpts(older: MariChangeExcerpt[], newer: MariChangeExcerpt[]): 
         };
       }
     } else if (prev.kind === "nested" && next.kind === "nested") {
-      // Both runs changed the same nested object: every key either of them touched, said once.
+      // Both runs changed the same nested object: every key either of them touched, said once. The
+      // union is the exact count; the card decides how many of them to show.
       const keys = [...new Set([...prev.keys, ...next.keys])];
-      merged[index] = {
-        ...next,
-        keys: keys.slice(0, MARI_RECEIPT_LIMITS.nestedKeys),
-        count: Math.max(prev.count, next.count, keys.length),
-      };
+      merged[index] = { ...next, keys, count: Math.max(prev.count, next.count, keys.length) };
     } else if (prev.kind !== "list" && prev.kind !== "nested" && next.kind !== "list" && next.kind !== "nested") {
       // First before, last after: the field from where the run found it to where it left it.
       merged[index] = { ...prev, after: next.after };

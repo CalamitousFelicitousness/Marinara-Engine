@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that answers whoever touches its holder (1.474): an azer's Heated Body. */
+function carriesTouches474(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTouches474(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.whenHit)?.touches !== undefined) return true;
+  return featureValues(record).some((one) => carriesTouches474(one, depth + 1));
+}
+
 /** A save made as days pass outside a fight (1.473): Feeblemind's, every 30 days. */
 function carriesDaySaves473(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6671,6 +6681,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition answering a touch, 1.474.
+  if (
+    !declaresApi(474) &&
+    (carriesTouches474(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTouches474(document)))
+  ) {
+    return "A ruleset whose conditions answer whoever touches their holder (whenHit touches) requires schemaVersion 2 and capabilityApi 1.474 or newer";
+  }
   // Saves made as days pass, 1.473.
   if (
     !declaresApi(473) &&

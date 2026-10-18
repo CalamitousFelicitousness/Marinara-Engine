@@ -113912,6 +113912,10 @@
                     "exclusiveMinimum": 0,
                     "maximum": 10000
                   },
+                  "touches": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false

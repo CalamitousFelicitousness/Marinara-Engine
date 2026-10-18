@@ -1032,19 +1032,21 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
 
 /** What a condition on whoever was hit does to who hit them, nobody choosing (1.436): Holy Aura's
  *  flash, blinding a fiend or undead that hits its holder in melee unless it saves. What it puts on
- *  is held as the condition is, by the same concentration. */
+ *  is held as the condition is, by the same concentration. With `touched` (1.474), it answers one who
+ *  only touched them, by a grapple or a shove, where it says it `touches`: Heated Body. */
 function answerHit(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
   attacker: RulesetCombatant,
   action: RulesetCombatAction,
+  touched = false,
 ): void {
   if (!ctx.combat.conditions?.some((entry) => entry.whenHit)) return;
   if (attacker.defeated || attacker.id === target.id) return;
   for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
     const rule = entry.whenHit;
-    if (!rule || attacker.defeated) continue;
-    if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
+    if (!rule || attacker.defeated || (touched && !rule.touches)) continue;
+    if (!touched && rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
     if (rule.from && !rulesetTargetIs(ctx.definition, attacker, rule.from)) continue;
     // Only a hitter this near (1.455), off a board everybody is.
     const perCell = ctx.definition.combat?.distance?.perCell;
@@ -6600,6 +6602,8 @@ function applyChoice(
     // A grab or a shove gives a hider away as an attack does (1.287).
     if (working.hiding) (ctx.giveaways ??= new Map()).set(working.id, "attack");
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
+    // Whoever they laid hands on answers a touch (1.474), won or lost: Heated Body.
+    if (workingTargets[0]) answerHit(ctx, workingTargets[0], working, action, true);
     holderActed(ctx, working, action, before);
     noteOutcome(ctx);
     return finish();

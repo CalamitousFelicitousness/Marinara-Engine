@@ -10913,6 +10913,7 @@ export interface RulesetConditionWhenHit {
   applies?: RulesetCatalogApplies[];
   harms?: { dice?: string; flat?: number; damageType?: string };
   within?: number;
+  touches?: true;
 }
 const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, unknown> = z
   .object({
@@ -10931,8 +10932,16 @@ const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, u
       })
       .optional(),
     within: z.number().finite().gt(0).max(10000).optional(),
+    /** Whoever touches its holder too, hit or not (Capability API 1.474): one who tries to grapple
+     *  or shove them, or to break free of their grip. 5e's Heated Body, "a creature that touches the
+     *  azer or hits it with a melee attack". */
+    touches: z.literal(true).optional(),
   })
   .strict()
+  .refine((rule) => !rule.touches || rule.blow !== "ranged", {
+    message: 'A touch is made in reach: "touches" goes with no "blow" or "blow": "melee"',
+    path: ["touches"],
+  })
   .refine((rule) => rule.applies || rule.harms, { message: "whenHit does something: applies, harms or both" })
   .refine((rule) => !rule.save || rule.applies, {
     message: "A whenHit save is against what it applies, so it goes with applies",

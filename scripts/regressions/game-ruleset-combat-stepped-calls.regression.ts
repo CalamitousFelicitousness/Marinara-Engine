@@ -6,7 +6,9 @@
  *     refused below it; its ghouls one more a level.
  *   - `upTo.perStep`: Conjure Elemental's challenge rating rising by one a level, a creature above
  *     its base offered and called only when paid high enough.
- *   - The install gate.
+ *   - `calls.hostileOnBreak` (1.485): Conjure Elemental's elemental, its concentration broken, stays
+ *     and turns on its caller's side, no longer theirs to dismiss; its rounds still run.
+ *   - The install gates.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -37,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 484);
+  assert.ok(supportedCapabilityApi.minor >= 485);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -226,6 +228,38 @@ try {
     assert.deepEqual(who(high.taken.state, high.called[0]!).creature, { catalogId: "creatures", entryId: "dire-wolf" });
   }
 
+  // ── Conjure Elemental's concentration broken: the elemental turns on the druid (1.485) ──
+  {
+    const hostile = parsed(
+      document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, rounds: 600, hostileOnBreak: true })]),
+    );
+    const cast = use(hostile);
+    const [wolfId] = cast.called;
+    assert.equal(who(cast.taken.state, wolfId!).side, "party");
+    const hit = structuredClone(cast.taken.state);
+    hit.turn = hit.order.indexOf("brute");
+    who(hit, "brute").budgets.action = 1;
+    queued = [10, 1];
+    const broken = applyRulesetCombatChoice(
+      hostile,
+      hit,
+      { actorId: "brute", optionId: "smash", targetIds: ["druid"] } as RulesetCombatChoice,
+      roll,
+    );
+    queued = [];
+    assert.equal(who(broken.state, "druid").concentrating, null, "broken");
+    assert.deepEqual(
+      of(broken.events, "turnedOn").map((one) => [one.actorId, one.ids]),
+      [["druid", [wolfId]]],
+    );
+    assert.equal(of(broken.events, "sentAway").length, 0, "it stays");
+    const wolf = who(broken.state, wolfId!);
+    assert.equal(wolf.side, "enemy", "on the other side now");
+    assert.ok(!wolf.defeated && !wolf.dismissed);
+    assert.equal(wolf.calledWith, undefined, "no longer the druid's to dismiss");
+    assert.equal(wolf.calledUntil, cast.taken.state.round + 600, "its hour still runs");
+  }
+
   // ── Refused shapes ──
   refused(
     document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, perStep: 0 })]),
@@ -265,8 +299,29 @@ try {
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(483) as never, plain), gate);
   }
 
+  {
+    const gate =
+      "A ruleset with called creatures that turn on their caller when its concentration breaks (calls hostileOnBreak) requires schemaVersion 2 and capabilityApi 1.485 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const doc = document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, hostileOnBreak: true })]);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(484) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(485) as never, doc), gate);
+  }
+
   console.log(
-    "Ruleset stepped calls: Animate Dead's two more a level, Create Undead's options from a higher slot and one more a level, Conjure Elemental's challenge rating rising with the slot; gated at 1.484.",
+    "Ruleset stepped calls: Animate Dead's two more a level, Create Undead's options from a higher slot and one more a level, Conjure Elemental's challenge rating rising with the slot (1.484), and its elemental turning on its caller as concentration breaks (1.485); gated.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

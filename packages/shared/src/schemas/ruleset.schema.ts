@@ -5539,6 +5539,10 @@ export const catalogCallsSchema = z
     /** This many more for each step of higher cost it is paid with (Capability API 1.484): 5e's
      *  Animate Dead, "two additional undead creatures for each slot level above 3rd", is `2`. */
     perStep: z.number().int().min(1).max(20).optional(),
+    /** Its concentration broken (by harm, its caster going down, or a zone), they stay and turn on
+     *  their caller's side instead of leaving, no longer theirs to dismiss (Capability API 1.485):
+     *  5e's Conjure Elemental and Conjure Fey. Their `rounds` still run out. */
+    hostileOnBreak: z.literal(true).optional(),
     /** The creature type each one called is instead of its own, picked as it is used like a mode
      *  (Capability API 1.434), by id of `combat.creatureTypes.types`: 5e's Find Familiar, "a
      *  celestial, fey, or fiend (your choice) instead of a beast". */

@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Called creatures that turn on their caller as its concentration breaks (1.485): Conjure Elemental. */
+function carriesHostileOnBreak485(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHostileOnBreak485(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.hostileOnBreak !== undefined) return true;
+  return featureValues(record).some((one) => carriesHostileOnBreak485(one, depth + 1));
+}
+
 /** A call that grows with each step paid (1.484): Animate Dead's two more, Create Undead's options,
  *  Conjure Elemental's challenge rating. */
 function carriesSteppedCalls484(value: unknown, depth = 0): boolean {
@@ -6821,6 +6831,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Called creatures that turn on their caller, 1.485.
+  if (
+    !declaresApi(485) &&
+    (carriesHostileOnBreak485(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHostileOnBreak485(document)))
+  ) {
+    return "A ruleset with called creatures that turn on their caller when its concentration breaks (calls hostileOnBreak) requires schemaVersion 2 and capabilityApi 1.485 or newer";
+  }
   // A call that grows with each step paid, 1.484.
   if (
     !declaresApi(484) &&

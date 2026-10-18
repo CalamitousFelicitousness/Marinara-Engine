@@ -1129,6 +1129,8 @@ export interface RulesetCombatAction {
     perStep?: number;
     /** Only when paid this many steps of higher cost or more (1.484): Create Undead's mummies. */
     fromStep?: number;
+    /** They turn on their caller's side when its concentration is broken (1.485), not leaving. */
+    hostileOnBreak?: true;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
@@ -1641,6 +1643,10 @@ export interface RulesetCombatant {
   calledUntil?: number;
   /** They leave as soon as their caller is out (1.393). */
   calledEndsWithCaller?: true;
+  /** They turn on their caller's side when the concentration that holds them is broken (1.485). */
+  calledHostileOnBreak?: true;
+  /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
+  calledTurned?: true;
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
    *  standing for a fight's end. */
   turnless?: true;
@@ -2972,6 +2978,8 @@ export type RulesetCombatEvent =
   /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }
   | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" | "caller" | "dismissed" }
+  /** Called creatures that turn on their caller's side as its concentration breaks (1.485). */
+  | { type: "turnedOn"; actorId: string; ids: string[] }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

@@ -857,6 +857,12 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
+    // Called creatures turning on their caller's side (1.485): Conjure Elemental's, concentration broken.
+    case "turnedOn":
+      return key("turnedOn", {
+        actor: names.combatant(event.actorId),
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+      });
     // A shape taken, given up or refused (1.342): Wild Shape, Polymorph.
     case "shaped":
       return key(event.refused ? "shapeRefused" : event.gone ? "shapeGone" : "shaped", {

@@ -5281,7 +5281,9 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
-  // Whoever it called (1.344) goes with it.
+  // Whoever it called (1.344) goes with it, or, broken, turns on its caller's side where it says so
+  // (1.485): Conjure Elemental's elemental.
+  if (reason === "damage" || reason === "down" || reason === "zone") turnCalled(ctx, actor, held.actionId);
   dismissCalled(ctx, actor, (one) => one.calledWith === held.actionId, "concentration");
   // Broken, it makes its lair's next action this one (1.327), or one of these (1.336): the Litany of Keeping.
   const next = actor.actions.find((action) => action.id === held.actionId)?.brokenNextLair;
@@ -8790,6 +8792,7 @@ function callCreatures(
     called.calledWith = action.id;
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
+    if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
   // What it puts on goes on them (1.426): Antipathy's condition on its object, the kind remembered.
@@ -8876,6 +8879,28 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
 }
 
 /** Sends away those `caller` called that `which` picks (1.344): off the board and out of the fight. */
+/** Called creatures that turn on their caller's side as the concentration holding them breaks (1.485):
+ *  on the other side now, no longer held by it nor theirs to dismiss or command, their rounds still
+ *  running. */
+function turnCalled(ctx: RulesetCombatContext, caller: RulesetCombatant, actionId: string): void {
+  const turning = ctx.state.combatants.filter(
+    (one) =>
+      one.calledBy === caller.id &&
+      one.calledWith === actionId &&
+      one.calledHostileOnBreak &&
+      !one.dismissed &&
+      !one.defeated,
+  );
+  if (!turning.length) return;
+  for (const one of turning) {
+    one.side = caller.side === "party" ? "enemy" : "party";
+    one.calledTurned = true;
+    delete one.calledWith;
+    delete one.calledEndsWithCaller;
+  }
+  ctx.events.push({ type: "turnedOn", actorId: caller.id, ids: turning.map((one) => one.id) });
+}
+
 function dismissCalled(
   ctx: RulesetCombatContext,
   caller: RulesetCombatant,

@@ -960,7 +960,8 @@ export function rulesetTargetTypesAllow(
 ): boolean {
   if (!targetTypes) return true;
   // Only one its user called (1.434): Find Familiar's own familiar.
-  if (targetTypes.calledBySelf && (!by || combatant.calledBy !== by.id)) return false;
+  // Never one that turned on them (1.485).
+  if (targetTypes.calledBySelf && (!by || combatant.calledBy !== by.id || combatant.calledTurned)) return false;
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
   // Its ability scores at most these (1.185); a score nobody wrote down keeps nobody out.
@@ -5217,6 +5218,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.timesPerSteps ? { timesPerSteps: calls.timesPerSteps } : {}),
       ...((stepped.perStep ?? calls.perStep) ? { perStep: stepped.perStep ?? calls.perStep } : {}),
       ...(stepped.fromStep ? { fromStep: stepped.fromStep } : {}),
+      ...(calls.hostileOnBreak ? { hostileOnBreak: true as const } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
     };

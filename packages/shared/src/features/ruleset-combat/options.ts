@@ -3811,7 +3811,7 @@ export function rulesetLentAttack(
   const cut = rest.indexOf(":");
   if (cut < 0) return null;
   const called = rulesetCombatant(state, rest.slice(0, cut));
-  if (!called || called.calledBy !== actor.id) return null;
+  if (!called || called.calledBy !== actor.id || called.calledTurned) return null;
   const attack = called.actions.find((entry) => entry.id === rest.slice(cut + 1));
   return attack && rulesetIsAttack(attack) ? { called, attack } : null;
 }
@@ -3841,7 +3841,8 @@ function lendOptions(
   if (!base || ((actor.strikesLeft ?? 0) < 1 && (actor.budgets[base.budget] ?? 0) < 1)) return [];
   const out: RulesetCombatOption[] = [];
   for (const called of state.combatants) {
-    if (called.calledBy !== actor.id || !rulesetCombatStanding(called) || called.defeated) continue;
+    if (called.calledBy !== actor.id || called.calledTurned || !rulesetCombatStanding(called) || called.defeated)
+      continue;
     if ((called.budgets[lends.budget] ?? 0) < 1) continue;
     const effects = rulesetCombatEffects(definition, combat, called, state);
     if (effects.has("cannot-act") || effects.has("cannot-react")) continue;

@@ -47334,6 +47334,10 @@
                           "minimum": 1,
                           "maximum": 20
                         },
+                        "hostileOnBreak": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "asTypes": {
                           "type": "array",
                           "items": {
@@ -83830,6 +83834,10 @@
                               "minimum": 1,
                               "maximum": 20
                             },
+                            "hostileOnBreak": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "asTypes": {
                               "type": "array",
                               "items": {
@@ -99800,6 +99808,10 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 20
+                                  },
+                                  "hostileOnBreak": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "asTypes": {
                                     "type": "array",

@@ -7999,7 +7999,8 @@ const creatureFields = {
     .optional(),
   /** What it does as it dies (Capability API 1.487): an action of its own, never on its menu, a
    *  burst centred on it (`area.around`) resolved on whoever it catches as it is out of the fight.
-   *  5e's mephits' Death Burst and a balor's Death Throes. Its `budget` is never spent. */
+   *  5e's mephits' Death Burst and a balor's Death Throes. Its `budget` is never spent. With a
+   *  `zone` (anchor "point", outlasts) it leaves that area where it fell: a smoke mephit's cloud. */
   onDeath: creatureActionSchema.optional(),
   /** It does not move while any of its cells is in one of these lights (Capability API 1.319): the
    *  showcase's Lantern-Shy, `["bright", "sunlight"]`. */
@@ -18041,6 +18042,11 @@ function creatureIssues(
       if (!definition.sheet.live.conditions.some((one) => one.id === entry.condition))
         add([...path, "applies", index, "condition"], `Unknown condition "${entry.condition}"`);
     });
+    // An area it leaves behind stays where it fell, after it is gone.
+    const zone = creature.onDeath.zone;
+    if (zone && (!zone.outlasts || zone.anchor !== "point"))
+      add([...path, "zone"], 'An area left as it dies stays where it fell after it is gone (anchor "point", outlasts)');
+    if (zone?.obscures) sightIssues(definition, zone.obscures.pierced, [...path, "zone", "obscures"], add);
   }
   // Every rider names this block's own actions and this ruleset's own damage types.
   const riderIds = new Set<string>();

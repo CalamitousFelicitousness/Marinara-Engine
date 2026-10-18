@@ -3,6 +3,7 @@
  *
  *   - A dust mephit's Death Burst: dropped to 0, it bursts around itself, a save against it, on
  *     whoever stands within 5 feet; the one beside it takes it, the caster across the board does not.
+ *   - A smoke mephit's cloud: a zone left where it fell, outlasting it.
  *   - Never on its own menu, and nothing happens while it lives.
  *   - Refusals (not centred on it, an unknown save) and the install gate.
  */
@@ -98,8 +99,13 @@ try {
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
   const definition = parsed(fiveE());
   const mephitEntry = definition.catalogs.flatMap((catalog) => catalog.entries).find((entry) => entry.id === "mephit");
-  const block = rulesetCreatureBlock(definition, mephitEntry);
-  assert.ok(block);
+  const blockOf = (rules: RulesetDefinition) => {
+    const entry = rules.catalogs.flatMap((catalog) => catalog.entries).find((one) => one.id === "mephit");
+    const block = rulesetCreatureBlock(rules, entry);
+    assert.ok(block);
+    return block;
+  };
+  const mephit = blockOf(definition);
   const hero = (id: string, name: string, spells: RulesetCatalogEntry[]) => ({
     id,
     name,
@@ -111,9 +117,9 @@ try {
     }),
     catalogs: { spells },
   });
-  const fight = (health?: number) => {
+  const fight = (health?: number, rules = definition, block = mephit) => {
     const state = createRulesetEncounter({
-      definition,
+      definition: rules,
       seed: 1,
       roller: () => 10,
       combatants: [
@@ -187,6 +193,37 @@ try {
     assert.deepEqual(of(step.events, "deathBurst"), [], "still alive");
   }
 
+  // ── A smoke mephit leaves a cloud where it fell, heavily obscured, outlasting it a minute ──
+  {
+    const cloud = {
+      id: "death_burst",
+      name: "Death Burst",
+      budget: "action",
+      area: { shape: "burst", size: 5, around: true },
+      zone: { rounds: 10, anchor: "point", outlasts: true, triggers: [], obscures: {} },
+    };
+    const smoky = parsed(fiveE(cloud));
+    const state = fight(undefined, smoky, blockOf(smoky));
+    const option = rulesetCombatOptions(smoky, state, "mage").find((one) => one.label === "Cut")!;
+    const step = applyRulesetCombatChoice(
+      smoky,
+      state,
+      { actorId: "mage", optionId: option.id, targetIds: ["mephit"] },
+      () => 10,
+    );
+    assert.deepEqual(of(step.events, "refused"), []);
+    assert.deepEqual(
+      of(step.events, "deathBurst").map((one) => one.label),
+      ["Death Burst"],
+    );
+    const zones = rulesetCombatant(step.state, "mephit")!.zones ?? [];
+    assert.equal(zones.length, 1, "its cloud stays");
+    assert.deepEqual(zones[0]!.at, { x: 6, y: 6 }, "where it fell");
+    assert.equal(zones[0]!.cells?.length, 9, "everything within 5 feet of it");
+    assert.equal(hp(step.state, "fighter"), hp(fight(), "fighter"), "a cloud, no harm");
+    refused(fiveE({ ...cloud, zone: { rounds: 10, anchor: "point", triggers: [] } }), /stays where it fell/);
+  }
+
   // ── Refusals ──
   refused(fiveE({ ...burst, area: { shape: "burst", size: 5 } }), /burst centred on it/);
   refused(
@@ -216,7 +253,7 @@ try {
   }
 
   console.log(
-    "On death: a dust mephit cut down bursts around itself on the fighter beside it and not the mage far off, never offered on its menu, not while it stands; refused off-centre or with an unknown save; gated at 1.487.",
+    "On death: a dust mephit cut down bursts around itself on the fighter beside it and not the mage far off, a smoke mephit leaves its cloud where it fell, never offered on its menu, not while it stands; refused off-centre or with an unknown save; gated at 1.487.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -4750,7 +4750,16 @@ function placeZone(
   const cells = wall
     ? wall.cells
     : grid && at && rule.anchor === "point"
-      ? areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined)
+      ? action.onDeath && action.around
+        ? // Left as its maker dies (1.487): around every cell it filled, as nobody aimed it.
+          [
+            ...new Map(
+              rulesetFootprint(actor)
+                .flatMap((cell) => rulesetAreaCells("burst", action.around!.size, cell, cell, grid))
+                .map((cell) => [`${cell.x},${cell.y}`, cell] as const),
+            ).values(),
+          ]
+        : areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined)
       : undefined;
   const stamp = turnStamp(ctx);
   const caught = rule.atCast ? resume.targetIds : [];
@@ -8915,6 +8924,13 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
   const action = dead.actions.find((entry) => entry.onDeath);
   if (!action?.around || dead.dismissed) return;
+  // One that leaves an area behind (a smoke mephit's cloud) lays it where it fell, outlasting it.
+  if (action.zone) {
+    const at = rulesetPositionOf(dead);
+    ctx.events.push({ type: "deathBurst", actorId: dead.id, label: action.label });
+    if (at) placeZone(ctx, dead, action, { kind: "action", actorId: dead.id, optionId: action.id, targetIds: [], at });
+    return;
+  }
   const caught = rulesetAroundTargets(ctx.state, dead, action).filter(
     (one) => !one.defeated && !rulesetSealedApart(ctx.definition, ctx.state, dead, one),
   );

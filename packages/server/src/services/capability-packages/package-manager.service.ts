@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A charge followed by the charging action again (1.521): a warhorse's Trampling Charge. */
+function carriesChargeThenItself521(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesChargeThenItself521(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const then = plainRecord(plainRecord(record.charge)?.then);
+  if (then && typeof record.id === "string" && then.action === record.id) return true;
+  return featureValues(record).some((one) => carriesChargeThenItself521(one, depth + 1));
+}
+
 /** An item found holding a rolled count of charges (1.520): a Rod of Absorption's 1d10. */
 function carriesRolledCharges520(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7221,6 +7232,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A charge followed by the charging action again, 1.521.
+  if (
+    !declaresApi(521) &&
+    (carriesChargeThenItself521(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargeThenItself521(document)))
+  ) {
+    return "A ruleset with a charge followed by the charging action again (charge then) requires schemaVersion 2 and capabilityApi 1.521 or newer";
+  }
   // An item found holding a rolled count of charges, 1.520.
   if (
     !declaresApi(520) &&

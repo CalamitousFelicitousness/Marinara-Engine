@@ -1829,7 +1829,7 @@ export interface RulesetCombatant {
     pickedUp?: boolean;
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
      *  its uses and recharge were spent with what came first. */
-    followUps?: Array<{ id: string; paid?: true; budget?: string; targetId?: string }>;
+    followUps?: Array<{ id: string; paid?: true; budget?: string; targetId?: string; uncharged?: true }>;
     /** A strike again was made this turn (1.375): Horde Breaker, once a turn. */
     struckAgain?: true;
   };

@@ -7,6 +7,8 @@
  *     2d8, then a Strength save, and on a failure a 10-foot push and prone. A run that is too short,
  *     that ends with a step no closer, that was walked last turn, or a blow at somebody else, carries
  *     nothing. A bestiary minotaur charges as one written out does.
+ *   - `charge.then` naming the charging action (1.521): a warhorse's Trampling Charge, its hooves again
+ *     from its bonus action, carrying no charge the second time.
  *   - `charge.then` (1.493): a lion's Pounce, a bite paid from its bonus action at the one its charge
  *     knocked prone, and at nobody else; none when the charge left it standing.
  *   - Import refusals, and the install gate.
@@ -427,6 +429,24 @@ try {
     const stood = strike(run({ str_save: 30, dex_save: -10, con_save: 30 }));
     assert.ok(!prone(stood.state, "hero"));
     assert.equal(optionOf(stood.state, "Bite"), undefined, "not prone: no bite");
+
+    // A warhorse's Trampling Charge (1.521): its hooves again, from its bonus action, uncharged.
+    const hooves = {
+      ...pounce,
+      charge: { ...pounce.charge, then: { action: "claw", budget: "bonus", targetHolds: ["prone"] } },
+    };
+    const horse = block({ actions: [hooves as never] });
+    const trampled = strike(
+      walk(fight({ beast: { x: 2, y: 7 }, hero: { x: 9, y: 7 }, other: { x: 8, y: 8 } }, {}, horse), { x: 8, y: 7 }),
+    );
+    assert.ok(charged(trampled.events) && prone(trampled.state, "hero"));
+    const again = optionOf(trampled.state, "Gore");
+    assert.ok(again, "the hooves again");
+    assert.equal(again.budget, "bonus");
+    const second = choose(trampled.state, "beast", again.id, { targetIds: ["hero"] });
+    assert.ok(!charged(second.events), "no charge the second time");
+    assert.equal(who(second.state, "beast").budgets.bonus, 0);
+    assert.equal(optionOf(second.state, "Gore"), undefined, "once");
   }
 
   // ── The gate ──
@@ -459,6 +479,21 @@ try {
       "A ruleset with a charge that lets another action follow (charge then) requires schemaVersion 2 and capabilityApi 1.493 or newer";
     assert.equal(getCapabilityPackageInstallIssue(manifest(492) as never, pounced), thenGate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, pounced), thenGate);
+    const trampling = withCreature({
+      ...minotaur,
+      actions: [
+        {
+          ...minotaur.actions[0],
+          charge: { ...minotaur.actions[0]!.charge, then: { action: "gore", budget: "bonus" } },
+        },
+      ],
+    });
+    parsed(trampling);
+    const againGate =
+      "A ruleset with a charge followed by the charging action again (charge then) requires schemaVersion 2 and capabilityApi 1.521 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(520) as never, trampling), againGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(521) as never, trampling), againGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(520) as never, pounced), againGate);
   }
 
   console.log(

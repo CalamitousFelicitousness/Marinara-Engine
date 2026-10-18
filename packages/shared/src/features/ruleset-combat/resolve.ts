@@ -420,6 +420,8 @@ interface RulesetCombatContext {
   teleport?: { to?: RulesetCombatCell; carries: string[] };
   /** Whoever is casting what was stored in them by itself (1.516), so it cannot set off another. */
   releasing?: Set<string>;
+  /** The action being resolved follows its own charge (1.521): the run is spent, so it carries none. */
+  uncharged?: true;
   /** Where the action being resolved moves its target to (1.512), and how many levels up. */
   carriesTo?: { x: number; y: number; rises: number };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
@@ -6988,6 +6990,7 @@ function applyChoice(
   // came first. Made as the first half, it lets the other follow.
   const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
   if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
+  if (following?.uncharged) ctx.uncharged = true;
   if (!following?.paid) spendAvailability(ctx, working, action);
   markUsedOn(ctx.state, working, action, workingTargets);
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
@@ -13007,7 +13010,13 @@ function chargeThen(
   if (then.targetHolds && !then.targetHolds.every((one) => held.includes(one))) return;
   actor.flags.followUps = [
     ...(actor.flags.followUps ?? []).filter((one) => one.id !== then.action),
-    { id: then.action, budget: then.budget, targetId: target.id },
+    // The charging action again (1.521) carries no charge the second time.
+    {
+      id: then.action,
+      budget: then.budget,
+      targetId: target.id,
+      ...(then.action === action.id ? { uncharged: true as const } : {}),
+    },
   ];
 }
 
@@ -13140,7 +13149,7 @@ function resolveActionBodyIn(
   // A blow after a straight run at its one target carries the charge (1.186), read again as a held
   // blow picks up, since the run is still the one this turn walked.
   const charging = action.charge && (held ? rulesetCombatant(ctx.state, held.targetId) : targets[0]);
-  if (action.charge && charging && rulesetChargeRun(actor, charging) >= action.charge.atLeast) {
+  if (action.charge && charging && !ctx.uncharged && rulesetChargeRun(actor, charging) >= action.charge.atLeast) {
     if (!held) ctx.events.push({ type: "charged", actorId: actor.id, targetId: charging.id, label: action.label });
     action = chargedAction(action, action.charge);
   }

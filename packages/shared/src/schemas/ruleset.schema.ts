@@ -18606,11 +18606,12 @@ function creatureIssues(
         add([...path, "reaction", "above", "check"], 'A creature without a sheet writes its check as { "const": n }');
       }
     }
-    // What follows a charge (1.493) is another of its actions, a budget and conditions it knows.
+    // What follows a charge (1.493) is one of its actions, a budget and conditions it knows; the
+    // charging action itself once more (1.521), a warhorse's hooves.
     const then = action.charge?.then;
     if (then) {
       const next = byId.get(then.action);
-      if (!next || next.id === action.id) add([...path, "charge", "then", "action"], `Unknown action "${then.action}"`);
+      if (!next) add([...path, "charge", "then", "action"], `Unknown action "${then.action}"`);
       if (!combat.economy.budgets.some((one) => one.id === then.budget))
         add([...path, "charge", "then", "budget"], `Unknown budget "${then.budget}"`);
       then.targetHolds?.forEach((condition, index) => {

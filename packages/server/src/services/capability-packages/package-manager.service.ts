@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** What follows a charge (1.493): a lion's Pounce. */
+function carriesChargeThen493(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesChargeThen493(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.charge) && plainRecord(plainRecord(record.charge)!.then)) return true;
+  return featureValues(record).some((one) => carriesChargeThen493(one, depth + 1));
+}
+
 /** A gnoll's Rampage (1.492). */
 function carriesRampage492(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6918,6 +6928,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What follows a charge, 1.493.
+  if (
+    !declaresApi(493) &&
+    (carriesChargeThen493(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargeThen493(document)))
+  ) {
+    return "A ruleset with a charge that lets another action follow (charge then) requires schemaVersion 2 and capabilityApi 1.493 or newer";
+  }
   // A gnoll's Rampage, 1.492.
   if (
     !declaresApi(492) &&

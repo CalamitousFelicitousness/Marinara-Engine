@@ -1913,9 +1913,14 @@ export function rulesetOptionTargets(
     const size = rulesetSizeRank(combat, combatant);
     return size !== undefined && size - actorSize > contest!.maxSizeAbove!;
   };
+  // What follows a charge (1.493) is at the one charged alone.
+  const pinned = rulesetOnOwnTurn(state, actor)
+    ? actor.flags.followUps?.find((one) => one.id === option.id)?.targetId
+    : undefined;
   return (
     state.combatants
       .filter((combatant) => {
+        if (pinned !== undefined && combatant.id !== pinned) return false;
         // Bringing back the dead is aimed at the dead, and only them (1.176).
         if (cure?.revives) {
           if (!rulesetCanRevive(state, cure, combatant)) return false;
@@ -2838,15 +2843,17 @@ function optionFrom(
   const following = rulesetOnOwnTurn(state, actor)
     ? actor.flags.followUps?.find((one) => one.id === action.id)
     : undefined;
-  const free = action.free === true || !!following || rulesetFreeStrike(actor, action);
+  // One that follows paid from a budget of its own (1.493): a lion's bite after its pounce.
+  const free = action.free === true || (!!following && !following.budget) || rulesetFreeStrike(actor, action);
   // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
   // single strike, or an item's use, as Haste's extra action allows. A creature's weapon is an
   // attack roll of its stat block at one target: its bite as much as a fighter's sword. Only on the
   // holder's own turn: the extra action is one of its turn, never a reaction's.
-  let budget = action.budget;
+  let budget = following?.budget ?? action.budget;
   let oneStrike = false;
   let inReach = false;
   if (!free && (actor.budgets[budget] ?? 0) < 1) {
+    if (following?.budget) return null;
     if (atItsMoment) return null;
     const weapon =
       (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&

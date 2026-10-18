@@ -183,6 +183,7 @@ function chargeOf(
     ...(charge.save ? { save: { ...charge.save } } : {}),
     ...(charge.push !== undefined ? { push: charge.push } : {}),
     ...(charge.applies ? { applies: charge.applies.map((entry) => ({ ...entry })) } : {}),
+    ...(charge.then ? { then: structuredClone(charge.then) } : {}),
   };
 }
 

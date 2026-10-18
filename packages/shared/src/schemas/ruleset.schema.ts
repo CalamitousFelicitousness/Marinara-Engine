@@ -7291,10 +7291,22 @@ const creatureActionSchema = z
           .optional(),
         push: z.number().finite().gt(0).max(10000).optional(),
         applies: z.array(catalogAppliesSchema).min(1).max(4).superRefine(linkedApplies).optional(),
+        /** What it may do next to the one it charged (Capability API 1.493): another of its own
+         *  actions, paid from `budget`, at that target alone, and only while it holds all of
+         *  `targetHolds`. A lion's Pounce, `{"action": "bite", "budget": "bonus", "targetHolds":
+         *  ["prone"]}`. */
+        then: z
+          .object({
+            action: sheetId,
+            budget: sheetId,
+            targetHolds: z.array(sheetId).min(1).max(4).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
-      .refine((charge) => charge.plus || charge.push !== undefined || charge.applies, {
-        message: 'A charge adds damage ("plus"), a "push" or conditions ("applies")',
+      .refine((charge) => charge.plus || charge.push !== undefined || charge.applies || charge.then, {
+        message: 'A charge adds damage ("plus"), a "push", conditions ("applies") or what follows ("then")',
       })
       .optional(),
     /** Other actions of this same block, in order, each with its own target choice. ONE budget pays
@@ -18067,6 +18079,18 @@ function creatureIssues(
       if (!creature.sheet && action.reaction.above.check.const === undefined) {
         add([...path, "reaction", "above", "check"], 'A creature without a sheet writes its check as { "const": n }');
       }
+    }
+    // What follows a charge (1.493) is another of its actions, a budget and conditions it knows.
+    const then = action.charge?.then;
+    if (then) {
+      const next = byId.get(then.action);
+      if (!next || next.id === action.id) add([...path, "charge", "then", "action"], `Unknown action "${then.action}"`);
+      if (!combat.economy.budgets.some((one) => one.id === then.budget))
+        add([...path, "charge", "then", "budget"], `Unknown budget "${then.budget}"`);
+      then.targetHolds?.forEach((condition, index) => {
+        if (!definition.sheet.live.conditions.some((one) => one.id === condition))
+          add([...path, "charge", "then", "targetHolds", index], `Unknown condition "${condition}"`);
+      });
     }
     action.sequence?.forEach((step, stepIndex) => {
       const where: (string | number)[] = [...path, "sequence", stepIndex, "action"];

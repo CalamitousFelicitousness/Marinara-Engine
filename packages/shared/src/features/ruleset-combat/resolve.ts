@@ -12436,13 +12436,43 @@ function resolveActionBody(
   spend?: number,
 ): RulesetHitHold | null {
   const before = ctx.acting;
+  const from = ctx.events.length;
   ctx.acting = { actorId: actor.id, action };
+  let result: RulesetHitHold | null;
   try {
-    return resolveActionBodyIn(ctx, actor, action, targets, payWith, held, styleId, spend);
+    result = resolveActionBodyIn(ctx, actor, action, targets, payWith, held, styleId, spend);
   } finally {
     if (before) ctx.acting = before;
     else delete ctx.acting;
   }
+  if (!result) chargeThen(ctx, actor, action, from);
+  return result;
+}
+
+/** What a charge lets follow at the one it struck (1.493), once the blow is done: a lion's bite at a
+ *  target its Pounce knocked prone, paid from its bonus action. */
+function chargeThen(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  from: number,
+): void {
+  const then = action.charge?.then;
+  if (!then || !rulesetOnOwnTurn(ctx.state, actor)) return;
+  const charged = ctx.events
+    .slice(from)
+    .find(
+      (event): event is Extract<RulesetCombatEvent, { type: "charged" }> =>
+        event.type === "charged" && event.actorId === actor.id,
+    );
+  const target = charged ? rulesetCombatant(ctx.state, charged.targetId) : undefined;
+  if (!target || target.defeated || !actor.actions.some((one) => one.id === then.action)) return;
+  const held = rulesetCombatConditions(ctx.definition, target);
+  if (then.targetHolds && !then.targetHolds.every((one) => held.includes(one))) return;
+  actor.flags.followUps = [
+    ...(actor.flags.followUps ?? []).filter((one) => one.id !== then.action),
+    { id: then.action, budget: then.budget, targetId: target.id },
+  ];
 }
 
 function resolveActionBodyIn(

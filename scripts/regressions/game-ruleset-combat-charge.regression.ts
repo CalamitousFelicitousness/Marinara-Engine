@@ -7,6 +7,8 @@
  *     2d8, then a Strength save, and on a failure a 10-foot push and prone. A run that is too short,
  *     that ends with a step no closer, that was walked last turn, or a blow at somebody else, carries
  *     nothing. A bestiary minotaur charges as one written out does.
+ *   - `charge.then` (1.493): a lion's Pounce, a bite paid from its bonus action at the one its charge
+ *     knocked prone, and at nobody else; none when the charge left it standing.
  *   - Import refusals, and the install gate.
  */
 import assert from "node:assert/strict";
@@ -24,6 +26,7 @@ import {
   rulesetCombatHealth,
   rulesetCombatOptions,
   rulesetCreatureBlock,
+  rulesetOptionTargets,
   supportedCapabilityApi,
   type RulesetCombatCell,
   type RulesetCombatEvent,
@@ -330,6 +333,16 @@ try {
     ],
     tier: "cr_0",
   };
+  const goreWithThen = () => ({
+    ...minotaur,
+    actions: [
+      {
+        ...minotaur.actions[0],
+        charge: { ...minotaur.actions[0]!.charge, then: { action: "bite", budget: "bonus", targetHolds: ["prone"] } },
+      },
+      { id: "bite", name: "Bite", budget: "action", toHit: 4, reach: 5, damage: { dice: "1d10", type: "piercing" } },
+    ],
+  });
   const dragon = {
     ...block(),
     actions: [
@@ -341,6 +354,7 @@ try {
   {
     parsed(withCreature(minotaur));
     parsed(withCreature(dragon));
+    parsed(withCreature(goreWithThen()));
     const refused = (creature: Record<string, unknown>, message: RegExp) => {
       const result = parseRulesetDefinition(withCreature(creature));
       assert.ok(
@@ -359,6 +373,8 @@ try {
     refused(goreWith({}, { toHit: undefined }), /A charge rides a blow at one target/);
     refused(goreWith({}, { targetCount: 2 }), /A charge rides a blow at one target/);
     refused(goreWith({ plus: undefined, push: undefined, applies: undefined }), /A charge adds damage/);
+    refused(goreWith({ then: { action: "maul", budget: "bonus" } }), /Unknown action "maul"/);
+    refused(goreWith({ then: { action: "gore", budget: "luck" } }), /Unknown action "gore"|Unknown budget "luck"/);
     refused(
       {
         ...dragon,
@@ -370,6 +386,47 @@ try {
       /roll the same dice from the same number/,
     );
     refused({ ...dragon, actions: [dragon.actions[0]] }, /Only one action recharges as "breath"/);
+  }
+
+  // ── A lion's Pounce: knocked prone by the charge, a bite from its bonus action, at it alone ──
+  {
+    const bite = {
+      id: "bite",
+      name: "Bite",
+      targets: "any" as const,
+      budget: "action",
+      toHit: 30,
+      reach: 5,
+      damage: { count: 1, sides: 10, flat: 0 },
+    };
+    const pounce = {
+      ...gore,
+      id: "claw",
+      name: "Gore",
+      charge: { ...gore.charge, push: undefined, then: { action: "bite", budget: "bonus", targetHolds: ["prone"] } },
+    };
+    const lion = block({ actions: [pounce as never, bite as never] });
+    const run = (saves?: Record<string, number>) =>
+      walk(
+        fight({ beast: { x: 2, y: 7 }, hero: { x: 9, y: 7 }, other: { x: 8, y: 8 } }, saves ? { saves } : {}, lion),
+        { x: 8, y: 7 },
+      );
+    const hit = strike(run());
+    assert.ok(charged(hit.events) && prone(hit.state, "hero"));
+    const follow = optionOf(hit.state, "Bite");
+    assert.ok(follow, "a bite after the pounce");
+    assert.equal(follow.budget, "bonus");
+    assert.deepEqual(
+      rulesetOptionTargets(definition, hit.state, "beast", follow, true),
+      ["hero"],
+      "at the one it pounced on",
+    );
+    const bitten = choose(hit.state, "beast", follow.id, { targetIds: ["hero"] });
+    assert.equal(who(bitten.state, "beast").budgets.bonus, 0, "its bonus action spent");
+    assert.equal(optionOf(bitten.state, "Bite"), undefined, "once");
+    const stood = strike(run({ str_save: 30, dex_save: -10, con_save: 30 }));
+    assert.ok(!prone(stood.state, "hero"));
+    assert.equal(optionOf(stood.state, "Bite"), undefined, "not prone: no bite");
   }
 
   // ── The gate ──
@@ -397,6 +454,11 @@ try {
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(186) as never, doc), gate, label);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(185) as never, fiveE()), gate, "the plain 5e example");
+    const pounced = withCreature(goreWithThen());
+    const thenGate =
+      "A ruleset with a charge that lets another action follow (charge then) requires schemaVersion 2 and capabilityApi 1.493 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(492) as never, pounced), thenGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, pounced), thenGate);
   }
 
   console.log(

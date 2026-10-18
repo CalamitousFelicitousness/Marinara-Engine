@@ -327,6 +327,8 @@ export interface RulesetCombatCharge {
   /** The ruleset's distance on a block, cells in a fight. */
   push?: number;
   applies?: RulesetCombatApplies[];
+  /** Another of its actions at the one charged, from `budget`, while it holds `targetHolds` (1.493). */
+  then?: { action: string; budget: string; targetHolds?: string[] };
 }
 
 /** One step of a sequence: another action of the same block, done this many times. */
@@ -1745,7 +1747,7 @@ export interface RulesetCombatant {
     pickedUp?: boolean;
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
      *  its uses and recharge were spent with what came first. */
-    followUps?: Array<{ id: string; paid?: true }>;
+    followUps?: Array<{ id: string; paid?: true; budget?: string; targetId?: string }>;
     /** A strike again was made this turn (1.375): Horde Breaker, once a turn. */
     struckAgain?: true;
   };

@@ -46,6 +46,8 @@ interface StateEditorProps {
   sections: StateEditorSection[];
   /** Saves the changed sections. Throw to keep the drafts and show the error. */
   onSave: (changes: StateEditorChange[]) => Promise<void>;
+  /** Opens on this section instead of the first one (a caller that already knows where the user is). */
+  initialSectionId?: string;
   /** Shown above the editor, e.g. a warning that the state moved on. */
   notice?: ReactNode;
   /** Lets the host guard closing while drafts are unsaved. */
@@ -83,10 +85,19 @@ function revealTextareaLine(textarea: HTMLTextAreaElement, line: number) {
   textarea.scrollTop = Math.max(0, index * lineHeight - textarea.clientHeight / 3);
 }
 
-export function StateEditor({ sections, onSave, notice, onDirtyChange, reviewSubtitle }: StateEditorProps) {
+export function StateEditor({
+  sections,
+  onSave,
+  initialSectionId,
+  notice,
+  onDirtyChange,
+  reviewSubtitle,
+}: StateEditorProps) {
   const { t: localizeUi } = useUiTranslation();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [activeSectionId, setActiveSectionId] = useState(sections[0]?.id ?? "");
+  const [activeSectionId, setActiveSectionId] = useState(
+    () => sections.find((section) => section.id === initialSectionId)?.id ?? sections[0]?.id ?? "",
+  );
   const [query, setQuery] = useState("");
   const [view, setView] = useState<StateEditorView>("section");
   const [saving, setSaving] = useState(false);

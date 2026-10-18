@@ -137,7 +137,7 @@ These settings control it:
 
 The **State Editor** shows every tracker of the current turn in one window, so you can find a value and fix it without opening each tracker. It also works on a phone.
 
-To open it, click the gear (**Tracker panel settings**) in the Tracker Panel header, then the **{ }** button (**Open in State Editor**). In **Agent Suite**, the **Tracker Data** header has an **Open in State Editor** link too.
+To open it, click the gear (**Tracker panel settings**) in the Tracker Panel header, then the **{ }** button (**Open in State Editor**). The **{ }** button is also in the title bar of the **Trackers** window and of every tracker you popped out into its own window; there it opens on that tracker's own section (World State opens on **Scene**, Present Characters on **Present Characters**, and so on). In **Agent Suite**, the **Tracker Data** header has an **Open in State Editor** link too.
 
 - **Which turn you're editing:** the line under the search box says which message and swipe the state belongs to, for example "Editing message #12 · swipe 2 of 3". **Latest** marks the newest turn, and a short excerpt of the message helps you match it to the chat. Each swipe has its own state, so swipe first if you want to fix a different one.
 - **Sections:** **Scene**, **Present Characters**, **Persona Stats**, **Inventory Tracker**, **Custom Tracker Fields**, and **Active Quests**. On a phone they are a row of chips above the editor. A dot marks a section you changed.

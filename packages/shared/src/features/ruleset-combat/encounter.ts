@@ -2332,7 +2332,11 @@ function itemAttackActions(
       Object.entries(item.slots ?? {}).every(
         ([slot, count]) => (slotCounts.get(slot) ?? 0) - (used[slot] ?? 0) >= count,
       );
-    const parsed = parseRulesetCombatDice(read(free ? attack.versatile!.dice : attack.damage.dice));
+    // No dice at all (1.458) is a blow of its bonus alone, or of nothing: a blowgun's 1, a net's none.
+    const diceless = attack.damage.dice === undefined && !(free && attack.versatile?.dice !== undefined);
+    const parsed = diceless
+      ? { count: 0, sides: 0, flat: 0 }
+      : parseRulesetCombatDice(read(free ? attack.versatile!.dice : attack.damage.dice));
     const dice = pooled ? (parsed ?? { count: 0, sides: rulesetPoolDie(definition), flat: 0 }) : parsed;
     if (!dice) return;
     const aim = itemToHit(definition, build, evaluated, item, attack.toHit, pooled);
@@ -2532,6 +2536,7 @@ function itemAttackActions(
               ...entry,
               ...(entry.save ? { save: { ...entry.save } } : {}),
               ...(entry.saveEnds ? { saveEnds: { ...entry.saveEnds } } : {}),
+              ...(entry.checkEnds ? { checkEnds: { ...entry.checkEnds } } : {}),
             })),
           }
         : {}),

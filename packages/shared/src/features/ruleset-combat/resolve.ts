@@ -13039,6 +13039,8 @@ function resolveActionBody(
           condition: entry.condition,
           duration: entry.saveEnds ? "until-save" : entry.rounds ? { rounds: entry.rounds } : "instant",
           ...(entry.saveEnds ? { saveEnds: { save: entry.saveEnds.save, at: entry.saveEnds.at } } : {}),
+          // Ended by its holder's own check (1.458): breaking out of a net.
+          ...(entry.checkEnds ? { checkEnds: { ...entry.checkEnds } } : {}),
         },
         {
           sourceId: actor.id,

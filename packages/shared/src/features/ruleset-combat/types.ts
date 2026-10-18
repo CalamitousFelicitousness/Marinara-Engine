@@ -1156,6 +1156,8 @@ export interface RulesetCombatAction {
     targetIs?: RulesetTargetIs;
     /** At most once in any one turn (1.187). */
     oncePerTurn?: true;
+    /** A check its holder may spend the standard budget on to end it (1.458): a net's. */
+    checkEnds?: { check: string; difficulty: number };
   }>;
   /** More to hit against a target that is this (1.187), or that carries a condition its maker put on
    *  it (`marked`, 1.189), and how else an attack on it is made (1.189). */

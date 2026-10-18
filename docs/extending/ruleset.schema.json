@@ -69337,8 +69337,29 @@
                               },
                               "atLeast": {
                                 "type": "integer",
-                                "minimum": 1,
+                                "minimum": 0,
                                 "maximum": 100
+                              },
+                              "checkEnds": {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "difficulty": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "check",
+                                  "difficulty"
+                                ],
+                                "additionalProperties": false
                               },
                               "rounds": {
                                 "type": "integer",

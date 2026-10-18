@@ -2263,6 +2263,24 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** An item's attack with no damage dice, or a weapon condition put on by any hit or ended by its
+ *  holder's check (1.458): a blowgun, a net. */
+function carriesDicelessAttack458(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDicelessAttack458(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const attack = plainRecord(record.attack);
+  const damage = plainRecord(attack?.damage);
+  if (attack && damage && damage.dice === undefined) return true;
+  if (
+    Array.isArray(attack?.onHit) &&
+    attack.onHit.some((one) => plainRecord(one)?.atLeast === 0 || plainRecord(one)?.checkEnds !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesDicelessAttack458(one, depth + 1));
+}
+
 /** A condition or worn item that turns critical hits on its holder into plain ones (1.457). */
 function carriesNoCriticals457(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6485,6 +6503,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Item attacks with no damage dice, and weapon conditions on any hit or ended by a check, 1.458.
+  if (
+    !declaresApi(458) &&
+    (carriesDicelessAttack458(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDicelessAttack458(document)))
+  ) {
+    return "A ruleset whose items attack with no damage dice, or whose weapons put a condition on with any hit or one a check ends (an attack without damage dice, onHit atLeast 0 or checkEnds) requires schemaVersion 2 and capabilityApi 1.458 or newer";
+  }
   // Critical hits on the holder made plain hits, 1.457.
   if (
     !declaresApi(457) &&

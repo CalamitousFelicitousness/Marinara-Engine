@@ -8547,6 +8547,54 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
     { message: "A charge more adds dice, a flat amount, or both", path: ["chargeStep", "amount"] },
   );
 
+/** A condition a weapon's hit puts on the one it hit (1.169), typed by hand to keep the item
+ *  attack's inferred type short enough to emit. */
+export interface RulesetItemOnHit {
+  condition: string;
+  atLeast: number;
+  checkEnds?: { check: string; difficulty: number };
+  rounds?: number;
+  save?: { save: string; difficulty: number };
+  saveEnds?: { save: string; difficulty: number; at: "turn-end" | "turn-start" | "damaged" };
+  targetIs?: RulesetTargetIs;
+  oncePerTurn?: true;
+}
+const itemOnHitSchema: z.ZodType<RulesetItemOnHit, z.ZodTypeDef, unknown> = z
+  .object({
+    condition: sheetId,
+    atLeast: z.number().int().min(0).max(100),
+    /** Its holder may spend the standard budget on this check against `difficulty` to end it
+     *  (Capability API 1.458), as a condition's own `checkEnds` is: a net's DC 10 Strength. */
+    checkEnds: z
+      .object({ check: sheetId, difficulty: z.number().int().min(0).max(1000) })
+      .strict()
+      .optional(),
+    rounds: z.number().int().min(1).max(100).optional(),
+    /** The target saves against it, and a success keeps it off (Capability API 1.169). */
+    save: z
+      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
+      .strict()
+      .optional(),
+    /** It lasts until its holder makes this save, rolled at the start or end of each of their
+     *  turns or on damage above zero (Capability API 1.169): a sword of wounding's wound, Con 15
+     *  at the turn's start. */
+    saveEnds: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(1000),
+        at: z.enum(["turn-end", "turn-start", "damaged"]),
+      })
+      .strict()
+      .optional(),
+    /** Only on a target that is this (Capability API 1.187): a giant slayer's knockdown of a
+     *  giant. */
+    targetIs: targetIsSchema.optional(),
+    /** At most once in any one turn, the holder's or anybody else's (Capability API 1.187): a
+     *  sword of wounding's wound. */
+    oncePerTurn: z.literal(true).optional(),
+  })
+  .strict();
+
 export const rulesetItemAttackSchema = z
   .object({
     budget: sheetId,
@@ -8590,42 +8638,9 @@ export const rulesetItemAttackSchema = z
      *  fight's damage. */
     floor: orItemStat(z.number().int().min(1).max(100)).optional(),
     /** A condition the target takes when the harm the blow dealt reaches `atLeast`, for `rounds` of
-     *  their own turns or until something takes it off. */
-    onHit: z
-      .array(
-        z
-          .object({
-            condition: sheetId,
-            atLeast: z.number().int().min(1).max(100),
-            rounds: z.number().int().min(1).max(100).optional(),
-            /** The target saves against it, and a success keeps it off (Capability API 1.169). */
-            save: z
-              .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000) })
-              .strict()
-              .optional(),
-            /** It lasts until its holder makes this save, rolled at the start or end of each of their
-             *  turns or on damage above zero (Capability API 1.169): a sword of wounding's wound, Con 15
-             *  at the turn's start. */
-            saveEnds: z
-              .object({
-                save: sheetId,
-                difficulty: z.number().int().min(0).max(1000),
-                at: z.enum(["turn-end", "turn-start", "damaged"]),
-              })
-              .strict()
-              .optional(),
-            /** Only on a target that is this (Capability API 1.187): a giant slayer's knockdown of a
-             *  giant. */
-            targetIs: targetIsSchema.optional(),
-            /** At most once in any one turn, the holder's or anybody else's (Capability API 1.187): a
-             *  sword of wounding's wound. */
-            oncePerTurn: z.literal(true).optional(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(4)
-      .optional(),
+     *  their own turns or until something takes it off. `atLeast: 0` (Capability API 1.458) is any
+     *  hit, harm or not: a net's restraint. */
+    onHit: z.array(itemOnHitSchema).min(1).max(4).optional(),
     /** More to hit against a target that is this (Capability API 1.187): a mace of smiting's +2 more
      *  against constructs. Its damage is a `plus` clause with the same `targetIs`. Since Capability
      *  API 1.189 the target may instead be one carrying a condition the wielder put on it
@@ -18417,6 +18432,9 @@ function attackIssues(
       add([...at, "onHit", index, "rounds"], "A condition that ends on a save lasts until it is made, not some rounds");
     }
     targetIsIssues(definition, entry.targetIs, [...at, "onHit", index, "targetIs"], add);
+    const check = entry.checkEnds?.check;
+    if (check !== undefined && !combat.checks?.some((one) => one.id === check))
+      add([...at, "onHit", index, "checkEnds", "check"], `Unknown check "${check}"`);
   });
   attack.against?.forEach((entry, index) => {
     targetIsIssues(definition, entry.is, [...at, "against", index, "is"], add);

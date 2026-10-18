@@ -512,14 +512,19 @@ assert.deepEqual(
 );
 assert.deepEqual(blankStateValueLike({}), {}, "an empty object stays empty");
 assert.deepEqual(
-  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventoryTrackerInventory"),
+  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventory"),
   { name: "", qty: 1, description: "", location: "" },
   "a cleared Inventory Tracker row keeps a quantity of 1, because the tracker reads qty as at least one",
 );
 assert.equal(
-  (blankStateArrayItem([], "inventoryTrackerCurrencies") as { qty?: number }).qty,
+  (blankStateArrayItem([], "currencies") as { qty?: number }).qty,
   1,
   "a currency row added to an empty list starts at 1 too",
+);
+assert.deepEqual(
+  shapeStateEntry({ name: "Rope", qty: 2 }, "inventory"),
+  { name: "Rope", qty: 2, description: null, location: null },
+  "an Inventory Tracker row shows the fields its section declares, not only the stored ones",
 );
 
 // ── A half-filled entry still shows the rows it is missing ──

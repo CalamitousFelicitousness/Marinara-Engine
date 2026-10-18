@@ -288,19 +288,23 @@ export function blankStateValueLike(value: unknown): unknown {
 
 /**
  * What an entry starts as when its list is empty and there is nothing to copy. The shapes are the ones
- * `GameState` declares in the shared package, so an entry added to a fresh tracker is still readable by
- * it. Only id-free shapes are here: characters and quests need ids the editor can't invent safely, so
- * those lists keep the generic "add field" row.
+ * `GameState` declares in the shared package, keyed by the name the section uses for the list — the
+ * Inventory Tracker section exposes `playerStats.inventoryTracker*` as `currencies`, `equipped` and
+ * `inventory` — so an entry added to a fresh tracker is still readable by it. Only id-free shapes are
+ * here: characters and quests need ids the editor can't invent safely, so those lists keep the generic
+ * "add field" row.
  */
 const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
   worldCustomFields: { name: "", value: "", icon: "" },
   customTrackerFields: { name: "", value: "" },
   stats: { name: "", value: 0, max: 0, color: "" },
-  inventory: { name: "", description: "", quantity: 1, location: "" },
-  inventoryTrackerInventory: { name: "", qty: 1, description: "", location: "" },
-  inventoryTrackerEquipped: { name: "", qty: 1, description: "", location: "" },
-  inventoryTrackerCurrencies: { name: "", qty: 1, description: "", location: "" },
+  currencies: { name: "", qty: 1, description: "", location: "" },
+  equipped: { name: "", qty: 1, description: "", location: "" },
+  inventory: { name: "", qty: 1, description: "", location: "" },
 };
+
+/** The Inventory Tracker reads qty as "at least one", so these lists can't start a row at 0. */
+const QTY_AT_LEAST_ONE = new Set(["currencies", "equipped", "inventory"]);
 
 /**
  * The entry an add control appends: the last item's shape, cleared; for an empty list, the shape its key
@@ -310,9 +314,9 @@ const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
 export function blankStateArrayItem(items: readonly unknown[], key?: string): unknown {
   if (items.length > 0) {
     const blank = blankStateValueLike(items[items.length - 1]);
-    // The Inventory Tracker reads qty as "at least one" (`clampInventoryTrackerQty`, and the save path
-    // rejects below 1), so a cleared row can't keep the 0 every other number clears to.
-    if (key?.startsWith("inventoryTracker") && isPlainRecord(blank) && blank.qty === 0) blank.qty = 1;
+    // The save path rejects a quantity below 1 (`findInvalidInventoryTrackerRow`), so a cleared row
+    // can't keep the 0 every other number clears to.
+    if (key && QTY_AT_LEAST_ONE.has(key) && isPlainRecord(blank) && blank.qty === 0) blank.qty = 1;
     return blank;
   }
   const template = key ? EMPTY_STATE_ENTRIES[key] : undefined;

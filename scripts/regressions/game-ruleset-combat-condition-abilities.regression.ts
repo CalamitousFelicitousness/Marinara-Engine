@@ -178,6 +178,27 @@ try {
     assert.equal(rulesetAbilityScore(definition, hero(ended), "str"), 10);
   }
   {
+    // Drunk mid-fight as the Engine puts it on: held, and written onto the sheet as well. The first
+    // such condition is still worked out.
+    const plain = fight();
+    const before = swing(plain);
+    const strong = fight();
+    hero(strong).tracked.push({ condition: "giant_strength", rounds: 600, source: "hero" });
+    hero(strong).sheet!.live = { ...hero(strong).sheet!.live, conditions: ["giant_strength"] };
+    const settled = applyRulesetCombatChoice(
+      definition,
+      strong,
+      { actorId: "hero", optionId: "end-turn", targetIds: [] },
+      () => 10,
+    ).state;
+    assert.deepEqual(hero(settled).abilityConditions, ["giant_strength"]);
+    settled.turn = settled.order.indexOf("hero");
+    hero(settled).budgets.action = 1;
+    const after = swing(settled);
+    assert.equal(after.modifier, before.modifier + 5, "+5 to hit, though the sheet holds it too");
+    assert.equal(after.amount, before.amount + 5, "+5 damage, though the sheet holds it too");
+  }
+  {
     // Drunk before the fight, on the sheet: the fight starts with it.
     const state = fight({ conditions: ["giant_strength"] });
     assert.equal(rulesetAbilityScore(definition, hero(state), "str"), 21);

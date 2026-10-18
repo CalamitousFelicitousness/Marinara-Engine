@@ -5579,7 +5579,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // And the ways of moving they were given (1.345).
   rulesetSyncSpeeds(definition, state);
   // And the abilities the conditions they hold change (1.462).
-  rulesetSyncAbilities(definition, state);
+  rulesetSyncAbilities(definition, state, true);
   placeRulesetCombatants(definition, combat, state, input.board);
   // What auras spread from where everybody stands (1.263).
   rulesetSyncAuras(definition, state);
@@ -6224,7 +6224,13 @@ export function rulesetHangsOn(
  * speed and everything else stay as they are. The ids of those conditions are kept, so nothing is
  * worked out again until they change. Returns whose numbers changed.
  */
-export function rulesetSyncAbilities(definition: RulesetDefinition, state: RulesetEncounterState): string[] {
+export function rulesetSyncAbilities(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  /** As the fight is made, when a sheet that already held them all was read with them. Never after:
+   *  a condition put on in a fight is written onto the sheet too, and must still be worked out. */
+  starting = false,
+): string[] {
   const combat = definition.combat;
   if (!combat?.conditions?.some((entry) => entry.abilities)) return [];
   const changed: string[] = [];
@@ -6244,6 +6250,7 @@ export function rulesetSyncAbilities(definition: RulesetDefinition, state: Rules
     else delete combatant.abilityConditions;
     // Nothing to work out again at the start of a fight whose sheet already held them all.
     if (
+      starting &&
       !before &&
       ids.every((id) =>
         readRulesetLive(definition, sheet.build, sheet.live).conditions.some((one) => one.id === id && one.active),

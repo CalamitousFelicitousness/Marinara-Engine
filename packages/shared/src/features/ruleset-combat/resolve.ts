@@ -12845,9 +12845,14 @@ function absorbAction(
   const paid = rulesetPaidLevel(ctx.definition, actor, action, payWith);
   const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(ctx.definition, actor, action);
   const takes = (rule: RulesetAbsorbs) =>
-    rule.catalogs.includes(catalog) && (rule.by === "base" ? base : paid) <= rule.maxLevel;
+    rule.catalogs.includes(catalog) &&
+    (rule.by === "base" ? base : paid) <= rule.maxLevel &&
+    // Only a seen caster's (1.517), and only with the budget it costs left (1.517).
+    (!rule.seen || rulesetCanSee(ctx.definition, ctx.state, target, actor)) &&
+    (!rule.spends || (target.budgets[rule.spends] ?? 0) >= 1);
   const level = (rule: RulesetAbsorbs) => (rule.by === "base" ? base : paid);
   const said = (by: string, rule: RulesetAbsorbs, charges?: { now: number; max: number }) => {
+    if (rule.spends) target.budgets[rule.spends] = (target.budgets[rule.spends] ?? 0) - 1;
     ctx.events.push({
       type: "absorbed",
       targetId: target.id,

@@ -3001,6 +3001,8 @@ export interface RulesetAbsorbs {
   maxLevel: number;
   by?: "base" | "paid";
   charges?: "spends" | "gains";
+  seen?: true;
+  spends?: string;
 }
 const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
   .object({
@@ -3012,6 +3014,12 @@ const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
      *  taken in without them (an Ioun Stone of Absorption's 20 levels), or gives its level to them, up to
      *  their most (a Rod of Absorption's 50). */
     charges: z.enum(["spends", "gains"]).optional(),
+    /** Only an entry whose user its holder can see (Capability API 1.517): an Ioun Stone of Greater
+     *  Absorption's "cast by a creature you can see". */
+    seen: z.literal(true).optional(),
+    /** Taking it in costs its holder 1 of this budget, and nothing is taken in without one left
+     *  (Capability API 1.517): a Rod of Absorption's "you can use your reaction to absorb a spell". */
+    spends: sheetId.optional(),
   })
   .strict();
 
@@ -16959,6 +16967,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.absorbs?.charges) {
         issue([...path, "absorbs", "charges"], "Only an item's worn effect moves its charges");
       }
+      // What taking it in costs (1.517) is one of the economy's budgets.
+      if (entry.absorbs?.spends && !def.combat?.economy.budgets.some((one) => one.id === entry.absorbs!.spends)) {
+        issue([...path, "absorbs", "spends"], `Unknown budget "${entry.absorbs.spends}"`);
+      }
       entry.turns?.catalogs.forEach((catalogId, catalogIndex) => {
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
           issue([...path, "turns", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
@@ -19101,6 +19113,8 @@ function itemHideIssues(
     if (!definition.catalogs?.some((one) => one.id === catalog))
       add([...at, "absorbs", "catalogs", index], `Unknown catalog "${catalog}"`);
   });
+  if (effect.absorbs?.spends && !definition.combat?.economy.budgets.some((one) => one.id === effect.absorbs!.spends))
+    add([...at, "absorbs", "spends"], `Unknown budget "${effect.absorbs.spends}"`);
   // What it turns back (1.470), as well.
   effect.turns?.catalogs.forEach((catalog, index) => {
     if (!definition.catalogs?.some((one) => one.id === catalog))

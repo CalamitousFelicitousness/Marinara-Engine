@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Absorbing narrowed to seen casters, or paid for with a budget (1.517): a Rod of Absorption. */
+function carriesAbsorbsSeenSpends517(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAbsorbsSeenSpends517(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const absorbs = plainRecord(record.absorbs);
+  if (absorbs && (absorbs.seen !== undefined || absorbs.spends !== undefined)) return true;
+  return featureValues(record).some((one) => carriesAbsorbsSeenSpends517(one, depth + 1));
+}
+
 /** What is stored cast by itself at a moment (1.516): Contingency. */
 function carriesStoresCastsOn516(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7178,6 +7189,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Absorbing narrowed to seen casters, or paid for with a budget, 1.517.
+  if (
+    !declaresApi(517) &&
+    (carriesAbsorbsSeenSpends517(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAbsorbsSeenSpends517(document)))
+  ) {
+    return "A ruleset with absorbing only from a seen caster or paid for with a budget (absorbs.seen, absorbs.spends) requires schemaVersion 2 and capabilityApi 1.517 or newer";
+  }
   // What is stored cast by itself at a moment, 1.516.
   if (
     !declaresApi(516) &&

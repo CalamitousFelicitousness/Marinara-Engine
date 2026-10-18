@@ -86649,6 +86649,15 @@
                                 "gains"
                               ]
                             },
+                            "seen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "spends": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -88636,6 +88645,15 @@
                                 "spends",
                                 "gains"
                               ]
+                            },
+                            "seen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "spends": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "$comment": {}
                           },
@@ -90811,6 +90829,15 @@
                                       "spends",
                                       "gains"
                                     ]
+                                  },
+                                  "seen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "spends": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -168685,6 +168712,15 @@
                       "spends",
                       "gains"
                     ]
+                  },
+                  "seen": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "spends": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
                   },
                   "$comment": {}
                 },

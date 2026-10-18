@@ -988,7 +988,8 @@ export function rulesetThreateningEnemies(
   }> = [];
   for (const combatant of state.combatants) {
     if (combatant.side === mover.side || !rulesetCombatStanding(combatant)) continue;
-    if ((combatant.budgets[opportunity.budget] ?? 0) < 1) continue;
+    // Or with a spare head's (1.497): a hydra's Reactive Heads.
+    if ((combatant.budgets[opportunity.budget] ?? 0) < 1 && !combatant.heads?.spare) continue;
     // Nobody strikes through a sphere (1.314).
     if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);

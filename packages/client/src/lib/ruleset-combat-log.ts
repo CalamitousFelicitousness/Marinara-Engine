@@ -628,6 +628,13 @@ export function rulesetCombatEventLine(
         roll: event.roll,
         conditions: event.conditions.map((one) => names.condition(one)).join(", "),
       });
+    // A hydra's heads (1.497).
+    case "headLost":
+      return key("headLost", { actor: names.combatant(event.actorId), left: event.left });
+    case "headsGrow":
+      return event.burned
+        ? key("headsBurned", { actor: names.combatant(event.actorId) })
+        : key("headsGrow", { actor: names.combatant(event.actorId), grown: event.grown, heads: event.heads });
     case "rampage":
       return key("rampage", { actor: names.combatant(event.actorId), label: event.label });
     case "goesAt":

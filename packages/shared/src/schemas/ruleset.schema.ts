@@ -7324,7 +7324,17 @@ const creatureActionSchema = z
      *  for the lot: this is how a creature that strikes twice in one action is written. A step may
      *  never name another sequence. */
     sequence: z
-      .array(z.object({ action: sheetId, times: z.number().int().min(1).max(10).default(1) }).strict())
+      .array(
+        z
+          .object({
+            action: sheetId,
+            times: z.number().int().min(1).max(10).default(1),
+            /** Made `times` for each head its creature has now (Capability API 1.497): a hydra's
+             *  Multiattack, "as many bite attacks as it has heads". Its creature has `heads`. */
+            perHead: z.literal(true).optional(),
+          })
+          .strict(),
+      )
       .min(1)
       .max(6)
       .optional(),
@@ -8062,6 +8072,31 @@ const creatureFields = {
    *  (Capability API 1.496): 5e's marilith's Reactive, `["reaction"]`, "one reaction on every turn
    *  in a combat". */
   refillsEveryTurn: z.array(sheetId).min(1).max(4).optional(),
+  /** Heads that die and grow back (Capability API 1.497): 5e's hydra's Multiple Heads. It starts
+   *  with `count`. Taking `lostAt` or more damage in a single turn kills one; with none left it dies.
+   *  As its turn ends it grows `grows` (2) for each that died since its last turn, up to `max`, and
+   *  regains `healsPerHead` health for each grown, unless damage of one of `growthStoppedBy` (fire)
+   *  reached it since its last turn. With `opportunityReactions`, each head beyond one gives it an
+   *  extra reaction used only for opportunity attacks (Reactive Heads), back as its turn starts.
+   *  While it has more than one head it holds the conditions `whileMany` names, as a condition's
+   *  save advantage against being blinded or charmed is written. A sequence step's `perHead` makes
+   *  that strike once per head. */
+  heads: z
+    .object({
+      count: z.number().int().min(2).max(20),
+      max: z.number().int().min(2).max(40).optional(),
+      lostAt: z.number().int().min(1).max(100000),
+      grows: z.number().int().min(1).max(4).optional(),
+      growthStoppedBy: z.array(promptSafeText(40)).min(1).max(8).optional(),
+      healsPerHead: z.number().int().min(1).max(1000).optional(),
+      opportunityReactions: z.literal(true).optional(),
+      whileMany: z.array(sheetId).min(1).max(4).optional(),
+    })
+    .strict()
+    .refine((heads) => heads.max === undefined || heads.max >= heads.count, {
+      message: "A creature's most heads are at least the heads it starts with",
+    })
+    .optional(),
   /** When it drops a creature to 0 with a melee attack on its own turn, it spends `budget` (if it
    *  has it left) to move up to `move` of its speed, and its `action` is free once more this turn
    *  (Capability API 1.492): 5e's gnoll's Rampage, `{"action": "bite", "budget": "bonus", "move":
@@ -18179,6 +18214,20 @@ function creatureIssues(
     if (definition.combat && !definition.combat.economy.budgets.some((one) => one.id === budget))
       add([...at, "refillsEveryTurn", index], `Unknown budget "${budget}"`);
   });
+  // What many heads hold (1.497) is the ruleset's own conditions; a strike per head needs heads.
+  creature.heads?.whileMany?.forEach((id, index) => {
+    if (!definition.sheet.live.conditions.some((one) => one.id === id))
+      add([...at, "heads", "whileMany", index], `Unknown condition "${id}"`);
+  });
+  creature.actions.forEach((action, actionIndex) =>
+    action.sequence?.forEach((step, index) => {
+      if (step.perHead && !creature.heads)
+        add(
+          [...at, "actions", actionIndex, "sequence", index, "perHead"],
+          "A strike made once per head needs a creature with heads",
+        );
+    }),
+  );
   // A rampage (1.492) is one of its own actions, bought with one of the fight's budgets.
   if (creature.rampage) {
     if (!creature.actions.some((one) => one.id === creature.rampage!.action))

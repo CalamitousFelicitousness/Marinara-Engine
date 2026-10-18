@@ -111,6 +111,7 @@ import type {
   RulesetCombatAction,
   RulesetCombatAmount,
   RulesetCombatant,
+  RulesetCombatSequenceStep,
   RulesetEngulf,
   RulesetCombatantInput,
   RulesetCombatBoard,
@@ -218,6 +219,12 @@ export function rulesetOnOwnTurn(state: RulesetEncounterState, combatant: Rulese
 
 /** Whether an action is an attack, as a cap on attacks counts them: it rolls to hit, it is a sequence
  *  of them, or it is a contest that takes the place of a strike (a grapple, a shove). */
+/** How many times a sequence step strikes (1.497): once per head its maker has now for `perHead`. */
+export function rulesetStepTimes(actor: RulesetCombatant, step: RulesetCombatSequenceStep): number {
+  if (!step.perHead) return step.times;
+  return step.times * Math.max(0, actor.heads?.count ?? actor.block?.heads?.count ?? 1);
+}
+
 export function rulesetIsAttack(action: RulesetCombatAction): boolean {
   return action.toHit !== undefined || !!action.sequence || !!action.contest?.strike;
 }
@@ -4046,7 +4053,11 @@ function blockActions(
                   1,
                   action.sequence.reduce((total, step) => {
                     const named = block.actions[indexById.get(step.action) ?? -1];
-                    return total + (named ? Math.max(1, named.targetCount ?? 1) * step.times : 0);
+                    // Once per head (1.497): as many as it may ever have.
+                    const times = step.perHead
+                      ? step.times * (block.heads?.max ?? block.heads?.count ?? 1)
+                      : step.times;
+                    return total + (named ? Math.max(1, named.targetCount ?? 1) * times : 0);
                   }, 0),
                 )
               : Math.max(1, action.targetCount ?? 1),
@@ -4118,7 +4129,9 @@ function blockActions(
     ...(action.sequence
       ? {
           sequence: action.sequence.flatMap((step) =>
-            indexById.has(step.action) ? [{ actionId: step.action, times: step.times }] : [],
+            indexById.has(step.action)
+              ? [{ actionId: step.action, times: step.times, ...(step.perHead ? { perHead: true as const } : {}) }]
+              : [],
           ),
         }
       : {}),
@@ -5496,7 +5509,16 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ? { signature: { points: block.signaturePoints, max: block.signaturePoints } }
           : {}),
         ...(block.riders?.length ? { riders: block.riders.map((rider) => ({ ...rider })) } : {}),
-        tracked: [],
+        // Its heads (1.497), and what it holds while it has more than one.
+        ...(block.heads
+          ? {
+              heads: {
+                count: block.heads.count,
+                ...(block.heads.opportunityReactions ? { spare: block.heads.count - 1 } : {}),
+              },
+            }
+          : {}),
+        tracked: (block.heads?.whileMany ?? []).map((condition) => ({ condition, rounds: null })),
         concentrating: null,
         flags: {},
         down: false,

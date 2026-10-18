@@ -54160,6 +54160,66 @@
                       "minItems": 1,
                       "maxItems": 4
                     },
+                    "heads": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 20
+                        },
+                        "max": {
+                          "type": "integer",
+                          "minimum": 2,
+                          "maximum": 40
+                        },
+                        "lostAt": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100000
+                        },
+                        "grows": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4
+                        },
+                        "growthStoppedBy": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "healsPerHead": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "opportunityReactions": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "whileMany": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "count",
+                        "lostAt"
+                      ],
+                      "additionalProperties": false
+                    },
                     "rampage": {
                       "type": "object",
                       "properties": {
@@ -60410,6 +60470,10 @@
                                 "minimum": 1,
                                 "maximum": 10,
                                 "default": 1
+                              },
+                              "perHead": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -70531,6 +70595,10 @@
                                   "minimum": 1,
                                   "maximum": 10,
                                   "default": 1
+                                },
+                                "perHead": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "$comment": {}
                               },

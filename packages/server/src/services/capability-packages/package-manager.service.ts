@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Heads that die and grow back (1.497): a hydra's Multiple Heads, Reactive Heads and Multiattack. */
+function carriesHeads497(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeads497(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.heads) && Array.isArray(record.actions)) return true;
+  if (record.perHead !== undefined && typeof record.action === "string") return true;
+  return featureValues(record).some((one) => carriesHeads497(one, depth + 1));
+}
+
 /** Budgets back every turn (1.496): a marilith's Reactive. */
 function carriesRefillsEveryTurn496(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6958,6 +6969,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Heads that die and grow back, 1.497.
+  if (
+    !declaresApi(497) &&
+    (carriesHeads497(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeads497(document)))
+  ) {
+    return "A ruleset with a creature whose heads die and grow back (heads, perHead) requires schemaVersion 2 and capabilityApi 1.497 or newer";
+  }
   // Budgets back every turn, 1.496.
   if (
     !declaresApi(496) &&

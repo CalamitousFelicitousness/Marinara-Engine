@@ -140,6 +140,7 @@ import {
   rulesetHangsOn,
   rulesetMovesOnly,
   rulesetLightMatches,
+  rulesetStepTimes,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -985,7 +986,68 @@ function applyDamage(
     hurt.by[from.id] = (hurt.by[from.id] ?? 0) + dealt;
     target.insideHurt = hurt;
   }
+  // A head lost to enough of it in one turn (1.497): a hydra's.
+  if (dealt > 0) harmHeads(ctx, target, type, dealt, input.sourceId ?? target.id, input.label ?? target.name);
   return dealt;
+}
+
+/** A hydra's heads as damage reaches it (1.497): what stops them growing is remembered until its
+ *  turn ends, and the turn's damage reaching `lostAt` kills one, once a turn. With none left it dies,
+ *  and with one left it holds what many heads give it no more. */
+function harmHeads(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  type: string | undefined,
+  dealt: number,
+  sourceId: string,
+  label: string,
+): void {
+  const rule = target.block?.heads;
+  if (!rule || target.defeated) return;
+  const heads = (target.heads ??= { count: rule.count });
+  if (type && rule.growthStoppedBy?.some((kind) => kind.trim().toLowerCase() === type)) heads.burned = true;
+  const turn = turnStamp(ctx);
+  const before = heads.hurt?.turn === turn ? heads.hurt.dealt : 0;
+  heads.hurt = { turn, dealt: before + dealt };
+  if (before >= rule.lostAt || before + dealt < rule.lostAt || heads.count <= 0) return;
+  heads.count -= 1;
+  heads.lost = (heads.lost ?? 0) + 1;
+  if (heads.spare !== undefined) heads.spare = Math.min(heads.spare, Math.max(0, heads.count - 1));
+  ctx.events.push({ type: "headLost", actorId: target.id, left: heads.count });
+  if (heads.count === 1) for (const id of rule.whileMany ?? []) removeCondition(ctx, target, id, "spent");
+  if (heads.count <= 0) slay(ctx, target, sourceId, label);
+}
+
+/** Heads grown back as a hydra's turn ends (1.497): `grows` for each that died since its last turn,
+ *  up to its most, with `healsPerHead` for each, unless what stops them reached it since then. */
+function regrowHeads(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const rule = actor.block?.heads;
+  const heads = actor.heads;
+  if (!rule || !heads) return;
+  const lost = heads.lost ?? 0;
+  const burned = heads.burned;
+  delete heads.lost;
+  delete heads.burned;
+  if (lost === 0 || actor.defeated || heads.count <= 0) return;
+  if (burned) {
+    ctx.events.push({ type: "headsGrow", actorId: actor.id, grown: 0, heads: heads.count, burned: true });
+    return;
+  }
+  const was = heads.count;
+  const grown = Math.max(0, Math.min(lost * (rule.grows ?? 2), (rule.max ?? Infinity) - was));
+  if (grown === 0) return;
+  heads.count += grown;
+  ctx.events.push({ type: "headsGrow", actorId: actor.id, grown, heads: heads.count });
+  if (was <= 1 && heads.count > 1) {
+    for (const condition of rule.whileMany ?? []) {
+      if (!actor.tracked.some((entry) => entry.condition === condition))
+        actor.tracked.push({ condition, rounds: null });
+    }
+  }
+  if (rule.healsPerHead) {
+    const amount = grown * rule.healsPerHead;
+    dealHeal(ctx, actor, { sourceId: actor.id, rolls: [], flat: amount, amount });
+  }
 }
 
 /** Whom `target` holds by a condition that takes a share of its harm (1.354), and that share. */
@@ -10674,7 +10736,9 @@ function opportunityStrike(
   const strike = rulesetOpportunityAttack(striker);
   if (!strike) return false;
   ctx.events.push({ type: "opportunity", actorId: striker.id, targetId: mover.id, label: strike.label, budget });
-  spendBudget(ctx, striker, budget);
+  // A spare head's first (1.497), keeping its own reaction for anything else.
+  if (striker.heads?.spare) striker.heads.spare -= 1;
+  else spendBudget(ctx, striker, budget);
   countAttack(ctx, striker);
   // A strike made in passing keeps the same books as one made on a turn: a use is a use.
   spendAvailability(ctx, striker, strike);
@@ -11081,7 +11145,7 @@ function resolveSequence(
     // A part that names another sequence is refused at import, so this is a hand-written block
     // pointing at nothing, and it costs that part rather than the turn.
     if (!named || named.sequence) continue;
-    for (let time = 0; time < step.times; time++) parts.push(named);
+    for (let time = 0; time < rulesetStepTimes(actor, step); time++) parts.push(named);
   }
   const wanted = parts.reduce((total, part) => total + part.targets.count, 0);
   const enough = targets.length >= wanted;
@@ -14146,6 +14210,8 @@ export function advanceRulesetTurn(
     endsAway(ctx, leaving);
     endsIdle(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");
+    // Heads grown back as its turn ends (1.497): a hydra's.
+    regrowHeads(ctx, leaving);
     // Off the board until their next turn, on their blink's die (1.453).
     blinkAway(ctx, leaving);
     // The first turn, spent surprised, is over (1.237).
@@ -14319,6 +14385,8 @@ function beginNextTurn(
     blinkBack(ctx, actor);
     refreshRulesetBudgets(combat, actor.budgets, "turn");
     refreshSpendLimits(actor, "turn");
+    // A spare reaction for each head beyond one (1.497), for opportunity attacks only.
+    if (actor.heads && actor.block?.heads?.opportunityReactions) actor.heads.spare = Math.max(0, actor.heads.count - 1);
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped ? { helped: true } : {};

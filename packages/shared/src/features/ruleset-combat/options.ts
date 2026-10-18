@@ -96,6 +96,7 @@ import {
   rulesetLightMatches,
   rulesetNearProp,
   rulesetPropNamed,
+  rulesetStepTimes,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -2385,7 +2386,7 @@ function forecastFor(
     const total = action.sequence.reduce((sum, step) => {
       const part = byId.get(step.actionId);
       if (!rulesetSequencePartAvailable(actor, part) || spent.has(part.id)) return sum;
-      let strikes = step.times;
+      let strikes = rulesetStepTimes(actor, step);
       if (part.uses) {
         const uses = usesLeft.get(part.id) ?? actor.uses[part.id] ?? 0;
         strikes = Math.min(strikes, uses);
@@ -2763,6 +2764,14 @@ function averageHarm(
   );
 }
 
+/** As many targets as a sequence's strikes now take (1.497), its heads counted as they stand. */
+function perHeadTargets(actor: RulesetCombatant, action: RulesetCombatAction): number {
+  return (action.sequence ?? []).reduce((total, step) => {
+    const part = actor.actions.find((one) => one.id === step.actionId);
+    return total + (part ? Math.max(1, part.targets.count) * rulesetStepTimes(actor, step) : 0);
+  }, 0);
+}
+
 function optionFrom(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -2902,7 +2911,9 @@ function optionFrom(
     ...(oneStrike ? { oneStrike: true as const } : {}),
     // A melee grant's thrown weapon is swung (1.239): its reach is all it has.
     ...(inReach ? { range: { normal: 0 } } : {}),
-    targets: action.targets,
+    targets: action.sequence?.some((step) => step.perHead)
+      ? { ...action.targets, count: Math.max(1, perHeadTargets(actor, action)) }
+      : action.targets,
     ...(action.reaction?.cancelSave
       ? {
           cancelSave: {
@@ -4635,7 +4646,8 @@ export function rulesetWindowOptions(
     if (!rulesetCombatStanding(actor)) return [];
     const effects = rulesetCombatEffects(definition, combat, actor, state);
     if (effects.has("cannot-act") || effects.has("cannot-react")) return [];
-    if (!opportunity || (actor.budgets[opportunity.budget] ?? 0) < 1) return [];
+    // Or one of its spare heads' (1.497): a hydra's Reactive Heads.
+    if (!opportunity || ((actor.budgets[opportunity.budget] ?? 0) < 1 && !actor.heads?.spare)) return [];
     const mover = rulesetCombatant(state, window.trigger.moverId);
     if (!mover || !rulesetCombatStanding(mover)) return [];
     const strike = rulesetOpportunityAttack(actor);

@@ -336,6 +336,8 @@ export interface RulesetCombatSequenceStep {
   /** The id of the action this step resolves, as the fight knows it. */
   actionId: string;
   times: number;
+  /** `times` for each head its maker has now (1.497): a hydra's bites. */
+  perHead?: true;
 }
 
 /** How far something is thrown or shot. `long` is what it still carries beyond `normal`, which a
@@ -544,7 +546,7 @@ export interface RulesetStatBlockAction {
   recharge?: RulesetCombatRecharge;
   /** Other actions of this block, in order. ONE budget pays for the lot, and each part takes its
    *  own targets: this is how a creature that strikes twice in one action is written. */
-  sequence?: Array<{ action: string; times: number }>;
+  sequence?: Array<{ action: string; times: number; perHead?: true }>;
   /** Bought out of the block's own `signaturePoints` instead of a budget. */
   signature?: { cost: number };
   /** A lair action (1.315), taken on the block's `lairInitiative` while it fights in its lair. */
@@ -672,6 +674,17 @@ export interface RulesetStatBlock {
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
   /** Budgets back in full as every turn starts, anybody's (1.496): a marilith's Reactive. */
   refillsEveryTurn?: string[];
+  /** Heads that die and grow back (1.497): a hydra's Multiple Heads and Reactive Heads. */
+  heads?: {
+    count: number;
+    max?: number;
+    lostAt: number;
+    grows?: number;
+    growthStoppedBy?: string[];
+    healsPerHead?: number;
+    opportunityReactions?: true;
+    whileMany?: string[];
+  };
   /** Felling with a melee attack on its turn, a move and its action again (1.492): Rampage. */
   rampage?: { action: string; budget: string; move?: number };
   /** Rolled as each of its turns starts at low health (1.490): Berserk. */
@@ -1654,6 +1667,9 @@ export interface RulesetCombatant {
   insideCorpse?: { costs: number; prone?: true };
   /** How many times it has hung on at 1 instead of dropping (1.320). */
   hungOn?: number;
+  /** Its heads now (1.497): how many, how many died since its last turn, whether what stops them
+   *  growing reached it since then, the damage taken this turn, and its spare opportunity reactions. */
+  heads?: { count: number; lost?: number; burned?: true; hurt?: { turn: string; dealt: number }; spare?: number };
   /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.347),
    *  by its name. */
   hungOnBy?: Record<string, number>;
@@ -3315,6 +3331,10 @@ export type RulesetCombatEvent =
   | { type: "deathBurst"; actorId: string; label: string }
   /** Its low-health roll as its turn starts (1.490): Berserk's d6. */
   | { type: "turnRoll"; actorId: string; roll: number; atLeast: number; conditions: string[] }
+  /** One of its heads died (1.497), `left` still on it. */
+  | { type: "headLost"; actorId: string; left: number }
+  /** Heads grown back as its turn ends (1.497), `heads` now; none when `burned`. */
+  | { type: "headsGrow"; actorId: string; grown: number; heads: number; burned?: true }
   /** Rampaging on after felling one (1.492): `cells` more to move, and `label` again. */
   | { type: "rampage"; actorId: string; label: string; cells: number }
   /** Made to go at the nearest creature it sees (1.490). */

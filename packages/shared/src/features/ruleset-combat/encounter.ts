@@ -35,6 +35,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
+import { elevationAt } from "../tactical-combat/math.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
@@ -6708,6 +6709,7 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         entry.speeds ||
         entry.hover ||
         entry.levitates ||
+        entry.lifts ||
         entry.ignoresHardGround ||
         entry.runsAcross ||
         entry.walksOnLiquid ||
@@ -6733,6 +6735,18 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         ? { harm: { ...harm, ...(through.harm?.damageType ? { damageType: through.harm.damageType } : {}) } }
         : {};
     } else delete combatant.passesObjects;
+    // Up as high as what lifts it says (1.513): Reverse Gravity. Down again is the fall its going
+    // takes them into, as hover goes with it.
+    const lifts = Math.max(0, ...grants.map((entry) => entry.lifts ?? 0));
+    const grid = state.board?.grid;
+    if (lifts > 0 && grid && typeof combatant.x === "number" && typeof combatant.y === "number") {
+      const feetPerLevel = (combat.distance?.perCell ?? 1) * Math.max(1, state.board?.levelCells ?? 1);
+      const level = elevationAt(grid, combatant.x, combatant.y) + Math.max(1, Math.round(lifts / feetPerLevel));
+      if (combatant.altitude !== level) {
+        combatant.altitude = level;
+        if (!changed.includes(combatant.id)) changed.push(combatant.id);
+      }
+    }
     if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) continue;
     const own = combatant.baseSpeeds ?? {
       ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),
@@ -6749,7 +6763,7 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         const speed = given === "walk" ? combatant.speed : given;
         if (speed && speed > (speeds[mode] ?? 0)) speeds[mode] = speed;
       }
-      if (entry.hover || entry.levitates) hover = true;
+      if (entry.hover || entry.levitates || entry.lifts) hover = true;
       if (entry.levitates) levitating = true;
     }
     const before = {
@@ -6780,7 +6794,7 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
       })
     )
       continue;
-    changed.push(combatant.id);
+    if (!changed.includes(combatant.id)) changed.push(combatant.id);
     if (combatant.movement === undefined) continue;
     // What is left of the turn: more by what a faster way adds, and each new way from the walk left.
     const fastAfter = rulesetMovementAllowance(definition, combat, combatant, state);

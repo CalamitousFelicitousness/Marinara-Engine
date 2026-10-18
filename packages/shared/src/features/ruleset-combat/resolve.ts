@@ -521,9 +521,17 @@ function begin(
       for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
       // Given ways of moving, or left with their own, as the conditions now held say (1.345): up in
       // the air with no flight left, they fall.
+      const heights = new Map(next.combatants.map((one) => [one.id, one.altitude]));
       for (const id of rulesetSyncSpeeds(definition, next)) {
         const one = rulesetCombatant(next, id);
-        if (one) groundFlier(ctx, one);
+        if (!one) continue;
+        // Lifted by what it now holds (1.513): Reverse Gravity.
+        const was = heights.get(id);
+        if (one.altitude !== undefined && one.altitude > (was ?? -Infinity) && next.board?.grid) {
+          const ground = elevationAt(next.board.grid, one.x ?? 0, one.y ?? 0);
+          ctx.events.push({ type: "lifted", targetId: id, from: (was ?? ground) - ground, to: one.altitude - ground });
+        }
+        groundFlier(ctx, one);
       }
       // Their numbers worked out again as the conditions now held change their abilities (1.462).
       rulesetSyncAbilities(definition, next);

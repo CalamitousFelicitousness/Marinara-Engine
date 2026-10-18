@@ -3104,6 +3104,9 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       rises?: number;
     }
+  /** Somebody lifted by a condition they now hold (1.513), from and to so many levels above the
+   *  ground under them: Reverse Gravity. */
+  | { type: "lifted"; targetId: string; from: number; to: number }
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */

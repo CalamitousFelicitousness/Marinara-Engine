@@ -167420,6 +167420,11 @@
                 "type": "boolean",
                 "const": true
               },
+              "lifts": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
               "onlySpeeds": {
                 "type": "boolean",
                 "const": true

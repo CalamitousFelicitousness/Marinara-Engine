@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that lifts its holder (1.513): Reverse Gravity. */
+function carriesLifts513(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLifts513(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && typeof record.lifts === "number") return true;
+  return featureValues(record).some((one) => carriesLifts513(one, depth + 1));
+}
+
 /** An entry won over by a contest of checks, or one that moves its target where its user picks
  *  (1.512): Telekinesis. */
 function carriesContestAndCarry512(value: unknown, depth = 0): boolean {
@@ -7138,6 +7148,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that lifts its holder, 1.513.
+  if (
+    !declaresApi(513) &&
+    (carriesLifts513(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesLifts513(document)))
+  ) {
+    return "A ruleset with a condition that lifts its holder into the air (lifts) requires schemaVersion 2 and capabilityApi 1.513 or newer";
+  }
   // An entry won by a contest, or one that moves its target where its user picks, 1.512.
   if (
     !declaresApi(512) &&

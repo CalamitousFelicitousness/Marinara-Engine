@@ -11961,6 +11961,12 @@ const combatConditionSchema = z
     speeds: conditionSpeedsSchema.optional(),
     hover: z.literal(true).optional(),
     levitates: z.literal(true).optional(),
+    /** Its holder is up this far above the ground under them while it holds (Capability API 1.513),
+     *  in the ruleset's own distance, rounded to the board's levels, and hovers there; when it ends
+     *  they fall as anybody up in the air does. 5e's Reverse Gravity, "fall upward and reach the top
+     *  of the area", 100 feet: a lasting area's `inside.conditions`, its Dexterity save the grab at
+     *  something fixed. */
+    lifts: z.number().finite().gt(0).max(10000).optional(),
     /** Its `speeds` are its holder's only ways of moving while it holds (Capability API 1.502): their
      *  walk and their own other speeds are 0. 5e's Gaseous Form, "its only method of movement is a
      *  flying speed of 10 feet". */

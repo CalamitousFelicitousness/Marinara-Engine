@@ -1120,6 +1120,13 @@ export function rulesetCombatEventLine(
         kinds: event.kinds.join(", "),
         within: event.within,
       });
+    case "blink":
+      return key(event.vanished ? "blinkVanished" : "blinkStayed", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        roll: event.roll,
+        needed: event.needed,
+      });
     case "duplicate":
       return key(event.lost ? "duplicateLost" : event.diverted ? "duplicateDrew" : "duplicateMissed", {
         actor: names.combatant(event.actorId),

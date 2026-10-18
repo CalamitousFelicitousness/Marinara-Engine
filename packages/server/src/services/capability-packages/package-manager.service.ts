@@ -2263,6 +2263,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A condition that takes its holder off the board until their next turn (1.453): Blink. */
+function carriesBlinks453(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBlinks453(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && plainRecord(record.blinks)) return true;
+  return featureValues(record).some((one) => carriesBlinks453(one, depth + 1));
+}
+
 /** A condition with illusory duplicates that draw attacks (1.452): Mirror Image. */
 function carriesDuplicates452(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6429,6 +6439,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Off the board until the next turn, on a die as a turn ends, 1.453.
+  if (
+    !declaresApi(453) &&
+    (carriesBlinks453(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBlinks453(document)))
+  ) {
+    return "A ruleset whose conditions blink their holder off the board until their next turn (a condition's blinks) requires schemaVersion 2 and capabilityApi 1.453 or newer";
+  }
   // Illusory duplicates that draw attacks, 1.452.
   if (
     !declaresApi(452) &&

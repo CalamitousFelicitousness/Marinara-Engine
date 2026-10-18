@@ -115074,6 +115074,26 @@
                 ],
                 "additionalProperties": false
               },
+              "blinks": {
+                "type": "object",
+                "properties": {
+                  "sides": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 100
+                  },
+                  "atLeast": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "atLeast"
+                ],
+                "additionalProperties": false
+              },
               "whileOffTerrain": {
                 "type": "array",
                 "items": {

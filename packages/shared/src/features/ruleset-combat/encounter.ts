@@ -188,7 +188,7 @@ export function rulesetLairRound(
 }
 
 function lairTurnTaker(combatant: RulesetCombatant): boolean {
-  if (combatant.defeated) return !!(combatant.away?.turns && combatant.away.while);
+  if (combatant.defeated) return !!(combatant.away?.blinked || (combatant.away?.turns && combatant.away.while));
   return !combatant.down || (combatant.dying && !combatant.stable);
 }
 

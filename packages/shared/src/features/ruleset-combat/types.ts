@@ -1683,7 +1683,16 @@ export interface RulesetCombatant {
   /** Sent out of the fight by somebody (1.236), and `defeated` while away: for good, or until they
    *  no longer hold `while` (5e's Banishment), when they come back where they were. */
   /** `left` (1.279): gone from the fight of its own accord, by a teleport that leaves it. */
-  away?: { by: string; label: string; while?: string; gone?: RulesetTargetIs; left?: true; turns?: true };
+  /** `blinked` (1.453): off the board of its own condition's `blinks` until its next turn starts. */
+  away?: {
+    by: string;
+    label: string;
+    while?: string;
+    gone?: RulesetTargetIs;
+    left?: true;
+    turns?: true;
+    blinked?: true;
+  };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
    *  Instinct's rage). */
@@ -2774,6 +2783,8 @@ export type RulesetCombatEvent =
   /** What a presence sense tells its holder (1.391): which kinds are within `within`, none found
    *  when `kinds` is empty. */
   | { type: "presence"; actorId: string; condition: string; within: number; kinds: string[] }
+  /** The die its holder's `blinks` rolled as their turn ended (1.453), and whether they vanished. */
+  | { type: "blink"; actorId: string; label: string; roll: number; needed: number; vanished: boolean }
   /** An attack on somebody with duplicates (1.452): whether the die turned it onto one, and `lost`
    *  once the attack hit it, with how many are `left`. */
   | {

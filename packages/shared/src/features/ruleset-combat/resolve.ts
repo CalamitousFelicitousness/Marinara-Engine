@@ -11066,6 +11066,37 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
   }
   delete target.away;
   target.defeated = false;
+  placeNearest(ctx, target);
+  ctx.events.push({ type: "returned", targetId: target.id });
+}
+
+/** Off the board as its turn ends, on its `blinks` die (1.453): Blink. Nothing it holds up ends. */
+function blinkAway(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
+  if (holder.defeated || !rulesetCombatStanding(holder)) return;
+  const entry = rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).find((one) => one.blinks);
+  const rule = entry?.blinks;
+  if (!entry || !rule) return;
+  const label =
+    ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+  const roll = ctx.roll(rule.sides ?? 20);
+  const vanished = roll >= rule.atLeast;
+  ctx.events.push({ type: "blink", actorId: holder.id, label, roll, needed: rule.atLeast, vanished });
+  if (!vanished) return;
+  holder.defeated = true;
+  holder.away = { by: holder.id, label, blinked: true };
+}
+
+/** Back from a blink as its turn starts (1.453): where it vanished, or the nearest free place. */
+function blinkBack(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  if (!actor.away?.blinked) return;
+  delete actor.away;
+  actor.defeated = false;
+  placeNearest(ctx, actor);
+  ctx.events.push({ type: "returned", targetId: actor.id });
+}
+
+/** Where it stands, or the nearest free place its size fits (1.236). */
+function placeNearest(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const at = rulesetPositionOf(target);
   const grid = ctx.state.board?.grid;
   if (at && grid) {
@@ -11091,7 +11122,6 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
       target.y = best.y;
     }
   }
-  ctx.events.push({ type: "returned", targetId: target.id });
 }
 
 /** No longer surprised (1.237): the first turn is over, or something shook it off. */
@@ -13192,8 +13222,9 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
 /** Who is next to act: anybody the fight is not over for. A member who is down with nothing left to
  *  roll is stepped over until somebody brings them back. */
 function canTakeTurn(combatant: RulesetCombatant): boolean {
-  // Away and still taking turns (1.313), to find the way out of a maze.
-  if (combatant.defeated) return !!(combatant.away?.turns && combatant.away.while);
+  // Away and still taking turns (1.313), to find the way out of a maze, or to come back from a
+  // blink (1.453) as one starts.
+  if (combatant.defeated) return !!(combatant.away?.blinked || (combatant.away?.turns && combatant.away.while));
   return !combatant.down || (combatant.dying && !combatant.stable) || !!combatant.regrowing;
 }
 
@@ -13238,6 +13269,8 @@ export function advanceRulesetTurn(
     endsAway(ctx, leaving);
     endsIdle(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");
+    // Off the board until their next turn, on their blink's die (1.453).
+    blinkAway(ctx, leaving);
     // The first turn, spent surprised, is over (1.237).
     endSurprise(ctx, leaving);
     for (const summon of [...(leaving.summons ?? [])]) {
@@ -13387,6 +13420,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
 
   const actor = currentRulesetActor(ctx.state);
   if (actor) {
+    // Back from a blink before anything of the turn (1.453).
+    blinkBack(ctx, actor);
     refreshRulesetBudgets(combat, actor.budgets, "turn");
     refreshSpendLimits(actor, "turn");
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
@@ -13749,8 +13784,9 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   const party = state.combatants.filter((combatant) => combatant.side === "party");
   // Down at 0 while it may regenerate (1.346), a troll is not out of it yet.
   // An object called to take no turns (1.426) keeps no side standing.
+  // Blinked away (1.453), back as their next turn starts, they are still in it.
   const out = (combatant: RulesetCombatant) =>
-    combatant.turnless || (!rulesetCombatStanding(combatant) && !combatant.regrowing);
+    combatant.turnless || (!rulesetCombatStanding(combatant) && !combatant.regrowing && !combatant.away?.blinked);
   if (enemies.length > 0 && enemies.every(out)) return "victory";
   if (party.length > 0 && party.every(out)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.

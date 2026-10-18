@@ -10864,6 +10864,18 @@ const combatConditionSchema = z
     /** Illusory duplicates that draw attacks made against its holder (Capability API 1.452): Mirror
      *  Image. */
     duplicates: conditionDuplicatesSchema.optional(),
+    /** As each of its holder's turns ends, a `sides` die (a d20 unless said) at or over `atLeast` takes
+     *  them off the board until their next turn starts (Capability API 1.453): out of reach of
+     *  everything, and back as it starts where they vanished, or the nearest free place. 5e's Blink,
+     *  `{ "atLeast": 11 }`. */
+    blinks: z
+      .object({ sides: z.number().int().min(2).max(100).optional(), atLeast: z.number().int().min(1).max(100) })
+      .strict()
+      .refine((rule) => rule.atLeast <= (rule.sides ?? 20), {
+        message: "blinks atLeast is a face of its die",
+        path: ["atLeast"],
+      })
+      .optional(),
     /** Held off, not ended, while its holder stands on one of these terrains, or the board's
      *  environment is one of them (Capability API 1.425); it holds again once they leave it. A fight
      *  with no board holds it. 5e's aboleth's curse, which keeps healing off except underwater:

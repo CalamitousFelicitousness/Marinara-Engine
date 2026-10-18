@@ -2261,6 +2261,25 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A rolled call kept, counted or spent, or an option's own rounds (1.538): an Efreeti Bottle. */
+function carriesLastingRoll538(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLastingRoll538(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.rolled === true && (record.keepsRoll !== undefined || record.lifetimeUses !== undefined)) return true;
+  if (
+    record.rolled === true &&
+    Array.isArray(record.options) &&
+    record.options.some((option) => {
+      const one = plainRecord(option);
+      return !!one && (one.rounds !== undefined || one.spendsItem !== undefined || one.pastLifetime !== undefined);
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesLastingRoll538(one, depth + 1));
+}
+
 /** Item-paid slots held to a most (1.537): the Rod of Absorption's 5th level. */
 function carriesPaysSlotsMax537(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7408,6 +7427,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A rolled call kept, counted or spent, 1.538.
+  if (
+    !declaresApi(538) &&
+    (carriesLastingRoll538(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLastingRoll538(document)))
+  ) {
+    return "A ruleset with a rolled call that keeps its roll, counts its uses or spends its item (keepsRoll, lifetimeUses, spendsItem, an option's rounds) requires schemaVersion 2 and capabilityApi 1.538 or newer";
+  }
   // Item-paid slots held to a most, 1.537.
   if (
     !declaresApi(537) &&

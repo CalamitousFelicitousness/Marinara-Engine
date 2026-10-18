@@ -160,6 +160,7 @@ export {
   rulesetTargetIs,
   rulesetTargetTypesAllow,
   rulesetLanguages,
+  rulesetItemCallRoll,
   rulesetInitiativeModifierNow,
   rulesetImmuneToCondition,
   rulesetInitiativeOrder,

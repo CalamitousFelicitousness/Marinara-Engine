@@ -1396,6 +1396,7 @@ export function rulesetSheetItems(
             : {}),
         ...(stack.corroded ? { corroded: stack.corroded } : {}),
         ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
+        ...(stack.callRoll ? { callRoll: stack.callRoll } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),
         // Found holding some (1.523) until a fight stores or casts out of it.
         ...(stack.storedEntries

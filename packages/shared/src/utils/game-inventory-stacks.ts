@@ -56,6 +56,9 @@ export interface GameInventoryStack {
   /** The levels it has ever taken in (Capability API 1.518), a Rod of Absorption's toward its 50, as a
    *  ruleset fight left them. Kept on a stack of one item only, as charges are. */
   absorbedEver?: number;
+  /** Its rolled call's lasting state (Capability API 1.538): an Efreeti Bottle's kept roll (from 1),
+   *  its openings, and whether it is spent for good. Kept on a stack of one item only. */
+  callRoll?: GameInventoryCallRoll;
   /** The form it is in (Capability API 1.522), from 1 in its item's `forms.into`; absent, as it was
    *  made. Kept on a stack of one item only. */
   form?: number;
@@ -380,6 +383,7 @@ function makeStack(stack: {
   charges?: number;
   corroded?: number;
   absorbedEver?: number;
+  callRoll?: GameInventoryCallRoll;
   form?: number;
   usesLeft?: Record<string, number>;
   waits?: Record<string, GameInventoryWait>;
@@ -388,7 +392,7 @@ function makeStack(stack: {
   truly?: string;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
-  const { corroded, absorbedEver, form, waits } = stack;
+  const { corroded, absorbedEver, callRoll, form, waits } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -404,6 +408,7 @@ function makeStack(stack: {
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
     ...(corroded && quantity === 1 ? { corroded } : {}),
     ...(absorbedEver && quantity === 1 ? { absorbedEver } : {}),
+    ...(callRoll && quantity === 1 ? { callRoll } : {}),
     ...(form && quantity === 1 ? { form } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
     ...(waits && Object.keys(waits).length > 0 && quantity === 1 ? { waits } : {}),
@@ -514,6 +519,28 @@ function readWaits(raw: unknown): Record<string, GameInventoryWait> | undefined 
   return kept.length > 0 ? Object.fromEntries(kept) : undefined;
 }
 
+/** An item's rolled call kept over its existence (Capability API 1.538). */
+export interface GameInventoryCallRoll {
+  kept?: number;
+  ever?: number;
+  spent?: true;
+}
+
+function readCallRoll(raw: unknown): GameInventoryCallRoll | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const source = raw as Record<string, unknown>;
+  const count = (value: unknown, most: number) =>
+    typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= most ? value : undefined;
+  const kept = count(source.kept, 8);
+  const ever = count(source.ever, 1000);
+  const read: GameInventoryCallRoll = {
+    ...(kept !== undefined ? { kept } : {}),
+    ...(ever !== undefined ? { ever } : {}),
+    ...(source.spent === true ? { spent: true as const } : {}),
+  };
+  return Object.keys(read).length > 0 ? read : undefined;
+}
+
 function readUsesLeft(raw: unknown): Record<string, number> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const kept = Object.entries(raw as Record<string, unknown>).filter(
@@ -578,6 +605,7 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
           typeof source.absorbedEver === "number" && Number.isInteger(source.absorbedEver) && source.absorbedEver > 0
             ? Math.min(1000, source.absorbedEver)
             : undefined,
+        callRoll: readCallRoll(source.callRoll),
         form:
           typeof source.form === "number" && Number.isInteger(source.form) && source.form > 0 && source.form <= 8
             ? source.form
@@ -667,6 +695,7 @@ export function revealGameInventoryFake(
       charges: _charges,
       corroded: _corroded,
       absorbedEver: _absorbedEver,
+      callRoll: _callRoll,
       form: _form,
       usesLeft: _usesLeft,
       waits: _waits,
@@ -1560,6 +1589,7 @@ export function setGameInventoryStackQuantity(
     charges: _charges,
     corroded: _corroded,
     absorbedEver: _absorbedEver,
+    callRoll: _callRoll,
     form: _form,
     usesLeft: _usesLeft,
     waits: _waits,
@@ -1646,6 +1676,7 @@ export function mergeGameInventoryStacks(
         charges: _charges,
         corroded: _corroded,
         absorbedEver: _absorbedEver,
+        callRoll: _callRoll,
         form: _form,
         usesLeft: _usesLeft,
         waits: _waits,

@@ -48721,6 +48721,19 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "rounds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 14400
+                              },
+                              "spendsItem": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "pastLifetime": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -49146,6 +49159,15 @@
                         "rolled": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "keepsRoll": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "lifetimeUses": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
                         },
                         "$comment": {}
                       },
@@ -68924,6 +68946,19 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "rounds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "pastLifetime": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -81176,6 +81211,19 @@
                                       "const": true
                                     },
                                     "none": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "rounds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
+                                    },
+                                    "spendsItem": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "pastLifetime": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -107194,6 +107242,19 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "rounds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "pastLifetime": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -107619,6 +107680,15 @@
                             "rolled": {
                               "type": "boolean",
                               "const": true
+                            },
+                            "keepsRoll": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "lifetimeUses": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
                             },
                             "$comment": {}
                           },
@@ -125781,6 +125851,19 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "rounds": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "pastLifetime": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -126206,6 +126289,15 @@
                                   "rolled": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "keepsRoll": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "lifetimeUses": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100
                                   },
                                   "$comment": {}
                                 },
@@ -144374,6 +144466,19 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "rounds": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "pastLifetime": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -144799,6 +144904,15 @@
                                   "rolled": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "keepsRoll": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "lifetimeUses": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100
                                   },
                                   "$comment": {}
                                 },

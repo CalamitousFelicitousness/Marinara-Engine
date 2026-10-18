@@ -144,6 +144,7 @@ import {
   rulesetLightMatches,
   rulesetModeRuleHolds,
   rulesetStepTimes,
+  rulesetItemCallRoll,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -9479,10 +9480,39 @@ function callCreatures(
   // turn on whoever let it out, or grant wishes and leave nobody behind.
   let hostile = false;
   if (action.callsRolled) {
-    const row = rollWeighted(ctx, actor, action.label, action.callsRolled);
+    const rows = action.callsRolled;
+    // An item's call that keeps its first roll and counts its uses (1.538): an Efreeti Bottle, the
+    // same effect at the next two openings and the efreeti's escape at the fourth.
+    const item = action.itemUse?.item;
+    const lasting =
+      item !== undefined && (action.callsRollKept || action.callsLifetime !== undefined)
+        ? { ...rulesetItemCallRoll(actor, item) }
+        : undefined;
+    const ever = lasting?.ever ?? 0;
+    let row: (typeof rows)[number] | undefined;
+    if (lasting && action.callsLifetime !== undefined && ever >= action.callsLifetime) {
+      row = rows.find((one) => one.pastLifetime);
+    } else if (lasting && action.callsRollKept && lasting.kept !== undefined) {
+      row = rows.find((one) => one.index === lasting.kept);
+    } else {
+      row = rollWeighted(
+        ctx,
+        actor,
+        action.label,
+        rows.filter((one) => !one.pastLifetime),
+      );
+      if (lasting && action.callsRollKept && row?.index !== undefined) lasting.kept = row.index;
+    }
+    if (lasting) lasting.ever = ever + 1;
+    // Spent for good once it comes (1.538): the efreeti that attacks, the wishes granted.
+    if (row?.spendsItem && item !== undefined) {
+      const spent = lasting ?? { ...rulesetItemCallRoll(actor, item) };
+      spent.spent = true;
+      (actor.callRolls ??= {})[item] = spent;
+    } else if (lasting && item !== undefined) (actor.callRolls ??= {})[item] = lasting;
     if (!row?.call) return;
     hostile = !!row.hostile;
-    action = { ...action, calls: row.call };
+    action = { ...action, calls: row.rounds !== undefined ? { ...row.call, rounds: row.rounds } : row.call };
   }
   if (!action.calls) return;
   const per = action.calls.timesPerSteps;

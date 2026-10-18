@@ -5764,8 +5764,26 @@ const calledCount = z
     message: "A call brings at least one creature",
   });
 
+/** One of the creatures a call picks among (1.344), typed by hand so the definition's type stays
+ *  small enough to write out. */
+export interface RulesetCalledOption {
+  creature?: string;
+  from?: RulesetCatalogFrom;
+  upTo?: z.infer<typeof calledUpTo>;
+  count?: z.infer<typeof calledCount>;
+  label?: string;
+  fromStep?: number;
+  perStep?: number;
+  weight?: number;
+  hostile?: true;
+  none?: true;
+  rounds?: number;
+  spendsItem?: true;
+  pastLifetime?: true;
+}
+
 /** The creatures a call picks among as it is used (1.344), up to 8, each like a weapon's mode. */
-const calledOptionsSchema = z
+const calledOptionsSchema: z.ZodType<RulesetCalledOption[], z.ZodTypeDef, unknown> = z
   .array(
     z
       .object({
@@ -5788,6 +5806,15 @@ const calledOptionsSchema = z
         /** It calls nobody into the fight (Capability API 1.506), only its `label` told: an Efreeti
          *  Bottle's three wishes. Only in a `rolled` call. */
         none: z.literal(true).optional(),
+        /** Those it calls leave after this many rounds (Capability API 1.538), in place of the call's
+         *  own `rounds`: an Efreeti Bottle's efreeti that attacks you, 5. Only in a `rolled` call. */
+        rounds: z.number().int().min(1).max(14400).optional(),
+        /** Once it comes, the item it was rolled from is spent for good (Capability API 1.538), never
+         *  used again: the Efreeti Bottle's attacking efreeti and its wishes. Only in a `rolled` call. */
+        spendsItem: z.literal(true).optional(),
+        /** It comes, never rolled, at each use past the call's `lifetimeUses` (Capability API 1.538),
+         *  and at no other: the Efreeti Bottle's fourth opening, the efreeti escaping. */
+        pastLifetime: z.literal(true).optional(),
       })
       .strict()
       .refine((option) => option.none || (option.creature === undefined) !== (option.from === undefined), {
@@ -5875,11 +5902,39 @@ export const catalogCallsSchema = z
      *  as likely as its `weight` against the rest (1 unless it says): a Bag of Tricks' d8 of beasts, an
      *  Efreeti Bottle's d100. Each option names one `creature`, or calls nobody (`none`). */
     rolled: z.literal(true).optional(),
+    /** An item's rolled call keeps what it first rolled (Capability API 1.538), the same option coming
+     *  at each later use: an Efreeti Bottle, "the same effect occurs". */
+    keepsRoll: z.literal(true).optional(),
+    /** An item's rolled call is used this many times over the item's existence (Capability API
+     *  1.538), each use past them its `pastLifetime` option: the Efreeti Bottle's 3. */
+    lifetimeUses: z.number().int().min(1).max(100).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
     if (calls.rolled && !calls.options)
       ctx.addIssue({ code: "custom", path: ["rolled"], message: 'A rolled call rolls among its "options"' });
+    // An item's rolled call kept, counted and spent (1.538).
+    if ((calls.keepsRoll || calls.lifetimeUses !== undefined) && !calls.rolled)
+      ctx.addIssue({
+        code: "custom",
+        path: [calls.keepsRoll ? "keepsRoll" : "lifetimeUses"],
+        message: '"keepsRoll" and "lifetimeUses" are for a "rolled" call',
+      });
+    const past = (calls.options ?? []).filter((option) => option.pastLifetime).length;
+    if (calls.lifetimeUses !== undefined && past !== 1)
+      ctx.addIssue({
+        code: "custom",
+        path: ["lifetimeUses"],
+        message: 'A call with "lifetimeUses" has one option that comes past them ("pastLifetime")',
+      });
+    if (past > 0 && calls.lifetimeUses === undefined)
+      ctx.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: '"pastLifetime" comes past the call\'s "lifetimeUses"',
+      });
+    if (calls.options && calls.options.filter((option) => !option.pastLifetime).length < 1)
+      ctx.addIssue({ code: "custom", path: ["options"], message: "A rolled call has an option to roll" });
     calls.options?.forEach((option, index) => {
       if (calls.rolled && option.from)
         ctx.addIssue({
@@ -5892,6 +5947,12 @@ export const catalogCallsSchema = z
           code: "custom",
           path: ["options", index],
           message: '"weight", "hostile" and "none" are for an option a call is "rolled" among',
+        });
+      if (!calls.rolled && (option.rounds !== undefined || option.spendsItem || option.pastLifetime))
+        ctx.addIssue({
+          code: "custom",
+          path: ["options", index],
+          message: '"rounds", "spendsItem" and "pastLifetime" are for an option a call is "rolled" among',
         });
     });
     const ways = [calls.creature, calls.from, calls.options].filter((one) => one !== undefined).length;
@@ -7860,11 +7921,19 @@ const creatureActionSchema = z
       .strict()
       .superRefine((calls, ctx) => {
         calls.options?.forEach((option, index) => {
-          if (option.weight !== undefined || option.hostile || option.none)
+          if (
+            option.weight !== undefined ||
+            option.hostile ||
+            option.none ||
+            option.rounds !== undefined ||
+            option.spendsItem ||
+            option.pastLifetime
+          )
             ctx.addIssue({
               code: "custom",
               path: ["options", index],
-              message: '"weight", "hostile" and "none" are for a catalog entry\'s or an item\'s rolled call',
+              message:
+                '"weight", "hostile", "none", "rounds", "spendsItem" and "pastLifetime" are for a catalog entry\'s or an item\'s rolled call',
             });
         });
         if (calls.atCorpse && calls.options)

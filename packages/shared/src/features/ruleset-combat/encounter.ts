@@ -64,6 +64,7 @@ import {
   rulesetCheckModifier,
   type EvaluatedRulesetSheet,
   type RulesetCheckTarget,
+  type RulesetItemCallRoll,
   type RulesetSheetItem,
   type RulesetStoredEntry,
   rulesetAbilityModifier,
@@ -1004,6 +1005,12 @@ export function rulesetTargetTypesAllow(
     if (targetTypes.notImmuneTo.some((id) => immune.includes(id.trim().toLowerCase()))) return false;
   }
   return true;
+}
+
+/** An item's rolled call as it stands (1.538): as this fight changed it, else as its stack kept it.
+ *  An Efreeti Bottle's kept roll, its openings, and whether it is spent for good. */
+export function rulesetItemCallRoll(combatant: RulesetCombatant, item: number): RulesetItemCallRoll {
+  return combatant.callRolls?.[item] ?? combatant.sheet?.items?.[item]?.callRoll ?? {};
 }
 
 /** The languages a combatant understands (1.508), lower case: off their sheet's `combat.languages`
@@ -5462,12 +5469,19 @@ function fillCatalogCallsAsWritten(
         label: option.label ?? (call ? `${call.name} ×${many(option.count)}` : `${index + 1}`),
         ...(call ? { call } : {}),
         ...(option.hostile ? { hostile: true as const } : {}),
+        // Kept, spent and past its lifetime (1.538): an Efreeti Bottle.
+        index: index + 1,
+        ...(option.rounds !== undefined ? { rounds: option.rounds } : {}),
+        ...(option.spendsItem ? { spendsItem: true as const } : {}),
+        ...(option.pastLifetime ? { pastLifetime: true as const } : {}),
       };
     });
     const first = rows.find((row) => row.call);
     if (first?.call) {
       action.calls = first.call;
       action.callsRolled = rows;
+      if (calls.keepsRoll) action.callsRollKept = true;
+      if (calls.lifetimeUses !== undefined) action.callsLifetime = calls.lifetimeUses;
     }
     return;
   }

@@ -269,6 +269,15 @@ export interface RulesetStoredEntry {
   toHit?: number;
 }
 
+/** An item's rolled call kept over its existence (Capability API 1.538): an Efreeti Bottle. `kept` is
+ *  the option it first rolled, from 1; `ever` how many times it has been used; `spent` that it is
+ *  spent for good. */
+export interface RulesetItemCallRoll {
+  kept?: number;
+  ever?: number;
+  spent?: true;
+}
+
 export interface RulesetSheetItem {
   item: RulesetCatalogItem;
   quantity: number;
@@ -285,6 +294,8 @@ export interface RulesetSheetItem {
   corroded?: number;
   /** The levels it has ever taken in (1.518), as the stack keeps them. */
   absorbedEver?: number;
+  /** Its rolled call's lasting state (1.538), as the stack keeps it. */
+  callRoll?: RulesetItemCallRoll;
   /** What is left of its further uses that count their own (1.466), as the stack keeps them. */
   usesLeft?: Record<string, number>;
   /** What is stored in it (1.471), as the stack keeps it. */

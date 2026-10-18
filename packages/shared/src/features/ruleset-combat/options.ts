@@ -100,6 +100,7 @@ import {
   rulesetNearProp,
   rulesetPropNamed,
   rulesetStepTimes,
+  rulesetItemCallRoll,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -2556,6 +2557,8 @@ export function rulesetActionAvailable(
   if (action.uses && rulesetActionUses(actor, action, state) < 1) return false;
   // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
   if (!rulesetShotsAvailable(actor, action)) return false;
+  // Nor once the item is spent for good (1.538): an Efreeti Bottle that lost its magic.
+  if (action.itemUse && rulesetItemCallRoll(actor, action.itemUse.item).spent) return false;
   // An item's use is not offered where it is suppressed (1.468): a wand in an antimagic field.
   if (
     action.itemUse &&

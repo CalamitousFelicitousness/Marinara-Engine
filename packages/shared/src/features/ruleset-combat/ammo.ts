@@ -12,7 +12,7 @@
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import type { RulesetStoredEntry } from "../rulesets/sheet-math.js";
+import type { RulesetItemCallRoll, RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
@@ -332,6 +332,8 @@ export interface RulesetFightItemChange {
   corroded?: number;
   /** The levels it has ever taken in now (1.518). */
   absorbedEver?: number;
+  /** Its rolled call's lasting state now (1.538): an Efreeti Bottle. */
+  callRoll?: RulesetItemCallRoll;
   /** The form it is in now (1.522), 0 as it was made, when the fight changed it. */
   form?: number;
   /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
@@ -368,6 +370,7 @@ export function rulesetFightItemChanges(
         !combatant.charges &&
         !combatant.corroded &&
         !combatant.absorbedEver &&
+        !combatant.callRolls &&
         !combatant.itemForms &&
         !combatant.usesLeft &&
         !combatant.on &&
@@ -395,6 +398,11 @@ export function rulesetFightItemChanges(
       const absorbedEver = combatant.absorbedEver?.[index];
       const drank =
         absorbedEver !== undefined && absorbedEver !== (earlier?.absorbedEver?.[index] ?? held.absorbedEver);
+      // Its rolled call kept, counted or spent (1.538), since `before`.
+      const callRoll = combatant.callRolls?.[index];
+      const opened =
+        callRoll !== undefined &&
+        JSON.stringify(callRoll) !== JSON.stringify(earlier?.callRolls?.[index] ?? held.callRoll ?? {});
       // Its own uses spent (1.466), since `before`.
       const usesLeft = Object.fromEntries(
         Object.entries(combatant.usesLeft ?? {}).flatMap(([key, left]) => {
@@ -418,6 +426,7 @@ export function rulesetFightItemChanges(
         !spent &&
         !rusted &&
         !drank &&
+        !opened &&
         !reformed &&
         !usesSpent &&
         !restored &&
@@ -436,6 +445,7 @@ export function rulesetFightItemChanges(
         ...(spent ? { charges } : {}),
         ...(rusted ? { corroded } : {}),
         ...(drank ? { absorbedEver } : {}),
+        ...(opened ? { callRoll } : {}),
         ...(reformed ? { form } : {}),
         ...(usesSpent ? { usesLeft } : {}),
         ...(restored ? { storedEntries: storedNow } : {}),
@@ -501,6 +511,7 @@ export function applyRulesetFightItemChanges(
         charges: _charges,
         corroded: _corroded,
         absorbedEver: _absorbedEver,
+        callRoll: _callRoll,
         form: _form,
         loaded: _loaded,
         usesLeft: _usesLeft,
@@ -525,6 +536,7 @@ export function applyRulesetFightItemChanges(
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
       ...(change.corroded && quantity === 1 ? { corroded: change.corroded } : {}),
       ...(change.absorbedEver && quantity === 1 ? { absorbedEver: change.absorbedEver } : {}),
+      ...(change.callRoll && quantity === 1 ? { callRoll: change.callRoll } : {}),
       ...(change.form && quantity === 1 ? { form: change.form } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),

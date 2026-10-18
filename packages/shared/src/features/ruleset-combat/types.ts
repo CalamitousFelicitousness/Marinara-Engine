@@ -24,7 +24,7 @@ import type {
   RulesetCatalogWhere,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
-import type { RulesetSheetItem, RulesetStoredEntry } from "../rulesets/sheet-math.js";
+import type { RulesetItemCallRoll, RulesetSheetItem, RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type { TacticalBattlefieldProvenance, TacticalGrid, TacticalTerrain } from "../tactical-combat/types.js";
 
 /** A die roller: one call, one die, a face from 1 to `sides`. Every random number a fight needs
@@ -920,7 +920,17 @@ export interface RulesetCombatAction {
     label: string;
     call?: NonNullable<RulesetCombatAction["calls"]>;
     hostile?: true;
+    /** Its place among the call's options, from 1 (1.538). */
+    index?: number;
+    /** Rounds in place of the call's own, item spent once it comes, and the one past the call's
+     *  lifetime (1.538): an Efreeti Bottle. */
+    rounds?: number;
+    spendsItem?: true;
+    pastLifetime?: true;
   }>;
+  /** An item's rolled call keeps its first roll and counts its uses (1.538): an Efreeti Bottle. */
+  callsRollKept?: true;
+  callsLifetime?: number;
   /** What it does is rolled as it is used (1.506): each row as likely as its `weight`, made as the
    *  holder's action `id`, or nothing in the fight without one. A Wand of Wonder. */
   rollsAmong?: Array<{ weight: number; label: string; id?: string }>;
@@ -1972,6 +1982,9 @@ export interface RulesetCombatant {
   /** The levels each item has ever taken in (1.518), keyed as the rest are: as the fight began and
    *  since. */
   absorbedEver?: Record<string, number>;
+  /** Each item's rolled call kept, counted and spent (1.538), keyed as the rest are: as the fight
+   *  began and since. */
+  callRolls?: Record<string, RulesetItemCallRoll>;
   /** The item the last shot was drawn from (1.498), for ammunition destroyed as it hits. */
   lastShot?: number;
   /** What each item with charges holds now, keyed as the rest are. */

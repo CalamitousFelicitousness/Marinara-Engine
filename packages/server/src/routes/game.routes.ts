@@ -13206,17 +13206,28 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   );
 
   // ── PUT /game/:chatId/widgets ──
-  app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req) => {
-    const { widgets: rawWidgets } = z
-      .object({ widgets: z.array(hudWidgetSchema).max(MAX_GAME_HUD_WIDGETS) })
+  // A caller that read the widgets first may pass them as `expected`: compared inside the write itself,
+  // so widgets the game changed meanwhile (a turn's tags move their values) are refused, not replaced (#7743).
+  app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req, reply) => {
+    const { widgets: rawWidgets, expected } = z
+      .object({ widgets: z.array(hudWidgetSchema).max(MAX_GAME_HUD_WIDGETS), expected: z.unknown().optional() })
       .parse(req.body);
+    const checksBaseline = "expected" in ((req.body ?? {}) as object);
     const widgets = sanitizeGameHudWidgets(rawWidgets, true);
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(req.params.chatId);
     if (!chat) throw new Error("Chat not found");
 
     const enableCustomWidgets = widgets.length > 0;
+    let stale: { widgets: unknown } | null = null;
     await chats.patchMetadata(req.params.chatId, (freshMeta) => {
+      if (checksBaseline) {
+        const stored = freshMeta.gameWidgetState ?? null;
+        if (!sameGameDataValue(stored, expected ?? null)) {
+          stale = { widgets: stored };
+          return {};
+        }
+      }
       const setupConfig = (freshMeta.gameSetupConfig as GameSetupConfig | null) ?? null;
       return {
         gameWidgetState: widgets,
@@ -13232,6 +13243,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           : {}),
       };
     });
+    // Read through a typed local: assigned only inside the updater, so TS would narrow it to null here.
+    const staleWidgets = stale as { widgets: unknown } | null;
+    if (staleWidgets) {
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The widgets changed in the game meanwhile.", ...staleWidgets });
+    }
 
     return { ok: true };
   });

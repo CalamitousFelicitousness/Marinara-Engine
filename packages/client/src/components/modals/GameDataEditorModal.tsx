@@ -271,7 +271,11 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
             case "widgets":
               // A typo in the JSON view must not read as "no widgets at all".
               if (!Array.isArray(value)) throw new Error(localizeUi("ui.stateEditor.gameData.widgets.notList"));
-              await updateWidgets.mutateAsync({ chatId, widgets: value as HudWidget[] });
+              await updateWidgets.mutateAsync({
+                chatId,
+                widgets: value as HudWidget[],
+                expected: readGameDataRouteSection(metadata ?? {}, sectionId),
+              });
               return;
           }
         });

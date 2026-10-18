@@ -3,7 +3,7 @@
 // A game with no snapshot has nothing to checkpoint: the route says so (and the editor carries on
 // with the save). Once the game has a snapshot, a State Editor checkpoint is taken as an automatic
 // one: it is pruned to the newest 5 for its trigger, and the other triggers' checkpoints and manual
-// ones are left alone.
+// ones are left alone. And the HUD widgets route refuses a save over widgets changed since they were read.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +94,26 @@ try {
   }>;
   assert.equal(left.length, after.length - 1);
   assert.ok(!left.some((row) => row.id === toDelete.id));
+
+  // The HUD widgets the editor opened ride along: widgets the game changed meanwhile are refused, not replaced.
+  const bar = (value: number) => ({
+    id: "courage",
+    type: "progress_bar",
+    label: "Courage",
+    position: "hud_left",
+    config: { value, max: 10 },
+  });
+  const putWidgets = (payload: unknown) => app.inject({ method: "PUT", url: `/api/game/${chat.id}/widgets`, payload });
+  assert.equal((await putWidgets({ widgets: [bar(7)] })).statusCode, 200, "the game panel's save takes no baseline");
+  const stored = (await chats.getById(chat.id))!;
+  const opened = JSON.parse(stored.metadata as string).gameWidgetState;
+  assert.equal((await putWidgets({ widgets: [bar(3)] })).statusCode, 200, "the game moves the bar meanwhile");
+  const staleWidgets = await putWidgets({ widgets: [bar(9)], expected: opened });
+  assert.equal(staleWidgets.statusCode, 409, staleWidgets.body);
+  assert.equal(staleWidgets.json().reason, "stale");
+  const kept = JSON.parse((await chats.getById(chat.id))!.metadata as string).gameWidgetState;
+  assert.equal(kept[0].config.value, 3, "the refused draft changed nothing");
+  assert.equal((await putWidgets({ widgets: [bar(9)], expected: kept })).statusCode, 200, "the widgets it opened save");
 } finally {
   await chats.remove(chat.id).catch(() => {});
   await app.close();

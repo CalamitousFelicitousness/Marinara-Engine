@@ -5198,6 +5198,8 @@ function fillCatalogCallsAsWritten(
   const found = (
     ref: string,
     written: RulesetCatalogCalls["count"],
+    /** More for each step paid, and the steps it needs (1.484). */
+    stepped: { perStep?: number; fromStep?: number } = {},
   ): NonNullable<RulesetCombatAction["calls"]> | null => {
     const [catalogId, entryId] = ref.split("/");
     const entry = catalogId && entryId ? findRulesetCreatureEntry(catalogs, { catalogId, entryId }) : null;
@@ -5213,6 +5215,8 @@ function fillCatalogCallsAsWritten(
       ...(calls.initiative === "none" ? { turnless: true as const } : {}),
       ...(calls.rounds ? { rounds: calls.rounds } : {}),
       ...(calls.timesPerSteps ? { timesPerSteps: calls.timesPerSteps } : {}),
+      ...((stepped.perStep ?? calls.perStep) ? { perStep: stepped.perStep ?? calls.perStep } : {}),
+      ...(stepped.fromStep ? { fromStep: stepped.fromStep } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
     };
@@ -5222,28 +5226,40 @@ function fillCatalogCallsAsWritten(
     if (call) action.calls = call;
     return;
   }
-  // Read from a catalog (1.349): each match no higher than `upTo` is one mode to pick among.
-  const matching = (from: RulesetCatalogFrom, upTo: { filter: string; at: number } | undefined) =>
-    rulesetCatalogMatches(catalogs, from).filter((ref) => {
-      if (!upTo) return true;
+  // Read from a catalog (1.349): each match no higher than `upTo` is one mode to pick among. Where
+  // `upTo` rises with each step paid (1.484), one higher still is offered from the steps it needs.
+  const matching = (
+    from: RulesetCatalogFrom,
+    upTo: { filter: string; at: number; perStep?: number } | undefined,
+    least = 0,
+  ): Array<{ ref: string; fromStep: number }> =>
+    rulesetCatalogMatches(catalogs, from).flatMap((ref) => {
+      if (!upTo) return [{ ref, fromStep: least }];
       const [catalogId, entryId] = ref.split("/");
       const entry = findRulesetCreatureEntry(catalogs, { catalogId: catalogId!, entryId: entryId! });
       const rank = entry?.filters?.[upTo.filter];
-      return typeof rank !== "number" || rank <= upTo.at;
+      if (typeof rank !== "number" || rank <= upTo.at) return [{ ref, fromStep: least }];
+      if (!upTo.perStep) return [];
+      const needs = Math.ceil((rank - upTo.at) / upTo.perStep - 1e-9);
+      return needs <= 20 ? [{ ref, fromStep: Math.max(least, needs) }] : [];
     });
   const many = (count: RulesetCatalogCalls["count"]) => (count?.dice ? count.dice : String(count?.flat ?? 1));
   if (calls.from && calls.count) {
     const count = calls.count;
-    action.modes = matching(calls.from, calls.upTo).flatMap((ref) => {
-      const call = found(ref, count);
+    action.modes = matching(calls.from, calls.upTo).flatMap(({ ref, fromStep }) => {
+      const call = found(ref, count, fromStep ? { fromStep } : {});
       return call ? [{ id: `call-${ref.split("/")[1]}`, label: `${call.name} ×${many(count)}`, call }] : [];
     });
     return;
   }
   action.modes = (calls.options ?? []).flatMap((option, index) => {
+    const stepped = (fromStep: number) => ({
+      ...(option.perStep ? { perStep: option.perStep } : {}),
+      ...(fromStep ? { fromStep } : {}),
+    });
     if (option.from) {
-      return matching(option.from, option.upTo).flatMap((ref) => {
-        const call = found(ref, option.count);
+      return matching(option.from, option.upTo, option.fromStep ?? 0).flatMap(({ ref, fromStep }) => {
+        const call = found(ref, option.count, stepped(fromStep));
         if (!call) return [];
         const label = `${call.name} ×${many(option.count)}`;
         return [
@@ -5251,7 +5267,7 @@ function fillCatalogCallsAsWritten(
         ];
       });
     }
-    const call = option.creature ? found(option.creature, option.count) : null;
+    const call = option.creature ? found(option.creature, option.count, stepped(option.fromStep ?? 0)) : null;
     if (!call) return [];
     return [{ id: `call-${index}`, label: option.label ?? `${call.name} ×${many(option.count)}`, call }];
   });

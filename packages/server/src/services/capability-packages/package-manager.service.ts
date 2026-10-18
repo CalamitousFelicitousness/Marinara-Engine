@@ -2261,6 +2261,24 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A call that grows with each step paid (1.484): Animate Dead's two more, Create Undead's options,
+ *  Conjure Elemental's challenge rating. */
+function carriesSteppedCalls484(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSteppedCalls484(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls) {
+    const stepped = (one: Record<string, unknown> | undefined) =>
+      !!one &&
+      (one.perStep !== undefined || one.fromStep !== undefined || plainRecord(one.upTo)?.perStep !== undefined);
+    if (stepped(calls) || (Array.isArray(calls.options) && calls.options.some((one) => stepped(plainRecord(one)))))
+      return true;
+  }
+  return featureValues(record).some((one) => carriesSteppedCalls484(one, depth + 1));
+}
+
 /** A further use whose count is rolled for each stack (1.483): a Helm of Brilliance's gems. */
 function carriesRolledUses483(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6803,6 +6821,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call that grows with each step paid, 1.484.
+  if (
+    !declaresApi(484) &&
+    (carriesSteppedCalls484(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSteppedCalls484(document)))
+  ) {
+    return "A ruleset with a call that grows with each step of higher cost (calls perStep, fromStep, upTo perStep) requires schemaVersion 2 and capabilityApi 1.484 or newer";
+  }
   // A further use whose count is rolled, 1.483.
   if (
     !declaresApi(483) &&

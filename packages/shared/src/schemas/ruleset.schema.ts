@@ -5468,7 +5468,11 @@ export type RulesetShapeForms = z.infer<typeof shapeFormsSchema>;
 
 /** The highest a called creature's bestiary `filter` may read (Capability API 1.349): Conjure
  *  Animals' "challenge rating 2 or lower". */
-const calledUpTo = z.object({ filter: sheetId, at: z.number().finite() }).strict();
+/** `perStep` (Capability API 1.484): `at` rises this much for each step of higher cost it is paid
+ *  with, Conjure Elemental's "the challenge rating increases by 1 for each slot level above 5th". */
+const calledUpTo = z
+  .object({ filter: sheetId, at: z.number().finite(), perStep: z.number().finite().gt(0).max(100).optional() })
+  .strict();
 const calledCreatureRef = z
   .string()
   .trim()
@@ -5490,6 +5494,11 @@ const calledOptionsSchema = z
         upTo: calledUpTo.optional(),
         count: calledCount,
         label: promptSafeText(80).optional(),
+        /** Offered only when paid this many steps of higher cost or more (Capability API 1.484):
+         *  Create Undead's ghasts or wights from an 8th-level slot, `2`. */
+        fromStep: z.number().int().min(1).max(20).optional(),
+        /** This many more for each step of higher cost (1.484), beyond its own `fromStep`. */
+        perStep: z.number().int().min(1).max(20).optional(),
       })
       .strict()
       .refine((option) => (option.creature === undefined) !== (option.from === undefined), {
@@ -5527,6 +5536,9 @@ export const catalogCallsSchema = z
      *  API 1.349): 5e's Conjure Animals, twice as many with a 5th-level slot, three times with 7th
      *  and four times with 9th, is `2`. */
     timesPerSteps: z.number().int().min(1).max(20).optional(),
+    /** This many more for each step of higher cost it is paid with (Capability API 1.484): 5e's
+     *  Animate Dead, "two additional undead creatures for each slot level above 3rd", is `2`. */
+    perStep: z.number().int().min(1).max(20).optional(),
     /** The creature type each one called is instead of its own, picked as it is used like a mode
      *  (Capability API 1.434), by id of `combat.creatureTypes.types`: 5e's Find Familiar, "a
      *  celestial, fey, or fiend (your choice) instead of a beast". */

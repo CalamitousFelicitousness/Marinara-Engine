@@ -6047,6 +6047,16 @@ function applyChoice(
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
     return refusal(state, choice.actorId, "bad-pool", option.id);
   }
+  // A call this payment is too low for (1.484): Create Undead's mummies below a 9th-level slot.
+  const callNeeds = namedIn?.modes?.find((entry) => entry.id === choice.mode)?.call?.fromStep;
+  if (callNeeds && namedIn) {
+    const steps = namedIn.innate
+      ? Math.max(0, namedIn.innate.level - namedIn.innate.baseLevel)
+      : choice.payWith !== undefined
+        ? rulesetCostSteps(definition, namedIn, choice.payWith, actor)
+        : 0;
+    if (steps < callNeeds) return refusal(state, choice.actorId, "unknown-mode", option.id);
+  }
   // Where a teleport goes and who goes along (1.276): only what its option offers.
   const teleporting = option.teleport;
   // No cell is out of the fight, where it may leave it (1.279).
@@ -8769,7 +8779,9 @@ function callCreatures(
 ): void {
   if (!action.calls) return;
   const per = action.calls.timesPerSteps;
-  const count = rollAmount(ctx, action.calls.count).total * (per ? 1 + Math.floor(steps / per) : 1);
+  // And so many more for each step past the steps it needs (1.484): Animate Dead's two.
+  const more = action.calls.perStep ? action.calls.perStep * Math.max(0, steps - (action.calls.fromStep ?? 0)) : 0;
+  const count = rollAmount(ctx, action.calls.count).total * (per ? 1 + Math.floor(steps / per) : 1) + more;
   const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells);
   // Kept by what called them (1.344): its concentration, and its rounds.
   for (const id of ids) {

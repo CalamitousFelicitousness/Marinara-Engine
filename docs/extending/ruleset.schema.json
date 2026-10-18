@@ -47137,6 +47137,11 @@
                             "at": {
                               "type": "number"
                             },
+                            "perStep": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 100
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -47253,6 +47258,11 @@
                                   "at": {
                                     "type": "number"
                                   },
+                                  "perStep": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 100
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -47281,6 +47291,16 @@
                                 "minLength": 1,
                                 "maxLength": 80
                               },
+                              "fromStep": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
+                              "perStep": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -47305,6 +47325,11 @@
                           "maximum": 14400
                         },
                         "timesPerSteps": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
+                        "perStep": {
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 20
@@ -61571,6 +61596,11 @@
                                         "at": {
                                           "type": "number"
                                         },
+                                        "perStep": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 100
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -61598,6 +61628,16 @@
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 80
+                                    },
+                                    "fromStep": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
+                                    },
+                                    "perStep": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
                                     },
                                     "$comment": {}
                                   },
@@ -83593,6 +83633,11 @@
                                 "at": {
                                   "type": "number"
                                 },
+                                "perStep": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -83709,6 +83754,11 @@
                                       "at": {
                                         "type": "number"
                                       },
+                                      "perStep": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 100
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -83737,6 +83787,16 @@
                                     "minLength": 1,
                                     "maxLength": 80
                                   },
+                                  "fromStep": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "perStep": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -83761,6 +83821,11 @@
                               "maximum": 14400
                             },
                             "timesPerSteps": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
+                            "perStep": {
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 20
@@ -99539,6 +99604,11 @@
                                       "at": {
                                         "type": "number"
                                       },
+                                      "perStep": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 100
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -99655,6 +99725,11 @@
                                             "at": {
                                               "type": "number"
                                             },
+                                            "perStep": {
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -99683,6 +99758,16 @@
                                           "minLength": 1,
                                           "maxLength": 80
                                         },
+                                        "fromStep": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 20
+                                        },
+                                        "perStep": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 20
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -99707,6 +99792,11 @@
                                     "maximum": 14400
                                   },
                                   "timesPerSteps": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "perStep": {
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 20

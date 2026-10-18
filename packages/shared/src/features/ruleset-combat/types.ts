@@ -1125,6 +1125,10 @@ export interface RulesetCombatAction {
     rounds?: number;
     /** Their count once over again for each this many steps of higher cost paid (1.349). */
     timesPerSteps?: number;
+    /** This many more for each step of higher cost paid (1.484), past `fromStep` where it has one. */
+    perStep?: number;
+    /** Only when paid this many steps of higher cost or more (1.484): Create Undead's mummies. */
+    fromStep?: number;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */

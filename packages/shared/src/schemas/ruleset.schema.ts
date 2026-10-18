@@ -2479,6 +2479,42 @@ const catalogDice = z
 
 const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int().optional() };
 
+/** When an item's charges, or a use's own uses, come back: on the ruleset's `rests` it names, all of
+ *  them (`"max"`) or an `amount`; and (Capability API 1.503) `after` so many `days` or `hours` of game
+ *  time from their running out, the wait rolled as they run out where it is dice: a Figurine of
+ *  Wondrous Power's days, Wings of Flying's 1d12 hours. With `after`, `rests` may be empty. Typed by
+ *  hand, to keep the definition's type small. */
+export interface RulesetItemRechargeRule {
+  rests: string[];
+  amount: "max" | { dice?: string; flat?: number };
+  after?: { days?: number; hours?: { dice?: string; flat?: number } };
+}
+const itemRechargeSchema: z.ZodType<RulesetItemRechargeRule, z.ZodTypeDef, unknown> = z
+  .object({
+    rests: z.array(sheetId).max(12),
+    amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
+    after: z
+      .object({
+        days: z.number().int().min(1).max(3650).optional(),
+        hours: z
+          .object(catalogAmountShape)
+          .strict()
+          .refine((hours) => hours.dice !== undefined || (hours.flat ?? 0) > 0, {
+            message: "A wait in hours names dice or a flat number above 0",
+          })
+          .optional(),
+      })
+      .strict()
+      .refine((after) => after.days !== undefined || after.hours !== undefined, {
+        message: 'Say how long it waits: "days", "hours" or both',
+      })
+      .optional(),
+  })
+  .strict()
+  .refine((recharge) => recharge.rests.length > 0 || recharge.after !== undefined, {
+    message: 'Say when they come back: on "rests", "after" a wait, or both',
+  });
+
 /** The moment a reaction waits for, and what it answers. A catalog entry and a creature's own action
  *  say it the same way. */
 /** An area that stays (Capability API 1.172), as a catalog entry or an item's use carries it. Typed by
@@ -8964,7 +9000,7 @@ export interface RulesetItemAttackSpend {
   charges?: number;
   uses?: {
     max: number;
-    recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
+    recharge?: RulesetItemRechargeRule;
   };
   amount?: { dice?: string; flat?: number };
   type?: string;
@@ -8990,13 +9026,7 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
     uses: z
       .object({
         max: z.number().int().min(1).max(100),
-        recharge: z
-          .object({
-            rests: z.array(sheetId).min(1).max(12),
-            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
-          })
-          .strict()
-          .optional(),
+        recharge: itemRechargeSchema.optional(),
       })
       .strict()
       .optional(),
@@ -9605,7 +9635,7 @@ export interface RulesetItemMoreUse {
   uses?: {
     max: number;
     rolled?: string;
-    recharge?: { rests: string[]; amount: "max" | { dice?: string; flat?: number } };
+    recharge?: RulesetItemRechargeRule;
   };
 }
 const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = z
@@ -9626,13 +9656,7 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
          *  1.483), `max` the most that may come up: a Helm of Brilliance's "1d10 diamonds", a
          *  Necklace of Prayer Beads' "1d4 + 2". */
         rolled: catalogDice.optional(),
-        recharge: z
-          .object({
-            rests: z.array(sheetId).min(1).max(12),
-            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
-          })
-          .strict()
-          .optional(),
+        recharge: itemRechargeSchema.optional(),
       })
       .strict()
       .optional(),
@@ -9703,13 +9727,7 @@ const catalogItemObjectSchema = z
       .object({
         max: orItemStat(z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX)),
         /** Which of the ruleset's rests bring them back, and how many: all of them, or an amount. */
-        recharge: z
-          .object({
-            rests: z.array(sheetId).min(1).max(12),
-            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
-          })
-          .strict()
-          .optional(),
+        recharge: itemRechargeSchema.optional(),
         /** A die rolled when a use spends the last charge: at or under `atMost`, the item breaks; at or
          *  over `regains.atLeast` (Capability API 1.271), it gets back `regains.amount` charges, a
          *  Staff of the Magi's 1d12 + 1 on a 20. Either, or both. */

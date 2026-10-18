@@ -94926,7 +94926,6 @@
                                           "maxLength": 40,
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
-                                        "minItems": 1,
                                         "maxItems": 12
                                       },
                                       "amount": {
@@ -94951,6 +94950,33 @@
                                             "additionalProperties": false
                                           }
                                         ]
+                                      },
+                                      "after": {
+                                        "type": "object",
+                                        "properties": {
+                                          "days": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 3650
+                                          },
+                                          "hours": {
+                                            "type": "object",
+                                            "properties": {
+                                              "dice": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                              },
+                                              "flat": {
+                                                "type": "integer"
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
                                       },
                                       "$comment": {}
                                     },
@@ -131049,7 +131075,6 @@
                                       "maxLength": 40,
                                       "pattern": "^[a-z][a-z0-9_]*$"
                                     },
-                                    "minItems": 1,
                                     "maxItems": 12
                                   },
                                   "amount": {
@@ -131074,6 +131099,33 @@
                                         "additionalProperties": false
                                       }
                                     ]
+                                  },
+                                  "after": {
+                                    "type": "object",
+                                    "properties": {
+                                      "days": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 3650
+                                      },
+                                      "hours": {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "flat": {
+                                            "type": "integer"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -131138,7 +131190,6 @@
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
-                              "minItems": 1,
                               "maxItems": 12
                             },
                             "amount": {
@@ -131163,6 +131214,33 @@
                                   "additionalProperties": false
                                 }
                               ]
+                            },
+                            "after": {
+                              "type": "object",
+                              "properties": {
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 3650
+                                },
+                                "hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "dice": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                    },
+                                    "flat": {
+                                      "type": "integer"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
                             },
                             "$comment": {}
                           },

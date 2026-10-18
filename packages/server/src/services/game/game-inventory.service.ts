@@ -22,6 +22,8 @@ import {
   gameInventoryItemsOwnNamed,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
+  passRulesetItemTime,
+  rulesetItemRechargeLine,
   readGameInventoryTurn,
   readRulesetInventedItems,
   rulesetItemBook,
@@ -49,6 +51,7 @@ import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
 import { addEventEntry, addInventoryEntry, createJournal, type Journal } from "./journal.service.js";
+import { rollDieSecurely } from "./dice-rng.js";
 
 /** What a change works out from the stacks it is given. The same stacks and nothing else leave
  *  everything as it was. */
@@ -282,6 +285,46 @@ export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<st
  * chat's metadata queue held, so nothing else can move the stacks between the read and the write;
  * it may throw to refuse the whole change. Null when the chat does not exist.
  */
+/**
+ * Game time passing on the chat's clock (Capability API 1.503): the items whose charges or uses come
+ * back after a wait count it, and get them back once they have waited it all. Logged, never thrown:
+ * the clock moved either way.
+ */
+export async function passGameInventoryTime(db: DB, chatId: string, minutes: number): Promise<void> {
+  if (!(minutes > 0)) return;
+  try {
+    const chat = await createChatsStorage(db).getById(chatId);
+    if (!chat) return;
+    const metadata = readMetadata(chat.metadata);
+    if (metadata.gameRuleset == null) return;
+    if (!normalizeGameInventoryStacks(metadata.gameInventory).some((stack) => stack.item && stack.quantity === 1))
+      return;
+    const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+    if (resolved.status !== "ok") return;
+    const book = await loadGameInventoryItemBook(db, { metadata, resolved }, "player");
+    if (!book) return;
+    await commitGameInventoryChange(db, chatId, (current) => {
+      const passed = passRulesetItemTime({
+        definition: resolved.definition,
+        itemOf: book.itemOf,
+        stacks: current,
+        minutes,
+        roll: rollDieSecurely,
+      });
+      return {
+        stacks: passed.changed ? passed.stacks : current,
+        journal: [],
+        ...(passed.recharged.length > 0
+          ? { events: [{ title: "Items recharged", content: rulesetItemRechargeLine(passed.recharged) }] }
+          : {}),
+        value: null,
+      };
+    });
+  } catch (error) {
+    logger.warn(error, "[game/inventory] Could not pass game time over the items in chat %s", chatId);
+  }
+}
+
 export async function commitGameInventoryChange<T>(
   db: DB,
   chatId: string,

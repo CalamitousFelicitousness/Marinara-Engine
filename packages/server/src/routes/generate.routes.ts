@@ -345,6 +345,7 @@ import {
   followGameInventoryOnRow,
   gameRulesetLayerOptions,
   loadGameInventoryItemBook,
+  passGameInventoryTime,
 } from "../services/game/game-inventory.service.js";
 import { createCustomToolsStorage } from "../services/storage/custom-tools.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -10965,6 +10966,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ) as any,
                 );
               }
+              // What waits on game time counts the days (1.503).
+              if (clock) await passGameInventoryTime(app.db, input.chatId, turnClockDays * 24 * 60);
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);

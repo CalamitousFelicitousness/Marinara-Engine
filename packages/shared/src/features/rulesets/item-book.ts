@@ -185,7 +185,8 @@ export interface RulesetItemUseFact {
   charges?: {
     cost: number;
     max: number;
-    recharge?: { rests: string[]; amount: "max" | string };
+    /** `after` (1.503): the days, and the hours (a sum, perhaps dice), it waits once run out. */
+    recharge?: { rests: string[]; amount: "max" | string; after?: { days?: number; hours?: string } };
     /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
     breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
   };
@@ -389,6 +390,16 @@ function rulesetItemUseFacts(
                     rests: item.charges.recharge.rests.map((rest) => labelOf(definition.rests, rest)),
                     amount:
                       item.charges.recharge.amount === "max" ? ("max" as const) : amount(item.charges.recharge.amount),
+                    ...(item.charges.recharge.after
+                      ? {
+                          after: {
+                            ...(item.charges.recharge.after.days ? { days: item.charges.recharge.after.days } : {}),
+                            ...(item.charges.recharge.after.hours
+                              ? { hours: amount(item.charges.recharge.after.hours) }
+                              : {}),
+                          },
+                        }
+                      : {}),
                   },
                 }
               : {}),
@@ -1459,7 +1470,7 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       : "",
     use.charges ? `spends ${use.charges.cost} of ${use.charges.max} charges` : "",
     use.charges?.recharge
-      ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`
+      ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount}${use.charges.recharge.rests.length ? ` on ${use.charges.recharge.rests.join(" or ")}` : ""}${use.charges.recharge.after ? `${use.charges.recharge.rests.length ? " or" : ""} once ${[use.charges.recharge.after.days ? `${use.charges.recharge.after.days} days` : "", use.charges.recharge.after.hours ? `${use.charges.recharge.after.hours} hours` : ""].filter(Boolean).join(" and ")} of game time have passed since it ran out` : ""}`
       : "",
     use.charges?.breaksOn?.atMost !== undefined
       ? `${use.charges.breaksOn.becomes ? `becomes ${use.charges.breaksOn.becomes}` : "breaks"} on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`

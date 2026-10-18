@@ -224,7 +224,13 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
         })
       : "",
     use.charges ? t("ui.game.gameinventory.useCharges", { cost: use.charges.cost, max: use.charges.max }) : "",
-    use.charges?.recharge
+    use.charges?.recharge?.after?.days
+      ? t("ui.game.gameinventory.useRechargeAfterDays", { days: use.charges.recharge.after.days })
+      : "",
+    use.charges?.recharge?.after?.hours
+      ? t("ui.game.gameinventory.useRechargeAfterHours", { hours: use.charges.recharge.after.hours })
+      : "",
+    use.charges?.recharge?.rests.length
       ? use.charges.recharge.amount === "max"
         ? t("ui.game.gameinventory.useRechargeAll", { rests: use.charges.recharge.rests.join(", ") })
         : t("ui.game.gameinventory.useRecharge", {

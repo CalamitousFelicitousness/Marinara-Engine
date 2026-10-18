@@ -56,6 +56,10 @@ export interface GameInventoryStack {
   /** What is left of each of its further uses that counts its own (Capability API 1.466), by its
    *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full. */
   usesLeft?: Record<string, number>;
+  /** How long it has waited, in minutes of game time, for its charges (`"charges"`) or a use's own
+   *  uses (its `usesLeft` key) to come back `after` a wait (Capability API 1.503), and how long it
+   *  waits in all. Kept on a stack of one item only, as charges are. */
+  waits?: Record<string, GameInventoryWait>;
   /** What is stored in it to be cast later (Capability API 1.471): a Ring of Spell Storing's spells.
    *  Kept on a stack of one item only, as charges are. */
   storedEntries?: GameInventoryStoredEntry[];
@@ -368,12 +372,13 @@ function makeStack(stack: {
   charges?: number;
   corroded?: number;
   usesLeft?: Record<string, number>;
+  waits?: Record<string, GameInventoryWait>;
   storedEntries?: GameInventoryStoredEntry[];
   on?: boolean;
   truly?: string;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
-  const { corroded } = stack;
+  const { corroded, waits } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -389,6 +394,7 @@ function makeStack(stack: {
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
     ...(corroded && quantity === 1 ? { corroded } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
+    ...(waits && Object.keys(waits).length > 0 && quantity === 1 ? { waits } : {}),
     ...(storedEntries?.length && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
@@ -475,6 +481,26 @@ function readStoredEntries(raw: unknown): GameInventoryStoredEntry[] | undefined
 }
 
 /** A stack's own uses left (1.466) as stored: whole counts by a further use's place, from 1. */
+/** A wait counted in game time (1.503): the minutes waited so far, and the minutes it waits in all. */
+export interface GameInventoryWait {
+  waited: number;
+  for: number;
+}
+
+const WAIT_MINUTES_MAX = 3650 * 24 * 60;
+
+function readWaits(raw: unknown): Record<string, GameInventoryWait> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const minutes = (value: unknown): value is number =>
+    typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= WAIT_MINUTES_MAX;
+  const kept = Object.entries(raw as Record<string, unknown>).flatMap(([key, value]) => {
+    if (!/^(?:charges|[1-9]|1[0-6]|h[1-4])$/.test(key) || !value || typeof value !== "object") return [];
+    const { waited, for: needs } = value as Record<string, unknown>;
+    return minutes(waited) && minutes(needs) && needs > 0 ? [[key, { waited, for: needs }] as const] : [];
+  });
+  return kept.length > 0 ? Object.fromEntries(kept) : undefined;
+}
+
 function readUsesLeft(raw: unknown): Record<string, number> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const kept = Object.entries(raw as Record<string, unknown>).filter(
@@ -536,6 +562,7 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
             ? Math.min(100, source.corroded)
             : undefined,
         usesLeft: readUsesLeft(source.usesLeft),
+        waits: readWaits(source.waits),
         storedEntries: readStoredEntries(source.storedEntries),
         on: source.on === true && quantity === 1,
         quantity,
@@ -619,6 +646,7 @@ export function revealGameInventoryFake(
       charges: _charges,
       corroded: _corroded,
       usesLeft: _usesLeft,
+      waits: _waits,
       storedEntries: _stored,
       on: _on,
       ...rest
@@ -1509,6 +1537,7 @@ export function setGameInventoryStackQuantity(
     charges: _charges,
     corroded: _corroded,
     usesLeft: _usesLeft,
+    waits: _waits,
     storedEntries: _stored,
     ...off
   } = unworn(stack);
@@ -1592,6 +1621,7 @@ export function mergeGameInventoryStacks(
         charges: _charges,
         corroded: _corroded,
         usesLeft: _usesLeft,
+        waits: _waits,
         storedEntries: _stored,
         on: _on,
         ...rest

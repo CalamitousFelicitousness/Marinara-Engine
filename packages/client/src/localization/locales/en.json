@@ -9678,6 +9678,8 @@
   "ui.game.gameinventory.useGateUnless": "needs a {{check}} check against {{difficulty}} first unless {{what}} is {{atLeast}} or more, and a failed one uses it up for nothing",
   "ui.game.gameinventory.useHeals": "heals {{amount}}",
   "ui.game.gameinventory.useRecharge": "regains {{amount}} on {{rests}}",
+  "ui.game.gameinventory.useRechargeAfterDays": "comes back {{days}} days of game time after running out",
+  "ui.game.gameinventory.useRechargeAfterHours": "comes back {{hours}} hours of game time after running out",
   "ui.game.gameinventory.useRechargeAll": "regains all on {{rests}}",
   "ui.game.gameinventory.useRestore": "restores {{amount}} {{pool}}",
   "ui.game.gameinventory.useSave": "{{save}} save",

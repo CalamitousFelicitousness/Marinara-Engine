@@ -14,7 +14,12 @@ import {
   gameInventoryWearNeeds,
   type GameInventoryStack,
 } from "../../utils/game-inventory-stacks.js";
-import type { RulesetCatalogItem, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
+import type {
+  RulesetCatalogItem,
+  RulesetDefinition,
+  RulesetItemRechargeRule,
+  RulesetSheetBuild,
+} from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
 import { parseRulesetCombatDice, rulesetOwnUsesMax } from "../ruleset-combat/dice.js";
 import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
@@ -562,6 +567,121 @@ export function rechargeRulesetItems(input: {
     return now >= max ? rest : { ...rest, charges: now };
   });
   return { stacks: recharged.length > 0 ? stacks : [...input.stacks], recharged };
+}
+
+/** How long a wait counted in game time runs, in minutes (1.503), its hours rolled where they are
+ *  dice. */
+function rulesetItemWaitMinutes(
+  after: NonNullable<RulesetItemRechargeRule["after"]>,
+  roll: (sides: number) => number,
+): number {
+  const dice = after.hours?.dice ? parseRulesetCombatDice(after.hours.dice) : null;
+  const hours =
+    Array.from({ length: dice?.count ?? 0 }, () => roll(dice!.sides)).reduce((sum, face) => sum + face, 0) +
+    (dice?.flat ?? 0) +
+    (after.hours?.flat ?? 0);
+  return Math.max(1, (after.days ?? 0) * 24 * 60 + Math.max(0, hours) * 60);
+}
+
+/**
+ * What `minutes` of game time passing brings back to the items in every bag (1.503): charges, or a
+ * use's own uses, whose `recharge` comes back `after` a wait. A count run out starts waiting the first
+ * time game time passes, its wait rolled then; once it has waited it all, it gets back its `amount`
+ * (all of them for `"max"`). A count that is no longer out (a rest or the Game Master gave some
+ * back) waits no more.
+ */
+export function passRulesetItemTime(input: {
+  definition: RulesetDefinition;
+  itemOf: (ref: string) => RulesetItemBookEntry | undefined;
+  stacks: readonly GameInventoryStack[];
+  minutes: number;
+  roll: (sides: number) => number;
+}): { stacks: GameInventoryStack[]; recharged: RulesetItemRecharge[]; changed: boolean } {
+  const recharged: RulesetItemRecharge[] = [];
+  let changed = false;
+  const minutes = Math.max(0, Math.floor(input.minutes));
+  const stacks = input.stacks.map((stack) => {
+    if (!stack.item || stack.quantity !== 1) return stack;
+    const entry = input.itemOf(stack.item);
+    const item = entry?.entry.item;
+    if (!item) return stack;
+    const counts: Array<{ key: string; rule: RulesetItemRechargeRule; max: number; label: string; uses?: true }> = [];
+    const charges = item.charges?.recharge;
+    const chargesMax = rulesetItemFacts(input.definition, item).use?.charges?.max;
+    if (charges?.after && chargesMax !== undefined)
+      counts.push({ key: "charges", rule: charges, max: chargesMax, label: entry!.name });
+    item.moreUses?.forEach((more, n) => {
+      if (more.uses?.recharge?.after)
+        counts.push({
+          key: String(n + 1),
+          rule: more.uses.recharge,
+          max: rulesetOwnUsesMax(more.uses, stack.id, n + 1),
+          label: `${entry!.name}: ${more.label}`,
+          uses: true,
+        });
+    });
+    item.attack?.spends?.forEach((spend, n) => {
+      if (spend.uses?.recharge?.after)
+        counts.push({
+          key: `h${n + 1}`,
+          rule: spend.uses.recharge,
+          max: spend.uses.max,
+          label: `${entry!.name}: ${spend.label}`,
+          uses: true,
+        });
+    });
+    if (counts.length === 0 && !stack.waits) return stack;
+    let next = stack;
+    const waits = { ...(stack.waits ?? {}) };
+    for (const count of counts) {
+      const left = Math.min(
+        count.max,
+        (count.key === "charges" ? next.charges : next.usesLeft?.[count.key]) ?? count.max,
+      );
+      if (left > 0) {
+        delete waits[count.key];
+        continue;
+      }
+      const wait = waits[count.key] ?? { waited: 0, for: rulesetItemWaitMinutes(count.rule.after!, input.roll) };
+      const waited = Math.min(wait.for, wait.waited + minutes);
+      if (waited < wait.for) {
+        waits[count.key] = { waited, for: wait.for };
+        continue;
+      }
+      delete waits[count.key];
+      const amount = count.rule.amount;
+      const dice = amount !== "max" && amount.dice ? parseRulesetCombatDice(amount.dice) : null;
+      const gained =
+        amount === "max"
+          ? count.max
+          : Array.from({ length: dice?.count ?? 0 }, () => input.roll(dice!.sides)).reduce(
+              (sum, face) => sum + face,
+              0,
+            ) +
+            (dice?.flat ?? 0) +
+            (amount.flat ?? 0);
+      const now = Math.max(0, Math.min(count.max, gained));
+      if (now === 0) continue;
+      recharged.push({ item: count.label, now, max: count.max, ...(count.uses ? { uses: true as const } : {}) });
+      if (count.key === "charges") {
+        const { charges: _charges, ...rest } = next;
+        next = now >= count.max ? rest : { ...rest, charges: now };
+      } else {
+        const { [count.key]: _was, ...others } = next.usesLeft ?? {};
+        const usesLeft = now >= count.max ? others : { ...others, [count.key]: now };
+        const { usesLeft: _usesLeft, ...plain } = next;
+        next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
+      }
+    }
+    // Only what still waits, and only on what has a wait.
+    for (const key of Object.keys(waits)) if (!counts.some((count) => count.key === key)) delete waits[key];
+    const { waits: _waits, ...plain } = next;
+    const after = Object.keys(waits).length > 0 ? { ...plain, waits } : plain;
+    if (JSON.stringify(after) === JSON.stringify(stack)) return stack;
+    changed = true;
+    return after;
+  });
+  return { stacks: changed ? stacks : [...input.stacks], recharged, changed };
 }
 
 /** What a rest gave back, in words for the Game Master: "Dawn bell regains its charges (3 of 3)". */

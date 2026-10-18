@@ -168,6 +168,7 @@ import {
   addMinutes,
   advanceTime,
   formatGameTime,
+  gameTimeMinutes,
   createInitialTime,
   setTimeOfDay,
   type GameTime,
@@ -504,6 +505,7 @@ import {
   loadGameFightItems,
   loadGameFightUseEffects,
   loadGameInventoryItemBook,
+  passGameInventoryTime,
 } from "../services/game/game-inventory.service.js";
 import { gameRepliesBefore, isGameMasterReply } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
@@ -11025,6 +11027,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // a World Maps definition revision bump, which then permanently fails movement validation as
     // spatial_transition_stale_definition. patchMetadata re-reads and merges under the per-chat queue.
     let newTime: GameTime | undefined;
+    let passed = 0;
     const updated = await chats.patchMetadata(chatId, (freshMeta) => {
       const currentTime = (freshMeta.gameTime as GameTime) ?? createInitialTime();
       newTime =
@@ -11033,9 +11036,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           : isTimeOfDayLabel(body.action)
             ? setTimeOfDay(currentTime, body.action)
             : advanceTime(currentTime, body.action);
+      passed = gameTimeMinutes(newTime) - gameTimeMinutes(currentTime);
       return { gameTime: newTime };
     });
     if (!updated || !newTime) throw new Error("Chat not found");
+    // What waits on game time counts it (1.503).
+    await passGameInventoryTime(app.db, chatId, passed);
 
     // Also update the game state snapshot so WeatherEffects picks it up
     const gameStateStore = createGameStateStorage(app.db);
@@ -11369,6 +11375,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
       time: formatGameTime(time),
     });
+    await passGameInventoryTime(app.db, chatId, minutes);
     return { visit, at: to, path, minutes, time, formatted: formatGameTime(time) };
   });
 
@@ -11438,6 +11445,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
       time: formatGameTime(time),
     });
+    await passGameInventoryTime(app.db, chatId, minutes);
     return { map, walk, path, minutes, time, formatted: formatGameTime(time) };
   });
 
@@ -12007,6 +12015,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     await updateLatestGameStateWithTrackerLocks(createGameStateStorage(app.db), chatId, {
       time: formatGameTime(time),
     });
+    await passGameInventoryTime(app.db, chatId, Math.round(route.days * 24 * 60));
     return { walk: walked, route, time, formatted: formatGameTime(time) };
   });
 

@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Charges or uses that come back after a wait in game time (1.503): a figurine's days. */
+function carriesItemWaits503(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemWaits503(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.recharge)?.after !== undefined) return true;
+  return featureValues(record).some((one) => carriesItemWaits503(one, depth + 1));
+}
+
 /** Cover a wall gives, speeds that are the only ones, regeneration kept off somewhere, and target
  *  tests of fliers, of conditions held or of alternatives (1.502): Blade Barrier, Gaseous Form, a
  *  vampire, Wind Wall. */
@@ -7027,6 +7037,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Charges or uses back after a wait in game time, 1.503.
+  if (
+    !declaresApi(503) &&
+    (carriesItemWaits503(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemWaits503(document)))
+  ) {
+    return "A ruleset whose items' charges or uses come back after a wait in game time (recharge.after) requires schemaVersion 2 and capabilityApi 1.503 or newer";
+  }
   // Wall cover, only speeds, regeneration kept off, fliers and conditions held, 1.502.
   if (
     !declaresApi(502) &&

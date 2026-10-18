@@ -1734,6 +1734,24 @@ function hangsOnNow(
   return hangs.uses !== undefined ? { left: hangs.uses - used - 1 } : {};
 }
 
+/** It takes one of its own action's forms (1.495), as the action would put it on: a vampire's
+ *  Misty Escape. Nothing when it has no such action or form now. */
+function becomeForm(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  becomes: { action: string; form: string },
+): void {
+  const action = target.actions.find((one) => one.id === becomes.action);
+  const mode = action?.modes?.find(
+    (one) => one.form && `${one.form.creature.catalogId}/${one.form.creature.entryId}` === becomes.form,
+  );
+  const applies = action?.applies?.find(
+    (one) => ctx.combat.conditions?.find((rule) => rule.condition === one.condition)?.shape,
+  );
+  if (!mode?.form || !applies) return;
+  applyConditionId(ctx, target, applies.condition, { ...applies, form: mode.form }, { sourceId: target.id });
+}
+
 function dropToZero(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -1763,6 +1781,8 @@ function dropToZero(
         ...(hangs.label ? { label: hangs.label } : {}),
         ...(held.left !== undefined ? { left: held.left } : {}),
       });
+      // Into one of its own forms as it hangs on (1.495): Misty Escape.
+      if (hangs.becomes) becomeForm(ctx, target, hangs.becomes);
       if (hangs.extraTurn) {
         const at = ctx.state.turn + 1;
         ctx.state.order.splice(at, 0, target.id);

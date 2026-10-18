@@ -2645,6 +2645,7 @@ export interface RulesetHangsOn {
   extraTurn?: true;
   label?: string;
   whileHolding?: string[];
+  becomes?: { action: string; form: string };
 }
 export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
   .object({
@@ -2670,6 +2671,16 @@ export const hangsOnSchema: z.ZodType<RulesetHangsOn, z.ZodTypeDef, unknown> = z
     extraTurn: z.literal(true).optional(),
     label: promptSafeText(60).optional(),
     whileHolding: z.array(sheetId).min(1).max(12).optional(),
+    /** Hanging on, it takes one of its own action's forms at once (Capability API 1.495), as that
+     *  action would put it on: `action` its own action with `forms`, `form` the form's
+     *  `"<catalogId>/<entryId>"`. 5e's vampire's Misty Escape, into its mist. */
+    becomes: z
+      .object({
+        action: sheetId,
+        form: z.string().regex(/^[a-z0-9_-]+\/[a-z0-9_-]+$/i, "A form is a catalog/entry"),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((hangs) => hangs.uses !== undefined || hangs.spends !== undefined || hangs.save !== undefined, {

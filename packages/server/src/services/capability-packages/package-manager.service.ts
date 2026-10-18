@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Hanging on as one of its forms (1.495): a vampire's Misty Escape. */
+function carriesHangsOnBecomes495(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHangsOnBecomes495(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.hangsOn)?.becomes)) return true;
+  return featureValues(record).some((one) => carriesHangsOnBecomes495(one, depth + 1));
+}
+
 /** Actions only in a given shape (1.494): a wereboar's Charge. */
 function carriesInShape494(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6938,6 +6948,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Hanging on as one of its forms, 1.495.
+  if (
+    !declaresApi(495) &&
+    (carriesHangsOnBecomes495(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHangsOnBecomes495(document)))
+  ) {
+    return "A ruleset that hangs on at 1 in one of its forms (hangsOn becomes) requires schemaVersion 2 and capabilityApi 1.495 or newer";
+  }
   // Actions only in a given shape, 1.494.
   if (
     !declaresApi(494) &&

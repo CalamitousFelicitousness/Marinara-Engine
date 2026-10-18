@@ -54095,6 +54095,26 @@
                           "minItems": 1,
                           "maxItems": 12
                         },
+                        "becomes": {
+                          "type": "object",
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "form": {
+                              "type": "string",
+                              "pattern": "^[a-z0-9_-]+\\/[a-z0-9_-]+$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "action",
+                            "form"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -135706,6 +135726,26 @@
                     "minItems": 1,
                     "maxItems": 12
                   },
+                  "becomes": {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "form": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_-]+\\/[a-z0-9_-]+$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "action",
+                      "form"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -144109,6 +144149,26 @@
                     },
                     "minItems": 1,
                     "maxItems": 12
+                  },
+                  "becomes": {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "form": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_-]+\\/[a-z0-9_-]+$"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "action",
+                      "form"
+                    ],
+                    "additionalProperties": false
                   },
                   "$comment": {}
                 },

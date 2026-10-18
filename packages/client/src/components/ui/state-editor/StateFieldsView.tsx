@@ -158,7 +158,7 @@ function NullField({
 }: {
   onPick: (next: string | number | boolean) => void;
   readOnly?: boolean;
-  /** A cleared quantity starts at 1: the save path rejects 0 (indInvalidInventoryTrackerRow). */
+  /** A cleared quantity starts at 1: the save path rejects 0 (findInvalidInventoryTrackerRow). */
   numberStart?: number;
 }) {
   const { t: localizeUi } = useUiTranslation();

@@ -1945,6 +1945,9 @@ export interface RulesetCombatant {
   /** What each weapon has taken off its damage rolls for good (1.498), corroded, keyed as the rest
    *  are: as the fight began and since. */
   corroded?: Record<string, number>;
+  /** The levels each item has ever taken in (1.518), keyed as the rest are: as the fight began and
+   *  since. */
+  absorbedEver?: Record<string, number>;
   /** The item the last shot was drawn from (1.498), for ammunition destroyed as it hits. */
   lastShot?: number;
   /** What each item with charges holds now, keyed as the rest are. */

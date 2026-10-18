@@ -86658,6 +86658,11 @@
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
                             },
+                            "lifetime": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -88654,6 +88659,11 @@
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "lifetime": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
                             },
                             "$comment": {}
                           },
@@ -90838,6 +90848,11 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "lifetime": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000
                                   },
                                   "$comment": {}
                                 },
@@ -168721,6 +168736,11 @@
                     "type": "string",
                     "maxLength": 40,
                     "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "lifetime": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
                   },
                   "$comment": {}
                 },

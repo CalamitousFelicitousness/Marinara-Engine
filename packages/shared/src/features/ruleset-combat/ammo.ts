@@ -330,6 +330,8 @@ export interface RulesetFightItemChange {
   charges?: number;
   /** What a weapon has taken off its damage rolls for good now (1.498), corroded. */
   corroded?: number;
+  /** The levels it has ever taken in now (1.518). */
+  absorbedEver?: number;
   /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
   usesLeft?: Record<string, number>;
   /** What is stored in it now (1.471), when the fight stored or cast something. */
@@ -363,6 +365,7 @@ export function rulesetFightItemChanges(
         !combatant.loaded &&
         !combatant.charges &&
         !combatant.corroded &&
+        !combatant.absorbedEver &&
         !combatant.usesLeft &&
         !combatant.on &&
         !combatant.became &&
@@ -381,6 +384,10 @@ export function rulesetFightItemChanges(
       // Corroded further (1.498), since `before`.
       const corroded = combatant.corroded?.[index];
       const rusted = corroded !== undefined && corroded !== (earlier?.corroded?.[index] ?? held.corroded);
+      // Taken in further (1.518), since `before`.
+      const absorbedEver = combatant.absorbedEver?.[index];
+      const drank =
+        absorbedEver !== undefined && absorbedEver !== (earlier?.absorbedEver?.[index] ?? held.absorbedEver);
       // Its own uses spent (1.466), since `before`.
       const usesLeft = Object.fromEntries(
         Object.entries(combatant.usesLeft ?? {}).flatMap(([key, left]) => {
@@ -398,7 +405,9 @@ export function rulesetFightItemChanges(
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !rusted && !usesSpent && !restored && !switched && !turned) return;
+      if (taken === 0 && !reloaded && !spent && !rusted && !drank && !usesSpent && !restored && !switched && !turned) {
+        return;
+      }
       // The stack holds what it became from the step after it turned, so later changes name that.
       const ref = earlier?.became?.[index] ?? held.stack.ref;
       changes.push({
@@ -408,6 +417,7 @@ export function rulesetFightItemChanges(
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
         ...(rusted ? { corroded } : {}),
+        ...(drank ? { absorbedEver } : {}),
         ...(usesSpent ? { usesLeft } : {}),
         ...(restored ? { storedEntries: storedNow } : {}),
         ...(switched ? { on } : {}),
@@ -471,6 +481,7 @@ export function applyRulesetFightItemChanges(
       const {
         charges: _charges,
         corroded: _corroded,
+        absorbedEver: _absorbedEver,
         loaded: _loaded,
         usesLeft: _usesLeft,
         storedEntries: _stored,
@@ -490,6 +501,7 @@ export function applyRulesetFightItemChanges(
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
       ...(change.corroded && quantity === 1 ? { corroded: change.corroded } : {}),
+      ...(change.absorbedEver && quantity === 1 ? { absorbedEver: change.absorbedEver } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
     };

@@ -12880,7 +12880,16 @@ function absorbAction(
     const rule = held.worn ? held.item.worn?.absorbs : undefined;
     if (!rule || !takes(rule) || rulesetItemSuppressed(hush, held.item)) continue;
     const name = held.name ?? held.stack?.ref ?? "";
-    if (!rule.charges) return said(name, rule);
+    // Never past what it may take in over its whole existence (1.518), counted for good.
+    const ever = target.absorbedEver?.[index] ?? held.absorbedEver ?? 0;
+    if (rule.lifetime !== undefined && ever + level(rule) > rule.lifetime) continue;
+    const count = () => {
+      if (rule.lifetime !== undefined) (target.absorbedEver ??= {})[index] = ever + level(rule);
+    };
+    if (!rule.charges) {
+      count();
+      return said(name, rule);
+    }
     const most = held.item.charges?.max;
     const read = typeof most === "number" ? most : most ? held.item.stats?.[most.stat] : undefined;
     const max = typeof read === "number" && Number.isFinite(read) ? Math.max(0, Math.trunc(read)) : 0;
@@ -12889,6 +12898,7 @@ function absorbAction(
     const now = rule.charges === "spends" ? left - level(rule) : Math.min(max, left + level(rule));
     if (now < 0) continue;
     (target.charges ??= {})[index] = now;
+    count();
     return said(name, rule, { now, max });
   }
   return false;

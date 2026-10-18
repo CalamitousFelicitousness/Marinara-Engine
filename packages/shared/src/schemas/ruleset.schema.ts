@@ -3003,6 +3003,7 @@ export interface RulesetAbsorbs {
   charges?: "spends" | "gains";
   seen?: true;
   spends?: string;
+  lifetime?: number;
 }
 const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
   .object({
@@ -3020,6 +3021,9 @@ const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
     /** Taking it in costs its holder 1 of this budget, and nothing is taken in without one left
      *  (Capability API 1.517): a Rod of Absorption's "you can use your reaction to absorb a spell". */
     spends: sheetId.optional(),
+    /** The most levels it ever takes in, over its whole existence (Capability API 1.518): a Rod of
+     *  Absorption's 50. Spending what it took in never makes room again; an item's worn effect only. */
+    lifetime: z.number().int().min(1).max(1000).optional(),
   })
   .strict();
 
@@ -16967,6 +16971,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.absorbs?.charges) {
         issue([...path, "absorbs", "charges"], "Only an item's worn effect moves its charges");
       }
+      if (entry.absorbs?.lifetime !== undefined) {
+        issue([...path, "absorbs", "lifetime"], "Only an item's worn effect counts what it ever took in");
+      }
       // What taking it in costs (1.517) is one of the economy's budgets.
       if (entry.absorbs?.spends && !def.combat?.economy.budgets.some((one) => one.id === entry.absorbs!.spends)) {
         issue([...path, "absorbs", "spends"], `Unknown budget "${entry.absorbs.spends}"`);
@@ -18995,6 +19002,8 @@ function itemIssues(
     add([...at, "worn", "absorbs", "charges"], "What it takes in spends or gains its charges, so it holds some");
   if (item.carried?.absorbs?.charges)
     add([...at, "carried", "absorbs", "charges"], "Charges are moved by what a worn item takes in");
+  if (item.carried?.absorbs?.lifetime !== undefined)
+    add([...at, "carried", "absorbs", "lifetime"], "What it ever took in is counted on a worn item");
   item.moreUses?.forEach((more, index) => {
     if (more.use.label !== undefined)
       add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");

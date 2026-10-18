@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** What an item takes in, counted over its whole existence (1.518): a Rod of Absorption's 50. */
+function carriesAbsorbsLifetime518(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAbsorbsLifetime518(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.absorbs)?.lifetime !== undefined) return true;
+  return featureValues(record).some((one) => carriesAbsorbsLifetime518(one, depth + 1));
+}
+
 /** Absorbing narrowed to seen casters, or paid for with a budget (1.517): a Rod of Absorption. */
 function carriesAbsorbsSeenSpends517(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7189,6 +7199,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What an item takes in, counted over its whole existence, 1.518.
+  if (
+    !declaresApi(518) &&
+    (carriesAbsorbsLifetime518(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAbsorbsLifetime518(document)))
+  ) {
+    return "A ruleset with an item that takes in only so much over its whole existence (absorbs.lifetime) requires schemaVersion 2 and capabilityApi 1.518 or newer";
+  }
   // Absorbing narrowed to seen casters, or paid for with a budget, 1.517.
   if (
     !declaresApi(517) &&

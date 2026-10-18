@@ -1370,6 +1370,7 @@ export function rulesetSheetItems(
         ...(stack.on ? { on: true as const } : {}),
         ...(stack.charges !== undefined ? { charges: stack.charges } : {}),
         ...(stack.corroded ? { corroded: stack.corroded } : {}),
+        ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),
         ...(stack.storedEntries ? { storedEntries: stack.storedEntries } : {}),
         ...(truly ? { truly } : {}),

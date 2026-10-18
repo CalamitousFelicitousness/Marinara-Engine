@@ -507,6 +507,91 @@ try {
     const [called] = of(taken.events, "called");
     assert.equal(called?.ids.length, 1);
     assert.deepEqual(who(taken.state, called!.ids[0]!).creature, { catalogId: "creatures", entryId: "dire-wolf" });
+
+    // A further use spending charges that reads its creature from a catalog, picked as it is used:
+    // a Staff of the Magi's Conjure Elemental, 7 charges.
+    const staffItem = {
+      category: "gear",
+      stack: 1,
+      charges: { max: 50 },
+      use: { label: "Light", kind: "heal", budget: "action", amount: { flat: 1 }, charges: 1 },
+      moreUses: [
+        {
+          label: "Conjure Elemental",
+          use: {
+            kind: "utility",
+            targets: "self",
+            budget: "action",
+            charges: 7,
+            calls: { from: { catalog: "creatures" }, count: { flat: 1 }, initiative: "after", rounds: 600 },
+          },
+        },
+      ],
+    };
+    const withStaff = parsed(
+      document([], (doc) => {
+        doc.items = { categories: [{ id: "gear", label: "Gear" }], slots: [{ id: "hands", label: "Hands", count: 2 }] };
+        doc.catalogs.push({
+          id: "magic_items",
+          label: "Magic items",
+          holds: "items",
+          entries: [{ id: "staff", label: "Staff of the Magi", item: staffItem }],
+        });
+      }),
+    );
+    const staffState = createRulesetEncounter({
+      definition: withStaff,
+      seed: 1,
+      roller: roll,
+      bestiary: { creatures: withStaff.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries! },
+      combatants: [
+        {
+          id: "druid",
+          name: "Druid",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 10, dex: 12, con: 10, int: 10, wis: 18, cha: 10 },
+            fields: { level: 5, ac: 12, speed: 30, hp_max: 40 },
+          }),
+          live: {},
+          items: [
+            {
+              name: "Staff of the Magi",
+              quantity: 1,
+              worn: true,
+              charges: 50,
+              item: staffItem as unknown as RulesetCatalogItem,
+            },
+          ],
+        },
+        {
+          id: "brute",
+          name: "Brute",
+          side: "enemy",
+          block: { health: 10, defense: 10, initiativeModifier: 0, speed: 30, actions: [] },
+        },
+      ],
+    });
+    staffState.order = ["druid", "brute"];
+    staffState.turn = 0;
+    const conjure = rulesetCombatOptions(withStaff, staffState, "druid").find((one) =>
+      one.label.endsWith("Conjure Elemental"),
+    );
+    assert.ok(conjure);
+    const wolf = conjure.modes?.find((one) => one.id.endsWith("dire-wolf"));
+    assert.ok(wolf, JSON.stringify(conjure.modes?.map((one) => one.id)));
+    const conjured = step(withStaff, staffState, {
+      actorId: "druid",
+      optionId: conjure.id,
+      targetIds: [],
+      mode: wolf.id,
+    });
+    const [elemental] = of(conjured.events, "called");
+    assert.deepEqual(who(conjured.state, elemental!.ids[0]!).creature, {
+      catalogId: "creatures",
+      entryId: "dire-wolf",
+    });
+    assert.equal(who(conjured.state, "druid").charges?.[0], 43, "seven charges spent");
   }
 
   // ── Refused shapes ──

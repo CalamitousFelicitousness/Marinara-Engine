@@ -621,6 +621,15 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // A foe's entry taken in by its only target (1.469): a Rod of Absorption's.
+    case "absorbed":
+      return key(event.charges ? "absorbedCharges" : "absorbed", {
+        target: names.combatant(event.targetId),
+        label: event.label,
+        by: event.by,
+        now: event.charges?.now ?? 0,
+        max: event.charges?.max ?? 0,
+      });
     // A check made to end a condition (1.313): Maze's way out.
     case "checkEnded":
       // For somebody else (1.465): a creature on fire doused by a friend.

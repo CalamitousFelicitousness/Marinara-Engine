@@ -1977,6 +1977,8 @@
   "game.combat.ruleset.board.walk": "Move",
   "game.combat.ruleset.board.who": "{{name}} stands here, health {{value}} of {{max}}.",
   "game.combat.ruleset.board.zones": "In {{zones}}.",
+  "game.combat.ruleset.event.absorbed": "{{target}}'s {{by}} takes in {{label}}, which does nothing.",
+  "game.combat.ruleset.event.absorbedCharges": "{{target}}'s {{by}} takes in {{label}}, which does nothing ({{now}} of {{max}} charges).",
   "game.combat.ruleset.event.added": "{{actor}} adds {{label}} to the {{to}} that hit {{target}}.",
   "game.combat.ruleset.event.altered": "{{actor}} uses {{label}} with {{alters}}.",
   "game.combat.ruleset.event.area": "{{actor}} aims {{label}} at {{x}}, {{y}}, covering {{cells}} cells.",

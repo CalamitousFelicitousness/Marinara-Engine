@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition or worn item that takes in a foe's entry aimed at its holder alone (1.469): a Rod of
+ *  Absorption. */
+function carriesAbsorbs469(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAbsorbs469(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.absorbs) !== undefined) return true;
+  return featureValues(record).some((one) => carriesAbsorbs469(one, depth + 1));
+}
+
 /** A zone that suppresses conditions off some catalogs, or items with some tags (1.468): Antimagic Field. */
 function carriesSuppresses468(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6609,6 +6620,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What a holder takes in, 1.469.
+  if (
+    !declaresApi(469) &&
+    (carriesAbsorbs469(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAbsorbs469(document)))
+  ) {
+    return "A ruleset whose conditions or worn items take in an entry aimed at their holder alone (absorbs) requires schemaVersion 2 and capabilityApi 1.469 or newer";
+  }
   // Zones that suppress magic, 1.468.
   if (
     !declaresApi(468) &&

@@ -3184,6 +3184,16 @@ export type RulesetCombatEvent =
   | { type: "left"; actorId: string; label: string; by?: string }
   /** Back from where it was sent (1.236), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
+  /** A foe's entry taken in by its only target (1.469): a Rod of Absorption's, its charges now. */
+  | {
+      type: "absorbed";
+      targetId: string;
+      sourceId: string;
+      label: string;
+      level: number;
+      by: string;
+      charges?: { now: number; max: number };
+    }
   /** A check made to end a condition (1.313): Maze's way out, or no roll for one that always makes it. */
   | {
       type: "checkEnded";

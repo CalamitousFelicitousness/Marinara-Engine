@@ -9,6 +9,7 @@
 import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import {
   rulesetPoolMaxSuccesses,
+  type RulesetAbsorbs,
   type RulesetBehaviorDrops,
   type RulesetCombat,
   type RulesetCreatureHideEntry,
@@ -117,6 +118,7 @@ import {
   rulesetActionAsUsed,
   rulesetSuppressedAttack,
   rulesetSuppressedOn,
+  rulesetItemSuppressed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
   type RulesetCombatHealth,
@@ -11866,6 +11868,65 @@ function sanctuaryTargets(
   return out;
 }
 
+/** Whether its only target takes this action in (1.469): an entry of a catalog its condition or worn
+ *  item absorbs, at that level or lower, from a foe. An item's charges are spent or gained as it says,
+ *  and one that spends them takes in nothing it has too few for. Says so, and takes it in. */
+function absorbAction(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+  payWith: string | undefined,
+): boolean {
+  const catalog = action.catalog;
+  if (!catalog || target.side === actor.side || target.id === actor.id) return false;
+  const paid = rulesetPaidLevel(ctx.definition, actor, action, payWith);
+  const base = action.innate ? action.innate.baseLevel : rulesetPaidLevel(ctx.definition, actor, action);
+  const takes = (rule: RulesetAbsorbs) =>
+    rule.catalogs.includes(catalog) && (rule.by === "base" ? base : paid) <= rule.maxLevel;
+  const level = (rule: RulesetAbsorbs) => (rule.by === "base" ? base : paid);
+  const said = (by: string, rule: RulesetAbsorbs, charges?: { now: number; max: number }) => {
+    ctx.events.push({
+      type: "absorbed",
+      targetId: target.id,
+      sourceId: actor.id,
+      label: action.label,
+      level: level(rule),
+      by,
+      ...(charges ? { charges } : {}),
+    });
+    return true;
+  };
+  // A condition's first (1.469): a creature's, or one a spell gave.
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
+    if (entry.absorbs && takes(entry.absorbs)) {
+      const label =
+        ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+      return said(label, entry.absorbs);
+    }
+  }
+  // Then a worn item's, with its charges; never one an antimagic zone suppresses (1.468).
+  const hush = rulesetSuppressedOn(ctx.state, target);
+  const items = target.sheet?.items ?? [];
+  for (let index = 0; index < items.length; index++) {
+    const held = items[index]!;
+    const rule = held.worn ? held.item.worn?.absorbs : undefined;
+    if (!rule || !takes(rule) || rulesetItemSuppressed(hush, held.item)) continue;
+    const name = held.name ?? held.stack?.ref ?? "";
+    if (!rule.charges) return said(name, rule);
+    const most = held.item.charges?.max;
+    const read = typeof most === "number" ? most : most ? held.item.stats?.[most.stat] : undefined;
+    const max = typeof read === "number" && Number.isFinite(read) ? Math.max(0, Math.trunc(read)) : 0;
+    if (max < 1) continue;
+    const left = rulesetItemChargesLeft(target, { max, item: index });
+    const now = rule.charges === "spends" ? left - level(rule) : Math.min(max, left + level(rule));
+    if (now < 0) continue;
+    (target.charges ??= {})[index] = now;
+    return said(name, rule, { now, max });
+  }
+  return false;
+}
+
 function resolveActionBody(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -12169,8 +12230,11 @@ function resolveActionBody(
     // An area or a list catches only who the action may take, by what they are (1.168).
     rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes, actor);
   const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
+  // Taken in by its only target (1.469), a foe's: a Rod of Absorption, an Ioun Stone of Absorption.
+  const only = targets.length === 1 && !action.area ? targets[0]! : undefined;
+  const absorbed = only && reaches(only) && absorbAction(ctx, actor, action, only, payWith) ? only.id : undefined;
   for (const target of targets) {
-    if (!reaches(target) || spared.has(target.id)) continue;
+    if (!reaches(target) || spared.has(target.id) || target.id === absorbed) continue;
     // Each target an attack rolls for is a hit of its own, its dice not yet rolled.
     hitNow = null;
     // Killed outright (1.196): nothing else it does matters to the dead.

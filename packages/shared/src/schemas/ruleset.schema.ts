@@ -2908,6 +2908,26 @@ const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** What its holder takes in when it is a foe's entry's only target (Capability API 1.469). */
+export interface RulesetAbsorbs {
+  catalogs: string[];
+  maxLevel: number;
+  by?: "base" | "paid";
+  charges?: "spends" | "gains";
+}
+const absorbsSchema: z.ZodType<RulesetAbsorbs, z.ZodTypeDef, unknown> = z
+  .object({
+    catalogs: uniqueIds(8),
+    maxLevel: z.number().int().min(0).max(20),
+    /** The level it reads, as a ward's `by` (1.181). */
+    by: z.enum(["base", "paid"]).optional(),
+    /** On an item's `worn` only: each one taken in spends its level of the item's charges, and none is
+     *  taken in without them (an Ioun Stone of Absorption's 20 levels), or gives its level to them, up to
+     *  their most (a Rod of Absorption's 50). */
+    charges: z.enum(["spends", "gains"]).optional(),
+  })
+  .strict();
+
 /** Some kinds kept out of a zone, or in it (Capability API 1.399): 5e's Magic Circle and Hallow. */
 export interface RulesetZoneKeepsOut {
   is: RulesetTargetIs;
@@ -11015,6 +11035,37 @@ const conditionGrantsSchema: z.ZodType<RulesetConditionGrants, z.ZodTypeDef, unk
     path: ["names"],
   });
 
+/** A condition's `speeds`: see the combat condition's own. Typed by hand, as `sealed` is. */
+export type RulesetConditionSpeeds = Partial<Record<"fly" | "swim" | "climb" | "burrow", number | "walk">>;
+const conditionSpeedsSchema: z.ZodType<RulesetConditionSpeeds, z.ZodTypeDef, unknown> = z
+  .object(
+    Object.fromEntries(
+      (["fly", "swim", "climb", "burrow"] as const).map((mode) => [
+        mode,
+        z.union([z.number().int().min(1).max(10000), z.literal("walk")]).optional(),
+      ]),
+    ) as Record<"fly" | "swim" | "climb" | "burrow", z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodLiteral<"walk">]>>>,
+  )
+  .strict();
+
+/** A condition's `sealed` (1.314): see the combat condition's own. Typed by hand, as written out the
+ *  ruleset's inferred type grows too long for the compiler to emit. */
+export interface RulesetConditionSealed {
+  rolls?: { budget: string; share: number };
+  lifted?: { budget: string };
+  brokenBy?: string[];
+}
+const conditionSealedSchema: z.ZodType<RulesetConditionSealed, z.ZodTypeDef, unknown> = z
+  .object({
+    rolls: z
+      .object({ budget: sheetId, share: z.number().finite().gt(0).max(1) })
+      .strict()
+      .optional(),
+    lifted: z.object({ budget: sheetId }).strict().optional(),
+    brokenBy: z.array(catalogEntryRef).min(1).max(8).optional(),
+  })
+  .strict();
+
 const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.132), as on a creature. */
@@ -11154,20 +11205,7 @@ const combatConditionSchema = z
      *  `hover` keeps them up while they cannot move (a Broom of Flying). `levitates` (Levitate,
      *  Boots of Levitation) moves them only up and down, by its fly speed, never across, and they
      *  hover. When it ends, somebody up in the air with no flight left falls. */
-    speeds: z
-      .object(
-        Object.fromEntries(
-          (["fly", "swim", "climb", "burrow"] as const).map((mode) => [
-            mode,
-            z.union([z.number().int().min(1).max(10000), z.literal("walk")]).optional(),
-          ]),
-        ) as Record<
-          "fly" | "swim" | "climb" | "burrow",
-          z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodLiteral<"walk">]>>
-        >,
-      )
-      .strict()
-      .optional(),
+    speeds: conditionSpeedsSchema.optional(),
     hover: z.literal(true).optional(),
     levitates: z.literal(true).optional(),
     /** Ground hard going of itself costs its holder a plain step (Capability API 1.379): the board's
@@ -11294,17 +11332,7 @@ const combatConditionSchema = z
      *  to pick them up, and then they go wherever their bearer goes until put down. `brokenBy` are
      *  the entries that may still be aimed at them, and end it instead of doing what they do:
      *  Disintegrate. */
-    sealed: z
-      .object({
-        rolls: z
-          .object({ budget: sheetId, share: z.number().finite().gt(0).max(1) })
-          .strict()
-          .optional(),
-        lifted: z.object({ budget: sheetId }).strict().optional(),
-        brokenBy: z.array(catalogEntryRef).min(1).max(8).optional(),
-      })
-      .strict()
-      .optional(),
+    sealed: conditionSealedSchema.optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.236), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. */
@@ -11320,6 +11348,10 @@ const combatConditionSchema = z
      *  from anybody but themselves. 5e's rakshasa, kept on with `keepsOn`: Limited Magic Immunity,
      *  `{ "catalogs": ["spells"], "maxLevel": 6 }`. */
     wards: zoneWardsSchema.optional(),
+    /** An entry of these catalogs at this level or lower, used by a foe with its holder as its only
+     *  target, is taken in and does nothing (Capability API 1.469). On an item's `worn` it may spend
+     *  or gain the item's charges. */
+    absorbs: absorbsSchema.optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
      *  5e's Feather Fall. */
     fallsSafely: z.literal(true).optional(),
@@ -11571,7 +11603,7 @@ export const rulesetContextualSchema = z
   });
 export type RulesetContextual = z.infer<typeof rulesetContextualSchema>;
 
-export const rulesetItemEffectSchema = z
+const rulesetItemEffectObjectSchema = z
   .object({
     effects: z.array(itemEffectSchema).min(1).max(6).optional(),
     modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
@@ -11622,6 +11654,10 @@ export const rulesetItemEffectSchema = z
      *  never written to the sheet: 5e's Ioun Stone of Awareness, Ring of Water Walking, Cloak of
      *  Displacement, each a condition that does what the item says. */
     keepsOn: uniqueIds(4).optional(),
+    /** A foe's entry aimed at its holder alone, taken in (Capability API 1.469): 5e's Rod of
+     *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 9, "charges": "gains" }`, and Ioun Stone of
+     *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 4, "charges": "spends" }`. */
+    absorbs: absorbsSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -11643,13 +11679,14 @@ export const rulesetItemEffectSchema = z
       !entry.slipsFree &&
       !entry.ignoresHardGround &&
       !entry.jumps &&
-      !entry.keepsOn
+      !entry.keepsOn &&
+      !entry.absorbs
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens or conditions it keeps on",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on or what it takes in",
       });
     }
     if (abilities.length > 12) {
@@ -11671,7 +11708,11 @@ export const rulesetItemEffectSchema = z
     savesNeedSomethingToNarrow(entry, ctx);
     skillsNeedSomethingToNarrow(entry, ctx);
   });
-export type RulesetItemEffect = z.infer<typeof rulesetItemEffectSchema>;
+/** An item's effect, named as an interface so the ruleset's own inferred type stays short enough for
+ *  the compiler to emit (1.469). */
+export interface RulesetItemEffect extends z.infer<typeof rulesetItemEffectObjectSchema> {}
+export const rulesetItemEffectSchema: z.ZodType<RulesetItemEffect, z.ZodTypeDef, unknown> =
+  rulesetItemEffectObjectSchema;
 
 /** Something an item asks of whoever wears it: a value off their sheet, the least it may be, and what
  *  applies while it falls short. What applies cannot change an ability, since the value may read one. */
@@ -16070,6 +16111,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "wards", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      entry.absorbs?.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
+          issue([...path, "absorbs", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+        }
+      });
+      if (entry.absorbs?.charges) {
+        issue([...path, "absorbs", "charges"], "Only an item's worn effect moves its charges");
+      }
       if (entry.wards?.maxLevelPerCostStep !== undefined) {
         issue([...path, "wards", "maxLevelPerCostStep"], "A condition's ward is not cast, so it rises by no steps");
       }
@@ -17962,6 +18011,11 @@ function itemIssues(
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
   if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  // What it takes in moves its charges (1.469), so it holds some.
+  if (item.worn?.absorbs?.charges && !item.charges)
+    add([...at, "worn", "absorbs", "charges"], "What it takes in spends or gains its charges, so it holds some");
+  if (item.carried?.absorbs?.charges)
+    add([...at, "carried", "absorbs", "charges"], "Charges are moved by what a worn item takes in");
   item.moreUses?.forEach((more, index) => {
     if (more.use.label !== undefined)
       add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");
@@ -17984,7 +18038,9 @@ function itemIssues(
       item.use?.charges === undefined &&
       !item.attack?.slay?.some((entry) => entry.charges !== undefined) &&
       !item.attack?.modes?.some((mode) => mode.charges !== undefined) &&
-      !item.attack?.spends
+      !item.attack?.spends &&
+      // Or by what it takes in (1.469): an Ioun Stone of Absorption's, a Rod of Absorption's gained.
+      !item.worn?.absorbs?.charges
     ) {
       add(
         [...at, "charges"],
@@ -18047,6 +18103,11 @@ function itemHideIssues(
   // What it keeps on (1.460) is the sheet's own conditions, and a jump reads one of its abilities.
   effect.keepsOn?.forEach((condition, index) => {
     if (!conditions.has(condition)) add([...at, "keepsOn", index], `Unknown condition "${condition}"`);
+  });
+  // What it takes in (1.469) is off the ruleset's own catalogs.
+  effect.absorbs?.catalogs.forEach((catalog, index) => {
+    if (!definition.catalogs?.some((one) => one.id === catalog))
+      add([...at, "absorbs", "catalogs", index], `Unknown catalog "${catalog}"`);
   });
   const jumpAbility = effect.jumps?.plus?.ability;
   if (jumpAbility !== undefined && !definition.sheet.abilities.some((one) => one.id === jumpAbility))

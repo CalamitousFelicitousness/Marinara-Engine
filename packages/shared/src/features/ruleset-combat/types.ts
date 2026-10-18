@@ -4096,6 +4096,10 @@ export interface RulesetCombatZoneRule {
     cantGive?: string[];
     /** Conditions put on by those it keeps out that come off whoever steps into it (1.406). */
     frees?: string[];
+    /** Nor do they reach through it with a melee blow of the least reach (1.542): Antilife Shell. */
+    reach?: true;
+    /** Carried over one of them, it ends (1.542). */
+    endsOnSweep?: true;
   };
   /** Hidden from its caster's foes until found with a Search throwing this check (1.402). */
   hidden?: { check: string };

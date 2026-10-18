@@ -999,6 +999,8 @@ export function rulesetThreateningEnemies(
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
     const reach = Math.max(1, strike.reach ?? 1);
+    // Nor through a barrier that stops reach (1.542): Antilife Shell.
+    if (rulesetReachBarred(definition, state, combatant, mover, strike)) continue;
     // Somebody up in the air too high above (or below) to be reached is no threat to them (1.114).
     const grid = state.board?.grid;
     const levelCells = state.board?.levelCells;
@@ -1462,6 +1464,23 @@ export function rulesetWardedFrom(
       return (rule.way ?? "in") === "in" ? targetIn && !fromIn : fromIn && !targetIn;
     })
     .map(({ rule }) => rule);
+}
+
+/** Whether a zone keeps `from` reaching `target` with this blow (1.542): one that keeps them out
+ *  and stops reach, with `target` inside it and `from` outside, against a melee blow with no more than
+ *  the least reach that is not a spell. 5e's Antilife Shell, which a reach or ranged weapon passes. */
+export function rulesetReachBarred(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  from: RulesetCombatant,
+  target: RulesetCombatant,
+  blow: RulesetCombatAction,
+): boolean {
+  if (blow.toHit === undefined || blow.area || Math.max(1, blow.reach ?? 1) > 1) return false;
+  // A spell is cast through it.
+  if (blow.catalog && blow.kind !== "item" && !blow.whileHolds && !blow.signature && !blow.again) return false;
+  if (rulesetBlowKind(state, from, target, blow) !== "melee") return false;
+  return rulesetWardedFrom(definition, state, target, from).some((rule) => rule.reach);
 }
 
 export function rulesetZoneCells(

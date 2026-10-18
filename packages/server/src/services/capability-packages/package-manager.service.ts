@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A barrier that stops reach, or ends carried over one it keeps out (1.542): Antilife Shell. */
+function carriesReachBarrier542(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesReachBarrier542(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const kept = plainRecord(record.keepsOut);
+  if (kept && (kept.reach !== undefined || kept.endsOnSweep !== undefined)) return true;
+  return featureValues(record).some((one) => carriesReachBarrier542(one, depth + 1));
+}
+
 /** Targets each within a distance of the first (1.541): Chain Lightning. */
 function carriesTargetsNearFirst541(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7458,6 +7469,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A barrier that stops reach, or ends carried over one it keeps out, 1.542.
+  if (
+    !declaresApi(542) &&
+    (carriesReachBarrier542(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesReachBarrier542(document)))
+  ) {
+    return "A ruleset with a barrier that stops reach or ends as it is carried over one it keeps out (keepsOut reach, endsOnSweep) requires schemaVersion 2 and capabilityApi 1.542 or newer";
+  }
   // Targets each within a distance of the first, 1.541.
   if (
     !declaresApi(541) &&

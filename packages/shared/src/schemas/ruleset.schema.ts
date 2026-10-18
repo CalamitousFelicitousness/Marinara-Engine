@@ -3103,6 +3103,8 @@ export interface RulesetZoneKeepsOut {
   attacksInto?: "disadvantage";
   cantGive?: string[];
   frees?: string[];
+  reach?: true;
+  endsOnSweep?: true;
 }
 const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> = z
   .object({
@@ -3118,6 +3120,15 @@ const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> 
      *  (Capability API 1.406): Hallow's "no longer charmed, frightened, or possessed upon entering
      *  the area". */
     frees: uniqueIds(8).optional(),
+    /** Nor do they reach through it (Capability API 1.542): a melee attack of theirs with no more than
+     *  the least reach, not a spell, at whoever it holds, nor an opportunity attack. 5e's Antilife
+     *  Shell, "prevents an affected creature from passing or reaching through"; their ranged and
+     *  reach weapons and their spells still do. */
+    reach: z.literal(true).optional(),
+    /** Carried over one of them by whoever it is around, it ends instead (Capability API 1.542):
+     *  Antilife Shell's "If you move so that an affected creature is forced to pass through the
+     *  barrier, the spell ends". A zone around its caster, or carried. */
+    endsOnSweep: z.literal(true).optional(),
   })
   .strict();
 
@@ -6753,6 +6764,10 @@ function zoneIssue(mechanics: {
     return 'A zone held by concentration ends with it, so it never "outlasts" its caster';
   }
   if (zone.outlasts && zone.anchor === "caster") return 'A zone around its caster never "outlasts" them';
+  // Ending as it is carried over somebody it keeps out (1.542).
+  if (zone.keepsOut?.endsOnSweep && zone.anchor !== "caster" && !zone.carried) {
+    return '"endsOnSweep" ends a zone as whoever it is around moves, so it is around its caster or carried';
+  }
   // Going off later and burning away (1.183).
   if (zone.detonates && (zone.anchor === "caster" || zone.move || zone.drift || wall)) {
     return "A zone that goes off stays where it is cast";

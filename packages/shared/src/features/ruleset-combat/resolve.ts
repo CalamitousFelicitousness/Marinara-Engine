@@ -10410,6 +10410,8 @@ function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, ZoneOccu
           ? ctx.state.combatants.filter((one) => flashNear(ctx, caster, zone, action, one)).map((one) => one.id)
           : [],
       ),
+      // Who it keeps out stands in it already (1.542), for a zone that ends on being carried over one.
+      kept: new Set(action.zone?.keepsOut?.endsOnSweep ? sweptKept(ctx, caster, zone, action) : []),
     });
   }
   return inside;
@@ -10420,6 +10422,29 @@ interface ZoneOccupancy {
   zone: Set<string>;
   side: Set<string>;
   near: Set<string>;
+  kept: Set<string>;
+}
+
+/** Those a zone keeps out standing in it now (1.542), but whoever it is around. */
+function sweptKept(
+  ctx: RulesetCombatContext,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): string[] {
+  const rule = action.zone?.keepsOut;
+  if (!rule) return [];
+  const cells = rulesetZoneCells(ctx.state, caster, zone);
+  const around = zone.on ?? caster.id;
+  return ctx.state.combatants
+    .filter(
+      (one) =>
+        one.id !== around &&
+        rulesetCombatStanding(one) &&
+        rulesetTargetIs(ctx.definition, one, rule.is) &&
+        rulesetZoneHoldsOne(cells, one),
+    )
+    .map((one) => one.id);
 }
 
 /** After a step, everybody now inside a zone who was not before it: the mover walking in, or those a
@@ -10432,6 +10457,16 @@ function zonesEntered(
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
+    // Carried over somebody it keeps out, it ends (1.542): Antilife Shell.
+    if (
+      action.zone?.keepsOut?.endsOnSweep &&
+      (zone.on ?? (zone.anchor === "caster" ? caster.id : undefined)) === mover.id &&
+      caster.zones?.includes(zone) &&
+      sweptKept(ctx, caster, zone, action).some((id) => !was.kept.has(id))
+    ) {
+      spendZone(ctx, caster, zone);
+      continue;
+    }
     // Moving near a layered wall (1.437): its flash.
     if (
       action.zone?.layers?.flash?.triggers.includes("enter") &&

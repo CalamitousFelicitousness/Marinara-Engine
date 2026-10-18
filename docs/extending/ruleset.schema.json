@@ -44356,6 +44356,14 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "reach": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "endsOnSweep": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -68113,6 +68121,14 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "reach": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "endsOnSweep": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -80380,6 +80396,14 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "reach": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "endsOnSweep": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -104389,6 +104413,14 @@
                                   "minItems": 1,
                                   "maxItems": 8
                                 },
+                                "reach": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "endsOnSweep": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -124409,6 +124441,14 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "reach": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "endsOnSweep": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -144436,6 +144476,14 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "reach": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "endsOnSweep": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },

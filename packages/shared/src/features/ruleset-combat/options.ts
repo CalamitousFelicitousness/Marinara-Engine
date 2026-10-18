@@ -133,6 +133,7 @@ import {
   rulesetFootprintAt,
   rulesetFills,
   rulesetWardedFrom,
+  rulesetReachBarred,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import {
@@ -663,6 +664,9 @@ export function rulesetTargetRefusal(
   // Into, out of or across a wall that turns shots aside (1.528): Wind Wall.
   if (own && target && reach.max > 1 && rulesetShotsTurned(state, own, from, rulesetPositionOf(target) ?? to))
     return "no-line-of-sight";
+  // Through a barrier that stops reach (1.542): Antilife Shell, with no reach weapon.
+  if (definition && own && actor && target && rulesetReachBarred(definition, state, actor, target, own))
+    return "out-of-reach";
   return null;
 }
 

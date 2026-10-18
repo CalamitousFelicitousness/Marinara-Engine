@@ -900,6 +900,9 @@ export interface RulesetCombatAction {
   alteredWith?: string[];
   /** The tags of the held weapon it is made with (1.246), for what comes after the attack action. */
   itemTags?: string[];
+  /** Its damage adds the modifier of the ability it is made with (1.448), so a condition that makes it
+   *  with another moves its damage too. */
+  damageAddsAbility?: true;
   /** A failed save drops its target to 0 health instead of the amount (1.245). */
   dropsOnFailedSave?: true;
   /** Only at somebody at no health and still alive (1.311). */

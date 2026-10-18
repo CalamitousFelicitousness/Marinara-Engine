@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that changes its holder's weapons (1.448): Magic Weapon, Shillelagh. */
+function carriesConditionWeapon448(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesConditionWeapon448(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && plainRecord(record.weapon)) return true;
+  return featureValues(record).some((one) => carriesConditionWeapon448(one, depth + 1));
+}
+
 /** Dying rolls made as saves, and conditions on them or on healing (1.447): Beacon of Hope. */
 function carriesDeathSaves447(ruleset: unknown, depth = 0): boolean {
   const record = plainRecord(ruleset);
@@ -6372,6 +6382,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that changes its holder's weapons, 1.448.
+  if (
+    !declaresApi(448) &&
+    (carriesConditionWeapon448(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesConditionWeapon448(document)))
+  ) {
+    return "A ruleset whose conditions change their holder's weapons (a condition's weapon) requires schemaVersion 2 and capabilityApi 1.448 or newer";
+  }
   // Dying rolls made as saves, and conditions on them or on healing, 1.447.
   if (
     !declaresApi(447) &&

@@ -1763,20 +1763,11 @@ function attackActions(
               : {}),
           },
     };
-    if (rules.length) {
-      const dealtWith = columnValue(row, source.damage.ability?.column);
-      applyAttackRowRules(
-        definition,
-        build,
-        evaluated,
-        dice,
-        action,
-        rules,
-        pooled,
-        (ability) =>
-          dealtWith === ability || (ability === undefined && dealtWith === undefined && !!source.damage.ability),
-      );
-    }
+    const dealtWith = columnValue(row, source.damage.ability?.column);
+    const adds = (ability: string | undefined) =>
+      dealtWith === ability || (ability === undefined && dealtWith === undefined && !!source.damage.ability);
+    if (action.ability !== undefined && adds(action.ability)) action.damageAddsAbility = true;
+    if (rules.length) applyAttackRowRules(definition, build, evaluated, dice, action, rules, pooled, adds);
     actions.push(action);
   });
   return actions;
@@ -2555,6 +2546,7 @@ function itemAttackActions(
     };
     // What the sheet's entries do to it (1.244), as they do to a row: a monk's quarterstaff.
     const ruled = (action: RulesetCombatAction, full: boolean) => {
+      if (full && action.ability !== undefined && dealtWith.includes(action.ability)) action.damageAddsAbility = true;
       if (rules.length && dice)
         applyAttackRowRules(
           definition,

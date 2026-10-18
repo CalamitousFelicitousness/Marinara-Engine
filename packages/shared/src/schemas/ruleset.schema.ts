@@ -3471,6 +3471,48 @@ const conditionShapeSchema: z.ZodType<RulesetConditionShape, z.ZodTypeDef, unkno
   })
   .strict();
 
+/** A condition's `weapon` (1.448): see the combat condition's own. */
+export interface RulesetConditionWeapon {
+  names?: string[];
+  items?: { names?: string[]; tags?: string[]; notTags?: string[] };
+  toHit?: number;
+  damage?: number;
+  ability?: string;
+  abilityFrom?: string;
+  die?: number;
+  qualities?: string[];
+}
+const conditionWeaponSchema: z.ZodType<RulesetConditionWeapon, z.ZodTypeDef, unknown> = z
+  .object({
+    names: z.array(promptSafeText(40)).min(1).max(16).optional(),
+    items: z
+      .object({
+        names: z.array(promptSafeText(40)).min(1).max(16).optional(),
+        tags: z.array(sheetId).min(1).max(8).optional(),
+        notTags: z.array(sheetId).min(1).max(8).optional(),
+      })
+      .strict()
+      .optional(),
+    toHit: z.number().int().min(-20).max(20).optional(),
+    damage: z.number().int().min(-20).max(20).optional(),
+    ability: sheetId.optional(),
+    abilityFrom: sheetId.optional(),
+    die: z.number().int().min(2).max(100).optional(),
+    qualities: z.array(sheetId).min(1).max(8).optional(),
+  })
+  .strict()
+  .refine(
+    (rule) =>
+      rule.toHit !== undefined ||
+      rule.damage !== undefined ||
+      rule.ability !== undefined ||
+      rule.abilityFrom !== undefined ||
+      rule.die !== undefined ||
+      rule.qualities !== undefined,
+    { message: "weapon changes something: toHit, damage, ability, abilityFrom, die or qualities" },
+  )
+  .refine((rule) => !(rule.ability && rule.abilityFrom), { message: "weapon takes ability or abilityFrom, not both" });
+
 /** A condition's `jumps` (1.446): see the combat condition's own. */
 export interface RulesetConditionJumps {
   times?: number;
@@ -10778,6 +10820,14 @@ const combatConditionSchema = z
     /** Healing its holder gets is at its most (Capability API 1.447), every die of it its highest
      *  face: 5e's Beacon of Hope. */
     healedMax: z.literal(true).optional(),
+    /** What its holder's weapons are while it holds (Capability API 1.448): those whose attack goes by
+     *  one of `names` (a word of its label) or whose item is one of `items`, or every weapon with
+     *  neither, `toHit` and `damage` more, made with `ability` (or the ability a sheet field
+     *  `abilityFrom` names) instead of their own, their damage die a d`die`, and carrying `qualities`
+     *  past a resistance. 5e's Magic Weapon `{ "toHit": 1, "damage": 1, "qualities": ["magical"] }`,
+     *  Shillelagh `{ "names": ["club", "quarterstaff"], "abilityFrom": "spellcasting_ability",
+     *  "die": 8, "qualities": ["magical"] }`, Oil of Sharpness `{ "toHit": 3, "damage": 3 }`. */
+    weapon: conditionWeaponSchema.optional(),
     /** Whatever shape its holder takes keeps these of their own actions too (Capability API 1.382):
      *  as a shape's `keeps`, by entry (`"<catalogId>/<entryId>"`), action id, or a whole catalog
      *  (`"<catalogId>/*"`). 5e's Beast Spells, a druid's spells in Wild Shape from 18th level. */
@@ -15341,6 +15391,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
+      // The abilities a jump adds (1.446) and a weapon is made with (1.448), and the field naming one.
+      const jumpAbility = entry.jumps?.plus?.ability;
+      if (jumpAbility !== undefined && !abilityIds.has(jumpAbility))
+        issue([...path, "jumps", "plus", "ability"], `Unknown ability "${jumpAbility}"`);
+      if (entry.weapon?.ability !== undefined && !abilityIds.has(entry.weapon.ability))
+        issue([...path, "weapon", "ability"], `Unknown ability "${entry.weapon.ability}"`);
+      const abilityFrom = entry.weapon?.abilityFrom;
+      if (abilityFrom !== undefined && !def.sheet.fields.some((one) => one.id === abilityFrom))
+        issue([...path, "weapon", "abilityFrom"], `Unknown field "${abilityFrom}"`);
       // Kept off by who puts them on (1.191): the ruleset's own conditions, from creatures it names.
       freedomIssues(def, entry, path, issue);
       // Who is hit saves with a save of the sheet's, or takes conditions it has (1.436).

@@ -176,6 +176,7 @@ import {
   rulesetDamageModifiers,
   rulesetHolderValue,
   rulesetWeaponBlow,
+  rulesetWeaponNow,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
@@ -11542,6 +11543,8 @@ function resolveActionBody(
   if (action.damage?.alternatives) {
     action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };
   }
+  // As the conditions its maker holds make it now (1.448): Magic Weapon, Shillelagh.
+  action = rulesetWeaponNow(ctx.definition, ctx.state, actor, action);
   // Kept off a sanctuary's holder by a failed save (1.370), before anything is rolled at them. A held
   // blow picking up was let through already.
   if (!held) targets = sanctuaryTargets(ctx, actor, action, targets);

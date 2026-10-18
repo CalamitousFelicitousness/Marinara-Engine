@@ -112930,6 +112930,95 @@
                 "type": "boolean",
                 "const": true
               },
+              "weapon": {
+                "type": "object",
+                "properties": {
+                  "names": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 16
+                  },
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "names": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "minItems": 1,
+                        "maxItems": 16
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "notTags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
+                  },
+                  "toHit": {
+                    "type": "integer",
+                    "minimum": -20,
+                    "maximum": 20
+                  },
+                  "damage": {
+                    "type": "integer",
+                    "minimum": -20,
+                    "maximum": 20
+                  },
+                  "ability": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "abilityFrom": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "die": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 100
+                  },
+                  "qualities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
+              },
               "shapeKeeps": {
                 "type": "array",
                 "items": {

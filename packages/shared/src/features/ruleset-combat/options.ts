@@ -83,6 +83,7 @@ import {
   rulesetOnOwnTurn,
   rulesetAttackNamed,
   rulesetItemMatches,
+  rulesetAbilityScore,
   rulesetModeAllowances,
   rulesetModeRuleHolds,
   rulesetMovesOnly,
@@ -2247,6 +2248,8 @@ function forecastFor(
   action: RulesetCombatAction,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
+  // As the conditions its maker holds make it now (1.448).
+  action = rulesetWeaponNow(definition, state, actor, action);
   if (action.sequence) {
     const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
     // A part that has no use left, or is waiting for its dice, will not happen, so it is not
@@ -2391,6 +2394,58 @@ export function rulesetWeaponBlow(action: RulesetCombatAction): boolean {
     !action.catalog &&
     !action.itemUse
   );
+}
+
+/** A weapon's blow as the conditions its maker holds make it now (1.448): Magic Weapon's +1,
+ *  Shillelagh's spellcasting ability and d8. The action itself when none changes it. */
+export function rulesetWeaponNow(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState | undefined,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetCombatAction {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.weapon) || !rulesetWeaponBlow(action)) return action;
+  let changed: RulesetCombatAction | undefined;
+  const words = action.label.toLowerCase().split(/[^a-z0-9']+/);
+  const modOf = (ability: string | undefined) => {
+    const score = ability === undefined ? undefined : rulesetAbilityScore(definition, actor, ability);
+    return score === undefined ? undefined : rulesetAbilityModifier(definition, score);
+  };
+  for (const entry of rulesetActiveConditions(definition, combat, actor, state)) {
+    const rule = entry.weapon;
+    if (!rule) continue;
+    const named =
+      !!rule.names?.some((name) => words.includes(name.trim().toLowerCase())) ||
+      (!!rule.items && rulesetItemMatches({ tags: action.itemTags }, action.label, rule.items));
+    if ((rule.names || rule.items) && !named) continue;
+    const next = (changed ??= structuredClone(action));
+    if (rule.toHit && next.toHit !== undefined) next.toHit += rule.toHit;
+    const ability =
+      rule.ability ??
+      (() => {
+        const read = rule.abilityFrom ? actor.sheet?.build.fields?.[rule.abilityFrom] : undefined;
+        return typeof read === "string" && read ? read : undefined;
+      })();
+    if (ability !== undefined && ability !== next.ability) {
+      const now = modOf(next.ability);
+      const then = modOf(ability);
+      if (now !== undefined && then !== undefined) {
+        if (next.toHit !== undefined) next.toHit += then - now;
+        if (next.damage && next.damageAddsAbility) next.damage.flat += then - now;
+        next.ability = ability;
+      }
+    }
+    if (next.damage) {
+      if (rule.damage) next.damage.flat += rule.damage;
+      if (rule.die && next.damage.count > 0) {
+        next.damage.count = 1;
+        next.damage.sides = rule.die;
+      }
+      if (rule.qualities) next.damage.qualities = [...new Set([...(next.damage.qualities ?? []), ...rule.qualities])];
+    }
+  }
+  return changed ?? action;
 }
 
 /** Whether a change to attacks narrowed to a kind of blow (1.247) reaches this one: a weapon's or a

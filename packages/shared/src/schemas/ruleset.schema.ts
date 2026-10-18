@@ -4351,7 +4351,7 @@ export interface RulesetCatalogApplies {
   condition: string;
   duration: z.infer<typeof catalogDurationSchema>;
   saveEnds?: RulesetCatalogSaveEnds;
-  endsAfter?: "own-attack" | "attacked" | "own-save";
+  endsAfter?: "own-attack" | "attacked" | "attacked-by-source" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
   endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   escapeDc?: number | "save";
@@ -4451,8 +4451,10 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,
      *  the next attack roll made against them, or their own next save. Whatever clock it has still
-     *  runs beside it, so "on its next attack before the end of its next turn" is both. */
-    endsAfter: z.enum(["own-attack", "attacked", "own-save"]).optional(),
+     *  runs beside it, so "on its next attack before the end of its next turn" is both.
+     *  `"attacked-by-source"` (Capability API 1.449): the next attack roll whoever put it on makes
+     *  against them, 5e's True Strike. */
+    endsAfter: z.enum(["own-attack", "attacked", "attacked-by-source", "own-save"]).optional(),
     /** It comes off once its holder has made an attack (`attacks`), or used an entry of one of the
      *  catalogs `casts` names, or an item's use that casts one (Capability API 1.180): 5e's
      *  Invisibility, which ends for a target that attacks or casts a spell. What the attack or the
@@ -9876,7 +9878,7 @@ const combatModifierSchema = z
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
-    for (const key of ["damageType", "fromSource", "alsoUnrolled"] as const) {
+    for (const key of ["damageType", "alsoUnrolled"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
     }
     for (const key of ["attacks", "blow"] as const) {
@@ -9889,8 +9891,8 @@ const combatModifierSchema = z
     if (modifier.abilities !== undefined && modifier.to !== "checks") {
       add("abilities", '"abilities" narrows a change to checks');
     }
-    if (modifier.fromSource && modifier.to !== "damage-taken") {
-      add("fromSource", '"fromSource" narrows damage-taken only');
+    if (modifier.fromSource && modifier.to !== "damage-taken" && !(modifier.to === "attacks-taken" && modifier.mode)) {
+      add("fromSource", '"fromSource" narrows damage-taken, or the advantage of attacks-taken');
     }
     if (modifier.flat === 0) add("flat", "A flat change of 0 changes nothing");
     if (modifier.dice !== undefined && !RULESET_ROLLED_MODIFIER_TARGETS.includes(modifier.to)) {

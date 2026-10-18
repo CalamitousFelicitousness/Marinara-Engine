@@ -39851,7 +39851,8 @@
                                   "properties": {
                                     "to": {
                                       "enum": [
-                                        "damage-taken"
+                                        "damage-taken",
+                                        "attacks-taken"
                                       ]
                                     }
                                   }
@@ -42027,6 +42028,7 @@
                                         "enum": [
                                           "own-attack",
                                           "attacked",
+                                          "attacked-by-source",
                                           "own-save"
                                         ]
                                       },
@@ -47832,6 +47834,7 @@
                             "enum": [
                               "own-attack",
                               "attacked",
+                              "attacked-by-source",
                               "own-save"
                             ]
                           },
@@ -48943,6 +48946,7 @@
                             "enum": [
                               "own-attack",
                               "attacked",
+                              "attacked-by-source",
                               "own-save"
                             ]
                           },
@@ -53980,6 +53984,7 @@
                                   "enum": [
                                     "own-attack",
                                     "attacked",
+                                    "attacked-by-source",
                                     "own-save"
                                   ]
                                 },
@@ -55403,6 +55408,7 @@
                                       "enum": [
                                         "own-attack",
                                         "attacked",
+                                        "attacked-by-source",
                                         "own-save"
                                       ]
                                     },
@@ -58536,6 +58542,7 @@
                                               "enum": [
                                                 "own-attack",
                                                 "attacked",
+                                                "attacked-by-source",
                                                 "own-save"
                                               ]
                                             },
@@ -60992,6 +60999,7 @@
                                       "enum": [
                                         "own-attack",
                                         "attacked",
+                                        "attacked-by-source",
                                         "own-save"
                                       ]
                                     },
@@ -63643,7 +63651,8 @@
                                   "properties": {
                                     "to": {
                                       "enum": [
-                                        "damage-taken"
+                                        "damage-taken",
+                                        "attacks-taken"
                                       ]
                                     }
                                   }
@@ -65123,7 +65132,8 @@
                                   "properties": {
                                     "to": {
                                       "enum": [
-                                        "damage-taken"
+                                        "damage-taken",
+                                        "attacks-taken"
                                       ]
                                     }
                                   }
@@ -66790,7 +66800,8 @@
                                         "properties": {
                                           "to": {
                                             "enum": [
-                                              "damage-taken"
+                                              "damage-taken",
+                                              "attacks-taken"
                                             ]
                                           }
                                         }
@@ -69789,6 +69800,7 @@
                                       "enum": [
                                         "own-attack",
                                         "attacked",
+                                        "attacked-by-source",
                                         "own-save"
                                       ]
                                     },
@@ -73323,7 +73335,8 @@
                                       "properties": {
                                         "to": {
                                           "enum": [
-                                            "damage-taken"
+                                            "damage-taken",
+                                            "attacks-taken"
                                           ]
                                         }
                                       }
@@ -75374,6 +75387,7 @@
                                             "enum": [
                                               "own-attack",
                                               "attacked",
+                                              "attacked-by-source",
                                               "own-save"
                                             ]
                                           },
@@ -81051,6 +81065,7 @@
                                 "enum": [
                                   "own-attack",
                                   "attacked",
+                                  "attacked-by-source",
                                   "own-save"
                                 ]
                               },
@@ -82162,6 +82177,7 @@
                                 "enum": [
                                   "own-attack",
                                   "attacked",
+                                  "attacked-by-source",
                                   "own-save"
                                 ]
                               },
@@ -88243,7 +88259,8 @@
                                             "properties": {
                                               "to": {
                                                 "enum": [
-                                                  "damage-taken"
+                                                  "damage-taken",
+                                                  "attacks-taken"
                                                 ]
                                               }
                                             }
@@ -90294,6 +90311,7 @@
                                                   "enum": [
                                                     "own-attack",
                                                     "attacked",
+                                                    "attacked-by-source",
                                                     "own-save"
                                                   ]
                                                 },
@@ -95971,6 +95989,7 @@
                                       "enum": [
                                         "own-attack",
                                         "attacked",
+                                        "attacked-by-source",
                                         "own-save"
                                       ]
                                     },
@@ -97082,6 +97101,7 @@
                                       "enum": [
                                         "own-attack",
                                         "attacked",
+                                        "attacked-by-source",
                                         "own-save"
                                       ]
                                     },
@@ -111309,7 +111329,8 @@
                         "properties": {
                           "to": {
                             "enum": [
-                              "damage-taken"
+                              "damage-taken",
+                              "attacks-taken"
                             ]
                           }
                         }
@@ -111740,6 +111761,7 @@
                           "enum": [
                             "own-attack",
                             "attacked",
+                            "attacked-by-source",
                             "own-save"
                           ]
                         },
@@ -115076,6 +115098,7 @@
                           "enum": [
                             "own-attack",
                             "attacked",
+                            "attacked-by-source",
                             "own-save"
                           ]
                         },
@@ -116652,6 +116675,7 @@
                                 "enum": [
                                   "own-attack",
                                   "attacked",
+                                  "attacked-by-source",
                                   "own-save"
                                 ]
                               },
@@ -117784,6 +117808,7 @@
                                     "enum": [
                                       "own-attack",
                                       "attacked",
+                                      "attacked-by-source",
                                       "own-save"
                                     ]
                                   },
@@ -119467,6 +119492,7 @@
                           "enum": [
                             "own-attack",
                             "attacked",
+                            "attacked-by-source",
                             "own-save"
                           ]
                         },
@@ -121580,7 +121606,8 @@
                         "properties": {
                           "to": {
                             "enum": [
-                              "damage-taken"
+                              "damage-taken",
+                              "attacks-taken"
                             ]
                           }
                         }

@@ -309,7 +309,12 @@ function modifierSaysSomething(node) {
     },
     ...["attacks", "blow", "ability", "damageType", "fromSource"].map((key) => ({
       if: { required: [key] },
-      then: { properties: { to: { enum: key === "fromSource" ? ["damage-taken"] : ["damage", "damage-taken"] } } },
+      // fromSource also narrows the advantage of attacks-taken (1.449): True Strike.
+      then: {
+        properties: {
+          to: { enum: key === "fromSource" ? ["damage-taken", "attacks-taken"] : ["damage", "damage-taken"] },
+        },
+      },
     })),
     { if: { required: ["minus"] }, then: { required: ["dice"] } },
     { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },

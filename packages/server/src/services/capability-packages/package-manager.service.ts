@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition spent by its source's attack, or attacks at its holder narrowed to its source (1.449):
+ *  True Strike. */
+function carriesSourceAttacked449(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSourceAttacked449(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsAfter === "attacked-by-source") return true;
+  if (record.to === "attacks-taken" && record.fromSource !== undefined) return true;
+  return featureValues(record).some((one) => carriesSourceAttacked449(one, depth + 1));
+}
+
 /** A condition that changes its holder's weapons (1.448): Magic Weapon, Shillelagh. */
 function carriesConditionWeapon448(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6382,6 +6394,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition spent by its source's attack, or attacks at it narrowed to its source, 1.449.
+  if (
+    !declaresApi(449) &&
+    (carriesSourceAttacked449(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSourceAttacked449(document)))
+  ) {
+    return "A ruleset whose conditions answer only their source's attacks (endsAfter attacked-by-source, fromSource on attacks-taken) requires schemaVersion 2 and capabilityApi 1.449 or newer";
+  }
   // A condition that changes its holder's weapons, 1.448.
   if (
     !declaresApi(448) &&

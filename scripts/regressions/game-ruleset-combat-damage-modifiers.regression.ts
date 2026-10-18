@@ -358,7 +358,8 @@ try {
       assert.ok(
         node.allOf.some(
           (one: any) =>
-            one.if?.required?.includes("fromSource") && one.then.properties.to.enum.join() === "damage-taken",
+            one.if?.required?.includes("fromSource") &&
+            one.then.properties.to.enum.join() === "damage-taken,attacks-taken",
         ),
       );
     }

@@ -3231,6 +3231,12 @@ export function rulesetAttackMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "attacks-taken" || !modifier.mode) continue;
       if (modifier.from && !rulesetTargetIs(definition, actor, modifier.from)) continue;
+      // Only an attack by whoever put it on (1.449): True Strike.
+      if (
+        modifier.fromSource &&
+        !target.tracked.some((one) => one.condition === entry.condition && one.source === actor.id)
+      )
+        continue;
       // Opportunity attacks only (1.377): Escape the Horde.
       if (modifier.opportunity && !where?.opportunity) continue;
       leans.add(modifier.mode);

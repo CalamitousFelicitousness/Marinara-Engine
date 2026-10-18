@@ -2515,6 +2515,15 @@ function oneUseConditions(combatant: RulesetCombatant, ending: RulesetConditionE
   return combatant.tracked.filter((entry) => entry.endsAfter === ending);
 }
 
+/** What an attack roll at this target spends of theirs: what ends after any, and what ends after one
+ *  by whoever put it on (1.449). */
+function attackedConditions(target: RulesetCombatant, attacker: RulesetCombatant): RulesetTrackedCondition[] {
+  return target.tracked.filter(
+    (entry) =>
+      entry.endsAfter === "attacked" || (entry.endsAfter === "attacked-by-source" && entry.source === attacker.id),
+  );
+}
+
 /** Takes off exactly these, if they are still on. One the same blow put on afresh is a new one, not
  *  the one that was used, so it stays. */
 function spendOneUse(ctx: RulesetCombatContext, combatant: RulesetCombatant, used: RulesetTrackedCondition[]): void {
@@ -11886,7 +11895,7 @@ function resolveActionBody(
       // their answer counts for this attack and is spent by it.
       used = {
         mine: actor.tracked.filter((entry) => entry.endsAfter === "own-attack" && held.mine.includes(entry.condition)),
-        theirs: oneUseConditions(target, "attacked"),
+        theirs: attackedConditions(target, actor),
       };
       landed = outcome !== "miss";
       if (landed) noteHitBy(ctx, target, actor);
@@ -11947,7 +11956,7 @@ function resolveActionBody(
           ...(style ? { style: style.id } : {}),
         });
         actor.flags.helped = false;
-        used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
+        used = { mine: oneUseConditions(actor, "own-attack"), theirs: attackedConditions(target, actor) };
         landed = outcome === "hit";
         if (landed) noteHitBy(ctx, target, actor);
         if (landed) answerHit(ctx, target, actor, action);
@@ -12059,7 +12068,7 @@ function resolveActionBody(
         });
         // Help is spent by the attack it was given for, landed or not.
         actor.flags.helped = false;
-        used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
+        used = { mine: oneUseConditions(actor, "own-attack"), theirs: attackedConditions(target, actor) };
         landed = outcome !== "miss";
         if (landed) noteHitBy(ctx, target, actor);
         if (landed) answerHit(ctx, target, actor, action);

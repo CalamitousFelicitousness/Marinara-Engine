@@ -99,6 +99,7 @@ export function StateJsonField({
               {token.text}
             </span>
           ))}
+          {"\n"}
         </pre>
         <textarea
           ref={textareaRef}

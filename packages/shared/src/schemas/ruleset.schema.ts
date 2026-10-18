@@ -4704,6 +4704,10 @@ const saveExtrasShape = {
     .min(1)
     .max(4)
     .optional(),
+  /** A target its user's side is fighting, one on a side hostile to theirs, rolls it with advantage
+   *  (Capability API 1.529): 5e's Charm Person and Enthrall, "with advantage if you or your
+   *  companions are fighting it". */
+  advantageIfFought: z.literal(true).optional(),
 };
 
 /** What an entry spends itself on once its holder's own roll has failed (Capability API 1.249,

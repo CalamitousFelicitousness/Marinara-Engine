@@ -13910,9 +13910,12 @@ function resolveActionBodyIn(
           actor.id,
           action.save.ignoresCover ? null : saveFromFor(target),
           against,
-          target.id === heightened
-            ? leanWith(saveLean(ctx, target, action.save.modes), "disadvantage")
-            : saveLean(ctx, target, action.save.modes),
+          (() => {
+            let lean = saveLean(ctx, target, action.save.modes);
+            // Being fought by its user's side, with advantage (1.529): Charm Person.
+            if (action.save.advantageIfFought && target.side !== actor.side) lean = leanWith(lean, "advantage");
+            return target.id === heightened ? leanWith(lean, "disadvantage") : lean;
+          })(),
         );
       ctx.raySaves?.set(target.id, saved);
       // Turned back at its user on the save's top face (1.470): a Ring of Spell Turning.

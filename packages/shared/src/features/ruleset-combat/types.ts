@@ -298,6 +298,8 @@ export interface RulesetCombatSaveRider {
   modes?: Array<{ is: RulesetTargetIs; mode: "advantage" | "disadvantage" }>;
   /** Its user's own side fails it without rolling (1.278): Calm Emotions. */
   alliesMayFail?: true;
+  /** A target on a side hostile to its user's rolls it with advantage (1.529): Charm Person. */
+  advantageIfFought?: true;
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the

@@ -3476,6 +3476,7 @@ function mechanicsAction(
       ...(mechanics.save.succeeds ? { succeeds: structuredClone(mechanics.save.succeeds) } : {}),
       ...(mechanics.save.modes ? { modes: structuredClone(mechanics.save.modes) } : {}),
       ...(mechanics.save.alliesMayFail ? { alliesMayFail: true as const } : {}),
+      ...(mechanics.save.advantageIfFought ? { advantageIfFought: true as const } : {}),
     };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;

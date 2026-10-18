@@ -39684,6 +39684,10 @@
                           "minItems": 1,
                           "maxItems": 4
                         },
+                        "advantageIfFought": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -60855,6 +60859,10 @@
                               "minItems": 1,
                               "maxItems": 4
                             },
+                            "advantageIfFought": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -73086,6 +73094,10 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 4
+                              },
+                              "advantageIfFought": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -98359,6 +98371,10 @@
                               "minItems": 1,
                               "maxItems": 4
                             },
+                            "advantageIfFought": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -116913,6 +116929,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 4
+                                  },
+                                  "advantageIfFought": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -135474,6 +135494,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 4
+                                  },
+                                  "advantageIfFought": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A save rolled with advantage by a target being fought (1.529): Charm Person. */
+function carriesAdvantageIfFought529(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAdvantageIfFought529(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.advantageIfFought !== undefined) return true;
+  return featureValues(record).some((one) => carriesAdvantageIfFought529(one, depth + 1));
+}
+
 /** A zone that turns shots aside (1.528): Wind Wall. */
 function carriesTurnsShots528(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7310,6 +7320,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A save rolled with advantage by a target being fought, 1.529.
+  if (
+    !declaresApi(529) &&
+    (carriesAdvantageIfFought529(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAdvantageIfFought529(document)))
+  ) {
+    return "A ruleset with a save rolled with advantage by a target being fought (advantageIfFought) requires schemaVersion 2 and capabilityApi 1.529 or newer";
+  }
   // A zone that turns shots aside, 1.528.
   if (
     !declaresApi(528) &&

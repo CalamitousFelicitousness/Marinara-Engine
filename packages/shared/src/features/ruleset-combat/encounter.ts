@@ -1896,6 +1896,8 @@ function itemUseActions(
     named?: string,
   ): void {
     const { item } = held;
+    // Raising an ability for good is for outside a fight (1.463).
+    if (use.raises) return;
     const wearable = Object.values(item.slots ?? {}).some((count) => count > 0) || !!item.binds;
     if (wearable && !held.worn) return;
     const read = (value: unknown) => itemAttackValue(item, value);

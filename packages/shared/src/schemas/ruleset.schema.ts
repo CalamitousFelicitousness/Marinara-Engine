@@ -3513,6 +3513,13 @@ const conditionWeaponSchema: z.ZodType<RulesetConditionWeapon, z.ZodTypeDef, unk
   )
   .refine((rule) => !(rule.ability && rule.abilityFrom), { message: "weapon takes ability or abilityFrom, not both" });
 
+/** An item use's `raises` (1.463): see the item use's own. */
+export type RulesetItemRaises = Record<string, { by: number; max?: number }>;
+const itemRaisesSchema: z.ZodType<RulesetItemRaises, z.ZodTypeDef, unknown> = z.record(
+  sheetId,
+  z.object({ by: z.number().int().min(1).max(20), max: z.number().int().min(1).max(20).optional() }).strict(),
+);
+
 /** A condition's `abilities` (1.462): see the combat condition's own. */
 export type RulesetConditionAbilityChange = { set: number } | { to: number } | { add: number; max?: number };
 export type RulesetConditionAbilities = Record<string, RulesetConditionAbilityChange>;
@@ -8935,6 +8942,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** `utility` (Capability API 1.181) is a use that only leaves an area standing: a scroll of Fog
      *  Cloud, Darkness or Silence; or one that teleports (1.276): a cape's Dimension Door. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
+    /** Abilities it raises on its user's sheet for good (Capability API 1.463), by ability id: `by`
+     *  onto the score, and `max` onto the most it may be. Used outside a fight only; a fight never
+     *  offers it. 5e's Manual of Gainful Exercise, `{ "str": { "by": 2, "max": 2 } }`. */
+    raises: itemRaisesSchema.optional(),
     // A wall's thickness and a ring are a wand's or a scroll's too (1.177), and a line's width
     // (1.184): a scroll of Gust of Wind.
     area: z
@@ -9069,6 +9080,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     // Giving back is help: a use aimed to harm restores nobody's pool.
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
+    }
+    // As is raising an ability (1.463), and only its own user's.
+    if (use.raises && (use.kind !== "buff" || use.targets !== "self")) {
+      issue("raises", 'Raising an ability is a "buff" on its user, targets "self"');
     }
     // Or ends what spells put on (1.374): a scroll of Dispel Magic.
     if (
@@ -10900,6 +10915,42 @@ const slipsFreeSchema: z.ZodType<RulesetSlipsFree, z.ZodTypeDef, unknown> = z
   })
   .strict();
 
+/** A condition's `grants` (1.181): see the combat condition's own. */
+export interface RulesetConditionGrants {
+  budget: string;
+  standard?: Array<z.infer<typeof combatStandardActionSchema>>;
+  attacks?: true;
+  items?: true | { tags: string[] };
+  melee?: true;
+  names?: string[];
+  afterAttack?: RulesetAfterAttackDeclaration;
+}
+const conditionGrantsSchema: z.ZodType<RulesetConditionGrants, z.ZodTypeDef, unknown> = z
+  .object({
+    budget: sheetId,
+    standard: z.array(combatStandardActionSchema).min(1).max(7).optional(),
+    attacks: z.literal(true).optional(),
+    /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
+     *  mundane item's, never a magic item's activation). */
+    items: z.union([z.literal(true), z.object({ tags: z.array(sheetId).min(1).max(8) }).strict()]).optional(),
+    /** With `attacks`, only a weapon that strikes in reach, and only within it (Capability API
+     *  1.239): 5e's Frenzy, a melee weapon attack as a bonus action. A thrown weapon is swung. */
+    melee: z.literal(true).optional(),
+    /** With `attacks`, only the attacks named so (Capability API 1.242). */
+    names: attackNamesSchema.optional(),
+    /** With `attacks`, only once the attack action has been taken this turn (Capability API 1.242). */
+    afterAttack: afterAttackSchema.optional(),
+  })
+  .strict()
+  .refine((grants) => !grants.melee || grants.attacks, {
+    message: '"melee" narrows "attacks", so the grant gives attacks',
+    path: ["melee"],
+  })
+  .refine((grants) => (!grants.names && !grants.afterAttack) || grants.attacks, {
+    message: '"names" and "afterAttack" narrow "attacks", so the grant gives attacks',
+    path: ["names"],
+  });
+
 const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.132), as on a creature. */
@@ -11219,32 +11270,7 @@ const combatConditionSchema = z
       .min(1)
       .max(4)
       .optional(),
-    grants: z
-      .object({
-        budget: sheetId,
-        standard: z.array(combatStandardActionSchema).min(1).max(7).optional(),
-        attacks: z.literal(true).optional(),
-        /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
-         *  mundane item's, never a magic item's activation). */
-        items: z.union([z.literal(true), z.object({ tags: z.array(sheetId).min(1).max(8) }).strict()]).optional(),
-        /** With `attacks`, only a weapon that strikes in reach, and only within it (Capability API
-         *  1.239): 5e's Frenzy, a melee weapon attack as a bonus action. A thrown weapon is swung. */
-        melee: z.literal(true).optional(),
-        /** With `attacks`, only the attacks named so (Capability API 1.242). */
-        names: attackNamesSchema.optional(),
-        /** With `attacks`, only once the attack action has been taken this turn (Capability API 1.242). */
-        afterAttack: afterAttackSchema.optional(),
-      })
-      .strict()
-      .refine((grants) => !grants.melee || grants.attacks, {
-        message: '"melee" narrows "attacks", so the grant gives attacks',
-        path: ["melee"],
-      })
-      .refine((grants) => (!grants.names && !grants.afterAttack) || grants.attacks, {
-        message: '"names" and "afterAttack" narrow "attacks", so the grant gives attacks',
-        path: ["names"],
-      })
-      .optional(),
+    grants: conditionGrantsSchema.optional(),
     exclusive: z.tuple([sheetId, sheetId]).optional(),
     attacksPerTurn: z.number().int().min(0).max(10).optional(),
     /** Damage its holder takes as each of their turns starts or ends (Capability API 1.189), from
@@ -18220,6 +18246,10 @@ function useIssues(
   value(use.saveDifficulty, "number", [...at, "saveDifficulty"]);
   if (use.charges !== undefined && !item.charges) {
     add([...at, "charges"], "A use that spends charges is on an item that holds some");
+  }
+  for (const id of Object.keys(use.raises ?? {})) {
+    if (!definition.sheet.abilities.some((ability) => ability.id === id))
+      add([...at, "raises", id], `Unknown ability "${id}"`);
   }
   if (use.restore) {
     const pool = definition.sheet.live.pools.find((entry) => entry.id === use.restore!.pool);

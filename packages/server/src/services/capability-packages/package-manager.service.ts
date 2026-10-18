@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item use that raises its user's abilities for good (1.463): a Manual of Gainful Exercise. */
+function carriesRaises463(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRaises463(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.kind === "string" && plainRecord(record.raises) !== undefined) return true;
+  return featureValues(record).some((one) => carriesRaises463(one, depth + 1));
+}
+
 /** A condition that changes its holder's abilities (1.462): a Potion of Giant Strength, Feeblemind. */
 function carriesConditionAbilities462(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6543,6 +6553,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Item uses that raise abilities for good, 1.463.
+  if (
+    !declaresApi(463) &&
+    (carriesRaises463(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRaises463(document)))
+  ) {
+    return "A ruleset whose items raise their user's abilities for good (an item use's raises) requires schemaVersion 2 and capabilityApi 1.463 or newer";
+  }
   // Conditions that change abilities, 1.462.
   if (!declaresApi(462) && carriesConditionAbilities462(ruleset)) {
     return "A ruleset whose conditions change their holder's abilities (a combat condition's abilities) requires schemaVersion 2 and capabilityApi 1.462 or newer";

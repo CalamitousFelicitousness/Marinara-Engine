@@ -31,6 +31,7 @@ import { rulesetItemFacts, rulesetItemGateDifficulty, rulesetItemUseDoes, rulese
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
+  raiseRulesetLiveAbilities,
   readRulesetWoundPenalty,
   type RulesetLiveState,
   type RulesetSheetOp,
@@ -59,7 +60,7 @@ export type RulesetItemUseRefusal =
 
 /** One thing a use did to its user's sheet. */
 export interface RulesetItemUsePart {
-  kind: "heal" | "temporary" | "restore" | "condition";
+  kind: "heal" | "temporary" | "restore" | "condition" | "raise";
   /** What was rolled and added up, for everything but a condition. */
   amount?: number;
   rolls?: number[];
@@ -239,6 +240,15 @@ export function useRulesetItemOutsideFight(input: {
         });
       }
     }
+    // Abilities raised for good (1.463): a manual read, a tome studied.
+    if (use.raises) {
+      live = raiseRulesetLiveAbilities(live, use.raises);
+      const scores = evaluateRulesetSheetLive(definition, user.build, live).abilityScores;
+      for (const [id, raise] of Object.entries(use.raises)) {
+        const ability = definition.sheet.abilities.find((entry) => entry.id === id);
+        parts.push({ kind: "raise", amount: raise.by, label: ability?.label ?? id, now: String(scores[id]) });
+      }
+    }
     for (const applies of use.applies ?? []) {
       // Read off the user as it applies (1.167), what came before it included.
       if (applies.when && !sheetWithin(applies.when)) continue;
@@ -413,6 +423,7 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
     if (part.kind === "heal") return `heals ${part.amount}${now}`;
     if (part.kind === "temporary") return `${part.amount} temporary points${now}`;
     if (part.kind === "restore") return `restores ${part.amount} ${part.label}${now}`;
+    if (part.kind === "raise") return `raises ${part.label} by ${part.amount} for good${now}`;
     return `${part.label}`;
   });
   const gate = said.gate

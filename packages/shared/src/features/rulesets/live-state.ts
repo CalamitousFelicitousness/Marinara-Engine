@@ -81,6 +81,8 @@ export interface RulesetLiveState {
   /** What each condition raises health's maximum by while it is held (1.420), keyed by condition
    *  id: 5e's Aid. Dropped once the condition is. */
   raised?: Record<string, number>;
+  /** Abilities raised for good (1.463), by ability id: onto the score, and onto its most. */
+  abilities?: Record<string, { score: number; max: number }>;
   /** Whom an entry used once a creature until a rest went to (1.304), by name, keyed `rest|action`:
    *  that rest clears its lists. */
   usedOn?: Record<string, string[]>;
@@ -154,6 +156,10 @@ function boundedRecord<T extends z.ZodTypeAny>(values: T, maxEntries: number, wh
   });
 }
 
+const liveAbilityRaiseSchema = z
+  .object({ score: z.number().int().min(0).max(1000), max: z.number().int().min(0).max(1000) })
+  .strict();
+
 /** One character's live state. Unknown top-level keys are stripped rather than refused: a newer
  *  Engine's key must not make the whole game's state unwritable on an older one. */
 export const rulesetLiveStateSchema = z
@@ -166,6 +172,8 @@ export const rulesetLiveStateSchema = z
     states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
     raised: boundedRecord(liveNumber.min(0), MAX_LIVE_CONDITIONS, "raised maximums").optional(),
+    /** Abilities raised for good, by ability id (1.463): onto the score, and onto its most. */
+    abilities: boundedRecord(liveAbilityRaiseSchema, MAX_LIVE_CONDITIONS, "raised abilities").optional(),
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
   })
@@ -341,6 +349,8 @@ export interface ResolvedRulesetLive {
     /** The value's display text. */
     valueLabel: string;
   }>;
+  /** Abilities raised for good (1.463), by ability id. */
+  abilityRaises?: Readonly<Record<string, { score: number; max: number }>>;
 }
 
 // ── Wound tracks ──
@@ -728,6 +738,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (lowered) state.lowered = lowered;
   const raised = keepValid(source.raised, liveNumber.min(0), MAX_LIVE_CONDITIONS);
   if (raised) state.raised = raised;
+  const abilities = keepValid(source.abilities, liveAbilityRaiseSchema, MAX_LIVE_CONDITIONS);
+  if (abilities) state.abilities = abilities;
   const usedOn = keepValid(source.usedOn, liveUsedOnNames, MAX_LIVE_USED_ON);
   if (usedOn) state.usedOn = usedOn;
   const waited = keepValid(source.waited, liveNumber, MAX_LIVE_POOLS);
@@ -863,7 +875,22 @@ function resolveLive(
         },
       ];
     }),
+    ...(state.abilities && Object.keys(state.abilities).length ? { abilityRaises: { ...state.abilities } } : {}),
   };
+}
+
+/** A live state with abilities raised for good (1.463): `by` onto each score, `max` onto its most. */
+export function raiseRulesetLiveAbilities(
+  stored: unknown,
+  raises: Readonly<Record<string, { by: number; max?: number }>>,
+): RulesetLiveState {
+  const state = readStoredLiveStateAsIs(stored);
+  const abilities = { ...(state.abilities ?? {}) };
+  for (const [id, raise] of Object.entries(raises)) {
+    const now = abilities[id] ?? { score: 0, max: 0 };
+    abilities[id] = { score: Math.min(1000, now.score + raise.by), max: Math.min(1000, now.max + (raise.max ?? 0)) };
+  }
+  return { ...state, abilities };
 }
 
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */

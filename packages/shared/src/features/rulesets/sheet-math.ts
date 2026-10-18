@@ -252,6 +252,8 @@ export interface RulesetSheetLiveValues {
   items?: ReadonlyArray<RulesetSheetItem>;
   /** What the conditions they hold do to their abilities (Capability API 1.462), one per condition. */
   conditionAbilities?: ReadonlyArray<Readonly<RulesetConditionAbilities>>;
+  /** Abilities raised for good (Capability API 1.463): onto the score, and onto its most. */
+  abilityRaises?: Readonly<Record<string, { score: number; max: number }>>;
 }
 
 /** One stack of the ruleset's items a character holds, as the sheet reads it: what the item is, how
@@ -504,17 +506,21 @@ export function evaluateRulesetSheet(
   // a `set` is a floor a higher score keeps, the `add`s go on top, and the ability's own range holds.
   const fromItems = itemAbilityChanges(live?.items, live?.conditionAbilities);
   for (const ability of sheet.abilities) {
-    const base = finite(build.abilities?.[ability.id]) ?? ability.default;
+    // Raised for good (1.463): onto the score, and onto the most it may be.
+    const raise = live?.abilityRaises?.[ability.id];
+    const most = ability.max + (raise?.max ?? 0);
+    const own = finite(build.abilities?.[ability.id]) ?? ability.default;
+    const base = raise ? Math.min(most, own + raise.score) : own;
     const change = fromItems.get(ability.id);
     let score = change
-      ? Math.min(ability.max, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)))
+      ? Math.min(most, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)))
       : base;
     // An add with a most goes on top of that, never past its most, nor lowering a score above it (1.313).
     for (const top of change?.topped ?? []) {
-      score = Math.max(score, Math.min(score + top.add, top.max, ability.max));
+      score = Math.max(score, Math.min(score + top.add, top.max, most));
     }
     // A condition that makes it a number makes it that, last (1.462).
-    if (change?.to !== undefined) score = Math.min(ability.max, Math.max(ability.min, change.to));
+    if (change?.to !== undefined) score = Math.min(most, Math.max(ability.min, change.to));
     abilityScores[ability.id] = score;
     abilityMods[ability.id] = rulesetAbilityModifier(definition, score);
   }

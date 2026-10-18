@@ -332,6 +332,26 @@ const reordered = buildMariWorkspaceActionResult(
 assert.equal(reordered?.changes?.length, 0, "an order-only list change has no excerpt");
 assert.equal(reordered?.moreChanges, 1, "but it is still counted as changed");
 
+// The same list beside a drawable setting: the setting shows, and the dropped list still counts.
+const reorderedBeside = buildMariWorkspaceActionResult(
+  "preset.update",
+  applied([
+    {
+      table: "prompt_presets",
+      id: "reorder",
+      action: "update",
+      before: { id: "reorder", name: "Reorder", parameters: { temperature: 0.8, stopStrings: ["a", "b"] } },
+      after: { id: "reorder", name: "Reorder", parameters: { temperature: 0.9, stopStrings: ["b", "a"] } },
+    },
+  ]),
+);
+assert.deepEqual(
+  reorderedBeside?.changes?.map((change) => change.field),
+  ["parameters.temperature"],
+  "the drawable setting is shown",
+);
+assert.equal(reorderedBeside?.moreChanges, 1, "the list that cannot be drawn is still counted");
+
 // Any other deeper object gets the general fallback: its changed keys by name.
 const plugin = buildMariWorkspaceActionResult(
   "character.update",

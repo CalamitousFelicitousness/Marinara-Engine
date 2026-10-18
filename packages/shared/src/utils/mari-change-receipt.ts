@@ -246,9 +246,15 @@ function nestedExcerpt(field: string, before: unknown, after: unknown): Extract<
 /**
  * The excerpts of one changed field. A nested object (a preset's `parameters`, an extension's settings)
  * is read one level: each changed setting becomes its own `field.key` excerpt. A deeper object becomes
- * one `nested` excerpt with its changed keys, and a deeper list becomes a list excerpt.
+ * one `nested` excerpt with its changed keys, and a deeper list becomes a list excerpt. A child change
+ * the card cannot draw at all (a list whose only difference is its order) is counted in `undrawn`.
  */
-function fieldExcerpts(field: string, rawBefore: unknown, rawAfter: unknown): MariChangeExcerpt[] {
+function fieldExcerpts(
+  field: string,
+  rawBefore: unknown,
+  rawAfter: unknown,
+  undrawn: { count: number } = { count: 0 },
+): MariChangeExcerpt[] {
   const before = parsedJson(rawBefore);
   const after = parsedJson(rawAfter);
   // JSON text swapped for plain text is a rewrite of the text, not a change of its keys.
@@ -280,6 +286,7 @@ function fieldExcerpts(field: string, rawBefore: unknown, rawAfter: unknown): Ma
           Array.isArray(nestedAfter) ? nestedAfter : [],
         );
         if (list) excerpts.push(list);
+        else undrawn.count += 1;
       } else if (isRecord(nestedBefore) || isRecord(nestedAfter)) {
         excerpts.push(nestedExcerpt(`${field}.${key}`, nestedBefore, nestedAfter));
       } else {
@@ -319,10 +326,11 @@ export function buildMariChangeExcerpts(input: {
     const rank = (key: string) => (FIELD_ORDER.includes(key) ? FIELD_ORDER.indexOf(key) : FIELD_ORDER.length);
     keys.sort((a, b) => rank(a) - rank(b));
     for (const key of keys) {
-      const excerpts = fieldExcerpts(key, before?.[key], after[key]);
+      const undrawn = { count: 0 };
+      const excerpts = fieldExcerpts(key, before?.[key], after[key], undrawn);
       // A change the card cannot draw (a list whose only difference is its order) still counts, so
       // the field never disappears from an applied receipt.
-      if (excerpts.length === 0) unshown += 1;
+      unshown += excerpts.length === 0 ? 1 : undrawn.count;
       changes.push(...excerpts);
     }
   }

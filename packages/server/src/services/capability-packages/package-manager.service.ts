@@ -2261,8 +2261,12 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
-/** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
- *  Air and Fire Form, a rider's reaction. */
+/** A breath rule for creatures that breathe only water (1.459): a shark out of the sea. */
+function carriesWaterOnly459(ruleset: unknown): boolean {
+  const combat = plainRecord(plainRecord(ruleset)?.combat);
+  return plainRecord(plainRecord(plainRecord(combat?.underwater)?.breath)?.waterOnly) !== undefined;
+}
+
 /** An item's attack with no damage dice, or a weapon condition put on by any hit or ended by its
  *  holder's check (1.458): a blowgun, a net. */
 function carriesDicelessAttack458(value: unknown, depth = 0): boolean {
@@ -2347,6 +2351,8 @@ function carriesDuplicates452(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDuplicates452(one, depth + 1));
 }
 
+/** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
+ *  Air and Fire Form, a rider's reaction. */
 function carriesElementalForms451(ruleset: unknown, depth = 0): boolean {
   const record = plainRecord(ruleset);
   if (depth === 0 && plainRecord(plainRecord(plainRecord(record?.combat)?.mounts)?.fall)?.landsWith !== undefined)
@@ -6503,6 +6509,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Breathing only water, 1.459.
+  if (!declaresApi(459) && carriesWaterOnly459(ruleset)) {
+    return "A ruleset whose creatures breathe only water (underwater breath waterOnly) requires schemaVersion 2 and capabilityApi 1.459 or newer";
+  }
   // Item attacks with no damage dice, and weapon conditions on any hit or ended by a check, 1.458.
   if (
     !declaresApi(458) &&

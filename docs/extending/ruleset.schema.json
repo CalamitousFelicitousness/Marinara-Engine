@@ -126363,6 +126363,26 @@
                   },
                   "additionalProperties": false
                 },
+                "waterOnly": {
+                  "type": "object",
+                  "properties": {
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 12
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "tags"
+                  ],
+                  "additionalProperties": false
+                },
                 "$comment": {}
               },
               "required": [

@@ -4490,14 +4490,17 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 }
 
 /** A turn begun under water (1.445): one more of the turns they hold their breath for, then of those
- *  they last without it, and as the next starts they drop to 0. Out of the water, their breath is back. */
+ *  they last without it, and as the next starts they drop to 0. Out of the water, their breath is back.
+ *  Whoever breathes only water (1.459) holds it out of the water instead. */
 function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const breath = ctx.combat.underwater?.breath;
   if (!breath) return;
   const exempt =
     breath.exempt?.conditions?.some((id) => rulesetCombatConditions(ctx.definition, actor).includes(id)) ||
     (!!breath.exempt?.tags && rulesetTargetIs(ctx.definition, actor, { tags: breath.exempt.tags }));
-  if (!rulesetUnderwater(ctx.definition, ctx.state, actor) || exempt || actor.defeated || actor.down) {
+  const waterOnly = !!breath.waterOnly && rulesetTargetIs(ctx.definition, actor, { tags: breath.waterOnly.tags });
+  const under = rulesetUnderwater(ctx.definition, ctx.state, actor);
+  if ((waterOnly ? under : !under) || exempt || actor.defeated || actor.down) {
     delete actor.breath;
     return;
   }

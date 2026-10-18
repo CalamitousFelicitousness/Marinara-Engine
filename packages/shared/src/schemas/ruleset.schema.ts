@@ -11756,7 +11756,9 @@ const combatHidingSchema: z.ZodType<RulesetCombatHiding, z.ZodTypeDef, unknown> 
  *  Damage of a type in `resist` is halved on whoever is under water. `breath`: whoever is under water
  *  and is not `exempt` holds their breath `rounds` of their own turns (plus `perMod.rounds` for each
  *  point of an ability's modifier, never under `atLeast`), then lasts `then` turns more, and as the
- *  next one starts drops to 0. Out of the water, their breath comes back. */
+ *  next one starts drops to 0. Out of the water, their breath comes back. Whoever carries a tag in
+ *  `waterOnly.tags` (Capability API 1.459) breathes only water: they hold their breath the same way
+ *  out of it, and under water it comes back. */
 export interface RulesetUnderwaterBreathSpan {
   rounds: number;
   perMod?: { ability: string; rounds: number };
@@ -11775,6 +11777,7 @@ export interface RulesetCombatUnderwater {
     holds: RulesetUnderwaterBreathSpan;
     then: RulesetUnderwaterBreathSpan;
     exempt?: { conditions?: string[]; tags?: string[] };
+    waterOnly?: { tags: string[] };
   };
 }
 const underwaterUnlessSchema = z
@@ -11821,6 +11824,10 @@ const combatUnderwaterSchema: z.ZodType<RulesetCombatUnderwater, z.ZodTypeDef, u
             conditions: z.array(sheetId).min(1).max(12).optional(),
             tags: z.array(promptSafeText(40)).min(1).max(12).optional(),
           })
+          .strict()
+          .optional(),
+        waterOnly: z
+          .object({ tags: z.array(promptSafeText(40)).min(1).max(12) })
           .strict()
           .optional(),
       })

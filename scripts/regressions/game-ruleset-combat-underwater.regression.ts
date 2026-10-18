@@ -5,6 +5,7 @@
  *     a shot never reaches past its normal range, and within it takes disadvantage unless named.
  *   - Fire is halved on whoever is under water.
  *   - Breath: held for 1 + Con turns, then lasted Con turns more, then 0; exempt conditions breathe.
+ *   - Water-only breathers (1.459) hold it out of the water instead.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -260,6 +261,42 @@ try {
     const noBreath = parsed(fiveE({ ...rule, breath: undefined }));
     assert.deepEqual(breaths(fight(noBreath, { a: 2, b: 25 }, { shore: 10 }), noBreath).seen, []);
   }
+  {
+    // Breathing only water (1.459): a shark on the bank holds its breath, and in the sea breathes.
+    const sharks = parsed(
+      fiveE({ ...rule, breath: { ...rule.breath, exempt: undefined, waterOnly: { tags: ["gills"] } } }),
+    );
+    const shark = { type: "beast", tags: ["gills"] };
+    const { seen, state } = breaths(fight(sharks, { a: 15, b: 25 }, { shore: 10, a: shark }), sharks);
+    assert.deepEqual(seen.slice(0, 3), [
+      { held: 1, lasts: 0 },
+      { held: 0, lasts: 1 },
+      { held: 0, lasts: 0 },
+    ]);
+    assert.equal(who(state, "a").health.value, 0, "out of the water too long");
+    assert.deepEqual(breaths(fight(sharks, { a: 2, b: 25 }, { shore: 10, a: shark }), sharks).seen, [], "in the sea");
+    assert.ok(breaths(fight(sharks, { a: 2, b: 25 }, { shore: 10 }), sharks).seen.length > 0, "others still drown");
+    refused(fiveE({ ...rule, breath: { ...rule.breath, waterOnly: { tags: [] } } }), /tags/);
+    const gate =
+      "A ruleset whose creatures breathe only water (underwater breath waterOnly) requires schemaVersion 2 and capabilityApi 1.459 or newer";
+    const doc = fiveE({ ...rule, breath: { ...rule.breath, waterOnly: { tags: ["gills"] } } });
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(458) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(459) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(458) as never, fiveE()), gate);
+  }
 
   // ── Refusals ──
   refused(fiveE({ terrain: [] }), /terrain/);
@@ -293,7 +330,7 @@ try {
   }
 
   console.log(
-    "Underwater: swings and shots lean as the rule says, shots stop at normal range, fire is halved, breath runs out to 0 unless exempt; gated at 1.445.",
+    "Underwater: swings and shots lean as the rule says, shots stop at normal range, fire is halved, breath runs out to 0 unless exempt, and out of the water for water-only breathers; gated at 1.445 and 1.459.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

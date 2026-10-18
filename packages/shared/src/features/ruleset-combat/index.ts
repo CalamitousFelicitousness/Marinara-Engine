@@ -188,6 +188,8 @@ export {
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetReachableCells,
+  rulesetUnderwater,
+  rulesetUnderwaterSpares,
   rulesetPushPath,
   rulesetSees,
   rulesetWalkingDistances,

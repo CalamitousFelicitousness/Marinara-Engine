@@ -2261,6 +2261,11 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Fighting under water and holding breath (1.445): the combat block's underwater. */
+function carriesUnderwater445(ruleset: unknown): boolean {
+  return plainRecord(plainRecord(ruleset)?.combat)?.underwater !== undefined;
+}
+
 /** A condition whose holder is dragged along by whoever put it on (1.444): grappled. */
 function carriesDragged444(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6344,6 +6349,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Fighting under water and holding breath, 1.445.
+  if (!declaresApi(445) && carriesUnderwater445(ruleset)) {
+    return "A ruleset whose fights go on under water (combat underwater) requires schemaVersion 2 and capabilityApi 1.445 or newer";
+  }
   // A condition whose holder is dragged along by whoever put it on, 1.444.
   if (
     !declaresApi(444) &&

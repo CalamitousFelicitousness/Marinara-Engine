@@ -1553,6 +1553,8 @@ export interface RulesetCombatant {
   legendaryResisted?: number;
   /** The creature it is inside of (1.350), engulfed: it moves with that creature. */
   insideOf?: string;
+  /** Holding their breath under water (1.445): turns of it left, then turns lasted without it. */
+  breath?: { held: number; lasts?: number };
   /** Riding this combatant (1.443): where it goes, they go, and they walk no way of their own. */
   mountedOn?: string;
   /** Ridden by this combatant (1.443); `mountControlled` when its rider controls it, moving and
@@ -2825,6 +2827,8 @@ export type RulesetCombatEvent =
     }
   /** Taken inside somebody (1.350), or let out beside them (`out`). */
   | { type: "inside"; targetId: string; holderId: string; out?: true }
+  /** Holding their breath under water as a turn starts (1.445): turns of it left, then lasted. */
+  | { type: "breath"; actorId: string; held: number; lasts: number }
   /** Up on a mount (1.443), or off it (`off`), thrown or fallen (`fell`). */
   | { type: "mount"; riderId: string; mountId: string; off?: true; fell?: true }
   /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may. */

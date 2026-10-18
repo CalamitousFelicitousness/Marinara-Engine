@@ -11450,6 +11450,112 @@ const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> 
   })
   .strict();
 
+/** Hiding for real (Capability API 1.287), as the combat block's `hiding` says. */
+export interface RulesetCombatHiding {
+  stealth: string;
+  perception: string;
+  passive?: number;
+  lightly?: number;
+  noisy?: string[];
+  /** Added to a passive Perception rolled with advantage, and taken off one with disadvantage
+   *  (Capability API 1.290): 5e's 5. Without it a passive reads no mode. */
+  passiveMode?: number;
+}
+const combatHidingSchema: z.ZodType<RulesetCombatHiding, z.ZodTypeDef, unknown> = z
+  .object({
+    stealth: sheetId,
+    perception: sheetId,
+    passive: z.number().int().min(0).max(100).optional(),
+    lightly: z.number().int().min(0).max(100).optional(),
+    noisy: componentIdsSchema.optional(),
+    passiveMode: z.number().int().min(1).max(20).optional(),
+  })
+  .strict();
+
+/** Fighting under water (Capability API 1.445). Whoever stands on a board tile of `terrain`, not up
+ *  in the air and not a flier with no swim speed, is under water. Their melee attacks take `melee.mode`
+ *  unless they have a swim speed or the weapon is one `unless` names (by name, the attack's label
+ *  holding it as a word, or by quality); their ranged attacks never reach past a weapon's normal range
+ *  (`ranged.pastNormal: "never"`), and take `ranged.mode` within it unless `unless` names the weapon.
+ *  Damage of a type in `resist` is halved on whoever is under water. `breath`: whoever is under water
+ *  and is not `exempt` holds their breath `rounds` of their own turns (plus `perMod.rounds` for each
+ *  point of an ability's modifier, never under `atLeast`), then lasts `then` turns more, and as the
+ *  next one starts drops to 0. Out of the water, their breath comes back. */
+export interface RulesetUnderwaterBreathSpan {
+  rounds: number;
+  perMod?: { ability: string; rounds: number };
+  atLeast?: number;
+}
+export interface RulesetUnderwaterUnless {
+  names?: string[];
+  qualities?: string[];
+}
+export interface RulesetCombatUnderwater {
+  terrain: string[];
+  melee?: { mode: "advantage" | "disadvantage"; unless?: RulesetUnderwaterUnless };
+  ranged?: { pastNormal?: "never"; mode?: "advantage" | "disadvantage"; unless?: RulesetUnderwaterUnless };
+  resist?: string[];
+  breath?: {
+    holds: RulesetUnderwaterBreathSpan;
+    then: RulesetUnderwaterBreathSpan;
+    exempt?: { conditions?: string[]; tags?: string[] };
+  };
+}
+const underwaterUnlessSchema = z
+  .object({
+    names: z.array(promptSafeText(40)).min(1).max(16).optional(),
+    qualities: z.array(promptSafeText(40)).min(1).max(16).optional(),
+  })
+  .strict();
+const breathSpanSchema = z
+  .object({
+    rounds: z.number().int().min(0).max(10000),
+    perMod: z
+      .object({ ability: sheetId, rounds: z.number().int().min(1).max(100) })
+      .strict()
+      .optional(),
+    atLeast: z.number().int().min(1).max(10000).optional(),
+  })
+  .strict();
+const combatUnderwaterSchema: z.ZodType<RulesetCombatUnderwater, z.ZodTypeDef, unknown> = z
+  .object({
+    terrain: z.array(promptSafeText(40)).min(1).max(8),
+    melee: z
+      .object({ mode: z.enum(["advantage", "disadvantage"]), unless: underwaterUnlessSchema.optional() })
+      .strict()
+      .optional(),
+    ranged: z
+      .object({
+        pastNormal: z.literal("never").optional(),
+        mode: z.enum(["advantage", "disadvantage"]).optional(),
+        unless: underwaterUnlessSchema.optional(),
+      })
+      .strict()
+      .refine((ranged) => ranged.pastNormal || ranged.mode, {
+        message: "ranged says what under water does to a shot: pastNormal or mode",
+      })
+      .optional(),
+    resist: z.array(promptSafeText(40)).min(1).max(8).optional(),
+    breath: z
+      .object({
+        holds: breathSpanSchema,
+        then: breathSpanSchema,
+        exempt: z
+          .object({
+            conditions: z.array(sheetId).min(1).max(12).optional(),
+            tags: z.array(promptSafeText(40)).min(1).max(12).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((rule) => rule.melee || rule.ranged || rule.resist || rule.breath, {
+    message: "underwater says what being under water does: melee, ranged, resist or breath",
+  });
+
 /** Holding an effect together while the fight goes on. The text field is where it is written down,
  *  so the sheet shows what a character is holding after the battle as well as during it. */
 const combatConcentrationSchema = z
@@ -11806,24 +11912,14 @@ const combatObjectSchema = z
      * finds them where its Perception check meets their total. 5e's Hide, Search and passive
      * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
      */
-    hiding: z
-      .object({
-        stealth: sheetId,
-        perception: sheetId,
-        passive: z.number().int().min(0).max(100).optional(),
-        lightly: z.number().int().min(0).max(100).optional(),
-        noisy: componentIdsSchema.optional(),
-        /** Added to a passive Perception rolled with advantage, and taken off one with disadvantage
-         *  (Capability API 1.290): 5e's 5. Without it a passive reads no mode. */
-        passiveMode: z.number().int().min(1).max(20).optional(),
-      })
-      .strict()
-      .optional(),
+    hiding: combatHidingSchema.optional(),
     contests: z.array(combatContestSchema).max(12).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.103). */
     sizes: combatSizesSchema.optional(),
     /** Riding a willing creature of its side (Capability API 1.443). */
     mounts: combatMountsSchema.optional(),
+    /** Fighting under water and holding breath (Capability API 1.445). */
+    underwater: combatUnderwaterSchema.optional(),
     /** What a combatant is (Capability API 1.168): the types and tags a creature names and a target
      *  test reads. A character takes its type from `field` (a text or choice field holding a type id)
      *  or else `default`; a creature from its own `type` and `tags`. */

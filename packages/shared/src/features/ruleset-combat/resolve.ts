@@ -24,7 +24,7 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
-import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
+import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
@@ -145,6 +145,7 @@ import {
   rulesetCellBlocked,
   rulesetCrowdedStep,
   rulesetDragging,
+  rulesetUnderwater,
   rulesetThroughSolid,
   rulesetLevelOf,
   rulesetSlowedCells,
@@ -774,7 +775,11 @@ function applyDamage(
       !input.ignoresResistance &&
       !input.unblockable &&
       (!!(type && hide && matches(hide.resist, type, input.qualities)) ||
-        rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all"));
+        rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all") ||
+        // Fully under water (1.445): 5e's fire.
+        (!!type &&
+          !!ctx.combat.underwater?.resist?.some((one) => one.trim().toLowerCase() === type) &&
+          rulesetUnderwater(ctx.definition, ctx.state, target)));
     const vulnerable = !!(type && hide && matches(hide.vulnerable, type));
     if (type && hide && !input.unblockable && matches(hide.immune, type, input.qualities)) {
       dealt = 0;
@@ -4261,6 +4266,40 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
+/** A turn begun under water (1.445): one more of the turns they hold their breath for, then of those
+ *  they last without it, and as the next starts they drop to 0. Out of the water, their breath is back. */
+function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const breath = ctx.combat.underwater?.breath;
+  if (!breath) return;
+  const exempt =
+    breath.exempt?.conditions?.some((id) => rulesetCombatConditions(ctx.definition, actor).includes(id)) ||
+    (!!breath.exempt?.tags && rulesetTargetIs(ctx.definition, actor, { tags: breath.exempt.tags }));
+  if (!rulesetUnderwater(ctx.definition, ctx.state, actor) || exempt || actor.defeated || actor.down) {
+    delete actor.breath;
+    return;
+  }
+  const span = (rule: typeof breath.holds) => {
+    const score =
+      actor.sheet?.build.abilities?.[rule.perMod?.ability ?? ""] ??
+      actor.block?.abilities?.[rule.perMod?.ability ?? ""];
+    const mod = rule.perMod && typeof score === "number" ? rulesetAbilityModifier(ctx.definition, score) : 0;
+    return Math.max(rule.atLeast ?? 0, rule.rounds + (rule.perMod ? mod * rule.perMod.rounds : 0));
+  };
+  const now = actor.breath ?? { held: span(breath.holds) };
+  if (now.held > 0) {
+    now.held -= 1;
+    if (now.held === 0) now.lasts = span(breath.then);
+  } else if ((now.lasts ?? 0) > 0) now.lasts! -= 1;
+  else {
+    delete actor.breath;
+    ctx.events.push({ type: "breath", actorId: actor.id, held: 0, lasts: 0 });
+    dropToNothing(ctx, actor, actor.id, "Out of breath");
+    return;
+  }
+  actor.breath = now;
+  ctx.events.push({ type: "breath", actorId: actor.id, held: now.held, lasts: now.lasts ?? 0 });
+}
+
 /** Whoever walks through solid ground and ends a turn of theirs inside it takes what it says, with
  *  no save (1.442): a ghost's 1d10 force. */
 function insideGround(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
@@ -4976,7 +5015,8 @@ function pickTargets(
   for (const id of ids) {
     // A target the rules would allow if only it were closer is told exactly that, rather than being
     // lumped in with one of the wrong side or one the fight is over for.
-    if (!legal.has(id)) return rulesetTargetRefusal(state, actor.id, option.id, id, option.range) ?? "bad-target";
+    if (!legal.has(id))
+      return rulesetTargetRefusal(state, actor.id, option.id, id, option.range, definition) ?? "bad-target";
     targets.push(rulesetCombatant(state, id)!);
   }
   // All within so far of each other (1.267): Command's extra creatures.
@@ -13134,6 +13174,8 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     rollRulesetRecharges(ctx, actor);
     // What it regains as its turn starts (1.346), and a troll down at 0 that cannot is out.
     regenerate(ctx, actor);
+    // Holding their breath under water, or out of it (1.445).
+    holdBreath(ctx, actor);
     // A pact weapon left lying far off long enough is gone (1.427).
     if (actor.dropped?.length) conjuredLeftBehind(ctx, actor);
     // What it senses the presence of (1.391), said again each turn.

@@ -123518,6 +123518,245 @@
           ],
           "additionalProperties": false
         },
+        "underwater": {
+          "type": "object",
+          "properties": {
+            "terrain": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "melee": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "advantage",
+                    "disadvantage"
+                  ]
+                },
+                "unless": {
+                  "type": "object",
+                  "properties": {
+                    "names": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 16
+                    },
+                    "qualities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 16
+                    },
+                    "$comment": {}
+                  },
+                  "additionalProperties": false
+                },
+                "$comment": {}
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            "ranged": {
+              "type": "object",
+              "properties": {
+                "pastNormal": {
+                  "type": "string",
+                  "const": "never"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "advantage",
+                    "disadvantage"
+                  ]
+                },
+                "unless": {
+                  "type": "object",
+                  "properties": {
+                    "names": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 16
+                    },
+                    "qualities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 16
+                    },
+                    "$comment": {}
+                  },
+                  "additionalProperties": false
+                },
+                "$comment": {}
+              },
+              "additionalProperties": false
+            },
+            "resist": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "breath": {
+              "type": "object",
+              "properties": {
+                "holds": {
+                  "type": "object",
+                  "properties": {
+                    "rounds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "perMod": {
+                      "type": "object",
+                      "properties": {
+                        "ability": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "rounds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "ability",
+                        "rounds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "atLeast": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "rounds"
+                  ],
+                  "additionalProperties": false
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "rounds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "perMod": {
+                      "type": "object",
+                      "properties": {
+                        "ability": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "rounds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "ability",
+                        "rounds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "atLeast": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "rounds"
+                  ],
+                  "additionalProperties": false
+                },
+                "exempt": {
+                  "type": "object",
+                  "properties": {
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 12
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 1,
+                      "maxItems": 12
+                    },
+                    "$comment": {}
+                  },
+                  "additionalProperties": false
+                },
+                "$comment": {}
+              },
+              "required": [
+                "holds",
+                "then"
+              ],
+              "additionalProperties": false
+            },
+            "$comment": {}
+          },
+          "required": [
+            "terrain"
+          ],
+          "additionalProperties": false
+        },
         "creatureTypes": {
           "type": "object",
           "properties": {

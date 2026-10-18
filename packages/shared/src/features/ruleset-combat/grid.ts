@@ -320,6 +320,35 @@ export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mo
   return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
 }
 
+/** Whether this combatant is under water (1.445): on a tile the ruleset's `underwater.terrain` names,
+ *  not up in the air, and no flier without a swim speed. */
+export function rulesetUnderwater(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState | undefined,
+  combatant: RulesetCombatant,
+): boolean {
+  const rule = definition.combat?.underwater;
+  const grid = state?.board?.grid;
+  if (!rule || !grid || !rulesetPositionOf(combatant) || rulesetAirborne(grid, combatant)) return false;
+  if (combatant.speeds?.fly && !combatant.speeds.swim) return false;
+  return rulesetFootprint(combatant).some((cell) => {
+    const tile = grid.tiles[cell.y]?.[cell.x];
+    return tile !== undefined && rule.terrain.includes(tile);
+  });
+}
+
+/** Whether an attack is one an underwater rule's `unless` spares (1.445): named in its label as a word,
+ *  or of one of the qualities. */
+export function rulesetUnderwaterSpares(
+  unless: { names?: string[]; qualities?: string[] } | undefined,
+  action: { label: string; qualities?: string[] } | undefined,
+): boolean {
+  if (!unless || !action) return false;
+  const words = action.label.toLowerCase().split(/[^a-z0-9']+/);
+  if (unless.names?.some((name) => words.includes(name.trim().toLowerCase()))) return true;
+  return !!unless.qualities?.some((quality) => action.qualities?.includes(quality));
+}
+
 /** Whom this mover drags along as they walk (1.444), those holding a `dragged` condition they put
  *  on, and whether that halves their speed: anybody not `unlessSmaller` sizes smaller does. */
 export function rulesetDragging(

@@ -784,6 +784,12 @@ export function rulesetCombatEventLine(
         target: names.combatant(event.targetId),
         holder: names.combatant(event.holderId),
       });
+    // Holding their breath under water (1.445), or out of it.
+    case "breath":
+      return key(event.held > 0 ? "breathHeld" : event.lasts > 0 ? "breathGone" : "breathOut", {
+        actor: names.combatant(event.actorId),
+        count: event.held > 0 ? event.held : event.lasts,
+      });
     // Up on a mount, down off it, or thrown (1.443).
     case "mount":
       return key(event.off ? (event.fell ? "thrown" : "dismounted") : "mounted", {

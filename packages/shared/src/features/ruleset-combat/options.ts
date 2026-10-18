@@ -115,6 +115,8 @@ import {
   rulesetFootprint,
   rulesetFootprintsSee,
   rulesetGap,
+  rulesetUnderwater,
+  rulesetUnderwaterSpares,
   rulesetNearestCell,
   rulesetSpanOf,
   rulesetCellSolidFor,
@@ -574,6 +576,8 @@ export function rulesetTargetRefusal(
   targetId: string,
   /** A weapon mode's own reach (1.190). */
   range?: { normal: number; long?: number },
+  /** What the ruleset says of fighting under water (1.445). */
+  definition?: RulesetDefinition,
 ): "out-of-reach" | "no-line-of-sight" | null {
   const summon = optionId.startsWith("summon:")
     ? rulesetCombatant(state, actorId)?.summons?.find((entry) => `summon:${entry.actionId}` === optionId)
@@ -606,6 +610,9 @@ export function rulesetTargetRefusal(
   // Any cell of one to any cell of the other (1.194).
   const actor = rulesetCombatant(state, actorId);
   if (rulesetGap(actor, target) > 1 && !rulesetFootprintsSee(grid, actor, target)) return "no-line-of-sight";
+  // Under water a shot never reaches past its normal range (1.445).
+  if (definition && actor && target && underwaterTooFar(definition, state, actor, target, optionId))
+    return "out-of-reach";
   // Through a layered wall's standing layer that stops it (1.439): Prismatic Wall's red and orange.
   const own = actor ? actionOf(actor, optionId) : undefined;
   if (own && target && rulesetLayersStop(state, own, from, rulesetPositionOf(target) ?? to)) return "no-line-of-sight";
@@ -1924,7 +1931,8 @@ export function rulesetOptionTargets(
       // And then how far away they are, which is nothing at all in a fight without a board.
       .filter(
         (combatant) =>
-          ignoreRange || rulesetTargetRefusal(state, actor.id, option.id, combatant.id, option.range) === null,
+          ignoreRange ||
+          rulesetTargetRefusal(state, actor.id, option.id, combatant.id, option.range, definition) === null,
       )
       // A strike again (1.375): somebody else, near whom the first was at.
       .filter((combatant) => {
@@ -3174,6 +3182,17 @@ export function rulesetAttackMode(
   // At somebody inside a zone that keeps them out (1.399): Magic Circle.
   if (where && rulesetWardedFrom(definition, where.state, target, actor).some((rule) => rule.attacksInto))
     leans.add("disadvantage");
+  // Under water (1.445): a swing without a swim speed or one of the weapons named, and a shot within
+  // range unless the weapon is one named.
+  const underwater = definition.combat?.underwater;
+  if (underwater && blow && where && rulesetUnderwater(definition, where.state, actor)) {
+    const kind = rulesetBlowKind(where.state, actor, target, blow);
+    if (kind === "melee" && underwater.melee && !actor.speeds?.swim) {
+      if (!rulesetUnderwaterSpares(underwater.melee.unless, blow)) leans.add(underwater.melee.mode);
+    } else if (kind === "ranged" && underwater.ranged?.mode) {
+      if (!rulesetUnderwaterSpares(underwater.ranged.unless, blow)) leans.add(underwater.ranged.mode);
+    }
+  }
   // A creature's own (1.293): sensitivity to sunlight, where it holds.
   for (const rule of actor.block?.attackModes ?? []) {
     if (!rulesetModeRuleHolds(definition, combat, actor, where?.state, rule)) continue;
@@ -3208,6 +3227,25 @@ export function rulesetAttackMode(
   const down = disadvantage || leans.has("disadvantage");
   if (up === down) return "normal";
   return up ? "advantage" : "disadvantage";
+}
+
+/** A shot past its weapon's normal range by or at somebody under water (1.445), where the ruleset says
+ *  that never reaches. */
+function underwaterTooFar(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  optionId: string,
+): boolean {
+  if (definition.combat?.underwater?.ranged?.pastNormal !== "never") return false;
+  const action = actionOf(actor, optionId);
+  if (!action || !rulesetIsAttack(action)) return false;
+  if (!rulesetUnderwater(definition, state, actor) && !rulesetUnderwater(definition, state, target)) return false;
+  const reach = rulesetOptionReach(state, actor.id, optionId);
+  if (!reach?.shot) return false;
+  const away = rulesetCombatantDistance(state, actor, target);
+  return away > (reach.swing ?? 0) && away > reach.normal;
 }
 
 /** Whether the actor is next to somebody on the other side, which is what a ruleset that says

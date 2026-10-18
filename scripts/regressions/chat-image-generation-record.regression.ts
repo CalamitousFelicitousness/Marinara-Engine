@@ -139,6 +139,22 @@ try {
     },
   });
   assert.deepEqual(spriteOnly, [], "a sprite-sourced persona never falls back to the avatar");
+  // A recorded avatar is sent again even if a character sheet was turned on since.
+  const recordedAvatar = await readRecordedReferenceImages({
+    characterIds: [],
+    personaId: "fel",
+    personaSource: "avatar",
+    charactersStore: {
+      getById: async () => null,
+      getPersona: async (id) => ({
+        id,
+        avatarPath: "/api/avatars/file/arceana.png",
+        characterSheetImageId: "sheet-1",
+        useCharacterSheetAsReference: "true",
+      }),
+    },
+  });
+  assert.deepEqual(recordedAvatar, [png], "the recorded persona picture wins over the current preference");
   assert.equal(
     parseChatImageGenerationRecord(
       JSON.stringify(buildChatImageGenerationRecord({ referencePersonaId: "fel", referencePersonaSource: "sprite" })),
@@ -315,6 +331,56 @@ try {
     "a gallery-only image replaces nothing",
   );
 
+  // A swap that fails partway is rolled back: the first message gets its old image back and the
+  // unused new row is removed, so a retry starts clean.
+  const sharedImage = await gallery.create({
+    chatId: chat.id,
+    filePath: `${chat.id}/shared.png`,
+    prompt: "shared",
+    generation: buildChatImageGenerationRecord({ prompt: "shared", connectionId: connection.id }),
+  });
+  assert.ok(sharedImage?.id);
+  const sharedAttachment = { type: "image", url: "/api/gallery/file/shared.png", galleryId: sharedImage.id };
+  const firstShared = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "First.",
+    extra: { attachments: [sharedAttachment] },
+  } as never);
+  const secondShared = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "Second.",
+    extra: { attachments: [sharedAttachment] },
+  } as never);
+  assert.ok(firstShared?.id && secondShared?.id);
+  const galleryCountBefore = (await gallery.listByChatId(chat.id)).length;
+  const realTransaction = db.transaction.bind(db);
+  let transactionCalls = 0;
+  db.transaction = ((fn: Parameters<typeof realTransaction>[0]) => {
+    transactionCalls += 1;
+    if (transactionCalls === 2) return Promise.reject(new Error("simulated storage failure"));
+    return realTransaction(fn);
+  }) as typeof db.transaction;
+  let failedSwap;
+  try {
+    failedSwap = await app.inject({
+      method: "POST",
+      url: `/api/gallery/${chat.id}/images/${sharedImage.id}/regenerate`,
+      payload: { prompt: "shared, again", messageId: firstShared.id },
+    });
+  } finally {
+    db.transaction = realTransaction as typeof db.transaction;
+  }
+  assert.equal(failedSwap.statusCode, 502, failedSwap.body);
+  assert.equal(transactionCalls, 3, "first swap applied, second failed, first undone");
+  for (const id of [firstShared.id, secondShared.id]) {
+    const extra = (await chats.getMessage(id))?.extra;
+    const attachments = (typeof extra === "string" ? JSON.parse(extra) : extra).attachments;
+    assert.equal(attachments[0].galleryId, sharedImage.id, "every message is back on the original image");
+  }
+  assert.equal((await gallery.listByChatId(chat.id)).length, galleryCountBefore, "the unused new row is removed");
+
   // Rejections: a picked connection that is gone, an unknown image, an empty prompt.
   const missingConnection = await app.inject({
     method: "POST",
@@ -330,7 +396,7 @@ try {
   assert.equal(missingImage.statusCode, 404, missingImage.body);
   const emptyPrompt = await app.inject({ method: "POST", url: regenerateUrl, payload: { prompt: "   " } });
   assert.notEqual(emptyPrompt.statusCode, 200, "an empty prompt is rejected");
-  assert.equal(imagePrompts.length, 4, "rejected requests never reach the provider");
+  assert.equal(imagePrompts.length, 5, "rejected requests never reach the provider");
 
   console.log("chat-image-generation-record: ok (record, storage round trip, regenerate route)");
 } finally {

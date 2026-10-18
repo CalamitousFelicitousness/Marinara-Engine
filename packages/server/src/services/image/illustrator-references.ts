@@ -512,17 +512,28 @@ export async function readRecordedReferenceImages(args: {
   }
   if (args.personaId) {
     const persona = await args.charactersStore.getPersona(args.personaId).catch(() => null);
-    const image = persona
-      ? await readPreferredPersonaReferenceImage({
-          personaId: persona.id,
-          avatarPath: persona.avatarPath,
-          characterSheetImageId: persona.characterSheetImageId ?? null,
-          useCharacterSheetAsReference:
-            persona.useCharacterSheetAsReference === true || persona.useCharacterSheetAsReference === "true",
-          personaGallery: args.personaGallery,
-          ...(args.personaSource === "sprite" ? { loaders: { avatar: () => undefined } } : {}),
-        })
-      : null;
+    // The recorded picture comes first, so a sheet enabled (or avatar added) since does not change
+    // the re-roll; the usual order applies when it is gone or unknown. A sprite-sourced persona
+    // never falls back to the avatar, matching Game mode's lookup.
+    const recorded =
+      persona && args.personaSource === "sprite"
+        ? readPreferredFullBodySpriteBase64(persona.id)?.base64
+        : persona && args.personaSource === "avatar"
+          ? readAvatarBase64(persona.avatarPath)
+          : undefined;
+    const image = recorded
+      ? { base64: recorded }
+      : persona
+        ? await readPreferredPersonaReferenceImage({
+            personaId: persona.id,
+            avatarPath: persona.avatarPath,
+            characterSheetImageId: persona.characterSheetImageId ?? null,
+            useCharacterSheetAsReference:
+              persona.useCharacterSheetAsReference === true || persona.useCharacterSheetAsReference === "true",
+            personaGallery: args.personaGallery,
+            ...(args.personaSource === "sprite" ? { loaders: { avatar: () => undefined } } : {}),
+          })
+        : null;
     if (image) images.push(image.base64);
   }
   return images;

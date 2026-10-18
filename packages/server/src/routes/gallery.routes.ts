@@ -1862,7 +1862,9 @@ export async function galleryRoutes(app: FastifyInstance) {
 
       const signal = createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Gallery image regeneration");
       let savedFilePath: string | null = null;
-      let metadataSaved = false;
+      let savedImageId: string | null = null;
+      // Swaps already applied, undone in reverse if a later step fails so a retry starts clean.
+      const undoSwaps: Array<() => Promise<unknown>> = [];
       try {
         const generated = await generateImage(
           imageSource,
@@ -1911,24 +1913,15 @@ export async function galleryRoutes(app: FastifyInstance) {
           }),
         });
         if (!image) throw new Error("Regenerated image metadata could not be saved");
-        metadataSaved = true;
-        await persistGeneratedImageToEntityGalleries({
-          enabled: imageSettings.autoSaveToGalleries,
-          sourceFilePath: filePath,
-          sourceChatImageId: image.id,
-          characterIds: references.characterIds,
-          personaIds: references.personaId ? [references.personaId] : [],
-          characterGallery,
-          personaGallery,
-          prompt,
-          provider,
-          model,
-          width,
-          height,
-        });
+        savedImageId = image.id;
 
         const url = buildGalleryImageUrl(image, chatId);
         const attachmentPatch = { url, prompt, galleryId: image.id };
+        const restorePatch = {
+          url: buildGalleryImageUrl(original, chatId),
+          prompt: original.prompt,
+          galleryId: original.id,
+        };
         // Every message showing the image is updated, in its active mirror or an inactive swipe;
         // the message it was opened from (if any) goes first.
         const mentionsImage = (row: { extra: unknown }) =>
@@ -1947,6 +1940,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         for (const messageId of candidateMessageIds) {
           if (await chats.replaceGalleryImageAttachment(messageId, original.id, attachmentPatch)) {
             replacedMessageIds.push(messageId);
+            undoSwaps.push(() => chats.replaceGalleryImageAttachment(messageId, image.id, restorePatch));
           }
         }
         const storyboards = createGameStoryboardsStorage(app.db);
@@ -1954,7 +1948,29 @@ export async function galleryRoutes(app: FastifyInstance) {
         for (const keyframe of await storyboards.listKeyframesByChatImageId(chatId, original.id)) {
           await storyboards.updateKeyframe(keyframe.id, { chatImageId: image.id });
           replacedKeyframeIds.push(keyframe.id);
+          undoSwaps.push(() => storyboards.updateKeyframe(keyframe.id, { chatImageId: original.id }));
         }
+        // Committed: nothing below may roll the swaps back.
+        undoSwaps.length = 0;
+        savedImageId = null;
+        savedFilePath = null;
+
+        await persistGeneratedImageToEntityGalleries({
+          enabled: imageSettings.autoSaveToGalleries,
+          sourceFilePath: filePath,
+          sourceChatImageId: image.id,
+          characterIds: references.characterIds,
+          personaIds: references.personaId ? [references.personaId] : [],
+          characterGallery,
+          personaGallery,
+          prompt,
+          provider,
+          model,
+          width,
+          height,
+        }).catch((galleryErr) =>
+          logger.warn(galleryErr, "[gallery/regenerate] Could not copy image %s to entity galleries", image.id),
+        );
 
         logger.info(
           "[gallery/regenerate] Regenerated image %s as %s for chat %s (messages=%d keyframes=%d)",
@@ -1966,7 +1982,19 @@ export async function galleryRoutes(app: FastifyInstance) {
         );
         return { image: { ...image, url }, replacedMessageIds, replacedKeyframeIds };
       } catch (err) {
-        if (savedFilePath && !metadataSaved) {
+        for (const undo of undoSwaps.reverse()) {
+          await undo().catch((undoErr) =>
+            logger.warn(undoErr, "[gallery/regenerate] Could not restore a reference to image %s", original.id),
+          );
+        }
+        if (savedImageId) {
+          await storage
+            .remove(savedImageId, chatId)
+            .catch((cleanupErr) =>
+              logger.warn(cleanupErr, "[gallery/regenerate] Failed to remove unused image row %s", savedImageId),
+            );
+        }
+        if (savedFilePath) {
           try {
             removeSavedImageFromDisk(savedFilePath);
           } catch (cleanupErr) {

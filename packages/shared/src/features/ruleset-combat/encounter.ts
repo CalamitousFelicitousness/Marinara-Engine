@@ -883,6 +883,19 @@ export function rulesetTargetIs(
   test: RulesetTargetIs | undefined,
 ): boolean {
   if (!test) return true;
+  // Never what it excepts (1.477), and anybody else when that is all it says.
+  if (test.except) {
+    if (rulesetTargetIs(definition, combatant, test.except)) return false;
+    const { except: _except, ...rest } = test;
+    if (
+      rest.types === undefined &&
+      rest.tags === undefined &&
+      rest.upToSize === undefined &&
+      rest.atLeastSize === undefined
+    )
+      return true;
+    return rulesetTargetIs(definition, combatant, rest);
+  }
   // Of a size (1.350), as well as whatever else it asks.
   if (test.upToSize !== undefined || test.atLeastSize !== undefined) {
     const combat = definition.combat;

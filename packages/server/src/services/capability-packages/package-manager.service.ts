@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A target test that excepts what it never is (1.477): a net's formless creatures. */
+function carriesTargetExcept477(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTargetExcept477(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const except = plainRecord(record.except);
+  if (except && ["types", "tags", "upToSize", "atLeastSize"].some((key) => except[key] !== undefined)) return true;
+  return featureValues(record).some((one) => carriesTargetExcept477(one, depth + 1));
+}
+
 /** A condition whose holder walks on water as on ground (1.476): Water Walk. */
 function carriesWalksOnLiquid476(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6701,6 +6712,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A target test with an exception, 1.477.
+  if (
+    !declaresApi(477) &&
+    (carriesTargetExcept477(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTargetExcept477(document)))
+  ) {
+    return "A ruleset with a target test that excepts what it is never (targetIs except) requires schemaVersion 2 and capabilityApi 1.477 or newer";
+  }
   // Walking on water, 1.476.
   if (
     !declaresApi(476) &&

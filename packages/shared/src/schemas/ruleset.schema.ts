@@ -4022,23 +4022,31 @@ export interface RulesetTargetIs {
   tags?: string[];
   upToSize?: string;
   atLeastSize?: string;
+  /** Never one that is this (Capability API 1.477), whatever else it is: a net's "no effect on
+   *  creatures that are formless", `{ "except": { "tags": ["formless"] } }`. */
+  except?: Omit<RulesetTargetIs, "except">;
 }
+const targetIsShape = {
+  types: z.array(sheetId).min(1).max(20).optional(),
+  tags: z.array(sheetId).min(1).max(20).optional(),
+  upToSize: sheetId.optional(),
+  atLeastSize: sheetId.optional(),
+};
+const namesSomething = (test: Omit<RulesetTargetIs, "except">) =>
+  test.types !== undefined || test.tags !== undefined || test.upToSize !== undefined || test.atLeastSize !== undefined;
 const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
   .object({
-    types: z.array(sheetId).min(1).max(20).optional(),
-    tags: z.array(sheetId).min(1).max(20).optional(),
-    upToSize: sheetId.optional(),
-    atLeastSize: sheetId.optional(),
+    ...targetIsShape,
+    except: z
+      .object(targetIsShape)
+      .strict()
+      .refine(namesSomething, { message: "What a target test excepts names types, tags or both, or a size" })
+      .optional(),
   })
   .strict()
-  .refine(
-    (test) =>
-      test.types !== undefined ||
-      test.tags !== undefined ||
-      test.upToSize !== undefined ||
-      test.atLeastSize !== undefined,
-    { message: "A target test names types, tags or both, or a size" },
-  );
+  .refine((test) => namesSomething(test) || test.except !== undefined, {
+    message: "A target test names types, tags or both, or a size",
+  });
 
 /** Nobody within `within` hides from its holder, unless they have one of `lostWith` (1.292). Only
  *  those that are `of` (Capability API 1.386), and with `uncovered` only those not behind total
@@ -16975,6 +16983,7 @@ function targetIsIssues(
   add: (path: (string | number)[], message: string) => void,
 ): void {
   if (!test) return;
+  if (test.except) targetIsIssues(definition, test.except, [...at, "except"], add);
   // Sizes (1.350) read combat.sizes.
   for (const key of ["upToSize", "atLeastSize"] as const) {
     const size = test[key];

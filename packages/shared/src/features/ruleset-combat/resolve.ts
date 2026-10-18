@@ -6827,6 +6827,28 @@ function applyChoice(
       // Those it called sent away as an action (1.396): Summon Demon's dismissal.
       const by = switching.switches.called;
       dismissCalled(ctx, working, (one) => one.calledWith === by, "dismissed");
+    } else if (switching?.switches && "form" in switching.switches) {
+      // Into another of its forms (1.522): the item as that form, and what it does then.
+      const { item: index, to } = switching.switches.form;
+      const formed = working.itemFormed?.[index]?.[to];
+      const held = working.sheet?.items?.[index];
+      if (!formed || !held || !working.sheet?.items) return refusal(state, choice.actorId, "unknown-option", option.id);
+      const { form: _form, ...rest } = held;
+      working.sheet.items = working.sheet.items.map((one, at) =>
+        at === index ? { ...rest, item: formed.item, ...(to ? { form: to } : {}) } : one,
+      );
+      working.actions = [
+        ...working.actions.filter((one) => rulesetActionItemIndex(one) !== index),
+        ...structuredClone(formed.actions),
+      ];
+      working.itemForms = { ...(working.itemForms ?? {}), [index]: to };
+      const forms = held.item.forms!;
+      ctx.events.push({
+        type: "reformed",
+        actorId: working.id,
+        label: held.name ?? forms.label,
+        form: to ? forms.into[to - 1]!.label : forms.label,
+      });
     } else if (switching?.switches && "item" in switching.switches) {
       const on = !rulesetItemOn(working, switching.switches.item);
       working.on = { ...(working.on ?? {}), [switching.switches.item]: on };

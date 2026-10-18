@@ -80,6 +80,8 @@ export interface InventoryItem {
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
   /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
+  /** The form an item with forms is in (1.522), from 1; absent as it was made. Only ever one item. */
+  form?: number;
 }
 
 /** One party member's bag: `holder` as a stack has it (absent for the player), and the name shown. */
@@ -122,6 +124,9 @@ interface GameInventoryProps {
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
   /** Called when the user turns an item with a switch on or off (1.170). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
+  /** Called when the user turns an item into another of its forms (1.522), 0 as it was made. Resolves
+   *  to the stack's id. */
+  onFormItem?: (stackId: string, form: number) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string, more?: number) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
@@ -171,6 +176,7 @@ export function GameInventory({
   placeAmong,
   onWearItem,
   onSwitchItem,
+  onFormItem,
   onUseItem,
   onRenameItem,
   onSetItemQuantity,
@@ -394,6 +400,19 @@ export function GameInventory({
       }
     },
     [onSwitchItem],
+  );
+  const handleForm = useCallback(
+    async (item: InventoryItem, form: number) => {
+      if (!onFormItem) return;
+      setWearPending(true);
+      try {
+        const formedId = await onFormItem(item.id, form);
+        if (formedId) setSelectedItem(formedId);
+      } finally {
+        setWearPending(false);
+      }
+    },
+    [onFormItem],
   );
   // What the bag in view carries and wears against what its bearer can: the player's own in the
   // shared view when there are no other bags.
@@ -1101,6 +1120,29 @@ export function GameInventory({
                     {selectedRulesetItem.toggle.label}
                   </button>
                 )}
+              {/* Its forms (1.522): what it is as made, then each other form. */}
+              {selectedInventoryItem &&
+                selectedRulesetItem?.forms &&
+                selectedInventoryItem.quantity === 1 &&
+                onFormItem &&
+                selectedRulesetItem.forms.map((label, form) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={(selectedInventoryItem.form ?? 0) === form}
+                    disabled={wearPending || (selectedInventoryItem.form ?? 0) === form}
+                    onClick={() => void handleForm(selectedInventoryItem, form)}
+                    className={cn(
+                      "flex h-7 shrink-0 items-center justify-center gap-1 rounded border px-2 text-[0.7rem] transition-colors disabled:cursor-not-allowed",
+                      (selectedInventoryItem.form ?? 0) === form
+                        ? "border-amber-500/20 bg-amber-500/10 font-semibold text-amber-300"
+                        : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06] disabled:opacity-40",
+                    )}
+                    title={localizeUi("ui.game.gameinventory.formHint")}
+                  >
+                    {label}
+                  </button>
+                ))}
               {selectedInventoryItem && canInteract && onUseItem && (
                 <button
                   onClick={() =>

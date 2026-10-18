@@ -68,6 +68,7 @@ import {
   type RulesetStoredEntry,
   rulesetAbilityModifier,
   rulesetChangedAbilityScores,
+  rulesetFormedItem,
 } from "../rulesets/sheet-math.js";
 import {
   findRulesetCreatureEntry,
@@ -2550,6 +2551,31 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
   });
 }
 
+/** Turning an item into each of its other forms (1.522), on its budget: a Rod of Lordly Might's buttons.
+ *  One of an item only, as a switch is. */
+function itemFormActions(items: readonly RulesetSheetItem[] | undefined): RulesetCombatAction[] {
+  return (items ?? []).flatMap((held, index): RulesetCombatAction[] => {
+    const forms = held.item.forms;
+    if (!forms || held.quantity !== 1) return [];
+    const labels = [forms.label, ...forms.into.map((form) => form.label)];
+    const now = held.form ?? 0;
+    return labels.flatMap((label, to): RulesetCombatAction[] =>
+      to === now
+        ? []
+        : [
+            {
+              id: `form:${index}:${to}`,
+              kind: "switch",
+              label: `${held.name ?? forms.label}: ${label}`,
+              budget: forms.budget,
+              targets: { side: "self", count: 0 },
+              switches: { form: { item: index, to } },
+            },
+          ],
+    );
+  });
+}
+
 /** Putting out and lighting again the light a fighter carries (1.295), on its budget or for nothing.
  *  On the menu only while they carry one. */
 function carriedSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
@@ -4453,6 +4479,7 @@ function sheetCombatant(
     ),
     ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
     ...itemSwitchActions(input.items),
+    ...itemFormActions(input.items),
     ...carriedSwitchActions(combat),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
@@ -4699,9 +4726,31 @@ function sheetCombatant(
     const made = [
       ...itemAttackActions(definition, combat, items, build, evaluated, perCell, rowRules),
       ...itemSwitchActions(items),
+      ...itemFormActions(items),
       ...itemUseActions(definition, combat, items, build, evaluated, perCell),
     ].filter((action) => rulesetActionItemIndex(action) === index);
     becomes[index] = { ref, name: other.label, item: other.item, actions: made };
+  });
+  // Each item with forms in each of them (1.522), read now with what it would do then.
+  const itemFormed: NonNullable<RulesetCombatant["itemFormed"]> = {};
+  input.items?.forEach((held, index) => {
+    const forms = held.item.forms;
+    if (!forms || held.quantity !== 1) return;
+    const made = (held.form && held.stack ? byRef.get(held.stack.ref)?.item : undefined) ?? held.item;
+    itemFormed[index] = [undefined, ...forms.into].map((form, to) => {
+      const other = form ? byRef.get(form.item)?.item : undefined;
+      const item = other ? rulesetFormedItem(made, other) : made;
+      const { form: _form, ...rest } = held;
+      const next: RulesetSheetItem = { ...rest, item, ...(to && other ? { form: to } : {}) };
+      const items = input.items!.map((one, at) => (at === index ? next : one));
+      const actions = [
+        ...itemAttackActions(definition, combat, items, build, evaluated, perCell, rowRules),
+        ...itemSwitchActions(items),
+        ...itemFormActions(items),
+        ...itemUseActions(definition, combat, items, build, evaluated, perCell),
+      ].filter((action) => rulesetActionItemIndex(action) === index);
+      return { item, actions };
+    });
   });
   // What they soak and what they may spend, read once like their defense.
   const read = (ref: RulesetValueRef) =>
@@ -4808,6 +4857,7 @@ function sheetCombatant(
     })(),
     sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
     ...(Object.keys(becomes).length ? { becomes } : {}),
+    ...(Object.keys(itemFormed).length ? { itemFormed } : {}),
     ...(Object.keys(conjurable).length ? { conjurable } : {}),
   };
 }

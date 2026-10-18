@@ -291,9 +291,24 @@ export interface RulesetSheetItem {
   storedEntries?: RulesetStoredEntry[];
   /** Its switch is on, as the stack keeps it (1.170). */
   on?: true;
+  /** The form it is in (1.522), from 1 in its `forms.into`, as the stack keeps it; `item` is already
+   *  read in that form. Absent, it is as it was made. */
+  form?: number;
   /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as
    *  what it seems; a fight's use of it does what this one does. */
   truly?: { item: RulesetCatalogItem; name: string };
+}
+
+/** An item in another form (1.522): that form's item's attack, worn effect and switch in place of its
+ *  own, and all else its own. */
+export function rulesetFormedItem(base: RulesetCatalogItem, other: RulesetCatalogItem): RulesetCatalogItem {
+  const { attack: _attack, worn: _worn, toggle: _toggle, ...rest } = base;
+  return {
+    ...rest,
+    ...(other.attack ? { attack: other.attack } : {}),
+    ...(other.worn ? { worn: other.worn } : {}),
+    ...(other.toggle ? { toggle: other.toggle } : {}),
+  };
 }
 
 /** Whether the sheet can read the items a character holds, so a caller can skip reading the

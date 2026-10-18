@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item that changes form (1.522): a Rod of Lordly Might. */
+function carriesItemForms522(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemForms522(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.category !== undefined && plainRecord(record.forms)?.into !== undefined) return true;
+  return featureValues(record).some((one) => carriesItemForms522(one, depth + 1));
+}
+
 /** A charge followed by the charging action again (1.521): a warhorse's Trampling Charge. */
 function carriesChargeThenItself521(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7232,6 +7242,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item that changes form, 1.522.
+  if (
+    !declaresApi(522) &&
+    (carriesItemForms522(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemForms522(document)))
+  ) {
+    return "A ruleset with an item that changes form (forms) requires schemaVersion 2 and capabilityApi 1.522 or newer";
+  }
   // A charge followed by the charging action again, 1.521.
   if (
     !declaresApi(521) &&

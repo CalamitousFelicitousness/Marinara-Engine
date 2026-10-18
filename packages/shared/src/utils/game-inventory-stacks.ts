@@ -56,6 +56,9 @@ export interface GameInventoryStack {
   /** The levels it has ever taken in (Capability API 1.518), a Rod of Absorption's toward its 50, as a
    *  ruleset fight left them. Kept on a stack of one item only, as charges are. */
   absorbedEver?: number;
+  /** The form it is in (Capability API 1.522), from 1 in its item's `forms.into`; absent, as it was
+   *  made. Kept on a stack of one item only. */
+  form?: number;
   /** What is left of each of its further uses that counts its own (Capability API 1.466), by its
    *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full. */
   usesLeft?: Record<string, number>;
@@ -152,6 +155,8 @@ export interface GameInventoryRulesetItem {
   };
   /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
   toggle?: { label: string };
+  /** The forms it changes into (Capability API 1.522): what it is as made, then each form, by label. */
+  forms?: string[];
 }
 
 /** An item the Game Master proposes, as its inventory tag gives it: every part optional, each in the
@@ -375,6 +380,7 @@ function makeStack(stack: {
   charges?: number;
   corroded?: number;
   absorbedEver?: number;
+  form?: number;
   usesLeft?: Record<string, number>;
   waits?: Record<string, GameInventoryWait>;
   storedEntries?: GameInventoryStoredEntry[];
@@ -382,7 +388,7 @@ function makeStack(stack: {
   truly?: string;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
-  const { corroded, absorbedEver, waits } = stack;
+  const { corroded, absorbedEver, form, waits } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -398,6 +404,7 @@ function makeStack(stack: {
     ...(charges !== undefined && quantity === 1 ? { charges } : {}),
     ...(corroded && quantity === 1 ? { corroded } : {}),
     ...(absorbedEver && quantity === 1 ? { absorbedEver } : {}),
+    ...(form && quantity === 1 ? { form } : {}),
     ...(usesLeft && Object.keys(usesLeft).length > 0 && quantity === 1 ? { usesLeft } : {}),
     ...(waits && Object.keys(waits).length > 0 && quantity === 1 ? { waits } : {}),
     ...(storedEntries?.length && quantity === 1 ? { storedEntries } : {}),
@@ -570,6 +577,10 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
           typeof source.absorbedEver === "number" && Number.isInteger(source.absorbedEver) && source.absorbedEver > 0
             ? Math.min(1000, source.absorbedEver)
             : undefined,
+        form:
+          typeof source.form === "number" && Number.isInteger(source.form) && source.form > 0 && source.form <= 8
+            ? source.form
+            : undefined,
         usesLeft: readUsesLeft(source.usesLeft),
         waits: readWaits(source.waits),
         storedEntries: readStoredEntries(source.storedEntries),
@@ -655,6 +666,7 @@ export function revealGameInventoryFake(
       charges: _charges,
       corroded: _corroded,
       absorbedEver: _absorbedEver,
+      form: _form,
       usesLeft: _usesLeft,
       waits: _waits,
       storedEntries: _stored,
@@ -1547,6 +1559,7 @@ export function setGameInventoryStackQuantity(
     charges: _charges,
     corroded: _corroded,
     absorbedEver: _absorbedEver,
+    form: _form,
     usesLeft: _usesLeft,
     waits: _waits,
     storedEntries: _stored,
@@ -1632,6 +1645,7 @@ export function mergeGameInventoryStacks(
         charges: _charges,
         corroded: _corroded,
         absorbedEver: _absorbedEver,
+        form: _form,
         usesLeft: _usesLeft,
         waits: _waits,
         storedEntries: _stored,

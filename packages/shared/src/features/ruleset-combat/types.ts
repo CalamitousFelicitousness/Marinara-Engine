@@ -1244,7 +1244,13 @@ export interface RulesetCombatAction {
   clip?: { item: number; max: number };
   /** Turning one of the holder's items on or off (1.170): its place in `sheet.items`. */
   /** What it turns: an item (1.170), or the light its holder carries (1.295). */
-  switches?: { item: number } | { carried: true } | { conjured: string } | { called: string };
+  switches?:
+    | { item: number }
+    | { carried: true }
+    | { conjured: string }
+    | { called: string }
+    /** Into another of an item's forms (1.522), 0 as it was made. */
+    | { form: { item: number; to: number } };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -1963,6 +1969,12 @@ export interface RulesetCombatant {
   becomes?: Record<string, { ref: string; name: string; item: RulesetCatalogItem; actions: RulesetCombatAction[] }>;
   /** The items that became another in this fight (1.272): what each became. */
   became?: Record<string, string>;
+  /** Each item with forms in each of them (1.522), read as the fight began, by place in its
+   *  `forms.into` from 1 (0 as it was made): the item then, and the actions it is made with. Keyed as
+   *  the rest are. */
+  itemFormed?: Record<string, Array<{ item: RulesetCatalogItem; actions: RulesetCombatAction[] }>>;
+  /** The form each item that changed form in this fight is in now (1.522), 0 as it was made. */
+  itemForms?: Record<string, number>;
   /** Whom an entry used once a creature until a rest went to (1.304), for one without a sheet: keyed
    *  `rest|action`, by name. A sheet keeps it on its live state. */
   usedOn?: Record<string, string[]>;
@@ -3531,6 +3543,8 @@ export type RulesetCombatEvent =
   | { type: "reload"; actorId: string; optionId: string; label: string; loaded: number; of: number; drew?: number }
   /** An item switched on or off (1.170). */
   | { type: "switch"; actorId: string; optionId: string; label: string; on: boolean }
+  /** An item turned into another of its forms (1.522): a Rod of Lordly Might made a flame tongue. */
+  | { type: "reformed"; actorId: string; label: string; form: string }
   /** Won back after the fight: some of what was shot out of one stack. */
   | { type: "recovered"; actorId: string; label: string; count: number }
   /** Where an area landed, and the cells it covered. */

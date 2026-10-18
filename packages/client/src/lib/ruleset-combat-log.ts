@@ -1439,6 +1439,9 @@ export function rulesetCombatEventLine(
           });
     case "switch":
       return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
+    // An item turned into another of its forms (1.522).
+    case "reformed":
+      return key("reformed", { actor: names.combatant(event.actorId), label: event.label, form: event.form });
     case "recovered":
       return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     case "hardness":

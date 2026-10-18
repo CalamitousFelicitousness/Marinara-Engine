@@ -10033,6 +10033,21 @@ const catalogItemObjectSchema = z
      *  level they were paid at and with their caster's numbers, for nothing: 5e's Ring of Spell
      *  Storing, `{ "catalogs": ["spells"], "levels": 5 }`. What it holds is kept on its stack. */
     stores: storesSchema.optional(),
+    /** Other forms its holder turns it into and back (Capability API 1.522), spending `budget` in a
+     *  fight: in each it takes another item's `attack`, `worn` effect and `toggle`, and keeps all else
+     *  of its own. `label` names it as it is made. 5e's Rod of Lordly Might, a mace that becomes a
+     *  flame tongue, a +3 battleaxe or spear, a climbing pole or a battering ram. Kept on its stack. */
+    forms: z
+      .object({
+        label: promptSafeText(40),
+        budget: sheetId,
+        into: z
+          .array(z.object({ label: promptSafeText(40), item: rulesetItemRefSchema }).strict())
+          .min(1)
+          .max(8),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -19056,6 +19071,15 @@ function itemIssues(
         );
     }
   });
+  // Its forms (1.522) are one item's, as charges are, and turning it spends a budget there is.
+  if (item.forms && item.stack !== 1)
+    add([...at, "stack"], "An item that changes form is one to a stack, so its stack is 1");
+  if (
+    item.forms &&
+    definition.combat &&
+    !definition.combat.economy.budgets.some((one) => one.id === item.forms!.budget)
+  )
+    add([...at, "forms", "budget"], `Unknown budget "${item.forms.budget}"`);
   // Its own uses are one item's, as charges are (1.466).
   if (item.moreUses?.some((more) => more.uses) && !item.charges && item.stack !== 1)
     add([...at, "stack"], "An item whose uses count their own is one to a stack, so its stack is 1");
@@ -20460,6 +20484,13 @@ export function rulesetCatalogEntryIssues(
     } else if (becomes !== undefined && readable(becomes) && !itemsByRef.has(becomes)) {
       add([index, "item", "charges", "breaksOn", "becomes"], `Unknown item "${becomes}"`);
     }
+    // What it changes into (1.522) are other items, none of which changes form itself.
+    entry.item?.forms?.into.forEach((form, formIndex) => {
+      const at = [index, "item", "forms", "into", formIndex, "item"];
+      if (form.item === `${catalog.id}/${entry.id}`) add(at, "An item changes into other items");
+      else if (readable(form.item) && !itemsByRef.has(form.item)) add(at, `Unknown item "${form.item}"`);
+      else if (itemsByRef.get(form.item)?.forms) add(at, "A form is an item that does not change form itself");
+    });
     // What its binding needs worn (1.313) are other items, each worn in its own right.
     entry.item?.binds?.needsWorn?.forEach((group, groupIndex) =>
       group.anyOf.forEach((ref, refIndex) => {

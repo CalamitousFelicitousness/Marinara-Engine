@@ -152086,6 +152086,54 @@
                       ],
                       "additionalProperties": false
                     },
+                    "forms": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "into": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "item": {
+                                "type": "string",
+                                "maxLength": 81,
+                                "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "label",
+                              "item"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "label",
+                        "budget",
+                        "into"
+                      ],
+                      "additionalProperties": false
+                    },
                     "$comment": {}
                   },
                   "required": [

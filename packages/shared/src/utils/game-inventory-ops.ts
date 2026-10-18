@@ -108,6 +108,9 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.enum(["equip", "unequip", "bind", "unbind"]), id: stackId }).strict(),
   /** One stack's switch turned on or off (Capability API 1.170): an item of one with a `toggle`. */
   z.object({ op: z.literal("switch"), id: stackId, on: z.boolean() }).strict(),
+  /** One stack turned into another of its forms (Capability API 1.522), 0 as it was made: an item of
+   *  one with `forms`. */
+  z.object({ op: z.literal("form"), id: stackId, form: z.number().int().min(0).max(8) }).strict(),
 ]);
 
 export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
@@ -510,6 +513,26 @@ export function applyGameInventoryOps(
         const { on: _on, ...rest } = stack;
         current = current.map((each, index) =>
           index === at ? { ...rest, ...(op.on ? { on: true as const } : {}) } : each,
+        );
+        results.push({ ok: true, id: stack.id });
+        break;
+      }
+      case "form": {
+        const at = current.findIndex((stack) => stack.id === op.id);
+        const stack = current[at];
+        if (!stack) {
+          refuse("missing-stack");
+          break;
+        }
+        // Only one of an item with forms, and only a form it has.
+        const forms = stack.item ? rules?.itemOf(stack.item)?.forms : undefined;
+        if (!forms || op.form >= forms.length || stack.quantity !== 1) {
+          refuse("refused");
+          break;
+        }
+        const { form: _form, ...rest } = stack;
+        current = current.map((each, index) =>
+          index === at ? { ...rest, ...(op.form ? { form: op.form } : {}) } : each,
         );
         results.push({ ok: true, id: stack.id });
         break;

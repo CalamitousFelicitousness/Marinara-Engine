@@ -47,6 +47,7 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   resolveRulesetValueRef,
+  rulesetFormedItem,
   type RulesetSheetItem,
 } from "./sheet-math.js";
 
@@ -1094,6 +1095,9 @@ export function rulesetItemBook(
         : {}),
       ...(entry.item.service ? { service: true as const } : {}),
       ...(entry.item.toggle ? { toggle: { label: entry.item.toggle.label } } : {}),
+      ...(entry.item.forms
+        ? { forms: [entry.item.forms.label, ...entry.item.forms.into.map((form) => form.label)] }
+        : {}),
       ...(charges
         ? {
             charges: {
@@ -1364,8 +1368,12 @@ export function rulesetSheetItems(
   const bag = gameInventoryBagKey(holder);
   const held = stacks.flatMap((stack) => {
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
-    const item = book.itemOf(stack.item)?.entry.item;
-    if (!item) return [];
+    const made = book.itemOf(stack.item)?.entry.item;
+    if (!made) return [];
+    // In another form (1.522): that form's item's attack, worn effect and switch.
+    const formRef = stack.form ? made.forms?.into[stack.form - 1]?.item : undefined;
+    const formItem = formRef ? book.itemOf(formRef)?.entry.item : undefined;
+    const item = formItem ? rulesetFormedItem(made, formItem) : made;
     const known = stack.truly ? book.itemOf(stack.truly) : undefined;
     const truly = known?.entry.item ? { item: known.entry.item, name: known.name } : undefined;
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
@@ -1380,6 +1388,7 @@ export function rulesetSheetItems(
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
         ...(stack.on ? { on: true as const } : {}),
+        ...(formItem ? { form: stack.form } : {}),
         ...(stack.charges !== undefined
           ? { charges: stack.charges }
           : item.charges?.rolled

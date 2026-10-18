@@ -332,6 +332,8 @@ export interface RulesetFightItemChange {
   corroded?: number;
   /** The levels it has ever taken in now (1.518). */
   absorbedEver?: number;
+  /** The form it is in now (1.522), 0 as it was made, when the fight changed it. */
+  form?: number;
   /** What is left of its further uses that count their own (1.466), by place in `moreUses`. */
   usesLeft?: Record<string, number>;
   /** What is stored in it now (1.471), when the fight stored or cast something. */
@@ -366,6 +368,7 @@ export function rulesetFightItemChanges(
         !combatant.charges &&
         !combatant.corroded &&
         !combatant.absorbedEver &&
+        !combatant.itemForms &&
         !combatant.usesLeft &&
         !combatant.on &&
         !combatant.became &&
@@ -384,6 +387,10 @@ export function rulesetFightItemChanges(
       // Corroded further (1.498), since `before`.
       const corroded = combatant.corroded?.[index];
       const rusted = corroded !== undefined && corroded !== (earlier?.corroded?.[index] ?? held.corroded);
+      // Changed form (1.522), since `before`.
+      const form = combatant.itemForms?.[index];
+      const was = earlier ? (earlier.itemForms?.[index] ?? earlier.sheet?.items?.[index]?.form ?? 0) : undefined;
+      const reformed = form !== undefined && form !== was;
       // Taken in further (1.518), since `before`.
       const absorbedEver = combatant.absorbedEver?.[index];
       const drank =
@@ -405,7 +412,18 @@ export function rulesetFightItemChanges(
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      if (taken === 0 && !reloaded && !spent && !rusted && !drank && !usesSpent && !restored && !switched && !turned) {
+      if (
+        taken === 0 &&
+        !reloaded &&
+        !spent &&
+        !rusted &&
+        !drank &&
+        !reformed &&
+        !usesSpent &&
+        !restored &&
+        !switched &&
+        !turned
+      ) {
         return;
       }
       // The stack holds what it became from the step after it turned, so later changes name that.
@@ -418,6 +436,7 @@ export function rulesetFightItemChanges(
         ...(spent ? { charges } : {}),
         ...(rusted ? { corroded } : {}),
         ...(drank ? { absorbedEver } : {}),
+        ...(reformed ? { form } : {}),
         ...(usesSpent ? { usesLeft } : {}),
         ...(restored ? { storedEntries: storedNow } : {}),
         ...(switched ? { on } : {}),
@@ -482,6 +501,7 @@ export function applyRulesetFightItemChanges(
         charges: _charges,
         corroded: _corroded,
         absorbedEver: _absorbedEver,
+        form: _form,
         loaded: _loaded,
         usesLeft: _usesLeft,
         storedEntries: _stored,
@@ -494,6 +514,8 @@ export function applyRulesetFightItemChanges(
     }
     // What it stores (1.471), as the fight left it: nothing kept once it is empty.
     if (change.storedEntries) delete kept.storedEntries;
+    // The form it was left in (1.522).
+    if (change.form !== undefined) delete kept.form;
     next[at] = {
       ...kept,
       quantity,
@@ -502,6 +524,7 @@ export function applyRulesetFightItemChanges(
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
       ...(change.corroded && quantity === 1 ? { corroded: change.corroded } : {}),
       ...(change.absorbedEver && quantity === 1 ? { absorbedEver: change.absorbedEver } : {}),
+      ...(change.form && quantity === 1 ? { form: change.form } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
     };
@@ -561,7 +584,7 @@ export const RULESET_SLIP_OPTION_PREFIX = "slip:";
 /** An attack given up for one by a creature its maker called (1.435): `lend:<called id>:<action id>`. */
 export const RULESET_LEND_OPTION_PREFIX = "lend:";
 
-const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend):(\d+)(?::\d+)?$/;
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend|form):(\d+)(?::\d+)?$/;
 
 /** The place in its holder's items of the item an action is made with, when it is one: a weapon's
  *  blow, its off-hand blow, a use, a switch, a reload or charges spent on a hit (1.273). */

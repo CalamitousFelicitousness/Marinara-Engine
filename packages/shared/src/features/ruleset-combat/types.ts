@@ -1209,6 +1209,8 @@ export interface RulesetCombatAction {
     fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef };
     /** Acting only as their caller pays this budget for it (1.505). */
     commandedWith?: string;
+    /** Images, not creatures (1.515): Mislead's double. */
+    illusion?: true;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
@@ -1744,6 +1746,8 @@ export interface RulesetCombatant {
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
    *  (1.505): 5e's Arcane Hand. */
   calledCommand?: { budget: string; free?: true };
+  /** An image, not a creature (1.515), and the sides that have seen it for one: Mislead's double. */
+  illusion?: { seenBy: string[] };
   /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
   calledTurned?: true;
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
@@ -3107,6 +3111,8 @@ export type RulesetCombatEvent =
   /** Somebody lifted by a condition they now hold (1.513), from and to so many levels above the
    *  ground under them: Reverse Gravity. */
   | { type: "lifted"; targetId: string; from: number; to: number }
+  /** Something aimed at an image passed through it (1.515), and its maker's side saw it for one. */
+  | { type: "seenThrough"; actorId: string; targetId: string; label: string }
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */

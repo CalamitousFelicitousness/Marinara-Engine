@@ -5346,6 +5346,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.hostileOnBreak ? { hostileOnBreak: true as const } : {}),
       ...(calls.fromCaller ? { fromCaller: structuredClone(calls.fromCaller) } : {}),
       ...(calls.commandedWith ? { commandedWith: calls.commandedWith } : {}),
+      ...(calls.illusion ? { illusion: true as const } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
     };

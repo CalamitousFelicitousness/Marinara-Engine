@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Called images rather than creatures (1.515): Mislead's double. */
+function carriesIllusionCalls515(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesIllusionCalls515(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.illusion !== undefined) return true;
+  return featureValues(record).some((one) => carriesIllusionCalls515(one, depth + 1));
+}
+
 /** A check mode narrowed to finding anybody but a condition's source (1.514): Enthrall. */
 function carriesExceptSource514(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7158,6 +7168,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Called images rather than creatures, 1.515.
+  if (
+    !declaresApi(515) &&
+    (carriesIllusionCalls515(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesIllusionCalls515(document)))
+  ) {
+    return "A ruleset with a call that makes images rather than creatures (calls.illusion) requires schemaVersion 2 and capabilityApi 1.515 or newer";
+  }
   // A check mode for finding anybody but a condition's source, 1.514.
   if (
     !declaresApi(514) &&

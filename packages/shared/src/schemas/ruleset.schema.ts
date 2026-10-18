@@ -5797,6 +5797,11 @@ export const catalogCallsSchema = z
      *  first, their caller pays 1 of this budget, or the turn passes. With `"initiative": "after"`
      *  that turn comes right after their caller's. 5e's Arcane Hand, a bonus action. */
     commandedWith: sheetId.optional(),
+    /** They are images, not creatures (Capability API 1.515): whatever is aimed at or catches one
+     *  passes through, doing nothing, and shows it for what it is to its maker's side, who may aim at
+     *  it no more. 5e's Mislead and Project Image, "physical interaction with the image reveals it to
+     *  be an illusion, because things can pass through it". */
+    illusion: z.literal(true).optional(),
     /** Which of its `options` comes is rolled as it is used, never picked (Capability API 1.506), each
      *  as likely as its `weight` against the rest (1 unless it says): a Bag of Tricks' d8 of beasts, an
      *  Efreeti Bottle's d100. Each option names one `creature`, or calls nobody (`none`). */

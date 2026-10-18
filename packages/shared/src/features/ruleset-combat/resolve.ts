@@ -9256,6 +9256,8 @@ function callCreatures(
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
     // Commanded by their caller (1.505), the turn they come on free.
     if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
+    // An image, not a creature (1.515).
+    if (action.calls.illusion) called.illusion = { seenBy: [] };
   }
   // Built from their caller (1.505): Arcane Hand's health, attack bonus and modifier.
   const from = action.calls.fromCaller;
@@ -13298,6 +13300,12 @@ function resolveActionBodyIn(
   const absorbed = only && reaches(only) && absorbAction(ctx, actor, action, only, payWith) ? only.id : undefined;
   for (const target of targets) {
     if (!reaches(target) || spared.has(target.id) || target.id === absorbed) continue;
+    // An image (1.515): it passes through, and its maker's side sees it for what it is.
+    if (target.illusion && target.id !== actor.id && target.calledBy !== actor.id) {
+      if (!target.illusion.seenBy.includes(actor.side)) target.illusion.seenBy.push(actor.side);
+      ctx.events.push({ type: "seenThrough", actorId: actor.id, targetId: target.id, label: action.label });
+      continue;
+    }
     // Each target an attack rolls for is a hit of its own, its dice not yet rolled.
     hitNow = null;
     // Killed outright (1.196): nothing else it does matters to the dead.

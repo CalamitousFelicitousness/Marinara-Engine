@@ -49106,6 +49106,10 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "illusion": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "rolled": {
                           "type": "boolean",
                           "const": true
@@ -107296,6 +107300,10 @@
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
                             },
+                            "illusion": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "rolled": {
                               "type": "boolean",
                               "const": true
@@ -125817,6 +125825,10 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "illusion": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "rolled": {
                                     "type": "boolean",
@@ -144345,6 +144357,10 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "illusion": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "rolled": {
                                     "type": "boolean",

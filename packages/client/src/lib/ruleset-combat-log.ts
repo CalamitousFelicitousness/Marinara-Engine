@@ -863,6 +863,13 @@ export function rulesetCombatEventLine(
     // Drawn toward whoever spoke to them (1.326): Whisper a Name.
     case "drawn":
       return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
+    // An image passed through (1.515): Mislead's double.
+    case "seenThrough":
+      return key("seenThrough", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
     // Lifted by a condition they now hold (1.513): Reverse Gravity.
     case "lifted":
       return key("lifted", { target: names.combatant(event.targetId), levels: event.to });

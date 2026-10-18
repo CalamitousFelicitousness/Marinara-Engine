@@ -4443,6 +4443,7 @@ export interface RulesetCatalogApplies {
   when?: z.infer<ReturnType<typeof sheetBoundsSchema>>;
   targetIs?: RulesetTargetIs;
   targetHealthAtMost?: number;
+  paidSteps?: { atLeast?: number; atMost?: number };
   endsWith?: string;
   checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
   harmsPerCostStep?: { dice?: string; flat?: number };
@@ -4484,6 +4485,22 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** Put on only a target with this much health left or less as it lands (Capability API 1.397):
      *  5e's Divine Word, deafened at 50 or fewer, blinded too at 40, stunned too at 30. */
     targetHealthAtMost: z.number().int().min(0).max(100000).optional(),
+    /** Put on only when its entry is paid this many steps above its lowest cost, or more, or fewer
+     *  (Capability API 1.464): 5e's Magic Weapon, +1 from a 2nd-level slot (`atMost: 1`), +2 from a
+     *  4th (`atLeast: 2, atMost: 3`), +3 from a 6th (`atLeast: 4`), each its own condition. */
+    paidSteps: z
+      .object({
+        atLeast: z.number().int().min(0).max(20).optional(),
+        atMost: z.number().int().min(0).max(20).optional(),
+      })
+      .strict()
+      .refine((steps) => steps.atLeast !== undefined || steps.atMost !== undefined, {
+        message: "paidSteps says atLeast, atMost or both",
+      })
+      .refine((steps) => steps.atLeast === undefined || steps.atMost === undefined || steps.atLeast <= steps.atMost, {
+        message: "paidSteps atLeast is no more than atMost",
+      })
+      .optional(),
     /** `at: "damaged"` rolls only on damage above zero, never on a turn (Capability API 1.129):
      *  5e's Dominate Person. */
     saveEnds: z

@@ -3,6 +3,7 @@
  *
  *   - Bestow Curse, as a 1st-level entry here: ten rounds and concentration on a 1st-level slot, a
  *     hundred and concentration on a 2nd, 4800 and no concentration on a 3rd.
+ *   - Conditions picked by the steps paid (1.464): Magic Weapon's +1, +2 and +3 as three conditions.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -58,8 +59,18 @@ try {
     more: Record<string, unknown> = {},
   ): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
-    doc.sheet.live.conditions.push({ id: "cursed", label: "Cursed" });
-    doc.combat.conditions.push({ condition: "cursed", effects: [] });
+    doc.sheet.live.conditions.push(
+      { id: "cursed", label: "Cursed" },
+      { id: "keen_1", label: "Keen +1" },
+      { id: "keen_2", label: "Keen +2" },
+      { id: "keen_3", label: "Keen +3" },
+    );
+    doc.combat.conditions.push(
+      { condition: "cursed", effects: [] },
+      { condition: "keen_1", effects: [] },
+      { condition: "keen_2", effects: [] },
+      { condition: "keen_3", effects: [] },
+    );
     doc.catalogs.push({ id: "ranger", label: "Ranger", feeds: ["spells"], entries: [curse(duration, more)] });
     return doc;
   };
@@ -127,11 +138,13 @@ try {
       () => 10,
     );
     assert.deepEqual(of(step.events, "refused"), [], JSON.stringify(of(step.events, "refused")));
+    lastWolf = rulesetCombatant(step.state, "wolf")!.tracked.map((one) => one.condition);
     return [
       rulesetCombatant(step.state, "wolf")!.tracked.find((one) => one.condition === "cursed")?.rounds,
       rulesetCombatant(step.state, "ranger")!.concentrating?.label ?? null,
     ];
   };
+  let lastWolf: string[] = [];
 
   // ── Bestow Curse ──
   {
@@ -153,6 +166,53 @@ try {
       fiveE("until-dispelled" as never, { concentrationBelowStep: undefined, concentration: undefined }),
     );
     assert.deepEqual(lasts(flame, undefined), [null, null]);
+  }
+
+  // ── Conditions picked by the steps paid (1.464) ──
+  {
+    const keen = [
+      { condition: "cursed", duration: { rounds: 10 } },
+      { condition: "keen_1", duration: { rounds: 10 }, paidSteps: { atMost: 0 } },
+      { condition: "keen_2", duration: { rounds: 10 }, paidSteps: { atLeast: 1, atMost: 1 } },
+      { condition: "keen_3", duration: { rounds: 10 }, paidSteps: { atLeast: 2 } },
+    ];
+    const definition = parsed(fiveE(undefined, { applies: keen, concentrationBelowStep: undefined }));
+    const keenOf = () => lastWolf.filter((id) => id.startsWith("keen")).join(",");
+    lasts(definition, undefined);
+    assert.equal(keenOf(), "keen_1", "the lowest slot");
+    assert.ok(lastWolf.includes("cursed"), "one with no paidSteps always");
+    lasts(definition, "slots_2");
+    assert.equal(keenOf(), "keen_2", "one higher");
+    lasts(definition, "slots_3");
+    assert.equal(keenOf(), "keen_3", "two higher");
+    refused(
+      fiveE(undefined, { applies: [{ condition: "keen_1", duration: { rounds: 10 }, paidSteps: {} }] }),
+      /paidSteps says atLeast, atMost or both/,
+    );
+    refused(
+      fiveE(undefined, {
+        applies: [{ condition: "keen_1", duration: { rounds: 10 }, paidSteps: { atLeast: 3, atMost: 1 } }],
+      }),
+      /atLeast is no more than atMost/,
+    );
+    const gate =
+      "A ruleset whose entries put conditions on by the steps paid for them (an applies entry's paidSteps) requires schemaVersion 2 and capabilityApi 1.464 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const doc = fiveE(undefined, { applies: keen, concentrationBelowStep: undefined });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(463) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(464) as never, doc), gate);
   }
 
   // ── Refusals ──
@@ -208,7 +268,7 @@ try {
   }
 
   console.log(
-    "Duration by steps: Bestow Curse lasts a minute, ten, then eight hours by the slot spent, held by concentration only below its step; gated at 1.417.",
+    "Duration by steps: Bestow Curse lasts a minute, ten, then eight hours by the slot spent, held by concentration only below its step, and conditions are picked by the steps paid; gated at 1.417 and 1.464.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

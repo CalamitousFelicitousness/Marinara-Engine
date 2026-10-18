@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition an entry puts on only when paid so many steps up (1.464): Magic Weapon's +2 and +3. */
+function carriesPaidSteps464(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPaidSteps464(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && plainRecord(record.paidSteps) !== undefined) return true;
+  return featureValues(record).some((one) => carriesPaidSteps464(one, depth + 1));
+}
+
 /** An item use that raises its user's abilities for good (1.463): a Manual of Gainful Exercise. */
 function carriesRaises463(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6553,6 +6563,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions picked by the steps paid, 1.464.
+  if (
+    !declaresApi(464) &&
+    (carriesPaidSteps464(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPaidSteps464(document)))
+  ) {
+    return "A ruleset whose entries put conditions on by the steps paid for them (an applies entry's paidSteps) requires schemaVersion 2 and capabilityApi 1.464 or newer";
+  }
   // Item uses that raise abilities for good, 1.463.
   if (
     !declaresApi(463) &&

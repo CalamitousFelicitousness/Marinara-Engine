@@ -206,6 +206,8 @@ export interface RulesetCombatApplies {
   targetIs?: RulesetTargetIs;
   /** It goes on only a target with this much health or less as it lands (1.397). */
   targetHealthAtMost?: number;
+  /** It goes on only when its entry is paid this many steps above its lowest cost (1.464). */
+  paidSteps?: { atLeast?: number; atMost?: number };
   /** It ends whenever this other condition put on with it ends (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */

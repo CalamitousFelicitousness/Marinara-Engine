@@ -8484,12 +8484,25 @@ function durationsPaid(
 ): RulesetCombatAction {
   const grows = (entry: RulesetCombatApplies) =>
     typeof entry.duration === "object" && (!!entry.duration.perStep || !!entry.duration.bySteps);
-  if (!action.applies?.some(grows) && !action.concentrationBelowStep) return action;
+  const picked = action.applies?.some((entry) => entry.paidSteps);
+  if (!action.applies?.some(grows) && !action.concentrationBelowStep && !picked) return action;
   const steps = action.innate
     ? Math.max(0, action.innate.level - action.innate.baseLevel)
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
+  // Only what the steps paid put on (1.464): Magic Weapon's +2 from a 4th-level slot.
+  if (picked) {
+    action = {
+      ...action,
+      applies: action.applies!.filter(
+        ({ paidSteps }) =>
+          !paidSteps ||
+          ((paidSteps.atLeast === undefined || steps >= paidSteps.atLeast) &&
+            (paidSteps.atMost === undefined || steps <= paidSteps.atMost)),
+      ),
+    };
+  }
   if (steps <= 0) return action;
   const roundsPaid = (duration: { rounds: number; perStep?: number; bySteps?: Array<number | "until-dispelled"> }) =>
     duration.bySteps

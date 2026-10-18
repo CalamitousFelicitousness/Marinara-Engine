@@ -41952,6 +41952,23 @@
                                         "minimum": 0,
                                         "maximum": 100000
                                       },
+                                      "paidSteps": {
+                                        "type": "object",
+                                        "properties": {
+                                          "atLeast": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 20
+                                          },
+                                          "atMost": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 20
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "additionalProperties": false
+                                      },
                                       "saveEnds": {
                                         "type": "object",
                                         "properties": {
@@ -47759,6 +47776,23 @@
                             "minimum": 0,
                             "maximum": 100000
                           },
+                          "paidSteps": {
+                            "type": "object",
+                            "properties": {
+                              "atLeast": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 20
+                              },
+                              "atMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 20
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
                           "saveEnds": {
                             "type": "object",
                             "properties": {
@@ -48871,6 +48905,23 @@
                             "type": "integer",
                             "minimum": 0,
                             "maximum": 100000
+                          },
+                          "paidSteps": {
+                            "type": "object",
+                            "properties": {
+                              "atLeast": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 20
+                              },
+                              "atMost": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 20
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
                           },
                           "saveEnds": {
                             "type": "object",
@@ -53911,6 +53962,23 @@
                                   "minimum": 0,
                                   "maximum": 100000
                                 },
+                                "paidSteps": {
+                                  "type": "object",
+                                  "properties": {
+                                    "atLeast": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 20
+                                    },
+                                    "atMost": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 20
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
                                 "saveEnds": {
                                   "type": "object",
                                   "properties": {
@@ -55335,6 +55403,23 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "paidSteps": {
+                                      "type": "object",
+                                      "properties": {
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "atMost": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -58471,6 +58556,23 @@
                                               "minimum": 0,
                                               "maximum": 100000
                                             },
+                                            "paidSteps": {
+                                              "type": "object",
+                                              "properties": {
+                                                "atLeast": {
+                                                  "type": "integer",
+                                                  "minimum": 0,
+                                                  "maximum": 20
+                                                },
+                                                "atMost": {
+                                                  "type": "integer",
+                                                  "minimum": 0,
+                                                  "maximum": 20
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "additionalProperties": false
+                                            },
                                             "saveEnds": {
                                               "type": "object",
                                               "properties": {
@@ -60928,6 +61030,23 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "paidSteps": {
+                                      "type": "object",
+                                      "properties": {
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "atMost": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -69878,6 +69997,23 @@
                                       "minimum": 0,
                                       "maximum": 100000
                                     },
+                                    "paidSteps": {
+                                      "type": "object",
+                                      "properties": {
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "atMost": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
                                     "saveEnds": {
                                       "type": "object",
                                       "properties": {
@@ -75469,6 +75605,23 @@
                                             "type": "integer",
                                             "minimum": 0,
                                             "maximum": 100000
+                                          },
+                                          "paidSteps": {
+                                            "type": "object",
+                                            "properties": {
+                                              "atLeast": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 20
+                                              },
+                                              "atMost": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 20
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false
                                           },
                                           "saveEnds": {
                                             "type": "object",
@@ -81149,6 +81302,23 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "paidSteps": {
+                                "type": "object",
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "atMost": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
                               "saveEnds": {
                                 "type": "object",
                                 "properties": {
@@ -82261,6 +82431,23 @@
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100000
+                              },
+                              "paidSteps": {
+                                "type": "object",
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "atMost": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
                               },
                               "saveEnds": {
                                 "type": "object",
@@ -90431,6 +90618,23 @@
                                                   "minimum": 0,
                                                   "maximum": 100000
                                                 },
+                                                "paidSteps": {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "atLeast": {
+                                                      "type": "integer",
+                                                      "minimum": 0,
+                                                      "maximum": 20
+                                                    },
+                                                    "atMost": {
+                                                      "type": "integer",
+                                                      "minimum": 0,
+                                                      "maximum": 20
+                                                    },
+                                                    "$comment": {}
+                                                  },
+                                                  "additionalProperties": false
+                                                },
                                                 "saveEnds": {
                                                   "type": "object",
                                                   "properties": {
@@ -96110,6 +96314,23 @@
                                       "minimum": 0,
                                       "maximum": 100000
                                     },
+                                    "paidSteps": {
+                                      "type": "object",
+                                      "properties": {
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "atMost": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
                                     "saveEnds": {
                                       "type": "object",
                                       "properties": {
@@ -97222,6 +97443,23 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "paidSteps": {
+                                      "type": "object",
+                                      "properties": {
+                                        "atLeast": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "atMost": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
                                     },
                                     "saveEnds": {
                                       "type": "object",
@@ -111916,6 +112154,23 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "paidSteps": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "saveEnds": {
                           "type": "object",
                           "properties": {
@@ -113073,6 +113328,23 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "paidSteps": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "saveEnds": {
                           "type": "object",
                           "properties": {
@@ -114220,6 +114492,23 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 100000
+                        },
+                        "paidSteps": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "saveEnds": {
                           "type": "object",
@@ -117717,6 +118006,23 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "paidSteps": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "saveEnds": {
                           "type": "object",
                           "properties": {
@@ -119295,6 +119601,23 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "paidSteps": {
+                                "type": "object",
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "atMost": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
                               "saveEnds": {
                                 "type": "object",
                                 "properties": {
@@ -120428,6 +120751,23 @@
                                     "type": "integer",
                                     "minimum": 0,
                                     "maximum": 100000
+                                  },
+                                  "paidSteps": {
+                                    "type": "object",
+                                    "properties": {
+                                      "atLeast": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 20
+                                      },
+                                      "atMost": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 20
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "saveEnds": {
                                     "type": "object",
@@ -122113,6 +122453,23 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 100000
+                        },
+                        "paidSteps": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "atMost": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 20
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "saveEnds": {
                           "type": "object",

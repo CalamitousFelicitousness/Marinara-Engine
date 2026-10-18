@@ -34,7 +34,16 @@ export const gameCheckpoints = fileTable("game_checkpoints", {
   label: text("label").notNull(),
   /** What triggered this checkpoint */
   triggerType: text("trigger_type", {
-    enum: ["manual", "session_start", "session_end", "combat_start", "combat_end", "location_change", "auto_interval"],
+    enum: [
+      "manual",
+      "session_start",
+      "session_end",
+      "combat_start",
+      "combat_end",
+      "location_change",
+      "auto_interval",
+      "state_editor_save",
+    ],
   }).notNull(),
 
   /** Denormalised context for UI display (avoids joining snapshot) */

@@ -5,29 +5,36 @@
 // edits save through the validating PATCH /api/game/:chatId/data (#7743), never
 // the generic metadata PATCH.
 // ──────────────────────────────────────────────
-import { isGameDataEditableKey, type GameDataEditRequest } from "@marinara-engine/shared";
+import { isGameDataEditableKey, normalizeGameInventoryStacks, type GameDataEditRequest } from "@marinara-engine/shared";
 import { stateValuesEqual } from "./state-editor-json";
 import type { StateEditorChange, StateEditorSection } from "./state-editor.types";
+
+/** The game's own routes a section saves through instead of PATCH /api/game/:chatId/data. */
+export type GameDataSectionRoute = "inventory" | "world" | "story" | "partySheet" | "widgets";
 
 interface GameDataSectionDef {
   id: string;
   /** Metadata keys shown in this section. One key shows its value as is; several show as an object by key. */
   keys: readonly string[];
+  /** Saved through this route, which checks it its own way, rather than through the data route. */
+  route?: GameDataSectionRoute;
 }
 
 /** The named sections, in the order the editor lists them. Keys no section names fall into "settings" or "other". */
 export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
   { id: "partyCards", keys: ["gameCharacterCards"] },
-  { id: "partySheet", keys: ["gamePartySheet", "gamePartySheetRevision"] },
+  { id: "partySheet", keys: ["gamePartySheet"], route: "partySheet" },
   { id: "npcs", keys: ["gameNpcs"] },
   { id: "journal", keys: ["gameJournal"] },
   { id: "playerNotes", keys: ["gamePlayerNotes"] },
-  { id: "inventory", keys: ["gameInventory"] },
+  { id: "inventory", keys: ["gameInventory"], route: "inventory" },
   { id: "story", keys: ["gameWorldOverview", "gameStoryArc", "gamePlotTwists", "gamePartyArcs"] },
   { id: "sessionSummaries", keys: ["gamePreviousSessionSummaries"] },
   { id: "world", keys: ["gameWorld"] },
-  { id: "storyScript", keys: ["gameStory"] },
-  { id: "widgets", keys: ["gameWidgetState"] },
+  /** The hand-edits layer over the world (its `edits`), saved through PUT /world/edits. The world itself is never written. */
+  { id: "worldEdits", keys: ["gameWorld"], route: "world" },
+  { id: "storyScript", keys: ["gameStory"], route: "story" },
+  { id: "widgets", keys: ["gameWidgetState"], route: "widgets" },
   { id: "timeWeather", keys: ["gameTime", "gameWeather", "gameMorale"] },
   {
     id: "maps",
@@ -63,6 +70,7 @@ export const GAME_DATA_SECTIONS: readonly GameDataSectionDef[] = [
       "gameId",
       "gameRuleset",
       "gameRulesetAdvancementBase",
+      "gamePartySheetRevision",
       "gameExperienceId",
       "gameStyle",
       "gameIntro",
@@ -91,9 +99,33 @@ const SETTINGS_KEY =
 
 const NAMED_KEYS = new Set(GAME_DATA_SECTIONS.flatMap((section) => section.keys));
 
-/** A named section whose every key a hand edit may write. The catch-alls never are. */
+/** A named section with a route of its own, or whose every key a hand edit may write. The catch-alls never are. */
 function isEditableSection(def: GameDataSectionDef): boolean {
-  return def.keys.every(isGameDataEditableKey);
+  return def.route !== undefined || def.keys.every(isGameDataEditableKey);
+}
+
+/** The route a section saves through, when it isn't the data route. */
+export function gameDataSectionRoute(sectionId: string): GameDataSectionRoute | undefined {
+  return GAME_DATA_SECTIONS.find((def) => def.id === sectionId)?.route;
+}
+
+/** The world's hand-edits layer, null when it has none, or undefined for a game with no world. */
+export function readGameWorldEdits(metadata: Record<string, unknown>): unknown {
+  const world = metadata.gameWorld;
+  if (!world || typeof world !== "object" || Array.isArray(world)) return undefined;
+  return (world as { edits?: unknown }).edits ?? null;
+}
+
+/** What a section with a route of its own shows, read from metadata (to tell whether it changed since). */
+export function readGameDataRouteSection(metadata: Record<string, unknown>, sectionId: string): unknown {
+  if (sectionId === "worldEdits") return readGameWorldEdits(metadata) ?? null;
+  const key = GAME_DATA_SECTIONS.find((def) => def.id === sectionId)?.keys[0];
+  return key ? (shownValue(key, metadata[key]) ?? null) : null;
+}
+
+/** What a section shows of a key: the inventory as the game reads it (every stack with its id). */
+function shownValue(key: string, value: unknown): unknown {
+  return key === "gameInventory" ? normalizeGameInventoryStacks(value) : value;
 }
 
 /** A metadata key that belongs to Game Mode: every `game*` key, plus the named ones without that prefix. */
@@ -117,7 +149,7 @@ export function readGameMetadata(metadata: unknown): Record<string, unknown> {
 function pick(metadata: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const key of keys) {
-    if (metadata[key] !== undefined) picked[key] = metadata[key];
+    if (metadata[key] !== undefined) picked[key] = shownValue(key, metadata[key]);
   }
   return picked;
 }
@@ -147,6 +179,17 @@ export function buildGameDataEditorSections(
     };
   };
 
+  const worldEdits = readGameWorldEdits(metadata);
+  const worldEditsSection = (): StateEditorSection | null =>
+    worldEdits === undefined
+      ? null
+      : {
+          id: "worldEdits",
+          label: localize("worldEdits", "label"),
+          description: localize("worldEdits", "description"),
+          value: worldEdits,
+        };
+
   const rest = Object.keys(metadata)
     .filter((key) => isGameKey(key) && !NAMED_KEYS.has(key))
     .sort();
@@ -154,7 +197,9 @@ export function buildGameDataEditorSections(
   const otherKeys = rest.filter((key) => !SETTINGS_KEY.test(key));
 
   return [
-    ...GAME_DATA_SECTIONS.map((def) => section(def.id, def.keys, { editable: isEditableSection(def) })),
+    ...GAME_DATA_SECTIONS.map((def) =>
+      def.id === "worldEdits" ? worldEditsSection() : section(def.id, def.keys, { editable: isEditableSection(def) }),
+    ),
     section(GAME_DATA_SETTINGS_SECTION_ID, settingsKeys, { byKey: true }),
     section(GAME_DATA_OTHER_SECTION_ID, otherKeys, { byKey: true }),
   ].filter((item): item is StateEditorSection => item !== null);
@@ -175,6 +220,8 @@ export function buildGameDataEditorEdits(
   for (const change of changes) {
     const def = GAME_DATA_SECTIONS.find((item) => item.id === change.sectionId);
     if (!def || !isEditableSection(def)) return { sectionId: change.sectionId, issue: { kind: "readOnly" } };
+    // Saved through its own route by the caller.
+    if (def.route) continue;
     const keys = def.keys.filter(isGameDataEditableKey);
     let values: Record<string, unknown>;
     if (keys.length === 1) {

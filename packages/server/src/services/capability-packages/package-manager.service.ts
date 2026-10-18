@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Item-paid slots held to a most (1.537): the Rod of Absorption's 5th level. */
+function carriesPaysSlotsMax537(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPaysSlotsMax537(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.paysSlotsMax !== undefined) return true;
+  return featureValues(record).some((one) => carriesPaysSlotsMax537(one, depth + 1));
+}
+
 /** Languages split out of one row (1.536): 5e's "Languages: Common and Dwarvish". */
 function carriesLanguageSplit536(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7398,6 +7408,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Item-paid slots held to a most, 1.537.
+  if (
+    !declaresApi(537) &&
+    (carriesPaysSlotsMax537(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPaysSlotsMax537(document)))
+  ) {
+    return "A ruleset with an item whose charges pay for slots up to a most (paysSlotsMax) requires schemaVersion 2 and capabilityApi 1.537 or newer";
+  }
   // Languages split out of one row, 1.536.
   if (
     !declaresApi(536) &&

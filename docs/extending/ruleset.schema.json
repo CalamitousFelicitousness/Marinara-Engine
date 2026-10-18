@@ -86892,6 +86892,11 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "paysSlotsMax": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -88895,6 +88900,11 @@
                           "additionalProperties": false
                         },
                         "paysSlots": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "paysSlotsMax": {
                           "type": "string",
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
@@ -91089,6 +91099,11 @@
                                 "additionalProperties": false
                               },
                               "paysSlots": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "paysSlotsMax": {
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"

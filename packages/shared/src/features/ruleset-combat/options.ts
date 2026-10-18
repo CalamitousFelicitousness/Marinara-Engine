@@ -1459,6 +1459,13 @@ function itemSlotCost(
   const family = rulesetPoolFamily(definition, action.use.group);
   const at = family.indexOf(slot.pool);
   if (at < 0 || at < family.indexOf(action.use.pool ?? "")) return null;
+  // Only a pool its holder has some of, and none past the item's most (1.537): the Rod of Absorption.
+  const most = held.item.worn.paysSlotsMax;
+  if (most !== undefined && at > family.indexOf(most)) return null;
+  const own = readRulesetLive(definition, combatant.sheet!.build, combatant.sheet!.live).pools.find(
+    (pool) => !pool.listId && pool.key === slot.pool,
+  );
+  if (!own || own.max <= 0) return null;
   const level = rulesetPaidLevel(definition, combatant, action, slot.pool);
   const max = rulesetHeldChargesMax(held);
   const left = rulesetItemChargesLeft(combatant, { max, item: slot.item });

@@ -5,7 +5,9 @@
  *   - `worn.paysSlots`: with no 3rd-level slot left, the bolt is offered paid out of the rod at 3rd
  *     level or higher, each a charge a level, and casting it spends them; with too few left, that
  *     way is gone.
- *   - Refusals and the install gate.
+ *   - Only pools its holder has some of, none past `paysSlotsMax` (Capability API 1.537): the Rod's
+ *     "equal to or lower than your own spell slots, up to a maximum of 5th level".
+ *   - Refusals and the install gates.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -146,6 +148,8 @@ try {
         hp_max: 60,
         spellcasting_ability: "wis",
         slots_max_3: 4,
+        slots_max_4: 1,
+        slots_max_5: 1,
         slots_max_7: 1,
       },
       ...more,
@@ -227,10 +231,16 @@ try {
     const state = fight({}, definition);
     const mage = rulesetCombatant(state, "mage")!;
     mage.sheet!.items = [held("rod", charges)];
-    // Their own 3rd- and 7th-level slots spent.
+    // Their own slots spent.
     mage.sheet!.live = {
       ...mage.sheet!.live,
-      pools: { ...mage.sheet!.live.pools, slots_3: { value: 0 }, slots_7: { value: 0 } },
+      pools: {
+        ...mage.sheet!.live.pools,
+        slots_3: { value: 0 },
+        slots_4: { value: 0 },
+        slots_5: { value: 0 },
+        slots_7: { value: 0 },
+      },
     };
     return state;
   };
@@ -257,6 +267,61 @@ try {
     // With 2 left, no 3rd-level bolt comes out of it.
     const after = rulesetCombatOptions(definition, withRod(2), "mage").find((one) => one.label === "Bolt");
     assert.equal(after, undefined);
+  }
+
+  // ── Only the holder's own pools, and none past the most (1.537) ──
+  {
+    const rodOf = (doc: Record<string, any>) => doc.catalogs.at(-1).entries[0].item;
+    const offered = (most?: string) => {
+      const capped = parsed(
+        document((doc) => {
+          rodOf(doc).charges.max = 10;
+          if (most) rodOf(doc).worn.paysSlotsMax = most;
+        }),
+      );
+      const rodBook = rulesetItemBook(capped, { gear: capped.catalogs!.find((one) => one.id === "gear")!.entries! });
+      const state = fight({}, capped);
+      const mage = rulesetCombatant(state, "mage")!;
+      mage.sheet!.items = [{ ...held("rod", 10), item: rodBook.itemOf("gear/rod")!.entry.item! }];
+      const bolt = rulesetCombatOptions(capped, state, "mage").find((one) => one.label === "Bolt")!;
+      return bolt.payWith?.filter((one) => one.startsWith(RULESET_ITEM_SLOT_PREFIX));
+    };
+    // Ten charges reach 10th, but the mage has no 6th-level slots, nor any past 7th.
+    assert.deepEqual(
+      offered(),
+      [via("slots_3"), via("slots_4"), via("slots_5"), via("slots_7")],
+      "only pools the mage has some of",
+    );
+    assert.deepEqual(offered("slots_5"), [via("slots_3"), via("slots_4"), via("slots_5")], "none past 5th");
+    refusedDoc(
+      document((doc) => (rodOf(doc).worn.paysSlotsMax = "hit_dice")),
+      /No pool "hit_dice" is of the group "slots"/,
+    );
+    refusedDoc(
+      document((doc) => {
+        delete rodOf(doc).worn.paysSlots;
+        rodOf(doc).worn.paysSlotsMax = "slots_5";
+      }),
+      /"paysSlotsMax" caps "paysSlots"/,
+    );
+    const gate =
+      "A ruleset with an item whose charges pay for slots up to a most (paysSlotsMax) requires schemaVersion 2 and capabilityApi 1.537 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const capped = document((doc) => (rodOf(doc).worn.paysSlotsMax = "slots_5"));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(536) as never, capped), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(537) as never, capped), gate);
   }
 
   // ── Refusals ──
@@ -292,7 +357,7 @@ try {
   }
 
   console.log(
-    "Pays slots: a rod's charges pay for a bolt with no slot left, a charge a level, and run out; gated at 1.519.",
+    "Pays slots: a rod's charges pay for a bolt with no slot left, a charge a level, and run out, only at pools of the holder's own up to a most (gated at 1.537); gated at 1.519.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

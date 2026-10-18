@@ -12599,8 +12599,12 @@ const rulesetItemEffectObjectSchema = z
     turns: turnsSchema.optional(),
     /** Its charges pay for a use of this pool group, a charge a level (Capability API 1.519): 5e's
      *  Rod of Absorption, `"slots"`, a spell cast from what it took in rather than a slot of its
-     *  holder's own. Worn only, and only on an item with charges. */
+     *  holder's own. Worn only, and only on an item with charges. Only pools its holder has some of
+     *  (Capability API 1.537), none past `paysSlotsMax`: the Rod's "a level equal to or lower than
+     *  your own spell slots, up to a maximum of 5th level", `"slots_5"`. */
     paysSlots: sheetId.optional(),
+    /** The highest pool of `paysSlots`' group its charges pay for (Capability API 1.537). */
+    paysSlotsMax: sheetId.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -19224,6 +19228,15 @@ function itemIssues(
       add([...at, "worn", "paysSlots"], `No pool is of the group "${item.worn.paysSlots}"`);
   }
   if (item.carried?.paysSlots) add([...at, "carried", "paysSlots"], "Only a worn item's charges pay for a use");
+  // The highest pool they pay for (1.537): one of that group's.
+  for (const where of ["worn", "carried"] as const) {
+    const most = item[where]?.paysSlotsMax;
+    if (most === undefined) continue;
+    const group = item[where]?.paysSlots;
+    if (!group) add([...at, where, "paysSlotsMax"], '"paysSlotsMax" caps "paysSlots", so the item says that too');
+    else if (!definition.sheet.live.pools.some((pool) => pool.id === most && pool.group === group))
+      add([...at, where, "paysSlotsMax"], `No pool "${most}" is of the group "${group}"`);
+  }
   if (item.carried?.absorbs?.lifetime !== undefined)
     add([...at, "carried", "absorbs", "lifetime"], "What it ever took in is counted on a worn item");
   item.moreUses?.forEach((more, index) => {

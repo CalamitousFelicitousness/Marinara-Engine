@@ -12163,6 +12163,10 @@ const combatConditionSchema = z
       .optional(),
     /** It comes off the moment whoever applied it goes down. */
     endsWhenSourceDown: z.boolean().optional(),
+    /** Other conditions it counts as (Capability API 1.532): an immunity to one keeps it off, what
+     *  holds one off holds it off, a save against one is a save against it, and what ends one ends
+     *  it. 5e's Enthrall and Geas, `["charmed"]`. */
+    countsAs: z.array(sheetId).min(1).max(4).optional(),
     /** It comes off once whoever applied it does one of `effects` or holds one of `conditions`, is
      *  stopped from using one of `components`, or its holder lacks one of `holderLacks` (Capability API
      *  1.531): 5e's Enthrall, which ends if its caster is incapacitated or can no longer speak, and
@@ -16794,6 +16798,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (harmType && damageTypes && !damageTypes.includes(harmType.trim().toLowerCase())) {
         issue([...path, "harms", "type"], `Unknown damage type "${harmType}"`);
       }
+      // What it counts as (1.532): other conditions of the ruleset's, never itself.
+      entry.countsAs?.forEach((id, at) => {
+        if (id === entry.condition) issue([...path, "countsAs", at], "A condition does not count as itself");
+        else if (!def.sheet.live.conditions.some((one) => one.id === id))
+          issue([...path, "countsAs", at], `Unknown condition "${id}"`);
+      });
       // What ends it through its source (1.531): conditions, components and senses of the ruleset's.
       const sourceRule = entry.endsWhenSource;
       if (sourceRule) {

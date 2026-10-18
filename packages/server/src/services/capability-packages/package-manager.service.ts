@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition that counts as others (1.532): Enthrall as charmed. */
+function carriesCountsAs532(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCountsAs532(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.countsAs !== undefined) return true;
+  return featureValues(record).some((one) => carriesCountsAs532(one, depth + 1));
+}
+
 /** A condition that ends through its source (1.531): Enthrall. */
 function carriesEndsWhenSource531(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7345,6 +7355,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that counts as others, 1.532.
+  if (
+    !declaresApi(532) &&
+    (carriesCountsAs532(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCountsAs532(document)))
+  ) {
+    return "A ruleset with a condition that counts as another (countsAs) requires schemaVersion 2 and capabilityApi 1.532 or newer";
+  }
   // A condition that ends through its source, 1.531.
   if (
     !declaresApi(531) &&

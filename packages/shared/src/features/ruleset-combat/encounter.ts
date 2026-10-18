@@ -663,7 +663,13 @@ export function rulesetActiveConditions(
     for (let at = conditions.length - 1; at >= 0; at -= 1) {
       // By its id, or by a kind it is of (1.431): the Periapt's every disease.
       const one = conditions[at]!;
-      if (suppressed.has(one.condition) || one.kinds?.some((kind) => suppressed.has(kind))) conditions.splice(at, 1);
+      // Or by one it counts as (1.532): Calm Emotions' charm, on Enthrall.
+      if (
+        suppressed.has(one.condition) ||
+        one.kinds?.some((kind) => suppressed.has(kind)) ||
+        one.countsAs?.some((other) => suppressed.has(other))
+      )
+        conditions.splice(at, 1);
     }
   }
   const levels = combat.levels?.length ? activeLevels(definition, combat, combatant, rawLevels) : [];
@@ -6143,15 +6149,24 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   return state;
 }
 
-/** Conditions named outright, or by a kind they are (1.258), each once and in the order named. */
+/** Conditions named outright, or by a kind they are (1.258), each once and in the order named; and
+ *  with one named outright, those that count as it (1.532). */
 export function rulesetKindConditions(definition: RulesetDefinition, names: readonly string[]): string[] {
   const kinds = definition.combat?.conditions ?? [];
   const out: string[] = [];
   for (const name of names) {
     const ofKind = kinds.filter((entry) => entry.kinds?.includes(name)).map((entry) => entry.condition);
-    for (const condition of ofKind.length > 0 ? ofKind : [name]) if (!out.includes(condition)) out.push(condition);
+    const counting = kinds.filter((entry) => entry.countsAs?.includes(name)).map((entry) => entry.condition);
+    for (const condition of ofKind.length > 0 ? ofKind : [name, ...counting])
+      if (!out.includes(condition)) out.push(condition);
   }
   return out;
+}
+
+/** A condition and those it counts as (1.532): Enthrall's, and charmed. */
+export function rulesetConditionKin(definition: RulesetDefinition | undefined, condition: string): string[] {
+  const rule = definition?.combat?.conditions?.find((entry) => entry.condition === condition);
+  return [condition, ...(rule?.countsAs ?? [])];
 }
 
 /** Whether a creature shrugs this condition off, read the same way wherever one is put on. */
@@ -6176,11 +6191,14 @@ export function rulesetImmuneToCondition(
   const kinds = definition?.combat?.conditions?.find((entry) => entry.condition.trim().toLowerCase() === wanted)?.kinds;
   if (kinds?.some((kind) => immunities.some((entry) => entry.trim().toLowerCase() === kind.trim().toLowerCase())))
     return true;
+  // Or to one it counts as (1.532): a creature that cannot be charmed, to Enthrall.
+  const kin = new Set(rulesetConditionKin(definition, condition).map((one) => one.trim().toLowerCase()));
+  if (immunities.some((entry) => kin.has(entry.trim().toLowerCase()))) return true;
   if ((!source && !catalog) || !definition?.combat) return false;
   return rulesetActiveConditions(definition, definition.combat, combatant, state, true).some((entry) =>
     entry.conditionImmunitiesFrom?.some(
       (one) =>
-        one.conditions.some((id) => id.trim().toLowerCase() === wanted) &&
+        one.conditions.some((id) => kin.has(id.trim().toLowerCase())) &&
         (one.from === undefined || (!!source && rulesetTargetIs(definition, source, one.from))) &&
         // Put on by an entry of one of these catalogs (1.423): Freedom of Movement against a spell.
         (one.catalogs === undefined || (!!catalog && one.catalogs.includes(catalog))),

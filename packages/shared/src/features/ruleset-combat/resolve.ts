@@ -84,6 +84,7 @@ import {
   rulesetActiveConditions,
   rulesetAuraDistance,
   rulesetTargetHasSenses,
+  rulesetConditionKin,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
   rulesetCombatConditions,
@@ -2437,6 +2438,13 @@ function throwSave(
   rerolled = false,
 ): boolean {
   const own = combatant.saves[save] ?? 0;
+  // A save against a condition is against those it counts as too (1.532): Enthrall's, against charm.
+  if (against?.conditions?.length) {
+    against = {
+      ...against,
+      conditions: [...new Set(against.conditions.flatMap((one) => rulesetConditionKin(ctx.definition, one)))],
+    };
+  }
   // Whatever it is against, it is against what its source is (1.185): Dragon Scale Mail's dragons.
   const source = sourceId ? rulesetCombatant(ctx.state, sourceId) : undefined;
   if (source) against = { ...against, from: rulesetCreatureKind(ctx.definition, source) };
@@ -3698,7 +3706,9 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
   // Held by its kind too (1.431).
   const heldOff = (condition: string) =>
     held.has(condition) ||
-    !!ctx.combat.conditions?.find((one) => one.condition === condition)?.kinds?.some((kind) => held.has(kind));
+    !!ctx.combat.conditions?.find((one) => one.condition === condition)?.kinds?.some((kind) => held.has(kind)) ||
+    // Or one it counts as (1.532).
+    rulesetConditionKin(ctx.definition, condition).some((one) => held.has(one));
   const ended = rulesetCombatConditions(ctx.definition, target).filter(
     (condition) => !heldOff(condition) && rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
   );

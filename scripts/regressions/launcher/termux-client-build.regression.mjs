@@ -27,8 +27,8 @@ assert.equal(buildHeap(8 * GiB, {}, false), null, "desktop builds take their hea
 
 // A desktop build type-checks the client too, which needs about 2.1 GiB: more than Node's default on a
 // 7 GiB machine (the macos-15 runners, about 2 GiB), so it gets 3072 MiB when half the memory allows.
-const desktopHeap = (totalMemoryBytes, defaultHeapMb, env = {}) =>
-  resolveDesktopClientBuildHeapMb({ env, totalMemoryBytes, defaultHeapMb });
+const desktopHeap = (totalMemoryBytes, defaultHeapMb, env = {}, constrainedMemoryBytes = 0) =>
+  resolveDesktopClientBuildHeapMb({ env, totalMemoryBytes, defaultHeapMb, constrainedMemoryBytes });
 assert.equal(desktopHeap(7 * GiB, 2048), 3072, "a 7 GiB machine gets the heap the type-check needs");
 assert.equal(desktopHeap(14 * GiB, 2048), 3072);
 assert.equal(desktopHeap(32 * GiB, 4192), null, "a default already above it is kept, never lowered");
@@ -54,6 +54,15 @@ assert.equal(
   null,
   "and so is a quoted one, which Node reads as the same option",
 );
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max-old-space-size-percentage=50" }),
+  null,
+  "and its percentage form, which sets the heap too",
+);
+// In a container, half of its memory limit, not of the machine's.
+assert.equal(desktopHeap(32 * GiB, 2048, {}, 4 * GiB), null, "a 4 GiB container never gets more than 2 GiB");
+assert.equal(desktopHeap(32 * GiB, 2048, {}, 8 * GiB), 3072, "an 8 GiB container gets the heap the build needs");
+assert.equal(desktopHeap(7 * GiB, 2048, {}, 2 ** 62), 3072, "a limit above the machine's memory is no limit");
 // NODE_OPTIONS read as Node reads it: quotes group an option, spaces included, and a backslash inside
 // them keeps the next character.
 assert.deepEqual(splitNodeOptions('--require "./my hooks/x.cjs"  --max-old-space-size=900'), [

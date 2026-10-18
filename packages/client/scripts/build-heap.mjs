@@ -64,13 +64,20 @@ export function splitNodeOptions(nodeOptions) {
 export function resolveDesktopClientBuildHeapMb({
   env = process.env,
   totalMemoryBytes = totalmem(),
+  constrainedMemoryBytes = process.constrainedMemory?.() ?? 0,
   defaultHeapMb = Math.floor(getHeapStatistics().heap_size_limit / 1024 / 1024),
 } = {}) {
   // The flag itself, as one of the options Node reads (quoted or not; not the same words inside a
-  // --require path), however its name is spelled: Node reads - and _ in option names alike.
+  // --require path), however its name is spelled: Node reads - and _ in option names alike. Its
+  // -percentage form (Node 24+) sets the heap too.
   const options = splitNodeOptions(env.NODE_OPTIONS ?? "");
-  if (options.some((option) => /^--max[-_]old[-_]space[-_]size(?:=|$)/u.test(option))) return null;
-  const deviceCapMb = Math.floor(totalMemoryBytes / 1024 / 1024 / 2 / 128) * 128;
+  if (options.some((option) => /^--max[-_]old[-_]space[-_]size(?:[-_]percentage)?(?:=|$)/u.test(option))) {
+    return null;
+  }
+  // A container's memory limit, when it has one (0 or more than the machine when it has none).
+  const memoryBytes =
+    constrainedMemoryBytes > 0 ? Math.min(totalMemoryBytes, constrainedMemoryBytes) : totalMemoryBytes;
+  const deviceCapMb = Math.floor(memoryBytes / 1024 / 1024 / 2 / 128) * 128;
   const heapMb = Math.min(DESKTOP_BUILD_HEAP_TARGET_MB, deviceCapMb);
   return heapMb > defaultHeapMb ? heapMb : null;
 }

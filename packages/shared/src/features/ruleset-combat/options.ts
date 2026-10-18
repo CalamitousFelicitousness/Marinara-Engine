@@ -3943,6 +3943,8 @@ export function rulesetUncompelledOptions(
     if (option) options.push(option);
   }
   for (const summon of actor.summons ?? []) {
+    // One that strikes by itself (1.486) is never commanded.
+    if (summon.strikesAtTurnStart) continue;
     if (summon.rounds <= 0 || (actor.budgets[summon.budget] ?? 0) < 1) continue;
     const action = actor.actions.find((entry) => entry.id === summon.actionId);
     if (!action) continue;

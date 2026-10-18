@@ -41068,7 +41068,7 @@
                         "rounds": {
                           "type": "integer",
                           "minimum": 1,
-                          "maximum": 100
+                          "maximum": 14400
                         },
                         "move": {
                           "type": "number",
@@ -41078,10 +41078,13 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
+                        "strikesAtTurnStart": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
-                        "budget",
                         "rounds"
                       ],
                       "additionalProperties": false

@@ -390,6 +390,8 @@ interface RulesetCombatContext {
   falling?: RulesetFallResume[];
   /** A standing zone is striking on its own, not its caster acting (1.180). */
   byZone?: true;
+  /** A summons striking by itself as its summoner's turn starts (1.486): never held for an answer. */
+  summonStriking?: true;
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
   ticking?: string;
@@ -4076,6 +4078,42 @@ function summonCell(
   }
   if (from) cells.sort((a, b) => rulesetCellDistance(from, a) - rulesetCellDistance(from, b));
   return cells[0] ?? at;
+}
+
+/** Each summons of theirs that strikes by itself (1.486), as their turn starts: its entry's attack at
+ *  the nearest creature hostile to them within its reach of where it stands (anybody hostile off a
+ *  board), never held for an answer. One with nobody near does nothing. */
+function summonsStrike(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  for (const summon of actor.summons ?? []) {
+    if (!summon.strikesAtTurnStart || summon.rounds <= 0) continue;
+    const action = actor.actions.find((entry) => entry.id === summon.actionId);
+    if (!action) continue;
+    const foes = ctx.state.combatants.filter(
+      (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.defeated && !one.turnless,
+    );
+    const from = summon.at;
+    const near = from
+      ? foes
+          .flatMap((one) => {
+            const at = rulesetPositionOf(one);
+            const far = at ? rulesetCellDistance(from, at) : Number.POSITIVE_INFINITY;
+            return far <= (summon.reach ?? 1) ? [{ one, far }] : [];
+          })
+          .sort((a, b) => a.far - b.far)
+          .map(({ one }) => one)
+      : ctx.state.board
+        ? []
+        : foes;
+    const target = near[0];
+    if (!target) continue;
+    ctx.events.push({ type: "summon", actorId: actor.id, label: summon.label, outcome: "struck" });
+    ctx.summonStriking = true;
+    try {
+      resolveAction(ctx, actor, action, [target], summon.payWith);
+    } finally {
+      delete ctx.summonStriking;
+    }
+  }
 }
 
 /** Each ending is said once, including replacement and losing the concentration that holds it. */
@@ -12316,6 +12354,8 @@ function resolveActionBody(
       styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
     );
   }
+  // Cast, a summons that strikes by itself only appears (1.486): its strikes come as turns start.
+  if (action.summons?.strikesAtTurnStart && !ctx.summonStriking && !held) return null;
   // Other uses' effects beside it (1.482), each on whom its burst around its user catches, spending
   // nothing of theirs: Thunder and Lightning's Thunderclap.
   if (action.alongside && !held) {
@@ -12755,6 +12795,7 @@ function resolveActionBody(
         if (
           landed &&
           (!ctx.state.window || ctx.nestHit) &&
+          !ctx.summonStriking &&
           !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
           hitAnswers(ctx, actor, target, action).length > 0
@@ -12879,10 +12920,12 @@ function resolveActionBody(
         critical = outcome === "critical";
         // A hit on somebody who holds an answer for being hit stops here, before its damage: the
         // window asks them, and the attack picks up from this roll once they have answered. Nothing
-        // opened inside a window opens another, so an attack made inside one is never held.
+        // opened inside a window opens another, so an attack made inside one is never held, nor a
+        // summons' own strike as a turn starts (1.486).
         if (
           landed &&
           (!ctx.state.window || ctx.nestHit) &&
+          !ctx.summonStriking &&
           !hasFallingAnswer(ctx) &&
           rulesetEncounterOutcome(ctx.state) === "ongoing" &&
           hitAnswers(ctx, actor, target, action).length > 0
@@ -14127,6 +14170,8 @@ function beginNextTurn(
     tickConditions(ctx, actor, "turn-start");
     // After the clocks, so what an aura's save puts on "until the start of its next turn" lasts it.
     if (!actor.defeated) aurasAtTurn(ctx, actor);
+    // What strikes by itself for them as their turn starts (1.486): a Faithful Hound's bite.
+    if (!actor.defeated) summonsStrike(ctx, actor);
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
     // spent yet, so the allowance is simply read again.
     refreshRulesetMovement(definition, combat, actor, ctx.state);

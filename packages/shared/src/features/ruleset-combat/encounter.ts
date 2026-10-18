@@ -3464,9 +3464,11 @@ function mechanicsAction(
   const revival = mechanics.revives && amountOf(mechanics.revives.health);
   if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };
   if (mechanics.summons) {
-    const { move, reach, ...summons } = mechanics.summons;
+    const { move, reach, budget, ...summons } = mechanics.summons;
     action.summons = {
       ...summons,
+      // One that strikes by itself (1.486) is never commanded, so it spends no budget.
+      budget: budget ?? "",
       ...(move !== undefined ? { move: rulesetInCells(move, perCell ?? 1) } : {}),
       ...(reach !== undefined ? { reach: rulesetInCells(reach, perCell ?? 1) } : {}),
     };

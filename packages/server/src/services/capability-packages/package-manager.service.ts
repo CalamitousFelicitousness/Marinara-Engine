@@ -2261,6 +2261,23 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A summons that strikes by itself, or stays past 100 rounds (1.486): Faithful Hound. */
+function carriesStrikingSummons486(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStrikingSummons486(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const summons = plainRecord(record.summons);
+  if (
+    summons &&
+    (summons.strikesAtTurnStart !== undefined ||
+      summons.budget === undefined ||
+      (typeof summons.rounds === "number" && summons.rounds > 100))
+  )
+    return true;
+  return featureValues(record).some((one) => carriesStrikingSummons486(one, depth + 1));
+}
+
 /** Called creatures that turn on their caller as its concentration breaks (1.485): Conjure Elemental. */
 function carriesHostileOnBreak485(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6831,6 +6848,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A summons that strikes by itself, 1.486.
+  if (
+    !declaresApi(486) &&
+    (carriesStrikingSummons486(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStrikingSummons486(document)))
+  ) {
+    return "A ruleset with a summons that strikes by itself as its summoner's turn starts (summons strikesAtTurnStart) requires schemaVersion 2 and capabilityApi 1.486 or newer";
+  }
   // Called creatures that turn on their caller, 1.485.
   if (
     !declaresApi(485) &&

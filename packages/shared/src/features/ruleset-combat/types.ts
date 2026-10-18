@@ -1079,7 +1079,7 @@ export interface RulesetCombatAction {
    *  holder itself, and the stored entry. Offered once, and from an item only while it is worn. */
   storedIn?: { item?: number; record: RulesetStoredEntry };
   /** What this leaves to strike on later turns (1.122), with distances already in cells. */
-  summons?: { budget: string; rounds: number; move?: number; reach?: number };
+  summons?: { budget: string; rounds: number; move?: number; reach?: number; strikesAtTurnStart?: true };
   /** The area stays (1.172): for how many of its caster's turns, where it is held, and when it does
    *  its effect again. */
   zone?: RulesetCombatZoneRule;
@@ -1821,6 +1821,8 @@ export interface RulesetCombatant {
     rounds: number;
     move?: number;
     reach?: number;
+    /** It strikes by itself as its summoner's turn starts (1.486): a Faithful Hound. */
+    strikesAtTurnStart?: true;
     at?: RulesetCombatCell;
     payWith?: string;
   }>;

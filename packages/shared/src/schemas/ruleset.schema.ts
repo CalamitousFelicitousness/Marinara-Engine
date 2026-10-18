@@ -5268,17 +5268,31 @@ const catalogTracksSchema: z.ZodType<Array<{ track: string; by: number }>, z.Zod
 
 /** What an entry's summons spends and how long it stays. Typed, to keep the mechanics' type small. */
 const catalogSummonsSchema: z.ZodType<
-  { budget: string; rounds: number; move?: number; reach?: number },
+  { budget?: string; rounds: number; move?: number; reach?: number; strikesAtTurnStart?: true },
   z.ZodTypeDef,
   unknown
 > = z
   .object({
-    budget: sheetId,
-    rounds: z.number().int().min(1).max(100),
+    budget: sheetId.optional(),
+    /** Up to 100 rounds, or 14400 for one that strikes by itself (Capability API 1.486). */
+    rounds: z.number().int().min(1).max(14400),
     move: z.number().finite().gt(0).optional(),
     reach: z.number().finite().gt(0).optional(),
+    /** It strikes by itself, never commanded, as its summoner's turn starts (Capability API 1.486):
+     *  the entry's attack at the nearest creature hostile to them within its `reach` of where it
+     *  stands. Cast, it only appears. 5e's Faithful Hound, "at the start of each of your turns, the
+     *  hound attempts to bite one creature within 5 feet of it that is hostile to you". */
+    strikesAtTurnStart: z.literal(true).optional(),
   })
-  .strict();
+  .strict()
+  .refine((summons) => summons.budget !== undefined || summons.strikesAtTurnStart, {
+    message: 'A summons its user commands names the "budget" each command spends',
+    path: ["budget"],
+  })
+  .refine((summons) => summons.rounds <= 100 || summons.strikesAtTurnStart, {
+    message: "A summons its user commands stays up to 100 rounds",
+    path: ["rounds"],
+  });
 
 /** Its maker regains health by the damage a blow dealt (1.281): an aboleth's Psychic Drain, all of it;
  *  Vampiric Touch, half of the necrotic. The target's maximum is not touched. */
@@ -20448,7 +20462,7 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.zone?.turn && !budgets?.has(mechanics.zone.turn.budget)) {
       add([index, "mechanics", "zone", "turn", "budget"], `Unknown budget "${mechanics.zone.turn.budget}"`);
     }
-    if (mechanics?.summons && !budgets?.has(mechanics.summons.budget)) {
+    if (mechanics?.summons?.budget !== undefined && !budgets?.has(mechanics.summons.budget)) {
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);
     }
     // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.242).

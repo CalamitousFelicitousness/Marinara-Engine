@@ -832,6 +832,11 @@ export interface RulesetCombatAction {
   /** Its heal one amount shared out among its targets, each up to their maximum or half of it
    *  (1.510): Preserve Life. */
   sharesHeal?: true | "half";
+  /** Each target won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. */
+  contested?: { attacker: string[]; defender: string[]; ties: "attacker" | "defender" };
+  /** Each target it lands on moved to a cell its user picks (1.512), up to `cells` from where it
+   *  stood, and with `up` lifted as many levels as the choice's `rises`: Telekinesis. */
+  movesTarget?: { cells: number; up?: true };
   /** Whom the pool passes over (1.199): holders of these conditions, and those who cannot see its
    *  maker when `unseeing`. */
   healthPoolSkips?: { conditions?: string[]; unseeing?: true };
@@ -3088,6 +3093,17 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
     }
+  /** Somebody moved where whoever won them over picked (1.512), with no step between, and lifted
+   *  `rises` levels above the ground there: Telekinesis. */
+  | {
+      type: "carried";
+      actorId: string;
+      targetId: string;
+      label: string;
+      from: RulesetCombatCell;
+      to: RulesetCombatCell;
+      rises?: number;
+    }
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[] }
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
@@ -3658,6 +3674,9 @@ export interface RulesetCombatOption {
   /** Where a teleport may go (1.276), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
   teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
+  /** Where each target it lands on may be moved to (1.512), by target id; the choice names the cell
+   *  as `to`, and up to `levels` levels above the ground there as `rises`. Telekinesis. */
+  movesTarget?: { cells: Record<string, RulesetCombatCell[]>; levels?: number };
   /** Whom a layered wall may spare (1.439), picked as it is cast: at most `count` of `ids`. The
    *  choice names them as `designates`. */
   designates?: { count: number; ids: string[] };
@@ -3770,8 +3789,12 @@ export interface RulesetCombatChoice {
   targetIds: string[];
   /** Pay out of another pool of the same family: the upcast, under the `use` command's own rule. */
   payWith?: string;
-  /** Where the `move` option is walking to. */
+  /** Where the `move` option is walking to. Where its targets are moved to (1.512): one of its
+   *  option's `movesTarget.cells`. */
   to?: RulesetCombatCell;
+  /** How many levels above the ground at `to` its target is lifted (1.512), up to its option's
+   *  `movesTarget.levels`. */
+  rises?: number;
   /** The cell an area is aimed at. An option with an area takes this instead of target ids. Where
    *  a teleport goes (1.276): one of its option's `teleport.cells`. */
   at?: RulesetCombatCell;

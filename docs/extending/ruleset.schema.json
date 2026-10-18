@@ -53204,6 +53204,63 @@
                         "half"
                       ]
                     },
+                    "contest": {
+                      "type": "object",
+                      "properties": {
+                        "attacker": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "defender": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "ties": {
+                          "type": "string",
+                          "enum": [
+                            "attacker",
+                            "defender"
+                          ]
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "attacker",
+                        "defender"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "movesTarget": {
+                      "type": "object",
+                      "properties": {
+                        "distance": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
+                        "up": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "distance"
+                      ],
+                      "additionalProperties": false
+                    },
                     "healthPoolSkips": {
                       "type": "object",
                       "properties": {
@@ -111277,6 +111334,63 @@
                             "half"
                           ]
                         },
+                        "contest": {
+                          "type": "object",
+                          "properties": {
+                            "attacker": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "defender": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "ties": {
+                              "type": "string",
+                              "enum": [
+                                "attacker",
+                                "defender"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "attacker",
+                            "defender"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "movesTarget": {
+                          "type": "object",
+                          "properties": {
+                            "distance": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "up": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "distance"
+                          ],
+                          "additionalProperties": false
+                        },
                         "healthPoolSkips": {
                           "type": "object",
                           "properties": {
@@ -129737,6 +129851,63 @@
                                   true,
                                   "half"
                                 ]
+                              },
+                              "contest": {
+                                "type": "object",
+                                "properties": {
+                                  "attacker": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "defender": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "ties": {
+                                    "type": "string",
+                                    "enum": [
+                                      "attacker",
+                                      "defender"
+                                    ]
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "attacker",
+                                  "defender"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "movesTarget": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "up": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance"
+                                ],
+                                "additionalProperties": false
                               },
                               "healthPoolSkips": {
                                 "type": "object",
@@ -148204,6 +148375,63 @@
                                   true,
                                   "half"
                                 ]
+                              },
+                              "contest": {
+                                "type": "object",
+                                "properties": {
+                                  "attacker": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "defender": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "ties": {
+                                    "type": "string",
+                                    "enum": [
+                                      "attacker",
+                                      "defender"
+                                    ]
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "attacker",
+                                  "defender"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "movesTarget": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "up": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance"
+                                ],
+                                "additionalProperties": false
                               },
                               "healthPoolSkips": {
                                 "type": "object",

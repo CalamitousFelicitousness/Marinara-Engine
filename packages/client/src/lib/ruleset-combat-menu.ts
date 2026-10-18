@@ -17,7 +17,12 @@ import {
   RULESET_CLIMB_OUT_OPTION,
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
-import { rulesetDistanceText, type RulesetBoardDistance, type RulesetCellChoice } from "./ruleset-combat-board";
+import {
+  rulesetCarryCells,
+  rulesetDistanceText,
+  type RulesetBoardDistance,
+  type RulesetCellChoice,
+} from "./ruleset-combat-board";
 
 /** The order a menu reads in: where you go, what you swing, what you cast, what a stat block can
  *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
@@ -53,7 +58,19 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "climbOut" | "flyUp" 
 };
 
 export interface RulesetMenuStep {
-  stage: "store" | "style" | "mode" | "alter" | "pay" | "amount" | "move" | "target" | "aim" | "spare" | "heighten";
+  stage:
+    | "store"
+    | "style"
+    | "mode"
+    | "alter"
+    | "pay"
+    | "amount"
+    | "move"
+    | "target"
+    | "aim"
+    | "spare"
+    | "heighten"
+    | "carry";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
@@ -77,6 +94,8 @@ export interface RulesetMenuStep {
   heighten?: { ids: string[] };
   /** Where it is being stored instead of done (1.471), while what pays for it is picked. */
   storesIn?: { holderId: string; item?: number };
+  /** How many levels up its target is lifted, while where it is moved to is picked (1.512). */
+  rises?: number;
 }
 
 /** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
@@ -410,6 +429,8 @@ export function rulesetPicksStep(
   }
   const heighten = rulesetHeightenPick(view, step, targets, cell);
   if (heighten) return { ...held, stage: "heighten", heighten };
+  // Where its target is moved to, picked on the board (1.512): Telekinesis.
+  if (rulesetCarryCells(step.option, targets).length > 0) return { ...held, stage: "carry" };
   return null;
 }
 

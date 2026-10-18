@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An entry won over by a contest of checks, or one that moves its target where its user picks
+ *  (1.512): Telekinesis. */
+function carriesContestAndCarry512(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesContestAndCarry512(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.movesTarget !== undefined) return true;
+  if (Array.isArray(plainRecord(record.contest)?.attacker)) return true;
+  return featureValues(record).some((one) => carriesContestAndCarry512(one, depth + 1));
+}
+
 /** A reaction narrowed by qualities, or by what the one it answers for holds (1.511). */
 function carriesReactionQualities511(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7126,6 +7138,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An entry won by a contest, or one that moves its target where its user picks, 1.512.
+  if (
+    !declaresApi(512) &&
+    (carriesContestAndCarry512(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesContestAndCarry512(document)))
+  ) {
+    return "A ruleset with an entry won by a contest of checks or one that moves its target where its user picks (mechanics.contest, movesTarget) requires schemaVersion 2 and capabilityApi 1.512 or newer";
+  }
   // Reactions narrowed by qualities or by what the one answered for holds, 1.511.
   if (
     !declaresApi(511) &&

@@ -426,6 +426,35 @@ export function rulesetTeleportCells(
   return cells;
 }
 
+/**
+ * Where an action that moves its target may set it down (1.512): every cell the target's corner
+ * could stand on, with room for it, within the action's distance of where it stands and within the
+ * action's range of its user. Where it stands now is one of them, to be lifted straight up.
+ */
+export function rulesetMovesTargetCells(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(target);
+  if (!grid || !from || !action.movesTarget) return [];
+  const span = rulesetSpanOf(target);
+  const range = typeof action.range === "number" ? action.range : action.range?.normal;
+  const cells: RulesetCombatCell[] = [];
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      const at = { x, y };
+      if (rulesetGapFrom(at, span, target) > action.movesTarget.cells) continue;
+      if (range !== undefined && rulesetGapFrom(at, span, actor) > range) continue;
+      if (!(x === from.x && y === from.y) && !rulesetRoomAt(state, grid, target, at)) continue;
+      cells.push(at);
+    }
+  }
+  return cells;
+}
+
 /** Who may go along on a teleport (1.276): standing creatures of its user's side, no bigger than
  *  they are, within its `carriesWithin` of them (touching when it says nothing), never held off the
  *  board. None for one that carries nobody. */
@@ -3168,6 +3197,19 @@ function optionFrom(
       ...(ids.length > 0 ? { carries: { count: action.teleport.carries!, ids } } : {}),
       ...(action.teleport.leaves ? { leaves: true as const } : {}),
     };
+  }
+  // Where each target may be moved to (1.512): Telekinesis. Off a board nobody is moved.
+  if (action.movesTarget && positioned(state)) {
+    const cells: Record<string, RulesetCombatCell[]> = {};
+    for (const id of definition ? rulesetOptionTargets(definition, state, actor.id, option) : []) {
+      const target = rulesetCombatant(state, id);
+      const list = target ? rulesetMovesTargetCells(state, actor, action, target) : [];
+      if (list.length > 0) cells[id] = list;
+    }
+    const levels = action.movesTarget.up
+      ? Math.floor(action.movesTarget.cells / Math.max(1, state.board?.levelCells ?? 1))
+      : 0;
+    option.movesTarget = { cells, ...(levels > 0 ? { levels } : {}) };
   }
   // Where an engulf may walk to (1.350), through whoever it takes in: picked on the board as a walk
   // is, aimed at nobody. With nowhere to go it is not offered.

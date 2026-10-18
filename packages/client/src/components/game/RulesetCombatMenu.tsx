@@ -883,6 +883,60 @@ export function RulesetCombatMenu({
     );
   }
 
+  // ── Where its target is moved to (1.512): the board takes the cell, lifted as picked here ──
+  if (step?.stage === "carry") {
+    const option = step.option;
+    const levels = option.movesTarget?.levels ?? 0;
+    const rises = step.rises ?? 0;
+    const name = view.combatants.find((one) => one.id === step.targets[0])?.name ?? "";
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-amber-200">
+          {t("game.combat.ruleset.board.carryPrompt", { label: rulesetOptionLabel(option, t), name })}
+        </p>
+        {levels > 0 && (
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("game.combat.ruleset.board.carryLift")}>
+            {Array.from({ length: levels + 1 }, (_, up) => (
+              <button
+                key={up}
+                type="button"
+                disabled={busy}
+                aria-pressed={rises === up}
+                onClick={() => setStep({ ...step, rises: up })}
+                className={cn(buttonClass, rises === up ? "border-[var(--primary)]/60 bg-[var(--primary)]/25" : "")}
+              >
+                {t("game.combat.ruleset.board.carryLevels", { count: up })}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              closeStep();
+              onChoose(
+                option.id,
+                step.targets,
+                step.payWith,
+                undefined,
+                step.style,
+                step.mode,
+                step.amount,
+                step.alters,
+              );
+            }}
+            className={buttonClass}
+          >
+            {t("game.combat.ruleset.board.carryStay", { name })}
+          </button>
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
   // ── Pointing it at somebody ──
   if (step?.stage === "target" && rulesetOptionNeedsTargets(step.option)) {
     const option = step.option;

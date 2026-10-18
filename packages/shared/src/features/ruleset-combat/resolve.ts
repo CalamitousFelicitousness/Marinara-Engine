@@ -418,6 +418,8 @@ interface RulesetCombatContext {
   /** Where the teleport being resolved goes, and who goes along (1.276); nowhere is out of the
    *  fight (1.279). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
+  /** Where the action being resolved moves its target to (1.512), and how many levels up. */
+  carriesTo?: { x: number; y: number; rises: number };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
   harming?: { catalog: string; applies: string[] };
   /** The window between turns a legendary cast was bought in (1.284): every window opened while it
@@ -6535,12 +6537,37 @@ function applyChoice(
   // Where an engulf walks to (1.350): a cell its option offered.
   const engulfTo = named?.engulf && option.cells ? destinationOf(option, choice.to) : undefined;
   if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
+  // Where its target is moved to (1.512): a cell its option offered for that target, lifted no more
+  // levels than it may be and no farther up or down than it carries.
+  const moving = option.movesTarget;
+  if (choice.rises !== undefined) {
+    const rises = choice.rises;
+    if (!moving || !choice.to || !Number.isInteger(rises) || rises < 0 || rises > (moving.levels ?? 0)) {
+      return refusal(state, choice.actorId, "bad-cell", option.id);
+    }
+  }
+  let carriesTo: RulesetCombatContext["carriesTo"];
+  if (choice.to && moving && named?.movesTarget) {
+    const moved = targets[0];
+    const to = choice.to;
+    const grid = state.board?.grid;
+    if (!moved || !grid || !(moving.cells[moved.id] ?? []).some((cell) => cell.x === to.x && cell.y === to.y)) {
+      return refusal(state, choice.actorId, "bad-cell", option.id);
+    }
+    const rises = choice.rises ?? 0;
+    const climb = Math.abs(elevationAt(grid, to.x, to.y) + rises - rulesetLevelOf(grid, moved));
+    if (climb * Math.max(1, state.board?.levelCells ?? 1) > named.movesTarget.cells) {
+      return refusal(state, choice.actorId, "bad-cell", option.id);
+    }
+    carriesTo = { x: to.x, y: to.y, rises };
+  }
 
   const { ctx, finish } = begin(definition, combat, state, roller);
   if (dispel) ctx.dispel = { casterId: dispel.casterId, actionId: dispel.actionId };
   if (choice.ends?.length) ctx.endsChosen = new Set(choice.ends);
   if (area && choice.at) ctx.aimedAt = { x: choice.at.x, y: choice.at.y };
   if (also) ctx.aimedAlso = also;
+  if (carriesTo) ctx.carriesTo = carriesTo;
   if (teleporting) {
     ctx.teleport = {
       ...(choice.at ? { to: { x: choice.at.x, y: choice.at.y } } : {}),
@@ -7831,6 +7858,55 @@ function resolveContest(
     clearDyingTracks(ctx, target);
     ctx.events.push({ type: "stabilized", targetId: target.id, sourceId: actor.id });
   }
+}
+
+/** Whether `actor` wins the contest an action is decided by against `target` (1.512): Telekinesis. */
+function wonContest(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): boolean {
+  const contested = action.contested!;
+  const before = ctx.events.length;
+  resolveContest(ctx, actor, action, { id: action.id, ...contested }, target);
+  const thrown = ctx.events.slice(before).find((event) => event.type === "contest");
+  return thrown?.type === "contest" && thrown.winner === "actor";
+}
+
+/** Somebody set down where an action that moves them was aimed (1.512), with no step between, so
+ *  nobody gets a strike at them, and lifted the levels it says; somebody left up in the air with
+ *  nothing to keep them there comes down. Telekinesis. */
+function carryTarget(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const to = ctx.carriesTo!;
+  delete ctx.carriesTo;
+  const grid = ctx.state.board?.grid;
+  const from = rulesetPositionOf(target);
+  if (!grid || !from) return;
+  // Only where there is still room for them.
+  if ((to.x !== from.x || to.y !== from.y) && !rulesetRoomAt(ctx.state, grid, target, to)) return;
+  target.x = to.x;
+  target.y = to.y;
+  const level = elevationAt(grid, to.x, to.y) + to.rises;
+  if (to.rises > 0) target.altitude = level;
+  else delete target.altitude;
+  // A mount moved against its will may throw its rider (1.443).
+  if (target.riddenBy) (ctx.shakenMounts ??= new Set()).add(target.id);
+  ctx.events.push({
+    type: "carried",
+    actorId: actor.id,
+    targetId: target.id,
+    label: action.label,
+    from,
+    to: { x: to.x, y: to.y },
+    ...(to.rises > 0 ? { rises: to.rises } : {}),
+  });
+  groundFlier(ctx, target);
 }
 
 /** Somebody pushed `cells` straight away from `actor`, as far as the way allows: by a contest won
@@ -9954,6 +10030,9 @@ function resolveFly(ctx: RulesetCombatContext, actor: RulesetCombatant, option: 
 function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
   const grid = ctx.state.board?.grid;
   if (!grid || flier.hover || !rulesetAirborne(grid, flier)) return;
+  // Kept up by a condition put on as it was lifted (1.512), before its holder's speeds are synced:
+  // Telekinesis.
+  if (rulesetActiveConditions(ctx.definition, ctx.combat, flier, ctx.state).some((entry) => entry.hover)) return;
   const grounded =
     !rulesetCombatStanding(flier) ||
     !!rulesetProneCondition(ctx.definition, ctx.combat, flier) ||
@@ -13559,6 +13638,13 @@ function resolveActionBodyIn(
       continue;
     }
 
+    // Won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. Nothing
+    // else it does lands on a target it loses to.
+    if (action.contested && !wonContest(ctx, actor, action, target)) {
+      spendUsed();
+      continue;
+    }
+
     const against: RulesetSaveAgainst = {
       conditions: [...(action.applies?.map((one) => one.condition) ?? []), ...(action.save?.against?.conditions ?? [])],
       damage: [
@@ -14345,6 +14431,8 @@ function resolveActionBodyIn(
       if (action.draws && target.id !== actor.id && rulesetCombatStanding(target)) {
         drawTarget(ctx, actor, target, action.draws.spends);
       }
+      // Moved where its user picked (1.512), once what holds it there has gone on: Telekinesis.
+      if (action.movesTarget && ctx.carriesTo && !target.defeated) carryTarget(ctx, actor, action, target);
       // Sent out of the fight (1.236), last of all.
       if (
         action.dismisses &&

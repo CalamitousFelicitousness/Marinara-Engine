@@ -3269,6 +3269,20 @@ function mechanicsAction(
   const healthPool = amountOf(mechanics.healthPool);
   if (healthPool) action.healthPool = healthPool;
   if (mechanics.sharesHeal) action.sharesHeal = mechanics.sharesHeal;
+  // Won by a contest of checks, and moved where its user picks (1.512): Telekinesis.
+  if (mechanics.contest) {
+    action.contested = {
+      attacker: [...mechanics.contest.attacker],
+      defender: [...mechanics.contest.defender],
+      ties: mechanics.contest.ties ?? "defender",
+    };
+  }
+  if (mechanics.movesTarget && from.perCell !== undefined) {
+    action.movesTarget = {
+      cells: rulesetInCells(mechanics.movesTarget.distance, from.perCell),
+      ...(mechanics.movesTarget.up ? { up: true as const } : {}),
+    };
+  }
   const skips = mechanics.healthPoolSkips;
   if (healthPool && skips) {
     action.healthPoolSkips = {

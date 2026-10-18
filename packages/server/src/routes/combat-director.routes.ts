@@ -255,6 +255,8 @@ const command = z.discriminatedUnion("type", [
       .optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
+    /** How many levels up a target moved to `to` is lifted (1.512), checked by the resolver. */
+    rises: z.number().int().min(0).max(100).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
     /** Who of its user's side it spares (1.254), checked against the alterations by the resolver. */

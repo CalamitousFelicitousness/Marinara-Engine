@@ -75,6 +75,8 @@ export type DirectedCommand =
       designates?: string[];
       /** Stored instead of done (1.471). */
       storesIn?: { holderId: string; item?: number };
+      /** How many levels up a target moved to `to` is lifted (1.512): Telekinesis. */
+      rises?: number;
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
       /** The alterations it is used with (1.253), from the option's `alters`: Metamagic. */

@@ -148,7 +148,7 @@ export function RulesetCombatBoard({
   // onto the square of whoever is up. The button that opened the step has just been unmounted, so
   // without this the focus falls to the page and neither the arrows nor Escape reach anything,
   // which is exactly what a player who clicked the option with a mouse and then pressed Escape got.
-  const boardStage = step?.stage === "move" || step?.stage === "aim" ? step.stage : null;
+  const boardStage = step?.stage === "move" || step?.stage === "aim" || step?.stage === "carry" ? step.stage : null;
   const boardStepOption = boardStage ? step?.option.id : undefined;
   useEffect(() => {
     if (!boardStage) return;
@@ -202,6 +202,21 @@ export function RulesetCombatBoard({
       );
       return;
     }
+    // Where its target is moved to (1.512), lifted as the menu says: Telekinesis.
+    if (step.stage === "carry" && cell.aim?.carry) {
+      setStep(null);
+      onChoose(
+        step.option.id,
+        step.targets,
+        step.payWith,
+        { to: { x: cell.x, y: cell.y }, ...(step.rises ? { rises: step.rises } : {}) },
+        step.style,
+        step.mode,
+        step.amount,
+        step.alters,
+      );
+      return;
+    }
     // A wall's section the attack may strike (1.200): sent at once, as one target is.
     if (step.stage === "target" && cell.strikable) {
       setStep(null);
@@ -222,6 +237,12 @@ export function RulesetCombatBoard({
     if (step.stage === "target" && cell.targetable && cell.occupant) {
       const targets = rulesetPickTarget(step.option, step.targets, cell.occupant.id);
       if (rulesetSendsOnPick(step.option) && targets.length === 1) {
+        // Where it moves them is picked next (1.512).
+        const picks = rulesetPicksStep(view, step, targets);
+        if (picks) {
+          setStep(picks);
+          return;
+        }
         setStep(null);
         onChoose(step.option.id, targets, step.payWith, undefined, step.style, step.mode, step.amount, step.alters);
         return;

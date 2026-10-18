@@ -863,6 +863,14 @@ export function rulesetCombatEventLine(
     // Drawn toward whoever spoke to them (1.326): Whisper a Name.
     case "drawn":
       return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
+    // Moved where whoever won them over picked (1.512): Telekinesis.
+    case "carried":
+      return key(event.rises ? "carriedUp" : "carried", {
+        label: event.label,
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        levels: event.rises ?? 0,
+      });
     // Creatures called into the fight (1.325): Jars Burst.
     case "called":
       return key(event.ids.length ? "called" : "calledNone", {

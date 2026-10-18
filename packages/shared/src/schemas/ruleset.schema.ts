@@ -6369,6 +6369,29 @@ const catalogMechanicsObject = z
      *  API 1.510): 5e's Preserve Life, "divide those hit points among them ... no more than half of
      *  its hit point maximum". Needs a heal. */
     sharesHeal: z.union([z.literal(true), z.literal("half")]).optional(),
+    /** Each target is won over by a contest of checks instead of a roll to hit or a save (Capability
+     *  API 1.512): its user throws the best of `attacker`, the target the best of `defender`, and a
+     *  tie goes to `ties` (the defender when left out). Only on a target it wins does the rest of it
+     *  land. 5e's Telekinesis, the caster's spellcasting ability check against the target's Strength
+     *  check. Ids of `combat.checks`. */
+    contest: z
+      .object({
+        attacker: z.array(sheetId).min(1).max(4),
+        defender: z.array(sheetId).min(1).max(4),
+        ties: z.enum(["attacker", "defender"]).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Each target it lands on is moved to a cell its user picks (Capability API 1.512), up to
+     *  `distance` from where it stood and within the entry's `range` of its user, set down with no
+     *  step between, so nobody gets a strike at it; with `up` it may be lifted that many levels
+     *  above the ground there, and stays up only while something keeps it there (a condition with
+     *  `hover`). 5e's Telekinesis, "move it up to 30 feet in any direction, including upward". Only
+     *  on an entry aimed at creatures. */
+    movesTarget: z
+      .object({ distance: z.number().finite().gt(0).max(10000), up: z.literal(true).optional() })
+      .strict()
+      .optional(),
     /** Whom the pool passes over, using none of it and leaving them alone (Capability API 1.199):
      *  whoever holds one of `conditions` (5e's Sleep ignores the unconscious), and with `unseeing`
      *  whoever cannot see its maker (Color Spray ignores those that can't see). */
@@ -7109,6 +7132,27 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["perCostStepsEvery"],
       message: '"perCostStepsEvery" spaces out what "perCostStep" adds, so it has one',
+    });
+  }
+  // A contest stands in for the roll to hit and the save (1.512).
+  if (mechanics.contest && (mechanics.attackRoll || mechanics.save)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contest"],
+      message: 'A "contest" decides who it lands on, so it has no "attackRoll" or "save" beside it',
+    });
+  }
+  if (
+    mechanics.movesTarget &&
+    (mechanics.area ||
+      mechanics.targets === "self" ||
+      (mechanics.targetCount ?? 1) > 1 ||
+      mechanics.targetsPerCostStep !== undefined)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["movesTarget"],
+      message: '"movesTarget" moves the one creature it is aimed at, so it has no "area", one target and not "self"',
     });
   }
   if (mechanics.sharesHeal && (mechanics.kind !== "heal" || (!mechanics.amount && !mechanics.amountAdd))) {
@@ -21073,6 +21117,14 @@ export function rulesetCatalogEntryIssues(
         });
       }
     }
+    // Each side of a contest throws one of the fight's checks (1.512).
+    (["attacker", "defender"] as const).forEach((side) => {
+      mechanics?.contest?.[side].forEach((check, checkIndex) => {
+        if (!definition.combat?.checks?.some((one) => one.id === check)) {
+          add([index, "mechanics", "contest", side, checkIndex], `Unknown check "${check}"`);
+        }
+      });
+    });
     const hidden = mechanics?.zone?.hidden;
     if (hidden) {
       if (!definition.combat?.checks?.some((check) => check.id === hidden.check)) {

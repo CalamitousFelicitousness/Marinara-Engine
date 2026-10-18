@@ -43,7 +43,7 @@ export interface RulesetBoardCell {
   /** Set while a target is being chosen and a legal one stands here. */
   targetable?: boolean;
   /** Set while a shape is being aimed: the ids this aim would catch, which may be nobody. */
-  aim?: { targetIds: string[]; teleport?: true };
+  aim?: { targetIds: string[]; teleport?: true; carry?: true };
   /** A cell the shape being laid has already been set down on (1.177, 1.178). */
   laid?: true;
   /** The labels of the lasting areas covering it (1.172), first cast first. */
@@ -95,6 +95,12 @@ export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
   return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
+/** Where an option that moves its target may set that target down (1.512), once it is picked. */
+export function rulesetCarryCells(option: DirectedRulesetOption, targets: readonly string[]): RulesetCombatCell[] {
+  const target = targets[0];
+  return target !== undefined ? (option.movesTarget?.cells[target] ?? []) : [];
+}
+
 /** Whether a shape has any square it may be aimed at right now. */
 export function rulesetOptionHasAim(option: DirectedRulesetOption): boolean {
   return (option.aim?.length ?? 0) > 0;
@@ -126,6 +132,8 @@ export type RulesetCellChoice = {
   designates?: string[];
   /** Stored instead of done (1.471). */
   storesIn?: { holderId: string; item?: number };
+  /** How many levels up a target moved to `to` is lifted (1.512). */
+  rises?: number;
 } & Partial<RulesetAimChoice>;
 
 /** Whether a wall being aimed has been set down and waits for the way it runs: any cell picks it. */
@@ -209,7 +217,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       reach.set(rulesetCellKey(cell), { cost: cell.cost, provokes: [...cell.provokes] });
     }
   }
-  const aims = new Map<string, { targetIds: string[]; teleport?: true }>();
+  const aims = new Map<string, { targetIds: string[]; teleport?: true; carry?: true }>();
   const laid = new Set<string>();
   if (step?.stage === "aim") {
     // A teleport's cells are where it may go (1.276), not what it would catch.
@@ -218,6 +226,12 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       aims.set(rulesetCellKey(entry), { targetIds: [...entry.targetIds], ...teleport });
     }
     for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
+  }
+  // Where its target may be moved to (1.512): Telekinesis.
+  if (step?.stage === "carry") {
+    for (const cell of rulesetCarryCells(step.option, step.targets)) {
+      aims.set(rulesetCellKey(cell), { targetIds: [], carry: true });
+    }
   }
   const targets = new Set(step?.stage === "target" ? step.option.targetIds : []);
   const strikable = new Set(step?.stage === "target" ? (step.option.walls ?? []).map(rulesetCellKey) : []);
@@ -412,6 +426,7 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
   if (cell.targetable) said.push(t("game.combat.ruleset.board.targetable"));
   if (cell.strikable) said.push(t("game.combat.ruleset.board.strikable"));
   if (cell.aim?.teleport) said.push(t("game.combat.ruleset.board.teleportable"));
+  else if (cell.aim?.carry) said.push(t("game.combat.ruleset.board.carryable"));
   else if (cell.aim) {
     const names = rulesetNamesOf(view, cell.aim.targetIds);
     said.push(

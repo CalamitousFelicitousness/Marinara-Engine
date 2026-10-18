@@ -2263,6 +2263,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
 
 /** Stopping in a foe's space and what entering one does, and landing from a fallen mount (1.451):
  *  Air and Fire Form, a rider's reaction. */
+/** A condition that gives its holder turns in a row, time stopped (1.454): Time Stop. */
+function carriesStopsTime454(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStopsTime454(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && plainRecord(record.stopsTime)) return true;
+  return featureValues(record).some((one) => carriesStopsTime454(one, depth + 1));
+}
+
 /** A condition that takes its holder off the board until their next turn (1.453): Blink. */
 function carriesBlinks453(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6439,6 +6449,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Turns in a row with time stopped, 1.454.
+  if (
+    !declaresApi(454) &&
+    (carriesStopsTime454(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStopsTime454(document)))
+  ) {
+    return "A ruleset whose conditions stop time for turns in a row (a condition's stopsTime) requires schemaVersion 2 and capabilityApi 1.454 or newer";
+  }
   // Off the board until the next turn, on a die as a turn ends, 1.453.
   if (
     !declaresApi(453) &&

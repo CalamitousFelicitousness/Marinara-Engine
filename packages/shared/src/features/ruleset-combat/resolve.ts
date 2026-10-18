@@ -449,6 +449,8 @@ function begin(
   return {
     ctx,
     finish: () => {
+      // Stopped time that reached somebody else is over (1.454).
+      timeStopReached(ctx);
       noteStirred(ctx);
       for (const target of next.combatants) {
         endImmuneConditions(ctx, target);
@@ -8918,6 +8920,7 @@ function readiedReaching(ctx: RulesetCombatContext, mover: RulesetCombatant, ask
         one.readied?.on === "comes" &&
         one.side !== mover.side &&
         !asked.has(one.id) &&
+        !heldInTime(ctx, one) &&
         rulesetCombatStanding(one) &&
         readiedReaches(ctx, one, mover),
     )
@@ -8958,6 +8961,7 @@ function readiedActs(ctx: RulesetCombatContext): void {
           one.readied?.on === "acts" &&
           one.side !== source.side &&
           one.id !== source.id &&
+          !heldInTime(ctx, one) &&
           rulesetCombatStanding(one) &&
           (one.budgets[ctx.combat.readying!.budget] ?? 0) >= 1 &&
           rulesetCanSee(ctx.definition, ctx.state, one, source),
@@ -9538,6 +9542,7 @@ function openMoment(
   // with the answer's own target side deciding whom it can catch.
   const source = rulesetCombatant(ctx.state, trigger.sourceId);
   const waiting = candidates
+    .filter((one) => !heldInTime(ctx, one))
     .filter((one) => moment === "falls" || moment === "turn-start" || one.id !== trigger.sourceId)
     .filter(
       (one) =>
@@ -10094,7 +10099,7 @@ function threatsLeaving(
   // The same two questions the menu asked when it listed whom a walk provokes, asked again at every
   // step because a strike on the way can change who is still standing and who still has the budget.
   return rulesetThreateningEnemies(ctx.definition, ctx.combat, ctx.state, mover)
-    .filter((threat) => rulesetStepLeavesReach(threat, from, to))
+    .filter((threat) => rulesetStepLeavesReach(threat, from, to) && !heldInTime(ctx, threat.combatant))
     .map((threat) => threat.combatant);
 }
 
@@ -11068,6 +11073,67 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
   target.defeated = false;
   placeNearest(ctx, target);
   ctx.events.push({ type: "returned", targetId: target.id });
+}
+
+/** Whoever has stopped time and is taking the turns it gave (1.454), if anybody: the actor. */
+function timeStopper(ctx: RulesetCombatContext): RulesetCombatant | undefined {
+  const actor = currentRulesetActor(ctx.state);
+  return actor?.tracked.some((one) => one.stoppedTurns !== undefined) ? actor : undefined;
+}
+
+/** Whether `one` is held still by somebody else's stopped time (1.454): no answer, no readied use. */
+function heldInTime(ctx: RulesetCombatContext, one: RulesetCombatant): boolean {
+  const stopper = timeStopper(ctx);
+  return !!stopper && stopper.id !== one.id;
+}
+
+/** As a turn of `leaving`'s ends (1.454): whether they take another straight after, time stopped.
+ *  The turns are rolled as the turn it was put on in ends, and it ends after the last of them. */
+function timeStoppedTurn(ctx: RulesetCombatContext, leaving: RulesetCombatant): boolean {
+  const entry = rulesetActiveConditions(ctx.definition, ctx.combat, leaving, ctx.state).find((one) => one.stopsTime);
+  const tracked = entry && leaving.tracked.find((one) => one.condition === entry.condition);
+  if (!entry?.stopsTime || !tracked || leaving.defeated || !rulesetCombatStanding(leaving)) return false;
+  const label =
+    ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+  if (tracked.stoppedTurns === undefined) {
+    const dice = entry.stopsTime.dice ? parseRulesetCombatDice(entry.stopsTime.dice) : null;
+    const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : [];
+    const turns = Math.max(0, sumOf(rolls) + (dice?.flat ?? 0) + (entry.stopsTime.flat ?? 0));
+    // Its own time is the turns it gives, not rounds that never pass.
+    tracked.rounds = null;
+    tracked.stoppedTurns = turns;
+    ctx.events.push({ type: "timeStop", actorId: leaving.id, label, turns });
+  }
+  if (tracked.stoppedTurns > 0) {
+    tracked.stoppedTurns -= 1;
+    return true;
+  }
+  ctx.events.push({ type: "timeStop", actorId: leaving.id, label, ended: "over" });
+  removeCondition(ctx, leaving, entry.condition, "spent");
+  return false;
+}
+
+/** Stopped time ends once its holder reaches somebody else (1.454): attacks them, harms them, has
+ *  them save, or puts a condition on them. Read over what a step did, as it finishes. */
+function timeStopReached(ctx: RulesetCombatContext): void {
+  const stopper = timeStopper(ctx);
+  if (!stopper) return;
+  const reached = ctx.events.some((event) => {
+    if (event.type === "attack") return event.actorId === stopper.id && event.targetId !== stopper.id;
+    if (event.type === "damage") return event.sourceId === stopper.id && event.targetId !== stopper.id;
+    if (event.type === "save") return event.sourceId === stopper.id && event.actorId !== stopper.id;
+    if (event.type === "condition" && event.active && event.reason === "applied" && event.targetId !== stopper.id)
+      return !!rulesetCombatant(ctx.state, event.targetId)?.tracked.some(
+        (one) => one.condition === event.condition && one.source === stopper.id,
+      );
+    return false;
+  });
+  if (!reached) return;
+  const tracked = stopper.tracked.find((one) => one.stoppedTurns !== undefined)!;
+  const label =
+    ctx.definition.sheet.live.conditions.find((one) => one.id === tracked.condition)?.label ?? tracked.condition;
+  ctx.events.push({ type: "timeStop", actorId: stopper.id, label, ended: "affected" });
+  removeCondition(ctx, stopper, tracked.condition, "spent");
 }
 
 /** Off the board as its turn ends, on its `blinks` die (1.453): Blink. Nothing it holds up ends. */
@@ -13261,6 +13327,8 @@ export function advanceRulesetTurn(
       if (walkCompelled(ctx, leaving, active, "after") && ctx.state.window) return finish();
     }
   }
+  // Time stopped (1.454), read before the turn's own conditions run out: another turn straight after.
+  const again = !!leaving && timeStoppedTurn(ctx, leaving);
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
@@ -13289,6 +13357,11 @@ export function advanceRulesetTurn(
     }
     // Strikes a spend bought are for the turn it was spent on. Nothing is carried over.
     delete leaving.strikesLeft;
+    // Time stopped (1.454): their next turn straight after, nobody else's, and no window between.
+    if (again) {
+      beginNextTurn(definition, combat, ctx, true);
+      return finish();
+    }
   }
   // The window BETWEEN two turns: one turn has ended and the next has not begun, which is when a
   // block spends its own points on one of its own actions. The turn begins once they have all
@@ -13347,10 +13420,16 @@ function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombat
 /** The next turn, from a fight whose last one has already ended. Split out of `advanceRulesetTurn`
  *  so the window between the two can hold it: the turn-end books are closed either way, and this
  *  runs once, after the window rather than before it. */
-function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx: RulesetCombatContext): void {
+function beginNextTurn(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  ctx: RulesetCombatContext,
+  /** The same actor again, time stopped (1.454): no step along the order and no new round. */
+  again = false,
+): void {
   // A turn put in after another (1.320), the Hourglass's, is taken once and leaves the order again.
   // Taken, or passed over by somebody who could not take it.
-  if (ctx.state.interjected !== undefined && ctx.state.turn >= ctx.state.interjected) {
+  if (!again && ctx.state.interjected !== undefined && ctx.state.turn >= ctx.state.interjected) {
     ctx.state.order.splice(ctx.state.interjected, 1);
     ctx.state.turn -= 1;
     delete ctx.state.interjected;
@@ -13358,7 +13437,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   let turn = ctx.state.turn;
   let round = ctx.state.round;
   let fresh = false;
-  for (let step = 0; step < ctx.state.order.length; step++) {
+  for (let step = 0; step < (again ? 0 : ctx.state.order.length); step++) {
     turn += 1;
     if (turn >= ctx.state.order.length) {
       // Passed over on the way round (1.320): out of the order before the next round.

@@ -10868,6 +10868,18 @@ const combatConditionSchema = z
      *  them off the board until their next turn starts (Capability API 1.453): out of reach of
      *  everything, and back as it starts where they vanished, or the nearest free place. 5e's Blink,
      *  `{ "atLeast": 11 }`. */
+    /** Its holder takes this many turns in a row once the turn it was put on in ends (Capability API
+     *  1.454), rolled then: nobody else acts, reacts or counts down meanwhile. Whatever they do in them
+     *  that reaches another creature (an attack at them, harm, a save to throw, a condition put on
+     *  them) ends it there and then, and it ends after the last. 5e's Time Stop, `{ "dice": "1d4",
+     *  "flat": 1 }`. */
+    stopsTime: z
+      .object(catalogAmountShape)
+      .strict()
+      .refine((rule) => rule.dice !== undefined || rule.flat !== undefined, {
+        message: "stopsTime says how many turns: dice, flat or both",
+      })
+      .optional(),
     blinks: z
       .object({ sides: z.number().int().min(2).max(100).optional(), atLeast: z.number().int().min(1).max(100) })
       .strict()

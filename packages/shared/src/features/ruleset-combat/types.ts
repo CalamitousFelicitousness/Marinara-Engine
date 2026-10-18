@@ -1421,6 +1421,8 @@ export interface RulesetCombatAgainst {
 export interface RulesetTrackedCondition {
   /** What it raises a sheetless holder's health maximum by while it holds (1.420): Aid. */
   raisedMax?: number;
+  /** Turns its `stopsTime` has still to give (1.454), once rolled: time is stopped while it is set. */
+  stoppedTurns?: number;
   /** How many of its `duplicates` are left (1.452), once one has been destroyed. */
   duplicatesLeft?: number;
   /** The catalog of the entry that put it on (1.371): a spell's, for Dispel Magic. */
@@ -2783,6 +2785,9 @@ export type RulesetCombatEvent =
   /** What a presence sense tells its holder (1.391): which kinds are within `within`, none found
    *  when `kinds` is empty. */
   | { type: "presence"; actorId: string; condition: string; within: number; kinds: string[] }
+  /** Time stopped for `actorId` (1.454): `turns` in a row rolled, or `ended` early by what reached
+   *  somebody else, or `over` after the last. */
+  | { type: "timeStop"; actorId: string; label: string; turns?: number; ended?: "affected" | "over" }
   /** The die its holder's `blinks` rolled as their turn ended (1.453), and whether they vanished. */
   | { type: "blink"; actorId: string; label: string; roll: number; needed: number; vanished: boolean }
   /** An attack on somebody with duplicates (1.452): whether the die turned it onto one, and `lost`

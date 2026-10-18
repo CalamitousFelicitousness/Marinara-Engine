@@ -1120,6 +1120,12 @@ export function rulesetCombatEventLine(
         kinds: event.kinds.join(", "),
         within: event.within,
       });
+    case "timeStop":
+      return key(event.ended === "affected" ? "timeStopEnded" : event.ended ? "timeStopOver" : "timeStopped", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        turns: event.turns ?? 0,
+      });
     case "blink":
       return key(event.vanished ? "blinkVanished" : "blinkStayed", {
         actor: names.combatant(event.actorId),

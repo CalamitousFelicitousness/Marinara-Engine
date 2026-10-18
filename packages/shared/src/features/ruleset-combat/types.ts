@@ -3111,6 +3111,8 @@ export type RulesetCombatEvent =
   /** Somebody lifted by a condition they now hold (1.513), from and to so many levels above the
    *  ground under them: Reverse Gravity. */
   | { type: "lifted"; targetId: string; from: number; to: number }
+  /** What was stored in somebody cast by itself as its moment came (1.516): Contingency. */
+  | { type: "storedCast"; actorId: string; label: string; targetId: string }
   /** Something aimed at an image passed through it (1.515), and its maker's side saw it for one. */
   | { type: "seenThrough"; actorId: string; targetId: string; label: string }
   /** Creatures called into the fight (1.325), by whom and with what. */

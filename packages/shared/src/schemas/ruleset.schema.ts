@@ -3022,12 +3022,22 @@ export interface RulesetStores {
   catalogs: string[];
   levels: number;
   count?: number;
+  castsOn?: { on: "harmed" | "down"; at?: "self" | "source" };
 }
 const storesSchema: z.ZodType<RulesetStores, z.ZodTypeDef, unknown> = z
   .object({
     catalogs: uniqueIds(8),
     levels: z.number().int().min(1).max(40),
     count: z.number().int().min(1).max(20).optional(),
+    /** What is stored is cast by itself when the moment comes (Capability API 1.516), for nothing,
+     *  with its own caster's numbers, the first stored first: `"harmed"` as its holder (the wearer of
+     *  an item) takes damage, `"down"` as they drop to no health and are still alive. It is cast at
+     *  them (`"self"`, the default) or at whoever harmed them (`"source"`). 5e's Contingency, a
+     *  shield guardian's stored spell cast at a moment set beforehand. */
+    castsOn: z
+      .object({ on: z.enum(["harmed", "down"]), at: z.enum(["self", "source"]).optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 

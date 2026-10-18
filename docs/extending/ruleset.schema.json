@@ -84344,6 +84344,30 @@
                           "minimum": 1,
                           "maximum": 20
                         },
+                        "castsOn": {
+                          "type": "object",
+                          "properties": {
+                            "on": {
+                              "type": "string",
+                              "enum": [
+                                "harmed",
+                                "down"
+                              ]
+                            },
+                            "at": {
+                              "type": "string",
+                              "enum": [
+                                "self",
+                                "source"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "on"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -151967,6 +151991,30 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 20
+                        },
+                        "castsOn": {
+                          "type": "object",
+                          "properties": {
+                            "on": {
+                              "type": "string",
+                              "enum": [
+                                "harmed",
+                                "down"
+                              ]
+                            },
+                            "at": {
+                              "type": "string",
+                              "enum": [
+                                "self",
+                                "source"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "on"
+                          ],
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },

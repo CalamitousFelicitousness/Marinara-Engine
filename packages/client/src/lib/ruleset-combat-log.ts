@@ -863,6 +863,13 @@ export function rulesetCombatEventLine(
     // Drawn toward whoever spoke to them (1.326): Whisper a Name.
     case "drawn":
       return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
+    // What was stored cast by itself at its moment (1.516): Contingency.
+    case "storedCast":
+      return key("storedCast", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+      });
     // An image passed through (1.515): Mislead's double.
     case "seenThrough":
       return key("seenThrough", {

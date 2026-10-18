@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** What is stored cast by itself at a moment (1.516): Contingency. */
+function carriesStoresCastsOn516(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStoresCastsOn516(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.stores)?.castsOn !== undefined) return true;
+  return featureValues(record).some((one) => carriesStoresCastsOn516(one, depth + 1));
+}
+
 /** Called images rather than creatures (1.515): Mislead's double. */
 function carriesIllusionCalls515(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7168,6 +7178,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What is stored cast by itself at a moment, 1.516.
+  if (
+    !declaresApi(516) &&
+    (carriesStoresCastsOn516(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStoresCastsOn516(document)))
+  ) {
+    return "A ruleset with something stored that is cast by itself when its moment comes (stores.castsOn) requires schemaVersion 2 and capabilityApi 1.516 or newer";
+  }
   // Called images rather than creatures, 1.515.
   if (
     !declaresApi(515) &&

@@ -2288,6 +2288,7 @@
   "game.combat.ruleset.event.standardSearchNone": "{{actor}} searches ({{roll}}) and finds nobody.",
   "game.combat.ruleset.event.steered": "{{actor}} steers {{targets}} with {{label}}.",
   "game.combat.ruleset.event.stored": "{{actor}} stores {{label}} in {{by}}, at level {{level}}.",
+  "game.combat.ruleset.event.storedCast": "{{label}} goes off by itself, cast on {{target}} for {{actor}}.",
   "game.combat.ruleset.event.strikes_one": "{{actor}} swings with {{label}}, with {{count}} strike left.",
   "game.combat.ruleset.event.strikes_other": "{{actor}} swings with {{label}}, with {{count}} strikes left.",
   "game.combat.ruleset.event.strikesLast": "{{actor}} swings with {{label}}, the last of the strikes.",

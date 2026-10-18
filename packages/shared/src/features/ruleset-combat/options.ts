@@ -2450,6 +2450,14 @@ export function rulesetActionAvailable(
     const held = actor.sheet?.items?.[action.storedIn.item];
     if (!held?.worn || rulesetItemSuppressed(rulesetSuppressedOn(state, actor), held.item)) return false;
   }
+  // What goes off by itself at its moment (1.516) is never taken by hand: Contingency.
+  if (
+    action.storedIn &&
+    (action.storedIn.item !== undefined
+      ? actor.sheet?.items?.[action.storedIn.item]?.item.stores?.castsOn
+      : actor.block?.stores?.castsOn)
+  )
+    return false;
   // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
   if (action.offHandOf !== undefined && (actor.flags.offHand ?? action.offHandOf) === action.offHandOf) return false;
   return !actor.spent.includes(action.id);

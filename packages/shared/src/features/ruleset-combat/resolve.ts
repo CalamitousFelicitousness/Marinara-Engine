@@ -418,6 +418,8 @@ interface RulesetCombatContext {
   /** Where the teleport being resolved goes, and who goes along (1.276); nowhere is out of the
    *  fight (1.279). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
+  /** Whoever is casting what was stored in them by itself (1.516), so it cannot set off another. */
+  releasing?: Set<string>;
   /** Where the action being resolved moves its target to (1.512), and how many levels up. */
   carriesTo?: { x: number; y: number; rises: number };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
@@ -1186,6 +1188,40 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
     }
   }
   groundFlier(ctx, target);
+  // What was stored to go off as they are harmed, or go down (1.516): Contingency.
+  castStoredOn(ctx, target, "harmed");
+  if (out && !wasDown && !target.defeated) castStoredOn(ctx, target, "down");
+}
+
+/** The first entry stored in `holder`, or in an item they wear, to be cast by itself at this moment
+ *  (1.516), cast for nothing: at them, or at whoever harmed them. Contingency. */
+function castStoredOn(ctx: RulesetCombatContext, holder: RulesetCombatant, moment: "harmed" | "down"): void {
+  if (holder.defeated || ctx.releasing?.has(holder.id)) return;
+  const stores = (action: RulesetCombatAction) => {
+    const item = action.storedIn?.item;
+    return item !== undefined ? holder.sheet?.items?.[item]?.item.stores : holder.block?.stores;
+  };
+  const stored = holder.actions.find(
+    (action) =>
+      action.storedIn &&
+      (holder.uses[action.id] ?? 0) > 0 &&
+      stores(action)?.castsOn?.on === moment &&
+      // From an item only while it is worn.
+      (action.storedIn.item === undefined || !!holder.sheet?.items?.[action.storedIn.item]?.worn),
+  );
+  if (!stored) return;
+  const sourceId = ctx.acting?.actorId;
+  const source = sourceId !== undefined ? rulesetCombatant(ctx.state, sourceId) : undefined;
+  const at = stores(stored)!.castsOn!.at === "source" ? source : holder;
+  if (!at || at.defeated) return;
+  holder.uses[stored.id] = 0;
+  ctx.events.push({ type: "storedCast", actorId: holder.id, label: stored.label, targetId: at.id });
+  (ctx.releasing ??= new Set()).add(holder.id);
+  try {
+    resolveActionBody(ctx, holder, stored, [at]);
+  } finally {
+    ctx.releasing.delete(holder.id);
+  }
 }
 
 /** What a condition on whoever was hit does to who hit them, nobody choosing (1.436): Holy Aura's

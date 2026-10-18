@@ -42632,6 +42632,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "onCast": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -66315,6 +66319,10 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "onCast": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -78515,6 +78523,10 @@
                                         "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "ignoresUntilLeaves": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "onCast": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -101053,6 +101065,10 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "onCast": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -119576,6 +119592,10 @@
                                             "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "ignoresUntilLeaves": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "onCast": {
                                             "type": "boolean",
                                             "const": true
                                           },
@@ -138108,6 +138128,10 @@
                                             "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "ignoresUntilLeaves": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "onCast": {
                                             "type": "boolean",
                                             "const": true
                                           },

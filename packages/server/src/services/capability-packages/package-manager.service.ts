@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone's inside save thrown as it is cast (1.526): Reverse Gravity. */
+function carriesInsideOnCast526(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInsideOnCast526(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.ignoresUntilLeaves !== undefined && record.onCast !== undefined) return true;
+  return featureValues(record).some((one) => carriesInsideOnCast526(one, depth + 1));
+}
+
 /** A contest offered only to an actor holding certain conditions (1.525): Grappler's pin. */
 function carriesActorHolds525(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7273,6 +7283,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone's inside save thrown as it is cast, 1.526.
+  if (
+    !declaresApi(526) &&
+    (carriesInsideOnCast526(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInsideOnCast526(document)))
+  ) {
+    return "A ruleset with a zone whose inside save is thrown as it is cast (inside.save.onCast) requires schemaVersion 2 and capabilityApi 1.526 or newer";
+  }
   // A contest offered only to an actor holding certain conditions, 1.525.
   if (
     !declaresApi(525) &&

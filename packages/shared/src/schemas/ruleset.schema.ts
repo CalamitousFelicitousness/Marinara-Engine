@@ -2885,7 +2885,7 @@ export interface RulesetZoneInside {
   immune?: string[];
   is?: RulesetTargetIs;
   chooses?: "type";
-  save?: { save: string; ignoresUntilLeaves: true };
+  save?: { save: string; ignoresUntilLeaves: true; onCast?: true };
 }
 const uniqueIds = (max: number) =>
   z
@@ -2915,7 +2915,13 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
      *  difficulty, and on a success ignores what it does inside until they leave (Capability API
      *  1.407): Hallow's extra effect, a Charisma save. */
     save: z
-      .object({ save: sheetId, ignoresUntilLeaves: z.literal(true) })
+      .object({
+        save: sheetId,
+        ignoresUntilLeaves: z.literal(true),
+        /** Thrown too by whoever is inside as it is cast, before what it does there goes on
+         *  (Capability API 1.526): Reverse Gravity's grab at something fixed. */
+        onCast: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
   })

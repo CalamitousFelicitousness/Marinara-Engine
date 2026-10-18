@@ -4,6 +4,7 @@
  *   - `lifts`: whoever holds it is up that far above the ground under them, in levels, and hovers
  *     there; a lasting area's `inside.conditions` puts it on everyone it catches.
  *   - When it comes off, they come down.
+ *   - Its inside save thrown as it is cast (1.526): one who makes it is never lifted.
  *   - The install gate.
  */
 import assert from "node:assert/strict";
@@ -34,12 +35,12 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 513);
+  assert.ok(supportedCapabilityApi.minor >= 526);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
   );
-  const document = () => {
+  const document = (onCast = false) => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.sheet.live.conditions.push({ id: "reverse_gravity", label: "Fallen upward" });
     doc.combat.conditions.push({ condition: "reverse_gravity", effects: [], lifts: 100 });
@@ -56,7 +57,14 @@ try {
             kind: "utility",
             area: { shape: "burst", size: 10 },
             range: 100,
-            zone: { rounds: 10, triggers: [], inside: { conditions: ["reverse_gravity"] } },
+            zone: {
+              rounds: 10,
+              triggers: [],
+              inside: {
+                conditions: ["reverse_gravity"],
+                ...(onCast ? { save: { save: "dex_save", ignoresUntilLeaves: true, onCast: true } } : {}),
+              },
+            },
           },
         },
       ],
@@ -141,7 +149,100 @@ try {
   assert.deepEqual(of(ended.events, "refused"), []);
   assert.equal(rulesetCombatant(ended.state, "ogre")!.altitude, undefined);
 
+  // ── Thrown as it is cast (1.526): the ogre that grabs something fixed stays down ──
+  {
+    const saving = parsed(document(true));
+    const spells = saving.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+    const fresh = createRulesetEncounter({
+      definition: saving,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        {
+          id: "wizard",
+          name: "Wizard",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 8, dex: 14, con: 12, int: 18, wis: 10, cha: 10 },
+            fields: { level: 13, ac: 12, speed: 30, hp_max: 70, spellcasting_ability: "int", slots_max_7: 1 },
+            lists: { spells: spells.flatMap((one) => rowsFromCatalogEntry("spells", one).map((row) => row.row)) },
+          }),
+          live: {},
+          catalogs: { spells },
+        },
+        { id: "ogre", name: "Ogre", side: "enemy", block: ogre },
+        {
+          id: "lord",
+          name: "Ogre Lord",
+          side: "enemy",
+          block: { ...ogre, legendaryResistance: 1 } as RulesetStatBlock,
+        },
+      ],
+      board: { grid, placements: { wizard: { x: 2, y: 7 }, ogre: { x: 14, y: 7 }, lord: { x: 15, y: 7 } } },
+    });
+    fresh.order = ["wizard", "ogre", "lord"];
+    fresh.turn = 0;
+    const spell = rulesetCombatOptions(saving, fresh, "wizard").find((one) => one.label === "Reverse Gravity")!;
+    const thrown = applyRulesetCombatChoice(
+      saving,
+      fresh,
+      { actorId: "wizard", optionId: spell.id, targetIds: [], at: { x: 14, y: 7 } },
+      () => 10,
+    );
+    assert.deepEqual(of(thrown.events, "refused"), []);
+    assert.deepEqual(
+      of(thrown.events, "save").map((one) => [one.actorId, one.success]),
+      [
+        ["ogre", false],
+        ["lord", false],
+      ],
+    );
+    assert.deepEqual(
+      of(thrown.events, "legendaryResistance").map((one) => one.actorId),
+      ["lord"],
+    );
+    assert.equal(rulesetCombatant(thrown.state, "ogre")!.altitude, 20, "the ogre failed and fell upward");
+    assert.equal(rulesetCombatant(thrown.state, "lord")!.altitude, undefined, "the lord held on");
+    assert.deepEqual(
+      of(thrown.events, "lifted").map((one) => one.targetId),
+      ["ogre"],
+    );
+    // Its turn starting there, no second save for the one who made it.
+    const next = applyRulesetCombatChoice(
+      saving,
+      thrown.state,
+      {
+        actorId: "wizard",
+        optionId: rulesetCombatOptions(saving, thrown.state, "wizard").find((one) => one.kind === "end-turn")!.id,
+        targetIds: [],
+      },
+      () => 10,
+    );
+    assert.ok(!of(next.events, "save").some((one) => one.actorId === "lord"));
+    assert.equal(rulesetCombatant(next.state, "lord")!.altitude, undefined);
+  }
+
   // ── The install gate ──
+  {
+    const onCastGate =
+      "A ruleset with a zone whose inside save is thrown as it is cast (inside.save.onCast) requires schemaVersion 2 and capabilityApi 1.526 or newer";
+    const gateManifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.equal(getCapabilityPackageInstallIssue(gateManifest(525) as never, document(true)), onCastGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(526) as never, document(true)), onCastGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(525) as never, document()), onCastGate);
+  }
   {
     const gate =
       "A ruleset with a condition that lifts its holder into the air (lifts) requires schemaVersion 2 and capabilityApi 1.513 or newer";
@@ -164,7 +265,7 @@ try {
   }
 
   console.log(
-    "Reverse Gravity: everyone inside the area falls 100 feet upward and hangs there, and comes down when it goes; gated at 1.513.",
+    "Reverse Gravity: everyone inside the area falls 100 feet upward and hangs there, and comes down when it goes; gated at 1.513. Its save thrown as it is cast keeps one who makes it down (1.526).",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

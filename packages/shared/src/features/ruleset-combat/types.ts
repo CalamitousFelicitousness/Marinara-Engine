@@ -4038,7 +4038,8 @@ export interface RulesetCombatZoneRule {
     /** Whom it works on is a creature type chosen as it is cast, as a mode (1.413). */
     chooses?: "type";
     /** Thrown on entering and at a turn's start; made, ignored until they leave (1.407). */
-    save?: { save: string; ignoresUntilLeaves: true };
+    /** `onCast` (1.526): thrown too by whoever is inside as it is cast. */
+    save?: { save: string; ignoresUntilLeaves: true; onCast?: true };
   };
   /** Components nothing used from inside it may need (1.179). */
   forbids?: { components?: string[]; teleport?: true; casts?: string[] };

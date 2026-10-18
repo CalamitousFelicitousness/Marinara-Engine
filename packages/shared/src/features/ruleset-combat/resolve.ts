@@ -5177,6 +5177,14 @@ function placeZone(
       if (flashNear(ctx, actor, placed, action, one)) flashOne(ctx, actor, placed, action, one);
     }
   }
+  // Whoever is inside as it is cast throws its save now (1.526), before what it does there goes on:
+  // Reverse Gravity's grab at something fixed.
+  if (rule.inside?.save?.onCast) {
+    for (const id of rulesetZoneOccupants(ctx.state, actor, placed, action)) {
+      const one = rulesetCombatant(ctx.state, id);
+      if (one) insideSave(ctx, actor, placed, action, one);
+    }
+  }
   // Whoever the cast caught is caught by the storm too (1.174), as it appears.
   for (const id of caught) {
     const target = rulesetCombatant(ctx.state, id);

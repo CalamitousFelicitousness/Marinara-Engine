@@ -10,7 +10,7 @@
 // than listed here, so the half-made choice is HELD by the board and handed back down: one step,
 // two ways of finishing it, and the same pure rules behind both.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION } from "@marinara-engine/shared";
+import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION, rulesetItemSlotPayment } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
 import { useTranslation } from "react-i18next";
@@ -719,7 +719,10 @@ export function RulesetCombatMenu({
                 ? t("game.combat.ruleset.upcast.charges", {
                     count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
                   })
-                : t("game.combat.ruleset.upcast.pool", { pool })}
+                : rulesetItemSlotPayment(pool)
+                  ? // Out of a worn item's charges, a charge a level (1.519).
+                    t("game.combat.ruleset.upcast.itemSlot", { pool: rulesetItemSlotPayment(pool)!.pool })
+                  : t("game.combat.ruleset.upcast.pool", { pool })}
             </button>
           ))}
         </div>

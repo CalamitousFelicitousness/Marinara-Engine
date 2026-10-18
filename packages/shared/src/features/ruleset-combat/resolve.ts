@@ -2822,6 +2822,8 @@ function payAnswer(
 ): void {
   const paid = planRulesetCombatCost(ctx.definition, holder, action)!;
   if (paid.live && holder.sheet) holder.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (holder.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(holder, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: holder.id, pool: entry.pool, label: entry.label, amount: entry.amount });
@@ -4538,6 +4540,8 @@ function storeChoice(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
@@ -6910,6 +6914,8 @@ function applyChoice(
     return refusal(state, choice.actorId, "insufficient", option.id);
   }
   if (paid.live && working.sheet) working.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
@@ -7288,6 +7294,8 @@ function strikeCut(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
@@ -7378,6 +7386,8 @@ function strikeSection(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
@@ -8575,6 +8585,8 @@ function takeReaction(
   const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
   if (paid.live && taking.sheet) taking.sheet.live = paid.live;
+  // Out of a worn item's charges (1.519).
+  if (paid.itemCharges) (taking.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(taking, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: taking.id, pool: entry.pool, label: entry.label, amount: entry.amount });

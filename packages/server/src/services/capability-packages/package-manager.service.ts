@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A worn item whose charges pay for a pool group's uses (1.519): a Rod of Absorption's spells. */
+function carriesPaysSlots519(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPaysSlots519(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const effect of [plainRecord(record.worn), plainRecord(record.carried)]) {
+    if (effect?.paysSlots !== undefined) return true;
+  }
+  return featureValues(record).some((one) => carriesPaysSlots519(one, depth + 1));
+}
+
 /** What an item takes in, counted over its whole existence (1.518): a Rod of Absorption's 50. */
 function carriesAbsorbsLifetime518(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7199,6 +7211,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A worn item whose charges pay for a pool group's uses, 1.519.
+  if (
+    !declaresApi(519) &&
+    (carriesPaysSlots519(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPaysSlots519(document)))
+  ) {
+    return "A ruleset with an item whose charges pay for uses of a pool group (paysSlots) requires schemaVersion 2 and capabilityApi 1.519 or newer";
+  }
   // What an item takes in, counted over its whole existence, 1.518.
   if (
     !declaresApi(518) &&

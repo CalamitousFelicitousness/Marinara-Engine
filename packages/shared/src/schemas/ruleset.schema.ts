@@ -12479,6 +12479,10 @@ const rulesetItemEffectObjectSchema = z
     /** A foe's entry aimed at its holder alone, turned back at its user on the save's top face
      *  (Capability API 1.470): 5e's Ring of Spell Turning, `{ "catalogs": ["spells"], "maxLevel": 7 }`. */
     turns: turnsSchema.optional(),
+    /** Its charges pay for a use of this pool group, a charge a level (Capability API 1.519): 5e's
+     *  Rod of Absorption, `"slots"`, a spell cast from what it took in rather than a slot of its
+     *  holder's own. Worn only, and only on an item with charges. */
+    paysSlots: sheetId.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -12502,13 +12506,14 @@ const rulesetItemEffectObjectSchema = z
       !entry.jumps &&
       !entry.keepsOn &&
       !entry.absorbs &&
-      !entry.turns
+      !entry.turns &&
+      !entry.paysSlots
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, or what it takes in or turns back",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, or what its charges pay for",
       });
     }
     if (abilities.length > 12) {
@@ -19002,6 +19007,13 @@ function itemIssues(
     add([...at, "worn", "absorbs", "charges"], "What it takes in spends or gains its charges, so it holds some");
   if (item.carried?.absorbs?.charges)
     add([...at, "carried", "absorbs", "charges"], "Charges are moved by what a worn item takes in");
+  // Charges that pay for a pool group's uses (1.519): a worn item's, with charges, of a group there is.
+  if (item.worn?.paysSlots) {
+    if (!item.charges) add([...at, "worn", "paysSlots"], "What pays with its charges holds some");
+    if (!definition.sheet.live.pools.some((pool) => pool.group === item.worn!.paysSlots))
+      add([...at, "worn", "paysSlots"], `No pool is of the group "${item.worn.paysSlots}"`);
+  }
+  if (item.carried?.paysSlots) add([...at, "carried", "paysSlots"], "Only a worn item's charges pay for a use");
   if (item.carried?.absorbs?.lifetime !== undefined)
     add([...at, "carried", "absorbs", "lifetime"], "What it ever took in is counted on a worn item");
   item.moreUses?.forEach((more, index) => {

@@ -36,6 +36,9 @@ import {
   rulesetShotsAvailable,
   rulesetStoredNow,
   rulesetItemChargesLeft,
+  rulesetItemSlotPayment,
+  rulesetHeldChargesMax,
+  RULESET_ITEM_SLOT_PREFIX,
 } from "./ammo.js";
 import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
@@ -1321,6 +1324,8 @@ export interface RulesetCombatCost {
   /** The live state the price leaves behind, or null when there was nothing on a sheet to pay. */
   live: RulesetLiveState | null;
   cost: Array<{ pool: string; label: string; amount: number }>;
+  /** What a worn item's charges are left at once it paid (1.519). */
+  itemCharges?: { item: number; now: number };
 }
 
 /**
@@ -1342,6 +1347,10 @@ export function planRulesetCombatCost(
   const free: RulesetCombatCost = { steps: [], live: null, cost: [] };
   // More of an item's charges is the item's to spend (1.269), never a pool's.
   if (rulesetChargeSteps(action, payWith) !== null) payWith = undefined;
+  // Out of a worn item's charges, a charge a level, as the pool it stands for (1.519).
+  const slot = rulesetItemSlotPayment(payWith);
+  if (slot)
+    return rulesetUseUsesFree(combatant, action) ? null : itemSlotCost(definition, combatant, action, slot, payWith!);
   // Paid already, as it was readied (1.288).
   if (rulesetUseIsFree(combatant.id, action.id)) return free;
   // An opponent's actions cost nothing off a sheet: their block is the only bookkeeping there is.
@@ -1371,6 +1380,58 @@ export function planRulesetCombatCost(
   // much is in it.
   if (!rulesetWithinSpendLimits(combatant, cost)) return null;
   return { steps: plan.steps, live, cost };
+}
+
+/** Whether a use is paid for already or never paid out of a pool, so no item's charges pay it. */
+function rulesetUseUsesFree(combatant: RulesetCombatant, action: RulesetCombatAction): boolean {
+  return rulesetUseIsFree(combatant.id, action.id) || !!action.innate || !combatant.sheet || !action.use?.group;
+}
+
+/** A use paid out of a worn item's charges (1.519): the item's charges pay for its group, the pool is
+ *  of the family at or above the use's own, and the item holds a charge for each of its levels. */
+function itemSlotCost(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+  slot: { item: number; pool: string },
+  payWith: string,
+): RulesetCombatCost | null {
+  const held = combatant.sheet?.items?.[slot.item];
+  if (!held?.worn || !action.use?.group || held.item.worn?.paysSlots !== action.use.group) return null;
+  const family = rulesetPoolFamily(definition, action.use.group);
+  const at = family.indexOf(slot.pool);
+  if (at < 0 || at < family.indexOf(action.use.pool ?? "")) return null;
+  const level = rulesetPaidLevel(definition, combatant, action, slot.pool);
+  const max = rulesetHeldChargesMax(held);
+  const left = rulesetItemChargesLeft(combatant, { max, item: slot.item });
+  if (level < 1 || left < level) return null;
+  return {
+    steps: [],
+    live: null,
+    cost: [{ pool: payWith, label: held.name ?? held.stack?.ref ?? payWith, amount: level }],
+    itemCharges: { item: slot.item, now: left - level },
+  };
+}
+
+/** The ways a use may be paid out of its user's worn items' charges now (1.519), lowest pool first. */
+function itemSlotPayments(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  action: RulesetCombatAction,
+): string[] {
+  const group = action.use?.group;
+  if (!group || rulesetUseUsesFree(combatant, action)) return [];
+  const family = rulesetPoolFamily(definition, group);
+  const from = family.indexOf(action.use?.pool ?? "");
+  if (from < 0) return [];
+  return (combatant.sheet?.items ?? []).flatMap((held, index) =>
+    held.worn && held.item.worn?.paysSlots === group
+      ? family
+          .slice(from)
+          .map((pool) => `${RULESET_ITEM_SLOT_PREFIX}${index}:${pool}`)
+          .filter((id) => planRulesetCombatCost(definition, combatant, action, id) !== null)
+      : [],
+  );
 }
 
 /** The most uses its user may choose to spend on it right now (1.251): Lay on Hands' points left.
@@ -1437,7 +1498,7 @@ export function rulesetPaidLevel(
   payWith?: string,
 ): number {
   if (action.innate) return action.innate.level;
-  const id = payWith ?? action.use?.pool;
+  const id = rulesetItemSlotPayment(payWith)?.pool ?? payWith ?? action.use?.pool;
   if (!id) return 0;
   const pool = definition.sheet.live.pools.find((entry) => entry.id === id);
   if (pool?.level) {
@@ -1462,6 +1523,8 @@ export function rulesetCostSteps(
   // More of an item's charges (1.269): a step each.
   const charged = rulesetChargeSteps(action, payWith);
   if (charged !== null) return charged;
+  // Out of an item's charges (1.519): as far up as the pool it stands for.
+  payWith = rulesetItemSlotPayment(payWith)?.pool ?? payWith;
   const family = rulesetPoolFamily(definition, action.use?.group);
   const from = family.indexOf(action.use?.pool ?? "");
   const to = family.indexOf(payWith);
@@ -3047,7 +3110,11 @@ function optionFrom(
   // Its own price, or, with that pool empty, a higher one that pays for it: a 1st-level spell is
   // still cast with a 2nd-level slot, or a warlock's pact slot (1.171).
   const paid = planRulesetCombatCost(definition, actor, action);
-  const payments = [...rulesetPaymentPools(definition, actor, action), ...chargePayments(actor, action)];
+  const payments = [
+    ...rulesetPaymentPools(definition, actor, action),
+    ...chargePayments(actor, action),
+    ...itemSlotPayments(definition, actor, action),
+  ];
   if (!paid && payments.length === 0) return null;
   const icons = rulesetEntryIcons(definition, action.entry ?? (action.id.includes("/") ? action.id : undefined));
   const option: RulesetCombatOption = {

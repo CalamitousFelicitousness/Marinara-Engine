@@ -2528,6 +2528,7 @@
   "game.combat.ruleset.target.wall": "{{wall}} section",
   "game.combat.ruleset.upcast.charges_one": "Spend {{count}} more charge",
   "game.combat.ruleset.upcast.charges_other": "Spend {{count}} more charges",
+  "game.combat.ruleset.upcast.itemSlot": "Pay with {{pool}} out of an item's charges",
   "game.combat.ruleset.upcast.own": "Its own cost: {{cost}}",
   "game.combat.ruleset.upcast.pool": "Pay with {{pool}}",
   "game.combat.ruleset.upcast.prompt": "What pays for {{label}}?",

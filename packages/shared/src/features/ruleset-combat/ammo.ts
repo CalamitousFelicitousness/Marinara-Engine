@@ -534,6 +534,26 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
   return Number.isInteger(more) && more > 0 ? Math.min(more, step.max) : 0;
 }
 
+/** Paying a use of a pool group out of a worn item's charges, a charge a level (1.519):
+ *  `itemslot:<item>:<pool>`, paid at that pool's level as the pool itself would be. */
+export const RULESET_ITEM_SLOT_PREFIX = "itemslot:";
+
+/** The item and the pool a payment out of an item's charges stands for (1.519), or null for a payment
+ *  of another kind. */
+export function rulesetItemSlotPayment(payWith: string | undefined): { item: number; pool: string } | null {
+  if (!payWith?.startsWith(RULESET_ITEM_SLOT_PREFIX)) return null;
+  const [item, ...pool] = payWith.slice(RULESET_ITEM_SLOT_PREFIX.length).split(":");
+  const at = Number(item);
+  return Number.isInteger(at) && at >= 0 && pool.length > 0 ? { item: at, pool: pool.join(":") } : null;
+}
+
+/** The most charges a held item holds (1.519): its own number, or its stat's; 0 without any. */
+export function rulesetHeldChargesMax(held: { item: { charges?: unknown; stats?: Record<string, unknown> } }): number {
+  const most = (held.item.charges as { max?: number | { stat: string } } | undefined)?.max;
+  const read = typeof most === "number" ? most : most ? held.item.stats?.[most.stat] : undefined;
+  return typeof read === "number" && Number.isFinite(read) ? Math.max(0, Math.trunc(read)) : 0;
+}
+
 /** Averting the eyes from a gaze's holder, or looking again (1.268): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
 /** Slipping free of a condition (1.433): `slip:<condition>`. */

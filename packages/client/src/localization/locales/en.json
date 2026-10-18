@@ -2334,6 +2334,7 @@
   "game.combat.ruleset.event.zoneLayerStruck": "{{target}} passes through the {{layer}} layer of {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneMoved": "{{actor}} moves {{label}}.",
   "game.combat.ruleset.event.zoneShoved": "{{target}} is pushed aside as {{actor}}'s {{label}} goes up.",
+  "game.combat.ruleset.event.zoneStage": "{{actor}}’s {{label}} turns to {{layer}}.",
   "game.combat.ruleset.event.zoneStruckEnd": "{{target}} ends their turn in {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneStruckEnter": "{{target}} moves into {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneStruckMoving": "{{target}} is hurt crossing {{actor}}’s {{label}}.",

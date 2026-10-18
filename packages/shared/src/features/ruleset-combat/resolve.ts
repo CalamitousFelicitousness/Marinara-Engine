@@ -5424,6 +5424,78 @@ function turnZone(
 }
 
 /** Every zone of this caster's that drifts, moving as their turn starts (1.173). */
+/** A caster's zones in stages, as their turn starts (1.504): one turn on, on to the stage that turn
+ *  begins where one does, and its strike at whoever is inside, at most its `count` of them, its
+ *  caster's foes first and those nearest its middle first. Its ground and its cloud are the stage's. */
+function stageZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
+  for (const zone of [...(caster.zones ?? [])]) {
+    const action = caster.actions.find((entry) => entry.id === zone.actionId);
+    const stages = action?.zone?.stages;
+    if (!action || !stages || !caster.zones?.includes(zone)) continue;
+    zone.turns = (zone.turns ?? 1) + 1;
+    let at = -1;
+    stages.forEach((stage, index) => {
+      if (stage.from <= zone.turns!) at = index;
+    });
+    if (at < 0) continue;
+    const stage = stages[at]!;
+    const was = zone.stage;
+    if (was !== at) {
+      zone.stage = at;
+      ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "stage", layer: stage.label });
+      // Its cloud is the stage's: heavily obscuring while it says so.
+      if (stage.obscures) zone.obscures = { pierced: [] };
+      else if (was !== undefined && stages[was]?.obscures) delete zone.obscures;
+    }
+    if (!stage.amount) continue;
+    const middle = zone.at ?? rulesetPositionOf(caster);
+    const inside = (ctx.state.board?.grid ? rulesetZoneOccupants(ctx.state, caster, zone, action) : (zone.held ?? []))
+      .map((id) => rulesetCombatant(ctx.state, id))
+      .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one))
+      .sort(
+        (a, b) =>
+          Number(a.side === caster.side) - Number(b.side === caster.side) ||
+          (middle ? rulesetDistanceTo(middle, a) - rulesetDistanceTo(middle, b) : 0),
+      );
+    const struck = stage.count !== undefined ? inside.slice(0, stage.count) : inside;
+    if (struck.length === 0) continue;
+    const {
+      concentration: _held,
+      zone: _zone,
+      summons: _summons,
+      gives: _gives,
+      toHit: _toHit,
+      applies: _applies,
+      ...again
+    } = action;
+    const difficulty = action.save?.difficulty ?? action.saveDifficulty;
+    const derived: RulesetCombatAction = {
+      ...again,
+      autoHit: true,
+      damage: { ...stage.amount, ...(stage.damageType ? { type: stage.damageType } : {}) },
+    };
+    if (stage.save && difficulty !== undefined)
+      derived.save = { save: stage.save, difficulty, onSuccess: stage.onSave === "half" ? "half" : "negates" };
+    else delete derived.save;
+    const byZone = ctx.byZone;
+    ctx.byZone = true;
+    for (const target of struck) {
+      if (!rulesetCombatStanding(target)) continue;
+      ctx.events.push({
+        type: "zone",
+        actorId: caster.id,
+        label: zone.label,
+        outcome: "struck",
+        targetId: target.id,
+        trigger: "turn-start",
+      });
+      resolveAction(ctx, caster, derived, [target], zone.payWith);
+    }
+    if (byZone) ctx.byZone = byZone;
+    else delete ctx.byZone;
+  }
+}
+
 function driftZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
   for (const zone of [...(caster.zones ?? [])]) {
     const drift = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.drift;
@@ -14532,6 +14604,8 @@ function beginNextTurn(
     // Its own drifting zones move first (1.173), then starting a turn in a zone (1.172), before
     // the turn's own conditions tick.
     driftZones(ctx, actor);
+    // Its zones in stages on to their next turn, and what each does now (1.504).
+    stageZones(ctx, actor);
     burnAtTurn(ctx, actor);
     zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");

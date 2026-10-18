@@ -1543,9 +1543,11 @@ export function rulesetSlowedCells(
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
       const rule = action?.zone;
-      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed)) continue;
+      // Hard going in the stage it is at (1.504).
+      const staged = zone.stage !== undefined && !!rule?.stages?.[zone.stage]?.difficult;
+      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed || staged)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
-      const times = rule.costTimes ?? (rule.difficult ? 2 : 1);
+      const times = rule.costTimes ?? (rule.difficult || staged ? 2 : 1);
       // Hard going only toward its caster (1.182): kept apart, and priced by the step.
       const from = rule.towardCaster ? rulesetPositionOf(caster) : null;
       if (rule.towardCaster && !from) continue;

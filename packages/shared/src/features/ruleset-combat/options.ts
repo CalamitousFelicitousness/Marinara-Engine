@@ -624,7 +624,30 @@ export function rulesetTargetRefusal(
   // Through a layered wall's standing layer that stops it (1.439): Prismatic Wall's red and orange.
   const own = actor ? actionOf(actor, optionId) : undefined;
   if (own && target && rulesetLayersStop(state, own, from, rulesetPositionOf(target) ?? to)) return "no-line-of-sight";
+  // Into, out of or across a storm's stage where no ranged weapon is shot (1.504).
+  if (own && target && reach.max > 1 && rulesetStormStops(state, own, from, rulesetPositionOf(target) ?? to))
+    return "no-line-of-sight";
   return null;
+}
+
+/** Whether a zone's stage stops an attack with a ranged weapon between two cells (1.504): one into,
+ *  out of or across it while its stage says `noRanged`. 5e's Storm of Vengeance's gusts and freezing
+ *  rain. A spell or an area is no weapon. */
+export function rulesetStormStops(
+  state: RulesetEncounterState,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+): boolean {
+  if (action.toHit === undefined || action.area || rulesetIsSpell(action)) return false;
+  const storms = rulesetStandingZones(state).filter(
+    ({ zone, action: made }) => zone.stage !== undefined && !!made.zone?.stages?.[zone.stage]?.noRanged,
+  );
+  if (storms.length === 0) return false;
+  const path = new Set([from, to, ...rulesetPathCells(from, to)].map((cell) => `${cell.x},${cell.y}`));
+  return storms.some(({ caster, zone }) =>
+    rulesetZoneCells(state, caster, zone).some((cell) => path.has(`${cell.x},${cell.y}`)),
+  );
 }
 
 /** Whether a layered wall's standing layer stops this between two cells (1.439): an attack from afar,

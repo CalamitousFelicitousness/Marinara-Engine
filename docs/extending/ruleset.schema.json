@@ -44687,6 +44687,81 @@
                           ],
                           "additionalProperties": false
                         },
+                        "stages": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 1000
+                              },
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "amount": {
+                                "type": "object",
+                                "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "flat": {
+                                    "type": "integer"
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "damageType": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "save": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "onSave": {
+                                "type": "string",
+                                "enum": [
+                                  "half",
+                                  "none"
+                                ]
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
+                              "difficult": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "obscures": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "noRanged": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "from",
+                              "label"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 10
+                        },
                         "side": {
                           "type": "object",
                           "properties": {
@@ -67743,6 +67818,81 @@
                               ],
                               "additionalProperties": false
                             },
+                            "stages": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "from": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 1000
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "save": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "onSave": {
+                                    "type": "string",
+                                    "enum": [
+                                      "half",
+                                      "none"
+                                    ]
+                                  },
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "difficult": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "obscures": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "noRanged": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "from",
+                                  "label"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 10
+                            },
                             "side": {
                               "type": "object",
                               "properties": {
@@ -79816,6 +79966,81 @@
                                   "rows"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "stages": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 1000
+                                    },
+                                    "label": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "amount": {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "flat": {
+                                          "type": "integer"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "damageType": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "save": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "onSave": {
+                                      "type": "string",
+                                      "enum": [
+                                        "half",
+                                        "none"
+                                      ]
+                                    },
+                                    "count": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 20
+                                    },
+                                    "difficult": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "obscures": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "noRanged": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "from",
+                                    "label"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 10
                               },
                               "side": {
                                 "type": "object",
@@ -102116,6 +102341,81 @@
                               ],
                               "additionalProperties": false
                             },
+                            "stages": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "from": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 1000
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "save": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "onSave": {
+                                    "type": "string",
+                                    "enum": [
+                                      "half",
+                                      "none"
+                                    ]
+                                  },
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
+                                  },
+                                  "difficult": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "obscures": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "noRanged": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "from",
+                                  "label"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 10
+                            },
                             "side": {
                               "type": "object",
                               "properties": {
@@ -120050,6 +120350,81 @@
                                       "rows"
                                     ],
                                     "additionalProperties": false
+                                  },
+                                  "stages": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "from": {
+                                          "type": "integer",
+                                          "minimum": 2,
+                                          "maximum": 1000
+                                        },
+                                        "label": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "amount": {
+                                          "type": "object",
+                                          "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "flat": {
+                                              "type": "integer"
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "damageType": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "save": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "onSave": {
+                                          "type": "string",
+                                          "enum": [
+                                            "half",
+                                            "none"
+                                          ]
+                                        },
+                                        "count": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 20
+                                        },
+                                        "difficult": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "obscures": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "noRanged": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "from",
+                                        "label"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 10
                                   },
                                   "side": {
                                     "type": "object",

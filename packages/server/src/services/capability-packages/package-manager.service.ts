@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A zone in stages (1.504): Storm of Vengeance. */
+function carriesZoneStages504(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneStages504(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.zone)?.stages !== undefined) return true;
+  return featureValues(record).some((one) => carriesZoneStages504(one, depth + 1));
+}
+
 /** Charges or uses that come back after a wait in game time (1.503): a figurine's days. */
 function carriesItemWaits503(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7037,6 +7047,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Zones in stages, 1.504.
+  if (
+    !declaresApi(504) &&
+    (carriesZoneStages504(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneStages504(document)))
+  ) {
+    return "A ruleset with a zone in stages (zone.stages) requires schemaVersion 2 and capabilityApi 1.504 or newer";
+  }
   // Charges or uses back after a wait in game time, 1.503.
   if (
     !declaresApi(503) &&

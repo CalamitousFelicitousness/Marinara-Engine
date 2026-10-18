@@ -3175,8 +3175,10 @@ export type RulesetCombatEvent =
         | "found"
         /** Its first standing layer destroyed by `targetId`, or left standing by what they did (1.437). */
         | "layer-gone"
-        | "layer-held";
-      /** The layer it was about (1.437). */
+        | "layer-held"
+        /** On to its stage `layer` names (1.504). */
+        | "stage";
+      /** The layer it was about (1.437), or with `stage` (1.504) the stage it is at now. */
       layer?: string;
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.173). */
@@ -3884,6 +3886,20 @@ export interface RulesetCombatZoneRule {
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
   /** A wall nobody moves or sees through (1.177). */
   blocks?: { move?: boolean; sight?: boolean };
+  /** What it does from one of its caster's turns on (1.504), its amounts in the fight's own: Storm of
+   *  Vengeance. */
+  stages?: Array<{
+    from: number;
+    label: string;
+    amount?: RulesetCombatAmount;
+    damageType?: string;
+    save?: string;
+    onSave?: "half" | "none";
+    count?: number;
+    difficult?: true;
+    obscures?: true;
+    noRanged?: true;
+  }>;
   /** Cover it gives what lies on its far side (1.502): 5e's Blade Barrier. */
   cover?: "half" | "three-quarters";
   /** A wall's one side (1.177): cells within `distance` of it there catch as `triggers` say. */
@@ -4027,6 +4043,10 @@ export interface RulesetCombatZone {
   layersGone?: number;
   /** Whom its caster picked for it to spare (1.439). */
   spared?: string[];
+  /** Its caster's turns since it was cast, counting that one as the first (1.504), and the place of
+   *  the stage it is at, for a zone in stages. */
+  turns?: number;
+  stage?: number;
 }
 
 /** A Search's own throw for those who change how looking for them is thrown (1.290): 5e's Cloak of

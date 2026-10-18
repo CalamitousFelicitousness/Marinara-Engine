@@ -3165,7 +3165,60 @@ export interface RulesetCatalogZone {
   };
   burns?: { by: string[]; amount?: { dice?: string; flat?: number }; damageType?: string };
   layers?: RulesetZoneLayers;
+  stages?: RulesetZoneStage[];
 }
+
+/** What a zone does from one of its caster's turns on (Capability API 1.504), in place of what came
+ *  before: 5e's Storm of Vengeance, acid rain on the second turn, lightning on the third, hail on the
+ *  fourth, and gusts and freezing rain from the fifth. */
+export interface RulesetZoneStage {
+  from: number;
+  label: string;
+  amount?: { dice?: string; flat?: number };
+  damageType?: string;
+  save?: string;
+  onSave?: "half" | "none";
+  count?: number;
+  difficult?: true;
+  obscures?: true;
+  noRanged?: true;
+}
+const zoneStagesSchema: z.ZodType<RulesetZoneStage[], z.ZodTypeDef, unknown> = z
+  .array(
+    z
+      .object({
+        from: z.number().int().min(2).max(1000),
+        label: promptSafeText(40),
+        amount: z
+          .object(catalogAmountShape)
+          .strict()
+          .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+            message: "A stage's amount names dice, a flat amount, or both",
+          })
+          .optional(),
+        damageType: promptSafeText(40).optional(),
+        save: sheetId.optional(),
+        onSave: z.enum(["half", "none"]).optional(),
+        count: z.number().int().min(1).max(20).optional(),
+        difficult: z.literal(true).optional(),
+        obscures: z.literal(true).optional(),
+        noRanged: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((stage) => !stage.onSave || stage.save, {
+        message: '"onSave" says what a made save leaves, so it goes with "save"',
+        path: ["onSave"],
+      })
+      .refine((stage) => (!stage.save && !stage.damageType && !stage.count) || stage.amount, {
+        message: 'A stage that strikes says its "amount"',
+        path: ["amount"],
+      }),
+  )
+  .min(1)
+  .max(10)
+  .refine((stages) => stages.every((stage, at) => at === 0 || stage.from > stages[at - 1]!.from), {
+    message: "Stages run in order: each starts on a later turn than the one before",
+  });
 
 /** One layer of a layered wall (Capability API 1.437): 5e's Prismatic Wall's red, orange and the rest. */
 export interface RulesetZoneLayer {
@@ -3578,6 +3631,15 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  only once those before it are gone, as its `endedBy` says, and the zone ends with its last.
      *  5e's Prismatic Wall, as a wall or a globe. */
     layers: zoneLayersSchema.optional(),
+    /** What it does from one of its caster's turns on, counting the turn it was cast as the first
+     *  (Capability API 1.504): each stage, from its `from` until the next begins, strikes whoever is
+     *  inside as its caster's turn starts with its `amount` of `damageType`, saved against with its
+     *  `save` at the entry's own difficulty (`onSave` "half" or "none", the default), at most `count`
+     *  of them (its caster's foes first, nearest its middle first); and while it lasts its ground is
+     *  `difficult`, it heavily `obscures`, and with `noRanged` no attack with a ranged weapon is made
+     *  into, out of or across it. The entry's own effect is its first turn's, at its `triggers`. 5e's
+     *  Storm of Vengeance. */
+    stages: zoneStagesSchema.optional(),
     /** A wall's one side, chosen as it is cast (1.177): the cells within `distance` of it on that
      *  side catch as `triggers` say, beside the wall's own. 5e's Wall of Fire, 10 ft, turn-end. */
     side: z
@@ -6398,6 +6460,9 @@ function zoneIssue(mechanics: {
   if (zone.sections?.broken?.save && !mechanics.save) {
     return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
   }
+  if (zone.stages?.some((stage) => stage.save) && !mechanics.save) {
+    return "A stage's save is rolled against the entry's own difficulty, so it has a save";
+  }
   if (wall && (zone.anchor === "caster" || zone.move || zone.drift)) return "A wall stays where it is cast";
   if ((mechanics.area as { copies?: number } | undefined)?.copies && (zone.anchor === "caster" || zone.drift)) {
     return "A zone set down several times stays where it is cast, or is moved all together";
@@ -6459,6 +6524,7 @@ function zoneIssue(mechanics: {
                 !zone.wards &&
                 !zone.keepsOut &&
                 !zone.cover &&
+                !zone.stages &&
                 !zone.detonates &&
                 !zone.burns &&
                 !zone.lights &&
@@ -17745,6 +17811,13 @@ function zoneInsideIssues(
   if (zone.damageType && types && !types.includes(zone.damageType.trim().toLowerCase())) {
     add([...at, "damageType"], `Unknown damage type "${zone.damageType}"`);
   }
+  // Each stage's type and save (1.504).
+  zone.stages?.forEach((stage, index) => {
+    if (stage.damageType && types && !types.includes(stage.damageType.trim().toLowerCase()))
+      add([...at, "stages", index, "damageType"], `Unknown damage type "${stage.damageType}"`);
+    if (stage.save && !definition.sheet.saves.some((save) => save.id === stage.save))
+      add([...at, "stages", index, "save"], `Unknown save "${stage.save}"`);
+  });
   const burnType = zone.burns?.damageType;
   if (burnType && types && !types.includes(burnType.trim().toLowerCase())) {
     add([...at, "burns", "damageType"], `Unknown damage type "${burnType}"`);

@@ -2244,6 +2244,24 @@ export function rulesetZoneAction(
     };
   }
   if (zone.cover) out.cover = zone.cover;
+  // Its stages (1.504), their amounts in the fight's own.
+  if (zone.stages) {
+    out.stages = zone.stages.map((stage) => {
+      const amount = stage.amount ? amountOf(stage.amount) : null;
+      return {
+        from: stage.from,
+        label: stage.label,
+        ...(amount ? { amount } : {}),
+        ...(stage.damageType ? { damageType: stage.damageType } : {}),
+        ...(stage.save ? { save: stage.save } : {}),
+        ...(stage.onSave ? { onSave: stage.onSave } : {}),
+        ...(stage.count ? { count: stage.count } : {}),
+        ...(stage.difficult ? { difficult: true as const } : {}),
+        ...(stage.obscures ? { obscures: true as const } : {}),
+        ...(stage.noRanged ? { noRanged: true as const } : {}),
+      };
+    });
+  }
   const side = zone.side;
   if (side) {
     out.side = { distance: rulesetInCells(side.distance, perCell ?? 1), triggers: [...side.triggers] };

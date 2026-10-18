@@ -2179,6 +2179,7 @@
   "game.combat.ruleset.event.propMiss": "{{actor}}'s {{label}} misses {{prop}}.",
   "game.combat.ruleset.event.pushed": "{{actor}} pushes {{target}} back {{distance}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.raisedMax": "{{target}}'s health maximum rises by {{amount}} while {{condition}} holds.",
+  "game.combat.ruleset.event.rampage": "{{actor}} rampages on: a move and a {{label}}.",
   "game.combat.ruleset.event.ray": "{{target}} is struck by the {{ray}} ray of {{actor}}'s {{label}} ({{roll}}).",
   "game.combat.ruleset.event.readyActs": "{{actor}} readies {{label}} for an enemy acting.",
   "game.combat.ruleset.event.readyComes": "{{actor}} readies {{label}} for an enemy coming in reach.",

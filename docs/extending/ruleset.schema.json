@@ -54130,6 +54130,32 @@
                       ],
                       "additionalProperties": false
                     },
+                    "rampage": {
+                      "type": "object",
+                      "properties": {
+                        "action": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "budget": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "move": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "action",
+                        "budget"
+                      ],
+                      "additionalProperties": false
+                    },
                     "rollsAtTurnStart": {
                       "type": "array",
                       "items": {

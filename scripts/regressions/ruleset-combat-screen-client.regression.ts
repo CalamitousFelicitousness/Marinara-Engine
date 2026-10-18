@@ -923,6 +923,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["turnedOn", say({ type: "turnedOn", actorId: "brenna", ids: ["lurker"] })],
     ["deathBurst", say({ type: "deathBurst", actorId: "lurker", label: "Death Burst" })],
     ["turnRoll", say({ type: "turnRoll", actorId: "lurker", roll: 6, atLeast: 6, conditions: ["berserk"] })],
+    ["rampage", say({ type: "rampage", actorId: "lurker", label: "Bite", cells: 3 })],
     ["goesAt", say({ type: "goesAt", actorId: "lurker", condition: "berserk", targetId: "lurker" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker" })],
     ["inside", say({ type: "inside", targetId: "brenna", holderId: "lurker", out: true })],

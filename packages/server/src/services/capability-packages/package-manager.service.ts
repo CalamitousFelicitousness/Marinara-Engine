@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A gnoll's Rampage (1.492). */
+function carriesRampage492(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRampage492(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.rampage) && Array.isArray(record.actions)) return true;
+  return featureValues(record).some((one) => carriesRampage492(one, depth + 1));
+}
+
 /** Attacks and damage only at a surprised or not-yet-acted target, and hits made criticals (1.491):
  *  Assassinate, a bugbear's Surprise Attack. */
 function carriesSurpriseStrikes491(value: unknown, depth = 0): boolean {
@@ -6908,6 +6918,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A gnoll's Rampage, 1.492.
+  if (
+    !declaresApi(492) &&
+    (carriesRampage492(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRampage492(document)))
+  ) {
+    return "A ruleset with a creature that rampages on after felling one (rampage) requires schemaVersion 2 and capabilityApi 1.492 or newer";
+  }
   // Strikes at a surprised or not-yet-acted target, 1.491.
   if (
     !declaresApi(491) &&

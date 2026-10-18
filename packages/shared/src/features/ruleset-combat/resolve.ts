@@ -408,6 +408,8 @@ interface RulesetCombatContext {
   moreCharges?: number;
   /** Who is making a blow that reaps (1.323): whoever it fells on Held Ground is reaped. */
   reaping?: string;
+  /** The action being resolved and its maker (1.492), innermost first: what a fall was dealt by. */
+  acting?: { actorId: string; action: RulesetCombatAction };
   /** Where the teleport being resolved goes, and who goes along (1.276); nowhere is out of the
    *  fight (1.279). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
@@ -1794,6 +1796,7 @@ function dropToZero(
   if (!target.object) {
     feedAuras(ctx, target);
     fellsGrant(ctx, target);
+    rampage(ctx, target);
   }
   target.down = true;
   // Held Ground (1.323): felled, out of the fight but never dying, unless the blow reaps.
@@ -1854,6 +1857,25 @@ function fellsGrant(ctx: RulesetCombatContext, target: RulesetCombatant): void {
     if (!Number.isFinite(amount) || amount <= 0) continue;
     grantTemporary(ctx, feller, { sourceId: feller.id, rolls: [], flat: amount, amount });
   }
+}
+
+/** A creature that drops one to 0 with a melee attack on its own turn rampages on (1.492): its
+ *  budget spent, part of its speed to move and its action free once more. A gnoll's Rampage. */
+function rampage(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const acting = ctx.acting;
+  const feller = acting ? rulesetCombatant(ctx.state, acting.actorId) : undefined;
+  const rule = feller?.block?.rampage;
+  if (!acting || !feller || !rule || feller.id === target.id || !rulesetCombatStanding(feller)) return;
+  if (!rulesetOnOwnTurn(ctx.state, feller) || !rulesetIsAttack(acting.action)) return;
+  if (rulesetBlowKind(ctx.state, feller, target, acting.action) !== "melee") return;
+  const action = feller.actions.find((one) => one.id === rule.action);
+  if (!action || (feller.budgets[rule.budget] ?? 0) < 1) return;
+  spendBudget(ctx, feller, rule.budget);
+  const allowance = rulesetMovementAllowance(ctx.definition, ctx.combat, feller, ctx.state, undefined, true);
+  const cells = Math.floor(allowance * (rule.move ?? 0.5));
+  feller.movementLeft = (feller.movementLeft ?? 0) + cells;
+  feller.flags.followUps = [...(feller.flags.followUps ?? []).filter((one) => one.id !== action.id), { id: action.id }];
+  ctx.events.push({ type: "rampage", actorId: feller.id, label: action.label, cells });
 }
 
 function feedAuras(ctx: RulesetCombatContext, target: RulesetCombatant): void {
@@ -12402,7 +12424,28 @@ function turnsAction(
   return false;
 }
 
+/** The action as it is resolved, its maker and it known to whatever it sets off (1.492). */
 function resolveActionBody(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+  payWith?: string,
+  held?: RulesetHeldAttack,
+  styleId?: string,
+  spend?: number,
+): RulesetHitHold | null {
+  const before = ctx.acting;
+  ctx.acting = { actorId: actor.id, action };
+  try {
+    return resolveActionBodyIn(ctx, actor, action, targets, payWith, held, styleId, spend);
+  } finally {
+    if (before) ctx.acting = before;
+    else delete ctx.acting;
+  }
+}
+
+function resolveActionBodyIn(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
   action: RulesetCombatAction,

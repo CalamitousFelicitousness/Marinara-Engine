@@ -8022,6 +8022,18 @@ const creatureFields = {
     })
     .strict()
     .optional(),
+  /** When it drops a creature to 0 with a melee attack on its own turn, it spends `budget` (if it
+   *  has it left) to move up to `move` of its speed, and its `action` is free once more this turn
+   *  (Capability API 1.492): 5e's gnoll's Rampage, `{"action": "bite", "budget": "bonus", "move":
+   *  0.5}`. */
+  rampage: z
+    .object({
+      action: sheetId,
+      budget: sheetId,
+      move: z.number().gt(0).max(1).optional(),
+    })
+    .strict()
+    .optional(),
   /** Rolled as each of its turns starts while its health is at most `healthAtMost` and it does not
    *  hold all of `applies` already (Capability API 1.490): `atLeast` or more on `dice` puts them on
    *  it. 5e's flesh golem's Berserk, `{"healthAtMost": 40, "dice": "1d6", "atLeast": 6, "applies":
@@ -18110,6 +18122,13 @@ function creatureIssues(
     }
   }
 
+  // A rampage (1.492) is one of its own actions, bought with one of the fight's budgets.
+  if (creature.rampage) {
+    if (!creature.actions.some((one) => one.id === creature.rampage!.action))
+      add([...at, "rampage", "action"], `Unknown action "${creature.rampage.action}"`);
+    if (definition.combat && !definition.combat.economy.budgets.some((one) => one.id === creature.rampage!.budget))
+      add([...at, "rampage", "budget"], `Unknown budget "${creature.rampage.budget}"`);
+  }
   // What its turn's roll puts on it (1.490) is the ruleset's own conditions, and can be rolled.
   creature.rollsAtTurnStart?.forEach((rule, ruleIndex) => {
     rule.applies.forEach((entry, index) => {

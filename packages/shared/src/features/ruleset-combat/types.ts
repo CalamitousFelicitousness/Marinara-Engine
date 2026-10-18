@@ -666,6 +666,8 @@ export interface RulesetStatBlock {
   splits?: { by: string[]; atLeast: number; smallest?: string };
   /** What it puts on itself when a blow of one of `by` deals it anything (1.489): Aversion of Fire. */
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
+  /** Felling with a melee attack on its turn, a move and its action again (1.492): Rampage. */
+  rampage?: { action: string; budget: string; move?: number };
   /** Rolled as each of its turns starts at low health (1.490): Berserk. */
   rollsAtTurnStart?: Array<{ healthAtMost: number; dice: string; atLeast: number; applies: RulesetCombatApplies[] }>;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
@@ -3305,6 +3307,8 @@ export type RulesetCombatEvent =
   | { type: "deathBurst"; actorId: string; label: string }
   /** Its low-health roll as its turn starts (1.490): Berserk's d6. */
   | { type: "turnRoll"; actorId: string; roll: number; atLeast: number; conditions: string[] }
+  /** Rampaging on after felling one (1.492): `cells` more to move, and `label` again. */
+  | { type: "rampage"; actorId: string; label: string; cells: number }
   /** Made to go at the nearest creature it sees (1.490). */
   | { type: "goesAt"; actorId: string; condition: string; targetId: string }
   /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */

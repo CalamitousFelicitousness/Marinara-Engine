@@ -628,6 +628,8 @@ export function rulesetCombatEventLine(
         roll: event.roll,
         conditions: event.conditions.map((one) => names.condition(one)).join(", "),
       });
+    case "rampage":
+      return key("rampage", { actor: names.combatant(event.actorId), label: event.label });
     case "goesAt":
       return key("goesAt", {
         actor: names.combatant(event.actorId),

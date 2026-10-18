@@ -13538,7 +13538,8 @@ const combatObjectSchema = z
      * Perception: `{ "stealth": "stealth", "perception": "perception", "noisy": ["verbal"] }`.
      */
     hiding: combatHidingSchema.optional(),
-    contests: z.array(combatContestSchema).max(12).optional(),
+    /** Up to 16 (Capability API 1.544; 12 before). */
+    contests: z.array(combatContestSchema).max(16).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.103). */
     sizes: combatSizesSchema.optional(),
     /** Riding a willing creature of its side (Capability API 1.443). */

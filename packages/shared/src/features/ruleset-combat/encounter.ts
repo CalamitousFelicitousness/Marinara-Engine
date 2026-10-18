@@ -6477,6 +6477,7 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         entry.levitates ||
         entry.ignoresHardGround ||
         entry.runsAcross ||
+        entry.walksOnLiquid ||
         entry.passesCreatures ||
         entry.passesObjects,
     );
@@ -6485,6 +6486,9 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     else delete combatant.ignoresHardGround;
     if (grants.some((entry) => entry.runsAcross)) combatant.runsAcross = true;
     else delete combatant.runsAcross;
+    // On water as on ground (1.476).
+    if (grants.some((entry) => entry.walksOnLiquid)) combatant.walksOnLiquid = true;
+    else delete combatant.walksOnLiquid;
     // Through others' spaces, and through solid ground (1.442): anybody's over only larger ones.
     const passes = grants.flatMap((entry) => (entry.passesCreatures ? [entry.passesCreatures] : []));
     if (passes.length) combatant.passesCreatures = passes.includes("any") ? "any" : "larger";

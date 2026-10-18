@@ -116550,6 +116550,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "walksOnLiquid": {
+                "type": "boolean",
+                "const": true
+              },
               "passesCreatures": {
                 "type": "string",
                 "enum": [

@@ -11308,6 +11308,10 @@ const combatConditionSchema = z
      *  walls and across liquids without falling during the move. A walk cut short on water sets
      *  them down on the nearest open ground. */
     runsAcross: z.literal(true).optional(),
+    /** Its holder stands on water and walks across it as if it were solid ground (Capability API
+     *  1.476), stopping there if they like, and is never under it: 5e's Water Walk, a Ring of Water
+     *  Walking kept on with `keepsOn`. Unlike `runsAcross`, no wall is climbed. */
+    walksOnLiquid: z.literal(true).optional(),
     /** Its holder walks through other creatures' spaces, never stopping in one (Capability API
      *  1.442): `"larger"` through any creature of a larger size than its own, 5e's Halfling
      *  Nimbleness; `"any"` through anybody, a ghost's Incorporeal Movement. */

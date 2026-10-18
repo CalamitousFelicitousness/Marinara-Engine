@@ -312,13 +312,16 @@ function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
  *  is not, to a swimmer or a flier (1.113), nor to somebody who runs across it (1.379). */
 export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
   if (!rulesetCellBlocked(grid, x, y)) return false;
-  return !(isWater(grid, x, y) && (!!mover?.speeds?.fly || !!mover?.speeds?.swim || !!mover?.runsAcross));
+  return !(
+    isWater(grid, x, y) &&
+    (!!mover?.speeds?.fly || !!mover?.speeds?.swim || !!mover?.runsAcross || !!mover?.walksOnLiquid)
+  );
 }
 
 /** Whether this mover may cross a cell here but never stop on it (1.379): water, to somebody who
  *  runs across it and neither swims nor flies. */
 export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mover: RulesetCombatant): boolean {
-  if (!mover.runsAcross || mover.speeds?.swim || mover.speeds?.fly) return false;
+  if (!mover.runsAcross || mover.walksOnLiquid || mover.speeds?.swim || mover.speeds?.fly) return false;
   return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
 }
 
@@ -333,6 +336,8 @@ export function rulesetUnderwater(
   const grid = state?.board?.grid;
   if (!rule || !grid || !rulesetPositionOf(combatant) || rulesetAirborne(grid, combatant)) return false;
   if (combatant.speeds?.fly && !combatant.speeds.swim) return false;
+  // On the water, not in it (1.476): Water Walk.
+  if (combatant.walksOnLiquid) return false;
   return rulesetFootprint(combatant).some((cell) => {
     const tile = grid.tiles[cell.y]?.[cell.x];
     return tile !== undefined && rule.terrain.includes(tile);
@@ -580,6 +585,8 @@ export function rulesetMoveStep(
     if (speeds.swim) options.push({ mode: "swim", cost: 1 });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
     if (mover.runsAcross) options.push({ mode: "walk", cost: 1 });
+    // As on plain ground (1.476): a step, and the climb onto it.
+    else if (mover.walksOnLiquid) options.push({ mode: "walk", cost: climb === null ? null : 1 + climb });
   } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
     options.push({ mode: "walk", cost: mover.runsAcross ? enter : onFoot });
     if (speeds.climb) options.push({ mode: "climb", cost: enter });
@@ -1317,7 +1324,7 @@ export function rulesetWalkingDistances(
   mover?: RulesetCombatant,
 ): Map<string, number> {
   const unbounded =
-    mover?.speeds || mover?.ignoresHardGround || mover?.runsAcross
+    mover?.speeds || mover?.ignoresHardGround || mover?.runsAcross || mover?.walksOnLiquid
       ? {
           ...mover,
           modeLeft: Object.fromEntries(

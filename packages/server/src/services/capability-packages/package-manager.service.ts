@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition whose holder walks on water as on ground (1.476): Water Walk. */
+function carriesWalksOnLiquid476(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWalksOnLiquid476(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.walksOnLiquid !== undefined) return true;
+  return featureValues(record).some((one) => carriesWalksOnLiquid476(one, depth + 1));
+}
+
 /** A condition held off while its holder holds others or cannot move (1.475): Cloak of Displacement. */
 function carriesHeldOffWhile475(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6691,6 +6701,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Walking on water, 1.476.
+  if (
+    !declaresApi(476) &&
+    (carriesWalksOnLiquid476(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWalksOnLiquid476(document)))
+  ) {
+    return "A ruleset whose conditions let their holder walk on water (walksOnLiquid) requires schemaVersion 2 and capabilityApi 1.476 or newer";
+  }
   // A condition held off while others hold, 1.475.
   if (
     !declaresApi(475) &&

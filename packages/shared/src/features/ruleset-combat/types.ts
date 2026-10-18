@@ -1905,6 +1905,8 @@ export interface RulesetCombatant {
   /** On foot they take steps of any height and cross water, but never stop on water (1.379): 5e's
    *  Unarmored Movement at 9th level. */
   runsAcross?: true;
+  /** They stand on water and walk across it as on solid ground (1.476): 5e's Water Walk. */
+  walksOnLiquid?: true;
   /** They walk through other creatures' spaces, larger ones or anybody's (1.442). */
   passesCreatures?: "larger" | "any";
   /** Whose spaces they have entered in which turn (1.451), as `<round>:<turn>`: Fire Form's once a

@@ -288,7 +288,10 @@ function fieldExcerpts(
         if (list) excerpts.push(list);
         else undrawn.count += 1;
       } else if (isRecord(nestedBefore) || isRecord(nestedAfter)) {
-        excerpts.push(nestedExcerpt(`${field}.${key}`, nestedBefore, nestedAfter));
+        const nested = nestedExcerpt(`${field}.${key}`, nestedBefore, nestedAfter);
+        // Only noisy keys changed inside it (an id): nothing to draw, but the change still counts.
+        if (nested.count === 0 && !nested.onboarding) undrawn.count += 1;
+        else excerpts.push(nested);
       } else {
         excerpts.push(primitiveExcerpt(`${field}.${key}`, nestedBefore, nestedAfter));
       }

@@ -331,6 +331,27 @@ const reordered = buildMariWorkspaceActionResult(
 );
 assert.equal(reordered?.changes?.length, 0, "an order-only list change has no excerpt");
 assert.equal(reordered?.moreChanges, 1, "but it is still counted as changed");
+assert.match(
+  receiptSummary(reordered!, (key, options) => `${key}${options ? JSON.stringify(options) : ""}`, "en"),
+  /marichangereceipt\.labelMany\{"count":1\}/u,
+  "a receipt with nothing nameable still says how many changed",
+);
+
+// Inside a nested object, only noisy keys changed (an id): nothing to draw, and it still counts.
+const noiseOnly = buildMariWorkspaceActionResult(
+  "character.update",
+  applied([
+    {
+      table: "characters",
+      id: "ogre",
+      action: "update",
+      before: { id: "ogre", data: { name: "Ogre", extensions: { plugin_settings: { id: "one" } } } },
+      after: { id: "ogre", data: { name: "Ogre", extensions: { plugin_settings: { id: "two" } } } },
+    },
+  ]),
+);
+assert.equal(noiseOnly?.changes?.length, 0, "an id-only nested change draws nothing");
+assert.equal(noiseOnly?.moreChanges, 1, "but it is still counted as changed");
 
 // The same list beside a drawable setting: the setting shows, and the dropped list still counts.
 const reorderedBeside = buildMariWorkspaceActionResult(

@@ -95,6 +95,8 @@ export function receiptSummary(result: MariWorkspaceActionResult, t: Localize, l
     return change.kind === "nested" ? segments.at(-1)! : segments[0]!;
   };
   const parts = [...new Set(result.changes.map(part))];
+  // A change the card cannot name (a list that only re-ordered) still says how many changed.
+  if (parts.length === 0) return t("ui.chat.marichangereceipt.labelMany", { count: Math.max(count, 1) });
   const shown = parts.slice(0, 3).map((field) => fieldLabel(field).toLocaleLowerCase(lang));
   return count > shown.length
     ? t("ui.chat.marichangereceipt.changedMore", { fields: shown.join(", "), count: count - shown.length })

@@ -433,6 +433,8 @@ export function rulesetCombatEventLine(
         .filter(Boolean)
         .join(" ");
     case "skip":
+      // Not commanded by its caller (1.505).
+      if (event.reason === "uncommanded") return key("skipUncommanded", { actor: names.combatant(event.actorId) });
       return key("skipDazed", { actor: names.combatant(event.actorId) });
     case "heal":
       if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });

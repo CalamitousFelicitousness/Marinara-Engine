@@ -5269,6 +5269,8 @@ function fillCatalogCallsAsWritten(
       ...((stepped.perStep ?? calls.perStep) ? { perStep: stepped.perStep ?? calls.perStep } : {}),
       ...(stepped.fromStep ? { fromStep: stepped.fromStep } : {}),
       ...(calls.hostileOnBreak ? { hostileOnBreak: true as const } : {}),
+      ...(calls.fromCaller ? { fromCaller: structuredClone(calls.fromCaller) } : {}),
+      ...(calls.commandedWith ? { commandedWith: calls.commandedWith } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
     };

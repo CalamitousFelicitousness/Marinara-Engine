@@ -1177,6 +1177,10 @@ export interface RulesetCombatAction {
     fromStep?: number;
     /** They turn on their caller's side when its concentration is broken (1.485), not leaving. */
     hostileOnBreak?: true;
+    /** Built from their caller (1.505): health maximum, attack bonus and an amount added to damage. */
+    fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef };
+    /** Acting only as their caller pays this budget for it (1.505). */
+    commandedWith?: string;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
@@ -1707,6 +1711,9 @@ export interface RulesetCombatant {
   calledEndsWithCaller?: true;
   /** They turn on their caller's side when the concentration that holds them is broken (1.485). */
   calledHostileOnBreak?: true;
+  /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
+   *  (1.505): 5e's Arcane Hand. */
+  calledCommand?: { budget: string; free?: true };
   /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
   calledTurned?: true;
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
@@ -2882,7 +2889,8 @@ export type RulesetCombatEvent =
       condition?: string;
       text?: string;
     }
-  | { type: "skip"; actorId: string; reason: "daze" }
+  /** `uncommanded` (1.505): a called creature whose caller did not pay for its turn. */
+  | { type: "skip"; actorId: string; reason: "daze" | "uncommanded" }
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }

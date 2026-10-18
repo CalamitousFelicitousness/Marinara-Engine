@@ -2261,6 +2261,17 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** Creatures built from their caller, or commanded by them (1.505): Arcane Hand. */
+function carriesCommandedCalls505(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCommandedCalls505(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls && (calls.fromCaller !== undefined || calls.commandedWith !== undefined)) return true;
+  return featureValues(record).some((one) => carriesCommandedCalls505(one, depth + 1));
+}
+
 /** A zone in stages (1.504): Storm of Vengeance. */
 function carriesZoneStages504(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7047,6 +7058,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Creatures built from their caller or commanded by them, 1.505.
+  if (
+    !declaresApi(505) &&
+    (carriesCommandedCalls505(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCommandedCalls505(document)))
+  ) {
+    return "A ruleset with creatures built from their caller or commanded by them (calls.fromCaller, calls.commandedWith) requires schemaVersion 2 and capabilityApi 1.505 or newer";
+  }
   // Zones in stages, 1.504.
   if (
     !declaresApi(504) &&

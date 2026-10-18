@@ -21,6 +21,7 @@ import {
   type RulesetConditionHarms,
   type RulesetConditionInside,
   type RulesetInsideRoom,
+  type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import {
   evaluateRulesetSheetLive,
@@ -9124,6 +9125,40 @@ function callCreatures(
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
+    // Commanded by their caller (1.505), the turn they come on free.
+    if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
+  }
+  // Built from their caller (1.505): Arcane Hand's health, attack bonus and modifier.
+  const from = action.calls.fromCaller;
+  if (from) {
+    const most = healthOf(ctx, actor).max;
+    const read = (ref: RulesetValueRef | undefined) => {
+      if (!ref || !actor.sheet) return undefined;
+      const value = resolveRulesetValueRef(
+        ctx.definition,
+        actor.sheet.build,
+        ref,
+        evaluateRulesetSheetLive(
+          ctx.definition,
+          actor.sheet.build,
+          actor.sheet.live,
+          actor.sheet.items,
+          actor.abilityConditions,
+        ),
+      );
+      return Number.isFinite(value) ? Math.trunc(value) : undefined;
+    };
+    const toHit = read(from.toHit);
+    const adds = read(from.adds);
+    for (const id of ids) {
+      const called = rulesetCombatant(ctx.state, id);
+      if (!called) continue;
+      if (from.health && called.health && most > 0) called.health = { value: most, max: most, temp: 0 };
+      for (const one of called.actions) {
+        if (toHit !== undefined && one.toHit !== undefined) one.toHit = toHit;
+        if (adds && one.damage) one.damage = { ...one.damage, flat: one.damage.flat + adds };
+      }
+    }
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
   // What it puts on goes on them (1.426): Antipathy's condition on its object, the kind remembered.
@@ -14624,6 +14659,22 @@ function beginNextTurn(
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
+    // Commanded by their caller (1.505): the caller pays for this turn, or it passes.
+    const command = actor.calledCommand;
+    if (command && !actor.defeated && !actor.calledTurned) {
+      const caller = actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
+      if (command.free) delete command.free;
+      else if (caller && rulesetCombatStanding(caller) && (caller.budgets[command.budget] ?? 0) >= 1) {
+        caller.budgets[command.budget] = (caller.budgets[command.budget] ?? 0) - 1;
+      } else {
+        tickConditions(ctx, actor, "turn-end");
+        ctx.events.push({ type: "skip", actorId: actor.id, reason: "uncommanded" });
+        if (rulesetEncounterOutcome(ctx.state) === "ongoing") {
+          beginNextTurn(definition, combat, ctx);
+          return;
+        }
+      }
+    }
     if (actor.dazed) {
       const dazed = actor.dazed;
       tickConditions(ctx, actor, "turn-end");

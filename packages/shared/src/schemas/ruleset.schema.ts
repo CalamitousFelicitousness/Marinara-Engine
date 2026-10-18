@@ -5727,6 +5727,25 @@ export const catalogCallsSchema = z
      *  (Capability API 1.434), by id of `combat.creatureTypes.types`: 5e's Find Familiar, "a
      *  celestial, fey, or fiend (your choice) instead of a beast". */
     asTypes: z.array(sheetId).min(1).max(6).optional(),
+    /** Built from their caller (Capability API 1.505): `health` gives each their caller's health
+     *  maximum, `toHit` makes each of their attacks' bonus a value read off their caller's sheet, and
+     *  `adds` adds one read off it to each of their damage amounts. 5e's Arcane Hand, "hit points equal
+     *  to your hit point maximum", your spell attack bonus and your spellcasting modifier. */
+    fromCaller: z
+      .object({
+        health: z.literal(true).optional(),
+        toHit: rulesetValueRefSchema.optional(),
+        adds: rulesetValueRefSchema.optional(),
+      })
+      .strict()
+      .refine((from) => from.health || from.toHit || from.adds, {
+        message: 'Say what they take from their caller: "health", "toHit", "adds" or more',
+      })
+      .optional(),
+    /** They act only as their caller commands (Capability API 1.505): at each of their turns but the
+     *  first, their caller pays 1 of this budget, or the turn passes. With `"initiative": "after"`
+     *  that turn comes right after their caller's. 5e's Arcane Hand, a bonus action. */
+    commandedWith: sheetId.optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -20927,6 +20946,11 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.summons?.budget !== undefined && !budgets?.has(mechanics.summons.budget)) {
       add([index, "mechanics", "summons", "budget"], `Unknown budget "${mechanics.summons.budget}"`);
+    }
+    // The budget its callers' commands spend (1.505).
+    const commanded = (mechanics?.calls as { commandedWith?: string } | undefined)?.commandedWith;
+    if (commanded !== undefined && !budgets?.has(commanded)) {
+      add([index, "mechanics", "calls", "commandedWith"], `Unknown budget "${commanded}"`);
     }
     // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.242).
     // A hit answered only when a strike from a budget the fight declares made it (1.248).

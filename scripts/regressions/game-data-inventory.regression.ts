@@ -18,6 +18,7 @@ import {
 import {
   buildGameInventoryOps,
   findGameInventoryStacksChangedSince,
+  gameInventoryOpsExpected,
 } from "../../packages/client/src/lib/state-editor/game-data-inventory.js";
 
 const opened: GameInventoryStack[] = [
@@ -171,6 +172,38 @@ try {
     `every op lands: ${res.body}`,
   );
   const after = (await readStacks()).map((stack) => `${stack.name}:${stack.quantity}`).sort();
+
+  // The touched stacks as opened ride along, checked where the ops are applied: a stack the game
+  // changed after the editor's own check is refused, and nothing is applied.
+  const nowStacks = await readStacks();
+  const appleNow = nowStacks.find((stack) => stack.name === "Apple")!;
+  const editOps = buildGameInventoryOps(nowStacks, [
+    { ...appleNow, quantity: 9 },
+    ...nowStacks.filter((s) => s !== appleNow),
+  ]);
+  assert.ok("ops" in editOps);
+  const expected = gameInventoryOpsExpected(nowStacks, editOps.ops);
+  assert.deepEqual(Object.keys(expected), [appleNow.id], "only the touched stacks are sent");
+  await app.inject({
+    method: "POST",
+    url: "/api/game/inventory",
+    payload: { chatId: chat.id, ops: [{ op: "set", id: appleNow.id, quantity: 2 }] },
+  });
+  const raced = await app.inject({
+    method: "POST",
+    url: "/api/game/inventory",
+    payload: { chatId: chat.id, ops: editOps.ops, expected },
+  });
+  assert.equal(raced.statusCode, 409, raced.body);
+  assert.deepEqual(raced.json().stacks, [appleNow.id]);
+  assert.equal((await readStacks()).find((s) => s.id === appleNow.id)!.quantity, 2, "the game's change is kept");
+  const fresh = await readStacks();
+  const retry = await app.inject({
+    method: "POST",
+    url: "/api/game/inventory",
+    payload: { chatId: chat.id, ops: editOps.ops, expected: gameInventoryOpsExpected(fresh, editOps.ops) },
+  });
+  assert.equal(retry.statusCode, 200, retry.body);
   assert.deepEqual(
     after,
     ["Apple:5", "Torch:2"],

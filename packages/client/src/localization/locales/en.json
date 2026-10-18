@@ -9545,6 +9545,7 @@
   "ui.game.checkpoints.empty": "No checkpoints yet. The editor takes one before every save.",
   "ui.game.checkpoints.load": "Load",
   "ui.game.checkpoints.loaded": "Checkpoint loaded",
+  "ui.game.checkpoints.loadedStale": "Checkpoint loaded, but the tracker couldn't refresh; it updates on your next turn.",
   "ui.game.checkpoints.loadFailed": "That checkpoint could not be loaded.",
   "ui.game.checkpoints.loading": "Loading checkpoints…",
   "ui.game.checkpoints.loadMessage": "The game goes back to that moment: the tracker, the map and the story after it are restored.",

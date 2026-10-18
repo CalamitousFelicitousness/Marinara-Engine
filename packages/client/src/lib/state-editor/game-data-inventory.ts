@@ -132,6 +132,15 @@ export function buildGameInventoryOps(
   return { ops, labels };
 }
 
+/** The ops' stacks as the editor opened them, by id: the inventory route checks them where it writes. */
+export function gameInventoryOpsExpected(
+  opened: GameInventoryStack[],
+  ops: GameInventoryOp[],
+): Record<string, GameInventoryStack> {
+  const touched = new Set(ops.flatMap((op) => ("id" in op && typeof op.id === "string" ? [op.id] : [])));
+  return Object.fromEntries(opened.filter((stack) => touched.has(stack.id)).map((stack) => [stack.id, stack]));
+}
+
 /** The stacks the ops touch whose stored value changed since the editor opened them (stale). */
 export function findGameInventoryStacksChangedSince(
   opened: GameInventoryStack[],

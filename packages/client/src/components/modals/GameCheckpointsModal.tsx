@@ -57,19 +57,29 @@ export function GameCheckpointsModal({ open, onClose, chatId }: GameCheckpointsM
       setBusyId(checkpoint.id);
       try {
         await api.post("/game/checkpoint/load", { chatId, checkpointId: checkpoint.id });
-        // The game the tracker draws is the restored one, now: the game surface only fetches it when
-        // the store holds none for this chat, so it has to be replaced here rather than left stale.
-        // Its own failure is the load's: showing the pre-restore tracker as if it were the restored one
-        // would be worse than saying the load did not finish.
-        const restored = await api.get<GameState | null>(`/chats/${chatId}/game-state`);
-        useGameStateStore.getState().setGameState(restored);
-        // And the rest: the chat, its messages, and the game surface's own caches.
-        void qc.invalidateQueries({ queryKey: chatKeys.all });
-        void qc.invalidateQueries({ queryKey: gameKeys.all });
-        toast.success(localizeUi("ui.game.checkpoints.loaded"));
-        onClose();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : localizeUi("ui.game.checkpoints.loadFailed"));
+        setBusyId(null);
+        return;
+      }
+      // The load landed on the server: whatever the game-state read does, the chat, its messages and the
+      // game surface's caches are stale now, so they reload either way.
+      void qc.invalidateQueries({ queryKey: chatKeys.all });
+      void qc.invalidateQueries({ queryKey: gameKeys.all });
+      try {
+        // The tracker the game surface draws: it only fetches one when the store holds none for this chat,
+        // so the restored one has to be put there here.
+        const restored = await api.get<GameState | null>(`/chats/${chatId}/game-state`);
+        useGameStateStore.getState().setGameState(restored);
+        toast.success(localizeUi("ui.game.checkpoints.loaded"));
+        onClose();
+      } catch {
+        // Its own failure is not the load's, but the tracker shown is the pre-load one: say so, and clear
+        // it rather than keep showing it; the next turn writes the restored game's state, and reopening
+        // the chat fetches it.
+        useGameStateStore.getState().setGameState(null);
+        toast.warning(localizeUi("ui.game.checkpoints.loadedStale"));
+        onClose();
       } finally {
         setBusyId(null);
       }

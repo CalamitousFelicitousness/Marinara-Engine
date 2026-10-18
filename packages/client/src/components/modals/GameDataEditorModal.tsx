@@ -16,6 +16,7 @@ import {
   type GameDataEditRefusal,
   type GameDataEditRequest,
   type GameInventoryOp,
+  type GameInventoryStack,
   type HudWidget,
   type GameInventoryOpResult,
 } from "@marinara-engine/shared";
@@ -36,6 +37,7 @@ import {
 import {
   buildGameInventoryOps,
   findGameInventoryStacksChangedSince,
+  gameInventoryOpsExpected,
   type GameDataInventoryIssue,
   type GameDataInventoryOpLabel,
 } from "../../lib/state-editor/game-data-inventory";
@@ -218,10 +220,24 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
 
   /** The inventory ops, applied one by one by the game: what it refused, worded per stack. */
   const saveInventoryOps = useCallback(
-    async (ops: GameInventoryOp[], labels: GameDataInventoryOpLabel[]) => {
-      const response = await trackChatMetadataSave(chatId, () =>
-        api.post<{ results: GameInventoryOpResult[] }>("/game/inventory", { chatId, ops }),
-      );
+    async (ops: GameInventoryOp[], labels: GameDataInventoryOpLabel[], opened: GameInventoryStack[]) => {
+      // The touched stacks as opened ride along: the route refuses the ops when one changed since.
+      let response: { results: GameInventoryOpResult[] };
+      try {
+        response = await trackChatMetadataSave(chatId, () =>
+          api.post<{ results: GameInventoryOpResult[] }>("/game/inventory", {
+            chatId,
+            ops,
+            expected: gameInventoryOpsExpected(opened, ops),
+          }),
+        );
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) throw error;
+        setNotice("stale");
+        const ids = new Set((error.payload as { stacks?: string[] } | undefined)?.stacks ?? []);
+        const names = opened.filter((stack) => ids.has(stack.id)).map((stack) => stack.nickname || stack.name);
+        throw new Error(localizeUi("ui.stateEditor.gameData.inventory.stale", { names: names.join(", ") }));
+      }
       return response.results.flatMap((outcome, index) => {
         if (outcome.ok) return [];
         const label = labels[index];
@@ -357,7 +373,8 @@ export function GameDataEditorModal({ open, onClose, chatId }: GameDataEditorMod
           await saveDataEdits(result.edits);
           landed = true;
         }
-        if (inventory && "ops" in inventory && ops.length > 0) refused = await saveInventoryOps(ops, inventory.labels);
+        if (inventory && "ops" in inventory && ops.length > 0)
+          refused = await saveInventoryOps(ops, inventory.labels, openedStacks);
       } catch (error) {
         if (!landed) throw error;
         // Part of it saved: move the baseline to what's stored, so the saved sections read clean and only

@@ -9494,7 +9494,28 @@ function callCreatures(
       if (from.health && called.health && most > 0) called.health = { value: most, max: most, temp: 0 };
       for (const one of called.actions) {
         if (toHit !== undefined && one.toHit !== undefined) one.toHit = toHit;
-        if (adds && one.damage) one.damage = { ...one.damage, flat: one.damage.flat + adds };
+        // Not on one that keeps it off (1.533): Arcane Hand's Clenched Fist.
+        if (adds && one.damage && one.callerAdds !== false)
+          one.damage = { ...one.damage, flat: one.damage.flat + adds };
+      }
+    }
+  }
+  // More for each step the call was paid above its base (1.533): Arcane Hand's 2d8 a slot level.
+  if (steps > 0) {
+    for (const id of ids) {
+      const called = rulesetCombatant(ctx.state, id);
+      if (!called) continue;
+      for (const one of called.actions) {
+        const per = one.perCallerStep;
+        if (!per || !one.damage) continue;
+        const sameSides = per.count === 0 || one.damage.count === 0 || per.sides === one.damage.sides;
+        if (!sameSides) continue;
+        one.damage = {
+          ...one.damage,
+          count: one.damage.count + per.count * steps,
+          sides: one.damage.count > 0 ? one.damage.sides : per.sides,
+          flat: one.damage.flat + per.flat * steps,
+        };
       }
     }
   }

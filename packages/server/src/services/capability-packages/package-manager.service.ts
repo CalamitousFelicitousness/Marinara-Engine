@@ -2261,6 +2261,18 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A called creature's action that keeps its caller's number off, or grows with the call (1.533):
+ *  Arcane Hand's Clenched Fist. */
+function carriesCallerSteps533(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallerSteps533(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.budget !== undefined && (record.callerAdds !== undefined || record.perCallerStep !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesCallerSteps533(one, depth + 1));
+}
+
 /** A condition that counts as others (1.532): Enthrall as charmed. */
 function carriesCountsAs532(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7355,6 +7367,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A called creature's action that keeps its caller's number off, or grows with the call, 1.533.
+  if (
+    !declaresApi(533) &&
+    (carriesCallerSteps533(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallerSteps533(document)))
+  ) {
+    return "A ruleset with a called creature's action that keeps its caller's number off or grows with the call (callerAdds, perCallerStep) requires schemaVersion 2 and capabilityApi 1.533 or newer";
+  }
   // A condition that counts as others, 1.532.
   if (
     !declaresApi(532) &&

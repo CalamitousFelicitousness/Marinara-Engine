@@ -4286,6 +4286,8 @@ function blockActions(
       : {}),
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    ...(action.callerAdds === false ? { callerAdds: false as const } : {}),
+    ...(action.perCallerStep ? { perCallerStep: { ...action.perCallerStep } } : {}),
     ...(action.drain ? { drain: { ...action.drain } } : {}),
     // A legendary move (1.283): a board's business, so its distance is in cells.
     ...(action.move

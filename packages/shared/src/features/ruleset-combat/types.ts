@@ -505,6 +505,10 @@ export interface RulesetStatBlockAction {
   /** Its damage lowers the health maximum (1.203): on a failed save of its own, on a failed save of
    *  the action's (`onFailedSave`), or on every blow (1.235); only `damageType`'s, healing its maker
    *  with `heals`. */
+  /** On a called creature (1.533): `false` keeps its caller's `adds` off this action, and
+   *  `perCallerStep` is added once for each step the call was paid above its base. */
+  callerAdds?: false;
+  perCallerStep?: RulesetCombatAmount;
   reducesMax?: {
     save?: string;
     difficulty?: number;
@@ -780,6 +784,10 @@ export interface RulesetCombatAction {
   /** Its damage lowers the health maximum (1.203): on a failed save of its own, on a failed save of
    *  the action's (`onFailedSave`), or on every blow (1.235); only `damageType`'s, healing its maker
    *  with `heals`. */
+  /** On a called creature (1.533): `false` keeps its caller's `adds` off this action, and
+   *  `perCallerStep` is added once for each step the call was paid above its base. */
+  callerAdds?: false;
+  perCallerStep?: RulesetCombatAmount;
   reducesMax?: {
     save?: string;
     difficulty?: number;

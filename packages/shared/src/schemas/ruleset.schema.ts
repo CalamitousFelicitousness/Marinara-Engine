@@ -7587,6 +7587,18 @@ const creatureActionSchema = z
      *  (Capability API 1.203), until a rest, or with `lasting` until something gives it back
      *  (`unseals`); brought to 0 that way, it dies. 5e's wraith's Life Drain, a clay golem's Slam. */
     reducesMax: reducesMaxSchema.optional(),
+    /** On a creature called with `fromCaller.adds` (Capability API 1.533), `false` keeps the caller's
+     *  number off this action's damage: Arcane Hand's Clenched Fist, 4d8 and nothing more. */
+    callerAdds: z.literal(false).optional(),
+    /** On a called creature (Capability API 1.533), added to this action's damage once for every step
+     *  the call was paid above its base: Arcane Hand's "2d8 for each slot level above 5th". */
+    perCallerStep: z
+      .object(catalogAmountShape)
+      .strict()
+      .refine((amount) => amount.dice !== undefined || amount.flat !== undefined, {
+        message: "perCallerStep names dice, a flat amount, or both",
+      })
+      .optional(),
     /** The creature regains health by the damage it dealt, or a share of it (Capability API 1.281):
      *  an aboleth's Psychic Drain. */
     drain: drainSchema.optional(),
@@ -18496,6 +18508,13 @@ function creatureIssues(
   creature.actions?.forEach((action, index) => {
     if (action.teleport?.smoke)
       sightIssues(definition, action.teleport.smoke.pierced, [...at, "actions", index, "teleport", "smoke"], add);
+    // More dice for each step a call was paid (1.533) are the damage's own size.
+    const sidesOf = (dice: string | undefined) => /d(\d+)/.exec(dice ?? "")?.[1];
+    const perSides = sidesOf(action.perCallerStep?.dice);
+    if (action.perCallerStep && !action.damage)
+      add([...at, "actions", index, "perCallerStep"], '"perCallerStep" adds to the action\'s damage, so it has one');
+    else if (perSides && sidesOf(action.damage?.dice) && perSides !== sidesOf(action.damage?.dice))
+      add([...at, "actions", index, "perCallerStep"], '"perCallerStep" rolls dice the size of the damage\'s own');
   });
   const kinds = rulesetConditionKindIds(definition);
   creature.conditionImmunities?.forEach((condition, index) => {

@@ -241,6 +241,11 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
+    // On a called creature (1.533): Arcane Hand's fist, with no modifier and more for each slot.
+    ...(action.callerAdds === false ? { callerAdds: false as const } : {}),
+    ...(action.perCallerStep && amountOf(action.perCallerStep)
+      ? { perCallerStep: amountOf(action.perCallerStep)! }
+      : {}),
     // What it dealt comes back to it (1.281): an aboleth's Psychic Drain.
     ...(action.drain ? { drain: { ...action.drain } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),

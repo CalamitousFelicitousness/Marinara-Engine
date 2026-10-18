@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** A condition anybody next to its holder may end with their own check (1.465): dousing a fire. */
+function carriesCheckEndsByAny465(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCheckEndsByAny465(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.checkEnds)?.by !== undefined) return true;
+  return featureValues(record).some((one) => carriesCheckEndsByAny465(one, depth + 1));
+}
+
 /** A condition an entry puts on only when paid so many steps up (1.464): Magic Weapon's +2 and +3. */
 function carriesPaidSteps464(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6563,6 +6573,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Conditions anybody next to the holder may end, 1.465.
+  if (
+    !declaresApi(465) &&
+    (carriesCheckEndsByAny465(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCheckEndsByAny465(document)))
+  ) {
+    return "A ruleset whose conditions anybody next to their holder may end with a check (checkEnds by any) requires schemaVersion 2 and capabilityApi 1.465 or newer";
+  }
   // Conditions picked by the steps paid, 1.464.
   if (
     !declaresApi(464) &&

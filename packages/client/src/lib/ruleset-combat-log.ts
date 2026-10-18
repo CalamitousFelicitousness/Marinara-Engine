@@ -623,6 +623,15 @@ export function rulesetCombatEventLine(
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
     // A check made to end a condition (1.313): Maze's way out.
     case "checkEnded":
+      // For somebody else (1.465): a creature on fire doused by a friend.
+      if (event.holderId)
+        return key(event.success ? "checkEndedFor" : "checkEndedForFailed", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.holderId),
+          condition: names.condition(event.condition),
+          total: event.total ?? 0,
+          difficulty: event.difficulty,
+        });
       return key(event.automatic ? "checkEndedAutomatic" : event.success ? "checkEnded" : "checkEndedFailed", {
         actor: names.combatant(event.actorId),
         condition: names.condition(event.condition),

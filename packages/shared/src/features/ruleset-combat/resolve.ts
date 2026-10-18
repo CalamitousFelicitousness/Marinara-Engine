@@ -6130,15 +6130,18 @@ function applyChoice(
 
   // A check that ends what it holds (1.313): Maze's way out.
   if (option.checkEnds) {
-    const entry = working.tracked.find((one) => one.condition === option.checkEnds!.condition);
+    // Their own, or one next to them they end for its holder (1.465), rolled with their own check.
+    const holder = option.checkEnds.holderId ? rulesetCombatant(ctx.state, option.checkEnds.holderId) : working;
+    const entry = holder?.tracked.find((one) => one.condition === option.checkEnds!.condition);
     const rule = entry?.checkEnds;
-    if (entry && rule) {
+    if (holder && entry && rule && (holder === working || rule.by === "any")) {
       const automatic = !!rule.passes && rulesetTargetIs(ctx.definition, working, rule.passes);
       const thrown = automatic ? undefined : throwCheck(ctx, working, rule.check, working.checks?.[rule.check] ?? 0);
       const success = automatic || (thrown !== undefined && thrown.total >= rule.difficulty);
       ctx.events.push({
         type: "checkEnded",
         actorId: working.id,
+        ...(holder !== working ? { holderId: holder.id } : {}),
         condition: entry.condition,
         difficulty: rule.difficulty,
         ...(thrown ? { total: thrown.total, rolls: thrown.rolls } : {}),
@@ -6146,7 +6149,7 @@ function applyChoice(
         ...(automatic ? { automatic: true as const } : {}),
       });
       if (success) {
-        removeCondition(ctx, working, entry.condition, "save");
+        removeCondition(ctx, holder, entry.condition, "save");
         // The spell ends with it: its concentration too, where that is what held it.
         endHoldingConcentration(ctx, entry);
       }

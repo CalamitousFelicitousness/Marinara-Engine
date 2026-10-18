@@ -2014,6 +2014,8 @@
   "game.combat.ruleset.event.checkEnded": "{{actor}} rolls {{total}} against {{difficulty}} and is free of {{condition}}.",
   "game.combat.ruleset.event.checkEndedAutomatic": "{{actor}} is free of {{condition}} without a roll.",
   "game.combat.ruleset.event.checkEndedFailed": "{{actor}} rolls {{total}} against {{difficulty}} and is still {{condition}}.",
+  "game.combat.ruleset.event.checkEndedFor": "{{actor}} rolls {{total}} against {{difficulty}} and frees {{target}} of {{condition}}.",
+  "game.combat.ruleset.event.checkEndedForFailed": "{{actor}} rolls {{total}} against {{difficulty}}, and {{target}} is still {{condition}}.",
   "game.combat.ruleset.event.compelledNormal": "{{actor}} rolls {{roll}} for {{condition}} and acts normally.",
   "game.combat.ruleset.event.compelledNothing": "{{actor}} rolls {{roll}} for {{condition}} and does nothing this turn.",
   "game.combat.ruleset.event.compelledStrike": "{{actor}} rolls {{roll}} for {{condition}} and lashes out at {{target}}.",

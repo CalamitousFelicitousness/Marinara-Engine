@@ -3973,7 +3973,7 @@ export function rulesetUncompelledOptions(
     }
   }
   const budget = rulesetStandardBudget(combat);
-  options.push(...endingOptions(definition, combat, actor));
+  options.push(...endingOptions(definition, combat, actor, state));
   for (const action of combat.standard ?? []) {
     if ((actor.budgets[budget] ?? 0) < 1) break;
     // Readying for real (1.288): one entry for each option it may ready, and what it waits for.
@@ -4333,10 +4333,29 @@ function endingOptions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   actor: RulesetCombatant,
+  state?: RulesetEncounterState,
 ): RulesetCombatOption[] {
   const budget = rulesetStandardBudget(combat);
   if ((actor.budgets[budget] ?? 0) < 1) return [];
   const options: RulesetCombatOption[] = [];
+  // Somebody next to them ends it for them (1.465): a creature on fire doused.
+  for (const holder of state?.combatants ?? []) {
+    if (holder.id === actor.id || !rulesetCombatStanding(holder) || holder.away) continue;
+    if (state!.board && (!rulesetPositionOf(holder) || rulesetGap(actor, holder) > 1)) continue;
+    for (const entry of holder.tracked) {
+      if (entry.checkEnds?.by !== "any") continue;
+      const label =
+        definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
+      options.push({
+        id: `checkends:${holder.id}:${entry.condition}`,
+        kind: "standard",
+        label: `End ${label} on ${holder.name}`,
+        budget,
+        targets: { side: "self", count: 0 },
+        checkEnds: { condition: entry.condition, label, holderId: holder.id },
+      });
+    }
+  }
   for (const entry of actor.tracked) {
     const label = definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition;
     if (entry.saveEnds?.at === "action" && entry.difficulty !== undefined) {

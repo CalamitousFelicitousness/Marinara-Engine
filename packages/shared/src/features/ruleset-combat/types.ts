@@ -211,7 +211,7 @@ export interface RulesetCombatApplies {
   /** It ends whenever this other condition put on with it ends (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.255). */
   harmsPerCostStep?: { dice?: string; flat?: number };
   /** Its holder's health maximum raised while it holds, and their health with it (1.420): Aid. */
@@ -1159,7 +1159,7 @@ export interface RulesetCombatAction {
     /** At most once in any one turn (1.187). */
     oncePerTurn?: true;
     /** A check its holder may spend the standard budget on to end it (1.458): a net's. */
-    checkEnds?: { check: string; difficulty: number };
+    checkEnds?: { check: string; difficulty: number; by?: "any" };
   }>;
   /** More to hit against a target that is this (1.187), or that carries a condition its maker put on
    *  it (`marked`, 1.189), and how else an attack on it is made (1.189). */
@@ -1495,7 +1495,7 @@ export interface RulesetTrackedCondition {
   /** The condition put on with it that it ends with (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
   /** How many times it is on, where the condition stacks (1.189). */
   stacks?: number;
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
@@ -3180,6 +3180,8 @@ export type RulesetCombatEvent =
   | {
       type: "checkEnded";
       actorId: string;
+      /** Whose condition it was, when somebody else made the check for them (1.465). */
+      holderId?: string;
       condition: string;
       difficulty: number;
       total?: number;
@@ -3378,7 +3380,7 @@ export interface RulesetCombatOption {
   /** The condition its holder spends this on a save against (1.264). */
   resave?: { condition: string; label: string };
   /** A check that ends a condition its actor holds (1.313): Maze's way out. */
-  checkEnds?: { condition: string; label: string };
+  checkEnds?: { condition: string; label: string; holderId?: string };
   id: string;
   /** The icons it may be drawn with, best first (1.338): its catalog entry's. Absent for none. */
   icons?: string[];

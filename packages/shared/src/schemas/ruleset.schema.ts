@@ -4445,7 +4445,7 @@ export interface RulesetCatalogApplies {
   targetHealthAtMost?: number;
   paidSteps?: { atLeast?: number; atMost?: number };
   endsWith?: string;
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs };
+  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
   harmsPerCostStep?: { dice?: string; flat?: number };
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
@@ -4614,6 +4614,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         check: sheetId,
         difficulty: z.number().int().min(0).max(1000),
         passes: targetIsSchema.optional(),
+        /** Anybody next to its holder may spend their own standard budget on the check for them
+         *  (Capability API 1.465), rolling it with their own: dousing a creature on fire. */
+        by: z.literal("any").optional(),
       })
       .strict()
       .optional(),
@@ -8650,7 +8653,7 @@ const itemAttackSpendSchema: z.ZodType<RulesetItemAttackSpend, z.ZodTypeDef, unk
 export interface RulesetItemOnHit {
   condition: string;
   atLeast: number;
-  checkEnds?: { check: string; difficulty: number };
+  checkEnds?: { check: string; difficulty: number; by?: "any" };
   rounds?: number;
   save?: { save: string; difficulty: number };
   saveEnds?: { save: string; difficulty: number; at: "turn-end" | "turn-start" | "damaged" };
@@ -8664,7 +8667,12 @@ const itemOnHitSchema: z.ZodType<RulesetItemOnHit, z.ZodTypeDef, unknown> = z
     /** Its holder may spend the standard budget on this check against `difficulty` to end it
      *  (Capability API 1.458), as a condition's own `checkEnds` is: a net's DC 10 Strength. */
     checkEnds: z
-      .object({ check: sheetId, difficulty: z.number().int().min(0).max(1000) })
+      .object({
+        check: sheetId,
+        difficulty: z.number().int().min(0).max(1000),
+        /** Or anybody next to its holder, for them (Capability API 1.465): alchemist's fire. */
+        by: z.literal("any").optional(),
+      })
       .strict()
       .optional(),
     rounds: z.number().int().min(1).max(100).optional(),

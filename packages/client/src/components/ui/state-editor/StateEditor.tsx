@@ -429,6 +429,7 @@ export function StateEditor({
             focusPath={focusPath}
             onFocusHandled={clearFocusPath}
             readOnly={readOnly}
+            hideRootAddItem={activeSection.id === "character-tracker" || activeSection.id === "quest"}
           />
         )}
       </div>

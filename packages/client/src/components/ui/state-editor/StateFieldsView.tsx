@@ -27,6 +27,12 @@ interface StateFieldsViewProps {
   onFocusHandled?: () => void;
   /** Values show as non-editable inputs, for a section the source can't save. */
   readOnly?: boolean;
+  /**
+   * No add control at the section's own list. Characters and quests are identified by an id the editor
+   * can't invent, and the save path stores whatever row it is given, so an added row would be a card the
+   * trackers can't match to anything. Lists inside those cards (a character's stats) still add.
+   */
+  hideRootAddItem?: boolean;
 }
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -179,7 +185,8 @@ function AddFieldRow({ existingKeys, onAdd }: { existingKeys: string[]; onAdd: (
         value={key}
         onChange={(event) => setKey(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") add();
+          // An IME confirms a candidate with Enter; that key is not a submit.
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) add();
         }}
         placeholder={localizeUi("ui.stateEditor.fields.fieldName")}
         aria-label={localizeUi("ui.stateEditor.fields.fieldName")}
@@ -189,7 +196,8 @@ function AddFieldRow({ existingKeys, onAdd }: { existingKeys: string[]; onAdd: (
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") add();
+          // An IME confirms a candidate with Enter; that key is not a submit.
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) add();
         }}
         placeholder={localizeUi("ui.stateEditor.fields.value")}
         aria-label={localizeUi("ui.stateEditor.fields.value")}
@@ -203,7 +211,14 @@ function AddFieldRow({ existingKeys, onAdd }: { existingKeys: string[]; onAdd: (
   );
 }
 
-export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, readOnly }: StateFieldsViewProps) {
+export function StateFieldsView({
+  value,
+  onChange,
+  focusPath,
+  onFocusHandled,
+  readOnly,
+  hideRootAddItem,
+}: StateFieldsViewProps) {
   const { t: localizeUi } = useUiTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +253,10 @@ export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, re
     <p className="text-xs text-[var(--muted-foreground)]">
       {localizeUi(readOnly ? "ui.stateEditor.fields.emptyReadOnly" : "ui.stateEditor.fields.empty")}
     </p>
+  );
+  /** The same note for a list that can't be added to here (a character's or quest's identity). */
+  const emptyNoteWithoutAdd = (
+    <p className="text-xs text-[var(--muted-foreground)]">{localizeUi("ui.stateEditor.fields.emptyReadOnly")}</p>
   );
 
   /** One labelled entry: a field for a simple value, a nested group for an object or a list. */
@@ -307,20 +326,21 @@ export function StateFieldsView({ value, onChange, focusPath, onFocusHandled, re
       };
       // The list's own key names the shape an empty list starts from (stats, worldCustomFields, …).
       const listKey = typeof path[path.length - 1] === "string" ? (path[path.length - 1] as string) : undefined;
-      const addItem = readOnly ? null : (
-        <button
-          type="button"
-          onClick={() => update(path, [...node, blankStateArrayItem(node, listKey)])}
-          className={SMALL_BUTTON}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {localizeUi("ui.stateEditor.fields.addItem")}
-        </button>
-      );
+      const addItem =
+        readOnly || (hideRootAddItem && path.length === 0) ? null : (
+          <button
+            type="button"
+            onClick={() => update(path, [...node, blankStateArrayItem(node, listKey)])}
+            className={SMALL_BUTTON}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {localizeUi("ui.stateEditor.fields.addItem")}
+          </button>
+        );
       if (node.length === 0) {
         return (
           <>
-            {emptyNote}
+            {addItem ? emptyNote : emptyNoteWithoutAdd}
             {addItem}
           </>
         );

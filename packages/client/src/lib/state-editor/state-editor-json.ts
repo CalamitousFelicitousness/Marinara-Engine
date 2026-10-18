@@ -297,9 +297,9 @@ const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
   customTrackerFields: { name: "", value: "" },
   stats: { name: "", value: 0, max: 0, color: "" },
   inventory: { name: "", description: "", quantity: 1, location: "" },
-  inventoryTrackerInventory: { name: "", qty: 0, description: "", location: "" },
-  inventoryTrackerEquipped: { name: "", qty: 0, description: "", location: "" },
-  inventoryTrackerCurrencies: { name: "", qty: 0, description: "", location: "" },
+  inventoryTrackerInventory: { name: "", qty: 1, description: "", location: "" },
+  inventoryTrackerEquipped: { name: "", qty: 1, description: "", location: "" },
+  inventoryTrackerCurrencies: { name: "", qty: 1, description: "", location: "" },
 };
 
 /**
@@ -308,7 +308,13 @@ const EMPTY_STATE_ENTRIES: Record<string, unknown> = {
  * plain values that starts empty therefore gets an object; the JSON view is the way back).
  */
 export function blankStateArrayItem(items: readonly unknown[], key?: string): unknown {
-  if (items.length > 0) return blankStateValueLike(items[items.length - 1]);
+  if (items.length > 0) {
+    const blank = blankStateValueLike(items[items.length - 1]);
+    // The Inventory Tracker reads qty as "at least one" (`clampInventoryTrackerQty`, and the save path
+    // rejects below 1), so a cleared row can't keep the 0 every other number clears to.
+    if (key?.startsWith("inventoryTracker") && isPlainRecord(blank) && blank.qty === 0) blank.qty = 1;
+    return blank;
+  }
   const template = key ? EMPTY_STATE_ENTRIES[key] : undefined;
   return template ? structuredClone(template) : {};
 }

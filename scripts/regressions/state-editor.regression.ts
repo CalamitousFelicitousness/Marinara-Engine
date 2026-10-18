@@ -511,6 +511,16 @@ assert.deepEqual(
   "an existing entry is cloned instead of the declared shape, so the list keeps its own keys",
 );
 assert.deepEqual(blankStateValueLike({}), {}, "an empty object stays empty");
+assert.deepEqual(
+  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventoryTrackerInventory"),
+  { name: "", qty: 1, description: "", location: "" },
+  "a cleared Inventory Tracker row keeps a quantity of 1, because the tracker reads qty as at least one",
+);
+assert.equal(
+  (blankStateArrayItem([], "inventoryTrackerCurrencies") as { qty?: number }).qty,
+  1,
+  "a currency row added to an empty list starts at 1 too",
+);
 
 // ── A half-filled entry still shows the rows it is missing ──
 // The tracker wrote { name, value, icon }; a stored entry with only a name shows the rest as "no value",

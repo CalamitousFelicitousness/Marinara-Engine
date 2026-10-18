@@ -8766,6 +8766,14 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** Using it casts an entry of this catalog (Capability API 1.180), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */
     casts: sheetId.optional(),
+    /** The entry a use that breaks a layered wall's layer (`endsLayers`) is read as (Capability API
+     *  1.441), `<catalog>/<entry>`, matched against a layer's `endedBy.entries`: a scroll of
+     *  Passwall, `"spells/passwall"`. */
+    endsLayersAs: z
+      .string()
+      .max(81)
+      .regex(/^[^/]+\/[^/]+$/, "endsLayersAs is a <catalog>/<entry> reference")
+      .optional(),
     /** Only a creature this size or smaller is a target (Capability API 1.317), one of
      *  `combat.sizes`: a scroll of Resilient Sphere's "Large size or smaller". */
     targetsUpTo: sheetId.optional(),
@@ -8851,11 +8859,22 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.clears &&
       !use.calls &&
       !use.endsSpells &&
+      // Or breaks a layered wall's layer (1.441): a scroll of Passwall.
+      !use.endsLayers &&
       (!use.zone || !use.area)
     ) {
       issue(
         "kind",
         "A utility use leaves an area standing, clears growth, teleports or calls creatures, so it has an area and a zone, clears, a teleport or calls",
+      );
+    }
+    if (use.endsLayers && !use.endsLayersAs) {
+      issue("endsLayersAs", "A use that breaks a layer says which entry it is read as, so it names endsLayersAs");
+    }
+    if (use.endsLayersAs && !use.endsLayers) {
+      issue(
+        "endsLayersAs",
+        'endsLayersAs names what a use that breaks a layer is read as, so it goes with "endsLayers"',
       );
     }
     // A scroll's or a wand's beams and darts (Capability API 1.308), as the spell's own (1.305).
@@ -17455,6 +17474,13 @@ function useIssues(
     const names = rulesetSheetNames(definition.sheet, definition.items);
     for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
       add([...at, "sheetDifficulty", issue.key], issue.message);
+    }
+  }
+  // The entry a use that breaks a layer is read as (1.441) is in a catalog there is.
+  if (use.endsLayersAs) {
+    const catalogId = use.endsLayersAs.slice(0, use.endsLayersAs.indexOf("/"));
+    if (!definition.catalogs?.some((catalog) => catalog.id === catalogId)) {
+      add([...at, "endsLayersAs"], `Unknown catalog "${catalogId}"`);
     }
   }
   // What ends a catalog's entries' conditions from an item (1.374): catalogs there are, a sheet it reads.

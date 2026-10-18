@@ -645,11 +645,13 @@ export function rulesetDispelTargets(
 ): Array<{ casterId: string; actionId: string; label: string }> {
   const ends = action.endsSpells;
   // Or a layered wall one of whose layers names it (1.438): Passwall at a Prismatic Wall.
-  const breaks = !!action.endsLayers && action.entry !== undefined;
+  // An item's use is read as the entry it names (1.441): a scroll of Passwall.
+  const as = action.endsLayers?.as ?? action.entry;
+  const breaks = !!action.endsLayers && as !== undefined;
   if (!ends?.zones && !breaks) return [];
   const reach = positioned(state) && rulesetPositionOf(actor) ? rulesetOptionReach(state, actor.id, action.id) : null;
   return rulesetStandingZones(state).flatMap(({ caster, zone, action: made }) => {
-    const named = breaks && !!made.zone?.layers?.rows.some((row) => row.endedBy?.entries?.includes(action.entry!));
+    const named = breaks && !!made.zone?.layers?.rows.some((row) => row.endedBy?.entries?.includes(as!));
     if (!named && (!ends?.zones || made.catalog === undefined || !ends.catalogs.includes(made.catalog))) return [];
     // Not one hidden from them (1.402).
     if (!rulesetZoneSeenBy(caster, zone, made, actor.side)) return [];

@@ -2261,6 +2261,16 @@ function carriesFreeActionAndFlash436(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesFreeActionAndFlash436(one, depth + 1));
 }
 
+/** An item's use that breaks a layered wall's layer as an entry it names (1.441): a scroll of Passwall. */
+function carriesEndsLayersAs441(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsLayersAs441(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endsLayersAs !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsLayersAs441(one, depth + 1));
+}
+
 /** A row that stands for another entry than the one that writes it (1.440): Pact of the Chain's Find Familiar. */
 function carriesStandsFor440(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -6302,6 +6312,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use that breaks a layered wall's layer as an entry it names, 1.441.
+  if (
+    !declaresApi(441) &&
+    (carriesEndsLayersAs441(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsLayersAs441(document)))
+  ) {
+    return "A ruleset whose items' uses break a layered wall's layer as an entry they name (endsLayersAs) requires schemaVersion 2 and capabilityApi 1.441 or newer";
+  }
   // A row that stands for another entry than the one that writes it, 1.440.
   if (
     !declaresApi(440) &&

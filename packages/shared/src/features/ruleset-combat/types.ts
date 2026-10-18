@@ -853,7 +853,7 @@ export interface RulesetCombatAction {
   duplicates?: { catalog: string; upTo: number; only?: string[] };
   /** Aimed at a layered wall whose layer names it (1.438), destroying that layer in its turn;
    *  `only` when it does nothing else, and so is offered only while such a wall stands. */
-  endsLayers?: { only?: true };
+  endsLayers?: { only?: true; as?: string };
   /** The entry that casts this one, as its own option paid as it is (1.421): Wish's id. */
   duplicatedBy?: string;
   /** Its concentration holds only when paid fewer steps of higher cost than this (1.417). */

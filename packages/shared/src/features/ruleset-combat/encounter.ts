@@ -2229,6 +2229,8 @@ function itemUseMechanics(
   if (item.tags?.length) action.qualities = [...new Set([...(action.qualities ?? []), ...item.tags])];
   if (aim.target !== undefined) action.target = aim.target;
   if (use.casts) action.casts = use.casts;
+  // Read as the entry it casts at a layered wall (1.441): a scroll of Passwall.
+  if (action.endsLayers && use.endsLayersAs) action.endsLayers = { ...action.endsLayers, as: use.endsLayersAs };
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
   return action;

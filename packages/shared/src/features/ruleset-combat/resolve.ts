@@ -11325,8 +11325,9 @@ function resolveActionBody(
     const found = rulesetStandingZones(ctx.state).find(
       ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
     );
-    if (found?.action.zone?.layers && action.entry) {
-      wearLayer(ctx, found.caster, found.zone, found.action, { entry: action.entry }, actor.id);
+    const as = action.endsLayers.as ?? action.entry;
+    if (found?.action.zone?.layers && as) {
+      wearLayer(ctx, found.caster, found.zone, found.action, { entry: as }, actor.id);
     }
   }
   // Its user's weapon at each creature its area catches (1.375), a roll and a shot for each:

@@ -41,6 +41,7 @@ import {
   rulesetCheckModifier,
   rulesetSheetMigrationSteps,
   type RulesetSheetItem,
+  type EvaluatedRulesetSheet,
 } from "./sheet-math.js";
 
 export interface RulesetLivePoolValue {
@@ -991,6 +992,41 @@ export function rulesetLiveWornOff(
   };
 }
 
+/** Whether a sheet meets what an item asks of whoever binds or uses it (1.614), or the ruleset's
+ *  `items.needsWaivedBy` waives it: read off what the sheet is without its items. */
+export function rulesetItemNeedsMet(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  needs: ReadonlyArray<{ value: RulesetValueRef; atLeast?: number; atMost?: number }> | undefined,
+): boolean {
+  if (!needs?.length) return true;
+  const read = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
+  const waiver = definition.items?.needsWaivedBy;
+  if (waiver && read(waiver) > 0) return true;
+  return needs.every((need) => {
+    const value = read(need.value);
+    return (need.atLeast === undefined || value >= need.atLeast) && (need.atMost === undefined || value <= need.atMost);
+  });
+}
+
+/** The items as worn as they are: one bound whose `binds.needs` the sheet does not meet (1.614)
+ *  reads as not worn. The same list when every one meets them. */
+export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  items: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  if (!items.some((held) => held.worn && held.item.binds?.needs)) return items;
+  const evaluated = evaluateRulesetSheetLive(definition, build, stored);
+  return items.map((held) =>
+    held.worn && held.item.binds?.needs && !rulesetItemNeedsMet(definition, build, evaluated, held.item.binds.needs)
+      ? { ...held, worn: false }
+      : held,
+  );
+}
+
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */
 export function rulesetStateDefault(state: { values: readonly string[]; default?: string }): string {
   return state.default !== undefined && state.values.includes(state.default) ? state.default : state.values[0]!;
@@ -1019,6 +1055,8 @@ export function evaluateRulesetSheetLive(
   /** Conditions a fight has on them besides the sheet's own (1.462), for what they do to abilities. */
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
+  // What an item asks of its bearer (1.614): bound without it, it reads as not worn.
+  items = items ? rulesetItemsMeetingNeeds(definition, build, stored, items) : items;
   // What only a worn item kept on (1.611) is not held once that item is not worn.
   const live = readRulesetLive(
     definition,

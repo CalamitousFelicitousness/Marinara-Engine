@@ -2740,6 +2740,21 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** What an item asks of its bearer or user, or what waives it (1.614): 5e's attunement by class. */
+function carriesItemNeeds614(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemNeeds614(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    plainRecord(record.binds)?.needs !== undefined ||
+    (typeof record.category === "string" && record.userNeeds !== undefined)
+  )
+    return true;
+  if (record.needsWaivedBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesItemNeeds614(one, depth + 1));
+}
+
 /** A call whose creatures may ignore every order (1.612): the obsidian steed. */
 function carriesDisobeys612(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8268,6 +8283,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What an item asks of its bearer or user, or what waives it, 1.614.
+  if (
+    !declaresApi(614) &&
+    (carriesItemNeeds614(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemNeeds614(document)))
+  )
+    return "A ruleset whose items ask something of their bearer or user (binds.needs, userNeeds or items.needsWaivedBy) requires schemaVersion 2 and capabilityApi 1.614 or newer";
   // A call whose creatures may ignore every order, 1.612.
   if (
     !declaresApi(612) &&

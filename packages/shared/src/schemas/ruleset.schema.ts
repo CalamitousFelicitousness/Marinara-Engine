@@ -4593,6 +4593,25 @@ function sheetBoundsSchema(key: string, never: string) {
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
+/** An item's other forms (1.522), typed by name to keep the item's type short. */
+export interface RulesetItemForms {
+  label: string;
+  budget: string;
+  into: Array<{ label: string; item: string }>;
+}
+/** An item's binding: attunement and what it asks (1.313, 1.614). */
+export interface RulesetItemBinds {
+  restriction?: string;
+  cursed?: boolean;
+  needsWorn?: Array<{ anyOf: string[] }>;
+  needs?: RulesetSheetNeeds;
+}
+/** What a sheet must meet, each a value with `atLeast` and/or `atMost` (Capability API 1.614). */
+export type RulesetSheetNeeds = Array<{ value: RulesetValueRef; atLeast?: number; atMost?: number }>;
+function sheetNeedsSchema(key: string): z.ZodType<RulesetSheetNeeds, z.ZodTypeDef, unknown> {
+  return z.array(sheetBoundsSchema(key, "met")).min(1).max(4);
+}
+
 /** A use that works only on a roll (Capability API 1.388): one die of `sides`, at most `atMost`, a
  *  number or a value off its user's sheet. Its price is paid either way. 5e's Divine Intervention, a
  *  percentile roll at or under the cleric's level, sure from 20th level (`sure`); a failure spends the
@@ -9737,6 +9756,10 @@ const itemsSchema = z
       .object({ label: promptSafeText(40), max: rulesetValueRefSchema })
       .strict()
       .optional(),
+    /** A value off the sheet that, above zero, waives what items ask of their bearer or user (their
+     *  `binds.needs` and `userNeeds`, Capability API 1.614): 5e's Use Magic Device, "you ignore all
+     *  class, race, and level requirements on the use of magic items". */
+    needsWaivedBy: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     /** Which stat is an item's weight, and what a character carries before they are encumbered and
      *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. */
     carry: z
@@ -10754,21 +10777,31 @@ const catalogItemObjectSchema = z
      *  seller sells it as that item, at that item's price; an honest one never sells it. */
     passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
-    binds: z
-      .object({
-        restriction: catalogText(200).optional(),
-        cursed: z.boolean().optional(),
-        /** Items its bearer must have worn to bind it, one of each group's `anyOf`, each bound where
-         *  it binds (Capability API 1.313): a Hammer of Thunderbolts needs a belt of giant strength
-         *  and the gauntlets of ogre power. It is unbound as soon as one comes off. */
-        needsWorn: z
-          .array(z.object({ anyOf: z.array(rulesetItemRefSchema).min(1).max(12) }).strict())
-          .min(1)
-          .max(4)
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    binds: (
+      z
+        .object({
+          restriction: catalogText(200).optional(),
+          cursed: z.boolean().optional(),
+          /** Items its bearer must have worn to bind it, one of each group's `anyOf`, each bound where
+           *  it binds (Capability API 1.313): a Hammer of Thunderbolts needs a belt of giant strength
+           *  and the gauntlets of ogre power. It is unbound as soon as one comes off. */
+          needsWorn: z
+            .array(z.object({ anyOf: z.array(rulesetItemRefSchema).min(1).max(12) }).strict())
+            .min(1)
+            .max(4)
+            .optional(),
+          /** What its bearer's sheet must meet for it to work while bound (Capability API 1.614), each a
+           *  value with `atLeast` and/or `atMost`: 5e's "requires attunement by a cleric", a cleric
+           *  level of at least 1. Bound without them, it reads as not worn. `items.needsWaivedBy`
+           *  waives them. */
+          needs: sheetNeedsSchema("needs").optional(),
+        })
+        .strict() as z.ZodType<RulesetItemBinds, z.ZodTypeDef, unknown>
+    ).optional(),
+    /** What its user's sheet must meet to use it, any of its uses (Capability API 1.614), as
+     *  `binds.needs` says: a spell scroll read only by a class whose list has the spell.
+     *  `items.needsWaivedBy` waives them. */
+    userNeeds: sheetNeedsSchema("userNeeds").optional(),
     /** What it does while worn: on, and bound where it binds. */
     worn: z.lazy(() => rulesetItemEffectSchema).optional(),
     /** What it does while it is only carried. */
@@ -10835,17 +10868,18 @@ const catalogItemObjectSchema = z
      *  fight: in each it takes another item's `attack`, `worn` effect and `toggle`, and keeps all else
      *  of its own. `label` names it as it is made. 5e's Rod of Lordly Might, a mace that becomes a
      *  flame tongue, a +3 battleaxe or spear, a climbing pole or a battering ram. Kept on its stack. */
-    forms: z
-      .object({
-        label: promptSafeText(40),
-        budget: sheetId,
-        into: z
-          .array(z.object({ label: promptSafeText(40), item: rulesetItemRefSchema }).strict())
-          .min(1)
-          .max(8),
-      })
-      .strict()
-      .optional(),
+    forms: (
+      z
+        .object({
+          label: promptSafeText(40),
+          budget: sheetId,
+          into: z
+            .array(z.object({ label: promptSafeText(40), item: rulesetItemRefSchema }).strict())
+            .min(1)
+            .max(8),
+        })
+        .strict() as z.ZodType<RulesetItemForms, z.ZodTypeDef, unknown>
+    ).optional(),
     /** What it adds to the shot it is fired as (Capability API 1.604): ammunition, which a weapon's
      *  `ammo` draws by its tag, with clauses of its own on that blow, each with its own `targetIs`.
      *  Each such stack is offered as its own way to shoot the weapon, and plain ammunition is shot

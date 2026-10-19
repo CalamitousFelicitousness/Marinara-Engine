@@ -45,6 +45,8 @@ import {
   evaluateRulesetSheetLive,
   readRulesetLive,
   rulesetLiveWornOff,
+  rulesetItemNeedsMet,
+  rulesetItemsMeetingNeeds,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -2340,6 +2342,8 @@ function itemUseActions(
     const counted = item.charges ? whole(read(item.charges.max)) : undefined;
     const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
+    // Nor one its user does not meet what it asks of them (1.614): a scroll off another class's list.
+    if (!rulesetItemNeedsMet(definition, build, evaluated, item.userNeeds)) return;
     const name =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
@@ -6213,7 +6217,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         : readStoredLive(entry.live),
       catalogs: entry.catalogs ?? {},
       perCell,
-      ...(entry.items ? { items: entry.items } : {}),
+      // Bound without meeting what it asks (1.614), an item is not worn.
+      ...(entry.items
+        ? { items: [...rulesetItemsMeetingNeeds(definition, entry.build, entry.live, entry.items)] }
+        : {}),
     });
     // A member who walked in at zero is already down, which is the honest reading of their sheet.
     const health = rulesetCombatHealth(definition, combat, combatant);

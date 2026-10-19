@@ -9,8 +9,10 @@ import {
   MARI_SPRITE_VERSION,
   MARI_STORY_STATES,
   mariAssetUrls,
+  resolveMariAppearancePack,
   resolveMariRestStory,
   selectMariWorkAnimation,
+  visibleMariAppearancePacks,
 } from "../../packages/client/src/lib/mari-work-animations.ts";
 
 const pack = getMariAppearancePack("basic");
@@ -126,6 +128,19 @@ for (const [name, state] of [
 ]) {
   assert.equal(selectMariWorkAnimation({ activity: "", toolNames: [name], packId: "stale" }).id, state);
 }
+// Dated packs: shown by themselves inside their window (both ends inclusive), hidden outside it, and an
+// in-window pick of another pack wins for that year only. The user's own pick is never overwritten.
+const day = (iso) => new Date(`${iso}T12:00:00`);
+const ids = (now) => visibleMariAppearancePacks(now).map(({ id }) => id);
+assert.ok(!ids(day("2026-10-28")).includes("raccoon") && !ids(day("2026-11-02")).includes("raccoon"));
+assert.ok(ids(day("2026-10-29")).includes("raccoon") && ids(day("2026-11-01")).includes("raccoon"));
+assert.equal(resolveMariAppearancePack("safari", [], null, "", day("2026-10-31")).id, "raccoon");
+assert.equal(resolveMariAppearancePack("safari", [], null, "raccoon-2026", day("2026-10-31")).id, "safari");
+assert.equal(resolveMariAppearancePack("safari", [], null, "raccoon-2026", day("2027-10-31")).id, "raccoon");
+assert.equal(resolveMariAppearancePack("safari", [], null, "", day("2026-11-02")).id, "safari");
+assert.equal(resolveMariAppearancePack("raccoon", [], null, "", day("2026-06-15")).id, "basic");
+assert.equal(resolveMariAppearancePack("golden", [], null, "", day("2026-10-30")).id, "raccoon");
+
 console.info(
   "Mari appearance pack: fallback, lifecycle outcomes, activity selection, per-pack isolation, loading tiers and all sprite assets passed.",
 );

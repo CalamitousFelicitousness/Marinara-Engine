@@ -4,7 +4,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateClientId } from "../lib/utils";
-import { getMariAppearancePack } from "../lib/mari-work-animations";
+import { activeSeasonalMariPack, getMariAppearancePack, mariSeasonKey } from "../lib/mari-work-animations";
 import {
   IMAGE_STYLE_PROFILES_STORAGE_KEY,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -727,6 +727,8 @@ interface UIState {
   mariAppearancePackId: string;
   /** R12: packs whose play-time rule was met once; the one-time "unlocked" toast has been shown for them. */
   mariUnlockedPackIds: string[];
+  /** `mariSeasonKey` of the dated pack window the user picked another pack in; "" follows the dated pack. */
+  mariSeasonOptOut: string;
   /** Connection Professor Mari's window answers with. Null until she is first given one. */
   mariConnectionId: string | null;
   chatBackground: string | null;
@@ -1651,6 +1653,7 @@ export function pickSyncedSettings(state: UIState) {
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
+    mariSeasonOptOut: state.mariSeasonOptOut,
     mariConnectionId: state.mariConnectionId,
     achievementsEnabled: state.achievementsEnabled,
     musicPlayerEnabled: state.musicPlayerEnabled,
@@ -1807,6 +1810,7 @@ export function pickPersistedUIState(state: UIState) {
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
+    mariSeasonOptOut: state.mariSeasonOptOut,
     mariConnectionId: state.mariConnectionId,
     chatBackground: state.chatBackground,
     defaultRoleplayBackground: state.defaultRoleplayBackground,
@@ -2038,6 +2042,7 @@ export const useUIStore = create<UIState>()(
         omnibarWindowHeightRem: null,
         mariAppearancePackId: "basic",
         mariUnlockedPackIds: [],
+        mariSeasonOptOut: "",
         mariConnectionId: null,
         chatBackground: null,
         defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
@@ -2408,7 +2413,13 @@ export const useUIStore = create<UIState>()(
         setMariWindowWidthRem: (width) => set({ mariWindowWidthRem: normalizeMariWindowWidthRem(width) }),
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
-        setMariAppearancePack: (packId) => set({ mariAppearancePackId: getMariAppearancePack(packId).id }),
+        // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
+        setMariAppearancePack: (packId) => {
+          const pack = getMariAppearancePack(packId);
+          const seasonal = activeSeasonalMariPack();
+          if (pack.season) set({ mariSeasonOptOut: "" });
+          else set({ mariAppearancePackId: pack.id, ...(seasonal && { mariSeasonOptOut: mariSeasonKey(seasonal) }) });
+        },
         markMariPackUnlocked: (packId) =>
           set((state) =>
             state.mariUnlockedPackIds.includes(packId)
@@ -3179,6 +3190,7 @@ export const useUIStore = create<UIState>()(
             omnibarWindowWidthRem: OMNIBAR_WINDOW_WIDTH_DEFAULT_REM,
             omnibarWindowHeightRem: null,
             mariAppearancePackId: "basic",
+            mariSeasonOptOut: "",
             chatBackground: null,
             defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
             chatBackgroundBlur: 0,
@@ -4018,6 +4030,7 @@ export const useUIStore = create<UIState>()(
           mariUnlockedPackIds: Array.isArray(persisted.mariUnlockedPackIds)
             ? persisted.mariUnlockedPackIds.filter((id): id is string => typeof id === "string")
             : [],
+          mariSeasonOptOut: typeof persisted.mariSeasonOptOut === "string" ? persisted.mariSeasonOptOut : "",
           conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(
             persisted.conversationBackgroundImageOpacity,
           ),

@@ -18,6 +18,8 @@ test("Golden (once unlocked) and Safari Prof. Mari are selectable and survive re
     },
     "if-missing",
   );
+  // Outside every dated pack's window, so the grid lists exactly the four undated packs.
+  await page.clock.setFixedTime(new Date("2026-06-15T12:00:00"));
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("response", (response) => {

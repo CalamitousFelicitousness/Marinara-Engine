@@ -66,6 +66,8 @@ import {
   MARI_RUNTIME_SETTINGS_KEY,
   DEFAULT_MARI_RUNTIME,
   isMariRuntime,
+  isInMariSeason,
+  MARI_RACCOON_SEASON,
   type MariRuntime,
   MODEL_LISTS,
   buildMariChangeExcerpts,
@@ -798,6 +800,10 @@ export function buildQuickContextPayload(
     action: context.action,
   });
 }
+
+// Dated flavor only: it may color `say`, never what she does or the literal approval text.
+const MARI_RACCOON_SEASON_FLAVOR =
+  "Seasonal flavor: it is Halloween week and you are wearing your feral raccoon onesie. In `say` only, you may add one light, playful raccoon or Halloween touch (gnawing, rummaging, a tiny growl). Answers, facts, actions, `reason`, `authorization`, and approval, review, or diff text stay exactly as they would be any other day.";
 
 const MARI_SYSTEM_PROMPT = `You are Professor Mari, Marinara Engine's Home-screen local workspace helper.
 
@@ -4328,6 +4334,7 @@ export class ProfessorMariWorkspaceService {
       `Embedding model: ${embeddingModelConfigured ? "configured" : "none"}`,
       `permissionsMode: ${permissionsMode}`,
       `decisionAuthoring: ${JSON.stringify(decisionContext)}`,
+      ...(isInMariSeason(MARI_RACCOON_SEASON) ? [MARI_RACCOON_SEASON_FLAVOR] : []),
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [

@@ -8,7 +8,7 @@ import {
 } from "../../packages/client/src/lib/seasonal-themes.ts";
 import { UI_PERSISTENCE } from "../../packages/client/src/lib/ui-persistence.ts";
 
-// Seasonal themes switch on by themselves for one local calendar day, say hello once a year, and always yield to
+// Seasonal themes switch on by themselves from October 30 until noon on November 1 (local time), say hello once a year, and always yield to
 // the Settings toggle; only the maintainer preview can force them.
 
 const decide = (
@@ -27,21 +27,22 @@ const local = (month: number, day: number, hours: number, minutes: number, year 
 const ON = { themeId: "halloween", showGreeting: true };
 const OFF = { themeId: null, showGreeting: false };
 
-// Halloween is the whole of October 31 on the device's own clock, and nothing either side of it.
-assert.deepEqual(decide(local(10, 31, 0, 0)), ON, "Oct 31 00:00 local is Halloween");
+// Halloween runs from Oct 30 00:00 until Nov 1 12:00 on the device's own clock, and nothing either side of it.
+assert.deepEqual(decide(local(10, 29, 23, 59)), OFF, "Oct 29 23:59 is not Halloween yet");
+assert.deepEqual(decide(local(10, 30, 0, 0)), ON, "Oct 30 00:00 local is Halloween");
 assert.deepEqual(decide(local(10, 31, 23, 59)), ON, "Oct 31 23:59 local is still Halloween");
-assert.deepEqual(decide(local(10, 30, 23, 59)), OFF, "Oct 30 23:59 is not Halloween yet");
-assert.deepEqual(decide(local(11, 1, 0, 0)), OFF, "Nov 1 00:00 the costume has come off");
+assert.deepEqual(decide(local(11, 1, 11, 59)), ON, "Nov 1 11:59 local is still Halloween");
+assert.deepEqual(decide(local(11, 1, 12, 0)), OFF, "Nov 1 12:00 the costume has come off");
 assert.deepEqual(decide(local(10, 31, 12, 0, 2031)), ON, "it comes back every year");
 
-// "Local" means the device's time zone: one instant is Halloween in Honolulu and already November in UTC.
+// "Local" means the device's time zone: one instant is before noon in Honolulu and already past it in UTC.
 const originalTimeZone = process.env.TZ;
 try {
-  const instant = new Date("2026-11-01T05:00:00Z");
+  const instant = new Date("2026-11-01T13:00:00Z");
   process.env.TZ = "Pacific/Honolulu";
-  assert.deepEqual(decide(instant), ON, "Oct 31 19:00 in Honolulu is Halloween");
+  assert.deepEqual(decide(instant), ON, "Nov 1 03:00 in Honolulu is Halloween");
   process.env.TZ = "UTC";
-  assert.deepEqual(decide(instant), OFF, "Nov 1 05:00 in UTC is not");
+  assert.deepEqual(decide(instant), OFF, "Nov 1 13:00 in UTC is not");
 } finally {
   if (originalTimeZone === undefined) delete process.env.TZ;
   else process.env.TZ = originalTimeZone;

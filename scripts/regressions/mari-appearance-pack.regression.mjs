@@ -128,12 +128,13 @@ for (const [name, state] of [
 ]) {
   assert.equal(selectMariWorkAnimation({ activity: "", toolNames: [name], packId: "stale" }).id, state);
 }
-// Dated packs: shown by themselves inside their window (both ends inclusive), hidden outside it, and an
+// Dated packs: shown by themselves inside their window (start inclusive, end exclusive), hidden outside it, and an
 // in-window pick of another pack wins for that year only. The user's own pick is never overwritten.
 const day = (iso) => new Date(`${iso}T12:00:00`);
 const ids = (now) => visibleMariAppearancePacks(false, now).map(({ id }) => id);
-assert.ok(!ids(day("2026-10-28")).includes("raccoon") && !ids(day("2026-11-02")).includes("raccoon"));
-assert.ok(ids(day("2026-10-29")).includes("raccoon") && ids(day("2026-11-01")).includes("raccoon"));
+const at = (iso) => new Date(iso);
+assert.ok(!ids(at("2026-10-29T23:59:00")).includes("raccoon") && !ids(at("2026-11-01T12:00:00")).includes("raccoon"));
+assert.ok(ids(at("2026-10-30T00:00:00")).includes("raccoon") && ids(at("2026-11-01T11:59:00")).includes("raccoon"));
 assert.equal(resolveMariAppearancePack("safari", [], null, "", false, day("2026-10-31")).id, "raccoon");
 assert.equal(resolveMariAppearancePack("safari", [], null, "raccoon-2026", false, day("2026-10-31")).id, "safari");
 assert.equal(resolveMariAppearancePack("safari", [], null, "raccoon-2026", false, day("2027-10-31")).id, "raccoon");

@@ -2369,6 +2369,7 @@ export function rulesetZoneAction(
       ...(zone.obscures.light ? { light: true as const } : {}),
       ...(zone.obscures.dispersed ? { dispersed: rulesetCopyDispersed(zone.obscures.dispersed) } : {}),
       ...(zone.obscures.darkness ? { darkness: true as const } : {}),
+      ...(zone.obscures.notForCaster ? { notForCaster: true as const } : {}),
     };
   }
   // The light it sheds (1.297), in cells; and the magical darkness it ends.

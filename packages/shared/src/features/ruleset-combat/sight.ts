@@ -102,8 +102,11 @@ function magicalDarkness(state: RulesetEncounterState): Set<string> {
   return cells;
 }
 
-/** The cells obscuring zones cover now, each with the senses that see through it. */
-function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pierced: string[]; light?: true }> {
+/** The cells obscuring zones cover now, each with the senses that see through it, and (1.556) the
+ *  caster who sees through it whatever their senses. */
+function obscured(
+  state: RulesetEncounterState,
+): Array<{ cells: Set<string>; pierced: string[]; light?: true; casterSees?: string }> {
   // What lies on the ground (1.318): growth lightly obscures, and a fog of its own as it says.
   const lightly = new Set<string>();
   const heavily = new Set<string>();
@@ -122,7 +125,14 @@ function obscured(state: RulesetEncounterState): Array<{ cells: Set<string>; pie
         if (!rule) return [];
         const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
         return cells.size > 0
-          ? [{ cells, pierced: rule.pierced, ...(rule.light ? { light: true as const } : {}) }]
+          ? [
+              {
+                cells,
+                pierced: rule.pierced,
+                ...(rule.light ? { light: true as const } : {}),
+                ...(rule.notForCaster ? { casterSees: caster.id } : {}),
+              },
+            ]
           : [];
       }),
     ),
@@ -743,7 +753,8 @@ function sees(
   }
   if (!positioned) return true;
   // A light obscurement hides nobody (1.286): it only keeps them from being seen clearly.
-  const fogs = obscured(state).filter((fog) => clearly || !fog.light);
+  // What its caster sees through (1.556) keeps nothing from them.
+  const fogs = obscured(state).filter((fog) => (clearly || !fog.light) && fog.casterSees !== viewer.id);
   // The dark (1.294), for eyes: nobody in darkness is seen, nor anybody in dim light clearly, but by
   // a sense that sees in the dark (one step brighter) or whatever the light, within its range.
   const darkness = combat.sight?.darkness;

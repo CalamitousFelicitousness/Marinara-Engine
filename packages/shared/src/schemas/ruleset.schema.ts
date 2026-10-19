@@ -2826,6 +2826,8 @@ export interface RulesetSeenThrough {
   dispersed?: true | { after: number };
   /** Magical darkness (1.297), which a zone that `dispelsDark` ends. */
   darkness?: true;
+  /** Its caster sees through it (1.556). */
+  notForCaster?: true;
 }
 const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = z
   .object({
@@ -2851,6 +2853,10 @@ const seenThroughSchema: z.ZodType<RulesetSeenThrough, z.ZodTypeDef, unknown> = 
     /** It is magical darkness (Capability API 1.297): a zone that `dispelsDark` ends it where the
      *  two meet, at its level or lower. 5e's Darkness. */
     darkness: z.literal(true).optional(),
+    /** It obscures only for creatures other than its caster, who sees through it (Capability API
+     *  1.556): a Staff of Swarming Insects' Insect Cloud, "heavily obscured for creatures other than
+     *  you". */
+    notForCaster: z.literal(true).optional(),
   })
   .strict();
 
@@ -5720,7 +5726,9 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
     /** It leaves a cloud on the cell its user left and the one it lands in, obscuring as a zone's
      *  `obscures` does, until the end of its user's next turn (Capability API 1.279): the Cape of
      *  the Mountebank's smoke. */
-    smoke: seenThroughSchema.optional(),
+    smoke: seenThroughSchema
+      .refine((smoke) => !smoke.notForCaster, { message: '"notForCaster" is for a zone\'s "obscures"' })
+      .optional(),
     /** A creature's: one of its own actions it may make once, before or after teleporting, as the
      *  same action (Capability API 1.280): a blink dog's bite. The menu offers the teleport, with
      *  the strike after it, and the strike, with the teleport after it. */

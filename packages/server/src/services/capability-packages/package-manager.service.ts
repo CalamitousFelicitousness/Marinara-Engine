@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** What obscures for everybody but its caster (1.556): an Insect Cloud. */
+function carriesNotForCaster556(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNotForCaster556(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.obscures)?.notForCaster !== undefined) return true;
+  return featureValues(record).some((one) => carriesNotForCaster556(one, depth + 1));
+}
+
 /** A condition that ends when its holder is incapacitated, or an aura only to whom its holder sees
  *  (1.555): a knight's Leadership. */
 function carriesLeadership555(value: unknown, depth = 0): boolean {
@@ -7606,6 +7616,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What obscures for everybody but its caster, 1.556.
+  if (
+    !declaresApi(556) &&
+    (carriesNotForCaster556(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesNotForCaster556(document)))
+  ) {
+    return "A ruleset with something that obscures for everybody but its caster (obscures.notForCaster) requires schemaVersion 2 and capabilityApi 1.556 or newer";
+  }
   // A condition that ends when its holder is incapacitated, or an aura only to whom its holder sees, 1.555.
   if (
     !declaresApi(555) &&

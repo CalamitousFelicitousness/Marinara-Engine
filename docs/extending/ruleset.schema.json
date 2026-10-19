@@ -43779,6 +43779,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "notForCaster": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -46372,6 +46376,10 @@
                               ]
                             },
                             "darkness": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "notForCaster": {
                               "type": "boolean",
                               "const": true
                             },
@@ -62487,6 +62495,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "notForCaster": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -67647,6 +67659,10 @@
                                   ]
                                 },
                                 "darkness": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "notForCaster": {
                                   "type": "boolean",
                                   "const": true
                                 },
@@ -74816,6 +74832,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "notForCaster": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -79976,6 +79996,10 @@
                                     ]
                                   },
                                   "darkness": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "notForCaster": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -104040,6 +104064,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "notForCaster": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false
@@ -106633,6 +106661,10 @@
                                   ]
                                 },
                                 "darkness": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "notForCaster": {
                                   "type": "boolean",
                                   "const": true
                                 },
@@ -124118,6 +124150,10 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "notForCaster": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -126711,6 +126747,10 @@
                                         ]
                                       },
                                       "darkness": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "notForCaster": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -144202,6 +144242,10 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "notForCaster": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -146795,6 +146839,10 @@
                                         ]
                                       },
                                       "darkness": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "notForCaster": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -168029,6 +168077,10 @@
                     ]
                   },
                   "darkness": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "notForCaster": {
                     "type": "boolean",
                     "const": true
                   },

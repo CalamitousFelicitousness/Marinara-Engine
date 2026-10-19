@@ -406,6 +406,8 @@ export interface RulesetObscures {
   dispersed?: true | { after: number };
   /** Magical darkness, which a zone that `dispelsDark` ends (1.297). */
   darkness?: true;
+  /** Its caster sees through it (1.556). */
+  notForCaster?: true;
 }
 
 export interface RulesetTeleport {

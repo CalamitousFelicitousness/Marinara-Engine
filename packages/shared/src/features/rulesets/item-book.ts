@@ -180,6 +180,9 @@ export interface RulesetItemUseFact {
    *  and the dead it brings back within so many rounds. */
   ends?: { conditions: string[]; count?: number };
   stabilizes?: true;
+  /** Its chance in 100 to backfire on its user as it is used (1.577), what it deals them, and whether
+   *  it is destroyed. */
+  backfires?: { chance: number; amount: string; damageType?: string; destroys?: true };
   revives?: { withinRounds: number; health: string };
   /** What one use spends of the charges the item holds at most, the rests (by label) that bring them
    *  back and how many (`"max"` or a sum), and the die it rolls to break when emptied. */
@@ -383,6 +386,16 @@ function rulesetItemUseFacts(
         }
       : {}),
     ...(use.stabilizes ? { stabilizes: true as const } : {}),
+    ...(use.backfires
+      ? {
+          backfires: {
+            chance: use.backfires.chance,
+            amount: amount(use.backfires.amount),
+            ...(use.backfires.damageType ? { damageType: use.backfires.damageType } : {}),
+            ...(use.backfires.destroys ? { destroys: true as const } : {}),
+          },
+        }
+      : {}),
     ...(use.revives ? { revives: { withinRounds: use.revives.withinRounds, health: amount(use.revives.health) } } : {}),
     ...(use.charges !== undefined && max !== undefined
       ? {
@@ -1500,6 +1513,9 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       ? `ends ${use.ends.count !== undefined && use.ends.count < use.ends.conditions.length ? `${use.ends.count} of ` : ""}${use.ends.conditions.join(", ")}`
       : "",
     use.stabilizes ? "stabilizes the dying" : "",
+    use.backfires
+      ? `${use.backfires.chance}% each use to backfire for ${use.backfires.amount}${use.backfires.damageType ? ` ${use.backfires.damageType}` : ""} to its user${use.backfires.destroys ? " and be destroyed" : ""}`
+      : "",
     use.revives
       ? `revives one dead no longer than ${use.revives.withinRounds} round${use.revives.withinRounds === 1 ? "" : "s"} at ${use.revives.health}`
       : "",

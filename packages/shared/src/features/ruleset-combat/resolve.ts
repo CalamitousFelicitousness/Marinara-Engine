@@ -6210,6 +6210,8 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
   if (overusing) overuseItem(ctx, actor, action);
+  // A chance to backfire as it is used (1.577): a Horn of Blasting.
+  if (use?.backfires && !ctx.tore) backfireItem(ctx, actor, action);
   // The last charge spent: an item that may break rolls for it now.
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
   if (broke) ctx.events.push(broke);
@@ -6256,6 +6258,37 @@ function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action:
   (actor.broken ??= {})[use.item] = true;
   ctx.events.push({ type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face });
   ctx.tore = true;
+}
+
+/** An item that may backfire as it is used (1.577) rolls its d100: at or under its chance, it deals
+ *  its amount to its user, with `destroys` is gone for good, and with `instead` does nothing besides. */
+function backfireItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const use = action.itemUse!;
+  const rule = use.backfires!;
+  const face = ctx.roll(100);
+  if (face > rule.chance) return;
+  if (rule.destroys) {
+    (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
+    (actor.broken ??= {})[use.item] = true;
+  }
+  ctx.events.push({
+    type: "backfired",
+    actorId: actor.id,
+    label: action.label,
+    roll: face,
+    ...(rule.destroys ? { destroyed: true as const } : {}),
+  });
+  const rolled = rollAmount(ctx, rule.amount);
+  const dealt = applyDamage(ctx, actor, {
+    sourceId: actor.id,
+    label: action.label,
+    ...(rule.damageType ? { damageType: rule.damageType } : {}),
+    rolls: rolled.rolls,
+    flat: rolled.flat,
+    amount: rolled.total,
+  });
+  afterBlow(ctx, actor, dealt, false);
+  if (rule.instead) ctx.tore = true;
 }
 
 /** A missile caught, kept (1.573): one of its shooter's own ammunition where it was that, which they
@@ -7428,7 +7461,8 @@ function applyChoice(
     noteOutcome(ctx);
     return finish();
   }
-  // Torn as it was used on with no charges left (1.571): it did nothing.
+  // Torn as it was used on with no charges left (1.571), or backfired in place of working (1.577): it
+  // did nothing.
   if (ctx.tore) {
     delete ctx.tore;
     noteOutcome(ctx);

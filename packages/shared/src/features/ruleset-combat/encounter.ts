@@ -2266,6 +2266,18 @@ function itemUseActions(
       item: index,
       ...(held.truly ? { fake: { name: held.truly.name, ...(real ? { does: real } : { dud: true as const }) } } : {}),
       ...(use.consumes ? { consumes: true as const } : {}),
+      // A chance to backfire on its user (1.577): a Horn of Blasting.
+      ...(use.backfires && amountOf(use.backfires.amount)
+        ? {
+            backfires: {
+              chance: use.backfires.chance,
+              amount: amountOf(use.backfires.amount)!,
+              ...(use.backfires.damageType ? { damageType: use.backfires.damageType } : {}),
+              ...(use.backfires.destroys ? { destroys: true as const } : {}),
+              ...(use.backfires.instead ? { instead: true as const } : {}),
+            },
+          }
+        : {}),
       ...(ownUses ? { ownUses } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {

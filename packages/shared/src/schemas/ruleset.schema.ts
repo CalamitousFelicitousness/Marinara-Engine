@@ -10229,6 +10229,23 @@ export const rulesetItemUseSchema = catalogMechanicsObject
      *  each adds `amount` and `targets`, and counts as one step of a higher cost (a Staff of Power's
      *  spell cast at a higher level, a Staff of Striking's 1d6 force a charge). */
     chargeStep: itemChargeStepSchema.optional(),
+    /** A chance in 100, rolled each time it is used (Capability API 1.577), that it backfires on its
+     *  user: `amount` damage (of `damageType`) to them, and with `destroys` the item is gone for good.
+     *  With `instead` the use does nothing besides. 5e's Horn of Blasting, `{ "chance": 20, "amount":
+     *  { "dice": "10d6" }, "damageType": "fire", "destroys": true }`. */
+    backfires: z
+      .object({
+        chance: z.number().int().min(1).max(100),
+        amount: z.object(catalogAmountShape).strict(),
+        damageType: promptSafeText(40).optional(),
+        destroys: z.literal(true).optional(),
+        instead: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((rule) => rule.amount.dice !== undefined || rule.amount.flat !== undefined, {
+        message: '"backfires" says no dice and no flat amount',
+      })
+      .optional(),
     consumes: z.literal(true).optional(),
     /** Using it casts an entry of this catalog (Capability API 1.180), as a scroll or a wand does: a
      *  condition that ends when its holder casts from that catalog ends when they use it. */

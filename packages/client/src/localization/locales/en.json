@@ -1999,6 +1999,8 @@
   "game.combat.ruleset.event.attackStyle": "{{label}} ({{style}})",
   "game.combat.ruleset.event.auraGrows": "{{actor}}'s {{condition}} spreads further, reaching {{distance}} now.",
   "game.combat.ruleset.event.averted": "{{actor}} averts their eyes from {{target}}.",
+  "game.combat.ruleset.event.backfired": "{{label}} backfires on {{actor}} (a {{roll}} on the d100).",
+  "game.combat.ruleset.event.backfiredDestroyed": "{{label}} backfires on {{actor}} and is destroyed (a {{roll}} on the d100).",
   "game.combat.ruleset.event.blinkStayed": "{{actor}} rolls {{roll}} for {{label}} (needing {{needed}}) and stays.",
   "game.combat.ruleset.event.blinkVanished": "{{actor}} rolls {{roll}} for {{label}} (needing {{needed}}) and vanishes until their next turn.",
   "game.combat.ruleset.event.boardEvent": "The board changes: {{label}} ({{cells}} squares).",

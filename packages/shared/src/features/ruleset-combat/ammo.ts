@@ -149,9 +149,10 @@ export function rulesetItemOverused(actor: RulesetCombatant, item: number): numb
  *  item's use needs one of it left, or the charges it spends. */
 export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.itemUse) {
+    // Broken, torn or blown apart (1.577), whatever it has left: a Horn of Blasting that exploded.
+    if (actor.broken?.[action.itemUse.item]) return false;
     // Used on past its last charge while it holds together (1.571): a Wind Fan.
-    if (action.itemUse.charges?.overuse && !action.itemUse.consumes && !action.itemUse.ownUses)
-      return !actor.broken?.[action.itemUse.item];
+    if (action.itemUse.charges?.overuse && !action.itemUse.consumes && !action.itemUse.ownUses) return true;
     const left = rulesetItemUseLeft(actor, action.itemUse);
     return action.itemUse.consumes || action.itemUse.ownUses ? left >= 1 : left >= (action.itemUse.charges?.cost ?? 0);
   }

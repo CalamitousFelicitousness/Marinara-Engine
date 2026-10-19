@@ -940,6 +940,13 @@ export function rulesetCombatEventLine(
     // A missile caught and kept (1.573): Gloves of Missile Snaring.
     case "missileKept":
       return key("missileKept", { actor: names.combatant(event.actorId), label: event.label });
+    // An item backfiring on its user (1.577): a Horn of Blasting exploding.
+    case "backfired":
+      return key(event.destroyed ? "backfiredDestroyed" : "backfired", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        roll: event.roll,
+      });
     case "turnedOn":
       return key("turnedOn", {
         actor: names.combatant(event.actorId),

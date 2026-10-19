@@ -1410,6 +1410,9 @@ export interface RulesetCombatAction {
      *  use is spent for nothing. The fight says what it really was once it is spent. */
     fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
     consumes?: true;
+    /** Its chance in 100 to backfire as it is used (1.577): `amount` to its user, gone for good with
+     *  `destroys`, and doing nothing besides with `instead`. */
+    backfires?: { chance: number; amount: RulesetCombatAmount; damageType?: string; destroys?: true; instead?: true };
     charges?: {
       cost: number;
       max: number;
@@ -3288,6 +3291,9 @@ export type RulesetCombatEvent =
   | { type: "itemSpent"; actorId: string; label: string }
   /** A missile caught and kept (1.573): Gloves of Missile Snaring. `label` is what it was. */
   | { type: "missileKept"; actorId: string; label: string }
+  /** An item backfiring on its user as they use it (1.577): a Horn of Blasting exploding. `roll` is
+   *  its d100, and `destroyed` says it is gone. */
+  | { type: "backfired"; actorId: string; label: string; roll: number; destroyed?: true }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

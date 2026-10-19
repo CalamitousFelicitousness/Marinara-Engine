@@ -118863,6 +118863,50 @@
                           ],
                           "additionalProperties": false
                         },
+                        "backfires": {
+                          "type": "object",
+                          "properties": {
+                            "chance": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            },
+                            "amount": {
+                              "type": "object",
+                              "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "flat": {
+                                  "type": "integer"
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
+                            },
+                            "damageType": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "destroys": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "instead": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "chance",
+                            "amount"
+                          ],
+                          "additionalProperties": false
+                        },
                         "consumes": {
                           "type": "boolean",
                           "const": true
@@ -139377,6 +139421,50 @@
                                 },
                                 "required": [
                                   "max"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "backfires": {
+                                "type": "object",
+                                "properties": {
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "destroys": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "instead": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "chance",
+                                  "amount"
                                 ],
                                 "additionalProperties": false
                               },
@@ -159900,6 +159988,50 @@
                                 },
                                 "required": [
                                   "max"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "backfires": {
+                                "type": "object",
+                                "properties": {
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100
+                                  },
+                                  "amount": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "flat": {
+                                        "type": "integer"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "damageType": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "destroys": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "instead": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "chance",
+                                  "amount"
                                 ],
                                 "additionalProperties": false
                               },

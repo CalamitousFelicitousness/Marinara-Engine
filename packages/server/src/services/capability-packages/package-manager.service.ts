@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item use that may backfire on its user (1.577): a Horn of Blasting. */
+function carriesBackfires577(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBackfires577(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.backfires !== undefined) return true;
+  return featureValues(record).some((one) => carriesBackfires577(one, depth + 1));
+}
+
 /** Another amount dealt instead to what it names (1.576): a Horn of Blasting against glass. */
 function carriesAmountAgainst576(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7863,6 +7873,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item use that may backfire on its user, 1.577.
+  if (
+    !declaresApi(577) &&
+    (carriesBackfires577(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBackfires577(document)))
+  )
+    return "A ruleset with an item use that may backfire on its user (use.backfires) requires schemaVersion 2 and capabilityApi 1.577 or newer";
   // Another amount dealt instead to what it names, 1.576.
   if (
     !declaresApi(576) &&

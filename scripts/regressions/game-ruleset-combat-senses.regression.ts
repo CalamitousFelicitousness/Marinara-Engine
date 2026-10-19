@@ -412,13 +412,14 @@ try {
   walk(schema);
   assert.deepEqual(
     found,
-    { needs: 4, lacks: 1 },
-    "the published schema carries the entry, creature action, aura and condition keys",
+    // An item's use, and each further use, carries them too since 1.575.
+    { needs: 7, lacks: 1 },
+    "the published schema carries the entry, creature action, aura, condition and item use keys",
   );
   assert.equal(
     rulesetItemUseSchema.safeParse({ kind: "attack", amount: { flat: 4 }, needs: ["hearing"] }).success,
-    false,
-    "item uses keep their existing strict shape",
+    true,
+    "item uses may need senses (1.575)",
   );
 
   const manifest = (minor: number) => ({

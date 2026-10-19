@@ -2538,34 +2538,40 @@ function GameSurfaceComponent({
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
   // Game audio capability: the game's audio connection (explicit pick, else the
-  // category default, else the fallback) wins; the legacy TTS settings blob
-  // still gates setups that predate audio connections. Mirrors the server's
-  // resolveAudioConfig order.
+  // one chosen as the Text to Speech Source, else the category default, else
+  // the fallback) wins; the legacy TTS settings blob still gates setups that
+  // predate audio connections. Mirrors the server's resolveAudioConfig order.
+  const ttsChosenConnectionId = ttsConfig?.connectionId ?? "";
   const gameAudioConnection = useMemo(() => {
     // Quarantined (review-required) imports are refused by the server's
     // resolution (getWithKey/getDefaultForAudio return null for them), so
     // they must not drive capability gating here either.
     const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
+    const explicit = explicitId ? rows.find((connection) => connection.id === explicitId) : undefined;
+    if (explicit) return explicit;
+    // A missing chosen connection is refused by the server, never swapped for the default.
+    if (ttsChosenConnectionId) return rows.find((connection) => connection.id === ttsChosenConnectionId) ?? null;
     return (
-      (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??
       rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
       rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
       null
     );
-  }, [connectionsList, chatMeta.gameAudioConnectionId]);
+  }, [connectionsList, chatMeta.gameAudioConnectionId, ttsChosenConnectionId]);
   const gameAudioConnectionIsElevenLabs =
     gameAudioConnection != null &&
     ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
+  // The card's own ElevenLabs switches count only while no Audio connection is its Source.
+  const ttsSettingsElevenLabs = ttsConfig?.source === "elevenlabs" && !ttsChosenConnectionId;
   const generateGameSoundEffects =
     (gameAudioConnection
       ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioSoundEffects)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true) &&
+      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameSoundEffects === true) &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
     (gameAudioConnection
       ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioMusic)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true) &&
+      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameMusic === true) &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({

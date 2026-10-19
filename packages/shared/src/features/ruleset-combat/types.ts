@@ -1004,6 +1004,8 @@ export interface RulesetCombatAction {
   /** Throws back the missile its holder just caught, with that missile's damage (1.363), or one die
    *  of `sides` where that is the better (1.367): Martial Arts' die. */
   throwsCaught?: true | { sides: number };
+  /** Keeps the missile its holder just caught (1.573): the shooter's own, else `otherwise`. */
+  keepsCaught?: true | { otherwise: string };
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
   lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.251). */
@@ -2359,6 +2361,9 @@ export type RulesetWindowTrigger =
       catalog?: string;
       entry?: string;
       damage: { count: number; sides: number; type?: string };
+      /** The shooter's ammunition it was (1.573), by its place on their sheet, and the share of a shot
+       *  they would win back. */
+      missile?: { item: number; recover?: number };
     }
   /** An attack that is over, hit or missed (1.369): only the ones it attacked answer, `missedIds`
    *  the ones it missed, and `optionId` the attack, for an answer that sends it elsewhere. */
@@ -3279,6 +3284,8 @@ export type RulesetCombatEvent =
   | { type: "turnedOn"; actorId: string; ids: string[] }
   /** An item spent for good as the creature it called dies (1.559): a Ring of Djinni Summoning. */
   | { type: "itemSpent"; actorId: string; label: string }
+  /** A missile caught and kept (1.573): Gloves of Missile Snaring. `label` is what it was. */
+  | { type: "missileKept"; actorId: string; label: string }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

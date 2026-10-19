@@ -42638,6 +42638,29 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "keepsCaught": {
+                      "anyOf": [
+                        {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "otherwise": {
+                              "type": "string",
+                              "maxLength": 81,
+                              "pattern": "^[^/]+\\/[^/]+$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "otherwise"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
                     "throwsCaught": {
                       "anyOf": [
                         {
@@ -103674,6 +103697,29 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "keepsCaught": {
+                          "anyOf": [
+                            {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "otherwise": {
+                                  "type": "string",
+                                  "maxLength": 81,
+                                  "pattern": "^[^/]+\\/[^/]+$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "otherwise"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
                         "throwsCaught": {
                           "anyOf": [
                             {
@@ -123968,6 +124014,29 @@
                               "takesAim": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "keepsCaught": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "otherwise": {
+                                        "type": "string",
+                                        "maxLength": 81,
+                                        "pattern": "^[^/]+\\/[^/]+$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "otherwise"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
                               },
                               "throwsCaught": {
                                 "anyOf": [
@@ -144269,6 +144338,29 @@
                               "takesAim": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "keepsCaught": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "otherwise": {
+                                        "type": "string",
+                                        "maxLength": 81,
+                                        "pattern": "^[^/]+\\/[^/]+$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "otherwise"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
                               },
                               "throwsCaught": {
                                 "anyOf": [

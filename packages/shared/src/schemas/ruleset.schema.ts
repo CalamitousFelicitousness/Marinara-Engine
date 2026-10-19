@@ -6306,6 +6306,23 @@ const catalogMechanicsObject = z
      *  becomes the target of what was aimed in their place: 5e's Arrow-Catching Shield, on a ranged
      *  attack at a creature within 5 feet. */
     takesAim: z.literal(true).optional(),
+    /** Taken as a `"caught"` moment opens (Capability API 1.573), its holder keeps the missile they
+     *  caught: one of its shooter's own ammunition where it was that (never won back by them), else
+     *  the `otherwise` item, `<catalog>/<entry>`, a creature's arrow. 5e's Gloves of Missile
+     *  Snaring. */
+    keepsCaught: z
+      .union([
+        z.literal(true),
+        z
+          .object({
+            otherwise: z
+              .string()
+              .max(81)
+              .regex(/^[^/]+\/[^/]+$/, "otherwise is a <catalog>/<entry> reference"),
+          })
+          .strict(),
+      ])
+      .optional(),
     throwsCaught: z
       .union([
         z.literal(true),
@@ -7490,6 +7507,16 @@ const catalogMechanicsSchema: z.ZodType<
       path: ["longRange"],
       message: '"longRange" is further than a "range" above 0',
     });
+  }
+  if (mechanics.keepsCaught) {
+    const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
+    if (moment?.on !== "caught" || mechanics.amount || mechanics.attackRoll) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["keepsCaught"],
+        message: '"keepsCaught" is taken at a "caught" moment and deals nothing of its own',
+      });
+    }
   }
   if (mechanics.throwsCaught) {
     const moment = typeof mechanics.reaction === "object" ? mechanics.reaction : undefined;
@@ -10310,6 +10337,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.rollsTable &&
       // Or breaks a layered wall's layer (1.441): a scroll of Passwall.
       !use.endsLayers &&
+      // Or keeps a missile caught (1.573): Gloves of Missile Snaring.
+      !use.keepsCaught &&
       (!use.zone || !use.area)
     ) {
       issue(
@@ -20083,6 +20112,12 @@ function useIssues(
     add([...at, "chargesPerRound"], '"chargesPerRound" spends the item\'s charges, so the item has "charges"');
   if (use.chargesPerRound && !use.applies?.length)
     add([...at, "chargesPerRound"], '"chargesPerRound" keeps up what it puts on, so it "applies" something');
+  // A missile kept (1.573): taken as one is caught, dealing nothing of its own.
+  if (
+    use.keepsCaught &&
+    ((typeof use.reaction === "object" ? use.reaction.on : undefined) !== "caught" || use.amount || use.attackRoll)
+  )
+    add([...at, "keepsCaught"], '"keepsCaught" is taken at a "caught" moment and deals nothing of its own');
   // Only while its user holds one of these (1.564): conditions the sheet has.
   use.userHolds?.forEach((id, index) => {
     if (!conditions.has(id)) add([...at, "userHolds", index], `Unknown condition "${id}"`);
@@ -21235,6 +21270,21 @@ export function rulesetCatalogEntryIssues(
       add([index, "item", "charges", "breaksOn", "becomes"], "An item becomes another item");
     } else if (becomes !== undefined && readable(becomes) && !itemsByRef.has(becomes)) {
       add([index, "item", "charges", "breaksOn", "becomes"], `Unknown item "${becomes}"`);
+    }
+    // What it keeps of a missile caught from a creature (1.573) is an item.
+    const keeps = [
+      { at: [index, "mechanics"], mechanics: entry.mechanics },
+      { at: [index, "item", "use"], mechanics: entry.item?.use },
+      ...(entry.item?.moreUses ?? []).map((more, moreIndex) => ({
+        at: [index, "item", "moreUses", moreIndex, "use"],
+        mechanics: more.use,
+      })),
+    ];
+    for (const one of keeps) {
+      const kept = one.mechanics?.keepsCaught;
+      const otherwise = typeof kept === "object" ? kept.otherwise : undefined;
+      if (otherwise !== undefined && readable(otherwise) && !itemsByRef.has(otherwise))
+        add([...one.at, "keepsCaught", "otherwise"], `Unknown item "${otherwise}"`);
     }
     // What it changes into (1.522) are other items, none of which changes form itself.
     entry.item?.forms?.into.forEach((form, formIndex) => {

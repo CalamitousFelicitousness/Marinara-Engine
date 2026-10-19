@@ -3337,6 +3337,8 @@ function mechanicsAction(
     !mechanics.redirects &&
     // So is stepping in front of an attack (1.456).
     !mechanics.takesAim &&
+    // So is keeping a missile caught (1.573).
+    !mechanics.keepsCaught &&
     // So is steering a condition (1.411).
     !mechanics.steers &&
     // And casting other entries (1.421): Wish.
@@ -3369,6 +3371,7 @@ function mechanicsAction(
     !mechanics.strikesWith &&
     !mechanics.redirects &&
     !mechanics.takesAim &&
+    !mechanics.keepsCaught &&
     !mechanics.steers &&
     !mechanics.duplicates;
   const { build, evaluated, perCell } = from;
@@ -3494,6 +3497,9 @@ function mechanicsAction(
   if (mechanics.strikesWith && (moment || mechanics.area)) action.strikesWith = mechanics.strikesWith;
   if (mechanics.redirects && moment) action.redirects = true;
   if (mechanics.takesAim && moment) action.takesAim = true;
+  // Keeps the missile caught (1.573): Gloves of Missile Snaring.
+  if (mechanics.keepsCaught && moment)
+    action.keepsCaught = mechanics.keepsCaught === true ? true : { otherwise: mechanics.keepsCaught.otherwise };
   // Or one die off the sheet where it is the better (1.367): Martial Arts' die.
   if (mechanics.throwsCaught && moment) {
     const die = mechanics.throwsCaught === true ? undefined : mechanics.throwsCaught.die;

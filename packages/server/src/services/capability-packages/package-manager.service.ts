@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A missile caught and kept (1.573): Gloves of Missile Snaring. */
+function carriesKeepsCaught573(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKeepsCaught573(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.keepsCaught !== undefined) return true;
+  return featureValues(record).some((one) => carriesKeepsCaught573(one, depth + 1));
+}
+
 /** A condition lasting its rounds a rolled number of times over (1.572): a Potion of Growth. */
 function carriesDurationTimes572(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7801,6 +7811,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A missile caught and kept, 1.573.
+  if (
+    !declaresApi(573) &&
+    (carriesKeepsCaught573(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKeepsCaught573(document)))
+  )
+    return "A ruleset with a missile caught and kept (keepsCaught) requires schemaVersion 2 and capabilityApi 1.573 or newer";
   // A condition lasting its rounds a rolled number of times over, 1.572.
   if (
     !declaresApi(572) &&

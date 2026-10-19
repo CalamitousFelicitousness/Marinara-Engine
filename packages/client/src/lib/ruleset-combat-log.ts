@@ -937,6 +937,9 @@ export function rulesetCombatEventLine(
     // An item spent for good as what it called dies (1.559): a Ring of Djinni Summoning.
     case "itemSpent":
       return key("itemSpent", { actor: names.combatant(event.actorId), label: event.label });
+    // A missile caught and kept (1.573): Gloves of Missile Snaring.
+    case "missileKept":
+      return key("missileKept", { actor: names.combatant(event.actorId), label: event.label });
     case "turnedOn":
       return key("turnedOn", {
         actor: names.combatant(event.actorId),

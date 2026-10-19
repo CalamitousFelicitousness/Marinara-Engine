@@ -12,6 +12,7 @@ import {
   rulesetPoolMaxSuccesses,
   rulesetSheetBuildSchema,
   type RulesetAbsorbs,
+  type RulesetCatalogItem,
   type RulesetTurns,
   type RulesetBehaviorDrops,
   type RulesetCombat,
@@ -449,7 +450,12 @@ interface RulesetCombatContext {
     label: string;
   }>;
   /** Who just caught a weapon's missile, and its damage, for the moment that opens after (1.363). */
-  caught?: { targetIds: string[]; damage: { count: number; sides: number; type?: string } };
+  caught?: {
+    targetIds: string[];
+    damage: { count: number; sides: number; type?: string };
+    /** The shooter's ammunition it was (1.573). */
+    missile?: { item: number; recover?: number };
+  };
   /** Who the use being resolved attacked, hit or missed (1.369), for the moment once it is over. */
   attacked?: RulesetAttackedRecord;
 }
@@ -6252,6 +6258,66 @@ function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action:
   ctx.tore = true;
 }
 
+/** A missile caught, kept (1.573): one of its shooter's own ammunition where it was that, which they
+ *  no longer win back, else the `otherwise` item. It goes into its catcher's bag: onto a stack of the
+ *  same item there, or a new one beside their others, written back as the fight's items are. */
+function keepCaught(
+  ctx: RulesetCombatContext,
+  catcher: RulesetCombatant,
+  rule: NonNullable<RulesetCombatAction["keepsCaught"]>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "caught" }>,
+): void {
+  const shooter = rulesetCombatant(ctx.state, trigger.sourceId);
+  const shot = trigger.missile !== undefined ? shooter?.sheet?.items?.[trigger.missile.item] : undefined;
+  let kept: { item: RulesetCatalogItem; ref?: string; name: string } | undefined;
+  if (shot && shooter) {
+    kept = {
+      item: shot.item,
+      ...(shot.stack ? { ref: shot.stack.ref } : {}),
+      name: shot.name ?? shot.stack?.ref ?? "",
+    };
+    const index = trigger.missile!.item;
+    const share = trigger.missile!.recover ?? 0;
+    if (share > 0 && shooter.recoverable?.[index] !== undefined)
+      shooter.recoverable[index] = Math.max(0, shooter.recoverable[index]! - share);
+  } else if (typeof rule === "object") {
+    const entry = rulesetCatalogEntriesByRef(
+      Object.fromEntries((ctx.definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []])),
+    ).get(rule.otherwise);
+    if (entry?.item) kept = { item: entry.item, ref: rule.otherwise, name: entry.label };
+  }
+  if (!kept || !catcher.sheet) return;
+  const items = catcher.sheet.items ?? [];
+  const bagged = items.find((held) => held.stack);
+  const holder = bagged?.stack?.holder;
+  const same = kept.ref
+    ? items.findIndex((held) => held.stack?.ref === kept!.ref && held.stack?.holder === holder)
+    : -1;
+  const at = same >= 0 ? same : items.length;
+  if (same < 0) {
+    catcher.sheet.items = [
+      ...items,
+      {
+        item: kept.item,
+        quantity: 0,
+        worn: false,
+        name: kept.name,
+        ...(kept.ref && bagged
+          ? {
+              stack: {
+                id: `st-caught-${ctx.state.seed.toString(36)}-${ctx.state.round}-${items.length}`,
+                ref: kept.ref,
+                ...(holder !== undefined ? { holder } : {}),
+              },
+            }
+          : {}),
+      },
+    ];
+  }
+  (catcher.itemsUsed ??= {})[at] = (catcher.itemsUsed?.[at] ?? 0) - 1;
+  ctx.events.push({ type: "missileKept", actorId: catcher.id, label: kept.name });
+}
+
 /** Why an option the caller named is not on the menu, as precisely as the rules can say. */
 function whyNotOffered(
   definition: RulesetDefinition,
@@ -9212,6 +9278,8 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
+  // Kept (1.573): Gloves of Missile Snaring.
+  if (action.keepsCaught && trigger.kind === "caught") keepCaught(ctx, taking, action.keepsCaught, trigger);
   // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.363),
   // or one die of its own where that is the better on average (1.367): Martial Arts' die.
   const caughtDice = (() => {
@@ -11674,6 +11742,7 @@ function harmedBy(
         ...(action.catalog ? { catalog: action.catalog } : {}),
         ...(action.entry ? { entry: action.entry } : {}),
         damage: caught.damage,
+        ...(caught.missile ? { missile: caught.missile } : {}),
       },
       caught.targetIds.map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
@@ -15068,6 +15137,15 @@ function resolveActionBodyIn(
           sides: action.damage.sides,
           ...(action.damage.type ? { type: action.damage.type } : {}),
         },
+        // The ammunition it was (1.573), for a catch that keeps it.
+        ...(action.ammo && actor.lastShot !== undefined
+          ? {
+              missile: {
+                item: actor.lastShot,
+                ...(action.ammo.recover ? { recover: action.ammo.recover } : {}),
+              },
+            }
+          : {}),
       };
       ctx.caught.targetIds.push(target.id);
     }

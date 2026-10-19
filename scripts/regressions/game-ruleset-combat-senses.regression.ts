@@ -398,6 +398,8 @@ try {
     for (const key of ["needs", "lacks"] as const) {
       const shape = properties?.[key];
       if (!shape) continue;
+      // Not a sense (1.564): the conditions whose lack in its applier ends a condition.
+      if (key === "lacks" && properties.holderLacks) continue;
       found[key]++;
       assert.equal(shape.minItems, 1);
       assert.equal(shape.maxItems, 4);

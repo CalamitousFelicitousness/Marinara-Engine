@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature moved through only by the strong, or filling none of its space (1.547): Arcane Hand. */
+function carriesPassableBy547(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPassableBy547(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.passableBy !== undefined || record.fillsSpace === false) return true;
+  return featureValues(record).some((one) => carriesPassableBy547(one, depth + 1));
+}
+
 /** A condition that ends once its source acts again (1.546): Interposing Hand. */
 function carriesEndsWhenSourceActs546(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7506,6 +7516,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature moved through only by the strong, or filling none of its space, 1.547.
+  if (
+    !declaresApi(547) &&
+    (carriesPassableBy547(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPassableBy547(document)))
+  ) {
+    return "A ruleset with a creature moved through only by the strong or filling none of its space (passableBy, fillsSpace) requires schemaVersion 2 and capabilityApi 1.547 or newer";
+  }
   // A condition that ends once its source acts again, 1.546.
   if (
     !declaresApi(546) &&

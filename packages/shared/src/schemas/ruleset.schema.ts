@@ -8542,6 +8542,17 @@ const creatureFields = {
   /** It deals double damage to objects (Capability API 1.507): a wall's sections, a layered wall's
    *  layers and a board's props. 5e's Siege Monster. */
   doubleToObjects: z.literal(true).optional(),
+  /** Who may move through its space (Capability API 1.547): only a foe whose `ability` score is above
+   *  `above`, and with `difficult` as hard going. 5e's Arcane Hand, "can't move through the hand's
+   *  space if its Strength score is less than or equal to the hand's ... that space is difficult
+   *  terrain", `{"ability": "str", "above": 26, "difficult": true}`. */
+  passableBy: z
+    .object({ ability: sheetId, above: z.number().int().min(0).max(100), difficult: z.literal(true).optional() })
+    .strict()
+    .optional(),
+  /** It does not fill its space (Capability API 1.547): a friend may stop in it, and a foe it lets
+   *  through may too. The Arcane Hand. */
+  fillsSpace: z.literal(false).optional(),
   /** The languages it understands (Capability API 1.508), by name, matched without case against a
    *  character's `combat.languages`: what `targetTypes.understands` reads. */
   languages: z.array(promptSafeText(60)).max(30).optional(),
@@ -18630,6 +18641,9 @@ function creatureIssues(
   // Its Regeneration (1.346) has no sheet to add anything off.
   if (creature.regenerates?.add) add([...at, "regenerates", "add"], 'A creature has no sheet to read "add" off');
   if (creature.hangsOn) hangsOnIssues(definition, creature.hangsOn, [...at, "hangsOn"], add, true);
+  // Moved through by an ability the sheet declares (1.547).
+  if (creature.passableBy && !definition.sheet.abilities.some((one) => one.id === creature.passableBy!.ability))
+    add([...at, "passableBy", "ability"], `Unknown ability "${creature.passableBy.ability}"`);
   // What it may take as a standard action with another budget (1.291) is one the fight has.
   creature.actions.forEach((action, index) => {
     action.standard?.actions.forEach((name, nameIndex) => {

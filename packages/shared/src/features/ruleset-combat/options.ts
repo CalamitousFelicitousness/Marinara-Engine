@@ -362,7 +362,13 @@ export function rulesetRoomAt(
     (cell) =>
       !rulesetCellSolidFor(grid, cell.x, cell.y, mover) &&
       !state.combatants.some(
-        (other) => other.id !== mover.id && !others.includes(other.id) && !other.defeated && rulesetFills(other, cell),
+        (other) =>
+          other.id !== mover.id &&
+          !others.includes(other.id) &&
+          !other.defeated &&
+          // One that fills none of its space (1.547) leaves room in it.
+          other.block?.fillsSpace !== false &&
+          rulesetFills(other, cell),
       ),
   );
 }

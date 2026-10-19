@@ -57780,6 +57780,35 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "passableBy": {
+                      "type": "object",
+                      "properties": {
+                        "ability": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "above": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "difficult": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "ability",
+                        "above"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "fillsSpace": {
+                      "type": "boolean",
+                      "const": false
+                    },
                     "languages": {
                       "type": "array",
                       "items": {

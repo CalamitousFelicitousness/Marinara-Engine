@@ -1052,6 +1052,8 @@ export function rulesetReachableCells(
 
   const blockers = new Set<string>();
   const occupied = new Set<string>();
+  // A space somebody lets them through as hard going (1.547).
+  const hardGoing = new Set<string>();
   // Into a foe's space and stopping there (1.451): Air Form. Only a friend's is somewhere not to stop.
   const stopsInFoes = rulesetActiveConditions(definition, combat, actor, state).some((entry) => entry.stopsInFoes);
   const friendly = new Set<string>();
@@ -1070,12 +1072,18 @@ export function rulesetReachableCells(
     // Inside somebody (1.350), they fill none of their own: whoever holds them fills it. Nor does a
     // rider (1.443): their mount does.
     if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
-    const through = combatant.side !== actor.side && walksThrough(combatant);
+    // Moved through only by a foe strong enough, as hard going (1.547): the Arcane Hand.
+    const passable = combatant.side !== actor.side ? combatant.block?.passableBy : undefined;
+    const strong = passable ? (rulesetAbilityScore(definition, actor, passable.ability) ?? 0) > passable.above : false;
+    const through = combatant.side !== actor.side && (passable ? strong : walksThrough(combatant));
+    // Nor does one that fills none of its space (1.547) keep anybody it lets by from stopping there.
+    const fills = combatant.block?.fillsSpace !== false;
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
-      occupied.add(`${at.x},${at.y}`);
-      if (combatant.side === actor.side) friendly.add(`${at.x},${at.y}`);
+      if (fills) occupied.add(`${at.x},${at.y}`);
+      if (fills && combatant.side === actor.side) friendly.add(`${at.x},${at.y}`);
       if (combatant.side !== actor.side && !through) blockers.add(`${at.x},${at.y}`);
+      if (passable?.difficult && strong) hardGoing.add(`${at.x},${at.y}`);
     }
   }
   const taken = stopsInFoes ? friendly : occupied;
@@ -1215,7 +1223,9 @@ export function rulesetReachableCells(
         crowded !== undefined && occupied.has(next)
           ? Math.max(slowedStep, plain + Math.max(0, crowded - enterCostFor(grid, { x, y }, actor)))
           : slowedStep;
-      const step = dragging.halves ? crowdedStep * 2 : crowdedStep;
+      // Through a space let by as hard going (1.547), as difficult ground is.
+      const throughStep = hardGoing.has(next) ? Math.max(crowdedStep, plain * 2) : crowdedStep;
+      const step = dragging.halves ? throughStep * 2 : throughStep;
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);

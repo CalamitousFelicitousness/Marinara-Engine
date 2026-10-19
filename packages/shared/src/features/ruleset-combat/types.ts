@@ -653,6 +653,11 @@ export interface RulesetStatBlock {
   healedBy?: string[];
   /** Double damage to objects (1.507): Siege Monster. */
   doubleToObjects?: true;
+  /** Only a foe whose `ability` score is above `above` moves through its space, as hard going with
+   *  `difficult` (1.547): the Arcane Hand. */
+  passableBy?: { ability: string; above: number; difficult?: true };
+  /** It does not fill its space (1.547): others may stop in it. */
+  fillsSpace?: false;
   /** The languages it understands, by name (1.508). */
   languages?: string[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.115). */

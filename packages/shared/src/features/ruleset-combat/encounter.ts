@@ -4187,54 +4187,83 @@ function conditionActions(
   byRef: ReturnType<typeof rulesetCatalogEntriesByRef>,
   perCell: number | undefined,
 ): RulesetCombatAction[] {
-  const granting = (definition.combat?.conditions ?? []).filter((condition) => condition.actions?.length);
+  const granting = (definition.combat?.conditions ?? []).filter(
+    (condition) => condition.actions?.length || condition.endable,
+  );
   if (granting.length === 0) return [];
   const build = combatant.sheet?.build ?? combatant.block?.sheet ?? rulesetSheetBuildSchema.parse({});
   const evaluated = evaluateRulesetSheetLive(definition, build, combatant.sheet?.live ?? {});
   const casting = combatant.block?.spellcasting;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-  return granting.flatMap((condition) =>
-    (condition.actions ?? []).flatMap((ref) => {
-      const entry = byRef.get(ref);
-      if (!entry?.mechanics) return [];
-      const catalogId = ref.slice(0, ref.indexOf("/"));
-      const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
-      const source = definition.combat?.abilities?.find((ability) =>
-        entry.rows?.some((row) => row.list === ability.list),
-      );
-      const difficulty =
-        casting?.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
-      const action = mechanicsAction(definition, entry.mechanics, {
-        id: `granted:${condition.condition}:${ref}`,
-        kind: "ability",
-        label: entry.label,
-        budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
-        toHit:
-          casting?.toHit ??
-          (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
-        ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
-        build,
-        evaluated,
-        perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
-      });
-      if (!action) return [];
-      action.catalog = catalogId;
-      action.entry = ref;
-      action.whileHolds = condition.condition;
-      // Grown by the cost the condition was put on with (1.300), not one of its own.
-      const per = action.use?.perCostStep;
-      if (per) {
-        action.heldSteps = {
-          amount: per,
-          ...(action.use!.stepsEvery ? { every: action.use!.stepsEvery } : {}),
-          ...(action.use!.stepsMax ? { max: action.use!.stepsMax } : {}),
-        };
-      }
-      // Paid for by the condition that gives it: nothing off the sheet.
-      delete action.use;
-      return [action];
-    }),
-  );
+  return granting
+    .flatMap((condition) =>
+      (condition.actions ?? []).flatMap((ref) => {
+        const entry = byRef.get(ref);
+        if (!entry?.mechanics) return [];
+        const catalogId = ref.slice(0, ref.indexOf("/"));
+        const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
+        const source = definition.combat?.abilities?.find((ability) =>
+          entry.rows?.some((row) => row.list === ability.list),
+        );
+        const difficulty =
+          casting?.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+        const action = mechanicsAction(definition, entry.mechanics, {
+          id: `granted:${condition.condition}:${ref}`,
+          kind: "ability",
+          label: entry.label,
+          budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
+          toHit:
+            casting?.toHit ??
+            (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
+          ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+          build,
+          evaluated,
+          perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+        });
+        if (!action) return [];
+        action.catalog = catalogId;
+        action.entry = ref;
+        action.whileHolds = condition.condition;
+        // Grown by the cost the condition was put on with (1.300), not one of its own.
+        const per = action.use?.perCostStep;
+        if (per) {
+          action.heldSteps = {
+            amount: per,
+            ...(action.use!.stepsEvery ? { every: action.use!.stepsEvery } : {}),
+            ...(action.use!.stepsMax ? { max: action.use!.stepsMax } : {}),
+          };
+        }
+        // Paid for by the condition that gives it: nothing off the sheet.
+        delete action.use;
+        return [action];
+      }),
+    )
+    .concat(
+      // Taken off at will (1.569): the Ring of Invisibility's bonus action to be seen again.
+      granting.flatMap((condition) => {
+        if (!condition.endable) return [];
+        const label = definition.sheet.live.conditions.find((one) => one.id === condition.condition)?.label;
+        const action = mechanicsAction(
+          definition,
+          { kind: "utility", targets: "self", budget: condition.endable.budget, endsCondition: condition.condition },
+          {
+            id: `end-condition:${condition.condition}`,
+            kind: "ability",
+            label: `End ${label ?? condition.condition}`,
+            budget: condition.endable.budget,
+            toHit: 0,
+            build,
+            evaluated,
+            perCell,
+          },
+        );
+        if (!action) return [];
+        action.whileHolds = condition.condition;
+        // Paid for with its budget alone: nothing off the sheet.
+        delete action.use;
+        return [action];
+      }),
+    );
 }
 
 /** Only the entries this member's own rows point at, so the state stays small enough to persist
@@ -5973,7 +6002,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     return handedByRef;
   };
   // What a condition lets its holder use (1.236).
-  if (combat.conditions?.some((condition) => condition.actions?.length)) {
+  if (combat.conditions?.some((condition) => condition.actions?.length || condition.endable)) {
     for (const combatant of state.combatants) {
       combatant.actions = [...combatant.actions, ...conditionActions(definition, combatant, handed(), perCell)];
     }

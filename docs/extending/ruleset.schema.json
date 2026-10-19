@@ -176814,6 +176814,21 @@
                 "minItems": 1,
                 "maxItems": 6
               },
+              "endable": {
+                "type": "object",
+                "properties": {
+                  "budget": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "budget"
+                ],
+                "additionalProperties": false
+              },
               "cannotBeSurprised": {
                 "type": "boolean",
                 "const": true

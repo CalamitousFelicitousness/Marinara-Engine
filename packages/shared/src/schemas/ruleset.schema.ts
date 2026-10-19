@@ -12658,6 +12658,10 @@ const combatConditionSchema = z
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. */
     actions: z.array(catalogEntryRef).min(1).max(6).optional(),
+    /** Its holder may take it off at will, paying 1 of `budget` (Capability API 1.569): offered as
+     *  "End" with its label while they hold it. 5e's Ring of Invisibility, "until you use a bonus
+     *  action to become visible again", and the Potion of Gaseous Form. */
+    endable: z.object({ budget: sheetId }).strict().optional(),
     /** Its holder is never surprised (Capability API 1.237): 5e's Foresight. Read as the fight
      *  begins. */
     cannotBeSurprised: z.literal(true).optional(),
@@ -17608,6 +17612,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "actions", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      // Taken off at will (1.569) on a budget the ruleset has.
+      if (entry.endable && !combat.economy.budgets.some((one) => one.id === entry.endable!.budget))
+        issue([...path, "endable", "budget"], `Unknown budget "${entry.endable.budget}"`);
       // A ward on its holder (1.467): of the ruleset's own catalogs, and never raised by a cast's steps.
       entry.wards?.catalogs.forEach((catalogId, catalogIndex) => {
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {

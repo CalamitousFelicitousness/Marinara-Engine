@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A condition its holder may take off at will (1.569): the Ring of Invisibility. */
+function carriesEndable569(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndable569(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.endable !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndable569(one, depth + 1));
+}
+
 /** A call that sets down what it calls within some distance of its caller (1.568): Animate Trees. */
 function carriesCallWithin568(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7761,6 +7771,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition its holder may take off at will, 1.569.
+  if (
+    !declaresApi(569) &&
+    (carriesEndable569(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndable569(document)))
+  ) {
+    return "A ruleset with a condition its holder may take off at will (endable) requires schemaVersion 2 and capabilityApi 1.569 or newer";
+  }
   // A call that sets down what it calls within some distance of its caller, 1.568.
   if (
     !declaresApi(568) &&

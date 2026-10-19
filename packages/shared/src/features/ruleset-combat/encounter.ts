@@ -2656,6 +2656,8 @@ export function rulesetZoneAction(
   // Kinds it keeps out (1.399): Magic Circle, Hallow.
   if (zone.keepsOut) out.keepsOut = structuredClone(zone.keepsOut);
   if (zone.hidden) out.hidden = { check: zone.hidden.check };
+  // A trap disarmed with a check (1.616).
+  if (zone.disarm) out.disarm = { ...zone.disarm };
   // Layers crossed one at a time, and its flash (1.437): Prismatic Wall.
   const layers = zone.layers;
   if (layers) {

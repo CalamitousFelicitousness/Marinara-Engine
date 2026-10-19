@@ -3514,7 +3514,12 @@ export type RulesetCombatEvent =
         | "stage"
         /** Closed by its caster (1.584), ended or lingering, and widened (1.584). */
         | "closed"
-        | "spread";
+        | "spread"
+        /** Disarmed by `targetId`, or not, with `check` (1.616). */
+        | "disarmed"
+        | "disarm-failed";
+      /** The check a disarm was tried with (1.616). */
+      check?: RulesetContestSide;
       /** The layer it was about (1.437), or with `stage` (1.504) the stage it is at now. */
       layer?: string;
       targetId?: string;
@@ -3912,6 +3917,8 @@ export interface RulesetCombatAlterOffer {
 }
 
 export interface RulesetCombatOption {
+  /** The trap it disarms (1.616): its caster's and the action that laid it. */
+  disarms?: { casterId: string; actionId: string };
   /** Breaks what these conditions on its actor command (1.591), and is harmed for it: 5e's Geas.
    *  With `cells`, only a walk ending at one of them does; the rest of the walk breaks nothing. */
   defies?: { conditions: string[]; cells?: RulesetCombatCell[] };
@@ -4347,6 +4354,8 @@ export interface RulesetCombatZoneRule {
   };
   /** Hidden from its caster's foes until found with a Search throwing this check (1.402). */
   hidden?: { check: string };
+  /** A trap its caster's foes may disarm with this check (1.616). */
+  disarm?: { check: string; difficulty?: number; tripsOnFailBy?: number };
   /** Layers crossed one at a time, each destroyed in turn (1.437), and the flash of whoever sees it
    *  within `within` CELLS: Prismatic Wall. */
   layers?: {

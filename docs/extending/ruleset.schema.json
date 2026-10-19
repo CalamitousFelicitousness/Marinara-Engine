@@ -44948,6 +44948,31 @@
                           ],
                           "additionalProperties": false
                         },
+                        "disarm": {
+                          "type": "object",
+                          "properties": {
+                            "check": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "difficulty": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 60
+                            },
+                            "tripsOnFailBy": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 30
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "check"
+                          ],
+                          "additionalProperties": false
+                        },
                         "blocks": {
                           "type": "array",
                           "items": {
@@ -58448,6 +58473,7 @@
                             "enum": [
                               "dash",
                               "disengage",
+                              "disarm",
                               "dodge",
                               "help",
                               "hide",
@@ -58456,7 +58482,7 @@
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 7
+                          "maxItems": 8
                         },
                         "budget": {
                           "type": "string",
@@ -71044,6 +71070,31 @@
                               ],
                               "additionalProperties": false
                             },
+                            "disarm": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "difficulty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 60
+                                },
+                                "tripsOnFailBy": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 30
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "check"
+                              ],
+                              "additionalProperties": false
+                            },
                             "blocks": {
                               "type": "array",
                               "items": {
@@ -73208,6 +73259,7 @@
                                 "enum": [
                                   "dash",
                                   "disengage",
+                                  "disarm",
                                   "dodge",
                                   "help",
                                   "hide",
@@ -73216,7 +73268,7 @@
                                 ]
                               },
                               "minItems": 1,
-                              "maxItems": 7
+                              "maxItems": 8
                             },
                             "while": {
                               "type": "string",
@@ -84458,6 +84510,31 @@
                                 ],
                                 "additionalProperties": false
                               },
+                              "disarm": {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "difficulty": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 60
+                                  },
+                                  "tripsOnFailBy": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 30
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "check"
+                                ],
+                                "additionalProperties": false
+                              },
                               "blocks": {
                                 "type": "array",
                                 "items": {
@@ -86622,6 +86699,7 @@
                                   "enum": [
                                     "dash",
                                     "disengage",
+                                    "disarm",
                                     "dodge",
                                     "help",
                                     "hide",
@@ -86630,7 +86708,7 @@
                                   ]
                                 },
                                 "minItems": 1,
-                                "maxItems": 7
+                                "maxItems": 8
                               },
                               "while": {
                                 "type": "string",
@@ -111114,6 +111192,31 @@
                               ],
                               "additionalProperties": false
                             },
+                            "disarm": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "difficulty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 60
+                                },
+                                "tripsOnFailBy": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 30
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "check"
+                              ],
+                              "additionalProperties": false
+                            },
                             "blocks": {
                               "type": "array",
                               "items": {
@@ -133013,6 +133116,31 @@
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "check"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "disarm": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 60
+                                      },
+                                      "tripsOnFailBy": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 30
                                       },
                                       "$comment": {}
                                     },
@@ -154926,6 +155054,31 @@
                                         "type": "string",
                                         "maxLength": 40,
                                         "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "check"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "disarm": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 60
+                                      },
+                                      "tripsOnFailBy": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 30
                                       },
                                       "$comment": {}
                                     },
@@ -179739,6 +179892,7 @@
             "enum": [
               "dash",
               "disengage",
+              "disarm",
               "dodge",
               "help",
               "hide",
@@ -179746,7 +179900,7 @@
               "search"
             ]
           },
-          "maxItems": 7
+          "maxItems": 8
         },
         "standardEffects": {
           "type": "object",
@@ -188849,6 +189003,7 @@
                       "enum": [
                         "dash",
                         "disengage",
+                        "disarm",
                         "dodge",
                         "help",
                         "hide",
@@ -188857,7 +189012,7 @@
                       ]
                     },
                     "minItems": 1,
-                    "maxItems": 7
+                    "maxItems": 8
                   },
                   "attacks": {
                     "type": "boolean",
@@ -195786,6 +195941,7 @@
                         "escape",
                         "dash",
                         "disengage",
+                        "disarm",
                         "dodge",
                         "help",
                         "hide",
@@ -195804,6 +195960,7 @@
                           "enum": [
                             "dash",
                             "disengage",
+                            "disarm",
                             "dodge",
                             "help",
                             "hide",
@@ -203879,6 +204036,7 @@
                     "enum": [
                       "dash",
                       "disengage",
+                      "disarm",
                       "dodge",
                       "help",
                       "hide",
@@ -203886,7 +204044,7 @@
                       "search"
                     ]
                   },
-                  "maxItems": 7
+                  "maxItems": 8
                 },
                 "$comment": {}
               },

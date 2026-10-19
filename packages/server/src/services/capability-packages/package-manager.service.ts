@@ -2740,6 +2740,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A trap disarmed with a check (1.616): a zone's `disarm`, or the `disarm` standard action. */
+function carriesZoneDisarm616(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneDisarm616(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.zone)?.disarm !== undefined) return true;
+  for (const key of ["standard", "actions"]) {
+    const list = record[key];
+    if (Array.isArray(list) && list.includes("disarm")) return true;
+  }
+  return featureValues(record).some((one) => carriesZoneDisarm616(one, depth + 1));
+}
+
 /** A contest that takes what its target holds (1.615): 5e's Telekinesis on an object. */
 function carriesContestTakes615(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8293,6 +8307,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A trap disarmed with a check, 1.616.
+  if (
+    !declaresApi(616) &&
+    (carriesZoneDisarm616(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneDisarm616(document)))
+  )
+    return "A ruleset with traps disarmed with a check (zone.disarm or the disarm standard action) requires schemaVersion 2 and capabilityApi 1.616 or newer";
   // A contest that takes what its target holds, 1.615.
   if (
     !declaresApi(615) &&

@@ -3377,6 +3377,7 @@ export interface RulesetCatalogZone {
   suppresses?: { catalogs?: string[]; tags?: string[]; setsAsideCalled?: true };
   keepsOut?: RulesetZoneKeepsOut;
   hidden?: { check: string };
+  disarm?: RulesetZoneDisarm;
   detonates?: {
     grows?: { dice?: string; flat?: number };
     touched?: true;
@@ -3593,6 +3594,20 @@ const creatureGroundSchema: z.ZodType<RulesetCreatureGround, z.ZodTypeDef, unkno
     message: '"occupants" says what becomes of whoever stands where the terrain changes, so it needs a "terrain"',
     path: ["occupants"],
   });
+
+/** A trap disarmed with a check (1.616). */
+export interface RulesetZoneDisarm {
+  check: string;
+  difficulty?: number;
+  tripsOnFailBy?: number;
+}
+const zoneDisarmSchema: z.ZodType<RulesetZoneDisarm, z.ZodTypeDef, unknown> = z
+  .object({
+    check: sheetId,
+    difficulty: z.number().int().min(1).max(60).optional(),
+    tripsOnFailBy: z.number().int().min(1).max(30).optional(),
+  })
+  .strict();
 
 const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = z
   .object({
@@ -3865,6 +3880,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  `combat.checks`) against the entry's own save difficulty. 5e's Glyph of Warding and Symbol,
      *  found with Intelligence (Investigation). */
     hidden: z.object({ check: sheetId }).strict().optional(),
+    /** A trap (Capability API 1.616): a foe of its caster's within a cell of it, who sees it, may
+     *  take the `disarm` standard action on it, throwing this `check` (one of `combat.checks`)
+     *  against `difficulty` (the entry's own save difficulty if left out). Made, it is gone without
+     *  going off; failed by `tripsOnFailBy` or more, it goes off, at whoever tried as though they
+     *  had walked into it where it goes off when entered. 5e's Fast Hands takes it with the bonus
+     *  action, by a `standard` grant naming `disarm`. */
+    disarm: zoneDisarmSchema.optional(),
     /** A wall that nobody walks through, sees through, or both (Capability API 1.177): 5e's Wall of
      *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only.
      *  `spells` (Capability API 1.549): no spell is cast into, out of or across it, a wall or not:
@@ -4770,7 +4792,7 @@ const catalogAttackRowsSchema: z.ZodType<RulesetAttackRowsDeclaration, z.ZodType
  *  here rather than beside the combat block because a catalog entry names them too: an ability that
  *  lets its holder buy one of them with another budget says which ones. */
 /** `search` (Capability API 1.287) looks for whoever is hiding: see `combat.hiding`. */
-const combatStandardActionSchema = z.enum(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
+const combatStandardActionSchema = z.enum(["dash", "disengage", "disarm", "dodge", "help", "hide", "ready", "search"]);
 
 const hidingTraitFields = {
   /** It may hide behind somebody at least one size larger than it, as behind anything else that
@@ -7204,7 +7226,7 @@ const catalogMechanicsObject = z
     /** The standard actions its holder may take for a budget other than the main one. The menu
      *  offers them beside the ordinary ones, and the resolver spends the budget named here. */
     standard: z
-      .object({ actions: z.array(combatStandardActionSchema).min(1).max(7), budget: sheetId })
+      .object({ actions: z.array(combatStandardActionSchema).min(1).max(8), budget: sheetId })
       .strict()
       .optional(),
     /** Its holder's own ways of hiding and finding the hidden (Capability API 1.292): a permission
@@ -8433,7 +8455,7 @@ const creatureActionSchema = z
      *  `{ "name": "Nimble Escape", "budget": "bonus", "standard": { "actions": ["disengage", "hide"] } }`. */
     standard: z
       .object({
-        actions: z.array(combatStandardActionSchema).min(1).max(7),
+        actions: z.array(combatStandardActionSchema).min(1).max(8),
         while: z.literal("obscured").optional(),
       })
       .strict()
@@ -12751,7 +12773,7 @@ export interface RulesetConditionGrants {
 const conditionGrantsSchema: z.ZodType<RulesetConditionGrants, z.ZodTypeDef, unknown> = z
   .object({
     budget: sheetId,
-    standard: z.array(combatStandardActionSchema).min(1).max(7).optional(),
+    standard: z.array(combatStandardActionSchema).min(1).max(8).optional(),
     attacks: z.literal(true).optional(),
     /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
      *  mundane item's, never a magic item's activation). */
@@ -13899,7 +13921,7 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
 export interface RulesetCombatMounts {
   larger: number;
   weights?: { bySize: Record<string, number>; sheet?: RulesetValueRef };
-  controlled?: { standard: Array<"dash" | "disengage" | "dodge" | "help" | "hide" | "ready" | "search"> };
+  controlled?: { standard: Array<z.infer<typeof combatStandardActionSchema>> };
   fall?: { save: string; difficulty: number; applies?: string; when?: string[]; landsWith?: string };
 }
 const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> = z
@@ -13916,7 +13938,7 @@ const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> 
       .strict()
       .optional(),
     controlled: z
-      .object({ standard: z.array(combatStandardActionSchema).max(7) })
+      .object({ standard: z.array(combatStandardActionSchema).max(8) })
       .strict()
       .optional(),
     fall: z
@@ -14406,7 +14428,7 @@ const combatObjectSchema = z
       .optional(),
     attacks: z.array(combatAttackSourceSchema).max(8).optional(),
     abilities: z.array(combatAbilitySourceSchema).max(8).optional(),
-    standard: z.array(combatStandardActionSchema).max(7).optional(),
+    standard: z.array(combatStandardActionSchema).max(8).optional(),
     /**
      * What a standard action does BEYOND the flag it sets, for the ones where the flag is not the
      * whole rule. Only `dodge` has such a part today: many systems also make the dodger harder to
@@ -22798,6 +22820,16 @@ export function rulesetCatalogEntryIssues(
       }
       if (!definition.combat?.standard?.includes("search")) {
         add([index, "mechanics", "zone", "hidden"], 'A hidden zone is found with the "search" standard action');
+      }
+    }
+    // A trap is disarmed with one of the fight's checks, by the "disarm" standard action (1.616).
+    const disarm = mechanics?.zone?.disarm;
+    if (disarm) {
+      if (!definition.combat?.checks?.some((check) => check.id === disarm.check)) {
+        add([index, "mechanics", "zone", "disarm", "check"], `Unknown check "${disarm.check}"`);
+      }
+      if (!definition.combat?.standard?.includes("disarm")) {
+        add([index, "mechanics", "zone", "disarm"], 'A trap is disarmed with the "disarm" standard action');
       }
     }
     // Who sets a glyph off (1.398) is a target test like any other.

@@ -1121,6 +1121,23 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
   assert.equal(printed.get("itemSpent"), "Brenna's Figurine of Wondrous Power is spent for good.");
   assert.equal(printed.get("missileKept"), "Brenna catches the Arrow and keeps it.");
+  // A trap disarmed, or not (1.616).
+  const tried = { check: "thieves", rolls: [12], modifier: 3, total: 15 };
+  assert.equal(
+    say({ type: "zone", actorId: "lurker", label: "Glyph", outcome: "disarmed", targetId: "brenna", check: tried }),
+    "Brenna disarms Thorn Lurker’s Glyph (12 + 3 = 15).",
+  );
+  assert.equal(
+    say({
+      type: "zone",
+      actorId: "lurker",
+      label: "Glyph",
+      outcome: "disarm-failed",
+      targetId: "brenna",
+      check: tried,
+    }),
+    "Brenna fails to disarm Thorn Lurker’s Glyph (12 + 3 = 15).",
+  );
   // A zone closed by its caster, and spreading (1.584).
   assert.equal(
     say({ type: "zone", actorId: "brenna", label: "Eversmoking Bottle", outcome: "closed" }),

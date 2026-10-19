@@ -198,7 +198,8 @@ export function rulesetStandardBudget(combat: RulesetCombat): string {
 /** The standard action one option id names. An ability that lets its holder buy one with another
  *  budget writes that budget after an `@`, which no standard action's own name may hold. */
 export function rulesetStandardName(optionId: string): string {
-  const name = optionId.startsWith("standard:") ? optionId.slice("standard:".length) : optionId;
+  const id = optionId.split("#")[0]!;
+  const name = id.startsWith("standard:") ? id.slice("standard:".length) : id;
   const at = name.indexOf("@");
   return at < 0 ? name : name.slice(0, at);
 }
@@ -267,13 +268,15 @@ function grantedStandardOptions(
       const id = `standard:${name}@${grant.budget}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      options.push({
-        id,
-        kind: "standard",
-        label: name,
-        budget: grant.budget,
-        targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
-      });
+      options.push(
+        ...rulesetDisarmOptions(state, actor, {
+          id,
+          kind: "standard",
+          label: name,
+          budget: grant.budget,
+          targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+        }),
+      );
     }
   }
   for (const action of actor.actions) {
@@ -289,14 +292,16 @@ function grantedStandardOptions(
       const id = `standard:${name}@${granted.budget}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      options.push({
-        id,
-        kind: "standard",
-        label: name,
-        budget: granted.budget,
-        targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
-        ...(paid.cost.length > 0 ? { cost: paid.cost } : {}),
-      });
+      options.push(
+        ...rulesetDisarmOptions(state, actor, {
+          id,
+          kind: "standard",
+          label: name,
+          budget: granted.budget,
+          targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+          ...(paid.cost.length > 0 ? { cost: paid.cost } : {}),
+        }),
+      );
     }
   }
   return options;
@@ -321,10 +326,12 @@ export function rulesetGrantedStandard(
   state?: RulesetEncounterState,
 ): { action: RulesetCombatAction; name: string; budget: string } | null {
   if (!optionId.startsWith("standard:")) return null;
-  const at = optionId.indexOf("@");
+  // A disarm names its trap after a `#` (1.616).
+  const id = optionId.split("#")[0]!;
+  const at = id.indexOf("@");
   if (at < 0) return null;
-  const name = optionId.slice("standard:".length, at);
-  const budget = optionId.slice(at + 1);
+  const name = id.slice("standard:".length, at);
+  const budget = id.slice(at + 1);
   // The SAME ability the menu offered it under: one that has run out of uses, is waiting on its
   // dice, or cannot pay its own price is not on the menu, so it must not be what resolution picks
   // either, or a character with two permissions could take one through the other's exhausted half.
@@ -337,6 +344,36 @@ export function rulesetGrantedStandard(
       !!planRulesetCombatCost(definition, actor, entry),
   );
   return action ? { action, name, budget } : null;
+}
+
+/** A standard action as the menu offers it: a disarm (1.616) once for each trap of its foes' its
+ *  actor's side sees within a cell of it, named after a `#`, and none where there is none. */
+function rulesetDisarmOptions(
+  state: RulesetEncounterState | undefined,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+): RulesetCombatOption[] {
+  if (option.label !== "disarm") return [option];
+  if (!state) return [];
+  const at = rulesetPositionOf(actor);
+  return rulesetStandingZones(state).flatMap(({ caster, zone, action }) => {
+    if (!action.zone?.disarm || caster.side === actor.side) return [];
+    if (!rulesetZoneSeenBy(caster, zone, action, actor.side)) return [];
+    if (
+      positioned(state) &&
+      at &&
+      !rulesetZoneCells(state, caster, zone).some((cell) => rulesetGapFrom(cell, 1, actor) <= 1)
+    )
+      return [];
+    return [
+      {
+        ...option,
+        id: `${option.id}#${caster.id}/${zone.actionId}`,
+        label: zone.label,
+        disarms: { casterId: caster.id, actionId: zone.actionId },
+      },
+    ];
+  });
 }
 
 /** The one thing a fight with no board answers about distance: nothing at all. */
@@ -4825,14 +4862,16 @@ export function rulesetUncompelledOptions(
       options.push(...readyOptions(options, budget));
       continue;
     }
-    options.push({
-      id: `standard:${action}`,
-      kind: "standard",
-      label: action,
-      budget,
-      // Help is the one that reaches somebody else; the rest are the actor's own stance.
-      targets: action === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
-    });
+    options.push(
+      ...rulesetDisarmOptions(state, actor, {
+        id: `standard:${action}`,
+        kind: "standard",
+        label: action,
+        budget,
+        // Help is the one that reaches somebody else; the rest are the actor's own stance.
+        targets: action === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+      }),
+    );
   }
   options.push(...grantedStandardOptions(definition, combat, actor, state));
   options.push(endTurn);

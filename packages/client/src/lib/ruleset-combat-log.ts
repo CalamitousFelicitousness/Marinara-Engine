@@ -252,7 +252,7 @@ function checkRollText(roll: RulesetContestSide, names: RulesetCombatNames, t: T
       );
 }
 
-const STANDARD_ACTIONS = new Set(["dash", "disengage", "dodge", "help", "hide", "ready", "search"]);
+const STANDARD_ACTIONS = new Set(["dash", "disengage", "disarm", "dodge", "help", "hide", "ready", "search"]);
 
 /** What each kind of held-open moment is called on screen. A window is not an interruption to
  *  apologise for: each of these says what is happening and who may answer it. */
@@ -1179,6 +1179,15 @@ export function rulesetCombatEventLine(
       }
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
+      }
+      // A trap disarmed, or not (1.616), and the check it was tried with.
+      if (event.outcome === "disarmed" || event.outcome === "disarm-failed") {
+        return key(event.outcome === "disarmed" ? "zoneDisarmed" : "zoneDisarmFailed", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+          target: names.combatant(event.targetId ?? ""),
+          roll: event.check ? checkRollText(event.check, names, t) : "",
+        });
       }
       // Closed by its caster, and widened (1.584): an Eversmoking Bottle.
       if (event.outcome === "closed" || event.outcome === "spread") {

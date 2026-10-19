@@ -197,6 +197,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       },
     );
   if (option.readied) return t("game.combat.ruleset.menu.readied", { option: option.label });
+  // A trap disarmed (1.616), by name.
+  if (option.disarms) return t("game.combat.ruleset.menu.disarm", { zone: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }

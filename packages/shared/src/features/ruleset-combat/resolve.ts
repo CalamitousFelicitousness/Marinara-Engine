@@ -7502,6 +7502,12 @@ function applyChoice(
       }
       return finish();
     }
+    // Disarming a trap (1.616).
+    if (option.disarms) {
+      resolveDisarm(ctx, working, option.disarms);
+      noteOutcome(ctx);
+      return finish();
+    }
     resolveStandard(ctx, working, rulesetStandardName(option.id), workingTargets[0]);
     return finish();
   }
@@ -12394,6 +12400,47 @@ function resolveStandard(
     action,
     ...(action === "help" && target ? { targetId: target.id } : {}),
   });
+}
+
+/**
+ * Disarming a trap (1.616): its check against its difficulty. Made, the trap is gone without going
+ * off; failed by its `tripsOnFailBy` or more, it goes off, at whoever tried where entering it sets it
+ * off.
+ */
+function resolveDisarm(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  disarms: NonNullable<RulesetCombatOption["disarms"]>,
+): void {
+  stirs(ctx, actor, "acted");
+  const caster = rulesetCombatant(ctx.state, disarms.casterId);
+  const zone = caster?.zones?.find((entry) => entry.actionId === disarms.actionId);
+  const action = caster?.actions.find((entry) => entry.id === disarms.actionId);
+  const rule = action?.zone?.disarm;
+  if (!caster || !zone || !action || !rule) return;
+  const check = hidingCheck(ctx, actor, rule.check);
+  const difficulty = rule.difficulty ?? action.save?.difficulty ?? action.saveDifficulty ?? 10;
+  const made = check.total >= difficulty;
+  ctx.events.push({
+    type: "zone",
+    actorId: caster.id,
+    label: zone.label,
+    outcome: made ? "disarmed" : "disarm-failed",
+    targetId: actor.id,
+    check,
+  });
+  if (made) {
+    caster.zones = caster.zones!.filter((entry) => entry !== zone);
+    if (caster.zones.length === 0) delete caster.zones;
+    if (caster.concentrating?.actionId === zone.actionId) endConcentration(ctx, caster, "spent");
+    return;
+  }
+  if (rule.tripsOnFailBy === undefined || difficulty - check.total < rule.tripsOnFailBy) return;
+  if (action.zone?.detonates?.entered) {
+    zone.tripped = true;
+    zone.trippedBy = actor.id;
+  }
+  spendZone(ctx, caster, zone);
 }
 
 /** A check of the fight's own `checks` thrown on its own (1.287), its number off the combatant. */

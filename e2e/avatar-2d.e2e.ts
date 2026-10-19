@@ -6,8 +6,8 @@
 // VRM panel still reports a failed import after it closes, and making a mesh avatar starts from the
 // full-body neutral sprite (else the neutral one) until the user picks another.
 import { expect, test, type Page } from "@playwright/test";
-import { securityHeadersHook } from "../packages/server/src/middleware/security-headers.js";
 import { meshAvatarFiles, paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
+import { serveWithServerCsp } from "./server-csp-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 
@@ -108,36 +108,6 @@ async function probeMeshAvatars(page: Page) {
       probe.violations.push(`${event.violatedDirective} ${event.blockedURI}`),
     );
   });
-}
-
-/** Serves the app page with the server's own connect-src and img-src (the directives the mesh renderer meets).
- *  Vite's dev page needs inline scripts the production build does not, so the other directives stay off. */
-async function serveWithServerCsp(page: Page) {
-  let policy = "";
-  securityHeadersHook(
-    {} as never,
-    {
-      header: (name: string, value: string) => {
-        if (name === "Content-Security-Policy") policy = value;
-      },
-    } as never,
-    () => {},
-  );
-  const directives = policy
-    .split(";")
-    .map((directive) => directive.trim())
-    .filter((directive) => /^(?:connect|img)-src\s/u.test(directive));
-  expect(directives, "the server sets both directives").toHaveLength(2);
-  await page.route(
-    (url) => url.pathname === "/",
-    async (route) => {
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        headers: { ...response.headers(), "content-security-policy": directives.join("; ") },
-      });
-    },
-  );
 }
 
 /** Mounts renderers of one kind on fresh canvases (100 x 200 CSS px unless `sizes` says, ratio 1) and keeps

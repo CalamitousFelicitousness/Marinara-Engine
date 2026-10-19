@@ -35,6 +35,11 @@ export const AVATAR_RENDER_BUDGET = Object.freeze({
 
 // ── Renderers (lanes 2D and 3D) ──
 
+/** How much of a 3D avatar its box shows: head and shoulders (the default), down to the hips, or head to feet.
+ *  The box keeps its size; a taller framing shows more of the model in it. 2D avatars have no framing. */
+export const AVATAR_FRAMINGS = ["portrait", "half-body", "full-body"] as const;
+export type AvatarFraming = (typeof AVATAR_FRAMINGS)[number];
+
 export interface AvatarRendererMountOptions {
   owner: AvatarOwnerRef;
   config: AvatarConfig;
@@ -58,6 +63,8 @@ export interface AvatarRenderer {
   resize(width: number, height: number, devicePixelRatio: number): void;
   /** Paused renderers draw nothing and hold no timers. */
   setPaused(paused: boolean): void;
+  /** 3D only: how much of the model the camera shows. Changing it never reloads the model. */
+  setFraming?(framing: AvatarFraming): void;
   /** Release GPU resources, listeners and object URLs. The renderer is unusable afterwards. */
   dispose(): void;
 }

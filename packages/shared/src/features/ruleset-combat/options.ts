@@ -94,6 +94,7 @@ import {
   rulesetModeRuleHolds,
   rulesetCallWhereHolds,
   rulesetConditionLeft,
+  rulesetIgnoredByCreature,
   rulesetMovesOnly,
   rulesetMovementAllowance,
   rulesetSlipCost,
@@ -2018,6 +2019,8 @@ export function rulesetForbiddenTargets(
       for (const one of state.combatants) if (one.side === by.side) forbidden.add(one.id);
     }
   }
+  // Nor whoever wears what leaves creatures like them alone (1.566): the Pipes of the Sewers' rats.
+  for (const one of state.combatants) if (rulesetIgnoredByCreature(one, actor)) forbidden.add(one.id);
   // A turn the dice made a strike at one creature (1.264): nobody else.
   // Or at the nearest it sees (1.490).
   if ((actor.flags.compelled === "strike" || actor.flags.compelled === "nearest") && actor.flags.compelledTarget) {

@@ -1756,6 +1756,9 @@ export interface RulesetCombatant {
    *  (design-game-creature-art.md). Never read by the fight's rules. Out of a borrowed catalog (1.220),
    *  `from` names the lender's ruleset and catalog. */
   creature?: { catalogId: string; entryId: string; from?: { ruleset: string; catalog: string } };
+  /** Creatures a worn item's `ignoredBy` left them alone by (1.566) that they have since attacked,
+   *  harmed or forced to save: those aim at them again. */
+  provoked?: string[];
   initiative: number;
   initiativeRoll: number[];
   initiativeModifier: number;

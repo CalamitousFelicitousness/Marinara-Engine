@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A worn item that keeps creatures of some entries from aiming at its wearer (1.566): the Pipes of
+ *  the Sewers' rats. */
+function carriesIgnoredBy566(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesIgnoredBy566(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.ignoredBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesIgnoredBy566(one, depth + 1));
+}
+
 /** A contest that leaves something on a target its user loses to, and a condition that ends as its
  *  holder can't hear its source (1.565): the Pipes of the Sewers. */
 function carriesUnswayed565(value: unknown, depth = 0): boolean {
@@ -7730,6 +7741,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A worn item that keeps creatures of some entries off its wearer, 1.566.
+  if (
+    !declaresApi(566) &&
+    (carriesIgnoredBy566(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesIgnoredBy566(document)))
+  ) {
+    return "A ruleset with an item that keeps creatures of some entries from aiming at its wearer (ignoredBy) requires schemaVersion 2 and capabilityApi 1.566 or newer";
+  }
   // A lost contest's conditions, and one that ends unheard, 1.565.
   if (
     !declaresApi(565) &&

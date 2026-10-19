@@ -71,6 +71,7 @@ import {
   rulesetAbilityModifier,
   rulesetChangedAbilityScores,
   rulesetFormedItem,
+  rulesetHeldItemDoes,
 } from "../rulesets/sheet-math.js";
 import {
   findRulesetCreatureEntry,
@@ -1598,6 +1599,40 @@ export function rulesetModeRuleHolds(
 
 /** The rounds left of `condition` on `holder` from when it last came off before it ran out (1.563),
  *  counted down a round each round since; undefined when it never did. */
+/** What a worn item makes creatures of some bestiary entries leave its wearer alone (1.566): the
+ *  `ignoredBy` of each item they wear and have not dropped. */
+function wornIgnoredBy(wearer: RulesetCombatant): Array<{ entries: string[]; untilHarmed?: true }> {
+  const items = wearer.sheet?.items;
+  if (!items?.length) return [];
+  const dropped = rulesetDroppedItems(wearer);
+  return items.flatMap((held, index) => {
+    const rule = held.worn && !dropped.has(index) ? rulesetHeldItemDoes(held).worn?.ignoredBy : undefined;
+    return rule ? [rule] : [];
+  });
+}
+
+/** Whether `creature` leaves `wearer` alone for what they wear (1.566): it was made from an entry
+ *  one of their items names, and has not been attacked, harmed or forced to save by them when that
+ *  item says `untilHarmed`. The Pipes of the Sewers' rats. */
+export function rulesetIgnoredByCreature(wearer: RulesetCombatant, creature: RulesetCombatant): boolean {
+  if (!creature.creature || wearer.id === creature.id) return false;
+  const ref = `${creature.creature.catalogId}/${creature.creature.entryId}`;
+  return wornIgnoredBy(wearer).some(
+    (rule) => rule.entries.includes(ref) && !(rule.untilHarmed && wearer.provoked?.includes(creature.id)),
+  );
+}
+
+/** Whoever a wearer's worn item leaves them alone by (1.566), and whom they just attacked, harmed or
+ *  forced to save, noted so those leave them alone no more. */
+export function rulesetNoteProvoked(state: RulesetEncounterState, wearerId: string, targetId: string): void {
+  const wearer = rulesetCombatant(state, wearerId);
+  const target = rulesetCombatant(state, targetId);
+  if (!wearer || !target?.creature || wearerId === targetId) return;
+  const ref = `${target.creature.catalogId}/${target.creature.entryId}`;
+  if (!wornIgnoredBy(wearer).some((rule) => rule.untilHarmed && rule.entries.includes(ref))) return;
+  if (!wearer.provoked?.includes(targetId)) (wearer.provoked ??= []).push(targetId);
+}
+
 export function rulesetConditionLeft(
   state: RulesetEncounterState,
   holder: RulesetCombatant,

@@ -12988,6 +12988,21 @@ const rulesetItemEffectObjectSchema = z
     paysSlots: sheetId.optional(),
     /** The highest pool of `paysSlots`' group its charges pay for (Capability API 1.537). */
     paysSlotsMax: sheetId.optional(),
+    /** Creatures made from these bestiary entries never aim at its wearer (Capability API 1.566),
+     *  with `untilHarmed` only until the wearer attacks, harms or forces a save on that one: 5e's
+     *  Pipes of the Sewers, "ordinary rats and giant rats are indifferent toward you and will not
+     *  attack you unless you threaten or harm them". */
+    ignoredBy: z
+      .object({
+        entries: z
+          .array(catalogEntryRef)
+          .min(1)
+          .max(12)
+          .refine((refs) => new Set(refs).size === refs.length, { message: "An entry is named once" }),
+        untilHarmed: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -13012,13 +13027,14 @@ const rulesetItemEffectObjectSchema = z
       !entry.keepsOn &&
       !entry.absorbs &&
       !entry.turns &&
-      !entry.paysSlots
+      !entry.paysSlots &&
+      !entry.ignoredBy
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, or what its charges pay for",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, what its charges pay for, or who leaves its wearer alone",
       });
     }
     if (abilities.length > 12) {

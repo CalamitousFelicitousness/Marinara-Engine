@@ -144,6 +144,7 @@ import {
   rulesetLightMatches,
   rulesetModeRuleHolds,
   rulesetConditionLeft,
+  rulesetNoteProvoked,
   rulesetStepTimes,
   rulesetItemCallRoll,
 } from "./encounter.js";
@@ -485,6 +486,15 @@ function begin(
     finish: () => {
       // Stopped time that reached somebody else is over (1.454).
       timeStopReached(ctx);
+      // Who a wearer's item kept off them, and whom they have now attacked, harmed or forced to save
+      // (1.566): those rats are no longer indifferent.
+      for (const event of ctx.events) {
+        if (event.type === "attack" || event.type === "contest")
+          rulesetNoteProvoked(next, event.actorId, event.targetId);
+        else if ((event.type === "damage" || event.type === "save") && event.sourceId) {
+          rulesetNoteProvoked(next, event.sourceId, event.type === "damage" ? event.targetId : event.actorId);
+        }
+      }
       noteStirred(ctx);
       for (const target of next.combatants) {
         endImmuneConditions(ctx, target);

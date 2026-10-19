@@ -89010,6 +89010,30 @@
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
                         },
+                        "ignoredBy": {
+                          "type": "object",
+                          "properties": {
+                            "entries": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 121,
+                                "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "untilHarmed": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "entries"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -91021,6 +91045,30 @@
                           "type": "string",
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "ignoredBy": {
+                          "type": "object",
+                          "properties": {
+                            "entries": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 121,
+                                "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "untilHarmed": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "entries"
+                          ],
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },
@@ -93220,6 +93268,30 @@
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "ignoredBy": {
+                                "type": "object",
+                                "properties": {
+                                  "entries": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 121,
+                                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "untilHarmed": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "entries"
+                                ],
+                                "additionalProperties": false
                               },
                               "$comment": {}
                             },

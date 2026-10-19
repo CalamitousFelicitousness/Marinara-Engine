@@ -34,7 +34,7 @@ export function useStartNewChatMode() {
     if (launchInFlight.current) return;
     launchInFlight.current = true;
     try {
-      const connections = await queryClient.ensureQueryData(connectionListQuery).catch(() => []);
+      const connections = await queryClient.fetchQuery(connectionListQuery).catch(() => []);
       const connectionRows = (connections as Array<{ id: string }>).filter((connection) => !!connection.id);
       const store = useChatStore.getState();
       if (connectionRows.length === 0) {

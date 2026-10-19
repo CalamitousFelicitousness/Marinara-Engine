@@ -114,3 +114,99 @@ test("with no connections at all, a new roleplay still asks for one first", asyn
   expect(chatCreated, "no chat is made without a connection").toBe(false);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+for (const cachedEmpty of [true, false]) {
+  test(`a stale ${cachedEmpty ? "empty" : "configured"} connection cache waits for the current list`, async ({
+    page,
+    request,
+  }) => {
+    const response = await request.post("/api/connections", {
+      data: {
+        name: `Stale Home Start ${Date.now().toString(36)}`,
+        provider: "custom",
+        baseUrl: "http://127.0.0.1:1/v1",
+        apiKey: "stale-home-start-e2e",
+        model: "stale-home-start-model",
+      },
+    });
+    expect(response.ok()).toBeTruthy();
+    const connection = (await response.json()) as { id: string };
+    const cached = cachedEmpty ? [] : [connection];
+    const current = cachedEmpty ? [connection] : [];
+    const chatIds: string[] = [];
+    let posts = 0;
+    let release = () => {};
+
+    try {
+      // Expose the real app QueryClient for the stale-cache setup.
+      await page.route(/\/src\/main\.tsx(?:\?.*)?$/, async (route) => {
+        const entry = await route.fetch();
+        await route.fulfill({
+          response: entry,
+          body: `${await entry.text()}\nObject.assign(window, { __homeNewChatQueryClient: queryClient });`,
+        });
+      });
+      await page.route("**/api/connections", (route) =>
+        route.request().method() === "GET" ? route.fulfill({ json: cached }) : route.fallback(),
+      );
+      await page.route("**/api/chats", async (route) => {
+        if (!isChatCreate(route.request())) return route.fallback();
+        posts += 1;
+        const created = await route.fetch();
+        if (created.ok()) chatIds.push(((await created.json()) as { id: string }).id);
+        await route.fulfill({ response: created });
+      });
+      await page.goto("/");
+      const roleplay = page.getByRole("button", { name: "Start a new roleplay", exact: true });
+      await expect(roleplay).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+      await expect
+        .poll(() =>
+          page.evaluate(async () => {
+            const { connectionListQuery } = await import("/src/hooks/use-connections.ts" as string);
+            return Reflect.get(window, "__homeNewChatQueryClient")?.getQueryState(connectionListQuery.queryKey)
+              ?.fetchStatus;
+          }),
+        )
+        .toBe("idle");
+
+      await page.unroute("**/api/connections");
+      const list = await holdConnectionList(page, current);
+      release = list.release;
+      await page.evaluate(async (rows) => {
+        const { connectionListQuery } = await import("/src/hooks/use-connections.ts" as string);
+        const client = Reflect.get(window, "__homeNewChatQueryClient");
+        client.setQueryData(connectionListQuery.queryKey, rows, {
+          updatedAt: Date.now() - connectionListQuery.staleTime - 1,
+        });
+        // The mounted useConnections observer starts a refetch, which the launch must join.
+        void client.invalidateQueries({ queryKey: connectionListQuery.queryKey, exact: true });
+      }, cached);
+      await expect.poll(list.held).toBe(1);
+      const prematureSave = page.waitForRequest(isChatCreate, { timeout: 500 }).catch(() => null);
+      await roleplay.click();
+      expect(await prematureSave, "a stale cache must not start a chat while the current list is loading").toBeNull();
+      await expect(page.locator("[data-new-chat-connection-gate]")).toHaveCount(0);
+      await roleplay.dispatchEvent("click");
+      list.release();
+
+      if (cachedEmpty) {
+        await expect(page.getByRole("heading", { name: "New Roleplay", exact: true })).toBeVisible({
+          timeout: FIRST_LOAD_TIMEOUT_MS,
+        });
+        await expect(page.locator("[data-new-chat-connection-gate]")).toHaveCount(0);
+        expect(posts, "the two taps create one chat after the current list loads").toBe(1);
+      } else {
+        const gate = page.locator('[data-new-chat-connection-gate="roleplay"]');
+        await expect(gate).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+        await expect(gate.locator("[data-new-chat-connection-empty]")).toBeVisible();
+        expect(posts, "the removed connection must not allow a chat to be created").toBe(0);
+      }
+      expect(list.held(), "the launch joins the observer's existing request").toBe(1);
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: "wait" });
+      for (const chatId of chatIds) await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+      await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+    }
+  });
+}

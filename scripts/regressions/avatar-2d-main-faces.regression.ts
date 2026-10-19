@@ -206,12 +206,21 @@ try {
   assert.deepEqual(capped.expressionMap.happy, before.expressionMap.happy, "so happy keeps its face");
   assert.deepEqual(capped.expressionMap.sad, user("face_3"), "a face it already has can still be used");
   assert.equal(layers.pngtuberFaceChoices(full, fromSprites), full.layers, "a full setup offers no sprite face");
-  const roomForTwo = { ...full, layers: Object.fromEntries(Object.entries(full.layers).slice(0, 62)) };
-  const nearlyFull = layers.pngtuberFaceChoices(roomForTwo, fromSprites);
-  assert.equal(Object.keys(nearlyFull).length, 64, "the face lists stop at the 64-face cap");
+  const roomForOne = { ...full, layers: Object.fromEntries(Object.entries(full.layers).slice(0, 63)) };
+  const nearlyFull = layers.pngtuberFaceChoices(roomForOne, fromSprites);
+  assert.equal(Object.keys(nearlyFull).length, 63 + 39, "with room for one, every sprite face is offered");
+  for (const key of Object.keys(nearlyFull).slice(63)) {
+    const chosen = { ...roomForOne, layers: { ...roomForOne.layers, [key]: nearlyFull[key]! } };
+    assert.ok(avatarKindDataSchema.safeParse({ pngtuber: chosen }).success, `choosing ${key} keeps the PUT body valid`);
+  }
+  const manySprites = Array.from({ length: 70 }, (_, index) => ({ expression: `pose_${index + 10}` }));
+  assert.equal(Object.keys(layers.buildPngtuberLayersFromSprites(manySprites)!.layers).length, 64);
   assert.ok(
-    avatarKindDataSchema.safeParse({ pngtuber: { ...roomForTwo, layers: nearlyFull } }).success,
-    "choosing any offered face keeps the PUT body valid",
+    Object.hasOwn(
+      layers.pngtuberFaceChoices(stored, layers.buildPngtuberLayersFromSprites(manySprites, Infinity)),
+      "pose_79",
+    ),
+    "a sprite past the first 64 can be chosen while the setup has room",
   );
 
   // ── Saving blink and talk pictures afterwards keeps the new faces ──

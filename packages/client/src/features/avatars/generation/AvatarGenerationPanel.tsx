@@ -18,6 +18,7 @@ import {
   AVATAR_FACE_GROUPS,
   isChatProvider,
   readImageAppearanceOverride,
+  type AvatarConfig,
   type Persona,
 } from "@marinara-engine/shared";
 import { useAvatarModelActions } from "../../../hooks/use-avatar-models";
@@ -35,7 +36,7 @@ import {
   type ImagePromptOverride,
   type ImagePromptReviewItem,
 } from "../../../components/ui/ImagePromptReviewModal";
-import type { AvatarKindSetupPanelProps } from "../contract";
+import { avatarModelKeys, type AvatarKindSetupPanelProps } from "../contract";
 import { errorMessage } from "../renderers/pngtuber/PngtuberSetupPanel";
 import { withGeneratedFaces, type SavedTalkingHeadFace } from "../renderers/pngtuber/pngtuber-layers";
 import { MeshAvatarSection, type ConnectionOption } from "./MeshAvatarSection";
@@ -143,7 +144,9 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
   const facesSaved = (saved: readonly SavedTalkingHeadFace[]) => {
     void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) });
     // Without a saved talking head the sprites are the faces, and a face named after a feeling is already its face.
-    const stored = config?.kinds.pngtuber;
+    // The latest saved setup, in case it changed while the faces were being saved.
+    const latest = queryClient.getQueryData<AvatarConfig | null>(avatarModelKeys.detail(owner));
+    const stored = (latest === undefined ? config : latest)?.kinds.pngtuber;
     const next = stored && withGeneratedFaces(stored, saved);
     if (!next || next === stored) return;
     save.mutate(

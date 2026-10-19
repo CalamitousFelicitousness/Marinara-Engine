@@ -110,8 +110,11 @@ export function pngtuberSpriteFamily<T extends SpriteLike>(sprites: readonly T[]
 /** A PNGTuber setup built from an owner's expression sprites: one layer set per face, with `_talk` and
  *  `_blink` sprites (and their spelling variants) as its mouth-open and eyes-closed pictures, and a face for each
  *  extra feeling a sprite is named after. The suggested labels and the feelings' names come first, so the
- *  64-face cap never drops them. Null when the owner has no usable sprite. */
-export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): PngtuberAvatarData | null {
+ *  64-face cap (`limit`) never drops them. Null when the owner has no usable sprite. */
+export function buildPngtuberLayersFromSprites(
+  sprites: readonly SpriteLike[],
+  limit = MAX_LAYER_SETS,
+): PngtuberAvatarData | null {
   const layers = new Map<string, PngtuberLayerSet>();
   const variants: { base: string; key: string; mouthOpen: boolean; eyesClosed: boolean }[] = [];
   for (const sprite of pngtuberSpriteFamily(sprites)) {
@@ -132,7 +135,7 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
   const rank = (key: string) => (known.includes(key) ? known.indexOf(key) : known.length);
   const keys = [...layers.keys()]
     .sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
-    .slice(0, MAX_LAYER_SETS);
+    .slice(0, limit);
   if (keys.length === 0) return null;
   return {
     layers: Object.fromEntries(keys.map((key) => [key, layers.get(key)!])),
@@ -144,18 +147,16 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
 }
 
 /** Every face a feeling can be given: the setup's own, then each sprite face it doesn't have yet, also ones named
- *  after a feeling, so any sprite can be chosen, as many as the 64-face cap leaves room for. A PNGTuber Plus
- *  import keeps its own faces. */
+ *  after a feeling, so any sprite can be chosen. Choosing one adds one face, so a setup at the 64-face cap offers
+ *  only its own. A PNGTuber Plus import keeps its own faces. */
 export function pngtuberFaceChoices(
   shown: PngtuberAvatarData | null,
   fromSprites: PngtuberAvatarData | null,
 ): Record<string, PngtuberLayerSet> {
   if (!shown) return {};
   if (shown.source === "pngtuber-plus" || !fromSprites) return shown.layers;
-  const room = Math.max(0, MAX_LAYER_SETS - Object.keys(shown.layers).length);
-  const added = Object.entries(fromSprites.layers)
-    .filter(([key]) => !Object.hasOwn(shown.layers, key))
-    .slice(0, room);
+  if (Object.keys(shown.layers).length >= MAX_LAYER_SETS) return shown.layers;
+  const added = Object.entries(fromSprites.layers).filter(([key]) => !Object.hasOwn(shown.layers, key));
   return added.length ? { ...shown.layers, ...Object.fromEntries(added) } : shown.layers;
 }
 

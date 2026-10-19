@@ -80,8 +80,9 @@ export function PngtuberSetupPanel({ owner, config, onChanged }: AvatarKindSetup
   const fromSprites = useMemo(() => buildPngtuberLayersFromSprites(spriteList), [spriteList]);
   /** What the avatar shows now: the saved setup, or the sprites until one is saved. */
   const shown = stored ?? fromSprites;
-  /** Every face a feeling can be given, sprites made since the setup was saved too. */
-  const faces = useMemo(() => pngtuberFaceChoices(shown, fromSprites), [shown, fromSprites]);
+  /** Every face a feeling can be given, sprites made since the setup was saved too, past the first 64 sprites. */
+  const spriteFaces = useMemo(() => buildPngtuberLayersFromSprites(spriteList, Infinity), [spriteList]);
+  const faces = useMemo(() => pngtuberFaceChoices(shown, spriteFaces), [shown, spriteFaces]);
   const motion = motionDraft ?? shown?.motion ?? PNGTUBER_DEFAULT_MOTION;
   const busy = save.isPending || importFile.isPending || remove.isPending;
   /** Sprites can start a setup or refresh one built from sprites, never replace an imported or generated one. */

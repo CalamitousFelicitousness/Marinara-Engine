@@ -12934,6 +12934,11 @@ const combatConditionSchema = z
      *  clock where that is its source's, and ends as it says (`endsWhen: ["damaged"]`, a dispel). Pair it with
      *  `effects` such as `invisible` for what else the spell does. */
     stasis: z.literal(true).optional(),
+    /** What its holder understands while it holds (Capability API 1.595), whatever they speak:
+     *  `none`, nothing (5e's Feeblemind: no one understands them either), or `all`, every language
+     *  (Tongues: they understand any, and any creature that knows one understands them). `none` wins
+     *  over `all`. Read where an action needs its target to understand its user (`understands`). */
+    languages: z.enum(["none", "all"]).optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.236), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. An entry may instead be written

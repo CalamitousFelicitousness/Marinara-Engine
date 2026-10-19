@@ -179086,6 +179086,13 @@
                 "type": "boolean",
                 "const": true
               },
+              "languages": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "all"
+                ]
+              },
               "actions": {
                 "type": "array",
                 "items": {

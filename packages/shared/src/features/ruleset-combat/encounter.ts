@@ -1068,9 +1068,12 @@ export function rulesetTargetTypesAllow(
   // Only one that understands a language its user speaks (1.508): Suggestion. Either one's languages
   // not written down keeps nobody out.
   if (targetTypes.understands && by && by.id !== combatant.id) {
+    // Nothing understood, or everything (1.595): Feeblemind and Tongues, on either side.
+    const held = [rulesetHeldLanguages(definition, combatant), rulesetHeldLanguages(definition, by)];
+    if (held.includes("none")) return false;
     const theirs = rulesetLanguages(definition, combatant);
     const ours = rulesetLanguages(definition, by);
-    if (theirs && ours && !theirs.some((one) => ours.includes(one))) return false;
+    if (!held.includes("all") && theirs && ours && !theirs.some((one) => ours.includes(one))) return false;
   }
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
@@ -1096,6 +1099,17 @@ export function rulesetTargetTypesAllow(
  *  An Efreeti Bottle's kept roll, its openings, and whether it is spent for good. */
 export function rulesetItemCallRoll(combatant: RulesetCombatant, item: number): RulesetItemCallRoll {
   return combatant.callRolls?.[item] ?? combatant.sheet?.items?.[item]?.callRoll ?? {};
+}
+
+/** What a condition its holder holds says they understand (1.595): `none` over `all`. */
+export function rulesetHeldLanguages(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+): "none" | "all" | undefined {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.languages)) return undefined;
+  const held = rulesetActiveConditions(definition, combat, combatant).map((one) => one.languages);
+  return held.includes("none") ? "none" : held.includes("all") ? "all" : undefined;
 }
 
 /** The languages a combatant understands (1.508), lower case: off their sheet's `combat.languages`

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition saying its holder understands nothing, or everything (1.595): Feeblemind, Tongues. */
+function carriesHeldLanguages595(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldLanguages595(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && (record.languages === "none" || record.languages === "all")) return true;
+  return featureValues(record).some((one) => carriesHeldLanguages595(one, depth + 1));
+}
+
 /** A condition holding its holder out of time (1.594): 5e's Sequester. */
 function carriesStasis594(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8085,6 +8095,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition saying its holder understands nothing, or everything, 1.595.
+  if (
+    !declaresApi(595) &&
+    (carriesHeldLanguages595(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldLanguages595(document)))
+  )
+    return "A ruleset with a condition saying what its holder understands (languages none or all) requires schemaVersion 2 and capabilityApi 1.595 or newer";
   // A condition holding its holder out of time, 1.594.
   if (
     !declaresApi(594) &&

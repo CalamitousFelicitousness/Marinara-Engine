@@ -920,6 +920,8 @@ export interface RulesetCombatAction {
     ties: "attacker" | "defender";
     /** Conditions put on a target its user loses to (1.565), each for `rounds`. */
     onLose?: { applies: Array<{ condition: string; rounds: number }> };
+    /** What it takes from a target it wins against (1.615): Telekinesis on what they hold. */
+    takes?: { slots?: string[]; tags?: string[] };
   };
   /** Each target it lands on moved to a cell its user picks (1.512), up to `cells` from where it
    *  stood, and with `up` lifted as many levels as the choice's `rises`: Telekinesis. */
@@ -2955,6 +2957,8 @@ export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
 export type RulesetCombatEvent =
   /** What a condition made its holder let fall (1.266), and picking one thing back up. */
   | { type: "letFall"; actorId: string; condition: string; labels: string[] }
+  /** What a contest won took from its target (1.615), now lying at its winner's feet. */
+  | { type: "takenAway"; actorId: string; targetId: string; label: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
   /** One attack given up for one by a creature its maker called (1.435): Pact of the Chain. */
   | { type: "lent"; actorId: string; calledId: string; label: string }

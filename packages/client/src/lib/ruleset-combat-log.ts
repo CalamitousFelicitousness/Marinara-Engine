@@ -797,6 +797,14 @@ export function rulesetCombatEventLine(
         condition: names.condition(event.condition),
         budget: event.label,
       });
+    // What a contest won took away (1.615): Telekinesis on a held object.
+    case "takenAway":
+      return key("takenAway", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        items: event.labels.join(", "),
+      });
     case "letFall":
       return key("letFall", {
         actor: names.combatant(event.actorId),

@@ -4593,6 +4593,24 @@ function sheetBoundsSchema(key: string, never: string) {
 
 const catalogUsableWhenSchema = sheetBoundsSchema("usableWhen", "usable");
 
+/** A catalog entry's contest of checks (1.512), typed by name to keep the mechanics' type short. */
+export interface RulesetCatalogContest {
+  attacker: string[];
+  defender: string[];
+  ties?: "attacker" | "defender";
+  onLose?: { applies: Array<{ condition: string; rounds: number }> };
+  takes?: RulesetContestTakes;
+}
+/** What a contest won takes from its target (Capability API 1.615), by slot or tag. */
+export interface RulesetContestTakes {
+  slots?: string[];
+  tags?: string[];
+}
+const contestTakesSchema: z.ZodType<RulesetContestTakes, z.ZodTypeDef, unknown> = z
+  .object({ slots: z.array(sheetId).min(1).max(8).optional(), tags: z.array(sheetId).min(1).max(8).optional() })
+  .strict()
+  .refine((takes) => takes.slots || takes.tags, { message: '"takes" names "slots", "tags" or both' });
+
 /** An item's other forms (1.522), typed by name to keep the item's type short. */
 export interface RulesetItemForms {
   label: string;
@@ -6994,26 +7012,32 @@ const catalogMechanicsObject = z
      *  tie goes to `ties` (the defender when left out). Only on a target it wins does the rest of it
      *  land. 5e's Telekinesis, the caster's spellcasting ability check against the target's Strength
      *  check. Ids of `combat.checks`. */
-    contest: z
-      .object({
-        attacker: z.array(sheetId).min(1).max(4),
-        defender: z.array(sheetId).min(1).max(4),
-        ties: z.enum(["attacker", "defender"]).optional(),
-        /** Conditions put on a target its user loses to (Capability API 1.565), with its user as
-         *  their source, each for `rounds`: 5e's Pipes of the Sewers, a swarm that can't be swayed
-         *  for 24 hours, `{ "applies": [{ "condition": "pipes_spurned", "rounds": 14400 }] }`. */
-        onLose: z
-          .object({
-            applies: z
-              .array(z.object({ condition: sheetId, rounds: z.number().int().min(1).max(1000000) }).strict())
-              .min(1)
-              .max(4),
-          })
-          .strict()
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    contest: (
+      z
+        .object({
+          attacker: z.array(sheetId).min(1).max(4),
+          defender: z.array(sheetId).min(1).max(4),
+          ties: z.enum(["attacker", "defender"]).optional(),
+          /** Conditions put on a target its user loses to (Capability API 1.565), with its user as
+           *  their source, each for `rounds`: 5e's Pipes of the Sewers, a swarm that can't be swayed
+           *  for 24 hours, `{ "applies": [{ "condition": "pipes_spurned", "rounds": 14400 }] }`. */
+          onLose: z
+            .object({
+              applies: z
+                .array(z.object({ condition: sheetId, rounds: z.number().int().min(1).max(1000000) }).strict())
+                .min(1)
+                .max(4),
+            })
+            .strict()
+            .optional(),
+          /** What it takes from a target it wins against (Capability API 1.615): the first thing they
+           *  hold in one of these `slots` or with one of these `tags`, which then lies at its user's
+           *  feet for its owner to fetch and pick up. 5e's Telekinesis on "an object worn or carried by
+           *  a creature", `{ "slots": ["hand"] }`. */
+          takes: contestTakesSchema.optional(),
+        })
+        .strict() as z.ZodType<RulesetCatalogContest, z.ZodTypeDef, unknown>
+    ).optional(),
     /** Each target it lands on is moved to a cell its user picks (Capability API 1.512), up to
      *  `distance` from where it stood and within the entry's `range` of its user, set down with no
      *  step between, so nobody gets a strike at it; with `up` it may be lifted that many levels

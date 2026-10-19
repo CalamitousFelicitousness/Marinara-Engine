@@ -2316,6 +2316,7 @@
   "game.combat.ruleset.event.sustained": "{{actor}} keeps {{target}} {{condition}} with {{label}}.",
   "game.combat.ruleset.event.switchOff": "{{actor}} turns {{label}} off.",
   "game.combat.ruleset.event.switchOn": "{{actor}} turns {{label}} on.",
+  "game.combat.ruleset.event.takenAway": "{{actor}} takes {{items}} from {{target}} with {{label}}.",
   "game.combat.ruleset.event.teleported": "{{actor}} teleports with {{label}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.teleportedAlong": "{{actor}} goes along with {{by}}'s {{label}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.teleportHeld": "{{actor}} cannot teleport out of {{zone}} with {{label}}.",

@@ -15139,6 +15139,24 @@ function resolveActionBodyIn(
       spendUsed();
       continue;
     }
+    // Won, what it takes from them (1.615): the first such thing they hold, set at its user's feet.
+    const takesAway = action.contested?.takes;
+    if (takesAway && !target.defeated) {
+      const userAt = rulesetPositionOf(actor);
+      const taken = rulesetThingsToDrop(target, takesAway)
+        .slice(0, 1)
+        .map((thing) => ({ ...thing, ...(userAt ? { at: { x: userAt.x, y: userAt.y } } : {}) }));
+      if (taken.length) {
+        target.dropped = [...(target.dropped ?? []), ...taken];
+        ctx.events.push({
+          type: "takenAway",
+          actorId: actor.id,
+          targetId: target.id,
+          label: action.label,
+          labels: taken.map((thing) => thing.label),
+        });
+      }
+    }
 
     const against: RulesetSaveAgainst = {
       conditions: [...(action.applies?.map((one) => one.condition) ?? []), ...(action.save?.against?.conditions ?? [])],

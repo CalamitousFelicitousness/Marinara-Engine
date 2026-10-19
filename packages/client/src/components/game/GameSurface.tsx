@@ -2439,9 +2439,12 @@ function GameSurfaceComponent({
   const [avatarVisualSettings, setAvatarVisualSettings] = useState<LocalSpriteVisualSettings>(() =>
     loadLocalSpriteVisualSettings(activeChatId),
   );
+  const avatarVisualSettingsRef = useRef({ chatId: activeChatId, settings: avatarVisualSettings });
   useEffect(() => {
+    const settings = loadLocalSpriteVisualSettings(activeChatId);
+    avatarVisualSettingsRef.current = { chatId: activeChatId, settings };
     setAvatarArrangeMode(false);
-    setAvatarVisualSettings(loadLocalSpriteVisualSettings(activeChatId));
+    setAvatarVisualSettings(settings);
   }, [activeChatId]);
   const avatarPlacements = useMemo(
     () => normalizeSpritePlacements(avatarVisualSettings.spritePlacements ?? chatMeta.spritePlacements),
@@ -2456,34 +2459,48 @@ function GameSurfaceComponent({
   );
   const changeAvatarPlacement = useCallback(
     (key: string, placement: SpritePlacement) => {
-      setAvatarVisualSettings((previous) =>
-        saveLocalSpriteVisualSettings(
-          activeChatId,
-          {
-            spritePlacements: { ...avatarPlacements, [key]: placement },
-          },
-          previous,
-        ),
+      if (activeChatIdRef.current !== activeChatId) return;
+      const previous =
+        avatarVisualSettingsRef.current.chatId === activeChatId
+          ? avatarVisualSettingsRef.current.settings
+          : loadLocalSpriteVisualSettings(activeChatId);
+      const placements = normalizeSpritePlacements(previous.spritePlacements ?? chatMeta.spritePlacements);
+      const next = saveLocalSpriteVisualSettings(
+        activeChatId,
+        {
+          spritePlacements: { ...placements, [key]: placement },
+        },
+        previous,
       );
+      avatarVisualSettingsRef.current = { chatId: activeChatId, settings: next };
+      setAvatarVisualSettings(next);
     },
-    [activeChatId, avatarPlacements],
+    [activeChatId, chatMeta.spritePlacements],
   );
   const changeAvatarScale = useCallback(
     (ownerId: string, scale: number) => {
-      setAvatarVisualSettings((previous) =>
-        saveLocalSpriteVisualSettings(
-          activeChatId,
-          {
-            characterOverrides: {
-              ...avatarCharacterSettings,
-              [ownerId]: { ...avatarCharacterSettings[ownerId], fullBodySpriteScale: scale },
-            },
-          },
-          previous,
-        ),
+      if (activeChatIdRef.current !== activeChatId) return;
+      const previous =
+        avatarVisualSettingsRef.current.chatId === activeChatId
+          ? avatarVisualSettingsRef.current.settings
+          : loadLocalSpriteVisualSettings(activeChatId);
+      const characterOverrides = normalizeSpriteCharacterVisualSettingsMap(
+        previous.characterOverrides ?? chatMeta.spriteCharacterVisualSettings,
       );
+      const next = saveLocalSpriteVisualSettings(
+        activeChatId,
+        {
+          characterOverrides: {
+            ...characterOverrides,
+            [ownerId]: { ...characterOverrides[ownerId], fullBodySpriteScale: scale },
+          },
+        },
+        previous,
+      );
+      avatarVisualSettingsRef.current = { chatId: activeChatId, settings: next };
+      setAvatarVisualSettings(next);
     },
-    [activeChatId, avatarCharacterSettings],
+    [activeChatId, chatMeta.spriteCharacterVisualSettings],
   );
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const gameMiddleMouseNav = useUIStore((s) => s.gameMiddleMouseNav);

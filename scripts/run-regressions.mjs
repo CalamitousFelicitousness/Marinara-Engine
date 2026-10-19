@@ -36,6 +36,8 @@ export function regressionTimeoutMs(relativePath) {
   if (relativePath === 'scripts/regressions/ruleset-combat-director.regression.ts') return 300_000;
   // An out-of-memory control, then a small-heap server exports and re-imports a 64 MB gallery: 16-23 s on CI.
   if (relativePath === 'scripts/regressions/native-export-memory.regression.ts') return 60_000;
+  // Eighteen blink and talk pictures lined up with their face at full size: about 10 s, more on a busy runner.
+  if (relativePath === 'scripts/regressions/avatar-variant-composite.regression.ts') return 120_000;
   return FILE_TIMEOUT_MS;
 }
 

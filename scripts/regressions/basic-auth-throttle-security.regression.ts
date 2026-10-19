@@ -1,0 +1,189 @@
+// Wrong Basic Auth passwords are counted per client address on every path, not
+// only under /api where the general rate limits apply. After
+// BASIC_AUTH_FAILURE_LIMIT different wrong passwords within the window, that
+// address gets 429 with Retry-After, even for the right password, until the
+// window ends. A correct password clears the count, a browser resending one
+// saved wrong password counts once, and loopback, IP_ALLOWLIST and the local
+// proxy rules keep working as before.
+import assert from "node:assert/strict";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import type { FastifyRequest } from "fastify";
+import {
+  BASIC_AUTH_FAILURE_LIMIT,
+  BASIC_AUTH_FAILURE_WINDOW_MS,
+  basicAuthHook,
+  isBasicAuthSatisfied,
+} from "../../packages/server/src/middleware/basic-auth.js";
+import { hostValidationHook } from "../../packages/server/src/middleware/host-validation.js";
+import { ipAllowlistHook } from "../../packages/server/src/middleware/ip-allowlist.js";
+import { rateLimitHook } from "../../packages/server/src/middleware/rate-limit.js";
+import { logger } from "../../packages/server/src/lib/logger.js";
+
+const ENV_KEYS = [
+  "ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK",
+  "ALLOW_UNAUTHENTICATED_REMOTE",
+  "BASIC_AUTH_PASS",
+  "BASIC_AUTH_USER",
+  "BYPASS_AUTH_DOCKER",
+  "BYPASS_AUTH_TAILSCALE",
+  "IP_ALLOWLIST",
+  "IP_ALLOWLIST_ENABLED",
+  "MARINARA_DOCKER",
+  "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
+  "TRUSTED_HOSTS",
+  "TRUSTED_PRIVATE_NETWORKS",
+] as const;
+const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+for (const key of ENV_KEYS) delete process.env[key];
+process.env.BASIC_AUTH_USER = "mari";
+process.env.BASIC_AUTH_PASS = "secret";
+process.env.TRUSTED_HOSTS = "chat.example.com";
+
+const basic = (password: string) => `Basic ${Buffer.from(`mari:${password}`, "utf8").toString("base64")}`;
+const RIGHT = basic("secret");
+const HOST = { host: "chat.example.com" };
+
+const warnings: unknown[][] = [];
+const priorWarn = logger.warn;
+logger.warn = ((...args: unknown[]) => warnings.push(args)) as typeof logger.warn;
+const realNow = Date.now;
+
+const app = Fastify();
+// The same onRequest order as app.ts.
+app.addHook("onRequest", hostValidationHook);
+app.addHook("onRequest", ipAllowlistHook);
+app.addHook("onRequest", rateLimitHook);
+app.addHook("onRequest", basicAuthHook);
+app.get("/", async () => "<!doctype html><title>Marinara</title>");
+app.get("/api/chats", async () => [{ id: "private-chat" }]);
+app.get("/api/health", async (request: FastifyRequest) => ({
+  status: "ok",
+  ...(isBasicAuthSatisfied(request) ? { sidecars: {} } : {}),
+}));
+
+function get(url: string, remoteAddress: string, authorization?: string, headers: Record<string, string> = HOST) {
+  return app.inject({
+    method: "GET",
+    url,
+    remoteAddress,
+    headers: authorization ? { ...headers, authorization } : headers,
+  });
+}
+
+async function guessWrong(url: string, remoteAddress: string, count: number, label: string) {
+  for (let index = 0; index < count; index += 1) {
+    const response = await get(url, remoteAddress, basic(`${label}-${index}`));
+    assert.notEqual(response.statusCode, 429, `${label}: guess ${index + 1} is still answered`);
+  }
+}
+
+try {
+  await app.ready();
+
+  // ── The page and static paths are throttled, not only /api ──
+  const pageClient = "203.0.113.10";
+  await guessWrong("/", pageClient, BASIC_AUTH_FAILURE_LIMIT, "page");
+  const blocked = await get("/", pageClient, RIGHT);
+  assert.equal(blocked.statusCode, 429, "after the limit even the right password is refused");
+  const retryAfter = Number(blocked.headers["retry-after"]);
+  assert.ok(
+    retryAfter > 0 && retryAfter <= BASIC_AUTH_FAILURE_WINDOW_MS / 1000,
+    `Retry-After is set: ${blocked.headers["retry-after"]}`,
+  );
+  assert.equal((await get("/api/chats", pageClient, RIGHT)).statusCode, 429, "the block covers /api too");
+  assert.equal((await get("/assets/app.js", pageClient)).statusCode, 429, "and requests without a password");
+  assert.equal(
+    warnings.filter((args) => String(args[0]).includes("Wrong password from") && args[1] === pageClient).length,
+    1,
+    "the first wrong password from an address is logged once",
+  );
+  assert.ok(
+    warnings.some((args) => String(args[0]).includes("refusing its sign-ins") && args[2] === pageClient),
+    "reaching the limit is logged",
+  );
+
+  // ── The window ends ──
+  Date.now = () => realNow() + BASIC_AUTH_FAILURE_WINDOW_MS + 1_000;
+  assert.equal((await get("/", pageClient, RIGHT)).statusCode, 200, "the address may sign in after the window");
+  Date.now = realNow;
+
+  // ── A correct password clears the count ──
+  const returningClient = "203.0.113.30";
+  await guessWrong("/", returningClient, BASIC_AUTH_FAILURE_LIMIT - 1, "typo");
+  assert.equal((await get("/", returningClient, RIGHT)).statusCode, 200);
+  await guessWrong("/", returningClient, BASIC_AUTH_FAILURE_LIMIT - 1, "typo-again");
+  assert.equal((await get("/", returningClient, RIGHT)).statusCode, 200, "earlier typos no longer count");
+
+  // ── One saved wrong password counts once; no password does not count ──
+  const staleClient = "203.0.113.20";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 3; index += 1) {
+    assert.equal((await get("/", staleClient, basic("old-password"))).statusCode, 401);
+    assert.equal((await get("/", staleClient)).statusCode, 401);
+  }
+  assert.equal((await get("/", staleClient, RIGHT)).statusCode, 200, "a stale saved password does not lock out");
+
+  // ── An IPv6 /64 counts as one client ──
+  const half = Math.ceil(BASIC_AUTH_FAILURE_LIMIT / 2);
+  await guessWrong("/", "2001:db8:1:2::1", half, "v6-a");
+  await guessWrong("/", "2001:db8:1:2::2", BASIC_AUTH_FAILURE_LIMIT - half, "v6-b");
+  assert.equal((await get("/", "2001:db8:1:2::3", RIGHT)).statusCode, 429, "the whole /64 is blocked");
+  assert.equal((await get("/", "2001:db8:1:3::1", RIGHT)).statusCode, 200, "a neighbouring /64 is not");
+
+  // ── The health probe counts passwords too, and stays open ──
+  const healthClient = "203.0.113.50";
+  assert.deepEqual((await get("/api/health", healthClient, RIGHT)).json(), { status: "ok", sidecars: {} });
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const response = await get("/api/health", healthClient, basic(`health-${index}`));
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { status: "ok" }, "a wrong password gets the public reply");
+  }
+  assert.deepEqual(
+    (await get("/api/health", healthClient, RIGHT)).json(),
+    { status: "ok" },
+    "a blocked address gets only the public health reply",
+  );
+  assert.equal((await get("/api/health", healthClient)).statusCode, 200, "uptime checks keep working");
+  assert.equal((await get("/", healthClient, RIGHT)).statusCode, 429, "health guesses count everywhere");
+
+  // ── Loopback, allowlisted peers and local proxies ──
+  const loopback = { host: "127.0.0.1:7860" };
+  const proxied = { ...loopback, "x-forwarded-for": "198.51.100.7" };
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {
+    const response = await get("/", "127.0.0.1", basic(`at-the-computer-${index}`), loopback);
+    assert.equal(response.statusCode, 200, "this computer skips the password and the count");
+  }
+  assert.equal((await get("/", "127.0.0.1", undefined, proxied)).statusCode, 401, "proxied visitors must log in");
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const response = await get("/", "127.0.0.1", basic(`via-proxy-${index}`), proxied);
+    assert.equal(response.statusCode, 401);
+  }
+  assert.equal(
+    (await get("/", "127.0.0.1", RIGHT, proxied)).statusCode,
+    429,
+    "visitors relayed by a local proxy are throttled",
+  );
+  assert.equal(
+    (await get("/api/chats", "127.0.0.1", undefined, loopback)).statusCode,
+    200,
+    "this computer itself stays passwordless while its proxy is throttled",
+  );
+  process.env.IP_ALLOWLIST = "192.168.1.20";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {
+    const response = await get("/api/chats", "192.168.1.20", basic(`allowlisted-${index}`), {
+      host: "192.168.1.5:7860",
+    });
+    assert.equal(response.statusCode, 200, "an allowlisted address skips the password and the count");
+  }
+  delete process.env.IP_ALLOWLIST;
+
+  console.info("Basic Auth wrong-password throttle regressions passed.");
+} finally {
+  Date.now = realNow;
+  logger.warn = priorWarn;
+  await app.close();
+  for (const key of ENV_KEYS) {
+    const value = originalEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}

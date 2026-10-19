@@ -49,9 +49,13 @@
 //   • Use a strong, random password — Basic Auth sends credentials on
 //     every request, only base64-encoded. Always pair with HTTPS in
 //     production (see SSL_CERT / SSL_KEY).
+//   • Wrong passwords are counted per client address (an IPv6 /64 counts as
+//     one) on every path, health included. After BASIC_AUTH_FAILURE_LIMIT
+//     different wrong passwords within the window, that address gets 429
+//     until the window ends. A correct password clears the count.
 
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   getBasicAuthConfig,
   isUnauthenticatedPrivateNetworkAllowed,
@@ -65,6 +69,8 @@ import {
   isPrivateNetworkIp,
   isTrustedInterfaceRequest,
 } from "./ip-allowlist.js";
+// Same grouping as the multiplayer peer server: an IPv4 address, or an IPv6 /64.
+import { multiplayerPeerSocketKey as clientAddressKey } from "../services/multiplayer/peer-server.js";
 
 interface CachedConfig {
   user: string;
@@ -113,6 +119,83 @@ function loadConfig(): CachedConfig | null {
 function safeEqual(a: Buffer, b: Buffer): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+// ── Wrong-password throttle ──
+// Kept apart from the /api rate limits, which skip the page and static files.
+
+/** Different wrong passwords one client address may try in a window before it gets 429. */
+export const BASIC_AUTH_FAILURE_LIMIT = 10;
+export const BASIC_AUTH_FAILURE_WINDOW_MS = 15 * 60_000;
+const MAX_TRACKED_CLIENTS = 4096;
+
+type FailureRecord = { guesses: Set<string>; resetAt: number };
+const failures = new Map<string, FailureRecord>();
+
+// ponytail: a reverse proxy or tunnel on this computer relays every visitor from
+// loopback, so they share one count. Key on the forwarded client once the server
+// has a trusted-proxy setting.
+function clientKey(request: FastifyRequest): string {
+  return clientAddressKey(request.ip);
+}
+
+function activeRecord(key: string, now: number): FailureRecord | undefined {
+  const record = failures.get(key);
+  if (record && record.resetAt <= now) {
+    failures.delete(key);
+    return undefined;
+  }
+  return record;
+}
+
+/** Seconds this client must wait before trying a password again; 0 when it may try now. */
+function lockoutSeconds(request: FastifyRequest): number {
+  const now = Date.now();
+  const record = activeRecord(clientKey(request), now);
+  if (!record || record.guesses.size < BASIC_AUTH_FAILURE_LIMIT) return 0;
+  return Math.max(1, Math.ceil((record.resetAt - now) / 1000));
+}
+
+function rememberFailure(request: FastifyRequest, header: string) {
+  const now = Date.now();
+  const key = clientKey(request);
+  let record = activeRecord(key, now);
+  if (!record) {
+    if (failures.size >= MAX_TRACKED_CLIENTS) {
+      for (const [entryKey, entry] of failures) if (entry.resetAt <= now) failures.delete(entryKey);
+      if (failures.size >= MAX_TRACKED_CLIENTS) failures.delete(failures.keys().next().value!);
+    }
+    record = { guesses: new Set(), resetAt: now + BASIC_AUTH_FAILURE_WINDOW_MS };
+    failures.set(key, record);
+    logger.warn("[basic-auth] Wrong password from %s", request.ip);
+  }
+  // A browser that keeps resending one saved wrong password counts once; only new guesses add up.
+  record.guesses.add(createHash("sha256").update(header).digest("base64url").slice(0, 16));
+  if (record.guesses.size === BASIC_AUTH_FAILURE_LIMIT) {
+    logger.warn(
+      "[basic-auth] %d wrong passwords from %s; refusing its sign-ins for %d minutes",
+      BASIC_AUTH_FAILURE_LIMIT,
+      request.ip,
+      Math.ceil(BASIC_AUTH_FAILURE_WINDOW_MS / 60_000),
+    );
+  }
+}
+
+/** Compares the Authorization header and updates this client's wrong-password count. */
+function checkCredentials(request: FastifyRequest, config: CachedConfig): boolean {
+  const header = request.headers.authorization;
+  if (!header || typeof header !== "string") return false;
+  if (safeEqual(Buffer.from(header, "utf8"), config.expectedHeader)) {
+    failures.delete(clientKey(request));
+    return true;
+  }
+  rememberFailure(request, header);
+  return false;
+}
+
+function sendTooManyFailures(reply: FastifyReply, retryAfterSeconds: number) {
+  reply.header("Retry-After", String(retryAfterSeconds));
+  reply.status(429).send({ error: "Too many wrong passwords. Try again later." });
 }
 
 function sendChallenge(reply: FastifyReply, realm: string) {
@@ -374,14 +457,19 @@ export function isBasicAuthSatisfied(request: FastifyRequest): boolean {
 
   const header = request.headers.authorization;
   if (!header || typeof header !== "string") return false;
-  return safeEqual(Buffer.from(header, "utf8"), config.expectedHeader);
+  return lockoutSeconds(request) === 0 && safeEqual(Buffer.from(header, "utf8"), config.expectedHeader);
 }
 
 // ── Fastify onRequest hook ──
 
 export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done: () => void) {
-  // Exempt the health endpoint so external probes still work
+  // Exempt the health endpoint so external probes still work. Its reply adds
+  // details for signed-in callers, so a password sent here counts like anywhere else.
   if (request.url === "/api/health" || request.url.startsWith("/api/health?")) {
+    if (request.headers.authorization && !isTrustedPeer(request) && lockoutSeconds(request) === 0) {
+      const config = loadConfig();
+      if (config) checkCredentials(request, config);
+    }
     return done();
   }
 
@@ -411,14 +499,13 @@ export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done
     return;
   }
 
-  const header = request.headers.authorization;
-  if (!header || typeof header !== "string") {
-    sendChallenge(reply, config.realm);
+  const retryAfter = lockoutSeconds(request);
+  if (retryAfter > 0) {
+    sendTooManyFailures(reply, retryAfter);
     return;
   }
 
-  const provided = Buffer.from(header, "utf8");
-  if (!safeEqual(provided, config.expectedHeader)) {
+  if (!checkCredentials(request, config)) {
     sendChallenge(reply, config.realm);
     return;
   }

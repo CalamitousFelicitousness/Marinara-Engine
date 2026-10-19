@@ -4234,8 +4234,9 @@ export interface RulesetCombatZoneRule {
    *  this condition from its caster (1.175). */
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
   /** A wall nobody moves or sees through (1.177). No spell is cast into, out of or across one that
-   *  blocks `spells` (1.549), a wall or not: Forcecage. */
-  blocks?: { move?: boolean; sight?: boolean; spells?: boolean };
+   *  blocks `spells` (1.549), a wall or not: Forcecage. Nor is a shot from afar made across one that
+   *  blocks `ranged` (1.606): Cube of Force. */
+  blocks?: { move?: boolean; sight?: boolean; spells?: boolean; ranged?: boolean };
   /** What it does from one of its caster's turns on (1.504), its amounts in the fight's own: Storm of
    *  Vengeance. */
   stages?: Array<{
@@ -4284,6 +4285,8 @@ export interface RulesetCombatZoneRule {
   obscures?: RulesetObscures;
   /** A wind: obscuring zones it reaches that are `dispersed` end (1.286). */
   disperses?: true;
+  /** Gases, wind and fog do not pass its edge (1.606): Cube of Force. */
+  sealsAir?: true;
   /** Conditions on, and damage types kept off, whoever stands in it (1.179). */
   inside?: {
     conditions?: string[];

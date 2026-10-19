@@ -2551,6 +2551,7 @@ export function rulesetZoneAction(
       ...(blocks.includes("move") ? { move: true } : {}),
       ...(blocks.includes("sight") ? { sight: true } : {}),
       ...(blocks.includes("spells") ? { spells: true } : {}),
+      ...(blocks.includes("ranged") ? { ranged: true } : {}),
     };
   }
   if (zone.cover) out.cover = zone.cover;
@@ -2599,6 +2600,7 @@ export function rulesetZoneAction(
   }
   if (zone.dispelsLight) out.dispelsLight = { upTo: zone.dispelsLight.upTo };
   if (zone.disperses) out.disperses = true;
+  if (zone.sealsAir) out.sealsAir = true;
   const inside = zone.inside;
   if (inside) {
     out.inside = {

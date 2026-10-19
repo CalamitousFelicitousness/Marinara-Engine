@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A zone sealing out gases and fog, or blocking shots from afar (1.606): 5e's Cube of Force. */
+function carriesSealedZone606(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSealedZone606(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sealsAir === true || (Array.isArray(record.blocks) && record.blocks.includes("ranged"))) return true;
+  return featureValues(record).some((one) => carriesSealedZone606(one, depth + 1));
+}
+
 /** Attacks at others near its holder made at its holder instead (1.605): 5e's Shield of Missile
  *  Attraction's curse. */
 function carriesDrawsAim605(value: unknown, depth = 0): boolean {
@@ -8198,6 +8208,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone sealing out gases and fog, or blocking shots from afar, 1.606.
+  if (
+    !declaresApi(606) &&
+    (carriesSealedZone606(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSealedZone606(document)))
+  )
+    return "A ruleset with a zone that seals out gases and fog or blocks shots from afar (zone sealsAir, blocks ranged) requires schemaVersion 2 and capabilityApi 1.606 or newer";
   // Attacks at others near its holder made at its holder instead, 1.605.
   if (
     !declaresApi(605) &&

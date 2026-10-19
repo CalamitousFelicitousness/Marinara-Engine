@@ -44165,6 +44165,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "sealsAir": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "inside": {
                           "type": "object",
                           "properties": {
@@ -44768,11 +44772,12 @@
                             "enum": [
                               "move",
                               "sight",
-                              "spells"
+                              "spells",
+                              "ranged"
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 3
+                          "maxItems": 4
                         },
                         "cover": {
                           "type": "string",
@@ -68733,6 +68738,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "sealsAir": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "inside": {
                               "type": "object",
                               "properties": {
@@ -69336,11 +69345,12 @@
                                 "enum": [
                                   "move",
                                   "sight",
-                                  "spells"
+                                  "spells",
+                                  "ranged"
                                 ]
                               },
                               "minItems": 1,
-                              "maxItems": 3
+                              "maxItems": 4
                             },
                             "cover": {
                               "type": "string",
@@ -81410,6 +81420,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "sealsAir": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "inside": {
                                 "type": "object",
                                 "properties": {
@@ -82013,11 +82027,12 @@
                                   "enum": [
                                     "move",
                                     "sight",
-                                    "spells"
+                                    "spells",
+                                    "ranged"
                                   ]
                                 },
                                 "minItems": 1,
-                                "maxItems": 3
+                                "maxItems": 4
                               },
                               "cover": {
                                 "type": "string",
@@ -106928,6 +106943,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "sealsAir": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "inside": {
                               "type": "object",
                               "properties": {
@@ -107531,11 +107550,12 @@
                                 "enum": [
                                   "move",
                                   "sight",
-                                  "spells"
+                                  "spells",
+                                  "ranged"
                                 ]
                               },
                               "minItems": 1,
-                              "maxItems": 3
+                              "maxItems": 4
                             },
                             "cover": {
                               "type": "string",
@@ -127861,6 +127881,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "sealsAir": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "inside": {
                                     "type": "object",
                                     "properties": {
@@ -128464,11 +128488,12 @@
                                       "enum": [
                                         "move",
                                         "sight",
-                                        "spells"
+                                        "spells",
+                                        "ranged"
                                       ]
                                     },
                                     "minItems": 1,
-                                    "maxItems": 3
+                                    "maxItems": 4
                                   },
                                   "cover": {
                                     "type": "string",
@@ -148800,6 +148825,10 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "sealsAir": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "inside": {
                                     "type": "object",
                                     "properties": {
@@ -149403,11 +149432,12 @@
                                       "enum": [
                                         "move",
                                         "sight",
-                                        "spells"
+                                        "spells",
+                                        "ranged"
                                       ]
                                     },
                                     "minItems": 1,
-                                    "maxItems": 3
+                                    "maxItems": 4
                                   },
                                   "cover": {
                                     "type": "string",

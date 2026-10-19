@@ -3360,13 +3360,14 @@ export interface RulesetCatalogZone {
   damageCap?: number;
   damageType?: string;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
-  blocks?: Array<"move" | "sight" | "spells">;
+  blocks?: Array<"move" | "sight" | "spells" | "ranged">;
   cover?: "half" | "three-quarters";
   turnsShots?: { spares?: string[] };
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
   sections?: RulesetZoneSections;
   obscures?: RulesetSeenThrough;
   disperses?: true;
+  sealsAir?: true;
   lights?: RulesetLightRadius;
   dispelsDark?: { upTo: number; within?: number };
   dispelsLight?: { upTo: number };
@@ -3819,6 +3820,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** A wind (Capability API 1.286): every obscuring zone that is `dispersed` ends where this one
      *  reaches it, as it appears, moves or turns: 5e's Gust of Wind on a Fog Cloud. */
     disperses: z.literal(true).optional(),
+    /** Gases, wind and fog do not pass its edge (Capability API 1.606): an obscuring zone that is
+     *  `dispersed`, or a wind, covers only the side of it its middle is on. 5e's Cube of Force's
+     *  first face. */
+    sealsAir: z.literal(true).optional(),
     /** Whoever stands in it has these conditions and shrugs off these damage types while there
      *  (Capability API 1.179): 5e's Silence deafens and keeps thunder out. */
     inside: zoneInsideSchema.optional(),
@@ -3863,11 +3868,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** A wall that nobody walks through, sees through, or both (Capability API 1.177): 5e's Wall of
      *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only.
      *  `spells` (Capability API 1.549): no spell is cast into, out of or across it, a wall or not:
-     *  5e's Forcecage as a box. */
+     *  5e's Forcecage as a box. `ranged` (Capability API 1.606): no attack from afar with a weapon,
+     *  magical or not, is made into, out of or across it, a wall or not: 5e's Cube of Force's second
+     *  face, which nonliving matter does not pass. */
     blocks: z
-      .array(z.enum(["move", "sight", "spells"]))
+      .array(z.enum(["move", "sight", "spells", "ranged"]))
       .min(1)
-      .max(3)
+      .max(4)
       .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
       .optional(),
     /** Cover it gives (Capability API 1.502): an attack or effect whose line to its target crosses a
@@ -7142,10 +7149,10 @@ function zoneIssue(mechanics: {
   const zone = mechanics.zone;
   if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
   const wall = mechanics.area?.shape === "wall";
-  if ((zone.blocks?.some((kind) => kind !== "spells") || zone.side) && !wall)
-    return 'Only a wall "blocks" or has a "side"';
-  if (zone.sections && !zone.blocks?.some((kind) => kind !== "spells"))
-    return 'A wall in "sections" is one that "blocks"';
+  // Spells and shots from afar are blocked by any zone (1.549, 1.606); a body or a look only by a wall.
+  const walled = (kind: string) => kind !== "spells" && kind !== "ranged";
+  if ((zone.blocks?.some(walled) || zone.side) && !wall) return 'Only a wall "blocks" or has a "side"';
+  if (zone.sections && !zone.blocks?.some(walled)) return 'A wall in "sections" is one that "blocks"';
   if (zone.sections?.broken?.save && !mechanics.save) {
     return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
   }
@@ -7224,7 +7231,9 @@ function zoneIssue(mechanics: {
                 !zone.lights &&
                 !zone.dispelsDark &&
                 // Blocking spells is what it does to its ground (1.549): Forcecage's box.
-                !zone.blocks
+                !zone.blocks &&
+                // As is sealing it from gases and fog (1.606): Cube of Force.
+                !zone.sealsAir
               ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
               : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
                 ? "Only a burst held at a point is moved or drifts"

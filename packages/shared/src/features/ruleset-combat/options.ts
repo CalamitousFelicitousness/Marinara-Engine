@@ -685,6 +685,9 @@ export function rulesetTargetRefusal(
   // Into, out of or across a wall that turns shots aside (1.528): Wind Wall.
   if (own && target && reach.max > 1 && rulesetShotsTurned(state, own, from, rulesetPositionOf(target) ?? to))
     return "no-line-of-sight";
+  // Into, out of or across a zone that blocks them (1.606): Cube of Force.
+  if (own && target && reach.max > 1 && rulesetShotsBlocked(state, own, from, rulesetPositionOf(target) ?? to))
+    return "no-line-of-sight";
   // Through a barrier that stops reach (1.542): Antilife Shell, with no reach weapon.
   if (definition && own && actor && target && rulesetReachBarred(definition, state, actor, target, own))
     return "out-of-reach";
@@ -713,6 +716,28 @@ export function rulesetShotsTurned(
   return walls.some(({ caster, zone }) =>
     rulesetZoneCells(state, caster, zone).some((cell) => path.has(`${cell.x},${cell.y}`)),
   );
+}
+
+/** Whether a zone that blocks `ranged` stops this attack between two cells (1.606): one from afar
+ *  with a weapon, magical or not, into, out of or across it. 5e's Cube of Force, whose second face
+ *  nonliving matter does not pass. A spell or an area is no weapon's. */
+export function rulesetShotsBlocked(
+  state: RulesetEncounterState,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+): boolean {
+  if (action.toHit === undefined || action.area || rulesetIsSpell(action)) return false;
+  const barriers = rulesetStandingZones(state).filter(({ action: made }) => made.zone?.blocks?.ranged);
+  if (barriers.length === 0) return false;
+  const path = rulesetPathCells(from, to);
+  return barriers.some(({ caster, zone }) => {
+    const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+    const inFrom = cells.has(`${from.x},${from.y}`);
+    const inTo = cells.has(`${to.x},${to.y}`);
+    if (inFrom || inTo) return inFrom !== inTo;
+    return path.some((cell) => cells.has(`${cell.x},${cell.y}`));
+  });
 }
 
 /** Whether a zone's stage stops an attack with a ranged weapon between two cells (1.504): one into,

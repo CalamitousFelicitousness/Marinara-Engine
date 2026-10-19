@@ -1501,6 +1501,42 @@ export function rulesetZoneCells(
   caster: RulesetCombatant,
   zone: RulesetCombatZone,
 ): RulesetCombatCell[] {
+  const cells = zoneCellsAsCast(state, caster, zone);
+  const rules = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
+  // A gas, a fog or a wind (1.606), which a zone that seals the air keeps to one side of its edge.
+  const airy = !!rules?.obscures?.dispersed || !!rules?.disperses || !!rules?.stages?.some((stage) => stage.disperses);
+  return airy && cells.length > 0 ? sealedOff(state, caster, zone, cells) : cells;
+}
+
+/** A gas, a fog or a wind's cells on the side of every zone that seals the air its middle is on
+ *  (1.606): a Fog Cloud outside a Cube of Force stops at its face, one inside stays in. */
+function sealedOff(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  cells: RulesetCombatCell[],
+): RulesetCombatCell[] {
+  const key = (cell: RulesetCombatCell) => `${cell.x},${cell.y}`;
+  const middle = rulesetZoneMiddles(state, caster, zone)[0];
+  let out = cells;
+  for (const one of state.combatants) {
+    for (const other of one.zones ?? []) {
+      if (other === zone || !one.actions.find((entry) => entry.id === other.actionId)?.zone?.sealsAir) continue;
+      const inside = new Set(zoneCellsAsCast(state, one, other).map(key));
+      if (inside.size === 0) continue;
+      const within = middle !== undefined && inside.has(key(middle));
+      out = out.filter((cell) => inside.has(key(cell)) === within);
+    }
+  }
+  return out;
+}
+
+/** A zone's cells as it was cast, before anything keeps it out of some of them. */
+function zoneCellsAsCast(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+): RulesetCombatCell[] {
   const grid = state.board?.grid;
   if (!grid) return [];
   // Carried by somebody (1.301): around them, wherever they are now.

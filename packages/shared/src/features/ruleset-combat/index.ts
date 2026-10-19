@@ -261,6 +261,7 @@ export {
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetStormStops,
+  rulesetShotsBlocked,
   rulesetShotsTurned,
   rulesetSpellsBlocked,
   rulesetDefenseAgainst,

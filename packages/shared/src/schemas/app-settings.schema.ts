@@ -25,9 +25,16 @@ export const managedGenerationParameterDefinitionsSchema = z
 
 export type ManagedGenerationParameterDefinitionInput = z.infer<typeof managedGenerationParameterDefinitionSchema>;
 
+/**
+ * Longest settings value the server stores. The "ui" value holds every image style profile, which has no count
+ * limit; a typical profile is about 1,000 characters. This leaves room for thousands of profiles while the value
+ * still fits in the browser storage that keeps the same settings locally (about 5 MB).
+ */
+export const MAX_APP_SETTINGS_VALUE_LENGTH = 4_000_000;
+
 /** Payload for PUT /api/app-settings/:key — the opaque serialized settings blob. */
 export const appSettingsUpdateSchema = z.object({
-  value: z.string().max(1_000_000),
+  value: z.string().max(MAX_APP_SETTINGS_VALUE_LENGTH),
 });
 
 /** Response shape for GET /api/app-settings/:key. */

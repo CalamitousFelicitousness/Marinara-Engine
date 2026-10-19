@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An area that pushes out whoever saved (1.578): a Bead of Force. */
+function carriesPushesOutSaved578(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPushesOutSaved578(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.pushesOutSaved !== undefined) return true;
+  return featureValues(record).some((one) => carriesPushesOutSaved578(one, depth + 1));
+}
+
 /** An item use that may backfire on its user (1.577): a Horn of Blasting. */
 function carriesBackfires577(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7873,6 +7883,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An area that pushes out whoever saved, 1.578.
+  if (
+    !declaresApi(578) &&
+    (carriesPushesOutSaved578(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushesOutSaved578(document)))
+  )
+    return "A ruleset with an area that pushes out whoever saved (pushesOutSaved) requires schemaVersion 2 and capabilityApi 1.578 or newer";
   // An item use that may backfire on its user, 1.577.
   if (
     !declaresApi(577) &&

@@ -46532,6 +46532,10 @@
                       "exclusiveMinimum": 0,
                       "maximum": 10000
                     },
+                    "pushesOutSaved": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "teleport": {
                       "type": "object",
                       "properties": {
@@ -107662,6 +107666,10 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "pushesOutSaved": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "teleport": {
                           "type": "object",
                           "properties": {
@@ -128222,6 +128230,10 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "pushesOutSaved": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "teleport": {
                                 "type": "object",
@@ -148789,6 +148801,10 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "pushesOutSaved": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "teleport": {
                                 "type": "object",

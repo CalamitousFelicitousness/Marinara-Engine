@@ -1267,17 +1267,19 @@ export function rulesetPushPath(
   pusherId: string,
   targetId: string,
   cells: number,
+  /** Pushed away from this cell rather than from the pusher (1.578): where a Bead of Force burst. */
+  fromCell?: RulesetCombatCell,
 ): RulesetCombatCell[] {
   const grid = state.board?.grid;
   const pusher = rulesetCombatant(state, pusherId);
   const pushed = rulesetCombatant(state, targetId);
-  const from = rulesetPositionOf(pusher);
+  const from = fromCell ?? rulesetPositionOf(pusher);
   const target = rulesetPositionOf(pushed);
   if (!grid || !from || !target) return [];
   // Nearest cell to nearest cell, so somebody bigger than one cell is pushed straight away from
   // whoever shoves them (1.194).
   const span = rulesetSpanOf(pushed);
-  const near = rulesetNearestCell(pusher, rulesetNearestCell(pushed, from)) ?? from;
+  const near = fromCell ?? rulesetNearestCell(pusher, rulesetNearestCell(pushed, from)) ?? from;
   const far = rulesetNearestCell(pushed, near) ?? target;
   const dx = Math.sign(far.x - near.x);
   const dy = Math.sign(far.y - near.y);

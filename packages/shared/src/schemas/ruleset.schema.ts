@@ -6395,6 +6395,11 @@ const catalogMechanicsObject = z
      *  in the catalog's unit (Capability API 1.182): 5e's Gust of Wind, 15 feet. A zone pushes
      *  whoever it catches the same way. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** Whoever its area catches and makes their save is pushed straight away from where it was aimed
+     *  until no cell they fill is inside it (Capability API 1.578), as far as the way allows: 5e's
+     *  Bead of Force, "creatures that succeeded on the save ... are pushed away from the center of the
+     *  sphere until they are no longer inside it". Needs an area and a save. */
+    pushesOutSaved: z.literal(true).optional(),
     /** Its user teleports (Capability API 1.276), in the catalog's unit: 5e's Misty Step, 30 feet to
      *  a place they can see; Dimension Door, 500 feet, carrying one willing creature within 5 feet. */
     teleport: teleportSchema.optional(),
@@ -18534,6 +18539,8 @@ function targetTestIssues(
     maxAgainst?: RulesetTargetIs;
     amountAgainst?: { is: RulesetTargetIs; amount: { dice?: string; flat?: number } };
     amount?: unknown;
+    area?: unknown;
+    pushesOutSaved?: true;
     heals?: unknown;
     dismissesIs?: RulesetTargetIs;
   },
@@ -18585,6 +18592,9 @@ function targetTestIssues(
     carrier.amountAgainst.amount.flat === undefined
   )
     add([...at, "amountAgainst", "amount"], '"amountAgainst" says no dice and no flat amount');
+  // Out of its area, those who saved (1.578): so it has both.
+  if (carrier.pushesOutSaved && (!carrier.area || !carrier.save))
+    add([...at, "pushesOutSaved"], '"pushesOutSaved" is on an entry with no area or no save');
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
   for (const key of ["abilityAtMost", "abilityAtLeast"] as const) {
     for (const id of Object.keys(carrier.targetTypes?.[key] ?? {})) {

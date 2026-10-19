@@ -8474,8 +8474,9 @@ function pushTarget(
   actor: RulesetCombatant,
   target: RulesetCombatant,
   cells: number,
+  /** The way already worked out (1.578), when it is not straight away from `actor`. */
+  path = rulesetPushPath(ctx.state, actor.id, target.id, cells),
 ): Extract<RulesetCombatEvent, { type: "pushed" }> | undefined {
-  const path = rulesetPushPath(ctx.state, actor.id, target.id, cells);
   const from = rulesetPositionOf(target);
   const to = path[path.length - 1];
   if (!from || !to) return undefined;
@@ -8498,6 +8499,29 @@ function pushTarget(
   const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
   if (levels >= 2) fall(ctx, actor, target, levels);
   return event;
+}
+
+/** Somebody who saved against an area that pushes them out (1.578), pushed straight away from where it
+ *  was aimed (its user, for a burst around them) until no cell they fill is inside it, as far as the
+ *  way allows: a Bead of Force's sphere. */
+function pushOutOfArea(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const grid = ctx.state.board?.grid;
+  const centre = ctx.aimedAt ?? rulesetPositionOf(actor);
+  if (!grid || !centre || !action.area || target.id === actor.id || !rulesetCombatStanding(target)) return;
+  const covered = new Set(areaCellsFor(ctx.state, actor, action.id, centre).map((cell) => `${cell.x},${cell.y}`));
+  const span = rulesetSpanOf(target);
+  const inside = (at: RulesetCombatCell) =>
+    rulesetFootprintAt(at, span).some((cell) => covered.has(`${cell.x},${cell.y}`));
+  const start = rulesetPositionOf(target);
+  if (!start || !inside(start)) return;
+  const path = rulesetPushPath(ctx.state, actor.id, target.id, grid.width + grid.height, centre);
+  const out = path.findIndex((cell) => !inside(cell));
+  pushTarget(ctx, actor, target, 0, out >= 0 ? path.slice(0, out + 1) : path);
 }
 
 /** The pusher moved with the one it pushed (1.545), into the last cell they left on the way, or for
@@ -14714,6 +14738,8 @@ function resolveActionBodyIn(
         continue;
       }
       if (saved) noteSaved(ctx.state, actor, action, target);
+      // Pushed out of the area for saving (1.578): a Bead of Force.
+      if (saved && action.pushesOutSaved) pushOutOfArea(ctx, actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;

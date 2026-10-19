@@ -3796,6 +3796,7 @@ function mechanicsAction(
     };
   }
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
+  if (mechanics.pushesOutSaved) action.pushesOutSaved = true;
   // Measured on a board (1.276): a fight without one has nowhere to go, but out of it (1.279).
   if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves))
     action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell ?? 1);

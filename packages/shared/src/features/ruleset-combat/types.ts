@@ -1233,6 +1233,9 @@ export interface RulesetCombatAction {
   /** Cells whoever it lands on and does not save against is pushed straight away from its maker
    *  (1.182): 5e's Gust of Wind. */
   push?: number;
+  /** Whoever its area catches and saves is pushed away from where it was aimed until out of it
+   *  (1.578): a Bead of Force. */
+  pushesOutSaved?: true;
   /** Its user teleports (1.276): in the ruleset's distance on a block, in cells in a fight. */
   teleport?: RulesetTeleport;
   /** A move bought with points between turns (1.283), to a cell picked from the option's `cells`:

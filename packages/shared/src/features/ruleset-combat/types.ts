@@ -922,6 +922,9 @@ export interface RulesetCombatAction {
   usableIn?: { light: RulesetBoardLight[] };
   /** Used only while its user holds one of these conditions (1.564). */
   userHolds?: string[];
+  /** What an item's use puts on lasts while the item's charges do, one spent each round it holds
+   *  (1.570). */
+  chargesPerRound?: true;
   /** Only within `within` cells of a standing prop named `prop` by id or label (1.332). */
   usableNear?: { prop: string; within: number };
   /** Whoever it lands on leaves the fight (1.236): for good, or only while they hold `while`, put on

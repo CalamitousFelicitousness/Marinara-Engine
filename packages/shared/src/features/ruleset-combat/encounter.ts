@@ -2655,6 +2655,8 @@ function itemUseMechanics(
   if (action.endsLayers && use.endsLayersAs) action.endsLayers = { ...action.endsLayers, as: use.endsLayersAs };
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+  // What it puts on lasts while the item's charges do (1.570): the Boots of Speed.
+  if (use.chargesPerRound) action.chargesPerRound = true;
   return action;
 }
 

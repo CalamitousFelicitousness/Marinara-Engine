@@ -4259,9 +4259,26 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     }
     // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
     if (entry.rounds === null || at !== (entry.clock ?? "turn-end") || ticksOnSource(ctx, actor, entry)) continue;
+    // Its time drawn from an item's charges (1.570): gone with the last of them.
+    if (drawItemCharge(ctx, actor, entry)) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
+}
+
+/** A round of a condition kept up by an item's charges (1.570), spent as its clock counts one down:
+ *  true once that was the last and it has come off. The Boots of Speed's 10 minutes, kept across
+ *  uses. */
+function drawItemCharge(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
+  const user = entry.source ? rulesetCombatant(ctx.state, entry.source) : holder;
+  const action = entry.action ? user?.actions.find((one) => one.id === entry.action![0]) : undefined;
+  const charges = action?.itemUse?.charges;
+  if (!user || !action?.chargesPerRound || !charges) return false;
+  const now = Math.max(0, rulesetItemChargesLeft(user, { max: charges.max, item: action.itemUse!.item }) - 1);
+  (user.charges ??= {})[action.itemUse!.item] = now;
+  if (now > 0) return false;
+  removeCondition(ctx, holder, entry.condition, "expired");
+  return true;
 }
 
 /** What comes off its holder by being far enough from whoever put it on, and out of their sight

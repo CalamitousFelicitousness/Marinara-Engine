@@ -118358,6 +118358,10 @@
                           "minimum": 1,
                           "maximum": 100
                         },
+                        "chargesPerRound": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "gate": {
                           "type": "object",
                           "properties": {
@@ -138628,6 +138632,10 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 100
+                              },
+                              "chargesPerRound": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "gate": {
                                 "type": "object",
@@ -158905,6 +158913,10 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 100
+                              },
+                              "chargesPerRound": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "gate": {
                                 "type": "object",

@@ -10202,6 +10202,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** Takes growth off the cells its area covers (Capability API 1.318): pruning shears. */
     clears: z.literal("growth").optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
+    /** What it puts on lasts while the item's charges do (Capability API 1.570): each round it then
+     *  holds spends one more, and it comes off as the last goes; ended early, the rest are kept. 5e's
+     *  Boots of Speed, 100 charges for "a total of 10 minutes". */
+    chargesPerRound: z.literal(true).optional(),
     /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
     restore: z
       .object({ pool: sheetId, amount: z.object(catalogAmountShape).strict() })
@@ -20052,6 +20056,11 @@ function useIssues(
   const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
   const value = itemValueChecker(definition, add);
   if (use.save && !saves.has(use.save.save)) add([...at, "save", "save"], `Unknown save "${use.save.save}"`);
+  // Its time drawn from the item's charges (1.570): an item that has them, and something it puts on.
+  if (use.chargesPerRound && !item.charges)
+    add([...at, "chargesPerRound"], '"chargesPerRound" spends the item\'s charges, so the item has "charges"');
+  if (use.chargesPerRound && !use.applies?.length)
+    add([...at, "chargesPerRound"], '"chargesPerRound" keeps up what it puts on, so it "applies" something');
   // Only while its user holds one of these (1.564): conditions the sheet has.
   use.userHolds?.forEach((id, index) => {
     if (!conditions.has(id)) add([...at, "userHolds", index], `Unknown condition "${id}"`);

@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** An item use whose condition lasts while the item's charges do (1.570): the Boots of Speed. */
+function carriesChargesPerRound570(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesChargesPerRound570(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.chargesPerRound !== undefined) return true;
+  return featureValues(record).some((one) => carriesChargesPerRound570(one, depth + 1));
+}
+
 /** A condition its holder may take off at will (1.569): the Ring of Invisibility. */
 function carriesEndable569(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7771,6 +7781,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item use whose condition lasts while the item's charges do, 1.570.
+  if (
+    !declaresApi(570) &&
+    (carriesChargesPerRound570(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesChargesPerRound570(document)))
+  ) {
+    return "A ruleset with an item use whose condition lasts while the item's charges do (chargesPerRound) requires schemaVersion 2 and capabilityApi 1.570 or newer";
+  }
   // A condition its holder may take off at will, 1.569.
   if (
     !declaresApi(569) &&

@@ -12873,7 +12873,9 @@ const combatConditionSchema = z
      *  one of `names` (a word of its label) or whose item is one of `items`, or every weapon with
      *  neither, `toHit` and `damage` more, made with `ability` (or the ability a sheet field
      *  `abilityFrom` names) instead of their own, their damage die a d`die`, and carrying `qualities`
-     *  past a resistance. 5e's Magic Weapon `{ "toHit": 1, "damage": 1, "qualities": ["magical"] }`,
+     *  past a resistance. A blow named by `names` or `items` that deals a flat number rolls the die in
+     *  its place, its ability's modifier still added (Capability API 1.601): Alter Self's unarmed
+     *  strikes, `{ "names": ["unarmed"], "die": 6 }`. 5e's Magic Weapon `{ "toHit": 1, "damage": 1, "qualities": ["magical"] }`,
      *  Shillelagh `{ "names": ["club", "quarterstaff"], "abilityFrom": "spellcasting_ability",
      *  "die": 8, "qualities": ["magical"] }`, Oil of Sharpness `{ "toHit": 3, "damage": 3 }`. */
     weapon: conditionWeaponSchema.optional(),

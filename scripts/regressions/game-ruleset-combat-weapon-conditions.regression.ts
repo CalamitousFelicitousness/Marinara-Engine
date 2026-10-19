@@ -49,10 +49,12 @@ try {
     doc.sheet.live.conditions.push(
       { id: "magic_weapon", label: "Magic Weapon" },
       { id: "shillelagh", label: "Shillelagh" },
+      { id: "natural_weapons", label: "Natural Weapons" },
     );
     doc.combat.conditions.push(
       { condition: "magic_weapon", effects: [], weapon: magicWeapon },
       { condition: "shillelagh", effects: [], weapon: shillelagh },
+      { condition: "natural_weapons", effects: [], weapon: { names: ["unarmed", "slam"], die: 6 } },
     );
     edit(doc);
     return doc;
@@ -75,6 +77,7 @@ try {
       attacks: [
         { name: "Quarterstaff", ability: "str", proficient: true, bonus: 0, damage: "1d6", reach: 5 },
         { name: "Dagger", ability: "str", proficient: true, bonus: 0, damage: "1d4", reach: 5 },
+        { name: "Unarmed Strike", ability: "str", proficient: true, bonus: 0, damage: "1", reach: 5 },
       ],
     },
   });
@@ -85,6 +88,7 @@ try {
     speed: 30,
     actions: [
       { id: "club", name: "Club", budget: "action", toHit: 4, damage: { count: 1, sides: 6, flat: 2 }, reach: 5 },
+      { id: "slam", name: "Slam", budget: "action", toHit: 4, damage: { count: 0, sides: 0, flat: 5 }, reach: 5 },
     ],
   } as unknown as RulesetStatBlock;
   const fight = (held: string[], on = "druid"): RulesetEncounterState => {
@@ -178,6 +182,33 @@ try {
       (one): one is Extract<RulesetCombatEvent, { type: "damage" }> => one.type === "damage",
     )!;
     assert.equal(dealt.amount, 9, "a 5 on the d8 and Wisdom's 4");
+  }
+
+  // ── A named blow of flat damage rolls the die instead (1.601): Alter Self's unarmed strikes ──
+  {
+    const fist = now(fight([]), "Unarmed Strike");
+    assert.deepEqual([fist.damage!.count, fist.damage!.flat], [0, 4], "1 plus Strength");
+    const natural = now(fight(["natural_weapons"]), "Unarmed Strike");
+    assert.deepEqual(
+      [natural.damage!.count, natural.damage!.sides, natural.damage!.flat],
+      [1, 6, 3],
+      "a d6 plus Strength",
+    );
+    const slam = now(fight(["natural_weapons"], "ogre"), "Slam", "ogre");
+    assert.deepEqual(
+      [slam.damage!.count, slam.damage!.sides, slam.damage!.flat],
+      [1, 6, 0],
+      "a stat block's printed 5",
+    );
+    const magic = now(fight(["natural_weapons", "magic_weapon"]), "Unarmed Strike");
+    assert.deepEqual(
+      [magic.damage!.count, magic.damage!.sides, magic.damage!.flat],
+      [1, 6, 4],
+      "and Magic Weapon's +1",
+    );
+    // Unnamed, a flat blow stays flat.
+    const staffOnly = now(fight(["shillelagh"]), "Unarmed Strike");
+    assert.equal(staffOnly.damage!.count, 0);
   }
 
   // ── A stat block's blow: the numbers, no ability to swap ──

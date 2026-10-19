@@ -2976,11 +2976,18 @@ export function rulesetWeaponNow(
       }
     }
     if (next.damage) {
-      if (rule.damage) next.damage.flat += rule.damage;
       if (rule.die && next.damage.count > 0) {
         next.damage.count = 1;
         next.damage.sides = rule.die;
+      } else if (rule.die && (rule.names || rule.items) && next.damage.count === 0 && action.damage) {
+        // A named blow of flat damage rolls the die instead of its printed number (1.601), its
+        // ability's modifier still added: Alter Self's unarmed strikes, a d6.
+        const printed = action.damage.flat - (action.damageAddsAbility ? (modOf(action.ability) ?? 0) : 0);
+        next.damage.count = 1;
+        next.damage.sides = rule.die;
+        next.damage.flat -= printed;
       }
+      if (rule.damage) next.damage.flat += rule.damage;
       if (rule.qualities) next.damage.qualities = [...new Set([...(next.damage.qualities ?? []), ...rule.qualities])];
     }
   }

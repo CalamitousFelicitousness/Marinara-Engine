@@ -4,7 +4,9 @@
 // address gets 429 with Retry-After, even for the right password, until the
 // window ends. A correct password clears the count, a browser resending one
 // saved wrong password counts once, and loopback, IP_ALLOWLIST and the local
-// proxy rules keep working as before.
+// proxy rules keep working as before. A browser that signed in before keeps
+// getting in with the correct password while its address is locked, so visitors
+// sharing a local proxy's address cannot lock the owner out.
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import type { FastifyRequest } from "fastify";
@@ -167,6 +169,62 @@ try {
     200,
     "this computer itself stays passwordless while its proxy is throttled",
   );
+
+  // ── A browser that signed in before is not locked out by other visitors' guesses ──
+  const firstSignIn = await get("/", "203.0.113.60", RIGHT);
+  assert.equal(firstSignIn.statusCode, 200);
+  const signedInCookie = String(firstSignIn.headers["set-cookie"] ?? "").split(";")[0];
+  assert.match(signedInCookie, /^marinara_signed_in=[\w-]+$/, "a correct password sets the signed-in cookie");
+  assert.equal(
+    (await get("/", "203.0.113.60", RIGHT, { ...HOST, cookie: signedInCookie })).headers["set-cookie"],
+    undefined,
+    "a browser that has the cookie is not sent it again",
+  );
+  const owner = { ...proxied, cookie: signedInCookie };
+  assert.equal((await get("/", "127.0.0.1", RIGHT, owner)).statusCode, 200, "the owner's browser still gets in");
+  assert.equal((await get("/api/chats", "127.0.0.1", RIGHT, owner)).statusCode, 200);
+  assert.deepEqual((await get("/api/health", "127.0.0.1", RIGHT, owner)).json(), { status: "ok", sidecars: {} });
+  assert.equal(
+    (await get("/", "127.0.0.1", basic("cookie-guess"), owner)).statusCode,
+    429,
+    "the cookie does not let wrong passwords through",
+  );
+  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 429, "nor stand in for the password");
+  assert.equal(
+    (await get("/", "127.0.0.1", RIGHT, { ...proxied, cookie: "marinara_signed_in=made-up" })).statusCode,
+    429,
+    "a made-up cookie does not count",
+  );
+  assert.equal(
+    (await get("/", "127.0.0.1", RIGHT, proxied)).statusCode,
+    429,
+    "the owner's visits do not lift the lock for other visitors",
+  );
+
+  // ── One proxied visitor signing in does not clear the others' count ──
+  Date.now = () => realNow() + BASIC_AUTH_FAILURE_WINDOW_MS + 1_000;
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    const response = await get("/", "127.0.0.1", basic(`via-proxy-later-${index}`), proxied);
+    assert.equal(response.statusCode, 401);
+  }
+  assert.equal((await get("/", "127.0.0.1", RIGHT, proxied)).statusCode, 200, "a proxied visitor may sign in");
+  assert.equal((await get("/", "127.0.0.1", basic("via-proxy-last"), proxied)).statusCode, 401);
+  assert.equal(
+    (await get("/", "127.0.0.1", RIGHT, proxied)).statusCode,
+    429,
+    "the shared count kept the earlier guesses",
+  );
+  assert.equal((await get("/", "127.0.0.1", RIGHT, owner)).statusCode, 200, "the owner's browser still gets in");
+
+  // ── Changing the password retires the cookie ──
+  process.env.BASIC_AUTH_PASS = "changed";
+  assert.equal(
+    (await get("/", "127.0.0.1", basic("changed"), owner)).statusCode,
+    429,
+    "a cookie from the old password no longer gets through",
+  );
+  process.env.BASIC_AUTH_PASS = "secret";
+  Date.now = realNow;
   process.env.IP_ALLOWLIST = "192.168.1.20";
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {
     const response = await get("/api/chats", "192.168.1.20", basic(`allowlisted-${index}`), {

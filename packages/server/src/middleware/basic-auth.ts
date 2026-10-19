@@ -52,16 +52,19 @@
 //   • Wrong passwords are counted per client address (an IPv6 /64 counts as
 //     one) on every path, health included. After BASIC_AUTH_FAILURE_LIMIT
 //     different wrong passwords within the window, that address gets 429
-//     until the window ends. A correct password clears the count.
+//     until the window ends. A correct password clears the count, except from
+//     visitors a local proxy relays, who share one count. A browser that signed
+//     in before keeps a cookie and still gets in with the correct password.
 
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   getBasicAuthConfig,
   isUnauthenticatedPrivateNetworkAllowed,
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
+import { cookieValue } from "./android-local-auth.js";
 import {
   isForwardedLoopbackRequest,
   isInIpAllowlist,
@@ -77,6 +80,7 @@ interface CachedConfig {
   pass: string;
   realm: string;
   expectedHeader: Buffer;
+  signedInToken: Buffer;
   announced: boolean;
 }
 
@@ -87,17 +91,24 @@ function buildExpectedHeader(user: string, pass: string): Buffer {
   return Buffer.from(`Basic ${Buffer.from(`${user}:${pass}`, "utf8").toString("base64")}`, "utf8");
 }
 
+/** Derived from the credentials, so it survives restarts and stops working when the password changes. */
+function buildSignedInToken(expectedHeader: Buffer): Buffer {
+  return Buffer.from(createHmac("sha256", expectedHeader).update("signed-in browser").digest("base64url"), "utf8");
+}
+
 function loadConfig(): CachedConfig | null {
   const raw = getBasicAuthConfig();
   if (!cached || cached.raw.user !== raw.user || cached.raw.pass !== raw.pass || cached.raw.realm !== raw.realm) {
     if (raw.user && raw.pass) {
+      const expectedHeader = buildExpectedHeader(raw.user, raw.pass);
       cached = {
         raw,
         resolved: {
           user: raw.user,
           pass: raw.pass,
           realm: raw.realm,
-          expectedHeader: buildExpectedHeader(raw.user, raw.pass),
+          expectedHeader,
+          signedInToken: buildSignedInToken(expectedHeader),
           announced: false,
         },
       };
@@ -133,10 +144,36 @@ type FailureRecord = { guesses: Set<string>; resetAt: number };
 const failures = new Map<string, FailureRecord>();
 
 // ponytail: a reverse proxy or tunnel on this computer relays every visitor from
-// loopback, so they share one count. Key on the forwarded client once the server
-// has a trusted-proxy setting.
+// loopback, so they share one count; the signed-in cookie keeps their owner from
+// being locked out. Key on the forwarded client once the server has a
+// trusted-proxy setting.
 function clientKey(request: FastifyRequest): string {
   return clientAddressKey(request.ip);
+}
+
+// A browser that signed in once keeps this cookie. While its address is locked, it
+// still gets in with the correct password, so other people's wrong passwords
+// cannot lock its owner out. The cookie does nothing without the password.
+const SIGNED_IN_COOKIE = "marinara_signed_in";
+const SIGNED_IN_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+
+function hasSignedInCookie(request: FastifyRequest, config: CachedConfig): boolean {
+  const value = cookieValue(request, SIGNED_IN_COOKIE);
+  return value !== null && safeEqual(Buffer.from(value, "utf8"), config.signedInToken);
+}
+
+function rememberSignedInBrowser(request: FastifyRequest, reply: FastifyReply, config: CachedConfig) {
+  if (hasSignedInCookie(request, config)) return;
+  const secure = request.protocol === "https" ? "; Secure" : "";
+  reply.header(
+    "Set-Cookie",
+    `${SIGNED_IN_COOKIE}=${config.signedInToken.toString("utf8")}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SIGNED_IN_COOKIE_MAX_AGE_SECONDS}${secure}`,
+  );
+}
+
+function hasCorrectPassword(request: FastifyRequest, config: CachedConfig): boolean {
+  const header = request.headers.authorization;
+  return typeof header === "string" && safeEqual(Buffer.from(header, "utf8"), config.expectedHeader);
 }
 
 function activeRecord(key: string, now: number): FailureRecord | undefined {
@@ -185,8 +222,9 @@ function rememberFailure(request: FastifyRequest, header: string) {
 function checkCredentials(request: FastifyRequest, config: CachedConfig): boolean {
   const header = request.headers.authorization;
   if (!header || typeof header !== "string") return false;
-  if (safeEqual(Buffer.from(header, "utf8"), config.expectedHeader)) {
-    failures.delete(clientKey(request));
+  if (hasCorrectPassword(request, config)) {
+    // Proxied visitors share one count, so one of them signing in must not clear the others' guesses.
+    if (!isForwardedLoopbackRequest(request)) failures.delete(clientKey(request));
     return true;
   }
   rememberFailure(request, header);
@@ -455,9 +493,8 @@ export function isBasicAuthSatisfied(request: FastifyRequest): boolean {
     return isUnauthenticatedRemoteAllowed();
   }
 
-  const header = request.headers.authorization;
-  if (!header || typeof header !== "string") return false;
-  return lockoutSeconds(request) === 0 && safeEqual(Buffer.from(header, "utf8"), config.expectedHeader);
+  if (lockoutSeconds(request) > 0 && !hasSignedInCookie(request, config)) return false;
+  return hasCorrectPassword(request, config);
 }
 
 // ── Fastify onRequest hook ──
@@ -501,6 +538,8 @@ export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done
 
   const retryAfter = lockoutSeconds(request);
   if (retryAfter > 0) {
+    // The lock stays in place; only a browser that signed in before gets through.
+    if (hasSignedInCookie(request, config) && hasCorrectPassword(request, config)) return done();
     sendTooManyFailures(reply, retryAfter);
     return;
   }
@@ -510,5 +549,6 @@ export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done
     return;
   }
 
+  rememberSignedInBrowser(request, reply, config);
   return done();
 }

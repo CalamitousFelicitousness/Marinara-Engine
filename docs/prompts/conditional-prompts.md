@@ -268,7 +268,7 @@ Kaelen's lines are short and clipped.
 {{/if}}
 ```
 
-The model reads the criteria as the option's description. It still answers "angry", and the comparison is still with "angry". Quote both parts with the same kind of quote. Macros such as `{{char}}` work in criteria. Options without criteria are offered as before, and if one option is given different criteria in several places, the first ones are used.
+The model reads the criteria as the option's description. It still answers "angry", and the comparison is still with "angry". Quote both parts with the same kind of quote. If the quotes differ, Marinara does not read "angry" as an option, and the comparison never matches it. Macros such as `{{char}}` work in criteria. Options without criteria are offered as before, and if one option is given different criteria in several places, the first ones are used.
 
 ### Sticky and cooldown
 

@@ -109,6 +109,10 @@ rm -rf node_modules .pnpm .pnpm-store
 
 Then start Marinara again with `./start.sh`. If you install by hand, run `pnpm install` after removing those folders.
 
+### Install says "Ignored build scripts: @google/genai"
+
+This notice is harmless: that package's install script does nothing, and Marinara does not need it. Do not run `pnpm approve-builds`, because it changes a file Marinara tracks, and every later update then has to set that change aside. Current versions no longer show the notice. If an install that already showed it keeps showing it after you update, delete the file `node_modules/.modules.yaml` in your Marinara folder, then run the launcher again. Your chats and settings are not touched.
+
 ### ERR_PNPM_TRUST_DOWNGRADE during install
 
 This is almost always a half-finished install. First rerun the launcher so it can repair the workspace. If you install by hand, run this single command from the Marinara folder:

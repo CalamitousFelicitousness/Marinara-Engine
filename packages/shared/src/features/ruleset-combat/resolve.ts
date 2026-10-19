@@ -98,6 +98,7 @@ import {
   rulesetSpeedZero,
   rulesetSealed,
   rulesetSealedApart,
+  rulesetStasis,
   rulesetEngulfable,
   rulesetSizeRank,
   rulesetInsideCorpse,
@@ -4285,7 +4286,10 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   // What this one put on others that runs on their turns.
   for (const holder of ctx.state.combatants) {
     if (holder.id === actor.id) continue;
+    // Held out of time (1.594): nothing else on them runs, but what holds them there.
+    const stasis = rulesetStasis(ctx.definition, holder, ctx.state);
     for (const entry of [...holder.tracked]) {
+      if (stasis && entry.condition !== stasis) continue;
       // What it harms them with as this one's turn starts or ends (1.350): a gelatinous cube's acid.
       if (entry.source === actor.id) harmFromCondition(ctx, holder, entry, `source-${at}`);
       if (!holder.tracked.includes(entry)) continue;
@@ -15941,7 +15945,9 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
 
 /** Who is next to act: anybody the fight is not over for. A member who is down with nothing left to
  *  roll is stepped over until somebody brings them back. */
-function canTakeTurn(combatant: RulesetCombatant): boolean {
+function canTakeTurn(ctx: RulesetCombatContext, combatant: RulesetCombatant): boolean {
+  // Held out of time (1.594): no turn at all.
+  if (rulesetStasis(ctx.definition, combatant, ctx.state)) return false;
   // Away and still taking turns (1.313), to find the way out of a maze, or to come back from a
   // blink (1.453) as one starts.
   if (combatant.defeated) return !!(combatant.away?.blinked || (combatant.away?.turns && combatant.away.while));
@@ -16054,7 +16060,7 @@ function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   // A round that throws initiative again has no next actor until it has been thrown, and that is
   // done once the window has closed, so a window at the end of a round names nobody rather than
   // whoever the old order would have put first.
-  const next = nextTurnActor(ctx.state);
+  const next = nextTurnActor(ctx);
   const unknown = next?.wraps && (ctx.combat.initiative.each === "round" || !!ctx.combat.initiative.resource);
   const nextActorId = unknown ? "" : (next?.combatant.id ?? "");
   openWindow(ctx, { kind: "signature", trigger: { kind: "between-turns", nextActorId }, waiting });
@@ -16063,14 +16069,15 @@ function openSignatureWindow(ctx: RulesetCombatContext): boolean {
 
 /** Who acts next, read without moving the fight, and whether their turn begins a new round: the
  *  window between two turns says whose turn it is holding up. */
-function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombatant; wraps: boolean } | null {
+function nextTurnActor(ctx: RulesetCombatContext): { combatant: RulesetCombatant; wraps: boolean } | null {
+  const state = ctx.state;
   let turn = state.turn;
   let wraps = false;
   for (let step = 0; step < state.order.length; step++) {
     if (turn + 1 >= state.order.length) wraps = true;
     turn = turn + 1 >= state.order.length ? 0 : turn + 1;
     const candidate = rulesetCombatant(state, state.order[turn]!);
-    if (candidate && canTakeTurn(candidate) && !candidate.dazed) return { combatant: candidate, wraps };
+    if (candidate && canTakeTurn(ctx, candidate) && !candidate.dazed) return { combatant: candidate, wraps };
   }
   return null;
 }
@@ -16110,7 +16117,7 @@ function beginNextTurn(
       ctx.state.order = [...new Set(ctx.state.order)];
     }
     const candidate = rulesetCombatant(ctx.state, ctx.state.order[turn]!);
-    if (candidate && canTakeTurn(candidate)) break;
+    if (candidate && canTakeTurn(ctx, candidate)) break;
   }
   ctx.state.turn = turn;
   ctx.state.round = round;
@@ -16123,7 +16130,7 @@ function beginNextTurn(
     }
     // What outlasts a caster who takes no turns any more counts down as the round ends (1.403).
     for (const caster of ctx.state.combatants) {
-      if (!caster.defeated || canTakeTurn(caster)) continue;
+      if (!caster.defeated || canTakeTurn(ctx, caster)) continue;
       for (const zone of [...(caster.zones ?? [])]) {
         zone.rounds -= 1;
         if (zone.rounds <= 0) endZones(ctx, caster, zone.actionId);
@@ -16145,7 +16152,7 @@ function beginNextTurn(
       else rethrowInitiative(definition, combat, ctx);
       const first = ctx.state.order.findIndex((id) => {
         const candidate = rulesetCombatant(ctx.state, id);
-        return !!candidate && canTakeTurn(candidate);
+        return !!candidate && canTakeTurn(ctx, candidate);
       });
       ctx.state.turn = Math.max(0, first);
     }

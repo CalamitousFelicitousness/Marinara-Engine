@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition holding its holder out of time (1.594): 5e's Sequester. */
+function carriesStasis594(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStasis594(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.stasis !== undefined) return true;
+  return featureValues(record).some((one) => carriesStasis594(one, depth + 1));
+}
+
 /** Harm for casting, a condition put on by chance, or an entry stopped by name (1.593): Wish. */
 function carriesCastingStress593(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8075,6 +8085,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition holding its holder out of time, 1.594.
+  if (
+    !declaresApi(594) &&
+    (carriesStasis594(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStasis594(document)))
+  )
+    return "A ruleset with a condition holding its holder out of time (stasis) requires schemaVersion 2 and capabilityApi 1.594 or newer";
   // Harm for casting, a condition put on by chance, or an entry stopped by name, 1.593.
   if (
     !declaresApi(593) &&

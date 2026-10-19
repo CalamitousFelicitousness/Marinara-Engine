@@ -12927,6 +12927,13 @@ const combatConditionSchema = z
      *  the entries that may still be aimed at them, and end it instead of doing what they do:
      *  Disintegrate. */
     sealed: conditionSealedSchema.optional(),
+    /** Its holder is held out of time while it holds (Capability API 1.594): 5e's Sequester. They take
+     *  no turns, so they make no death saves and nothing on their own turns harms them or counts down,
+     *  and what others put on them that runs on those others' turns stops as well: every condition but
+     *  this one keeps its rounds, and no harm or save of any comes. This one still runs on its own
+     *  clock where that is its source's, and ends as it says (`endsWhen: ["damaged"]`, a dispel). Pair it with
+     *  `effects` such as `invisible` for what else the spell does. */
+    stasis: z.literal(true).optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.236), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. An entry may instead be written

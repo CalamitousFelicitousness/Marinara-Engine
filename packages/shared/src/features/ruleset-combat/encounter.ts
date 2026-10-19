@@ -1402,6 +1402,17 @@ export function rulesetCombatEffects(
   return effects;
 }
 
+/** The condition holding this combatant out of time (1.594), if any: 5e's Sequester. */
+export function rulesetStasis(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): string | undefined {
+  const combat = definition.combat;
+  if (!combat?.conditions?.some((entry) => entry.stasis)) return undefined;
+  return rulesetActiveConditions(definition, combat, combatant, state).find((one) => one.stasis)?.condition;
+}
+
 /** What shuts this combatant away from everybody else (1.314): the `sealed` of a condition that holds
  *  on them, with that condition's name. */
 export function rulesetSealed(

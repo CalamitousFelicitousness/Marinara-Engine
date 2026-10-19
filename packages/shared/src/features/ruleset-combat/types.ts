@@ -306,7 +306,7 @@ export interface RulesetCombatSaveRider {
   /** Cover does not help the target with this save (combat C6a-2). */
   ignoresCover?: true;
   /** What else it counts as being against, for a save modifier's `against` (1.181). */
-  against?: { conditions?: string[]; damage?: string[] };
+  against?: { conditions?: string[]; damage?: string[]; qualities?: string[] };
   /** Who succeeds without rolling (1.181): immune to one of these damage types or conditions, or
    *  one that is this. */
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };

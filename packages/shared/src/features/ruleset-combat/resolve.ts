@@ -15001,6 +15001,8 @@ function resolveActionBodyIn(
         ...(action.save?.against?.damage ?? []),
       ].filter((type): type is string => type !== undefined),
       magic: magicalAction(action),
+      // What its save says it is (1.599): a gas.
+      ...(action.save?.against?.qualities ? { qualities: action.save.against.qualities } : {}),
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
       ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
       // Aimed at them alone (1.470).

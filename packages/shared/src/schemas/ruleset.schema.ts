@@ -4876,7 +4876,7 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
 
 /** Who passes a save without rolling, and what else it counts as being against (1.181). */
 export interface RulesetSaveExtras {
-  against?: { conditions?: string[]; damage?: string[] };
+  against?: { conditions?: string[]; damage?: string[]; qualities?: string[] };
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
   modes?: Array<{ is: RulesetTargetIs; mode: (typeof RULESET_ROLL_MODES)[number] }>;
   alliesMayFail?: true;
@@ -4891,9 +4891,14 @@ const saveExtrasShape = {
     .object({
       conditions: z.array(sheetId).min(1).max(8).optional(),
       damage: z.array(promptSafeText(40)).min(1).max(8).optional(),
+      /** What it is (Capability API 1.599), for a modifier's `against.qualities`: Cloudkill's and
+       *  Stinking Cloud's `["gas"]`, which a Necklace of Adaptation gives advantage against. */
+      qualities: z.array(sheetId).min(1).max(8).optional(),
     })
     .strict()
-    .refine((against) => against.conditions || against.damage, { message: "Against names conditions or damage" })
+    .refine((against) => against.conditions || against.damage || against.qualities, {
+      message: "Against names conditions, damage or qualities",
+    })
     .optional(),
   /** Who succeeds on it without rolling (Capability API 1.181): a target immune to one of these
    *  damage types or conditions, or one that is this. 5e's Stinking Cloud: immune to poison, or a
@@ -11339,6 +11344,7 @@ export interface RulesetModifierAgainst {
   actions?: string[];
   casts?: string[];
   alone?: true;
+  qualities?: string[];
 }
 const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unknown> = z
   .object({
@@ -11360,6 +11366,9 @@ const modifierAgainstSchema: z.ZodType<RulesetModifierAgainst, z.ZodTypeDef, unk
      *  1.470), AND whatever else it names: a Ring of Spell Turning's "any spell that targets only
      *  you (not in an area of effect)", `{ "casts": ["spells"], "alone": true }`. */
     alone: z.literal(true).optional(),
+    /** A save against something its save says it is (Capability API 1.599), its `against.qualities`:
+     *  a Necklace of Adaptation's advantage against gases, `["gas"]`. */
+    qualities: z.array(sheetId).min(1).max(8).optional(),
   })
   .strict()
   .refine((against) => Object.keys(against).length > 0, "Against names conditions, damage, magic, from or actions");

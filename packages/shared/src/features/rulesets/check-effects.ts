@@ -48,6 +48,8 @@ export interface RulesetSaveAgainst {
   catalog?: string;
   /** Aimed at the saver alone, not an area (1.470). */
   alone?: boolean;
+  /** What its save says it is (1.599): a gas. */
+  qualities?: readonly string[];
 }
 
 /** Any one match is enough; the save's own name is checked separately. */
@@ -71,7 +73,8 @@ export function rulesetSaveAgainstMatches(
     !against.conditions &&
     !against.damage &&
     !against.magic &&
-    !against.from
+    !against.from &&
+    !against.qualities
   ) {
     return true;
   }
@@ -81,6 +84,7 @@ export function rulesetSaveAgainstMatches(
       source.damage?.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase()),
     ) ||
     (against.magic && source.magic) ||
+    against.qualities?.some((quality) => source.qualities?.includes(quality)) ||
     (against.from &&
       source.from &&
       ((source.from.type !== undefined && !!against.from.types?.includes(source.from.type)) ||

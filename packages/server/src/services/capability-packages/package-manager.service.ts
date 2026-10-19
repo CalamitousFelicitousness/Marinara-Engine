@@ -2740,6 +2740,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A save said to be against a quality, or a modifier for such saves (1.599): 5e's gases. */
+function carriesSaveQualities599(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveQualities599(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    (typeof record.save === "string" || record.to === "saves") &&
+    plainRecord(record.against)?.qualities !== undefined
+  )
+    return true;
+  return featureValues(record).some((one) => carriesSaveQualities599(one, depth + 1));
+}
+
 /** A condition that chokes its holder anywhere, or whose save waits on what they hold (1.598): 5e's
  *  Dust of Sneezing and Choking. */
 function carriesChoking598(value: unknown, depth = 0): boolean {
@@ -8127,6 +8141,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A save said to be against a quality, or a modifier for such saves, 1.599.
+  if (
+    !declaresApi(599) &&
+    (carriesSaveQualities599(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveQualities599(document)))
+  )
+    return "A ruleset with a save against a quality (save.against.qualities, a modifier's against.qualities) requires schemaVersion 2 and capabilityApi 1.599 or newer";
   // A condition that chokes its holder anywhere, or whose save waits on what they hold, 1.598.
   if (
     !declaresApi(598) &&

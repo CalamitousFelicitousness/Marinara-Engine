@@ -29,6 +29,7 @@ import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
 import { UI_PERSISTENCE } from "../lib/ui-persistence";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
+import { withSeasonalYear, type SeasonalThemeId, type SeasonalYears } from "../lib/seasonal-themes";
 
 export type Panel =
   | "chat"
@@ -987,6 +988,12 @@ interface UIState {
   omnibarSuggestionsEnabled: boolean;
   /** When true, achievements appear on Home and announce unlocks. Backend tracking stays silent either way. */
   achievementsEnabled: boolean;
+  /** When true, holiday looks such as Halloween never switch on by themselves (lib/seasonal-themes.ts). */
+  seasonalThemesDisabled: boolean;
+  /** Per seasonal theme, the year its greeting was last shown. */
+  seasonalGreetingYears: SeasonalYears;
+  /** Per seasonal theme, the year it was turned off from its greeting. */
+  seasonalThemeOffYears: SeasonalYears;
   /** When true, show the global Music Player surface. */
   musicPlayerEnabled: boolean;
   /** Which Music Player surface to show. */
@@ -1380,6 +1387,9 @@ interface UIState {
   setCommandCenterMariEnabled: (v: boolean) => void;
   setOmnibarSuggestionsEnabled: (v: boolean) => void;
   setAchievementsEnabled: (v: boolean) => void;
+  setSeasonalThemesDisabled: (v: boolean) => void;
+  markSeasonalGreetingShown: (id: SeasonalThemeId, year: number) => void;
+  turnOffSeasonalTheme: (id: SeasonalThemeId, year: number) => void;
   setMusicPlayerEnabled: (v: boolean) => void;
   setMusicPlayerSource: (v: MusicPlayerSource) => void;
   setYoutubePlayerVolume: (v: number) => void;
@@ -1653,6 +1663,9 @@ export function pickSyncedSettings(state: UIState) {
     mariUnlockedPackIds: state.mariUnlockedPackIds,
     mariConnectionId: state.mariConnectionId,
     achievementsEnabled: state.achievementsEnabled,
+    seasonalThemesDisabled: state.seasonalThemesDisabled,
+    seasonalGreetingYears: state.seasonalGreetingYears,
+    seasonalThemeOffYears: state.seasonalThemeOffYears,
     musicPlayerEnabled: state.musicPlayerEnabled,
     musicPlayerSource: state.musicPlayerSource,
     youtubePlayerVolume: state.youtubePlayerVolume,
@@ -1891,6 +1904,9 @@ export function pickPersistedUIState(state: UIState) {
     commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     achievementsEnabled: state.achievementsEnabled,
+    seasonalThemesDisabled: state.seasonalThemesDisabled,
+    seasonalGreetingYears: state.seasonalGreetingYears,
+    seasonalThemeOffYears: state.seasonalThemeOffYears,
     musicPlayerEnabled: state.musicPlayerEnabled,
     musicPlayerSource: state.musicPlayerSource,
     youtubePlayerVolume: state.youtubePlayerVolume,
@@ -2178,6 +2194,9 @@ export const useUIStore = create<UIState>()(
         commandCenterMariEnabled: true,
         omnibarSuggestionsEnabled: true,
         achievementsEnabled: true,
+        seasonalThemesDisabled: false,
+        seasonalGreetingYears: {},
+        seasonalThemeOffYears: {},
         musicPlayerEnabled: true,
         musicPlayerSource: "youtube" as MusicPlayerSource,
         youtubePlayerVolume: 70,
@@ -3069,6 +3088,13 @@ export const useUIStore = create<UIState>()(
         setCommandCenterMariEnabled: (v) => set({ commandCenterMariEnabled: v }),
         setOmnibarSuggestionsEnabled: (v) => set({ omnibarSuggestionsEnabled: v }),
         setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
+        // Switching seasonal themes back on also undoes a "Turn it off" from this year's greeting.
+        setSeasonalThemesDisabled: (v) =>
+          set(v ? { seasonalThemesDisabled: true } : { seasonalThemesDisabled: false, seasonalThemeOffYears: {} }),
+        markSeasonalGreetingShown: (id, year) =>
+          set((state) => ({ seasonalGreetingYears: withSeasonalYear(state.seasonalGreetingYears, id, year) })),
+        turnOffSeasonalTheme: (id, year) =>
+          set((state) => ({ seasonalThemeOffYears: withSeasonalYear(state.seasonalThemeOffYears, id, year) })),
         setMusicPlayerEnabled: (v) => set({ musicPlayerEnabled: v }),
         setMusicPlayerSource: (v) =>
           set({

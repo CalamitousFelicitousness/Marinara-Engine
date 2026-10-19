@@ -10,6 +10,7 @@ import { AlertTriangle, PencilLine, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  answersFromStoredValues,
   getNextOnboardingVariable,
   getOnboardingVariables,
   getRelevantCardVariables,
@@ -86,6 +87,7 @@ export function CharacterOnboardingModal({
   participantNames,
   persona,
   playerName,
+  initialAnswers,
   withPersona,
   onBack,
   onCreated,
@@ -113,6 +115,12 @@ export function CharacterOnboardingModal({
    * print the raw tag while a persona question beside them resolved.
    */
   playerName?: string;
+  /**
+   * The chat's variables, when this window is opened on a chat that already has
+   * answers (Chat Settings, not the setup wizard). They seed each card's questions,
+   * so saving one edited answer leaves the others as the chat saved them.
+   */
+  initialAnswers?: Record<string, string>;
   /** False when the player asked for no new persona: only the cards need answers. */
   withPersona: boolean;
   /** Return to the persona picker without creating anything. */
@@ -130,7 +138,20 @@ export function CharacterOnboardingModal({
   // Overrides are namespaced per card. Two cards may declare the SAME variable
   // name (a chat has only one value for it), but while editing they are still
   // two separate inputs, and one typing must not make the other's box jump.
-  const [overrides, setOverrides] = useState<Record<string, OnboardingAnswers>>({});
+  //
+  // Seeded once from the chat's stored answers when there are some: a window
+  // opened after setup has to show what the chat holds. An answer the current
+  // options cannot express is seeded as an empty choice, which renders unselected
+  // and writes nothing, so an untouched save keeps the stored value.
+  const [overrides, setOverrides] = useState<Record<string, OnboardingAnswers>>(() => {
+    if (!initialAnswers) return {};
+    const seeded: Record<string, OnboardingAnswers> = {};
+    for (const card of cards) {
+      const answers = answersFromStoredValues(card.onboarding.cardVariables ?? [], initialAnswers);
+      if (Object.keys(answers).length > 0) seeded[card.characterId] = answers;
+    }
+    return seeded;
+  });
   // Stable identity, so the memos below can list it as a dependency instead of
   // closing over `overrides` invisibly.
   const overridesFor = useCallback(

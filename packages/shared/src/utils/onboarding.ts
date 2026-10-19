@@ -682,6 +682,67 @@ export function resolveCardVariables(
 }
 
 /**
+ * Rebuild the answers a chat already holds, so a questions window opened after
+ * setup shows what the chat saved instead of every question's first option.
+ * Without this, saving an answer the player DID edit also rewrites the ones they
+ * did not touch (#7797 review).
+ *
+ * The stored string is what `resolveCardVariables` wrote: a free-text answer as
+ * typed, or a chosen option's VALUE (the label when the value is blank), joined by
+ * the separator for a multi-select. Matching both forms is what puts a choice back
+ * on its own option.
+ *
+ * A value the current options cannot express — the author edited the choices, or
+ * an option value is a macro whose expansion was stored — becomes an EMPTY choice,
+ * which renders unselected and writes nothing: the stored value survives an
+ * untouched save, and picking an option still replaces it. A single choice that
+ * allows an own answer takes that value as typed text instead, because that is
+ * where the window keeps player-written answers.
+ */
+export function answersFromStoredValues(
+  variables: readonly CharacterOnboardingVariable[],
+  stored: Record<string, string>,
+): OnboardingAnswers {
+  const answers: OnboardingAnswers = Object.create(null);
+  for (const variable of variables) {
+    const name = variable.variableName;
+    if (!name || !Object.prototype.hasOwnProperty.call(stored, name)) continue;
+    const value = stored[name] ?? "";
+    if (value.trim() === "") continue;
+    if (variable.options.length === 0) {
+      answers[name] = { text: value };
+      continue;
+    }
+    const parts = variable.multiSelect
+      ? value
+          .split(variable.separator)
+          .map((part) => part.trim())
+          .filter((part) => part !== "")
+      : [value.trim()];
+    // An empty separator joins multi-select values with nothing between them, so
+    // the parts cannot be recovered; treated as unmatchable on purpose.
+    const ids =
+      variable.multiSelect && variable.separator === "" ? [] : parts.map((part) => storedOptionId(variable, part));
+    if (ids.length > 0 && ids.every((id): id is string => id !== null)) {
+      answers[name] = { optionIds: [...new Set(ids)] };
+    } else if (!variable.multiSelect && variable.allowCustom) {
+      answers[name] = { text: value };
+    } else {
+      answers[name] = { optionIds: [] };
+    }
+  }
+  return answers;
+}
+
+/** The id of the option whose stored form is `part`, or null. */
+function storedOptionId(variable: CharacterOnboardingVariable, part: string): string | null {
+  // A blank option value means "same as the label" (see `answerContextFor`), which
+  // is the form this has to compare against.
+  const option = variable.options.find((entry) => (entry.value.trim() ? entry.value : entry.label).trim() === part);
+  return option ? option.id : null;
+}
+
+/**
  * The one map written to a chat when several cards ask their questions at once.
  *
  * Every card's answers share the chat's variables, so a name two cards declare is

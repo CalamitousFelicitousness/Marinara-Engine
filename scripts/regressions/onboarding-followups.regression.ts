@@ -1,15 +1,19 @@
-// Interactive onboarding follow-ups (#7795): the shared card parse and the rule
-// for chat variables a character leaves behind.
+// Interactive onboarding follow-ups (#7795, #7797): the shared card parse, the
+// rule for chat variables a character leaves behind, and the answers a reopened
+// questions window starts on.
 //
 // `readCardOnboarding` is the one parse the server seeding/removal and both
-// client surfaces use; `cardVariableNamesToDrop` is the ownership rule. Pinning
-// the rule here, not by restating it at the call sites, is what makes the
-// regression able to fail when the production behaviour changes.
+// client surfaces use; `cardVariableNamesToDrop` is the ownership rule;
+// `answersFromStoredValues` is what stops a save from rewriting answers nobody
+// edited. Pinning the rules here, not by restating them at the call sites, is what
+// makes the regression able to fail when the production behaviour changes.
 import assert from "node:assert/strict";
 import {
+  answersFromStoredValues,
   cardVariableNamesToDrop,
   characterExtensionsSchema,
   getCardVariableNames,
+  mergeCardVariables,
   readCardOnboarding,
   type CharacterOnboarding,
 } from "../../packages/shared/src/index.js";
@@ -120,3 +124,83 @@ assert.deepEqual(cardVariableNamesToDrop([bondAndRank, rankOnly], []), ["bond", 
 // Non-storable names never enter the rule.
 const weird = onboarding({ cardVariables: [question("a", "bad-name"), question("b", "char")] });
 assert.deepEqual(cardVariableNamesToDrop([weird], []), []);
+
+// ── answersFromStoredValues: a reopened window starts on what the chat saved ──
+// The marker in Chat Settings opens ONE card's questions on a chat that already
+// holds answers. Starting every question on its first option meant saving one
+// edited answer rewrote the rest with those defaults (#7797 review).
+const rankOptions = [
+  { id: "sc", label: "Scout", value: "scout" },
+  { id: "rg", label: "Ranger", value: "" },
+  { id: "kn", label: "Knight", value: "knight" },
+];
+const reanswerable = onboarding({
+  cardVariables: [
+    { ...question("rank", "rank"), options: rankOptions },
+    question("bond", "bond"),
+    { ...question("tags", "tags"), options: rankOptions, multiSelect: true, separator: ", " },
+  ],
+});
+const declared = reanswerable.cardVariables ?? [];
+const storedAnswers = { rank: "scout", bond: "an old friend", tags: "scout, knight" };
+const seeded = answersFromStoredValues(declared, storedAnswers);
+// A choice is stored by option VALUE, free text as typed, and a multi-select as
+// the chosen values joined by its separator.
+assert.deepEqual(seeded.rank, { optionIds: ["sc"] });
+assert.deepEqual(seeded.bond, { text: "an old friend" });
+assert.deepEqual(seeded.tags, { optionIds: ["sc", "kn"] });
+
+// The property that matters: opening the window and saving without editing
+// anything writes the chat's own answers back, unchanged.
+assert.deepEqual(
+  mergeCardVariables([{ onboarding: reanswerable, answers: seeded }], [new Set(getCardVariableNames(reanswerable))]),
+  storedAnswers,
+);
+
+// A blank option value is stored as its LABEL, so the label has to match too.
+assert.deepEqual(answersFromStoredValues(declared, { rank: "Ranger" }).rank, { optionIds: ["rg"] });
+
+// A value the current options cannot express (the author edited the choices, or
+// a macro expanded into it) is an empty choice: it renders unselected and writes
+// nothing, so an untouched save keeps what the chat holds.
+const unmatchable = answersFromStoredValues(declared, { rank: "admiral", tags: "scout, admiral" });
+assert.deepEqual(unmatchable.rank, { optionIds: [] });
+assert.deepEqual(unmatchable.tags, { optionIds: [] });
+assert.deepEqual(
+  mergeCardVariables([{ onboarding: reanswerable, answers: unmatchable }], [new Set(["rank", "tags"])]),
+  {},
+);
+
+// A single choice that allows an own answer keeps it as typed text, which is
+// where the window shows player-written answers.
+const customRank = onboarding({
+  cardVariables: [{ ...question("rank", "rank"), options: rankOptions, allowCustom: true }],
+});
+assert.deepEqual(answersFromStoredValues(customRank.cardVariables ?? [], { rank: "Admiral of the fleet" }).rank, {
+  text: "Admiral of the fleet",
+});
+
+// Names the chat does not hold, blank values, and names this card does not
+// declare are all left alone: only a real stored answer seeds a question.
+assert.deepEqual(Object.keys(answersFromStoredValues(declared, {})), []);
+assert.deepEqual(Object.keys(answersFromStoredValues(declared, { rank: "   " })), []);
+assert.deepEqual(Object.keys(answersFromStoredValues(declared, { unrelated: "x" })), []);
+
+// A multi-select with an EMPTY separator joined its values with nothing between
+// them, so they cannot be split apart again; treat it as unmatchable rather than
+// guess where one value ends.
+const noSeparator = onboarding({
+  cardVariables: [{ ...question("tags", "tags"), options: rankOptions, multiSelect: true, separator: "" }],
+});
+assert.deepEqual(answersFromStoredValues(noSeparator.cardVariables ?? [], { tags: "scoutknight" }).tags, {
+  optionIds: [],
+});
+
+// A question legitimately named `__proto__` stays an own key instead of touching
+// the prototype of the map the window then edits.
+const protoAnswers = answersFromStoredValues(
+  onboarding({ cardVariables: [question("p", "__proto__")] }).cardVariables ?? [],
+  JSON.parse('{"__proto__":"kept"}') as Record<string, string>,
+);
+assert.deepEqual(Object.keys(protoAnswers), ["__proto__"]);
+assert.deepEqual(protoAnswers["__proto__"], { text: "kept" });

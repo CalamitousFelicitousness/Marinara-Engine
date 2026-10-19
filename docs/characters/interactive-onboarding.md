@@ -96,7 +96,7 @@ Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the
 Both paths also work after setup, from **Chat Settings**:
 
 - The **Persona** picker in a Roleplay chat lists **Create your persona** for every card in the chat that offers one. Use it when you skipped the wizard or want a new persona later.
-- The onboarding marker next to a character in **Characters** reopens that card's character questions on their own. Change an answer, or save again to restore one you deleted from Chat Variables. Other cards' answers are not touched.
+- The onboarding marker next to a character in **Characters** reopens that card's character questions on their own. It opens on the answers the chat already holds, so saving one change leaves the others as they were; saving again also restores an answer you deleted from Chat Variables. Other cards' answers are not touched.
 
 ## Sharing cards with onboarding
 

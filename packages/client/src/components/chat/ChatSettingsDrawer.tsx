@@ -10437,6 +10437,10 @@ export function ChatSettingsDrawer({
           participantNames={[
             onboardingQuestionsTarget.cardOnboarding.name || charName(onboardingQuestionsTarget.character),
           ]}
+          // The answers this chat already holds, so the window opens on them: an
+          // untouched question keeps its value instead of being reset to its first
+          // option by the save.
+          initialAnswers={chatMacroVariables}
           withPersona={false}
           chatFloatingPanel
           onBack={() => setOnboardingQuestionsCharacterId(null)}

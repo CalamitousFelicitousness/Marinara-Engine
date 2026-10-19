@@ -61,6 +61,13 @@ keep-both result; and fork lanes that pin source shape with a bounded regex
 (`roleplay-streaming`'s `{0,1200}`) fail when a fork block lands between the
 pinned anchors.
 
+On 2026-10-18: 99 commits, 27 overlapping files, 4 conflicts, merge
+`d7a6e6c50`. Small, and still two silent losses: both lineages had fixed the
+client build heap the same day and the source merged into a hybrid without a
+marker (see **When both lineages built the same feature**), and a "take
+upstream" import hunk revived names the fork had retired (see **Upstream
+reuses a key or helper the fork deleted**).
+
 ## Merge, never rebase
 
 The remote layout assumes a merge. `staging` tracks `upstream/staging` for
@@ -328,6 +335,16 @@ overrides: a save returned 204, showed as saved, and was never spoken, while
 upstream's own lane passed. For each new upstream feature, ask which record it
 writes and whether the fork resolves that record the way upstream does.
 
+Two fixes to one bug can merge into neither. On 2026-10-18 the fork's
+`e3612478e` dropped `tsc` from `packages/client/scripts/build.mjs` and sized a
+desktop heap in `resolveClientBuildHeapMb`; upstream's #7786, the same day,
+kept `tsc` and added `resolveDesktopClientBuildHeapMb`. Both scripts merged
+cleanly: the fork's `tsc` removal stayed, the desktop branch called upstream's
+function, and the fork's floor became dead code, restoring the low-memory
+failure the fork had fixed. Only the shared regression lane conflicted. When a
+fork commit and an upstream PR in the same window share a subject, read the
+merged source, not just the conflicts.
+
 ### Upstream reuses a key or helper the fork deleted
 
 When the fork prunes something upstream still has (stale localization keys, a
@@ -342,6 +359,15 @@ after each sync. Restore the key from upstream's
 catalog, or point the consumer at the fork's equivalent; do not rewrite
 upstream's consumer around the gap.
 
+An import hunk that looks like a superset is the reverse case. On 2026-10-18
+upstream's side of a `GameSurface.tsx` import conflict listed everything the
+fork's did plus more, but two of the extra names were in the base and the fork
+had removed them with their only use (`b418d72d0`). Taking upstream's side
+brought them back unused. Compare an import hunk against the merge base, not
+just the two sides: a name in base and upstream but not the fork is a
+deliberate removal. `tsc` flags it as unused here; if it had been used, the
+retired call would have come back with it.
+
 ### Upstream lanes seed upstream's data model
 
 A new upstream regression that fails on an assertion about a value, not a
@@ -355,6 +381,14 @@ by default; an upstream lane that deletes `PROVIDER_LOCAL_URLS_ENABLED` and
 asserts a refusal then times out on the fetch instead. Set the flag to `false`
 in the lane. Upstream e2e specs seed `trackerPanelSizeProfile`, which the fork's
 store replaced with `trackerPanelWidth`; `tsc` in `check:e2e-types` catches it.
+
+Some upstream lanes lift functions out of a component by name with the
+TypeScript AST and run them under `new Function`, stubbing every free
+identifier. `game-tts-emotion.regression.ts` does this to `GameNarration.tsx`
+and `GameCombatUI.tsx`. A name the fork deleted fails as
+`<name> remains available`; a fork-only import fails as a `ReferenceError`.
+Swap the name list and stubs to the fork's code, here `ttsService.synthesize`
+and `GAME_VOICE_SYNTHESIS_POLICY`, and keep the assertions.
 
 ### Upstream tests of the Trackers window are skipped, not adapted
 

@@ -214,6 +214,14 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 965/973, as of 2026-10-18
+
+**Measured after the 2026-10-18 sync, app stopped.** The same eight failures as
+2026-10-15: `launcher/update` by fork design, and `decision-sidecar-runtime`,
+`gallery-previews`, `lorebook-images`, `server-signal-shutdown`,
+`multiplayer-peer-server-security`, `mari-appearance-pack` and `zip-reader`,
+which cannot pass on Windows.
+
 ### Regression suite: 935/943, as of 2026-10-15
 
 **Measured after the 2026-10-15 sync, app stopped.** The six known failures

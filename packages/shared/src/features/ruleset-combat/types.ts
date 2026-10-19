@@ -181,6 +181,8 @@ export interface RulesetCombatApplies {
         untilDispelled?: true;
         /** No longer than what was left of this condition when it last came off (1.563). */
         remainingOf?: string;
+        /** `rounds` that many times over, rolled as it is put on (1.572). */
+        times?: string;
       };
   /** Its source holds no more than this many with it at once (1.320). */
   heldAtMost?: number;

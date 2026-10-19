@@ -3258,11 +3258,22 @@ function applyConditionId(
   if (left !== undefined && left < 1) return;
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   // Paid high enough to have no clock (1.429): Bestow Curse from a 9th-level slot.
+  // So many times over, rolled now (1.572): a Potion of Growth's 1d4 hours.
+  const times =
+    typeof applies.duration === "object" && applies.duration.times
+      ? parseRulesetCombatDice(applies.duration.times)
+      : null;
+  const lasts =
+    typeof applies.duration === "object"
+      ? times
+        ? Math.max(1, Math.min(14400, applies.duration.rounds * rollAmount(ctx, times).total))
+        : applies.duration.rounds
+      : 0;
   const rounds =
     typeof applies.duration === "object" && !applies.duration.untilDispelled
       ? left !== undefined
-        ? Math.min(applies.duration.rounds, left)
-        : applies.duration.rounds
+        ? Math.min(lasts, left)
+        : lasts
       : null;
   if (target.conditionLeft?.[condition]) delete target.conditionLeft[condition];
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;

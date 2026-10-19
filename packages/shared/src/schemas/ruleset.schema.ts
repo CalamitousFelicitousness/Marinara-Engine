@@ -2479,6 +2479,12 @@ const catalogDice = z
 
 const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int().optional() };
 
+/** The most dice written as `catalogDice` allow can roll: 1d4+1's 5. */
+function diceMost(dice: string): number {
+  const [, count, sides, flat] = /^(\d+)d(\d+)([+-]\d+)?$/.exec(dice) ?? [];
+  return Number(count ?? 0) * Number(sides ?? 0) + Number(flat ?? 0);
+}
+
 /** When an item's charges, or a use's own uses, come back: on the ruleset's `rests` it names, all of
  *  them (`"max"`) or an `amount`; and (Capability API 1.503) `after` so many `days` or `hours` of game
  *  time from their running out, the wait rolled as they run out where it is dice: a Figurine of
@@ -4687,11 +4693,19 @@ const catalogDurationSchema = z.union([
        *  some of that is left and its user is not under it again. 5e's Wind Walk, back into the
        *  cloud for what is left of the spell's 8 hours. */
       remainingOf: sheetId.optional(),
+      /** `rounds` that many times over, rolled with these dice as it is put on (Capability API
+       *  1.572): 5e's Potion of Growth, "1d4 hours", `{"rounds": 600, "times": "1d4"}`. No more than
+       *  a day at the most the dice can roll. */
+      times: catalogDice.optional(),
     })
     .strict()
     .refine((duration) => !duration.perStep || !duration.bySteps, {
       message: '"perStep" and "bySteps" both say how it grows with the cost paid: one of them',
       path: ["bySteps"],
+    })
+    .refine((duration) => !duration.times || duration.rounds * diceMost(duration.times) <= 14400, {
+      message: '"rounds" times the most "times" rolls is no more than a day, 14400 rounds',
+      path: ["times"],
     }),
 ]);
 

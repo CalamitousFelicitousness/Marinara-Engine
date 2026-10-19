@@ -33,7 +33,11 @@ A character or persona with expression sprites already has a PNGTuber avatar on 
 
 An avatar shows in a Roleplay, Visual Novel or Game chat when the chat has agents on and the matching agent added. It works with or without the Expression Engine. The avatar does not hide the full-body sprite, so turn that off yourself if the avatar replaces it. Avatars stand where the full-body sprite would and share its size.
 
-Select **Arrange avatars** in the chat to move them and use each avatar's size slider to resize it, then select **Done**. You can drag with a mouse or a finger, or focus the avatar and use the arrow keys (hold Shift to move further). This works without the Expression Engine in Roleplay, Visual Novel and Game. The layout is saved for that chat on this device and survives a reload; it does not sync to other devices. The Expression Engine's existing **Arrange** mode also moves avatars.
+To move or resize avatars, open **Chat Settings**, go to **Agents** and open **Avatars**. Pick an avatar in the list, then use its size slider to make it bigger or smaller. Select **Arrange** to move avatars: while it is on, drag them anywhere in the chat with a mouse or a finger, or focus one and use the arrow keys (hold Shift to move further). Select **Done** when you are finished; avatars then stay where you put them and clicks go to the chat again. **Reset** puts every avatar back in its usual place.
+
+A 3D avatar also has a **Framing** choice: **Portrait** shows the head and shoulders (the default), **Half body** shows down to the hips, and **Full body** shows the whole model from head to feet. The avatar keeps its size; a taller framing shows more of the model in the same space. 2D avatars have no framing.
+
+This works without the Expression Engine in Roleplay, Visual Novel and Game. The layout is saved for that chat on this device and survives a reload; it does not sync to other devices. The Expression Engine's own **Arrange** button moves avatars too.
 
 Imported files are checked before they are stored, and there is no avatar-specific size limit below the server's normal upload limit. Avatar files live in the data folder under `avatar-models/<character or persona>/<id>/`, next to an `avatar.json` with the settings. Backups and profile exports include this folder. Deleting a character or persona deletes its avatar, also when the Danger Zone of Settings clears all **Characters** or **Personas**, and clearing **Media & Assets** there empties the folder. Character card exports never include avatars.
 
@@ -85,7 +89,7 @@ No model yet? [Make one in VRoid Studio](#get-a-3d-model), a free app, and impor
 
 **Replace model** keeps the idle animation, because VRM animations fit any VRM model. **Remove model** deletes the model and its idle animation.
 
-While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. Its head stays near the top of its spot: a wide spot shows the head and shoulders, and a narrower one shows more of the body. Some VRM 1.0 models keep the mouth still while they show a face; while such a model talks, that face shows at partial strength so the mouth can still move. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
+While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. With the default **Portrait** framing its head stays near the top of its spot: a wide spot shows the head and shoulders, and a narrower one shows more of the body. **Half body** and **Full body** framing, in the chat's Avatars settings, show more of the model. Some VRM 1.0 models keep the mouth still while they show a face; while such a model talks, that face shows at partial strength so the mouth can still move. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
 
 Some files can't be used, and the import says why:
 

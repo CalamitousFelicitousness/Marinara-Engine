@@ -3896,6 +3896,7 @@ export interface RulesetConditionEndsWhenHolder {
   downed?: true;
   gains?: string[];
   incapacitated?: true;
+  cantHearSource?: { sense: string; beyond?: number };
 }
 const conditionEndsWhenHolderSchema: z.ZodType<RulesetConditionEndsWhenHolder, z.ZodTypeDef, unknown> = z
   .object({
@@ -3918,13 +3919,29 @@ const conditionEndsWhenHolderSchema: z.ZodType<RulesetConditionEndsWhenHolder, z
     /** Its holder holding anything that keeps them from acting, `cannot-act` (Capability API 1.555):
      *  a knight's Leadership, "This effect ends if the knight is incapacitated". */
     incapacitated: z.literal(true).optional(),
+    /** Its holder starting a turn unable to hear whoever put it on (Capability API 1.565): lacking
+     *  `sense`, farther from them than `beyond` (the ruleset's distance) when it says, or with them
+     *  gone or down. 5e's Pipes of the Sewers, a swarm that can't hear the pipes' music,
+     *  `{ "sense": "hearing" }`. */
+    cantHearSource: z
+      .object({ sense: sheetId, beyond: z.number().finite().gt(0).max(1000000).optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
-    (ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains || ends.incapacitated,
+    (ends) =>
+      ends.moves ||
+      ends.acts ||
+      ends.attacks ||
+      ends.casts ||
+      ends.downed ||
+      ends.gains ||
+      ends.incapacitated ||
+      ends.cantHearSource,
     {
       message:
-        'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains", "incapacitated" or more than one',
+        'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains", "incapacitated", "cantHearSource" or more than one',
     },
   )
   .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
@@ -6703,6 +6720,18 @@ const catalogMechanicsObject = z
         attacker: z.array(sheetId).min(1).max(4),
         defender: z.array(sheetId).min(1).max(4),
         ties: z.enum(["attacker", "defender"]).optional(),
+        /** Conditions put on a target its user loses to (Capability API 1.565), with its user as
+         *  their source, each for `rounds`: 5e's Pipes of the Sewers, a swarm that can't be swayed
+         *  for 24 hours, `{ "applies": [{ "condition": "pipes_spurned", "rounds": 14400 }] }`. */
+        onLose: z
+          .object({
+            applies: z
+              .array(z.object({ condition: sheetId, rounds: z.number().int().min(1).max(1000000) }).strict())
+              .min(1)
+              .max(4),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -17314,6 +17343,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.endsWhenHolder?.casts) {
         castsIssues(def, entry.endsWhenHolder.casts, [...path, "endsWhenHolder", "casts"], issue);
       }
+      // The sense its holder hears its source with (1.565): one the ruleset declares or takes away.
+      const hearing = entry.endsWhenHolder?.cantHearSource;
+      if (
+        hearing &&
+        !(combat.senses ?? []).some((one) => one.id === hearing.sense) &&
+        !(combat.conditions ?? []).some((one) => one.lacks?.includes(hearing.sense))
+      )
+        issue([...path, "endsWhenHolder", "cantHearSource", "sense"], `Unknown sense "${hearing.sense}"`);
       // Regeneration (1.346): health in points, harm the ruleset has, and a value its sheet reads.
       if (entry.regenerates) {
         if ("track" in combat.health)
@@ -19974,6 +20011,11 @@ function useIssues(
   use.userHolds?.forEach((id, index) => {
     if (!conditions.has(id)) add([...at, "userHolds", index], `Unknown condition "${id}"`);
   });
+  // What a lost contest puts on its target (1.565).
+  use.contest?.onLose?.applies.forEach((one, index) => {
+    if (!conditions.has(one.condition))
+      add([...at, "contest", "onLose", "applies", index, "condition"], `Unknown condition "${one.condition}"`);
+  });
   if (use.sheetDifficulty) {
     const names = rulesetSheetNames(definition.sheet, definition.items);
     for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
@@ -21886,6 +21928,14 @@ export function rulesetCatalogEntryIssues(
         });
       }
     }
+    // What a lost contest puts on its target (1.565): conditions the sheet has.
+    mechanics?.contest?.onLose?.applies.forEach((one, at) => {
+      if (!liveConditions.has(one.condition))
+        add(
+          [index, "mechanics", "contest", "onLose", "applies", at, "condition"],
+          `Unknown condition "${one.condition}"`,
+        );
+    });
     // Each side of a contest throws one of the fight's checks (1.512).
     (["attacker", "defender"] as const).forEach((side) => {
       mechanics?.contest?.[side].forEach((check, checkIndex) => {

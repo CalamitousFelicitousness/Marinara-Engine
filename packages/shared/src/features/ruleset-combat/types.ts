@@ -870,7 +870,13 @@ export interface RulesetCombatAction {
    *  (1.510): Preserve Life. */
   sharesHeal?: true | "half";
   /** Each target won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. */
-  contested?: { attacker: string[]; defender: string[]; ties: "attacker" | "defender" };
+  contested?: {
+    attacker: string[];
+    defender: string[];
+    ties: "attacker" | "defender";
+    /** Conditions put on a target its user loses to (1.565), each for `rounds`. */
+    onLose?: { applies: Array<{ condition: string; rounds: number }> };
+  };
   /** Each target it lands on moved to a cell its user picks (1.512), up to `cells` from where it
    *  stood, and with `up` lifted as many levels as the choice's `rises`: Telekinesis. */
   movesTarget?: { cells: number; up?: true };

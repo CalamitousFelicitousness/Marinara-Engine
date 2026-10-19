@@ -2741,6 +2741,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A contest that leaves something on a target its user loses to, and a condition that ends as its
+ *  holder can't hear its source (1.565): the Pipes of the Sewers. */
+function carriesUnswayed565(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUnswayed565(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.contest)?.onLose !== undefined) return true;
+  if (plainRecord(record.endsWhenHolder)?.cantHearSource !== undefined) return true;
+  return featureValues(record).some((one) => carriesUnswayed565(one, depth + 1));
+}
+
 /** A use offered only while its user holds a condition, and a condition kept only while its source
  *  holds one (1.564): the Pipes of the Sewers. */
 function carriesUserHolds564(value: unknown, depth = 0): boolean {
@@ -7718,6 +7730,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A lost contest's conditions, and one that ends unheard, 1.565.
+  if (
+    !declaresApi(565) &&
+    (carriesUnswayed565(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUnswayed565(document)))
+  ) {
+    return "A ruleset with a contest that leaves conditions on a target its user loses to (contest.onLose), or a condition that ends as its holder can't hear its source (endsWhenHolder.cantHearSource), requires schemaVersion 2 and capabilityApi 1.565 or newer";
+  }
   // A use offered only while its user holds a condition, 1.564.
   if (
     !declaresApi(564) &&

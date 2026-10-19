@@ -54899,6 +54899,42 @@
                             "defender"
                           ]
                         },
+                        "onLose": {
+                          "type": "object",
+                          "properties": {
+                            "applies": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "condition": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "rounds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "condition",
+                                  "rounds"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "applies"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -115446,6 +115482,42 @@
                                 "defender"
                               ]
                             },
+                            "onLose": {
+                              "type": "object",
+                              "properties": {
+                                "applies": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "condition": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "rounds": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "condition",
+                                      "rounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 4
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "applies"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -135656,6 +135728,42 @@
                                       "attacker",
                                       "defender"
                                     ]
+                                  },
+                                  "onLose": {
+                                    "type": "object",
+                                    "properties": {
+                                      "applies": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "condition": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "rounds": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000000
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "condition",
+                                            "rounds"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 4
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "applies"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -155873,6 +155981,42 @@
                                       "attacker",
                                       "defender"
                                     ]
+                                  },
+                                  "onLose": {
+                                    "type": "object",
+                                    "properties": {
+                                      "applies": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "condition": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "rounds": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000000
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "condition",
+                                            "rounds"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 4
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "applies"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -183229,6 +183373,26 @@
                   "incapacitated": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "cantHearSource": {
+                    "type": "object",
+                    "properties": {
+                      "sense": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "beyond": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000000
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "sense"
+                    ],
+                    "additionalProperties": false
                   },
                   "$comment": {}
                 },

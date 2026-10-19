@@ -594,6 +594,29 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
   }
 }
 
+/** What its holder keeps only while they can hear whoever put it on (1.565), asked as their turn
+ *  starts: lacking the sense, farther than `beyond`, or with that one gone or down. 5e's Pipes of the
+ *  Sewers. */
+function unheardSources(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
+  const perCell = ctx.definition.combat?.distance?.perCell;
+  for (const entry of [...holder.tracked]) {
+    const rule = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.endsWhenHolder
+      ?.cantHearSource;
+    if (!rule || !entry.source || entry.source === holder.id) continue;
+    const source = rulesetCombatant(ctx.state, entry.source);
+    const unheard =
+      !source ||
+      source.defeated ||
+      !!source.away ||
+      !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, [rule.sense]) ||
+      (rule.beyond !== undefined &&
+        perCell !== undefined &&
+        !!ctx.state.board?.grid &&
+        rulesetCombatantDistance(ctx.state, holder, source) > rulesetInCells(rule.beyond, perCell));
+    if (unheard && holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "expired");
+  }
+}
+
 /** What lasts until its source acts again comes off as they take another action (1.546): 5e's
  *  Interposing Hand, until the hand is given a different command. */
 function endOnSourceActing(ctx: RulesetCombatContext, source: RulesetCombatant): void {
@@ -4163,6 +4186,9 @@ function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entr
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
   // Let out on what was dealt from inside this turn (1.352).
   if (at === "turn-end") releaseOnHurt(ctx);
+  // Off as its holder starts a turn unable to hear whoever put it on (1.565): the Pipes of the
+  // Sewers' hold on a swarm that can't hear their music.
+  if (at === "turn-start") unheardSources(ctx, actor);
   // What this one put on others that runs on their turns.
   for (const holder of ctx.state.combatants) {
     if (holder.id === actor.id) continue;
@@ -14362,6 +14388,18 @@ function resolveActionBodyIn(
     // Won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. Nothing
     // else it does lands on a target it loses to.
     if (action.contested && !wonContest(ctx, actor, action, target)) {
+      // What it leaves on a target it lost to (1.565): a swarm the Pipes of the Sewers can't sway
+      // for 24 hours.
+      for (const one of action.contested.onLose?.applies ?? []) {
+        if (target.defeated) break;
+        applyConditionId(
+          ctx,
+          target,
+          one.condition,
+          { condition: one.condition, duration: { rounds: one.rounds } },
+          { sourceId: actor.id },
+        );
+      }
       spendUsed();
       continue;
     }

@@ -98687,6 +98687,21 @@
                     "use": {
                       "type": "object",
                       "properties": {
+                        "needs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "uniqueItems": true
+                        },
+                        "needsAny": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "targetsWithin": {
                           "type": "number",
                           "exclusiveMinimum": 0
@@ -119005,6 +119020,21 @@
                           "use": {
                             "type": "object",
                             "properties": {
+                              "needs": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4,
+                                "uniqueItems": true
+                              },
+                              "needsAny": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "targetsWithin": {
                                 "type": "number",
                                 "exclusiveMinimum": 0
@@ -139329,6 +139359,21 @@
                           "use": {
                             "type": "object",
                             "properties": {
+                              "needs": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4,
+                                "uniqueItems": true
+                              },
+                              "needsAny": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "targetsWithin": {
                                 "type": "number",
                                 "exclusiveMinimum": 0

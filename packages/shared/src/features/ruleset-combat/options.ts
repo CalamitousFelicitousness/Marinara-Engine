@@ -1117,6 +1117,8 @@ export function rulesetAreaTargets(
     .filter((combatant) => {
       if (combatant.defeated) return false;
       if (action.area?.friendlyFire === false && combatant.side === actor.side) return false;
+      // Passed over where it was spent on them already since the rest that frees it (1.575).
+      if (action.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, action), combatant)) return false;
       // Something that MENDS lands only on whom its author pointed it at. A blast catches everybody
       // in its cells because fire does not ask; a healing word that also closed the enemy's wounds
       // would be the rules being read by a machine rather than by a table.
@@ -1147,6 +1149,8 @@ export function rulesetAroundTargets(
     if (combatant.id === actor.id || combatant.defeated) return false;
     const sameSide = combatant.side === actor.side;
     if (around.friendlyFire === false && sameSide) return false;
+    // Passed over where it was spent on them already (1.575): the Pipes of Haunting's 24 hours.
+    if (action.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, action), combatant)) return false;
     if (action.heal && !sameSide) return false;
     if (!grid) return true;
     if (!rulesetPositionOf(actor) || !rulesetPositionOf(combatant)) return false;

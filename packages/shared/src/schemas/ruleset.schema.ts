@@ -7291,11 +7291,12 @@ const catalogMechanicsSchema: z.ZodType<
       message: '"conjures" is on a "utility" entry its user uses on themselves',
     });
   }
-  if (mechanics.oncePerTarget && (mechanics.targets === "self" || mechanics.area)) {
+  // On an area too (1.575): whoever it is spent on is passed over by the next. The Pipes of Haunting.
+  if (mechanics.oncePerTarget && mechanics.targets === "self" && !mechanics.area) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["oncePerTarget"],
-      message: '"oncePerTarget" is on an entry pointed at a creature, not an area or its user',
+      message: '"oncePerTarget" is on an entry pointed at a creature or an area, not only its user',
     });
   }
   if (mechanics.targetsUpTo && (mechanics.targets === "self" || mechanics.area)) {
@@ -10135,9 +10136,6 @@ const itemChargeStepSchema: z.ZodType<RulesetItemChargeStep, z.ZodTypeDef, unkno
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
-    // Sense needs belong to catalog entries and creature actions (1.127).
-    needs: true,
-    needsAny: true,
     cost: true,
     perCostStep: true,
     targetsPerCostStep: true,

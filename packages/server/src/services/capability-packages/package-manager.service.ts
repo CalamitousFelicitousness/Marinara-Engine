@@ -2741,6 +2741,22 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** An item's use that needs senses, or an entry once a target over an area (1.575): the Pipes of
+ *  Haunting. */
+function carriesUseNeeds575(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUseNeeds575(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const uses = [
+    record.use,
+    ...(Array.isArray(record.moreUses) ? record.moreUses.map((more) => plainRecord(more)?.use) : []),
+  ];
+  if (record.category !== undefined && uses.some((use) => plainRecord(use)?.needs !== undefined)) return true;
+  if (record.oncePerTarget !== undefined && record.area !== undefined) return true;
+  return featureValues(record).some((one) => carriesUseNeeds575(one, depth + 1));
+}
+
 /** Every `dismisses.while` anywhere in it (1.574), for a way back at will. */
 function dismissedWhile574(value: unknown, into: Set<string>, depth = 0): void {
   if (!value || depth > 40) return;
@@ -7838,6 +7854,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use that needs senses, or an entry once a target over an area, 1.575.
+  if (
+    !declaresApi(575) &&
+    (carriesUseNeeds575(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUseNeeds575(document)))
+  )
+    return "A ruleset with an item use that needs senses (use.needs) or an entry once a target over an area (oncePerTarget with area) requires schemaVersion 2 and capabilityApi 1.575 or newer";
   // Away under a condition its holder may take off at will, 1.574.
   if (!declaresApi(574) && carriesAwayAtWill574(ruleset, [...(catalogDocuments?.values() ?? [])]))
     return "A ruleset that sends its holder away under a condition they may take off at will (dismisses with endable) requires schemaVersion 2 and capabilityApi 1.574 or newer";

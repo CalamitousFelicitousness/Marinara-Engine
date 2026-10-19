@@ -2740,6 +2740,22 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Attacks against its holder at disadvantage only from those who see them (1.602): 5e's Robe of
+ *  Scintillating Colors. */
+function carriesSeenAgainst602(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSeenAgainst602(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    record.whenSeen === true &&
+    Array.isArray(record.effects) &&
+    record.effects.includes("attacks-against-disadvantage")
+  )
+    return true;
+  return featureValues(record).some((one) => carriesSeenAgainst602(one, depth + 1));
+}
+
 /** A condition kept on only while a sheet value reads above zero (1.600): 5e's Holy Avenger. */
 function carriesKeptWhen600(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8151,6 +8167,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Attacks against its holder at disadvantage only from those who see them, 1.602.
+  if (
+    !declaresApi(602) &&
+    (carriesSeenAgainst602(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSeenAgainst602(document)))
+  )
+    return "A ruleset with attacks against a holder at disadvantage only from those who see them (whenSeen beside attacks-against-disadvantage) requires schemaVersion 2 and capabilityApi 1.602 or newer";
   // A condition kept on only while a sheet value reads above zero, 1.600.
   if (
     !declaresApi(600) &&

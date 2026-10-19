@@ -11774,7 +11774,9 @@ const combatLevelSchema = z
       .max(12)
       .optional(),
     /** Its save effects count only on a save against something its holder can see, and a save with
-     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
+     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". And its
+     *  `attacks-against-disadvantage` only on an attack by somebody who can see its holder
+     *  (Capability API 1.602): a Robe of Scintillating Colors' "creatures that can see you". */
     whenSeen: z.literal(true).optional(),
     checkFloor: checkFloorSchema.optional(),
     /** Once on each of its holder's turns, after a weapon attack at one creature, the same weapon may
@@ -12996,7 +12998,7 @@ const combatConditionSchema = z
      *  and what others put on them that runs on those others' turns stops as well: every condition but
      *  this one keeps its rounds, and no harm or save of any comes. This one still runs on its own
      *  clock where that is its source's, and ends as it says (`endsWhen: ["damaged"]`, a dispel). Pair it with
-     *  `effects` such as `invisible` for what else the spell does. */
+     *  `unseen` for the invisibility the spell gives. */
     stasis: z.literal(true).optional(),
     /** What its holder understands while it holds (Capability API 1.595), whatever they speak:
      *  `none`, nothing (5e's Feeblemind: no one understands them either), or `all`, every language
@@ -13134,7 +13136,9 @@ const combatConditionSchema = z
       .max(12)
       .optional(),
     /** Its save effects count only on a save against something its holder can see, and a save with
-     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". */
+     *  no source at all (Capability API 1.364): Danger Sense's "effects that you can see". And its
+     *  `attacks-against-disadvantage` only on an attack by somebody who can see its holder
+     *  (Capability API 1.602): a Robe of Scintillating Colors' "creatures that can see you". */
     whenSeen: z.literal(true).optional(),
     checkFloor: checkFloorSchema.optional(),
     /** Once on each of its holder's turns, after a weapon attack at one creature, the same weapon may
@@ -17640,9 +17644,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (
         entry.whenSeen &&
         !entry.effects.some((one) => (RULESET_SAVE_SCOPED_EFFECTS as readonly string[]).includes(one)) &&
+        !entry.effects.includes("attacks-against-disadvantage") &&
         !entry.modifiers?.some((one) => one.to === "saves")
       )
-        issue([...path, "whenSeen"], '"whenSeen" scopes save effects or modifiers to saves, so it needs one beside it');
+        issue(
+          [...path, "whenSeen"],
+          '"whenSeen" scopes save effects, modifiers to saves or attacks-against-disadvantage, so it needs one beside it',
+        );
     };
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {

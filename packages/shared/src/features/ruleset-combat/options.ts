@@ -3870,9 +3870,18 @@ export function rulesetAttackMode(
     !!distance?.advantage ||
     blindSide ||
     (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target));
+  // Only from an attacker who sees them, where every source of it says so (1.602): a Robe of
+  // Scintillating Colors.
+  const againstWhenSeen =
+    !!where &&
+    theirs.has("attacks-against-disadvantage") &&
+    rulesetActiveConditions(definition, combat, target, where.state)
+      .filter((entry) => entry.effects.includes("attacks-against-disadvantage"))
+      .every((entry) => entry.whenSeen) &&
+    !rulesetCanSee(definition, where.state, actor, target);
   const disadvantage =
     own.has("own-attacks-disadvantage") ||
-    theirs.has("attacks-against-disadvantage") ||
+    (theirs.has("attacks-against-disadvantage") && !againstWhenSeen) ||
     !!target.flags.dodging ||
     !!distance?.disadvantage ||
     blindStrike;

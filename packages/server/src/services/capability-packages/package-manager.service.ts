@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A fall made safe only up to a height, or but for some conditions (1.597): 5e's Cat's Grace. */
+function carriesSomeFallsSafe597(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSomeFallsSafe597(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.fallsSafely)) return true;
+  return featureValues(record).some((one) => carriesSomeFallsSafe597(one, depth + 1));
+}
+
 /** A sense that sees things as they truly are (1.596): 5e's Witch Sight. */
 function carriesSeesTrue596(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8105,6 +8115,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A fall made safe only up to a height, or but for some conditions, 1.597.
+  if (
+    !declaresApi(597) &&
+    (carriesSomeFallsSafe597(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSomeFallsSafe597(document)))
+  )
+    return "A ruleset with a fall made safe only up to a height (fallsSafely.upTo) requires schemaVersion 2 and capabilityApi 1.597 or newer";
   // A sense that sees things as they truly are, 1.596.
   if (
     !declaresApi(596) &&

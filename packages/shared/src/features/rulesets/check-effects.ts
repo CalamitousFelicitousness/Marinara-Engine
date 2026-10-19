@@ -109,7 +109,7 @@ export interface RulesetCheckSource {
   /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
   /** A fall does its holder no harm (Capability API 1.424 on an item; a condition's since 1.124). */
-  fallsSafely?: true;
+  fallsSafely?: true | Readonly<{ upTo: number; unless?: readonly string[] }>;
   /** Conditions on its holder it holds off, not ends (Capability API 1.424 on an item). */
   suppresses?: readonly string[];
   /** Hard going costs no more than plain ground (Capability API 1.436 on an item). */

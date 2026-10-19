@@ -540,7 +540,7 @@ try {
       }
       if (node.type === "object" && node.properties?.noDamageFrom) {
         conditions++;
-        assert.equal(node.properties.fallsSafely.const, true);
+        assert.ok(JSON.stringify(node.properties.fallsSafely).includes('"const":true'));
       }
       Object.values(node).forEach(visit);
     };

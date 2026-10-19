@@ -765,7 +765,17 @@ export function rulesetActiveConditions(
     ...(source.senses ? { senses: { ...source.senses } } : {}),
     ...(source.light ? { light: { ...source.light } } : {}),
     ...(source.alerts ? { alerts: source.alerts } : {}),
-    ...(source.fallsSafely ? { fallsSafely: true as const } : {}),
+    ...(source.fallsSafely
+      ? {
+          fallsSafely:
+            source.fallsSafely === true
+              ? (true as const)
+              : {
+                  upTo: source.fallsSafely.upTo,
+                  ...(source.fallsSafely.unless ? { unless: [...source.fallsSafely.unless] } : {}),
+                },
+        }
+      : {}),
     ...(source.suppresses ? { suppresses: [...source.suppresses] } : {}),
     ...(source.conditionImmunitiesFrom
       ? { conditionImmunitiesFrom: source.conditionImmunitiesFrom.map((ward) => ({ ...ward })) }

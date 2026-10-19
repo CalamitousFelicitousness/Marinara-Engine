@@ -8953,8 +8953,15 @@ function lessenFall(
 
 function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
   ctx.events.push({ type: "fell", targetId: target.id, levels });
-  if (rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.fallsSafely)) return;
   const elevation = ctx.combat.elevation;
+  // Safe from any fall, or from one no higher than its `upTo` while none of `unless` holds (1.597).
+  const active = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state);
+  const held = new Set(active.map((entry) => entry.condition));
+  const height = levels * (elevation?.levelHeight ?? 0);
+  const safe = active.some(({ fallsSafely: rule }) =>
+    rule === true ? true : !!rule && height <= rule.upTo && !rule.unless?.some((id) => held.has(id)),
+  );
+  if (safe) return;
   const falling = elevation?.falling;
   if (!elevation || !falling) return;
   const count = Math.min(falling.max, Math.floor((levels * elevation.levelHeight) / falling.per) * falling.dice.count);

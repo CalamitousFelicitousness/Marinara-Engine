@@ -89513,8 +89513,37 @@
                           "maximum": 10000
                         },
                         "fallsSafely": {
-                          "type": "boolean",
-                          "const": true
+                          "anyOf": [
+                            {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "upTo": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000
+                                },
+                                "unless": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "upTo"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
                         },
                         "suppresses": {
                           "type": "array",
@@ -91554,8 +91583,37 @@
                           "maximum": 10000
                         },
                         "fallsSafely": {
-                          "type": "boolean",
-                          "const": true
+                          "anyOf": [
+                            {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "upTo": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 100000
+                                },
+                                "unless": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "upTo"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
                         },
                         "suppresses": {
                           "type": "array",
@@ -93782,8 +93840,37 @@
                                 "maximum": 10000
                               },
                               "fallsSafely": {
-                                "type": "boolean",
-                                "const": true
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "upTo": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 100000
+                                      },
+                                      "unless": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "upTo"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
                               },
                               "suppresses": {
                                 "type": "array",
@@ -179349,8 +179436,37 @@
                 "additionalProperties": false
               },
               "fallsSafely": {
-                "type": "boolean",
-                "const": true
+                "anyOf": [
+                  {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "upTo": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 100000
+                      },
+                      "unless": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "upTo"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
               },
               "budgets": {
                 "type": "array",

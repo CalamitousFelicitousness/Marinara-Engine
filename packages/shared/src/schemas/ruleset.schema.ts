@@ -11838,6 +11838,25 @@ const combatConditionDelaysBase = z
 export type RulesetConditionDelays = z.infer<typeof combatConditionDelaysBase>;
 const combatConditionDelaysSchema: z.ZodType<RulesetConditionDelays, z.ZodTypeDef, unknown> = combatConditionDelaysBase;
 
+/** A fall that does its holder no harm (1.124), or only one no higher than `upTo`, in the ruleset's
+ *  distance, while they hold none of `unless` (Capability API 1.597): 5e's Cat's Grace, `{ "upTo": 20,
+ *  "unless": ["incapacitated"] }`. */
+export type RulesetFallsSafely = true | { upTo: number; unless?: string[] };
+const fallsSafelySchema: z.ZodType<RulesetFallsSafely, z.ZodTypeDef, unknown> = z.union([
+  z.literal(true),
+  z
+    .object({
+      upTo: z.number().finite().gt(0).max(100000),
+      unless: z
+        .array(sheetId)
+        .min(1)
+        .max(8)
+        .refine((ids) => new Set(ids).size === ids.length, { message: "Each condition is named once" })
+        .optional(),
+    })
+    .strict(),
+]);
+
 /** A sense that sees where eyes cannot (1.178). */
 export interface RulesetCombatSense {
   id: string;
@@ -13007,8 +13026,9 @@ const combatConditionSchema = z
      *  at its user, its numbers as they were (Capability API 1.470). */
     turns: turnsSchema.optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.124):
-     *  5e's Feather Fall. */
-    fallsSafely: z.literal(true).optional(),
+     *  5e's Feather Fall. Or only by a fall no higher than `upTo`, while they hold none of `unless`
+     *  (Capability API 1.597): Cat's Grace. */
+    fallsSafely: fallsSafelySchema.optional(),
     /**
      * The action economy while it holds (Capability API 1.76, combat C6d), as Haste and Slow change it:
      * - `budgets`: how many of a turn budget its holder gets, more or fewer, never below none;
@@ -13313,8 +13333,8 @@ const rulesetItemEffectObjectSchema = z
      *  ruleset's distance: the showcase's Wind-Chime, `15`. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.424):
-     *  5e's Ring of Feather Falling. */
-    fallsSafely: z.literal(true).optional(),
+     *  5e's Ring of Feather Falling. Or only some falls, as a condition's (Capability API 1.597). */
+    fallsSafely: fallsSafelySchema.optional(),
     /** Conditions on its holder it holds off, not ends (Capability API 1.424): what they do stops and
      *  their clocks run on, and they hold again once it is taken off. 5e's Periapt of Health, with
      *  the same diseases in `conditionImmunities` so no new one is caught. It may name a kind of
@@ -17599,6 +17619,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
+      // What keeps a fall from being safe (1.597): conditions the sheet knows.
+      if (typeof entry.fallsSafely === "object") {
+        entry.fallsSafely.unless?.forEach((id, index) => {
+          if (!def.sheet.live.conditions.some((one) => one.id === id))
+            issue([...path, "fallsSafely", "unless", index], `Unknown condition "${id}"`);
+        });
+      }
       // The abilities it changes (1.462), at most 12, never by nothing.
       const changed = Object.entries(entry.abilities ?? {});
       if (changed.length > 12) issue([...path, "abilities"], "A condition changes at most 12 abilities");

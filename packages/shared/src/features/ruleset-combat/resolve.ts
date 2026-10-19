@@ -9730,6 +9730,25 @@ function callCreatures(
     }
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+  // Or unless their caller meets a requirement (1.558): a Horn of Valhalla's.
+  const unless = action.calls.hostileUnless;
+  if (unless && !hostile) {
+    const met = actor.sheet
+      ? resolveRulesetValueRef(
+          ctx.definition,
+          actor.sheet.build,
+          { derived: unless.derived },
+          evaluateRulesetSheetLive(
+            ctx.definition,
+            actor.sheet.build,
+            actor.sheet.live,
+            actor.sheet.items,
+            actor.abilityConditions,
+          ),
+        )
+      : Number.NaN;
+    if (!(met >= unless.atLeast)) hostile = true;
+  }
   // Come against whoever called them (1.506): the other side's from the start, never theirs.
   if (hostile && ids.length) {
     for (const id of ids) {

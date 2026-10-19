@@ -5993,6 +5993,13 @@ export const catalogCallsSchema = z
     /** They leave once their caller is farther from them than this, in the ruleset's distance
      *  (Capability API 1.557): a treant's animated trees, "more than 120 feet from the tree". */
     leash: z.number().finite().gt(0).max(10000).optional(),
+    /** They come against their user, on the other side, unless the user's derived value `derived`
+     *  is at least `atLeast` (Capability API 1.558): a Horn of Valhalla's requirement, "If you blow
+     *  the horn without meeting its requirement, the summoned berserkers attack you". */
+    hostileUnless: z
+      .object({ derived: sheetId, atLeast: z.number().finite().min(-1000).max(1000) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -21780,6 +21787,11 @@ export function rulesetCatalogEntryIssues(
     const commanded = (mechanics?.calls as { commandedWith?: string } | undefined)?.commandedWith;
     if (commanded !== undefined && !budgets?.has(commanded)) {
       add([index, "mechanics", "calls", "commandedWith"], `Unknown budget "${commanded}"`);
+    }
+    // The requirement its user meets or is attacked by those it calls (1.558).
+    const unless = (mechanics?.calls as RulesetCatalogCalls | undefined)?.hostileUnless;
+    if (unless && !names.derived.has(unless.derived)) {
+      add([index, "mechanics", "calls", "hostileUnless", "derived"], `Unknown derived value "${unless.derived}"`);
     }
     // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.242).
     // A hit answered only when a strike from a budget the fight declares made it (1.248).

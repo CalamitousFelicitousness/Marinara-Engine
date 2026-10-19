@@ -50639,6 +50639,27 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "hostileUnless": {
+                          "type": "object",
+                          "properties": {
+                            "derived": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "atLeast": {
+                              "type": "number",
+                              "minimum": -1000,
+                              "maximum": 1000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "derived",
+                            "atLeast"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -110877,6 +110898,27 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "hostileUnless": {
+                              "type": "object",
+                              "properties": {
+                                "derived": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "atLeast": {
+                                  "type": "number",
+                                  "minimum": -1000,
+                                  "maximum": 1000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "derived",
+                                "atLeast"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -130967,6 +131009,27 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "hostileUnless": {
+                                    "type": "object",
+                                    "properties": {
+                                      "derived": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeast": {
+                                        "type": "number",
+                                        "minimum": -1000,
+                                        "maximum": 1000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "derived",
+                                      "atLeast"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -151064,6 +151127,27 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "hostileUnless": {
+                                    "type": "object",
+                                    "properties": {
+                                      "derived": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeast": {
+                                        "type": "number",
+                                        "minimum": -1000,
+                                        "maximum": 1000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "derived",
+                                      "atLeast"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },

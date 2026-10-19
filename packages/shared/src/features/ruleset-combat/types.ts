@@ -1256,6 +1256,8 @@ export interface RulesetCombatAction {
     commandedWith?: string;
     /** Images, not creatures (1.515): Mislead's double. */
     illusion?: true;
+    /** They come against their caller unless its derived value is at least this (1.558). */
+    hostileUnless?: { derived: string; atLeast: number };
     /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
     leash?: number;
     /** They leave as soon as their caller is out (1.393). */

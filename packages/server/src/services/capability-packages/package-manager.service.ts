@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Called creatures that come against their user unless it meets a requirement (1.558): a Horn of
+ *  Valhalla. */
+function carriesHostileUnless558(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHostileUnless558(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.hostileUnless !== undefined) return true;
+  return featureValues(record).some((one) => carriesHostileUnless558(one, depth + 1));
+}
+
 /** Called creatures leashed to their caller, or sent away on a budget of its own (1.557): a
  *  treant's animated trees. */
 function carriesCallLeash557(value: unknown, depth = 0): boolean {
@@ -7628,6 +7639,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Called creatures that come against their user unless it meets a requirement, 1.558.
+  if (
+    !declaresApi(558) &&
+    (carriesHostileUnless558(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHostileUnless558(document)))
+  ) {
+    return "A ruleset whose called creatures come against their user unless it meets a requirement (calls.hostileUnless) requires schemaVersion 2 and capabilityApi 1.558 or newer";
+  }
   // Called creatures leashed to their caller, or sent away on a budget of its own, 1.557.
   if (
     !declaresApi(557) &&

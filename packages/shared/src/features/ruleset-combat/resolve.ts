@@ -571,6 +571,8 @@ function begin(
       syncControl(ctx);
       // Off once its source cannot keep it up, or its holder cannot hear them (1.531): Enthrall.
       endUnkeptConditions(ctx);
+      // Given way as its holder first sees somebody (1.585): a Philter of Love.
+      firstSightings(ctx);
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
         ctx.events.push({
@@ -613,6 +615,35 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
         // Or its source holding none of these (1.564): a swarm swayed only while its piper plays.
         (rule.lacks && !rulesetCombatConditions(ctx.definition, source).some((id) => rule.lacks!.includes(id)));
       if (ends) removeCondition(ctx, holder, entry.condition, "expired", "endsWhenSource");
+    }
+  }
+}
+
+/** A condition that gives way as its holder first sees another creature (1.585), to what its
+ *  `onFirstSeen` puts on, from the nearest of those they see now: a Philter of Love's charm. */
+function firstSightings(ctx: RulesetCombatContext): void {
+  const rules = new Map(
+    (ctx.combat.conditions ?? []).filter((one) => one.onFirstSeen).map((one) => [one.condition, one.onFirstSeen!]),
+  );
+  if (rules.size === 0) return;
+  for (const holder of ctx.state.combatants) {
+    if (!rulesetCombatStanding(holder)) continue;
+    for (const entry of [...holder.tracked]) {
+      const rule = rules.get(entry.condition);
+      if (!rule || !holder.tracked.includes(entry)) continue;
+      const seen = ctx.state.combatants
+        .filter(
+          (one) =>
+            one.id !== holder.id && rulesetCombatStanding(one) && rulesetCanSee(ctx.definition, ctx.state, holder, one),
+        )
+        .sort(
+          (a, b) =>
+            (ctx.state.board ? rulesetCombatantDistance(ctx.state, holder, a) : 0) -
+            (ctx.state.board ? rulesetCombatantDistance(ctx.state, holder, b) : 0),
+        )[0];
+      if (!seen) continue;
+      removeCondition(ctx, holder, entry.condition, "spent");
+      applyConditionId(ctx, holder, rule.applies.condition, rule.applies, { sourceId: seen.id });
     }
   }
 }

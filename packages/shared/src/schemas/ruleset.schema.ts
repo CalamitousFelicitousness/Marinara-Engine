@@ -13026,6 +13026,20 @@ const combatConditionSchema = z
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
      *  has no difficulty) and an instant one would never come off. */
     onEnd: conditionOnEndSchema.optional(),
+    /** As its holder first sees another creature (Capability API 1.585), it gives way to what
+     *  `applies` puts on, with that creature its source: the nearest, where they see several at once.
+     *  5e's Philter of Love, "The next time you see a creature within 10 minutes ... you become
+     *  charmed by that creature for 1 hour", a 100-round condition with `onFirstSeen: { "applies":
+     *  { "condition": "charmed", "duration": { "rounds": 600 } } }`. */
+    onFirstSeen: z
+      .object({
+        applies: catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
+          message: "What it gives way to lasts some rounds",
+          path: ["duration"],
+        }),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -17762,6 +17776,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           );
         }
       });
+      // What it gives way to at first sight (1.585): a condition the ruleset has, never itself.
+      const sighted = entry.onFirstSeen?.applies;
+      if (sighted) {
+        if (!conditions.has(sighted.condition))
+          issue([...path, "onFirstSeen", "applies", "condition"], `Unknown condition "${sighted.condition}"`);
+        else if (sighted.condition === entry.condition)
+          issue([...path, "onFirstSeen", "applies", "condition"], "A condition does not give way to itself");
+        if (sighted.when)
+          issue([...path, "onFirstSeen", "applies", "when"], 'What it gives way to has no sheet to read "when" off');
+      }
       if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
       if (entry.delays) {
         checkBudget(entry.delays.budget, [...path, "delays", "budget"]);

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that gives way as its holder first sees somebody (1.585): a Philter of Love. */
+function carriesFirstSeen585(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFirstSeen585(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.onFirstSeen !== undefined) return true;
+  return featureValues(record).some((one) => carriesFirstSeen585(one, depth + 1));
+}
+
 /** A zone lasting past 1000 rounds, closed by its caster, or spreading (1.584): an Eversmoking Bottle,
  *  an Oil of Slipperiness. */
 function carriesLongZones584(value: unknown, depth = 0): boolean {
@@ -7955,6 +7965,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that gives way as its holder first sees somebody, 1.585.
+  if (
+    !declaresApi(585) &&
+    (carriesFirstSeen585(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFirstSeen585(document)))
+  )
+    return "A ruleset with a condition that gives way as its holder first sees somebody (onFirstSeen) requires schemaVersion 2 and capabilityApi 1.585 or newer";
   // A zone lasting past 1000 rounds, closed by its caster, or spreading, 1.584.
   if (
     !declaresApi(584) &&

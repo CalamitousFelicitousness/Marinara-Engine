@@ -281,6 +281,7 @@
   "avatars.setup.title": "Avatars",
   "avatars.stage.arrange": "Arrange avatars",
   "avatars.stage.avatarLabel": "{{name}}'s avatar",
+  "avatars.stage.done": "Done",
   "avatars.stage.finishPlacing": "Finish placing avatar",
   "avatars.stage.moveHelp": "Drag to move, or focus the avatar and use arrow keys. Hold Shift to move further.",
   "avatars.stage.size": "{{name}}'s avatar size",

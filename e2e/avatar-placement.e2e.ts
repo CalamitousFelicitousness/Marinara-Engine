@@ -46,6 +46,7 @@ for (const mode of ["roleplay", "game"] as const) {
     page,
     request,
     isMobile,
+    browserName,
   }, info) => {
     test.setTimeout(120_000);
     const created = await request.post("/api/characters", { data: { data: { name: "Maukie" } } });
@@ -74,7 +75,10 @@ for (const mode of ["roleplay", "game"] as const) {
       });
       expect(saved.ok(), await saved.text()).toBeTruthy();
       const message = await request.post(`/api/chats/${chatId}/messages`, {
-        data: { role: "assistant", content: "The workshop is quiet." },
+        data: {
+          role: "assistant",
+          content: mode === "game" ? "The workshop is quiet.\n\nA bell rings outside." : "The workshop is quiet.",
+        },
       });
       expect(message.ok()).toBeTruthy();
       await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
@@ -93,6 +97,7 @@ for (const mode of ["roleplay", "game"] as const) {
         trackerPanelEnabled: false,
         trackerPanelOpen: false,
         gameInstantTextReveal: true,
+        gameMiddleMouseNav: mode === "game",
       });
       await page.addInitScript(
         ({ chatId, version }) => {
@@ -105,6 +110,8 @@ for (const mode of ["roleplay", "game"] as const) {
       const stage = page.locator("[data-avatar-stage]");
       const avatar = stage.locator(`[data-avatar-owner="${character.id}"]`);
       const canvas = avatar.getByRole("img", { name: "Maukie's avatar" });
+      const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
+      if (mode === "game") await expect(narration).toContainText("The workshop is quiet.");
       await expect(avatar).toHaveAttribute("data-avatar-kind", "vrm", { timeout: 60_000 });
       await expect
         .poll(() =>
@@ -125,7 +132,22 @@ for (const mode of ["roleplay", "game"] as const) {
       expect(before).not.toBeNull();
       const originalLeft = await avatar.evaluate((node: HTMLElement) => node.style.left);
       const start = { x: before!.x + before!.width / 2, y: before!.y + before!.height / 2 };
-      if (isMobile) {
+      if (isMobile && browserName === "chromium") {
+        const touch = await page.context().newCDPSession(page);
+        try {
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+          await expect(avatar).toHaveCSS("z-index", "40");
+          for (let step = 1; step <= 8; step += 1) {
+            await touch.send("Input.dispatchTouchEvent", {
+              type: "touchMove",
+              touchPoints: [{ x: start.x + (45 * step) / 8, y: start.y - (35 * step) / 8 }],
+            });
+          }
+          await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        } finally {
+          await touch.detach();
+        }
+      } else if (isMobile) {
         // Tap uses the emulated touchscreen/hit test; the following browser pointer events exercise a
         // held touch, which Playwright's cross-browser touchscreen API does not expose.
         await canvas.tap();
@@ -158,6 +180,11 @@ for (const mode of ["roleplay", "game"] as const) {
       await expect
         .poll(() => avatar.evaluate((node: HTMLElement) => Number.parseFloat(node.style.left)))
         .toBeLessThan(draggedLeft);
+      if (mode === "game") {
+        // The click released over the moving canvas must not reach Game's capture-phase background navigation.
+        await expect(narration).toContainText("The workshop is quiet.");
+        await expect(narration).not.toContainText("A bell rings outside.");
+      }
       const moved = await avatar.evaluate((node: HTMLElement) => ({ left: node.style.left, top: node.style.top }));
       const size = page.getByRole("slider", { name: "Maukie's avatar size" });
       await size.focus();
@@ -169,6 +196,24 @@ for (const mode of ["roleplay", "game"] as const) {
       await page.screenshot({ path: info.outputPath(`${mode}-arranging.png`) });
       await avatar.getByRole("button", { name: "Finish placing avatar" }).click();
       await expect(avatar).toHaveCSS("pointer-events", "none");
+      if (mode === "game") {
+        await expect(narration).toContainText("The workshop is quiet.");
+        const background = await page.evaluate(() => {
+          const skip =
+            'button,a,input,textarea,select,label,[role],[data-radix-popper-content-wrapper],[data-game-skip-bg-nav="true"]';
+          for (let y = 80; y < innerHeight - 80; y += 20) {
+            for (let x = 40; x < innerWidth - 40; x += 40) {
+              const target = document.elementFromPoint(x, y);
+              if (target && !target.closest(skip)) return { x, y };
+            }
+          }
+          return null;
+        });
+        expect(background, "Done restores background navigation outside the avatar controls").not.toBeNull();
+        if (isMobile) await page.touchscreen.tap(background!.x, background!.y);
+        else await page.mouse.click(background!.x, background!.y);
+        await expect(narration).toContainText("A bell rings outside.");
+      }
       await page.reload();
       await expect(avatar).toHaveAttribute("data-avatar-kind", "vrm", { timeout: 60_000 });
       await expect
@@ -180,6 +225,23 @@ for (const mode of ["roleplay", "game"] as const) {
         useUIStore.getState().setTheme("light");
       });
       await page.getByRole("button", { name: "Arrange avatars", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
+      const controlHeight = await page.evaluate(
+        () => `${Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 2.75}px`,
+      );
+      await expect(size).toHaveCSS("height", controlHeight);
+      await expect.poll(() => size.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      await expect
+        .poll(() =>
+          size.evaluate((node) => {
+            const style = getComputedStyle(node);
+            const accent = style.getPropertyValue("--marinara-chat-chrome-accent").trim();
+            return ["--range-thumb-color", "--range-fill-color"].every(
+              (property) => style.getPropertyValue(property).trim() === accent,
+            );
+          }),
+        )
+        .toBe(true);
       await page.screenshot({ path: info.outputPath(`${mode}-${isMobile ? "phone" : "desktop"}-restored.png`) });
     } finally {
       if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);

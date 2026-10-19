@@ -228,7 +228,7 @@ export function AvatarStage({
             className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-medium transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
           >
             {editing ? <Check size="1rem" /> : <Move size="1rem" />}
-            {editing ? t("lorebook.editor.batch.done") : t("avatars.stage.arrange")}
+            {editing ? t("avatars.stage.done") : t("avatars.stage.arrange")}
           </button>
           {editing && onScaleChange && (
             <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto border-t border-[var(--marinara-chat-chrome-button-border)] p-3">
@@ -245,14 +245,7 @@ export function AvatarStage({
                       step={0.05}
                       value={value}
                       onChange={(event) => onScaleChange(ownerId, Number(event.currentTarget.value))}
-                      style={
-                        {
-                          height: "2.75rem",
-                          "--range-thumb-color": "var(--marinara-chat-chrome-accent)",
-                          "--range-fill-color": "var(--marinara-chat-chrome-accent)",
-                        } as CSSProperties
-                      }
-                      className="w-44 max-w-full [&::-webkit-slider-thumb]:opacity-100! [&::-moz-range-thumb]:opacity-100!"
+                      className="h-11! w-44 max-w-full [--range-fill-color:var(--marinara-chat-chrome-accent)]! [--range-thumb-color:var(--marinara-chat-chrome-accent)]! [&::-webkit-slider-thumb]:opacity-100! [&::-moz-range-thumb]:opacity-100!"
                     />
                   </label>
                 );
@@ -426,6 +419,7 @@ function AvatarSlot({
     <div
       data-avatar-owner={owner.ownerId}
       data-avatar-kind={avatar.kind}
+      data-game-skip-bg-nav={editing ? "true" : undefined}
       className={`absolute -translate-x-1/2 -translate-y-full select-none ${editing ? "pointer-events-auto cursor-grab active:cursor-grabbing" : "pointer-events-none"}`}
       style={style}
       onPointerDown={onPointerDown}

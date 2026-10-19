@@ -39,6 +39,7 @@ import {
   raiseRulesetLiveAbilities,
   readRulesetLive,
   readRulesetWoundPenalty,
+  rulesetRecoverPicks,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "./live-state.js";
@@ -267,6 +268,15 @@ export function useRulesetItemOutsideFight(input: {
           label: facts?.restore?.pool ?? use.restore.pool,
           now,
         });
+      }
+    }
+    // Spent pools given back (1.603): a Pearl of Power's slot.
+    if (use.recovers) {
+      for (const pool of rulesetRecoverPicks(definition, user.build, live, use.recovers)) {
+        const now = write({ op: "restore", pool, amount: 1 });
+        if (now === undefined) continue;
+        const label = definition.sheet.live.pools.find((entry) => entry.id === pool)?.label ?? pool;
+        parts.push({ kind: "restore", amount: 1, rolls: [], label, now });
       }
     }
     // Abilities raised for good (1.463): a manual read, a tome studied.

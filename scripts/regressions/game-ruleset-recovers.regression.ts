@@ -161,6 +161,26 @@ try {
     assert.equal(plan.ok ? "ok" : plan.reason, "bad-pool", "above the most it recovers");
   }
 
+  // ── A count caps how many come back (1.603) ──
+  {
+    const counted = {
+      ...recovery,
+      mechanics: { ...recovery.mechanics, recovers: { ...recovery.mechanics.recovers, count: 1 } },
+    };
+    const plan = planRulesetUse(definition, build, live, { feats: [counted] } as never, {
+      op: "use",
+      name: "Arcane Recovery",
+      recover: [{ pool: "slots_1", count: 2 }],
+    });
+    assert.match(plan.ok ? "ok" : plan.reason, /recovers 1 at most, not 2/);
+    const one = planRulesetUse(definition, build, live, { feats: [counted] } as never, {
+      op: "use",
+      name: "Arcane Recovery",
+      recover: [{ pool: "slots_1", count: 1 }],
+    });
+    assert.ok(one.ok, JSON.stringify(one));
+  }
+
   // ── The tag ──
   {
     const op = parseSheetCommandTagBody(`op="use" name="Arcane Recovery" recover="1st-level slots:2, slots_2"`).op;

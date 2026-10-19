@@ -929,6 +929,8 @@ export interface RulesetCombatAction {
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   /** `overMax` (1.252): it may go past the pool's maximum, as Font of Magic's slots do. */
   restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };
+  /** Spent pools of its user's sheet it gives back by itself (1.603): an item's `recovers`. */
+  recovers?: { group: string; upTo: RulesetValueRef; most?: number; count?: number };
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.176); with
    *  `from`, only what a creature that is that put on (1.236). */
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs; chosen?: true };

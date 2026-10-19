@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A use that gives back spent pools by itself, so many of them (1.603): 5e's Pearl of Power. */
+function carriesRecoverCount603(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRecoverCount603(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.recovers)?.count !== undefined) return true;
+  return featureValues(record).some((one) => carriesRecoverCount603(one, depth + 1));
+}
+
 /** Attacks against its holder at disadvantage only from those who see them (1.602): 5e's Robe of
  *  Scintillating Colors. */
 function carriesSeenAgainst602(value: unknown, depth = 0): boolean {
@@ -8167,6 +8177,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A use that gives back spent pools by itself, so many of them, 1.603.
+  if (
+    !declaresApi(603) &&
+    (carriesRecoverCount603(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRecoverCount603(document)))
+  )
+    return "A ruleset whose uses give back spent pools by count (recovers.count) requires schemaVersion 2 and capabilityApi 1.603 or newer";
   // Attacks against its holder at disadvantage only from those who see them, 1.602.
   if (
     !declaresApi(602) &&

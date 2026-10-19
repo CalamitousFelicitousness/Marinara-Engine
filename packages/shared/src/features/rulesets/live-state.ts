@@ -27,6 +27,7 @@ import {
   type RulesetSheetBuild,
   type RulesetTrackKind,
   type RulesetTrackLevel,
+  type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
@@ -2031,8 +2032,52 @@ export function planRulesetUse(
     if (levels > upTo) {
       return { ok: false, reason: `bad-amount: ${entry.label} recovers ${upTo} levels at most, not ${levels}` };
     }
+    // As many pools in all as it says, at most (1.603).
+    const total = op.recover.reduce((sum, one) => sum + one.count, 0);
+    if (recovers.count !== undefined && total > recovers.count) {
+      return { ok: false, reason: `bad-amount: ${entry.label} recovers ${recovers.count} at most, not ${total}` };
+    }
   }
   return { ok: true, label: entry.label, steps };
+}
+
+/** What an item's `recovers` gives back by itself (1.603): one at a time, the highest-level spent
+ *  pool of its group no higher than `most` whose level still fits under `upTo`, up to `count` of
+ *  them. A Pearl of Power's one slot of 3rd level or lower. Pool keys, one per pool given back. */
+export function rulesetRecoverPicks(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  recovers: { group: string; upTo: RulesetValueRef; most?: number; count?: number },
+): string[] {
+  const group = definition.sheet.live.pools.filter((pool) => pool.group === recovers.group);
+  const levelOf = (id: string): number => {
+    const pool = group.find((one) => one.id === id);
+    if (!pool) return 0;
+    if (pool.level) return Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, pool.level)));
+    return group.indexOf(pool) + 1;
+  };
+  const resolved = readRulesetLive(definition, build, stored).pools.filter(
+    (pool) => !pool.listId && group.some((one) => one.id === pool.key),
+  );
+  const spent = new Map(resolved.map((pool) => [pool.key, Math.max(0, pool.max - pool.value)]));
+  let room = Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, recovers.upTo)));
+  const picks: string[] = [];
+  for (let one = 0; one < (recovers.count ?? 1); one++) {
+    const best = resolved
+      .filter((pool) => {
+        const level = levelOf(pool.key);
+        return (
+          (spent.get(pool.key) ?? 0) > 0 && level <= room && (recovers.most === undefined || level <= recovers.most)
+        );
+      })
+      .sort((a, b) => levelOf(b.key) - levelOf(a.key))[0];
+    if (!best) break;
+    picks.push(best.key);
+    spent.set(best.key, spent.get(best.key)! - 1);
+    room -= levelOf(best.key);
+  }
+  return picks;
 }
 
 type RestDiceList = NonNullable<RulesetDefinition["rests"][number]["dice"]>;

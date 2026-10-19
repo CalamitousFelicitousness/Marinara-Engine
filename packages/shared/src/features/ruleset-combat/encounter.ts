@@ -2774,6 +2774,8 @@ function itemUseMechanics(
   if (action.endsLayers && use.endsLayersAs) action.endsLayers = { ...action.endsLayers, as: use.endsLayersAs };
   const restored = amountOf(use.restore?.amount);
   if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+  // Spent pools it gives back by itself (1.603): a Pearl of Power.
+  if (use.recovers?.count !== undefined) action.recovers = structuredClone(use.recovers);
   // What it puts on lasts while the item's charges do (1.570): the Boots of Speed.
   if (use.chargesPerRound) action.chargesPerRound = true;
   return action;

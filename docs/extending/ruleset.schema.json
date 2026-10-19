@@ -57412,6 +57412,11 @@
                           "minimum": 1,
                           "maximum": 100
                         },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 20
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -119748,6 +119753,11 @@
                               "minimum": 1,
                               "maximum": 100
                             },
+                            "count": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -140675,6 +140685,11 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
                                   },
                                   "$comment": {}
                                 },
@@ -161609,6 +161624,11 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 20
                                   },
                                   "$comment": {}
                                 },

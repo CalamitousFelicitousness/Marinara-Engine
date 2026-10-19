@@ -7082,12 +7082,16 @@ const catalogMechanicsObject = z
      *  to no more than `upTo` read off their sheet, none above level `most` (Capability API 1.357):
      *  5e's Arcane Recovery and Natural Recovery, "a combined level that is equal to or less than half
      *  your wizard level (rounded up), and none of the slots can be 6th level or higher". A pool's
-     *  level is its own `level`, else its place in the group. Named in the use as `recover`. */
+     *  level is its own `level`, else its place in the group. Named in the use as `recover`. `count`
+     *  (Capability API 1.603) is how many spent pools it gives back in all, at most; on an item's
+     *  use it is required, and the use gives back the highest spent ones itself: 5e's Pearl of
+     *  Power, `{ "group": "slots", "upTo": { "const": 3 }, "most": 3, "count": 1 }`. */
     recovers: z
       .object({
         group: sheetId,
         upTo: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
         most: z.number().int().min(1).max(100).optional(),
+        count: z.number().int().min(1).max(20).optional(),
       })
       .strict()
       .optional(),
@@ -10541,6 +10545,13 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     // Giving back is help: a use aimed to harm restores nobody's pool.
     if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
       issue("restore", "A restore is on a use that helps, a heal or a buff");
+    }
+    // And giving back spent pools (1.603), its user's own, as many as it says.
+    if (use.recovers && (use.kind !== "buff" || use.targets !== "self")) {
+      issue("recovers", 'Giving back spent pools is a "buff" on its user, targets "self"');
+    }
+    if (use.recovers && use.recovers.count === undefined) {
+      issue("recovers", "An item's use says how many spent pools it gives back, as count");
     }
     // As is raising an ability (1.463), and only its own user's.
     if (use.raises && (use.kind !== "buff" || use.targets !== "self")) {
@@ -20735,6 +20746,15 @@ function useIssues(
     if (!pool) add([...at, "restore", "pool"], `Unknown pool "${use.restore.pool}"`);
     else if (health && "pool" in health && health.pool === pool.id) {
       add([...at, "restore", "pool"], "Health comes back with a heal, not a restore");
+    }
+  }
+  // What it gives back by itself (1.603): a pool group the sheet has, and a budget its sheet reads.
+  if (use.recovers) {
+    if (!definition.sheet.live.pools.some((pool) => pool.group === use.recovers!.group))
+      add([...at, "recovers", "group"], `Unknown pool group "${use.recovers.group}"`);
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    for (const found of rulesetValueRefIssues(use.recovers.upTo, names, names.derived, false)) {
+      add([...at, "recovers", "upTo", found.key], found.message);
     }
   }
   if (use.toHit && !use.attackRoll) add([...at, "toHit"], "A to-hit is for a use that rolls to hit");

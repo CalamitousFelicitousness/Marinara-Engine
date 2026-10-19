@@ -28,6 +28,7 @@ import {
   evaluateRulesetSheetLive,
   readRulesetLive,
   rulesetLiveWithDaySave,
+  rulesetRecoverPicks,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -15728,6 +15729,11 @@ function resolveActionBodyIn(
         flat: rolled.flat,
         amount: rolled.total,
       });
+    }
+    // Spent pools given back by itself (1.603): a Pearl of Power's slot.
+    if (action.recovers && target.sheet) {
+      for (const pool of rulesetRecoverPicks(ctx.definition, target.sheet.build, target.sheet.live, action.recovers))
+        restorePool(ctx, target, pool, { sourceId: actor.id, rolls: [], flat: 1, amount: 1 });
     }
     if (restore && action.restore) {
       const rolled = restore();

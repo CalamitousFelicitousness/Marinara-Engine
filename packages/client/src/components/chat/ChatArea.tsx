@@ -112,8 +112,10 @@ import {
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
+  TTS_AUTOPLAY_VOICE_EVENT,
   type TTSAutoplayMessage,
   type TTSAutoplayMessageReadyDetail,
+  type TTSAutoplayVoiceDetail,
 } from "../../lib/tts-autoplay";
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, type ChatScrollToBottomDetail } from "../../lib/chat-scroll-events";
 import { CHAT_RESOURCE_AGENT_SETUP_EVENT } from "../../lib/chat-resource-drag";
@@ -3128,36 +3130,54 @@ const LocalChatArea = memo(function LocalChatArea({
         startedTTSAutoplayRevisionsRef.current.delete(oldest);
       }
 
-      const visualNovel =
-        mode === "roleplay" &&
-        (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
-      const requestsFor = async (message: TTSAutoplayMessage) => {
-        const fallbackSpeaker =
-          message.role === "narrator"
-            ? "Narrator"
-            : message.characterId
-              ? characterMap.get(message.characterId)?.name
-              : undefined;
-        let requests;
-        if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
-          try {
-            const extracted = await extractRoleplayTTSSpeakers({
-              message: filterTTSText(message.content, cfg),
-              group: getChatDisplayName(chat) || characterNames.join(", "),
-              user: personaInfo?.name || "User",
-              characters: characterNames,
-              messageAuthor: message.characterId ? characterMap.get(message.characterId)?.name : undefined,
-              debugMode: useUIStore.getState().debugMode,
-            });
-            requests = buildExtractedRoleplayTTSVoiceRequests(
-              extracted.segments,
-              cfg,
-              fallbackSpeaker,
-              message.characterId,
-              resolveTTSCharacterId,
-            );
-          } catch (error) {
-            console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+      // Avatars hold their talking and moods for the voice until this reading ends, however it ends.
+      const announceVoice = (pending: boolean) =>
+        window.dispatchEvent(
+          new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
+            detail: { chatId: targetChatId, messageId: lastMsg.id, pending },
+          }),
+        );
+      announceVoice(true);
+      try {
+        const visualNovel =
+          mode === "roleplay" &&
+          (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
+        const requestsFor = async (message: TTSAutoplayMessage) => {
+          const fallbackSpeaker =
+            message.role === "narrator"
+              ? "Narrator"
+              : message.characterId
+                ? characterMap.get(message.characterId)?.name
+                : undefined;
+          let requests;
+          if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
+            try {
+              const extracted = await extractRoleplayTTSSpeakers({
+                message: filterTTSText(message.content, cfg),
+                group: getChatDisplayName(chat) || characterNames.join(", "),
+                user: personaInfo?.name || "User",
+                characters: characterNames,
+                messageAuthor: message.characterId ? characterMap.get(message.characterId)?.name : undefined,
+                debugMode: useUIStore.getState().debugMode,
+              });
+              requests = buildExtractedRoleplayTTSVoiceRequests(
+                extracted.segments,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            } catch (error) {
+              console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+              requests = buildTTSVoiceRequests(
+                message.content,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            }
+          } else {
             requests = buildTTSVoiceRequests(
               message.content,
               cfg,
@@ -3166,49 +3186,43 @@ const LocalChatArea = memo(function LocalChatArea({
               resolveTTSCharacterId,
             );
           }
-        } else {
-          requests = buildTTSVoiceRequests(
-            message.content,
-            cfg,
-            fallbackSpeaker,
-            message.characterId,
-            resolveTTSCharacterId,
-          );
-        }
-        return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
-      };
-      // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
-      // prepared at once so playback doesn't wait one round trip per part.
-      const parts = await Promise.all(
-        [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
-      );
+          return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
+        };
+        // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
+        // prepared at once so playback doesn't wait one round trip per part.
+        const parts = await Promise.all(
+          [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
+        );
 
-      const currentGeneration = ttsGenerationRef.current;
-      const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
-      if (
-        useChatStore.getState().activeChatId !== targetChatId ||
-        (currentGeneration !== null && currentGeneration !== generationAtStart) ||
-        (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
-      )
-        return;
-      const chunks = parts.flatMap(({ message, requests }) =>
-        requests.map((_request, index) => ({ messageId: message.id, requests, index })),
-      );
-      if (chunks.length === 0) return;
+        const currentGeneration = ttsGenerationRef.current;
+        const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
+        if (
+          useChatStore.getState().activeChatId !== targetChatId ||
+          (currentGeneration !== null && currentGeneration !== generationAtStart) ||
+          (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
+        )
+          return;
+        const chunks = parts.flatMap(({ message, requests }) =>
+          requests.map((_request, index) => ({ messageId: message.id, requests, index })),
+        );
+        if (chunks.length === 0) return;
 
-      await ttsService.speakSequence(
-        parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
-        lastMsg.id,
-        {
-          chatId: targetChatId,
-          progressive: cfg.progressivePlayback,
-          volume: ttsLineVolume / 100,
-          onChunkStart: (_request, index) => {
-            const chunk = chunks[index];
-            if (chunk) notifyRoleplayTTSParagraph(targetChatId, chunk.messageId, chunk.requests, chunk.index);
+        await ttsService.speakSequence(
+          parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
+          lastMsg.id,
+          {
+            chatId: targetChatId,
+            progressive: cfg.progressivePlayback,
+            volume: ttsLineVolume / 100,
+            onChunkStart: (_request, index) => {
+              const chunk = chunks[index];
+              if (chunk) notifyRoleplayTTSParagraph(targetChatId, chunk.messageId, chunk.requests, chunk.index);
+            },
           },
-        },
-      );
+        );
+      } finally {
+        announceVoice(false);
+      }
     },
     [
       characterMap,

@@ -124,6 +124,8 @@ Avatars react on their own; there is nothing to set up for this part.
 - The face goes back to calm only after two calm sentences in a row.
 - About four seconds after the reply ends, the face relaxes back to calm.
 
+When text to speech reads the reply aloud, the faces follow the voice instead; see **When the reply is read aloud** below.
+
 A PNGTuber avatar with faces for [more feelings](#pngtuber-sprites) can also show the more specific feeling a sentence reads as, such as Amusement while it is happy. That face follows the same rules: it needs a clear reading and stays for at least two seconds, and a feeling without its own face shows its main feeling's face. Expression Engine and Game Master picks work the same way: when the avatar has no face with the picked name, such as `scared`, it shows that feeling's face, here Fear. 3D and mesh avatars show the six feelings only.
 
 **How the mood is read.** Your chat connection is not asked. Your chat text stays with your own Marinara Engine and is never sent to an outside service.
@@ -133,9 +135,17 @@ A PNGTuber avatar with faces for [more feelings](#pngtuber-sprites) can also sho
 
 **Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
 
-**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. Avatars work without it too.
+**The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. When text to speech reads the reply aloud, the pick shows when the voice finishes. Avatars work without it too.
 
 **Mouths.** From the text, the mouth moves only for dialogue (words in quotes, `[Name]:` lines and speaker tags), not for narration, at about the pace of speech. If the text appears faster than anyone could say it, the mouth speeds up and then skips ahead so it stays with the words on screen. With streaming off, a reply's dialogue is spoken within eight seconds. When text-to-speech plays a line, the voice moves the mouth instead, so a character's narration read in their voice moves their mouth too.
+
+**When the reply is read aloud.** With text to speech and **Auto-play** on in Roleplay, the voice usually starts a few seconds after the reply has appeared, so the avatar waits for it:
+
+- While the reply appears, the avatar blinks and moves as usual, but its mouth stays shut and its face doesn't change yet.
+- When the voice starts, the mouth moves with the voice, and the face changes as the voice reaches each sentence.
+- The face relaxes about four seconds after the voice ends, not after the text. Short pauses between lines don't relax it.
+- If the voice fails or doesn't start within a few seconds of the reply, the avatar plays the reply's faces and mouth from the text once. If it fails later, the avatar only shows the reply's last mood and then relaxes.
+- After 30 seconds without the voice, the avatar stops waiting. A voice that starts later still moves the mouth.
 
 **Body.** An avatar thinks from the moment you send until its first words, talks while its mouth moves, listens while someone else talks or while you type, and rests otherwise.
 
@@ -147,6 +157,7 @@ When text to speech reads a Roleplay reply, the avatar of the character who is s
 
 - **Who speaks:** the mouth that moves belongs to the character whose voice reads the line, the same character the **Voice Option** picks a voice for. When a reply has several speakers, each character's mouth moves only during their own lines. Lines read in the narrator's voice, and speakers who are not characters in the chat, move no mouth. With **Only read dialogues** off, a character's own narration is read in their voice, so their mouth moves for it too.
 - **Pause, stop and switching chats:** pausing or stopping the voice stops the mouth. If you switch to another chat while a reply is still being read, the avatars there stay still. Come back to the first chat while the voice is still playing, and its avatar picks the voice up again.
+- **Faces:** the face changes as the voice reaches each sentence, with **Auto-play** and with the **Speak** button, unless the Expression Engine has already picked the face for that reply.
 - **Volume:** the **Line volume** slider changes how loud the voice is, not how wide the mouth opens.
 - **Personas:** a persona's mouth does not move for your own messages, with or without text to speech.
 - **Game Mode:** Game narration plays through Game Mode's own audio, so in Game Mode avatar mouths follow the text for now.

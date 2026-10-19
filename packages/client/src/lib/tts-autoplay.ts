@@ -15,6 +15,16 @@ export type TTSAutoplayMessageReadyDetail = {
   earlierMessages?: TTSAutoplayMessage[];
 };
 
+/** Auto-play is reading a reply (`pending: true`, sent before the voice loads) or has stopped reading it (`pending:
+ *  false`, sent however it ended: played, failed, had no lines, was stopped or superseded). Avatars wait for it. */
+export const TTS_AUTOPLAY_VOICE_EVENT = "marinara:tts-autoplay-voice";
+
+export type TTSAutoplayVoiceDetail = {
+  chatId: string;
+  messageId: string;
+  pending: boolean;
+};
+
 export function findLatestTTSAutoplayMessage<T extends TTSAutoplayMessage>(messages: readonly T[]): T | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const candidate = messages[index];

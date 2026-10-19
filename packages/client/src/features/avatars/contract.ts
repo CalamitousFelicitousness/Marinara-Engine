@@ -119,6 +119,8 @@ export interface AvatarAudioLevelSource {
   level(): number;
   /** Mouth shape guessed from the audio, when the source can tell. */
   viseme?(): AvatarViseme | null;
+  /** The text the voice is reading and how far through the clip it is (0..1), when the source knows. */
+  line?(): { text: string; progress: number } | null;
   isPlaying(): boolean;
 }
 
@@ -136,13 +138,17 @@ export interface AvatarDirectorOptions {
  *  that feed surface, also used by tests. The stage only creates it, sets participants, reads frames and
  *  disposes it. Roleplay faces come from the streaming classifier, Game faces from the Game Master's
  *  per-line expressions, and an Expression Engine pick, when present, is the final face after the reply.
- *  Lip sync follows the visible text while streaming (speech clock) and the audio level when TTS plays. */
+ *  Lip sync follows the visible text while streaming (speech clock) and the audio level when TTS plays. When
+ *  text-to-speech auto-play will read a Roleplay reply, the avatar waits for the voice instead: moods follow
+ *  the voice sentence by sentence, and the Expression Engine's pick shows after it. */
 export interface AvatarDirector {
   setParticipants(participants: readonly AvatarParticipant[]): void;
   pushStreamText(update: AvatarStreamUpdate): void;
   pushExpressionPicks(picks: readonly AvatarExpressionPick[]): void;
   pushGameLine(line: AvatarGameLine): void;
   setAudioSource(ownerId: string, source: AvatarAudioLevelSource | null): void;
+  /** Whether text-to-speech auto-play reads Roleplay replies in this chat (read when a reply starts). */
+  setVoiceAutoplay(on: boolean): void;
   setUserTyping(typing: boolean): void;
   /** The frame for one owner at `nowMs` (performance.now()). Cheap: called every frame per avatar. */
   frame(ownerId: string, nowMs: number): AvatarFrameInput;

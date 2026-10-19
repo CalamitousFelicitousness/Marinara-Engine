@@ -2,7 +2,8 @@
  * Avatar lip sync from text-to-speech (epic #7537, lane TTS):
  *   - a clip's loudness track opens the mouth on speech, keeps it shut on silence and low noise, opens fast,
  *     closes smoothly, and guesses a coarse mouth shape from how bright the sound is;
- *   - the real TTS service publishes a level source for the character whose voice reads each line, swaps it
+ *   - the real TTS service publishes a level source for the character whose voice reads each line (with the
+ *     line's text and how far through the clip the voice is, for the avatar's moods), swaps it
  *     between speakers, withdraws it on narration, pause, stop and chat switch, and attributes a reading to
  *     the chat it was requested in, even when the user switches chats while it loads or a stage mounts later;
  *   - the voice never passes through Web Audio: no AudioContext is created and playback is untouched, so the
@@ -240,6 +241,13 @@ try {
     element.currentTime = 0.3;
     assert.ok(dottore.level() > 0.9, "the level follows the playback position");
     assert.equal(dottore.viseme?.(), "ou");
+    // The 0.5 s clip at 0.3 s: its text, and how far through it the voice is, for the avatar's moods.
+    const line = dottore.line?.();
+    assert.equal(line?.text, "dottore", "the line is the text the clip reads");
+    assert.ok(Math.abs(line!.progress - 0.6) < 0.01, `progress follows the playback position (${line?.progress})`);
+    element.currentTime = 9;
+    assert.equal(dottore.line?.()?.progress, 1, "progress stops at the end of the clip");
+    element.currentTime = 0.3;
 
     element.ended = true;
     element.onended?.();
@@ -247,6 +255,7 @@ try {
     await until(() => events.length === 2, "the narrator's line starts");
     assert.deepEqual(events[1], ["dottore-id", null], "narration moves no mouth");
     assert.equal(dottore.level(), 0);
+    assert.equal(dottore.line?.(), null, "nor gives a line to a withdrawn source");
 
     element.ended = true;
     element.onended?.();

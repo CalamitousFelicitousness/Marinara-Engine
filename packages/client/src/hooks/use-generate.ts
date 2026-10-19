@@ -4131,6 +4131,24 @@ export function useGenerate() {
               }
               break;
             }
+            // A re-run Illustrator in Pictures and clips or Clips only makes a clip, as a fresh reply does.
+            case "video": {
+              const videoData = event.data as { characterName: string; messageId: string | null };
+              toast(
+                videoData.messageId
+                  ? translate("generation.video.sent", { name: videoData.characterName })
+                  : translate("ui.chat.chatarea.videoSavedToGalleryOnly"),
+              );
+              void qc.invalidateQueries({ queryKey: ["gallery", "scene-videos", chatId] });
+              if (isActiveChat()) qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+              break;
+            }
+            case "video_error": {
+              const errData = event.data as { error: string };
+              console.warn("[video] Generation failed:", errData.error);
+              toast.error(translate("generation.video.failed", { error: errData.error }));
+              break;
+            }
             case "image_prompt_review": {
               imagePromptReviewRequested = true;
               window.dispatchEvent(

@@ -88,7 +88,7 @@ Clips use the **Video Connection** under **Scene Videos**, and each one is a vid
 
 **First frame**, shown once Illustrator makes clips, decides what every clip Illustrator makes starts from. The choices are a new Illustrator picture, the named character's avatar or sprite, the picture with the avatar as fallback, or no picture at all. With **Clips only** and the avatar or no picture, no picture is drawn at all; the clip is made from Illustrator's scene and motion. With **Pictures and clips**, the picture is still shown and only the clip starts from the avatar or nothing. If you haven't chosen a first frame, a clip never draws a picture just for itself: **Pictures and clips** animates the picture Illustrator just made, and **Clips only** makes the clip from the scene alone. A clip with no picture of its own describes everyone it names, your persona included, and the avatar first frame starts from whoever is named first. It is the same setting Conversation chats use for video messages.
 
-Re-running Illustrator from a message does not make a clip; only a fresh reply does.
+Re-running Illustrator from a message (its **Illustrate** button) follows **Illustrator makes** and **First frame** too: with **Clips only** it makes a clip instead of a picture, and with **Pictures and clips** it may add a clip when motion is the point of the moment.
 
 ## Multiple characters on NovelAI
 

@@ -141,7 +141,6 @@ import {
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
-  normalizeVideoPromptInstructions,
   normalizeIllustratorVideoMode,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
@@ -754,27 +753,14 @@ import { handleConversationScheduleCommand } from "../services/generation/conver
 import { handleConversationCrossPostCommand } from "../services/generation/conversation-cross-post-command-runtime.js";
 import { handleHapticCommand } from "../services/generation/haptic-command-runtime.js";
 import { handleConversationSelfieCommand } from "../services/generation/conversation-selfie-command-runtime.js";
-import {
-  loadIllustratorContextSize,
-  startConversationVideoCommand,
-} from "../services/generation/conversation-video-runtime.js";
-import { writeRoleplayClipDirection } from "../services/video/roleplay-clip-writer.js";
-import {
-  formatVideoAppearanceDetails,
-  videoInstructionsUseAppearance,
-} from "../services/video/appearance-reference.js";
-import { formatRecentVideoContext } from "../services/video/prompt-context.js";
+import { startConversationVideoCommand } from "../services/generation/conversation-video-runtime.js";
+import { createRoleplayClipTools, resolveIllustratorVideoOffer } from "../services/video/roleplay-illustrator-clips.js";
 import {
   animateGalleryImage,
   generateRoleplayClip,
-  resolveChatVideoSetup,
   roleplayVideoFirstFrame,
 } from "../services/video/chat-video-generation.js";
-import {
-  attachVideoToMessage,
-  buildChatVideoAttachment,
-  resolveSceneVideoConnectionId,
-} from "../services/video/chat-video-messages.js";
+import { attachVideoToMessage, buildChatVideoAttachment } from "../services/video/chat-video-messages.js";
 import {
   CONTINUE_ASSISTANT_MESSAGE_PROMPT,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,
@@ -4697,88 +4683,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 }
               : null,
         });
-        // The cast of a clip with no picture of its own: every character or persona it names, with their
-        // appearance lines and, for the Avatar first frame, the avatar of the first one named.
-        const resolveClipCast = async (names: readonly string[], promptText: string, withAvatar: boolean) => {
-          const cast = await resolveIllustratorCharacterReferences({
-            charactersStore: chars,
-            characterGallery,
-            personaGallery,
-            ...illustratorCast(),
-            requestedNames: [...names],
-            promptText,
-            fallbackToChatCharacters: true,
-            includeReferenceImages: withAvatar,
-            includePersonaWhenMentionedInPrompt: false,
-            maxReferences: 12,
-          });
-          const first = names[0]?.trim().toLowerCase();
-          const index = Math.max(
-            0,
-            first ? cast.referenceNames.findIndex((name) => name.trim().toLowerCase() === first) : 0,
-          );
-          const base64 = cast.referenceImages[index];
-          return {
-            // The persona too when the clip names them, so it shows in their gallery.
-            characterIds: cast.personaId ? [...cast.characterIds, cast.personaId] : cast.characterIds,
-            appearanceBlock: cast.appearanceBlock,
-            avatar: base64 ? { base64, name: cast.referenceNames[index] ?? "" } : null,
-          };
-        };
-        // A Roleplay clip's video prompt, written to the video connection's Video Prompting Instructions from the
-        // recent messages up to its reply: the Clip Director for a clip with no picture of its own, the Gallery
-        // animation director to continue a picture. `request` is what the clip should show (a scene, a motion).
-        // Attach Card Appearance for videos, with instructions that speak to appearance: everyone in the scene
-        // (characters and persona) with their appearance details, for the clip's writer to build in.
-        const clipAppearanceDetails = async (instructions: unknown) => {
-          if (chatMeta.illustratorVideoIncludeCharacterAppearance !== true) return "";
-          if (!videoInstructionsUseAppearance(instructions)) return "";
-          const cast = illustratorCast();
-          const names = [
-            ...cast.chatCharacters.map((character) => character.name),
-            ...(cast.persona ? [cast.persona.name] : []),
-          ];
-          const resolution = await resolveIllustratorCharacterReferences({
-            charactersStore: chars,
-            characterGallery,
-            personaGallery,
-            ...cast,
-            requestedNames: names,
-            promptText: names.join("\n"),
-            fallbackToChatCharacters: true,
-            includeReferenceImages: false,
-            maxReferences: 12,
-          });
-          return formatVideoAppearanceDetails(resolution.appearanceBlock);
-        };
-        let clipSetup: Awaited<ReturnType<typeof resolveChatVideoSetup>> | undefined;
-        const writeClipPrompt = async (opts: {
-          messageId: string;
-          request: string;
-          withoutPicture: boolean;
-          referenceImagePrompt?: string;
-        }) =>
-          writeRoleplayClipDirection(app.db, {
-            chat,
-            meta: chatMeta,
-            setup: (clipSetup ??= await resolveChatVideoSetup(app.db, chatMeta)),
-            sourceExchange: [
-              opts.request ? `Requested clip: ${opts.request}` : "",
-              formatRecentVideoContext(await chats.listMessages(input.chatId), {
-                count: await loadIllustratorContextSize(app.db),
-                endMessageId: opts.messageId,
-              }),
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-            referenceImagePrompt: opts.referenceImagePrompt,
-            characterNames: charInfo.map((character) => character.name),
-            appearanceDetails: await clipAppearanceDetails(
-              (clipSetup ??= await resolveChatVideoSetup(app.db, chatMeta)).videoConn.videoPromptInstructions,
-            ),
-            withoutPicture: opts.withoutPicture,
-            debugMode: input.debugMode,
-          });
+        // Who a clip shows and its video prompt, shared with re-running Illustrator from a message.
+        const { resolveClipCast, writeClipPrompt } = createRoleplayClipTools({
+          db: app.db,
+          chat,
+          chatMeta,
+          chatId: input.chatId,
+          characterNames: charInfo.map((character) => character.name),
+          cast: illustratorCast,
+          charactersStore: chars,
+          characterGallery,
+          personaGallery,
+          debugMode: input.debugMode,
+        });
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -7023,24 +6940,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           imageConnection ??= await connections.getDefaultForImageGeneration();
           const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
+          // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
           delete memory._generatedVideos;
-          const illustratorVideoMode = normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode);
-          if (chatMode === "roleplay" && illustratorVideoMode !== "pictures") {
-            // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
-            const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
-            const videoConnection = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
-            if (videoConnection?.provider === "video_generation") {
-              memory._generatedVideos = {
-                instructions: normalizeVideoPromptInstructions(videoConnection.videoPromptInstructions) ?? "",
-                clipsOnly: illustratorVideoMode === "clips_only",
-                // Attach Card Appearance for videos, with instructions that speak to appearance: the agent builds
-                // everyone's appearance into its videoPrompt (otherwise the lines are added after it).
-                describeAppearance:
-                  chatMeta.illustratorVideoIncludeCharacterAppearance === true &&
-                  videoInstructionsUseAppearance(videoConnection.videoPromptInstructions),
-              };
-            }
-          }
+          const videoOffer = await resolveIllustratorVideoOffer(chatMode, chatMeta, connections);
+          if (videoOffer) memory._generatedVideos = videoOffer;
           return { ...trackerContext, memory };
         };
         // Decision statements in agent prompt templates (#6569), planned from the agents
@@ -13888,13 +13791,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 imgConnFull ??= await connections.getDefaultForImageGeneration();
                 // Clips only needs a working video connection, as the agent was told; without one it makes pictures.
                 const clipsOnlyUsable =
-                  requestChatMode === "roleplay" &&
-                  normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only" &&
-                  (await (async () => {
-                    const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
-                    const videoConnection = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
-                    return videoConnection?.provider === "video_generation";
-                  })());
+                  (await resolveIllustratorVideoOffer(requestChatMode, chatMeta, connections))?.clipsOnly === true;
                 // Clips only, starting from the avatar or from no picture: no picture is drawn at all.
                 const clipOnlyFrame = clipsOnlyUsable
                   ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))

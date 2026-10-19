@@ -94,6 +94,44 @@ try {
   assert.doesNotMatch(noVideoBody, /video_error/u, "no video error");
   await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.video.id });
 
+  // ── Re-running Illustrator on a reply (the Illustrate button) follows Illustrator makes and First frame too ──
+  const rerun = async () => {
+    const response = await h.app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: { chatId: roleplay.id, agentTypes: ["illustrator"], illustratorRetryTargets: ["illustration"] },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.body;
+  };
+  // Clips only, Prompt only: no picture is drawn; the clip is made from the planner's scene.
+  const imagesBeforeRerun = requests.images;
+  const rerunBody = await rerun();
+  assert.match(requests.planner.at(-1) ?? "", /<optional_video>/u, "the Illustrate planner is offered clips");
+  assert.equal(requests.images, imagesBeforeRerun, "a Clips only re-run draws no picture");
+  assert.equal((await h.attachments(roleplay.id, "video")).length, ++clips, "it makes a clip on the reply");
+  assert.match(rerunBody, /"type":"video"/u);
+  // Pictures and clips: the picture shows, and the clip the writer asked for joins the same reply.
+  await h.saveChatSettings(roleplay.id, { illustratorVideoMode: "pictures_and_clips" });
+  const plannerBefore = replies.planner;
+  replies.planner = {
+    prompt: "1girl, porch, storm",
+    generateVideo: true,
+    videoPrompt: "Lightning splits the sky as Aster turns",
+  };
+  const shownBefore = await latestReplyImages();
+  await rerun();
+  assert.equal(requests.images, imagesBeforeRerun + 1, "the picture is drawn");
+  assert.equal(await latestReplyImages(), shownBefore + 1, "and shown");
+  assert.equal((await h.attachments(roleplay.id, "video")).length, ++clips, "with its clip");
+  // First frame is Prompt only here, so the clip is written by the Clip Director from the planner's scene and motion.
+  assert.match(requests.director.at(-1) ?? "", /Lightning splits the sky/u, "moving as the planner wrote");
+  // Without a clip asked for, Pictures and clips re-runs make the picture only.
+  replies.planner = plannerBefore;
+  await rerun();
+  assert.equal((await h.attachments(roleplay.id, "video")).length, clips, "no clip");
+  await h.saveChatSettings(roleplay.id, { illustratorVideoMode: "clips_only" });
+
   // ── Pictures and clips: a picture Illustrator animates keeps showing; its clip follows First frame ──
   await h.saveChatSettings(roleplay.id, { illustratorVideoMode: "pictures_and_clips", sceneVideoFirstFrame: "avatar" });
   replies.agent = {

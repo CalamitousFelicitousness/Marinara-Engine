@@ -532,9 +532,11 @@ export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done
   // Exempt the health endpoint so external probes still work. Its reply adds
   // details for signed-in callers, so a password sent here counts like anywhere else.
   if (request.url === "/api/health" || request.url.startsWith("/api/health?")) {
-    if (request.headers.authorization && !isTrustedPeer(request) && lockoutSeconds(request) === 0) {
+    if (request.headers.authorization && !isTrustedPeer(request)) {
       const config = loadConfig();
-      if (config) checkCredentials(request, config);
+      if (config && lockoutSeconds(request, hasSignedInCookie(request, config)) === 0) {
+        checkCredentials(request, config);
+      }
     }
     return done();
   }

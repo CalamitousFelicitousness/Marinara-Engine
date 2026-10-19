@@ -258,6 +258,21 @@ try {
     429,
     "after its own tries the cookie no longer gets past the lock",
   );
+
+  // ── A signed-in browser's health guesses count against its own tries too ──
+  const healthOwner = "203.0.113.70";
+  const healthOwnerHeaders = { ...HOST, cookie: signedInCookie };
+  await guessWrong("/", healthOwner, BASIC_AUTH_FAILURE_LIMIT, "health-owner");
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const response = await get("/api/health", healthOwner, basic(`health-owner-cookie-${index}`), healthOwnerHeaders);
+    assert.deepEqual(response.json(), { status: "ok" });
+  }
+  assert.deepEqual(
+    (await get("/api/health", healthOwner, RIGHT, healthOwnerHeaders)).json(),
+    { status: "ok" },
+    "health guesses with the cookie use up its tries",
+  );
+  assert.equal((await get("/", healthOwner, RIGHT, healthOwnerHeaders)).statusCode, 429);
   Date.now = realNow;
   process.env.IP_ALLOWLIST = "192.168.1.20";
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {

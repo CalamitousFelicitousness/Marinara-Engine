@@ -3457,6 +3457,7 @@
   "home.title": "Home",
   "home.whatsNew.description": "A compact look at this build, with the full changelog close at hand when you want the details.",
   "home.whatsNew.eyebrow": "From the kitchen",
+  "home.whatsNew.open": "See what's new",
   "home.whatsNew.releaseNotes": "Read release notes",
   "home.whatsNew.title": "What's new in v{{version}}",
   "home.widgets.accent.cyan": "Cyan",

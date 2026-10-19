@@ -84,14 +84,14 @@ try {
     if (!result.ok) assert.match(result.issues.join("; "), pattern);
   };
   const definition = parsed(document());
-  const bead = definition.catalogs!.find((catalog) => catalog.id === "kit")!.entries![0]!.item!;
   const goblin = (): RulesetStatBlock =>
     ({ health: 80, defense: 12, initiativeModifier: 0, speed: 30, actions: [] }) as unknown as RulesetStatBlock;
-  const start = (wall?: { x: number; y: number }) => {
+  const start = (wall?: { x: number; y: number }, def = definition) => {
+    const bead = def.catalogs!.find((catalog) => catalog.id === "kit")!.entries![0]!.item!;
     const tiles = Array.from({ length: 9 }, () => Array(20).fill("plains"));
     if (wall) tiles[wall.y]![wall.x] = "wall";
     const state = createRulesetEncounter({
-      definition,
+      definition: def,
       seed: 1,
       roller: () => 10,
       combatants: [
@@ -117,11 +117,11 @@ try {
     state.turn = 0;
     return state;
   };
-  const throwAt = (state: RulesetEncounterState) => {
-    const option = rulesetCombatOptions(definition, state, "bard").find((one) => one.label.includes("Throw"));
+  const throwAt = (state: RulesetEncounterState, def = definition) => {
+    const option = rulesetCombatOptions(def, state, "bard").find((one) => one.label.includes("Throw"));
     assert.ok(
       option,
-      rulesetCombatOptions(definition, state, "bard")
+      rulesetCombatOptions(def, state, "bard")
         .map((one) => one.label)
         .join(", "),
     );
@@ -129,7 +129,7 @@ try {
     const faces = [2, 19];
     let d20 = 0;
     const step = applyRulesetCombatChoice(
-      definition,
+      def,
       state,
       { actorId: "bard", optionId: option.id, targetIds: [], at: { x: 10, y: 4 } },
       (sides: number) => (sides === 20 ? faces[d20++ % faces.length]! : 3),
@@ -166,6 +166,23 @@ try {
   {
     const step = throwAt(start({ x: 13, y: 4 }));
     assert.deepEqual(at(step.state, "saves"), { x: 12, y: 4 }, "stopped at the wall");
+  }
+
+  // ── Torn as it is used: only what tore it is told, never the area it was aimed at ──
+  {
+    const torn = parsed(document({ backfires: { chance: 100, amount: { flat: 1 }, destroys: true, instead: true } }));
+    const step = throwAt(start(undefined, torn), torn);
+    assert.ok(step.events.some((one) => one.type === "backfired"));
+    assert.equal(
+      step.events.find((one) => one.type === "area"),
+      undefined,
+      JSON.stringify(step.events),
+    );
+    assert.equal(
+      step.events.find((one) => one.type === "save"),
+      undefined,
+    );
+    assert.deepEqual(at(step.state, "saves"), { x: 11, y: 4 });
   }
 
   // ── Refusals ──

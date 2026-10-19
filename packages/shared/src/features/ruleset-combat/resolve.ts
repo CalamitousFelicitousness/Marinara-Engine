@@ -7313,8 +7313,9 @@ function applyChoice(
     ctx.events.push({ type: "strikes", actorId: working.id, optionId: striking.id, label: striking.label, left });
   }
 
+  let aimed: RulesetCombatEvent | undefined;
   if (area && choice.at) {
-    ctx.events.push({
+    aimed = {
       type: "area",
       actorId: working.id,
       optionId: option.id,
@@ -7326,7 +7327,8 @@ function applyChoice(
         also,
         ...(grow ? { grow } : {}),
       }),
-    });
+    };
+    ctx.events.push(aimed);
   }
 
   const own = working.actions.find((entry) => entry.id === option.id)!;
@@ -7462,9 +7464,10 @@ function applyChoice(
     return finish();
   }
   // Torn as it was used on with no charges left (1.571), or backfired in place of working (1.577): it
-  // did nothing.
+  // did nothing, so nothing was aimed either: only what tore it is told.
   if (ctx.tore) {
     delete ctx.tore;
+    if (aimed && ctx.events.includes(aimed)) ctx.events.splice(ctx.events.indexOf(aimed), 1);
     noteOutcome(ctx);
     return finish();
   }

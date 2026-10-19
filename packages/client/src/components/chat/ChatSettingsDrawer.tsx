@@ -122,6 +122,7 @@ import {
   normalizeVideoFirstFrame,
   type CardOnboarding,
   canBuildPersona,
+  getRelevantCardVariables,
   hasOnboardingContent,
   readCardOnboarding,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
@@ -2741,6 +2742,28 @@ export function ChatSettingsDrawer({
     });
   }, [characters, chatCharIds, isConversation, isGame, onboardingByCharacterId]);
 
+  // The characters whose cards declare questions the CURRENT no-answer context
+  // makes relevant: exactly the rule the wizard uses to decide whether to ask a
+  // card at all. The marker on a Characters row opens this card's questions alone,
+  // so an answer can be changed or restored after the setup wizard is gone.
+  // Roleplay only, like the persona rows above.
+  const onboardingCardQuestionTargets = useMemo(() => {
+    if (isGame || isConversation) return [];
+    return chatCharIds.flatMap((characterId) => {
+      const character = characters.find((entry) => entry.id === characterId);
+      const cardOnboarding = onboardingByCharacterId.get(characterId);
+      if (!character || !cardOnboarding) return [];
+      const questions = getRelevantCardVariables(cardOnboarding.onboarding, cardOnboarding.cardFields, {});
+      if (questions.length === 0) return [];
+      return [{ character, cardOnboarding }];
+    });
+  }, [characters, chatCharIds, isConversation, isGame, onboardingByCharacterId]);
+  // Lookup for the row render; the list is rebuilt only when the roster changes.
+  const onboardingCardQuestionsById = useMemo(
+    () => new Map(onboardingCardQuestionTargets.map((entry) => [entry.character.id, entry])),
+    [onboardingCardQuestionTargets],
+  );
+
   const chatCharacterCount = allCharacters == null ? chatCharIds.length : chatCharacters.length;
 
   const activePersona = useMemo(
@@ -3948,6 +3971,38 @@ export function ChatSettingsDrawer({
     [chat.id, localizeUi, updateChat],
   );
 
+  // The card whose character questions are open from the Characters list. Kept
+  // separate from the persona template: this window writes chat variables only.
+  const [onboardingQuestionsCharacterId, setOnboardingQuestionsCharacterId] = useState<string | null>(null);
+  const onboardingQuestionsTarget = onboardingQuestionsCharacterId
+    ? (onboardingCardQuestionsById.get(onboardingQuestionsCharacterId) ?? null)
+    : null;
+  // The card can leave the chat while its questions are open; drop the stale id
+  // with it so re-adding the card doesn't reopen the window.
+  useEffect(() => {
+    if (onboardingQuestionsCharacterId && !onboardingQuestionsTarget) setOnboardingQuestionsCharacterId(null);
+  }, [onboardingQuestionsCharacterId, onboardingQuestionsTarget]);
+  useEffect(() => {
+    setOnboardingQuestionsCharacterId(null);
+  }, [chat.id]);
+  /**
+   * Save the answers from an isolated character-questions window (#7797). The
+   * merge is the wizard's own, so untouched questions carry their default value
+   * (which restores a deleted one) and every other card's variables stay as they
+   * were.
+   */
+  const handleOnboardingAnswersSaved = useCallback(
+    async (_personaId: string | null, cardVariables: Record<string, string>) => {
+      setOnboardingQuestionsCharacterId(null);
+      if (Object.keys(cardVariables).length === 0) return;
+      try {
+        await updateMeta.mutateAsync({ id: chat.id, macroVariables: cardVariables });
+      } catch {
+        toast.error(localizeUi("ui.characters.onboarding.cardVariablesFailed"));
+      }
+    },
+    [chat.id, localizeUi, updateMeta],
+  );
   const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
   const [charSearch, setCharSearch] = useState("");
   const [lbSearch, setLbSearch] = useState("");
@@ -6403,6 +6458,19 @@ export function ChatSettingsDrawer({
                               )}
                             </button>
                           )}
+                          {/* The interactive-onboarding marker, now an action:
+                              answers this card's character questions alone. */}
+                          {onboardingCardQuestionsById.has(c.id) && (
+                            <button
+                              type="button"
+                              onClick={() => setOnboardingQuestionsCharacterId(c.id)}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
+                              title={localizeUi("ui.characters.onboarding.answerCharacterQuestions")}
+                              aria-label={localizeUi("ui.characters.onboarding.answerCharacterQuestions")}
+                            >
+                              <UserPlus size="0.6875rem" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => toggleInlineResourceEditor("character", c.id)}
@@ -6487,6 +6555,19 @@ export function ChatSettingsDrawer({
                               </span>
                             )}
                           </div>
+                          {/* Same badge the setup wizard shows, so a card with
+                              interactive onboarding is recognisable before it is
+                              added. The in-chat row marker does the answering. */}
+                          {!isConversation && onboardingByCharacterId.has(c.id) && (
+                            <span
+                              role="img"
+                              aria-label={localizeUi("ui.characters.onboarding.hasOnboarding")}
+                              title={localizeUi("ui.characters.onboarding.hasOnboarding")}
+                              className="shrink-0 text-[var(--primary)]"
+                            >
+                              <UserPlus size="0.75rem" />
+                            </span>
+                          )}
                           <Plus size="0.75rem" className="text-[var(--muted-foreground)]" />
                         </button>
                       );
@@ -10335,6 +10416,31 @@ export function ChatSettingsDrawer({
           chatFloatingPanel
           onBack={() => setOnboardingTemplateId(null)}
           onCreated={handleOnboardingPersonaCreated}
+        />
+      )}
+
+      {/* Re-answer ONE card's character questions from the Characters list
+          (#7797). Isolated on purpose: the window asks only this card, so it can
+          never overwrite another card's answers. */}
+      {onboardingQuestionsTarget && (
+        <CharacterOnboardingModal
+          key={onboardingQuestionsTarget.character.id}
+          open
+          cards={[
+            {
+              characterId: onboardingQuestionsTarget.character.id,
+              name: onboardingQuestionsTarget.cardOnboarding.name || charName(onboardingQuestionsTarget.character),
+              onboarding: onboardingQuestionsTarget.cardOnboarding.onboarding,
+              cardFields: onboardingQuestionsTarget.cardOnboarding.cardFields,
+            },
+          ]}
+          participantNames={[
+            onboardingQuestionsTarget.cardOnboarding.name || charName(onboardingQuestionsTarget.character),
+          ]}
+          withPersona={false}
+          chatFloatingPanel
+          onBack={() => setOnboardingQuestionsCharacterId(null)}
+          onCreated={handleOnboardingAnswersSaved}
         />
       )}
 

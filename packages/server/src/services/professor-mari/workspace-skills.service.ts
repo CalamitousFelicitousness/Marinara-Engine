@@ -38,6 +38,24 @@ const MAX_SKILL_CONTENT_LENGTH = 200_000;
 const MAX_SKILL_DESCRIPTION_LENGTH = 1024;
 const SAFE_SKILL_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
+// Seeded once, disabled, on an install with no skill index yet. A normal user skill after that:
+// editing or deleting it sticks, and nothing re-seeds or overrides it.
+const EXAMPLE_SKILL = {
+  id: "ask-before-building",
+  description: "Example skill: ask a few short questions with quick-reply chips before creating or changing something.",
+  content: `# Ask before building
+
+This is an example skill. Turn it on if you want Professor Mari to check with you before she builds. Edit it or delete it as you like.
+
+While this skill is on, ask before you create or change something whenever a missing detail would change the result (a name, a tone, a genre, which item to edit). This replaces the default of building first with your best guess.
+
+- Ask one short question at a time. Give 2-5 likely answers as \`suggestions\`, one chip per answer, and make each chip's prompt the full answer. The user can still type their own.
+- When a create request leaves several fields open, send one \`plan\` with those fields and 3-5 example chips each, instead of asking turn by turn.
+- Ask about three things at most. Fill in the rest with your best guess and say what you guessed.
+- Skip the questions when the request already has what you need, or when the user says to just do it.
+- Do not stage or apply changes while a question waits for an answer.`,
+};
+
 function rootDir() {
   return join(DATA_DIR, ".mari-workspace", "skills");
 }
@@ -255,6 +273,12 @@ export class ProfessorMariWorkspaceSkillsService {
 
   private async ensureStorage() {
     await mkdir(rootDir(), { recursive: true });
+    if (existsSync(indexPath())) return;
+    const { id, description, content } = EXAMPLE_SKILL;
+    const timestamp = now();
+    await mkdir(skillDir(id), { recursive: true });
+    await writeFile(skillFilePath(id), buildSkillContent({ name: id, description, content }), "utf8");
+    await this.writeRecords([{ id, name: id, description, enabled: false, createdAt: timestamp, updatedAt: timestamp }]);
   }
 
   private async readRecords(): Promise<SkillRecord[]> {

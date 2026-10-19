@@ -3993,13 +3993,17 @@ export function ChatSettingsDrawer({
    */
   const handleOnboardingAnswersSaved = useCallback(
     async (_personaId: string | null, cardVariables: Record<string, string>) => {
-      setOnboardingQuestionsCharacterId(null);
-      if (Object.keys(cardVariables).length === 0) return;
-      try {
-        await updateMeta.mutateAsync({ id: chat.id, macroVariables: cardVariables });
-      } catch {
-        toast.error(localizeUi("ui.characters.onboarding.cardVariablesFailed"));
+      if (Object.keys(cardVariables).length > 0) {
+        try {
+          await updateMeta.mutateAsync({ id: chat.id, macroVariables: cardVariables });
+        } catch {
+          // Nothing was created here, so a retry is safe: keep the window (and the
+          // answers it holds) open instead of discarding the player's edits.
+          toast.error(localizeUi("ui.characters.onboarding.cardVariablesFailed"));
+          return;
+        }
       }
+      setOnboardingQuestionsCharacterId(null);
     },
     [chat.id, localizeUi, updateMeta],
   );

@@ -754,13 +754,9 @@ async function seedNewChatCardVariables(app: FastifyInstance, chatId: string, ch
  * before, so it must never fail a roster change. Returns the updated row when it
  * wrote something, so the client caches the cleanup instead of the stale map.
  */
-async function dropRemovedChatCardVariables(
-  app: FastifyInstance,
-  chatId: string,
-  removedIds: string[],
-  remainingIds: string[],
-) {
+async function dropRemovedChatCardVariables(app: FastifyInstance, chatId: string, removedIds: string[]) {
   if (removedIds.length === 0) return null;
+  const chatsStore = createChatsStorage(app.db);
   const charactersStore = createCharactersStorage(app.db);
   const readOnboarding = async (characterId: string): Promise<CharacterOnboarding | null> => {
     const row = await charactersStore.getById(characterId);
@@ -771,15 +767,26 @@ async function dropRemovedChatCardVariables(
   // A card whose onboarding is switched off owns nothing: seeding never wrote for
   // it. Skip the remaining cards' reads in that case.
   if (!removed.some((onboarding) => onboarding?.enabled)) return null;
-  const remaining: Array<CharacterOnboarding | null> = [];
-  for (const characterId of remainingIds) remaining.push(await readOnboarding(characterId));
-  const drop = cardVariableNamesToDrop(removed, remaining);
-  if (drop.length === 0) return null;
+  const removedSet = new Set(removedIds);
 
   // Same dynamic import as the seeding above, and for the same load-order reason.
   const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
   let wrote = false;
-  const updated = await createChatsStorage(app.db).patchMetadata(chatId, (current) => {
+  const updated = await chatsStore.patchMetadata(chatId, async (current) => {
+    // The roster is re-read HERE, inside this chat's metadata queue (#7799
+    // review). A concurrent PATCH can add a card between the route's roster write
+    // and this cleanup, and the names the route computed are stale by then; a name
+    // any card in the chat declares now has to be kept. A card added after this
+    // read is safe too, because its own seeding patch is queued behind this one:
+    // it writes the default instead of finding a value this cleanup removed.
+    const live = await chatsStore.getById(chatId);
+    const remaining: Array<CharacterOnboarding | null> = [];
+    for (const characterId of resolveChatCharacterIds(live?.characterIds)) {
+      if (removedSet.has(characterId)) continue;
+      remaining.push(await readOnboarding(characterId));
+    }
+    const drop = cardVariableNamesToDrop(removed, remaining);
+    if (drop.length === 0) return {};
     const saved = normalizeChatMacroVariables(current.macroVariables);
     const present = drop.filter((name) => Object.prototype.hasOwnProperty.call(saved, name));
     if (present.length === 0) return {};
@@ -1458,7 +1465,6 @@ export async function chatsRoutes(app: FastifyInstance) {
     // questions wrote, so they are dropped unless a card that stays declares the
     // same name. Kept as before/after too, so an unchanged roster writes nothing.
     let cardVariableCharacterIdsToDrop: string[] = [];
-    let cardVariableRemainingIds: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);
       const nextIds = data.characterIds;
@@ -1469,7 +1475,6 @@ export async function chatsRoutes(app: FastifyInstance) {
 
       cardVariableCharacterIdsToSeed = addedIds;
       cardVariableCharacterIdsToDrop = removedIds;
-      cardVariableRemainingIds = nextIds;
 
       if (removedIds.length > 0 || addedIds.length > 0) {
         const existingMessages = await storage.listMessages(req.params.id);
@@ -1567,13 +1572,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     // leave the removed card's variables on screen until the next fetch.
     if (updated && cardVariableCharacterIdsToDrop.length > 0) {
       try {
-        updated =
-          (await dropRemovedChatCardVariables(
-            app,
-            req.params.id,
-            cardVariableCharacterIdsToDrop,
-            cardVariableRemainingIds,
-          )) ?? updated;
+        updated = (await dropRemovedChatCardVariables(app, req.params.id, cardVariableCharacterIdsToDrop)) ?? updated;
       } catch (err) {
         logger.warn(err, "Failed to drop onboarding card variables for removed chat characters");
       }

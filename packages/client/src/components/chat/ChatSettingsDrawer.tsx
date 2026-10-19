@@ -9136,7 +9136,12 @@ export function ChatSettingsDrawer({
                               >
                                 {VIDEO_FIRST_FRAMES.map((mode) => (
                                   <option key={mode} value={mode}>
-                                    {localizeUi(`ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`)}
+                                    {/* Send Avatar References for videos gives Prompt only the avatar to start from. */}
+                                    {localizeUi(
+                                      mode === "prompt_only" && metadata.illustratorVideoUseAvatarReferences === true
+                                        ? "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar"
+                                        : `ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`,
+                                    )}
                                   </option>
                                 ))}
                               </select>

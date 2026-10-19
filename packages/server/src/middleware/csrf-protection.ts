@@ -273,7 +273,9 @@ export function logCsrfTrustSummary(log: { info(message: string): void; warn(mes
 
 export function csrfProtectionHook(request: FastifyRequest, reply: FastifyReply, done: () => void) {
   if (!UNSAFE_METHODS.has(request.method.toUpperCase())) return done();
-  if (!request.url.startsWith("/api/")) return done();
+  // Every unsafe request is checked, whatever its path: the router decodes
+  // percent-escapes before matching, so a raw "/api/" prefix test could be
+  // sidestepped by an encoded path that still reaches an API handler.
   const requestPath = request.url.split("?", 1)[0] ?? request.url;
   // Android WebView's top-level postUrl navigation may send `Origin: null`.
   // These two device-local routes authenticate the request itself with either

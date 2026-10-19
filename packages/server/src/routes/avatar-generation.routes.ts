@@ -5,7 +5,7 @@
 // stores nothing, so an avatar stays as it was until the user keeps the result:
 //   POST /pngtuber-variants/preview   AvatarPngtuberVariantsRequest → { items } for the image prompt review
 //   POST /pngtuber-variants           AvatarPngtuberVariantsRequest (+ promptOverrides) → drafts
-//   POST /pngtuber-variants/save      { owner, images } → AvatarGenerationResponse
+//   POST /pngtuber-variants/save      { owner, images (+ face for a set) } → AvatarGenerationResponse
 //   POST /mesh-rig                    AvatarMeshRigRequest → draft
 //   POST /mesh-rig/save               { owner, archive } → AvatarGenerationResponse
 //   POST /cancel                      { owner, kind: "pngtuber" | "mesh-avatar" } → { cancelled }
@@ -64,6 +64,8 @@ const pngtuberSaveBodySchema = z
             variant: z.enum(AVATAR_PNGTUBER_VARIANTS),
             image: z.string().min(1),
             sourceHash: z.string().regex(/^[0-9a-f]{64}$/u),
+            // The new face of a set from an image connection that can't edit pictures.
+            face: z.string().min(1).optional(),
           })
           .strict(),
       )

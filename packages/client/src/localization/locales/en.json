@@ -129,6 +129,8 @@
   "avatars.generation.meshSaved": "Saved as the mesh avatar.",
   "avatars.generation.meshTitle": "Mesh avatar",
   "avatars.generation.mouthOpen": "Mouth open",
+  "avatars.generation.newFace": "New face",
+  "avatars.generation.newFaceHint": "This image connection can't edit pictures, so it drew a new face to go with them. Keeping them replaces this face.",
   "avatars.generation.noImageConnection": "Add an image generation connection to draw pictures.",
   "avatars.generation.noSourceSprite": "This face has no sprite, so new pictures can't be drawn for it.",
   "avatars.generation.noSprites": "Make faces from the avatar first, then add blinking and talking.",

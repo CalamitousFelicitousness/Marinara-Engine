@@ -198,7 +198,7 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     sectionId: "application",
     labelKey: "settings.controls.disableSeasonalThemes.label",
     label: "Disable seasonal ME themes",
-    description: "Holiday looks like Halloween won't switch on by themselves.",
+    description: "Holiday themes won't turn on by themselves.",
     descriptionKey: "settings.controls.disableSeasonalThemes.help",
     aliases: ["seasonal themes", "holiday", "halloween", "christmas", "easter"],
     kind: "Toggle",

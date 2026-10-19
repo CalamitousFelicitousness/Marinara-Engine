@@ -47,9 +47,9 @@ import {
   normalizeRpgStatPools,
   characterDataSchema,
   withoutUnreadableOnboarding,
-  characterOnboardingSchema,
+  readCardOnboarding,
   seedCardVariables,
-  withUniqueOnboardingIds,
+  cardVariableNamesToDrop,
   readGameInventoryTurn,
   rulesetLiveStatesSchema,
   applyContextMessageLimitWithPins,
@@ -66,6 +66,7 @@ import {
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
+  CharacterOnboarding,
   ChatMemoryChunk,
   ChatMemoryRecallExportChunk,
   ChatMemoryRecallExportPayload,
@@ -685,17 +686,11 @@ async function buildNewChatCardVariableDefaults(
   for (const characterId of characterIds) {
     const row = await charactersStore.getById(characterId);
     if (!row) continue;
-    let data: CharacterData;
-    try {
-      data = (typeof row.data === "string" ? JSON.parse(row.data) : row.data) as CharacterData;
-    } catch {
-      continue;
-    }
-    const parsed = characterOnboardingSchema.safeParse((data.extensions ?? {})?.onboarding);
-    if (!parsed.success || !parsed.data.enabled) continue;
-    // Cards saved before ids were made unique repeat one; the seeding below is
-    // keyed by name, so this is only about reading a card the wizard reads too.
-    for (const [name, value] of Object.entries(seedCardVariables(withUniqueOnboardingIds(parsed.data)))) {
+    // The same parse the wizard and the drawer use, so a card is read once here
+    // and once there, never in two slightly different ways.
+    const entry = readCardOnboarding(row.data);
+    if (!entry?.onboarding.enabled) continue;
+    for (const [name, value] of Object.entries(seedCardVariables(entry.onboarding))) {
       if (!Object.prototype.hasOwnProperty.call(defaults, name)) defaults[name] = value;
     }
   }
@@ -741,6 +736,57 @@ async function seedNewChatCardVariables(app: FastifyInstance, chatId: string, ch
     if (Object.keys(missing).length === 0) return {};
     wrote = true;
     return { macroVariables: { ...saved, ...missing } };
+  });
+  return wrote ? updated : null;
+}
+
+/**
+ * Drop the chat variables the character questions of the cards that just LEFT a
+ * chat still own (#7795).
+ *
+ * Selecting a card seeds its question defaults the moment it joins (see above),
+ * but a removal used to leave those names in `metadata.macroVariables` forever,
+ * with no card left to read them. Only names that no remaining card declares are
+ * dropped; the ownership rule lives in `cardVariableNamesToDrop`, pinned by a
+ * regression, so this helper only reads cards and applies the result.
+ *
+ * Swallowed like seeding: a stranded variable is the behaviour that existed
+ * before, so it must never fail a roster change. Returns the updated row when it
+ * wrote something, so the client caches the cleanup instead of the stale map.
+ */
+async function dropRemovedChatCardVariables(
+  app: FastifyInstance,
+  chatId: string,
+  removedIds: string[],
+  remainingIds: string[],
+) {
+  if (removedIds.length === 0) return null;
+  const charactersStore = createCharactersStorage(app.db);
+  const readOnboarding = async (characterId: string): Promise<CharacterOnboarding | null> => {
+    const row = await charactersStore.getById(characterId);
+    return row ? (readCardOnboarding(row.data)?.onboarding ?? null) : null;
+  };
+  const removed: Array<CharacterOnboarding | null> = [];
+  for (const characterId of removedIds) removed.push(await readOnboarding(characterId));
+  // A card whose onboarding is switched off owns nothing: seeding never wrote for
+  // it. Skip the remaining cards' reads in that case.
+  if (!removed.some((onboarding) => onboarding?.enabled)) return null;
+  const remaining: Array<CharacterOnboarding | null> = [];
+  for (const characterId of remainingIds) remaining.push(await readOnboarding(characterId));
+  const drop = cardVariableNamesToDrop(removed, remaining);
+  if (drop.length === 0) return null;
+
+  // Same dynamic import as the seeding above, and for the same load-order reason.
+  const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
+  let wrote = false;
+  const updated = await createChatsStorage(app.db).patchMetadata(chatId, (current) => {
+    const saved = normalizeChatMacroVariables(current.macroVariables);
+    const present = drop.filter((name) => Object.prototype.hasOwnProperty.call(saved, name));
+    if (present.length === 0) return {};
+    const next: Record<string, string> = { ...saved };
+    for (const name of present) delete next[name];
+    wrote = true;
+    return { macroVariables: next };
   });
   return wrote ? updated : null;
 }
@@ -1408,6 +1454,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     // `{{relationshipToUser}}` into the prompt. Compared before/after like the
     // tracker below so re-sending an unchanged roster writes nothing.
     let cardVariableCharacterIdsToSeed: string[] = [];
+    // The other half (#7795): a card that leaves owns the chat variables its
+    // questions wrote, so they are dropped unless a card that stays declares the
+    // same name. Kept as before/after too, so an unchanged roster writes nothing.
+    let cardVariableCharacterIdsToDrop: string[] = [];
+    let cardVariableRemainingIds: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);
       const nextIds = data.characterIds;
@@ -1417,6 +1468,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       const addedIds = nextIds.filter((id) => !previousSet.has(id));
 
       cardVariableCharacterIdsToSeed = addedIds;
+      cardVariableCharacterIdsToDrop = removedIds;
+      cardVariableRemainingIds = nextIds;
 
       if (removedIds.length > 0 || addedIds.length > 0) {
         const existingMessages = await storage.listMessages(req.params.id);
@@ -1507,6 +1560,22 @@ export async function chatsRoutes(app: FastifyInstance) {
         updated = (await seedNewChatCardVariables(app, req.params.id, cardVariableCharacterIdsToSeed)) ?? updated;
       } catch (err) {
         logger.warn(err, "Failed to seed onboarding card variables for added chat characters");
+      }
+    }
+    // Same after-the-update placement and the same row-returning contract as the
+    // seeding: the client caches this response, so a cleanup it cannot see would
+    // leave the removed card's variables on screen until the next fetch.
+    if (updated && cardVariableCharacterIdsToDrop.length > 0) {
+      try {
+        updated =
+          (await dropRemovedChatCardVariables(
+            app,
+            req.params.id,
+            cardVariableCharacterIdsToDrop,
+            cardVariableRemainingIds,
+          )) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to drop onboarding card variables for removed chat characters");
       }
     }
     if (updated && identityChanged) {

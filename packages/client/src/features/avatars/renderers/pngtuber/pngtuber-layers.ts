@@ -11,6 +11,7 @@ import {
   SPRITE_EXPRESSION_LABELS,
   detectSpriteEmotionBindings,
   detectSpriteFeelingBindings,
+  isAvatarExtraFeeling,
   normalizeSpriteExpressionKey,
   type AvatarEmotion,
   type AvatarExpressionBinding,
@@ -140,6 +141,67 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
     motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
+}
+
+/** Every face a feeling can be given: the setup's own, then each sprite face it doesn't have yet, also ones named
+ *  after a feeling, so any sprite can be chosen. A PNGTuber Plus import keeps its own faces. */
+export function pngtuberFaceChoices(
+  shown: PngtuberAvatarData | null,
+  fromSprites: PngtuberAvatarData | null,
+): Record<string, PngtuberLayerSet> {
+  if (!shown) return {};
+  if (shown.source === "pngtuber-plus" || !fromSprites) return shown.layers;
+  const added = Object.entries(fromSprites.layers).filter(([key]) => !Object.hasOwn(shown.layers, key));
+  return added.length ? { ...shown.layers, ...Object.fromEntries(added) } : shown.layers;
+}
+
+/** A face the face maker saved: the sprite label it was saved as, and the face it was drawn as. */
+export interface SavedTalkingHeadFace {
+  label: string;
+  drawnAs?: string;
+}
+
+/** The setup with each face the face maker just saved as its feeling's face, over any earlier choice: making a
+ *  face is the user's choice. A face saved under a feeling's name (`happy`) is that feeling's; one renamed in the
+ *  last step (`happy_2`) is the face it was drawn as. Its face set starts again from the sprite, because talk and
+ *  blink pictures made for an older picture would not match it. Other feelings and faces stay as they are, and
+ *  so does a PNGTuber Plus import. */
+export function withGeneratedFaces(
+  data: PngtuberAvatarData,
+  saved: readonly SavedTalkingHeadFace[],
+): PngtuberAvatarData {
+  if (data.source === "pngtuber-plus") return data;
+  const feelingOf = (value: string | undefined): AvatarEmotion | AvatarExtraFeeling | null => {
+    const key = value ? normalizeSpriteExpressionKey(value) : "";
+    return (AVATAR_EMOTIONS as readonly string[]).includes(key) || isAvatarExtraFeeling(key)
+      ? (key as AvatarEmotion | AvatarExtraFeeling)
+      : null;
+  };
+  const faces = new Map<AvatarEmotion | AvatarExtraFeeling, string>();
+  for (const { label, drawnAs } of saved) {
+    const feeling = feelingOf(label) ? null : feelingOf(drawnAs);
+    if (feeling) faces.set(feeling, label);
+  }
+  // Named faces last, so one saved under a feeling's name wins over one renamed away from it.
+  for (const { label } of saved) {
+    const feeling = feelingOf(label);
+    if (feeling) faces.set(feeling, label);
+  }
+  if (faces.size === 0) return data;
+  const layers = { ...data.layers };
+  const expressionMap = { ...data.expressionMap };
+  const feelingMap = { ...data.feelingMap };
+  for (const [feeling, label] of faces) {
+    const key = normalizeSpriteExpressionKey(label);
+    if (!LAYER_KEY.test(key) || (!Object.hasOwn(layers, key) && Object.keys(layers).length >= MAX_LAYER_SETS)) {
+      continue;
+    }
+    layers[key] = { base: { source: "sprite", label: key } };
+    const binding: AvatarExpressionBinding = { target: key, source: "user", confidence: 1 };
+    if (isAvatarExtraFeeling(feeling)) feelingMap[feeling] = binding;
+    else expressionMap[feeling] = binding;
+  }
+  return { ...data, layers, expressionMap, feelingMap };
 }
 
 /** The layer set a frame shows: the exact sprite label when the setup has it (an Expression Engine or

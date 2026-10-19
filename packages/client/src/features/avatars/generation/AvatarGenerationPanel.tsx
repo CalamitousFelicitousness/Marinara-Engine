@@ -5,11 +5,13 @@
 // The base lane's setup mounts this through AVATAR_GENERATION_PANEL for the chosen character or persona.
 // Results stay in the browser until the user keeps them, so the owner's avatar does not change before that.
 // Faces without a background come from sprite generation (SpriteGenerationModal, as in the character and
-// persona editors): it draws them from the avatar on a plain colour, removes it and saves them as sprites.
+// persona editors): it draws them from the avatar on a plain colour, removes it and saves them as sprites. A saved
+// talking head then shows each new face for its feeling.
 import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wand2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   AVATAR_EMOTIONS,
   AVATAR_EXTRA_FEELINGS,
@@ -18,6 +20,7 @@ import {
   readImageAppearanceOverride,
   type Persona,
 } from "@marinara-engine/shared";
+import { useAvatarModelActions } from "../../../hooks/use-avatar-models";
 import { useConnections } from "../../../hooks/use-connections";
 import {
   spriteKeys,
@@ -33,6 +36,8 @@ import {
   type ImagePromptReviewItem,
 } from "../../../components/ui/ImagePromptReviewModal";
 import type { AvatarKindSetupPanelProps } from "../contract";
+import { errorMessage } from "../renderers/pngtuber/PngtuberSetupPanel";
+import { withGeneratedFaces, type SavedTalkingHeadFace } from "../renderers/pngtuber/pngtuber-layers";
 import { MeshAvatarSection, type ConnectionOption } from "./MeshAvatarSection";
 import { PngtuberVariantsSection } from "./PngtuberVariantsSection";
 import { avatarSourceSprites } from "./SpritePicker";
@@ -89,6 +94,7 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
   const { data: capabilities } = useSpriteCapabilities();
   const { data: connectionList } = useConnections();
   const queryClient = useQueryClient();
+  const { save } = useAvatarModelActions(owner, onChanged);
   const character = useCharacter(owner.ownerType === "character" ? owner.ownerId : null);
   const persona = usePersona(owner.ownerType === "persona" ? owner.ownerId : null);
   const [facesOpen, setFacesOpen] = useState(false);
@@ -133,6 +139,18 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
     reviewResolveRef.current = null;
     setReviewItems([]);
   }, []);
+
+  const facesSaved = (saved: readonly SavedTalkingHeadFace[]) => {
+    void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) });
+    // Without a saved talking head the sprites are the faces, and a face named after a feeling is already its face.
+    const stored = config?.kinds.pngtuber;
+    const next = stored && withGeneratedFaces(stored, saved);
+    if (!next || next === stored) return;
+    save.mutate(
+      { kinds: { pngtuber: next } },
+      { onError: (error) => toast.error(t("avatars.pngtuber.saveFailed", { reason: errorMessage(error) })) },
+    );
+  };
 
   const unavailable = capabilities?.imageProcessingAvailable === false;
 
@@ -242,7 +260,7 @@ export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSe
             expressionChoices={TALKING_HEAD_FACES}
             expressionGroups={AVATAR_FACE_GROUPS}
             talkingHeadFaces
-            onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
+            onSpritesGenerated={facesSaved}
           />
         ) : null}
       </Suspense>

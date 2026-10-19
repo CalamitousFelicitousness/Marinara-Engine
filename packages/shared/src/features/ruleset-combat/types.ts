@@ -392,6 +392,8 @@ export interface RulesetCombatMove {
   untouchable?: true;
   /** The one way of moving it uses (1.285). */
   speed?: RulesetMoveMode;
+  /** Every step nearer a hostile it can see (1.554): Aggressive. */
+  toward?: "seen-hostile";
 }
 
 /** What an obscuring zone does to sight (1.178, 1.286). */

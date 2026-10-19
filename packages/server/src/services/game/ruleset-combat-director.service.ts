@@ -1288,8 +1288,13 @@ function rulesetCandidatesFrom(
       if (gone) candidates.push(gone);
       continue;
     }
-    // A legendary move (1.283) the same way, by where it would take them.
-    if (option.signature && option.cells && !option.moveAfter) {
+    // A legendary move (1.283) the same way, by where it would take them, and a creature's move on
+    // its own turn (1.554): an orc's Aggressive.
+    if (
+      option.cells &&
+      !option.moveAfter &&
+      (option.signature || actor.actions.find((one) => one.id === option.id)?.move)
+    ) {
       const moved = standing ? null : legendaryMoveCandidate(definition, combat, encounter, actor, option, price);
       if (moved) candidates.push(moved);
       continue;

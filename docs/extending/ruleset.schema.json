@@ -66985,6 +66985,10 @@
                                 "burrow"
                               ]
                             },
+                            "toward": {
+                              "type": "string",
+                              "const": "seen-hostile"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -79293,6 +79297,10 @@
                                   "climb",
                                   "burrow"
                                 ]
+                              },
+                              "toward": {
+                                "type": "string",
+                                "const": "seen-hostile"
                               },
                               "$comment": {}
                             },

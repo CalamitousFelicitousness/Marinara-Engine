@@ -3414,6 +3414,15 @@ function optionFrom(
       : 0;
     option.movesTarget = { cells, ...(levels > 0 ? { levels } : {}) };
   }
+  // A creature's move taken on its own turn (1.554), when it does nothing else: Aggressive. Picked
+  // on the board as a walk is; with nowhere to go it is not offered.
+  if (action.move && !action.signature && rulesetMovesOnly(action) && rulesetOnOwnTurn(state, actor)) {
+    if (!positioned(state) || !definition) return null;
+    const cells = rulesetLegendaryMoveCells(definition, state, actor, action);
+    if (cells.length === 0) return null;
+    option.cells = cells;
+    option.targets = { side: "self", count: 0 };
+  }
   // Where an engulf may walk to (1.350), through whoever it takes in: picked on the board as a walk
   // is, aimed at nobody. With nowhere to go it is not offered.
   if (action.engulf && positioned(state)) {
@@ -4649,7 +4658,25 @@ export function rulesetLegendaryMoveCells(
   if (!action.move || !state.board) return [];
   const lent = rulesetLentMovement(definition, actor, action.move, state);
   if (lent.movementLeft < 1) return [];
-  return rulesetWithMovement(actor, lent, () => rulesetReachableCells(definition, state, actor.id));
+  const cells = rulesetWithMovement(actor, lent, () => rulesetReachableCells(definition, state, actor.id));
+  if (action.move.toward !== "seen-hostile") return cells;
+  // Every step nearer a hostile it can see (1.554): Aggressive. Seeing none, it goes nowhere.
+  const foes = state.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetCanSee(definition, state, actor, one),
+  );
+  const from = rulesetPositionOf(actor);
+  if (foes.length === 0 || !from) return [];
+  const span = rulesetSpanOf(actor);
+  const nearest = (cell: RulesetCombatCell) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
+  return cells.filter((cell) => {
+    let was = nearest(from);
+    for (const step of cell.path) {
+      const now = nearest(step);
+      if (now >= was) return false;
+      was = now;
+    }
+    return true;
+  });
 }
 
 /**

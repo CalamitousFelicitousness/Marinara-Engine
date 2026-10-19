@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's move toward a hostile it can see (1.554): an orc's Aggressive. */
+function carriesMoveToward554(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMoveToward554(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.move)?.toward !== undefined) return true;
+  return featureValues(record).some((one) => carriesMoveToward554(one, depth + 1));
+}
+
 /** A creature action that is free or taken before it attacks (1.553): a berserker's Reckless. A
  *  creature's action has a `name`, where a catalog entry's mechanics never do. */
 function carriesCreatureFree553(value: unknown, depth = 0): boolean {
@@ -7584,6 +7594,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's move toward a hostile it can see, 1.554.
+  if (
+    !declaresApi(554) &&
+    (carriesMoveToward554(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMoveToward554(document)))
+  ) {
+    return "A ruleset with a creature's move toward a hostile it can see (move.toward) requires schemaVersion 2 and capabilityApi 1.554 or newer";
+  }
   // A creature action that is free or taken before it attacks, 1.553.
   if (
     !declaresApi(553) &&

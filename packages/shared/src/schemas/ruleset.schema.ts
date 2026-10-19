@@ -7907,6 +7907,10 @@ const creatureActionSchema = z
         /** The one way of moving it uses (Capability API 1.285), its share read off that speed: a
          *  dragon "can then fly up to half its flying speed". */
         speed: z.enum(["walk", "fly", "swim", "climb", "burrow"]).optional(),
+        /** Every step of it nearer a hostile creature it can see (Capability API 1.554), and taken on
+         *  its own turn with its `budget` when it does nothing but move: an orc's Aggressive, "As a
+         *  bonus action, the orc can move up to its speed toward a hostile creature that it can see". */
+        toward: z.literal("seen-hostile").optional(),
       })
       .strict()
       .refine((move) => move.share === undefined || move.distance === undefined, {
@@ -8229,11 +8233,20 @@ const creatureActionSchema = z
     // A legendary move (1.283) is bought with points, and follows whatever else it does (1.285): a
     // dragon's Wing Attack, then its flight.
     if (action.move) {
-      if (!action.signature) {
+      // Or taken on its own turn toward a hostile it sees (1.554), when it does nothing but move.
+      const ownTurn =
+        action.move.toward !== undefined &&
+        (["damage", "heal", "applies", "area", "save", "ends", "push", "toHit", "autoHit"] as const).every(
+          (key) => action[key] === undefined,
+        );
+      if (!action.signature && !ownTurn) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["move"],
-          message: "A move is bought with points between turns, so it carries a signature",
+          message:
+            action.move.toward !== undefined
+              ? 'A move taken on its own turn ("toward") does nothing but move'
+              : "A move is bought with points between turns, so it carries a signature",
         });
       }
       const extras = (["teleport", "sequence", "reaction", "charge"] as const).filter(

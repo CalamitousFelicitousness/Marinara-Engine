@@ -6770,6 +6770,10 @@ function applyChoice(
   // Where an engulf walks to (1.350): a cell its option offered.
   const engulfTo = named?.engulf && option.cells ? destinationOf(option, choice.to) : undefined;
   if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
+  // Where a creature's move on its own turn goes (1.554): a cell its option offered.
+  const ownMove = named?.move && !named.signature && rulesetMovesOnly(named) && option.cells;
+  const moveTo = ownMove ? destinationOf(option, choice.to) : undefined;
+  if (ownMove && !moveTo) return refusal(state, choice.actorId, "unreachable", option.id);
   // Where its target is moved to (1.512): a cell its option offered for that target, lifted no more
   // levels than it may be and no farther up or down than it carries.
   const moving = option.movesTarget;
@@ -7266,6 +7270,12 @@ function applyChoice(
     // Whoever they laid hands on answers a touch (1.474), won or lost: Heated Body.
     if (workingTargets[0]) answerHit(ctx, workingTargets[0], working, action, true);
     holderActed(ctx, working, action, before);
+    noteOutcome(ctx);
+    return finish();
+  }
+  // A creature's move on its own turn (1.554), its turn's own movement kept: Aggressive.
+  if (moveTo && action.move) {
+    legendaryMove(ctx, working, action.move, moveTo.path);
     noteOutcome(ctx);
     return finish();
   }

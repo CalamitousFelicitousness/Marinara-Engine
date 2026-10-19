@@ -23,12 +23,15 @@ const PREFIX = AVATAR_API_PREFIXES.generation;
 export interface PngtuberVariantDraft {
   label: string;
   variant: AvatarPngtuberVariant;
-  /** PNG data URL at the sprite's size. */
+  /** PNG data URL at the sprite's size (the new face's, with `face`). */
   image: string;
   width: number;
   height: number;
   /** Which version of the sprite it was drawn from; saving refuses a sprite replaced since. */
   sourceHash: string;
+  /** From an image connection that can't edit pictures: the new face (PNG data URL) drawn with this picture
+   *  and the other variant, as one set. Keeping the set replaces the face. */
+  face?: string;
 }
 
 interface PngtuberDraftsResponse {
@@ -155,6 +158,32 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
   const update = useCallback((id: string, patch: Partial<VariantJobItem>) => {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
+  /** Shows a new picture of `item`'s face. A set (a new face with both of its pictures) fills the other slot
+   *  too; a picture for the face as it is drops the pictures of a new face the user didn't keep. */
+  const showDrafts = useCallback((item: VariantJobItem, drafts: readonly PngtuberVariantDraft[]) => {
+    setItems((current) => {
+      const own = drafts.find((draft) => draft.label === item.label && draft.variant === item.variant);
+      const setDrafts = own?.face
+        ? drafts.filter((draft) => draft.label === item.label && draft.face === own.face)
+        : [];
+      const next = current.flatMap((entry): VariantJobItem[] => {
+        if (entry.label !== item.label) return [entry];
+        const draft = setDrafts.find((candidate) => variantJobId(candidate.label, candidate.variant) === entry.id);
+        if (entry.id === item.id || draft) {
+          return [{ ...entry, status: "done", draft: draft ?? own, kept: false, error: undefined }];
+        }
+        // A picture drawn for a new face that is no longer offered.
+        return entry.draft?.face && !own?.face ? [] : [entry];
+      });
+      for (const draft of setDrafts) {
+        const id = variantJobId(draft.label, draft.variant);
+        if (!next.some((entry) => entry.id === id)) {
+          next.push({ id, label: draft.label, variant: draft.variant, status: "done", draft, kept: false });
+        }
+      }
+      return next;
+    });
+  }, []);
   /** A failed redo or single picture is a toast too (the slot may keep showing its old picture); a run of
    *  many shows each failure in its slot only, so one provider outage doesn't stack a toast per picture. */
   const failed = useCallback(
@@ -174,10 +203,30 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       jobRef.current = { controller, owner };
       try {
         await pendingCancel;
+        /** Pictures a set already brought in this run. */
+        const made = new Set<string>();
         for (const [index, item] of queue.entries()) {
           if (controller.signal.aborted) break;
+          if (made.has(item.id)) continue;
           setProgress({ current: index + 1, total: queue.length });
-          update(item.id, { status: "running", error: undefined });
+          // Redoing a picture of a new face redoes the whole set, so its other picture is being redone too.
+          setItems((current) =>
+            current.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, status: "running", error: undefined }
+                : item.draft?.face && entry.label === item.label && entry.draft?.face
+                  ? { ...entry, status: "running" }
+                  : entry,
+            ),
+          );
+          const settleSet = () =>
+            setItems((current) =>
+              current.map((entry) =>
+                entry.id !== item.id && entry.label === item.label && entry.status === "running"
+                  ? { ...entry, status: entry.draft ? "done" : "waiting" }
+                  : entry,
+              ),
+            );
           try {
             const response = await api.post<PngtuberDraftsResponse>(
               `${PREFIX}/pngtuber-variants`,
@@ -192,10 +241,21 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
               },
               { signal: controller.signal },
             );
-            const draft = response.drafts[0];
-            if (draft) update(item.id, { status: "done", draft, kept: false, error: undefined });
-            else failed(item, response.failed[0]?.error ?? "", queue.length === 1);
+            const own = response.drafts.find((draft) => draft.label === item.label && draft.variant === item.variant);
+            if (own) {
+              showDrafts(item, response.drafts);
+              if (own.face) {
+                for (const draft of response.drafts) {
+                  if (draft.label === item.label && draft.face === own.face)
+                    made.add(variantJobId(draft.label, draft.variant));
+                }
+              }
+            } else {
+              settleSet();
+              failed(item, response.failed[0]?.error ?? "", queue.length === 1);
+            }
           } catch (error) {
+            settleSet();
             if (controller.signal.aborted || isAbort(error)) {
               update(item.id, { status: item.draft ? "done" : "waiting" });
               break;
@@ -210,7 +270,7 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
         setProgress(null);
       }
     },
-    [failed, owner, update],
+    [failed, owner, showDrafts, update],
   );
 
   const start = useCallback(
@@ -251,7 +311,17 @@ export function usePngtuberVariantJob(owner: AvatarOwnerRef) {
       ),
     );
   }, []);
-  const setKept = useCallback((id: string, kept: boolean) => update(id, { kept }), [update]);
+  /** Keeps a picture, or lets it go. The pictures of a new face are kept or let go together. */
+  const setKept = useCallback(
+    (id: string, kept: boolean) =>
+      setItems((current) => {
+        const face = current.find((item) => item.id === id)?.draft?.face;
+        return current.map((item) =>
+          item.id === id || (face && item.draft?.face === face) ? { ...item, kept } : item,
+        );
+      }),
+    [],
+  );
   /** Keeps every new picture among `ids` (the ones shown). */
   const keepAll = useCallback(
     (ids: ReadonlySet<string>) =>
@@ -317,8 +387,15 @@ export function useMeshRigJob(owner: AvatarOwnerRef) {
 export function useSavePngtuberVariants(owner: AvatarOwnerRef) {
   const changed = useAvatarModelChanged(owner);
   return useMutation({
-    mutationFn: (images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string; sourceHash: string }>) =>
-      api.post<AvatarGenerationResponse>(`${PREFIX}/pngtuber-variants/save`, { owner, images }),
+    mutationFn: (
+      images: Array<{
+        label: string;
+        variant: AvatarPngtuberVariant;
+        image: string;
+        sourceHash: string;
+        face?: string;
+      }>,
+    ) => api.post<AvatarGenerationResponse>(`${PREFIX}/pngtuber-variants/save`, { owner, images }),
     onSuccess: (response) => changed(response.config),
   });
 }

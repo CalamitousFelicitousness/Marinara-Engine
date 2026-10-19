@@ -293,7 +293,10 @@ test("Arrange mode drags full-body sprites and avatars with the same gesture", a
     const agentsHeader = agents.getByRole("button", { name: "Agents", exact: true });
     await expect(agentsHeader).toBeVisible();
     if ((await agentsHeader.getAttribute("aria-expanded")) !== "true") await agentsHeader.click();
-    const arrange = agents.getByRole("button", { name: "Arrange", exact: true });
+    // The Avatars drawer has its own Arrange (maintainer decision, 2026-10-19); this is the Expression Engine's.
+    const arrange = agents
+      .locator(`#chat-settings-agent-menu-${chat.id}-expression`)
+      .getByRole("button", { name: "Arrange", exact: true });
     await arrange.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await arrange.click();
     await drawer.getByRole("button", { name: "Close Chat Settings" }).click();

@@ -25,7 +25,6 @@ import {
   type RulesetStartingGearSelection,
   type GameInventoryStack,
   type PlayerStats,
-  type SpritePlacement,
   type RulesetLiveStates,
   rulesetCardItems,
   rulesetReadsItems,
@@ -44,6 +43,7 @@ import {
   lazy,
   memo,
   Suspense,
+  type ComponentProps,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -68,13 +68,6 @@ import {
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "../chat/ChatControlWindow";
 import type { ChatImage } from "../../hooks/use-gallery";
-import {
-  loadLocalSpriteVisualSettings,
-  saveLocalSpriteVisualSettings,
-  normalizeSpriteCharacterVisualSettingsMap,
-  type LocalSpriteVisualSettings,
-} from "../chat/local-sprite-visual-settings";
-import { normalizeSpritePlacements } from "../chat/sprite-placement";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
 import { useAgentStore } from "../../stores/agent.store";
@@ -2256,6 +2249,11 @@ interface GameSurfaceProps {
   onPeekPrompt?: (messageId: string) => void;
   multiSelectMode?: boolean;
   selectedMessageIds?: Set<string>;
+  /** Where avatars stand, their size and framing, and Arrange mode: the chat's layout, which Chat Settings edits. */
+  avatarStage: Pick<
+    ComponentProps<typeof AvatarStage>,
+    "placements" | "characterVisualSettings" | "scale" | "framings" | "editing" | "onPlacementChange" | "onShownChange"
+  >;
 }
 
 function GameSurfaceComponent({
@@ -2276,6 +2274,7 @@ function GameSurfaceComponent({
   multiSelectMode = false,
   selectedMessageIds,
   isMessagesLoading,
+  avatarStage,
 }: GameSurfaceProps) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -2435,73 +2434,6 @@ function GameSurfaceComponent({
   const dismissDiceRollResult = useGameModeStore((s) => s.dismissDiceRollResult);
   const weatherEffectsEnabled = useUIStore((s) => s.weatherEffects);
   const gameFullBodySpriteScale = useUIStore((s) => s.gameFullBodySpriteScale);
-  const [avatarArrangeMode, setAvatarArrangeMode] = useState(false);
-  const [avatarVisualSettings, setAvatarVisualSettings] = useState<LocalSpriteVisualSettings>(() =>
-    loadLocalSpriteVisualSettings(activeChatId),
-  );
-  const avatarVisualSettingsRef = useRef({ chatId: activeChatId, settings: avatarVisualSettings });
-  useEffect(() => {
-    const settings = loadLocalSpriteVisualSettings(activeChatId);
-    avatarVisualSettingsRef.current = { chatId: activeChatId, settings };
-    setAvatarArrangeMode(false);
-    setAvatarVisualSettings(settings);
-  }, [activeChatId]);
-  const avatarPlacements = useMemo(
-    () => normalizeSpritePlacements(avatarVisualSettings.spritePlacements ?? chatMeta.spritePlacements),
-    [avatarVisualSettings.spritePlacements, chatMeta.spritePlacements],
-  );
-  const avatarCharacterSettings = useMemo(
-    () =>
-      normalizeSpriteCharacterVisualSettingsMap(
-        avatarVisualSettings.characterOverrides ?? chatMeta.spriteCharacterVisualSettings,
-      ),
-    [avatarVisualSettings.characterOverrides, chatMeta.spriteCharacterVisualSettings],
-  );
-  const changeAvatarPlacement = useCallback(
-    (key: string, placement: SpritePlacement) => {
-      if (activeChatIdRef.current !== activeChatId) return;
-      const previous =
-        avatarVisualSettingsRef.current.chatId === activeChatId
-          ? avatarVisualSettingsRef.current.settings
-          : loadLocalSpriteVisualSettings(activeChatId);
-      const placements = normalizeSpritePlacements(previous.spritePlacements ?? chatMeta.spritePlacements);
-      const next = saveLocalSpriteVisualSettings(
-        activeChatId,
-        {
-          spritePlacements: { ...placements, [key]: placement },
-        },
-        previous,
-      );
-      avatarVisualSettingsRef.current = { chatId: activeChatId, settings: next };
-      setAvatarVisualSettings(next);
-    },
-    [activeChatId, chatMeta.spritePlacements],
-  );
-  const changeAvatarScale = useCallback(
-    (ownerId: string, scale: number) => {
-      if (activeChatIdRef.current !== activeChatId) return;
-      const previous =
-        avatarVisualSettingsRef.current.chatId === activeChatId
-          ? avatarVisualSettingsRef.current.settings
-          : loadLocalSpriteVisualSettings(activeChatId);
-      const characterOverrides = normalizeSpriteCharacterVisualSettingsMap(
-        previous.characterOverrides ?? chatMeta.spriteCharacterVisualSettings,
-      );
-      const next = saveLocalSpriteVisualSettings(
-        activeChatId,
-        {
-          characterOverrides: {
-            ...characterOverrides,
-            [ownerId]: { ...characterOverrides[ownerId], fullBodySpriteScale: scale },
-          },
-        },
-        previous,
-      );
-      avatarVisualSettingsRef.current = { chatId: activeChatId, settings: next };
-      setAvatarVisualSettings(next);
-    },
-    [activeChatId, chatMeta.spriteCharacterVisualSettings],
-  );
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const gameMiddleMouseNav = useUIStore((s) => s.gameMiddleMouseNav);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
@@ -2538,34 +2470,40 @@ function GameSurfaceComponent({
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
   // Game audio capability: the game's audio connection (explicit pick, else the
-  // category default, else the fallback) wins; the legacy TTS settings blob
-  // still gates setups that predate audio connections. Mirrors the server's
-  // resolveAudioConfig order.
+  // one chosen as the Text to Speech Source, else the category default, else
+  // the fallback) wins; the legacy TTS settings blob still gates setups that
+  // predate audio connections. Mirrors the server's resolveAudioConfig order.
+  const ttsChosenConnectionId = ttsConfig?.connectionId ?? "";
   const gameAudioConnection = useMemo(() => {
     // Quarantined (review-required) imports are refused by the server's
     // resolution (getWithKey/getDefaultForAudio return null for them), so
     // they must not drive capability gating here either.
     const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
+    const explicit = explicitId ? rows.find((connection) => connection.id === explicitId) : undefined;
+    if (explicit) return explicit;
+    // A missing chosen connection is refused by the server, never swapped for the default.
+    if (ttsChosenConnectionId) return rows.find((connection) => connection.id === ttsChosenConnectionId) ?? null;
     return (
-      (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??
       rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
       rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
       null
     );
-  }, [connectionsList, chatMeta.gameAudioConnectionId]);
+  }, [connectionsList, chatMeta.gameAudioConnectionId, ttsChosenConnectionId]);
   const gameAudioConnectionIsElevenLabs =
     gameAudioConnection != null &&
     ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
+  // The card's own ElevenLabs switches count only while no Audio connection is its Source.
+  const ttsSettingsElevenLabs = ttsConfig?.source === "elevenlabs" && !ttsChosenConnectionId;
   const generateGameSoundEffects =
     (gameAudioConnection
       ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioSoundEffects)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true) &&
+      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameSoundEffects === true) &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
     (gameAudioConnection
       ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioMusic)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true) &&
+      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameMusic === true) &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
@@ -12908,14 +12846,7 @@ function GameSurfaceComponent({
                 participants={avatarParticipants}
                 enabledAgentIds={avatarAgentIds}
                 side="center"
-                scale={avatarVisualSettings.fullBodySpriteScale ?? gameFullBodySpriteScale}
-                placements={avatarPlacements}
-                characterVisualSettings={avatarCharacterSettings}
-                editing={avatarArrangeMode}
-                onToggleEditing={() => setAvatarArrangeMode((previous) => !previous)}
-                onFinishPlacement={() => setAvatarArrangeMode(false)}
-                onPlacementChange={changeAvatarPlacement}
-                onScaleChange={changeAvatarScale}
+                {...avatarStage}
               />
             </Suspense>
           )}

@@ -1,8 +1,8 @@
 // VRM setup on the 3D Avatars agent page (lane: 3D): import a `.vrm` (and an optional `.vrma`), show the
-// author's terms from the file, and check or change which expression shows each face and mouth shape. Under
-// "Get a 3D model", "Make 3D model" makes one from a sprite with Tripo (VrmModelMaker), next to the guide link
-// and a prompt copied from the owner's look. A model without any expressions (a Tripo one, for example) is shown
-// as body only, with no faces to pick.
+// author's terms from the file, and check or change which expression shows each face and mouth shape. "Get a 3D
+// model" points to VRoid Studio and the import, with the guide link and a prompt copied from the owner's look.
+// One-click Tripo models were withdrawn (maintainer decision, 2026-10-19); one made earlier, like any model
+// without expressions, is shown as body only, with no faces to pick.
 import { useId, useRef, useState, type ReactNode } from "react";
 import { BookOpen, Copy, ExternalLink, Info, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +22,6 @@ import { showConfirmDialog } from "../../../../lib/app-dialogs";
 import { copyToClipboard } from "../../../../lib/utils";
 import { useUIStore } from "../../../../stores/ui.store";
 import type { AvatarKindSetupPanelProps } from "../../contract";
-import { VrmModelMaker } from "./VrmModelMaker";
 import { vrmModelPrompt } from "./vrm-model-prompt";
 
 /** Plain words for the values VRM 1.0 and 0.x files use in their terms; anything else shows as written. */
@@ -228,16 +227,9 @@ function ExpressionBindings({
   );
 }
 
-/** Ways to get a model: make one with Tripo, or the guide in docs/agents/avatars.md and a prompt from the owner's look. */
-function GetModelSection({
-  owner,
-  hasModel,
-  onChanged,
-}: {
-  owner: AvatarOwnerRef;
-  hasModel: boolean;
-  onChanged: () => void;
-}) {
+/** Where to get a model: VRoid Studio and the import above, the guide in docs/agents/avatars.md, and a prompt
+ *  from the owner's look. */
+function GetModelSection({ owner, hasModel }: { owner: AvatarOwnerRef; hasModel: boolean }) {
   const { t } = useTranslation();
   const character = useCharacter(owner.ownerType === "character" ? owner.ownerId : null);
   const persona = usePersona(owner.ownerType === "persona" ? owner.ownerId : null);
@@ -248,8 +240,12 @@ function GetModelSection({
     else toast.error(t("avatars.vrm.getModel.copyFailed"));
   };
   return (
-    <Section title={t("avatars.vrm.getModel.title")} description={t("avatars.vrm.getModel.makeDescription")}>
-      <VrmModelMaker owner={owner} hasModel={hasModel} onChanged={onChanged} />
+    <Section
+      title={t("avatars.vrm.getModel.title")}
+      description={t("avatars.vrm.getModel.vroid", {
+        button: t(hasModel ? "avatars.vrm.replace" : "avatars.vrm.import"),
+      })}
+    >
       <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
         {t("avatars.vrm.getModel.description")}
       </p>
@@ -362,7 +358,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
           </div>
           {warningList}
         </Section>
-        <GetModelSection owner={owner} hasModel={!!data} onChanged={onChanged} />
+        <GetModelSection owner={owner} hasModel={!!data} />
       </div>
     );
   }
@@ -402,7 +398,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
         </div>
         {warningList}
       </Section>
-      <GetModelSection owner={owner} hasModel={!!data} onChanged={onChanged} />
+      <GetModelSection owner={owner} hasModel={!!data} />
 
       {data.expressionNames?.length === 0 ? (
         // Nothing to pick: the model has no face expressions at all.

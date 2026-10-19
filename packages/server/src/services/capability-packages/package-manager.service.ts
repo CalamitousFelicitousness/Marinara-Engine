@@ -2740,6 +2740,29 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A sequence step rolled for, made after another's hit, or left out at will (1.590): a grick. */
+function carriesSequenceSteps590(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSequenceSteps590(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    typeof record.action === "string" &&
+    (record.dice !== undefined || record.ifHit !== undefined || record.optional !== undefined) &&
+    record.times !== undefined
+  )
+    return true;
+  if (
+    Array.isArray(record.sequence) &&
+    record.sequence.some((step) => {
+      const one = plainRecord(step);
+      return !!one && (one.dice !== undefined || one.ifHit !== undefined || one.optional !== undefined);
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesSequenceSteps590(one, depth + 1));
+}
+
 /** A creature's spell slots, or a spell of its trait with its own numbers (1.589): a hag coven. */
 function carriesInnateSlots589(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8019,6 +8042,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A sequence step rolled for, made after another's hit, or left out at will, 1.590.
+  if (
+    !declaresApi(590) &&
+    (carriesSequenceSteps590(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSequenceSteps590(document)))
+  )
+    return "A ruleset with a sequence step rolled for, made after another's hit or left out at will (sequence[].dice, ifHit, optional) requires schemaVersion 2 and capabilityApi 1.590 or newer";
   // A creature's spell slots, or a spell of its trait with its own numbers, 1.589.
   if (
     !declaresApi(589) &&

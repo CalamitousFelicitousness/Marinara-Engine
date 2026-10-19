@@ -35,7 +35,7 @@ import { combatAiHash, type CombatTactics } from "../combat-ai.js";
 import { readRulesetLive } from "../rulesets/live-state.js";
 import { sheetFieldMatchTexts } from "../rulesets/scaled-rows.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
-import { heaviestRider, RULESET_CLAMP_HEADROOM, smallerDie } from "./creatures.js";
+import { heaviestRider, RULESET_CLAMP_HEADROOM, rulesetStepAverageTimes, smallerDie } from "./creatures.js";
 import { rulesetAverageAmount, rulesetAverageDamage } from "./dice.js";
 import { rulesetCostSteps, rulesetPoolFamily } from "./options.js";
 import type { RulesetCombatAction, RulesetCombatAmount, RulesetCombatant } from "./types.js";
@@ -612,7 +612,10 @@ function bestSheetRound(definition: RulesetDefinition, combatant: RulesetCombata
         ? [action, heaviestStrike]
         : [action];
     const average = action.sequence
-      ? action.sequence.reduce((total, step) => total + step.times * once(byId.get(step.actionId)), 0)
+      ? action.sequence.reduce(
+          (total, step) => total + rulesetStepAverageTimes(step) * once(byId.get(step.actionId)),
+          0,
+        )
       : once(action) + Math.max(0, (action.strikes ?? 1) - 1) * once(heaviestStrike ?? action);
     const round = average > 0 ? average + carried : 0;
     if (round > best.average) {

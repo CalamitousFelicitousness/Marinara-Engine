@@ -12536,35 +12536,93 @@ function resolveSequence(
   styleId?: string,
 ): RulesetHitHold | null {
   const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
-  const parts: RulesetCombatAction[] = [];
-  for (const step of action.sequence ?? []) {
+  // Each strike, with the place of the step it is made for (1.590). A rolled step holds as many
+  // places as its dice may come to, so targets are handed out the same however they fall, and only
+  // the ones they came to are `live`. A step made after another's hit takes no target of its own.
+  const parts: Array<{
+    part: RulesetCombatAction;
+    step: number;
+    live: boolean;
+    after?: number;
+    /** Its place among a rolled step's strikes. */
+    rolled?: number;
+  }> = [];
+  // How many strikes each rolled step came to, rolled once: a sequence picked up again keeps them.
+  const rolls: Record<string, number> = { ...held?.stepRolls };
+  (action.sequence ?? []).forEach((step, stepIndex) => {
     const named = byId.get(step.actionId);
     // A part that names another sequence is refused at import, so this is a hand-written block
-    // pointing at nothing, and it costs that part rather than the turn.
-    if (!named || named.sequence) continue;
-    for (let time = 0; time < rulesetStepTimes(actor, step); time++) parts.push(named);
-  }
-  const wanted = parts.reduce((total, part) => total + part.targets.count, 0);
+    // pointing at nothing, and it costs that part rather than the turn. One left out in the mode
+    // the sequence is made in (1.590) does not happen either.
+    if (!named || named.sequence || step.skipped) return;
+    let strikes = rulesetStepTimes(actor, step);
+    let places = strikes;
+    if (step.dice) {
+      places = step.dice.count * step.dice.sides;
+      if (rolls[stepIndex] === undefined) {
+        rolls[stepIndex] = sumOf(rollRulesetDice(ctx.roll, step.dice.count, step.dice.sides));
+        ctx.events.push({
+          type: "strikesRolled",
+          actorId: actor.id,
+          label: named.label,
+          dice: `${step.dice.count}d${step.dice.sides}`,
+          count: rolls[stepIndex]!,
+        });
+      }
+      strikes = rolls[stepIndex]!;
+    }
+    for (let time = 0; time < places; time++) {
+      parts.push({
+        part: named,
+        step: stepIndex,
+        live: time < strikes,
+        ...(step.ifHit !== undefined ? { after: step.ifHit } : {}),
+        ...(step.dice ? { rolled: time } : {}),
+      });
+    }
+  });
+  const tracks = !!action.sequence?.some((step) => step.dice || step.ifHit !== undefined);
+  const wanted = parts.reduce((total, one) => total + (one.after === undefined ? one.part.targets.count : 0), 0);
   const enough = targets.length >= wanted;
   let cursor = 0;
   // The one target every attack in it has hit so far (1.352), false once one has not.
   let allHit: string | false | undefined = action.allHit ? held?.allHit : undefined;
-  for (const [index, part] of parts.entries()) {
-    const count = part.targets.count;
-    const chosen = (enough ? targets.slice(cursor, cursor + count) : targets.slice(0, count)).filter(
-      (target) => !target.defeated || rulesetCanRevive(ctx.state, part, target),
-    );
+  // The one target every attack of each step hit (1.590), false once one of it has not.
+  const hits: Record<string, string | false> = { ...held?.stepHits };
+  const tracked = () => (tracks ? { stepHits: { ...hits }, stepRolls: { ...rolls } } : {});
+  for (const [index, { part, step, live, after, rolled }] of parts.entries()) {
+    const count = after === undefined ? part.targets.count : 0;
+    // After an earlier step hit (1.590): at the one it hit, and only then.
+    const followed = after === undefined ? undefined : hits[after];
+    const offered =
+      after === undefined
+        ? enough
+          ? targets.slice(cursor, cursor + count)
+          : // A rolled step's strikes go round the targets given (1.590), as its dice may come to
+            // more than anybody could pick ahead.
+            rolled !== undefined && count === 1 && targets.length > 1
+            ? [targets[rolled % targets.length]!]
+            : targets.slice(0, count)
+        : followed
+          ? [rulesetCombatant(ctx.state, followed)].filter((one): one is RulesetCombatant => !!one)
+          : [];
+    const chosen = offered.filter((target) => !target.defeated || rulesetCanRevive(ctx.state, part, target));
     cursor += count;
     // A sequence picked up after one of its parts was held starts at that part, which was paid for
     // and has its roll already: every part before it has happened.
     if (held && index < (held.part ?? 0)) continue;
     const resuming = held && index === (held.part ?? 0) ? held : undefined;
     if (!resuming) {
+      // A strike its dice did not come to is not made at all (1.590).
+      if (!live) continue;
       // One budget for the whole sequence, and each part still keeps its own books: a part that
       // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
       // a part that has none left simply does not happen.
       if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) {
-        if (part.toHit !== undefined) allHit = false;
+        if (part.toHit !== undefined) {
+          allHit = false;
+          hits[step] = false;
+        }
         continue;
       }
       // A cap on attacks a turn (combat C6d) ends the sequence at the attacks it allows.
@@ -12577,9 +12635,14 @@ function resolveSequence(
     }
     const from = ctx.events.length;
     const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
-    if (hold) return { ...hold, part: index, ...(action.allHit && allHit !== undefined ? { allHit } : {}) };
+    if (hold) {
+      return { ...hold, part: index, ...(action.allHit && allHit !== undefined ? { allHit } : {}), ...tracked() };
+    }
     if (action.allHit && part.toHit !== undefined && allHit !== false) {
       allHit = partHit(ctx.events.slice(from), actor, part, resuming, allHit);
+    }
+    if (tracks && part.toHit !== undefined && hits[step] !== false) {
+      hits[step] = partHit(ctx.events.slice(from), actor, part, resuming, hits[step] || undefined);
     }
   }
   if (action.allHit && typeof allHit === "string") allHitLands(ctx, actor, action, action.allHit, allHit);

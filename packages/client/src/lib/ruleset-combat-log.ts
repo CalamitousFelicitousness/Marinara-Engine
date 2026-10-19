@@ -666,6 +666,14 @@ export function rulesetCombatEventLine(
     // Another use's effect beside the one used (1.482): Thunderclap with Lightning Strike.
     case "alongside":
       return key("alongside", { actor: names.combatant(event.actorId), label: event.label, to: event.to });
+    // A sequence's rolled strikes (1.590): a violet fungus's 1d4 touches.
+    case "strikesRolled":
+      return key("strikesRolled", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        dice: event.dice,
+        count: event.count,
+      });
     // A table rolled as something was used (1.506): a Wand of Wonder's d100.
     case "rolledTable":
       return key("rolledTable", {

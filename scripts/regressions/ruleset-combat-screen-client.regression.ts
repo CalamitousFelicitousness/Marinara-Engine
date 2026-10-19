@@ -980,6 +980,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       "rolledTable",
       say({ type: "rolledTable", actorId: "corwin", label: "Confusion", roll: 7, of: 10, result: "Wanders" }),
     ],
+    ["strikesRolled", say({ type: "strikesRolled", actorId: "lurker", label: "Rotting Touch", dice: "1d4", count: 3 })],
     [
       "carried",
       say({

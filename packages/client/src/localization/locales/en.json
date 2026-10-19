@@ -2304,6 +2304,8 @@
   "game.combat.ruleset.event.strikes_one": "{{actor}} swings with {{label}}, with {{count}} strike left.",
   "game.combat.ruleset.event.strikes_other": "{{actor}} swings with {{label}}, with {{count}} strikes left.",
   "game.combat.ruleset.event.strikesLast": "{{actor}} swings with {{label}}, the last of the strikes.",
+  "game.combat.ruleset.event.strikesRolled_one": "{{actor}} rolls {{dice}} for {{label}}: {{count}} strike.",
+  "game.combat.ruleset.event.strikesRolled_other": "{{actor}} rolls {{dice}} for {{label}}: {{count}} strikes.",
   "game.combat.ruleset.event.summonAppeared": "{{actor}} summons {{label}}.",
   "game.combat.ruleset.event.summonEnded": "{{actor}}’s {{label}} ends.",
   "game.combat.ruleset.event.summonStruck": "{{actor}}’s {{label}} strikes.",

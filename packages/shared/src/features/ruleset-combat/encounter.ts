@@ -77,6 +77,7 @@ import {
   findRulesetCreatureEntry,
   isRulesetPlainStatBlock,
   rulesetCreatureBlock,
+  rulesetKeptSteps,
   rulesetReactionAnswers,
 } from "./creatures.js";
 import {
@@ -4433,10 +4434,15 @@ function blockActions(
                   1,
                   action.sequence.reduce((total, step) => {
                     const named = block.actions[indexById.get(step.action) ?? -1];
-                    // Once per head (1.497): as many as it may ever have.
-                    const times = step.perHead
-                      ? step.times * (block.heads?.max ?? block.heads?.count ?? 1)
-                      : step.times;
+                    // Made at the one an earlier step hit (1.590), it takes no target of its own.
+                    if (step.ifHit !== undefined) return total;
+                    // Once per head (1.497): as many as it may ever have. Rolled for (1.590): as
+                    // many as its dice may come to.
+                    const times = step.dice
+                      ? step.dice.count * step.dice.sides
+                      : step.perHead
+                        ? step.times * (block.heads?.max ?? block.heads?.count ?? 1)
+                        : step.times;
                     return total + (named ? Math.max(1, named.targetCount ?? 1) * times : 0);
                   }, 0),
                 )
@@ -4508,11 +4514,15 @@ function blockActions(
       : {}),
     ...(action.sequence
       ? {
-          sequence: action.sequence.flatMap((step) =>
-            indexById.has(step.action)
-              ? [{ actionId: step.action, times: step.times, ...(step.perHead ? { perHead: true as const } : {}) }]
-              : [],
-          ),
+          sequence: rulesetKeptSteps(action.sequence, (step) => indexById.has(step.action)).map((step) => ({
+            actionId: step.action,
+            times: step.times,
+            ...(step.perHead ? { perHead: true as const } : {}),
+            // Rolled for, after an earlier step's hit, left out at will (1.590).
+            ...(step.dice ? { dice: { ...step.dice } } : {}),
+            ...(step.ifHit !== undefined ? { ifHit: step.ifHit } : {}),
+            ...(step.optional ? { optional: true as const } : {}),
+          })),
         }
       : {}),
     ...(action.signature ? { signature: { cost: action.signature.cost } } : {}),
@@ -4610,6 +4620,34 @@ function blockActions(
         }
       : {}),
   }));
+  // A sequence made without the steps its maker may leave out (1.590), one mode for each way.
+  for (const action of built) {
+    const optional = (action.sequence ?? []).flatMap((step, index) => (step.optional ? [index] : []));
+    if (optional.length === 0) continue;
+    const byId = new Map(built.map((one) => [one.id, one]));
+    const modes: RulesetCombatMode[] = [];
+    for (let mask = 1; mask < 1 << optional.length; mask++) {
+      const skips = optional.filter((_, bit) => mask & (1 << bit));
+      const targets = action.sequence!.reduce((total, step, index) => {
+        if (skips.includes(index) || step.ifHit !== undefined) return total;
+        const part = byId.get(step.actionId);
+        const times = step.dice
+          ? step.dice.count * step.dice.sides
+          : step.perHead
+            ? step.times * (block.heads?.max ?? block.heads?.count ?? 1)
+            : step.times;
+        return total + (part ? Math.max(1, part.targets.count) * times : 0);
+      }, 0);
+      const names = skips.map((index) => byId.get(action.sequence![index]!.actionId)?.label ?? "");
+      modes.push({
+        id: `without-${skips.join("-")}`,
+        label: `without ${names.join(" and ")}`,
+        skips,
+        targets: Math.max(1, targets),
+      });
+    }
+    action.modes = modes;
+  }
   // A teleport with a strike before or after it (1.280): the teleport lets the strike follow, and the
   // strike made first is an action of its own, on the teleport's budget, that lets the teleport follow.
   block.actions.forEach((action, index) => {

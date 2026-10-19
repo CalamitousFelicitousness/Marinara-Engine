@@ -48,6 +48,14 @@ export function rulesetModedAction(
     ...(mode.toHit !== undefined && action.toHit !== undefined ? { toHit: action.toHit + mode.toHit } : {}),
     ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
     ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
+    // A sequence without the steps its maker left out (1.590).
+    ...(mode.skips && action.sequence
+      ? {
+          sequence: action.sequence.map((step, index) =>
+            mode.skips!.includes(index) ? { ...step, skipped: true as const } : step,
+          ),
+        }
+      : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
     // Its own reach and clauses (1.190): a javelin of lightning's bolt, 4d6 more on a hit.
     ...(mode.range ? { range: { ...mode.range } } : {}),

@@ -66485,6 +66485,36 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "dice": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10
+                                  },
+                                  "sides": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 1000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "count",
+                                  "sides"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "ifHit": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 5
+                              },
+                              "optional": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -79062,6 +79092,36 @@
                                   "default": 1
                                 },
                                 "perHead": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "dice": {
+                                  "type": "object",
+                                  "properties": {
+                                    "count": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10
+                                    },
+                                    "sides": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 1000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "count",
+                                    "sides"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "ifHit": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 5
+                                },
+                                "optional": {
                                   "type": "boolean",
                                   "const": true
                                 },

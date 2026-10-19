@@ -448,13 +448,33 @@ export function rulesetTierStatBlock(
   };
 }
 
+/** A sequence's steps with some left out (1.590), a step made after another's hit still pointing at
+ *  that step's new place, and gone with it when it went. */
+export function rulesetKeptSteps<T extends { ifHit?: number }>(steps: readonly T[], keep: (step: T) => boolean): T[] {
+  const places = new Map<number, number>();
+  const kept: T[] = [];
+  steps.forEach((step, index) => {
+    if (!keep(step)) return;
+    const after = step.ifHit === undefined ? undefined : places.get(step.ifHit);
+    if (step.ifHit !== undefined && after === undefined) return;
+    places.set(index, kept.length);
+    kept.push(after === undefined ? step : { ...step, ifHit: after });
+  });
+  return kept;
+}
+
+/** How many strikes a sequence step makes on average (1.590): its dice's average where it rolls. */
+export function rulesetStepAverageTimes(step: { times: number; dice?: { count: number; sides: number } }): number {
+  return step.dice ? (step.dice.count * (step.dice.sides + 1)) / 2 : step.times;
+}
+
 function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<string>): RulesetStatBlock {
   const kept = creature.actions.filter((action) => budgets.has(action.budget));
   const ids = new Set(kept.map((action) => action.id));
   const actions = kept.map((action) => {
     const built = creatureAction(action);
     if (!built.sequence) return built;
-    const steps = built.sequence.filter((step) => ids.has(step.action));
+    const steps = rulesetKeptSteps(built.sequence, (step) => ids.has(step.action));
     // A sequence whose parts are all gone is an action that would spend a budget and do nothing.
     if (steps.length === 0) return null;
     return { ...built, sequence: steps };
@@ -621,7 +641,7 @@ function bestRound(
     const round: RulesetBestRound = action.sequence
       ? {
           average: action.sequence.reduce(
-            (total, step) => total + step.times * damageAverage(byId.get(step.action)),
+            (total, step) => total + rulesetStepAverageTimes(step) * damageAverage(byId.get(step.action)),
             0,
           ),
           action,
@@ -978,7 +998,7 @@ export function clampRulesetStatBlock(
       else delete action.applies;
     }
     if (action.sequence) {
-      const steps = action.sequence.filter((step) => ids.has(step.action) && !sequences.has(step.action));
+      const steps = rulesetKeptSteps(action.sequence, (step) => ids.has(step.action) && !sequences.has(step.action));
       if (steps.length === 0) {
         adjusted.push(`"${action.name}" named nothing this block still has, so it was dropped.`);
         return [];

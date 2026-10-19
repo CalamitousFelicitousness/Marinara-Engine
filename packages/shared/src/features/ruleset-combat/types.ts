@@ -356,6 +356,14 @@ export interface RulesetCombatSequenceStep {
   times: number;
   /** `times` for each head its maker has now (1.497): a hydra's bites. */
   perHead?: true;
+  /** Made as many times as these dice roll (1.590), in place of `times`. */
+  dice?: { count: number; sides: number };
+  /** Made only if every attack of the step at this place hit, at the one it hit (1.590). */
+  ifHit?: number;
+  /** Its maker may leave it out (1.590): one of the sequence's modes does. */
+  optional?: true;
+  /** Left out, in the mode the sequence is made in (1.590). */
+  skipped?: true;
 }
 
 /** How far something is thrown or shot. `long` is what it still carries beyond `normal`, which a
@@ -584,7 +592,15 @@ export interface RulesetStatBlockAction {
   recharge?: RulesetCombatRecharge;
   /** Other actions of this block, in order. ONE budget pays for the lot, and each part takes its
    *  own targets: this is how a creature that strikes twice in one action is written. */
-  sequence?: Array<{ action: string; times: number; perHead?: true }>;
+  sequence?: Array<{
+    action: string;
+    times: number;
+    perHead?: true;
+    /** Rolled for, an earlier step's hit, left out at will (1.590). */
+    dice?: { count: number; sides: number };
+    ifHit?: number;
+    optional?: true;
+  }>;
   /** Bought out of the block's own `signaturePoints` instead of a budget. */
   signature?: { cost: number };
   /** A lair action (1.315), taken on the block's `lairInitiative` while it fights in its lair. */
@@ -1550,6 +1566,8 @@ export interface RulesetCombatMode {
   insideType?: string;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
+  /** The places of the optional steps of a sequence left out in this mode (1.590). */
+  skips?: number[];
 }
 
 /** A Hammer of Thunderbolts' clap (1.312): everybody within `within` cells of the one hit saves or
@@ -2620,6 +2638,11 @@ export interface RulesetHeldAttack {
   /** The one target every attack of its sequence before this part hit, or false once one missed
    *  (1.352), for the sequence's `allHit`. */
   allHit?: string | false;
+  /** What each step of its sequence before this part came to (1.590), by the step's place: the one
+   *  target every attack of it hit, or false. */
+  stepHits?: Record<string, string | false>;
+  /** How many strikes each rolled step of its sequence came to (1.590), by the step's place. */
+  stepRolls?: Record<string, number>;
 }
 
 /** A walk stopped in its tracks, with everything needed to finish it exactly as it would have gone:
@@ -3658,6 +3681,8 @@ export type RulesetCombatEvent =
   | { type: "goesAt"; actorId: string; condition: string; targetId: string }
   /** Another use's effect happening beside the one used (1.482): Thunderclap with Lightning Strike. */
   | { type: "alongside"; actorId: string; label: string; to: string }
+  /** How many strikes a sequence's rolled step makes (1.590): a violet fungus's 1d4 touches. */
+  | { type: "strikesRolled"; actorId: string; label: string; dice: string; count: number }
   /** A table rolled as something was used (1.506): `roll` of `of`, and the row it came up. */
   | { type: "rolledTable"; actorId: string; label: string; roll: number; of: number; result: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */

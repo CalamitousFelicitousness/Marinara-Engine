@@ -8149,8 +8149,22 @@ const creatureActionSchema = z
             /** Made `times` for each head its creature has now (Capability API 1.497): a hydra's
              *  Multiattack, "as many bite attacks as it has heads". Its creature has `heads`. */
             perHead: z.literal(true).optional(),
+            /** Made as many times as these dice roll as the sequence is made (Capability API 1.590), in
+             *  place of `times`: a violet fungus's "1d4 Rotting Touch attacks". */
+            dice: combatDiceSchema.optional(),
+            /** Made only if every attack of the earlier step at this place (counted from 0) hit, and
+             *  then at the one it hit (Capability API 1.590): a grick's beak, "If that attack hits,
+             *  the grick can make one beak attack against the same target". It takes no target of
+             *  its own. */
+            ifHit: z.number().int().min(0).max(5).optional(),
+            /** Its maker may leave it out (Capability API 1.590): the sequence is offered without it
+             *  as one of its modes. A gibbering mouther's Blinding Spittle, "if it can". */
+            optional: z.literal(true).optional(),
           })
-          .strict(),
+          .strict()
+          .refine((step) => !step.dice || (step.times === 1 && !step.perHead), {
+            message: 'A step rolled for ("dice") is not also made a set number of times or once per head',
+          }),
       )
       .min(1)
       .max(6)
@@ -19646,8 +19660,24 @@ function creatureIssues(
           [...at, "actions", actionIndex, "sequence", index, "perHead"],
           "A strike made once per head needs a creature with heads",
         );
+      // Made after an earlier step hit (1.590): that step is an attack, and comes first.
+      if (step.ifHit !== undefined) {
+        const where = [...at, "actions", actionIndex, "sequence", index, "ifHit"];
+        const earlier = step.ifHit < index ? action.sequence![step.ifHit] : undefined;
+        if (!earlier) add(where, "A step made after another hit names an earlier step of its sequence");
+        else if (creature.actions.find((one) => one.id === earlier.action)?.toHit === undefined)
+          add(where, `"${earlier.action}" rolls no attack, so nothing can follow it hitting`);
+      }
     }),
   );
+  // A sequence its maker may leave parts of out (1.590) still does something, in at most 8 ways.
+  creature.actions.forEach((action, actionIndex) => {
+    const optional = action.sequence?.filter((step) => step.optional).length ?? 0;
+    if (optional === 0) return;
+    if (optional === action.sequence!.length)
+      add([...at, "actions", actionIndex, "sequence"], "A sequence keeps at least one step that is not optional");
+    else if (optional > 3) add([...at, "actions", actionIndex, "sequence"], "A sequence has at most 3 optional steps");
+  });
   // A rampage (1.492) is one of its own actions, bought with one of the fight's budgets.
   if (creature.rampage) {
     if (!creature.actions.some((one) => one.id === creature.rampage!.action))

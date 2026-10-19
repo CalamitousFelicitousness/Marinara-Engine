@@ -2,6 +2,7 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
+import { rulesetStepAverageTimes } from "./creatures.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
@@ -2729,11 +2730,13 @@ export function rulesetSequencePartAvailable(
 /** A sequence with no part left that can happen would be paid for and do nothing. */
 export function rulesetSequenceCanHappen(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (!action.sequence) return true;
-  return action.sequence.some((step) =>
-    rulesetSequencePartAvailable(
-      actor,
-      actor.actions.find((entry) => entry.id === step.actionId),
-    ),
+  return action.sequence.some(
+    (step) =>
+      !step.skipped &&
+      rulesetSequencePartAvailable(
+        actor,
+        actor.actions.find((entry) => entry.id === step.actionId),
+      ),
   );
 }
 
@@ -2758,8 +2761,9 @@ function forecastFor(
     const spent = new Set<string>();
     const total = action.sequence.reduce((sum, step) => {
       const part = byId.get(step.actionId);
-      if (!rulesetSequencePartAvailable(actor, part) || spent.has(part.id)) return sum;
-      let strikes = rulesetStepTimes(actor, step);
+      if (step.skipped || !rulesetSequencePartAvailable(actor, part) || spent.has(part.id)) return sum;
+      // Rolled for (1.590): what its dice come to on average.
+      let strikes = step.dice ? rulesetStepAverageTimes(step) : rulesetStepTimes(actor, step);
       if (part.uses) {
         const uses = usesLeft.get(part.id) ?? actor.uses[part.id] ?? 0;
         strikes = Math.min(strikes, uses);
@@ -3169,8 +3173,11 @@ function averageHarm(
 /** As many targets as a sequence's strikes now take (1.497), its heads counted as they stand. */
 function perHeadTargets(actor: RulesetCombatant, action: RulesetCombatAction): number {
   return (action.sequence ?? []).reduce((total, step) => {
+    // Left out, or made at the one an earlier step hit (1.590): no target of its own.
+    if (step.skipped || step.ifHit !== undefined) return total;
     const part = actor.actions.find((one) => one.id === step.actionId);
-    return total + (part ? Math.max(1, part.targets.count) * rulesetStepTimes(actor, step) : 0);
+    const times = step.dice ? step.dice.count * step.dice.sides : rulesetStepTimes(actor, step);
+    return total + (part ? Math.max(1, part.targets.count) * times : 0);
   }, 0);
 }
 

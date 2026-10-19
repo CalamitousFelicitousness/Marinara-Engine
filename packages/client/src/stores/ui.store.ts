@@ -26,7 +26,7 @@ import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-t
 import { deferEditorLeave } from "../lib/editor-leave";
 import { OMNIBAR_ASIDE_DELAY_MS, readLegacyMariConnectionId } from "../lib/omnibar-aside-text";
 import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
-import { UI_PERSISTENCE } from "../lib/ui-persistence";
+import { readHostCopyRepair, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../lib/ui-persistence";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
 import { withSeasonalYear, type SeasonalThemeId, type SeasonalYears } from "../lib/seasonal-themes";
@@ -2001,6 +2001,9 @@ export function pickPersistedUIState(state: UIState) {
   };
 }
 
+// Read with the stored blob and applied after migrate, so migrations only ever see the older blob.
+let hostCopyRepair: Record<string, unknown> | null = null;
+
 export const useUIStore = create<UIState>()(
   persist(
     (setState, get) => {
@@ -3418,6 +3421,11 @@ export const useUIStore = create<UIState>()(
         const flush = () => {
           if (pendingName !== null && pendingValue !== null) {
             localStorage.setItem(pendingName, pendingValue);
+            try {
+              localStorage.setItem(UI_PERSISTENCE_HOST_COPY, pendingValue);
+            } catch {
+              // The copy only repairs foreign writes; a full quota must not undo the real save.
+            }
             pendingName = null;
             pendingValue = null;
           }
@@ -3437,7 +3445,11 @@ export const useUIStore = create<UIState>()(
         }
 
         return {
-          getItem: (name: string) => localStorage.getItem(name),
+          getItem: (name: string) => {
+            const value = localStorage.getItem(name);
+            hostCopyRepair = readHostCopyRepair(value, localStorage.getItem(UI_PERSISTENCE_HOST_COPY));
+            return value;
+          },
           setItem: (name: string, value: string) => {
             const previousValue = pendingValue ?? localStorage.getItem(name);
             pendingName = name;
@@ -3449,7 +3461,10 @@ export const useUIStore = create<UIState>()(
             if (timer) clearTimeout(timer);
             timer = setTimeout(flush, 1000);
           },
-          removeItem: (name: string) => localStorage.removeItem(name),
+          removeItem: (name: string) => {
+            localStorage.removeItem(name);
+            localStorage.removeItem(UI_PERSISTENCE_HOST_COPY);
+          },
         };
       }),
       migrate: (persisted: any, version: number) => {
@@ -4051,7 +4066,14 @@ export const useUIStore = create<UIState>()(
       },
       merge: (persistedState: unknown, currentState) => {
         const persisted =
-          persistedState && typeof persistedState === "object" ? (persistedState as Record<string, unknown>) : {};
+          persistedState && typeof persistedState === "object"
+            ? { ...(persistedState as Record<string, unknown>) }
+            : {};
+        // Settings still at their default stay with the migrations, which may derive them from other settings.
+        for (const [key, value] of Object.entries(hostCopyRepair ?? {})) {
+          if (JSON.stringify(value) !== JSON.stringify(currentState[key as keyof UIState])) persisted[key] = value;
+        }
+        hostCopyRepair = null;
         return {
           ...currentState,
           ...persisted,

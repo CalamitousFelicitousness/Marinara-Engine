@@ -2,7 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
+async function openOmnibar(page: Page) {
+  const shortcut = await page.evaluate(async () => {
+    const { isApplePlatform } = await import("/src/lib/command-center.ts" as string);
+    return isApplePlatform() ? "Meta+k" : "Control+k";
+  });
+  await page.keyboard.press(shortcut);
+}
+
 test("Golden (once unlocked) and Safari Prof. Mari are selectable and survive reload", async ({ page }, testInfo) => {
+  // The mobile projects share a server; clear its prior settings before this browser seeds an unlocked pack.
+  expect((await page.request.put("/api/app-settings/ui", { data: { value: "" } })).ok()).toBeTruthy();
   const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
   await page.addInitScript((appVersion) => {
     localStorage.setItem("marinara:whats-new:seen-version", appVersion);
@@ -32,7 +42,7 @@ test("Golden (once unlocked) and Safari Prof. Mari are selectable and survive re
     .locator("main")
     .first()
     .click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("Control+k");
+  await openOmnibar(page);
   const omnibar = page.locator('[data-component="GlobalOmnibar"]');
   await omnibar.getByRole("button", { name: "Search and Professor Mari settings", exact: true }).click();
   const packs = omnibar.getByRole("radiogroup", { name: "Professor Mari appearance" });
@@ -56,7 +66,7 @@ test("Golden (once unlocked) and Safari Prof. Mari are selectable and survive re
     .locator("main")
     .first()
     .click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("Control+k");
+  await openOmnibar(page);
   await expect(omnibar.locator('img[src^="/sprites/mari/safari/portrait-idle.webp?v="]').first()).toBeVisible();
   await expect(omnibar.locator('img[src^="/sprites/mari/safari/portrait-idle.webp?v="]').first()).toHaveJSProperty(
     "naturalWidth",
@@ -65,12 +75,19 @@ test("Golden (once unlocked) and Safari Prof. Mari are selectable and survive re
   await omnibar.getByRole("button", { name: "Search and Professor Mari settings", exact: true }).click();
   await expect(safari).toBeChecked();
   await packs.locator('label[data-pack="golden"]').click();
+  // The fixed clock gives every edit the same timestamp, so let the server save this pick before reloading.
+  await expect
+    .poll(async () => {
+      const { value } = await (await page.request.get("/api/app-settings/ui")).json();
+      return JSON.parse(value || "{}").mariAppearancePackId;
+    })
+    .toBe("golden");
   await page.reload();
   await page
     .locator("main")
     .first()
     .click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("Control+k");
+  await openOmnibar(page);
   await expect(omnibar.locator('img[src^="/sprites/mari/golden/portrait-idle.webp?v="]').first()).toBeVisible();
   await expect(omnibar.locator('img[src^="/sprites/mari/golden/portrait-idle.webp?v="]').first()).toHaveJSProperty(
     "naturalWidth",
@@ -148,7 +165,7 @@ test("a dated pack follows its seasonal theme and toggle, and another pick wins 
     .locator("main")
     .first()
     .click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("Control+k");
+  await openOmnibar(page);
   const omnibar = page.locator('[data-component="GlobalOmnibar"]');
   await omnibar.getByRole("button", { name: "Search and Professor Mari settings", exact: true }).click();
   const packs = omnibar.getByRole("radiogroup", { name: "Professor Mari appearance" });
@@ -194,7 +211,7 @@ test("the Halloween preview dresses Professor Mari up, and nothing done in it is
     .locator("main")
     .first()
     .click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("Control+k");
+  await openOmnibar(page);
   const omnibar = page.locator('[data-component="GlobalOmnibar"]');
   await omnibar.getByRole("button", { name: "Search and Professor Mari settings", exact: true }).click();
   const packs = omnibar.getByRole("radiogroup", { name: "Professor Mari appearance" });

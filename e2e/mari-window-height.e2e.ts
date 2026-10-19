@@ -36,11 +36,8 @@ test("Professor Mari height slider keeps the old minimum and persists its choice
   };
   await openMari();
   const panel = page.locator('[data-component="GlobalOmnibar.Panel"]');
-  // #7501 raised the maximum height; read it from the store so the test follows the app's limit.
-  const maxRem: number = await page.evaluate(async () => {
-    const modulePath = "/src/stores/ui.store.ts";
-    return (await import(modulePath)).MARI_WINDOW_HEIGHT_MAX_REM;
-  });
+  // #7501 raised the maximum height to 120rem. Kept as a literal so an unintended change to the limit fails here.
+  const maxRem = 120;
   const expectedHeight = (rem: number) =>
     page.evaluate(
       (value) =>

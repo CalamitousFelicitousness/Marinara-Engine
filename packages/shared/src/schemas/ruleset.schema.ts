@@ -12968,6 +12968,18 @@ const combatConditionSchema = z
      *  (Tongues: they understand any, and any creature that knows one understands them). `none` wins
      *  over `all`. Read where an action needs its target to understand its user (`understands`). */
     languages: z.enum(["none", "all"]).optional(),
+    /** Its holder cannot breathe while it holds (Capability API 1.598), wherever they are: they hold
+     *  their breath and then choke as `combat.underwater.breath` says, out of the water as in it,
+     *  unless that breath's `exempt` spares them. 5e's Dust of Sneezing and Choking. */
+    suffocates: z.literal(true).optional(),
+    /** Its save to end it is not rolled while its holder holds any of these (Capability API 1.598):
+     *  Dust of Sneezing and Choking's "as long as it is conscious", `["unconscious"]`. */
+    savesUnless: z
+      .array(sheetId)
+      .min(1)
+      .max(8)
+      .refine((ids) => new Set(ids).size === ids.length, { message: "Each condition is named once" })
+      .optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.236), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
      *  Good, whose caster may Break Enchantment or Dismiss. An entry may instead be written
@@ -17619,6 +17631,13 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       effectNameIssues(entry, skills, saves, abilityIds, def, path, issue);
       hideIssues(def, entry, path, issue);
       if (entry.hangsOn) hangsOnIssues(def, entry.hangsOn, [...path, "hangsOn"], issue);
+      // What it chokes with (1.598) is the fight's breath, and what keeps its save off are conditions.
+      if (entry.suffocates && !combat.underwater?.breath)
+        issue([...path, "suffocates"], "suffocates needs combat.underwater.breath to say how long breath is held");
+      entry.savesUnless?.forEach((id, index) => {
+        if (!def.sheet.live.conditions.some((one) => one.id === id))
+          issue([...path, "savesUnless", index], `Unknown condition "${id}"`);
+      });
       // What keeps a fall from being safe (1.597): conditions the sheet knows.
       if (typeof entry.fallsSafely === "object") {
         entry.fallsSafely.unless?.forEach((id, index) => {

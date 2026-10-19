@@ -4175,6 +4175,7 @@ function endConditionsOnHarm(
       !(onDamage && damageSaves?.has(tracked)) &&
       // Only on harm from whoever put it on, where it says so (1.274): Sympathy's.
       !(onDamage && tracked.saveEnds.bySource && sourceId !== tracked.source) &&
+      !savesHeldOff(ctx, target, tracked) &&
       saveOutOfSight(ctx, target, tracked)
     ) {
       if (onDamage) damageSaves?.add(tracked);
@@ -4302,7 +4303,8 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
         entry.source === actor.id &&
         entry.saveEnds?.at === "source-turn-start" &&
         entry.difficulty !== undefined &&
-        !holder.defeated
+        !holder.defeated &&
+        !savesHeldOff(ctx, holder, entry)
       ) {
         const saved = rollSave(
           ctx,
@@ -4332,7 +4334,12 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     if (actor.defeated) return;
     if (!actor.tracked.includes(entry)) continue;
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
-    if (entry.saveEnds?.at === at && entry.difficulty !== undefined && saveOutOfSight(ctx, actor, entry)) {
+    if (
+      entry.saveEnds?.at === at &&
+      entry.difficulty !== undefined &&
+      !savesHeldOff(ctx, actor, entry) &&
+      saveOutOfSight(ctx, actor, entry)
+    ) {
       const saved = rollSave(
         ctx,
         actor,
@@ -4434,6 +4441,15 @@ function endsIdle(ctx: RulesetCombatContext, leaving: RulesetCombatant): void {
 
 /** Whether a save that ends a condition may be rolled now: one rolled only out of its putter's
  *  sight waits while its holder can see them (1.266), Fear's. */
+/** Whether a condition's save is kept from being rolled now (1.598): its holder holds one of its
+ *  `savesUnless`. Dust of Sneezing and Choking, saved against only while conscious. */
+function savesHeldOff(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
+  const unless = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.savesUnless;
+  if (!unless) return false;
+  const held = rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).map((one) => one.condition);
+  return unless.some((id) => held.includes(id));
+}
+
 function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
   const ends = entry.saveEnds;
   if (!ends?.unseen && ends?.beyond === undefined) return true;
@@ -5376,7 +5392,11 @@ function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     (!!breath.exempt?.tags && rulesetTargetIs(ctx.definition, actor, { tags: breath.exempt.tags }));
   const waterOnly = !!breath.waterOnly && rulesetTargetIs(ctx.definition, actor, { tags: breath.waterOnly.tags });
   const under = rulesetUnderwater(ctx.definition, ctx.state, actor);
-  if ((waterOnly ? under : !under) || exempt || actor.defeated || actor.down) {
+  // Choking wherever they are (1.598): Dust of Sneezing and Choking.
+  const choking = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some(
+    (entry) => entry.suffocates,
+  );
+  if ((!choking && (waterOnly ? under : !under)) || exempt || actor.defeated || actor.down) {
     delete actor.breath;
     return;
   }

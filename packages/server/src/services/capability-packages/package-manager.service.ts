@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that chokes its holder anywhere, or whose save waits on what they hold (1.598): 5e's
+ *  Dust of Sneezing and Choking. */
+function carriesChoking598(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesChoking598(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && (record.suffocates !== undefined || record.savesUnless !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesChoking598(one, depth + 1));
+}
+
 /** A fall made safe only up to a height, or but for some conditions (1.597): 5e's Cat's Grace. */
 function carriesSomeFallsSafe597(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8115,6 +8127,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that chokes its holder anywhere, or whose save waits on what they hold, 1.598.
+  if (
+    !declaresApi(598) &&
+    (carriesChoking598(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesChoking598(document)))
+  )
+    return "A ruleset with a condition that chokes its holder or whose save waits on what they hold (suffocates, savesUnless) requires schemaVersion 2 and capabilityApi 1.598 or newer";
   // A fall made safe only up to a height, or but for some conditions, 1.597.
   if (
     !declaresApi(597) &&

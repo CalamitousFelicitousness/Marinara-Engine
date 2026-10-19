@@ -2260,6 +2260,18 @@ for (const layout of ["Roleplay", "Classic Conversation", "Bubble Conversation"]
         const message = (await messageResponse.json()) as { id: string };
 
         await prepareFreshClient(page);
+        await page.addInitScript(() => {
+          let clipboardText = "";
+          Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+              readText: async () => clipboardText,
+              writeText: async (value: string) => {
+                clipboardText = String(value);
+              },
+            },
+          });
+        });
         await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
         await page.goto("/");
         await page.evaluate(
@@ -2300,6 +2312,12 @@ for (const layout of ["Roleplay", "Classic Conversation", "Bubble Conversation"]
         await expect(peekPrompt).toBeAttached();
         await expect(peekPrompt).toHaveCSS("color", actionColor);
         await expect(copy).toHaveCSS("color", actionColor);
+        // The whole saved prompt is copied, collapsed sections included, one role line per message.
+        await page.getByRole("button", { name: "Copy assembled prompt", exact: true }).tap();
+        await expect(page.getByText("Prompt copied.", { exact: true })).toBeVisible();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe("[system]\nStay in character.\n\n[user]\nContinue the scene.");
 
         await testInfo.attach(`mobile-roleplay-peek-prompt-${testInfo.project.name}.png`, {
           body: await page.screenshot({ fullPage: true }),

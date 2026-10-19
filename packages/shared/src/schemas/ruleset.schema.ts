@@ -4919,7 +4919,14 @@ export interface RulesetCatalogApplies {
   targetHealthAtMost?: number;
   paidSteps?: { atLeast?: number; atMost?: number };
   endsWith?: string;
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
+  checkEnds?: {
+    check: string;
+    difficulty: number;
+    passes?: RulesetTargetIs;
+    by?: "any";
+    spendsItem?: true;
+    failedRetryAfter?: number;
+  };
   harmsPerCostStep?: { dice?: string; flat?: number };
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
@@ -5101,6 +5108,13 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         /** Anybody next to its holder may spend their own standard budget on the check for them
          *  (Capability API 1.465), rolling it with their own: dousing a creature on fire. */
         by: z.literal("any").optional(),
+        /** Made, it spends for good the item whose use put it on (Capability API 1.583): Iron Bands of
+         *  Binding, "On a success, the item is destroyed". */
+        spendsItem: z.literal(true).optional(),
+        /** Failed, its holder's own tries fail for this many rounds (Capability API 1.583), and are
+         *  not offered: the bands' "any further attempts made by that creature automatically fail
+         *  until 24 hours have elapsed", 14400. */
+        failedRetryAfter: z.number().int().min(1).max(14400).optional(),
       })
       .strict()
       .optional(),

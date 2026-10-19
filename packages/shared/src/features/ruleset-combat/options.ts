@@ -4999,7 +4999,8 @@ function endingOptions(
         resave: { condition: entry.condition, label },
       });
     }
-    if (entry.checkEnds) {
+    // Not while a failed try still bars it (1.583): Iron Bands of Binding's day.
+    if (entry.checkEnds && !(entry.checkBarredUntil !== undefined && (state?.round ?? 0) < entry.checkBarredUntil)) {
       options.push({
         id: `checkends:${entry.condition}`,
         kind: "standard",

@@ -6285,6 +6285,18 @@ function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action:
   ctx.tore = true;
 }
 
+/** The item whose use put a condition on, spent for good (1.583) and told: Iron Bands of Binding,
+ *  destroyed by a successful escape. Nothing where no item put it on. */
+function spendApplyingItem(ctx: RulesetCombatContext, entry: RulesetTrackedCondition): void {
+  const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
+  const id = entry.action?.[0];
+  const use = source?.actions.find((one) => one.id === id)?.itemUse;
+  if (!source || !use || source.broken?.[use.item]) return;
+  (source.itemsUsed ??= {})[use.item] = (source.itemsUsed?.[use.item] ?? 0) + 1;
+  (source.broken ??= {})[use.item] = true;
+  ctx.events.push({ type: "itemSpent", actorId: source.id, label: source.sheet?.items?.[use.item]?.name ?? "" });
+}
+
 /** An item that may backfire as it is used (1.577) rolls its d100: at or under its chance, it deals
  *  its amount to its user, with `destroys` is gone for good, and with `instead` does nothing besides. */
 function backfireItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
@@ -7151,6 +7163,11 @@ function applyChoice(
         removeCondition(ctx, holder, entry.condition, "save");
         // The spell ends with it: its concentration too, where that is what held it.
         endHoldingConcentration(ctx, entry);
+        // And the item that put it on is spent (1.583): Iron Bands of Binding.
+        if (rule.spendsItem) spendApplyingItem(ctx, entry);
+      } else if (rule.failedRetryAfter && holder === working) {
+        // Its holder's own tries barred for a while (1.583).
+        entry.checkBarredUntil = ctx.state.round + rule.failedRetryAfter;
       }
     }
     noteOutcome(ctx);

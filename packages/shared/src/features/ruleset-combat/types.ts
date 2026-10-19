@@ -220,7 +220,14 @@ export interface RulesetCombatApplies {
   /** It ends whenever this other condition put on with it ends (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
+  checkEnds?: {
+    check: string;
+    difficulty: number;
+    passes?: RulesetTargetIs;
+    by?: "any";
+    spendsItem?: true;
+    failedRetryAfter?: number;
+  };
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.255). */
   harmsPerCostStep?: { dice?: string; flat?: number };
   /** Its holder's health maximum raised while it holds, and their health with it (1.420): Aid. */
@@ -1750,7 +1757,14 @@ export interface RulesetTrackedCondition {
   /** The condition put on with it that it ends with (1.202). */
   endsWith?: string;
   /** A check its holder may spend the standard budget on to end it (1.313): Maze's way out. */
-  checkEnds?: { check: string; difficulty: number; passes?: RulesetTargetIs; by?: "any" };
+  checkEnds?: {
+    check: string;
+    difficulty: number;
+    passes?: RulesetTargetIs;
+    by?: "any";
+    spendsItem?: true;
+    failedRetryAfter?: number;
+  };
   /** How many times it is on, where the condition stacks (1.189). */
   stacks?: number;
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
@@ -1758,6 +1772,8 @@ export interface RulesetTrackedCondition {
   harmsMore?: RulesetCombatAmount;
   /** How many of its harm's dice its saves have taken off (1.582): a Potion of Poison's. */
   harmDropped?: number;
+  /** The round until which its holder's own `checkEnds` tries are barred (1.583), after a failed one. */
+  checkBarredUntil?: number;
   /** The number its applier gave it as it went on (1.274): Heroism's spellcasting modifier. */
   value?: number;
   /** The level of the spell that put it on, as it was paid for (1.299): what magical darkness of

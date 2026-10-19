@@ -40758,6 +40758,15 @@
                                         "type": "string",
                                         "const": "any"
                                       },
+                                      "spendsItem": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "failedRetryAfter": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -45841,6 +45850,15 @@
                                           "by": {
                                             "type": "string",
                                             "const": "any"
+                                          },
+                                          "spendsItem": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "failedRetryAfter": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 14400
                                           },
                                           "$comment": {}
                                         },
@@ -53123,6 +53141,15 @@
                                 "type": "string",
                                 "const": "any"
                               },
+                              "spendsItem": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "failedRetryAfter": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 14400
+                              },
                               "$comment": {}
                             },
                             "required": [
@@ -54518,6 +54545,15 @@
                               "by": {
                                 "type": "string",
                                 "const": "any"
+                              },
+                              "spendsItem": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "failedRetryAfter": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 14400
                               },
                               "$comment": {}
                             },
@@ -59819,6 +59855,15 @@
                                       "type": "string",
                                       "const": "any"
                                     },
+                                    "spendsItem": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "failedRetryAfter": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -61243,6 +61288,15 @@
                                     "by": {
                                       "type": "string",
                                       "const": "any"
+                                    },
+                                    "spendsItem": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "failedRetryAfter": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
                                     },
                                     "$comment": {}
                                   },
@@ -63919,6 +63973,15 @@
                                     "type": "string",
                                     "const": "any"
                                   },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "failedRetryAfter": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -65747,6 +65810,15 @@
                                       "by": {
                                         "type": "string",
                                         "const": "any"
+                                      },
+                                      "spendsItem": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "failedRetryAfter": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
                                       },
                                       "$comment": {}
                                     },
@@ -69964,6 +70036,15 @@
                                                 "type": "string",
                                                 "const": "any"
                                               },
+                                              "spendsItem": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "failedRetryAfter": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
+                                              },
                                               "$comment": {}
                                             },
                                             "required": [
@@ -73508,6 +73589,15 @@
                                         "type": "string",
                                         "const": "any"
                                       },
+                                      "spendsItem": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "failedRetryAfter": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -76416,6 +76506,15 @@
                                       "type": "string",
                                       "const": "any"
                                     },
+                                    "spendsItem": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "failedRetryAfter": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 14400
+                                    },
                                     "$comment": {}
                                   },
                                   "required": [
@@ -78244,6 +78343,15 @@
                                         "by": {
                                           "type": "string",
                                           "const": "any"
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
                                         },
                                         "$comment": {}
                                       },
@@ -82461,6 +82569,15 @@
                                                   "type": "string",
                                                   "const": "any"
                                                 },
+                                                "spendsItem": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
+                                                "failedRetryAfter": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 14400
+                                                },
                                                 "$comment": {}
                                               },
                                               "required": [
@@ -86004,6 +86121,15 @@
                                         "by": {
                                           "type": "string",
                                           "const": "any"
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
                                         },
                                         "$comment": {}
                                       },
@@ -97609,6 +97735,15 @@
                                           "type": "string",
                                           "const": "any"
                                         },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -102070,6 +102205,15 @@
                                           "by": {
                                             "type": "string",
                                             "const": "any"
+                                          },
+                                          "spendsItem": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          "failedRetryAfter": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 14400
                                           },
                                           "$comment": {}
                                         },
@@ -106987,6 +107131,15 @@
                                               "by": {
                                                 "type": "string",
                                                 "const": "any"
+                                              },
+                                              "spendsItem": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "failedRetryAfter": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 14400
                                               },
                                               "$comment": {}
                                             },
@@ -114169,6 +114322,15 @@
                                     "type": "string",
                                     "const": "any"
                                   },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "failedRetryAfter": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -115564,6 +115726,15 @@
                                   "by": {
                                     "type": "string",
                                     "const": "any"
+                                  },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "failedRetryAfter": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
                                   },
                                   "$comment": {}
                                 },
@@ -122640,6 +122811,15 @@
                                                   "type": "string",
                                                   "const": "any"
                                                 },
+                                                "spendsItem": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
+                                                "failedRetryAfter": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 14400
+                                                },
                                                 "$comment": {}
                                               },
                                               "required": [
@@ -127556,6 +127736,15 @@
                                                     "by": {
                                                       "type": "string",
                                                       "const": "any"
+                                                    },
+                                                    "spendsItem": {
+                                                      "type": "boolean",
+                                                      "const": true
+                                                    },
+                                                    "failedRetryAfter": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 14400
                                                     },
                                                     "$comment": {}
                                                   },
@@ -134738,6 +134927,15 @@
                                           "type": "string",
                                           "const": "any"
                                         },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -136133,6 +136331,15 @@
                                         "by": {
                                           "type": "string",
                                           "const": "any"
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
                                         },
                                         "$comment": {}
                                       },
@@ -143215,6 +143422,15 @@
                                                   "type": "string",
                                                   "const": "any"
                                                 },
+                                                "spendsItem": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
+                                                "failedRetryAfter": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 14400
+                                                },
                                                 "$comment": {}
                                               },
                                               "required": [
@@ -148131,6 +148347,15 @@
                                                     "by": {
                                                       "type": "string",
                                                       "const": "any"
+                                                    },
+                                                    "spendsItem": {
+                                                      "type": "boolean",
+                                                      "const": true
+                                                    },
+                                                    "failedRetryAfter": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 14400
                                                     },
                                                     "$comment": {}
                                                   },
@@ -155313,6 +155538,15 @@
                                           "type": "string",
                                           "const": "any"
                                         },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -156708,6 +156942,15 @@
                                         "by": {
                                           "type": "string",
                                           "const": "any"
+                                        },
+                                        "spendsItem": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "failedRetryAfter": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 14400
                                         },
                                         "$comment": {}
                                       },
@@ -172928,6 +173171,15 @@
                               "type": "string",
                               "const": "any"
                             },
+                            "spendsItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "failedRetryAfter": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -174372,6 +174624,15 @@
                               "type": "string",
                               "const": "any"
                             },
+                            "spendsItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "failedRetryAfter": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -175802,6 +176063,15 @@
                             "by": {
                               "type": "string",
                               "const": "any"
+                            },
+                            "spendsItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "failedRetryAfter": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
                             },
                             "$comment": {}
                           },
@@ -180503,6 +180773,15 @@
                               "type": "string",
                               "const": "any"
                             },
+                            "spendsItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "failedRetryAfter": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -182618,6 +182897,15 @@
                                     "type": "string",
                                     "const": "any"
                                   },
+                                  "spendsItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "failedRetryAfter": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -184034,6 +184322,15 @@
                                       "by": {
                                         "type": "string",
                                         "const": "any"
+                                      },
+                                      "spendsItem": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "failedRetryAfter": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
                                       },
                                       "$comment": {}
                                     },
@@ -186159,6 +186456,15 @@
                             "by": {
                               "type": "string",
                               "const": "any"
+                            },
+                            "spendsItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "failedRetryAfter": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
                             },
                             "$comment": {}
                           },

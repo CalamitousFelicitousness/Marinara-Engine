@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A check out of a condition that spends its item or bars more tries (1.583): Iron Bands. */
+function carriesCheckEndsItem583(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCheckEndsItem583(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const check = plainRecord(record.checkEnds);
+  if (check && (check.spendsItem !== undefined || check.failedRetryAfter !== undefined)) return true;
+  return featureValues(record).some((one) => carriesCheckEndsItem583(one, depth + 1));
+}
+
 /** A condition's harm its saves wear down (1.582): a Potion of Poison. */
 function carriesHarmDrops582(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7928,6 +7939,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A check out of a condition that spends its item or bars more tries, 1.583.
+  if (
+    !declaresApi(583) &&
+    (carriesCheckEndsItem583(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCheckEndsItem583(document)))
+  )
+    return "A ruleset with a check out of a condition that spends its item or bars more tries (checkEnds.spendsItem, checkEnds.failedRetryAfter) requires schemaVersion 2 and capabilityApi 1.583 or newer";
   // A condition's harm its saves wear down, 1.582.
   if (
     !declaresApi(582) &&

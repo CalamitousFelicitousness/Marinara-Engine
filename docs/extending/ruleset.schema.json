@@ -99201,6 +99201,10 @@
                               "type": "number",
                               "exclusiveMinimum": 0
                             },
+                            "ringOnly": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "copies": {
                               "type": "integer",
                               "minimum": 2,
@@ -119274,6 +119278,10 @@
                                   "ring": {
                                     "type": "number",
                                     "exclusiveMinimum": 0
+                                  },
+                                  "ringOnly": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "copies": {
                                     "type": "integer",
@@ -139354,6 +139362,10 @@
                                   "ring": {
                                     "type": "number",
                                     "exclusiveMinimum": 0
+                                  },
+                                  "ringOnly": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "copies": {
                                     "type": "integer",

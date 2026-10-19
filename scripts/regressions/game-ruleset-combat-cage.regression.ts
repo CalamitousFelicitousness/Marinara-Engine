@@ -5,6 +5,7 @@
  *   - Zone `blocks: ["spells"]`, a wall or not: no spell is cast into, out of or across it. A spell
  *     aimed at someone inside is refused, an area is not aimed into it and one beside it stops at its
  *     edge; a weapon shot is not stopped, nor a spell cast from inside at someone inside.
+ *   - A scroll's use, and a further use, laid only as a ring too.
  *   - Refusals, and the install gate.
  */
 import assert from "node:assert/strict";
@@ -184,6 +185,70 @@ try {
   after.turn = 1;
   const bow = rulesetCombatOptions(definition, after, "giant").find((one) => one.label === "Bow")!;
   assert.equal(rulesetTargetRefusal(after, "giant", bow.id, "wizard"), null);
+
+  // ── A scroll's use, and a further use, laid only as a ring too ──
+  {
+    const cageUse = () => ({
+      kind: "utility",
+      budget: "action",
+      area: { shape: "wall", size: 80, ring: 20, ringOnly: true },
+      range: 100,
+      zone: { rounds: 10, triggers: [], blocks: ["move"] },
+    });
+    const scrolls = fiveE();
+    scrolls.items = { categories: [{ id: "gear", label: "Gear" }] };
+    scrolls.catalogs.push({
+      id: "kit",
+      label: "Kit",
+      holds: "items",
+      entries: [
+        {
+          id: "scroll",
+          label: "Scroll of Bars",
+          item: {
+            category: "gear",
+            use: cageUse(),
+            moreUses: [{ label: "Box form", use: cageUse() }],
+          },
+        },
+      ],
+    });
+    const withScroll = parsed(scrolls);
+    const scroll = withScroll.catalogs!.find((catalog) => catalog.id === "kit")!.entries![0]!.item!;
+    assert.equal(scroll.use?.area?.ringOnly, true);
+    assert.equal(scroll.moreUses?.[0]?.use.area?.ringOnly, true);
+    const holding = createRulesetEncounter({
+      definition: withScroll,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        {
+          id: "wizard",
+          name: "Wizard",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 10, dex: 10, con: 14, int: 18, wis: 10, cha: 10 },
+            fields: { level: 13, ac: 12, speed: 30, hp_max: 60 },
+          }),
+          items: [{ item: scroll, quantity: 1, worn: false, name: "Scroll of Bars" }],
+        },
+        { id: "giant", name: "Giant", side: "enemy", block },
+      ],
+      board: {
+        grid: { width: 24, height: 12, tiles: Array.from({ length: 12 }, () => Array(24).fill("plains")) },
+        placements: { wizard: { x: 1, y: 5 }, giant: { x: 12, y: 5 } },
+      },
+    });
+    holding.order = ["wizard", "giant"];
+    holding.turn = 0;
+    const uses = rulesetCombatOptions(withScroll, holding, "wizard").filter((one) => one.area?.shape === "wall");
+    assert.equal(uses.length, 2, uses.map((one) => one.label).join(", "));
+    for (const use of uses) {
+      assert.equal(use.area?.ringOnly, true, use.label);
+      const ys = new Set(rulesetAimedCells(holding, "wizard", use.id, { x: 12, y: 5 }).map((cell) => cell.y));
+      assert.ok(ys.size > 1, `${use.label}: a ring`);
+    }
+  }
 
   // ── Refusals ──
   refused(

@@ -9971,6 +9971,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
         size: z.number().finite().gt(0),
         width: z.number().finite().gt(0).optional(),
         ring: z.number().finite().gt(0).optional(),
+        /** Laid as its ring alone (Capability API 1.549), as a catalog entry's is: a scroll of
+         *  Forcecage's cage. */
+        ringOnly: z.literal(true).optional(),
         copies: z.number().int().min(2).max(10).optional(),
         // Its copies spaced out (1.301): a scroll of Dancing Lights.
         copiesWithin: z.number().finite().gt(0).max(10000).optional(),
@@ -10005,6 +10008,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       .refine((area) => area.ring === undefined || area.shape === "wall", {
         message: "Only a wall is a ring",
         path: ["ring"],
+      })
+      .refine((area) => !area.ringOnly || area.ring !== undefined, {
+        message: '"ringOnly" lays it as its ring, so it has "ring"',
+        path: ["ringOnly"],
       })
       .optional(),
     toHit: itemToHitSchema.optional(),

@@ -1989,7 +1989,7 @@
   "game.combat.ruleset.event.alongside": "{{actor}}'s {{label}} goes off with {{to}}.",
   "game.combat.ruleset.event.altered": "{{actor}} uses {{label}} with {{alters}}.",
   "game.combat.ruleset.event.area": "{{actor}} aims {{label}} at {{x}}, {{y}}, covering {{cells}} cells.",
-  "game.combat.ruleset.event.arrived": "{{names}}, called by {{actor}}, arrive.",
+  "game.combat.ruleset.event.arrived": "{{actor}}'s call brings {{names}}.",
   "game.combat.ruleset.event.ashore": "{{actor}} cannot stop on the water and comes out at {{x}}, {{y}}.",
   "game.combat.ruleset.event.attackCritical": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a critical hit.",
   "game.combat.ruleset.event.attackHit": "{{actor}} attacks {{target}} with {{label}}: {{roll}} against {{defense}}, a hit.",

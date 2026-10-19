@@ -1106,10 +1106,14 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["setAside", say({ type: "setAside", targetId: "lurker", label: "Antimagic Field" })],
+    ["itemSpent", say({ type: "itemSpent", actorId: "brenna", label: "Figurine of Wondrous Power" })],
+    ["arrived", say({ type: "arrived", actorId: "brenna", ids: ["lurker"] })],
     ["alongside", say({ type: "alongside", actorId: "brenna", label: "Staff: Thunderclap", to: "Staff: Both" })],
   ];
   const printed = new Map(table);
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
+  assert.equal(printed.get("itemSpent"), "Brenna's Figurine of Wondrous Power is spent for good.");
+  assert.equal(printed.get("arrived"), "Brenna's call brings Thorn Lurker.");
   assert.equal(printed.get("duplicate"), "Thorn Lurker's attack turns onto one of Brenna's duplicates (6, needing 6).");
   assert.equal(
     say({

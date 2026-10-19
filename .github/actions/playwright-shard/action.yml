@@ -25,6 +25,12 @@ inputs:
     description: Run the small desktop smoke suite instead of a full regression shard
     required: false
     default: "false"
+  global-timeout-minutes:
+    description: >-
+      End the shard as a failed run after this many minutes (0 = no limit). Keep it a few minutes under the job's
+      timeout-minutes so the report and the failure-evidence upload still run.
+    required: false
+    default: "0"
 runs:
   using: composite
   steps:
@@ -78,8 +84,10 @@ runs:
       shell: bash
       env:
         PLAYWRIGHT_ONLY_PROJECT: ${{ inputs.server-project }}
+        GLOBAL_TIMEOUT_MINUTES: ${{ inputs.global-timeout-minutes }}
       run: >-
         pnpm exec playwright test -c playwright.config.ts
         --project=${{ inputs.project }}
         --fully-parallel --workers=1
+        --global-timeout=$((GLOBAL_TIMEOUT_MINUTES * 60000))
         --shard=${{ inputs.shard }}/${{ inputs.total-shards }}

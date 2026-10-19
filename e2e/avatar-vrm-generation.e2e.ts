@@ -341,7 +341,9 @@ test("3D Avatars makes a body-only VRM model from a full-body sprite with Tripo"
       "a paid model is kept or discarded before another is made",
     ).toBeDisabled();
     await expect(draft.getByText("Your avatar stays the same until you save.")).toBeVisible();
-    expect((await request.get(`/api/avatar-models/character/${character.id}`)).status(), "nothing saved yet").toBe(404);
+    const nothingSaved = await request.get(`/api/avatar-models/character/${character.id}`);
+    expect(nothingSaved.status(), "nothing saved yet").toBe(200);
+    expect(await nothingSaved.json(), "nothing saved yet").toBeNull();
     await maker.screenshot({ path: info.outputPath("vrm-model-draft.png"), animations: "disabled" });
 
     await draft.getByRole("button", { name: "Save as the VRM model", exact: true }).click();

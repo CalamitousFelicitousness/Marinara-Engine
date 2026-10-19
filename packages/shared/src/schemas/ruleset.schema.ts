@@ -5064,6 +5064,7 @@ export interface RulesetCatalogApplies {
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
+  lastsDays?: RulesetValueRef;
   targetHolds?: RulesetTargetHolds;
   endsOnTarget?: string[];
   harmsPuller?: { dice?: string; flat?: number; type?: string };
@@ -5291,6 +5292,11 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  1.274), for the condition's `temporary` to give: 5e's Heroism, its caster's spellcasting
      *  modifier. */
     value: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** With `duration: "until-dispelled"`, it lasts this many days, read off the sheet of whoever
+     *  applies it as it goes on (Capability API 1.610): no clock in the fight, and on a sheet it is
+     *  still on as the fight ends, counted down by the days that pass. 5e's Quivering Palm, "a
+     *  number of days equal to your monk level". */
+    lastsDays: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     /** It goes on only a target that already holds one of these, from anybody (`conditions`) or
      *  from whoever applies it (`fromSelf`), read as it goes on (Capability API 1.354), so one put on
      *  earlier in the same list counts. A kraken's Bite swallows only a creature the kraken grapples;
@@ -5339,6 +5345,13 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         code: z.ZodIssueCode.custom,
         path: ["saveEnds"],
         message: '"until-save" needs the save that ends it',
+      });
+    }
+    if (applies.lastsDays !== undefined && applies.duration !== "until-dispelled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["lastsDays"],
+        message: '"lastsDays" is its clock outside a fight, so its "duration" is "until-dispelled"',
       });
     }
   });

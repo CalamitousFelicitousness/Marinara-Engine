@@ -27,6 +27,7 @@ import {
 import {
   evaluateRulesetSheetLive,
   readRulesetLive,
+  rulesetLiveWithDayClock,
   rulesetLiveWithDaySave,
   rulesetRecoverPicks,
   type RulesetLiveState,
@@ -3326,6 +3327,18 @@ function applyConditionId(
         : lasts
       : null;
   if (target.conditionLeft?.[condition]) delete target.conditionLeft[condition];
+  // Days, off its applier's sheet (1.610): Quivering Palm's monk level.
+  const days = ((ref) => {
+    if (ref === undefined) return undefined;
+    const read = giver?.sheet
+      ? rulesetSheetValue(ctx.definition, giver, ref)
+      : typeof ref === "number"
+        ? ref
+        : typeof ref === "object" && ref && "const" in ref && typeof ref.const === "number"
+          ? ref.const
+          : undefined;
+    return read !== undefined && read >= 1 ? Math.min(3650, Math.trunc(read)) : undefined;
+  })(applies.lastsDays);
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
   // On its source's clock (1.119), counted from their NEXT turn: put on in the middle of their own
   // turn, the end of this one is not "the end of your next turn".
@@ -3349,6 +3362,7 @@ function applyConditionId(
     // Where it was put on from (1.404), for a behavior measured from there: Symbol of Fear's glyph.
     ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
+    ...(days !== undefined ? { days } : {}),
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
@@ -9206,6 +9220,12 @@ export function liftRulesetFightEffects(
           difficulty: entry.difficulty,
           every: ends.days,
         });
+      }
+      // Days it lasts (1.610) go onto the sheet it stays on, to be counted as days pass.
+      for (const entry of combatant.tracked) {
+        if (entry.days === undefined || entry.rounds !== null) continue;
+        if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
+        combatant.sheet.live = rulesetLiveWithDayClock(combatant.sheet.live, entry.condition, entry.days);
       }
     }
     const dazed = combatant.dazed;

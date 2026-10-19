@@ -241,6 +241,8 @@ export interface RulesetCombatApplies {
   destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
   value?: RulesetValueRef;
+  /** Days it lasts, off its applier's sheet as it goes on (1.610): no clock in the fight. */
+  lastsDays?: RulesetValueRef;
   /** It goes on only a target holding one of these, read as it goes on (1.354): a kraken's swallow. */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   /** What its applier had put on the target, taken off once it is on (1.354): the swallow's grapple. */
@@ -1749,6 +1751,8 @@ export interface RulesetTrackedCondition {
   at?: RulesetCombatCell;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
+  /** Days it lasts once the fight is over (1.610), on a sheet: Quivering Palm. */
+  days?: number;
   saveEnds?: RulesetCombatSaveEnds;
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
   clock?: "turn-start";

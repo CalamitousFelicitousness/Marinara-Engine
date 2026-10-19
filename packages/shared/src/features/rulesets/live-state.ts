@@ -93,6 +93,8 @@ export interface RulesetLiveState {
   /** Saves made as days pass (1.473), keyed by the condition they end: which save, against what,
    *  how many days apart, and the days counted toward the next. Feeblemind's, every 30 days. */
   daySaves?: Record<string, RulesetLiveDaySave>;
+  /** Days left of each condition that lasts so many (1.610), keyed by condition: Quivering Palm's. */
+  dayClocks?: Record<string, number>;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.473). */
@@ -172,6 +174,8 @@ const liveAbilityRaiseSchema = z
   .object({ score: z.number().int().min(0).max(1000), max: z.number().int().min(0).max(1000) })
   .strict();
 
+const liveDayClock = z.number().int().min(1).max(3650);
+
 const liveDaySaveSchema = z
   .object({
     save: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
@@ -198,6 +202,7 @@ export const rulesetLiveStateSchema = z
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
     daySaves: boundedRecord(liveDaySaveSchema, MAX_LIVE_CONDITIONS, "saves made as days pass").optional(),
+    dayClocks: boundedRecord(liveDayClock, MAX_LIVE_CONDITIONS, "days conditions last").optional(),
   })
   .strip();
 
@@ -768,6 +773,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (waited) state.waited = waited;
   const daySaves = keepValid(source.daySaves, liveDaySaveSchema, MAX_LIVE_CONDITIONS);
   if (daySaves) state.daySaves = daySaves;
+  const dayClocks = keepValid(source.dayClocks, liveDayClock, MAX_LIVE_CONDITIONS);
+  if (dayClocks) state.dayClocks = dayClocks;
   return state;
 }
 
@@ -792,6 +799,9 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   // A save made as days pass (1.473) lasts while what it ends does.
   const daySaves = Object.entries(state.daySaves ?? {}).filter(([condition]) => held.has(condition));
   if (daySaves.length > 0) normalized.daySaves = Object.fromEntries(daySaves);
+  // So do the days a condition lasts (1.610).
+  const dayClocks = Object.entries(state.dayClocks ?? {}).filter(([condition]) => held.has(condition));
+  if (dayClocks.length > 0) normalized.dayClocks = Object.fromEntries(dayClocks);
   return normalized;
 }
 
@@ -931,6 +941,13 @@ export function rulesetLiveWithDaySave(
 ): RulesetLiveState {
   const state = readStoredLiveStateAsIs(stored);
   return { ...state, daySaves: { ...state.daySaves, [condition]: { ...save } } };
+}
+
+/** A live state with `condition` lasting `days` more (1.610), counted down as days pass: written as
+ *  a fight that put it on is over. */
+export function rulesetLiveWithDayClock(stored: unknown, condition: string, days: number): RulesetLiveState {
+  const state = readStoredLiveStateAsIs(stored);
+  return { ...state, dayClocks: { ...state.dayClocks, [condition]: Math.max(1, Math.min(3650, Math.trunc(days))) } };
 }
 
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */
@@ -1543,6 +1560,23 @@ export function applyRulesetSheetOp(
       } else daySaves[condition] = { ...owed, waited: counted };
     }
     next.daySaves = daySaves;
+    // A condition that lasts so many days (1.610) comes off once they have passed.
+    const dayClocks = { ...next.dayClocks };
+    for (const [condition, left] of Object.entries(dayClocks)) {
+      if (!(next.conditions ?? []).includes(condition)) {
+        delete dayClocks[condition];
+        continue;
+      }
+      if (left > op.days) {
+        dayClocks[condition] = left - op.days;
+        continue;
+      }
+      delete dayClocks[condition];
+      next.conditions = (next.conditions ?? []).filter((id) => id !== condition);
+      const label = definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
+      back.push(`${label} ended`);
+    }
+    next.dayClocks = dayClocks;
     const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}`;
     return done(back.length ? `${days}: ${back.join(", ")}` : days);
   }

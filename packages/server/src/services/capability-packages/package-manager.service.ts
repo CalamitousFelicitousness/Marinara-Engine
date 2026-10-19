@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that lasts a number of days (1.610): 5e's Quivering Palm. */
+function carriesLastsDays610(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLastsDays610(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.lastsDays !== undefined) return true;
+  return featureValues(record).some((one) => carriesLastsDays610(one, depth + 1));
+}
+
 /** A condition changing its holder's derived values (1.609): 5e's Bull's Strength. */
 function carriesDerivedChanges609(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8238,6 +8248,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that lasts a number of days, 1.610.
+  if (
+    !declaresApi(610) &&
+    (carriesLastsDays610(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLastsDays610(document)))
+  )
+    return "A ruleset whose conditions last a number of days (an applied condition's lastsDays) requires schemaVersion 2 and capabilityApi 1.610 or newer";
   // A condition changing its holder's derived values, 1.609.
   if (
     !declaresApi(609) &&

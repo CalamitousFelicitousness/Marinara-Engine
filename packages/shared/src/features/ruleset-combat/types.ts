@@ -193,6 +193,8 @@ export interface RulesetCombatApplies {
     uses?: string[];
     downed?: true;
     gains?: string[];
+    /** Its holder incapacitated, holding anything with `cannot-act` (1.555). */
+    incapacitated?: true;
   };
   /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
    *  their sight (1.310): Eyebite's panic. With `orUnseen`, either as its holder ends a turn (1.380). */
@@ -1648,6 +1650,8 @@ export interface RulesetTrackedCondition {
     uses?: string[];
     downed?: true;
     gains?: string[];
+    /** Its holder incapacitated, holding anything with `cannot-act` (1.555). */
+    incapacitated?: true;
   };
   /** How far from its putter, and out of their sight, takes it off (1.310), or either as its holder
    *  ends a turn (1.380). */

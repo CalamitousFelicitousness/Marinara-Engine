@@ -6594,6 +6594,8 @@ export function rulesetAuraReaches(
     )
       return false;
   }
+  // Only to whoever its holder can see (1.555): a knight's Leadership.
+  if (aura.seenByHolder && holder.id !== target.id && !rulesetCanSee(definition, state, holder, target)) return false;
   // Only the kind named as it was put on (1.270): Antipathy/Sympathy's.
   if (aura.chosenKind) {
     const kind = holder.tracked.find((entry) => entry.condition === condition && entry.kind)?.kind;

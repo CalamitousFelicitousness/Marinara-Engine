@@ -39968,6 +39968,10 @@
                                         "minItems": 1,
                                         "maxItems": 8
                                       },
+                                      "incapacitated": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -45010,6 +45014,10 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 8
+                                          },
+                                          "incapacitated": {
+                                            "type": "boolean",
+                                            "const": true
                                           },
                                           "$comment": {}
                                         },
@@ -52141,6 +52149,10 @@
                                 "minItems": 1,
                                 "maxItems": 8
                               },
+                              "incapacitated": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "$comment": {}
                             },
                             "additionalProperties": false
@@ -53522,6 +53534,10 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 8
+                              },
+                              "incapacitated": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -58773,6 +58789,10 @@
                                       "minItems": 1,
                                       "maxItems": 8
                                     },
+                                    "incapacitated": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -60183,6 +60203,10 @@
                                       },
                                       "minItems": 1,
                                       "maxItems": 8
+                                    },
+                                    "incapacitated": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "$comment": {}
                                   },
@@ -62841,6 +62865,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "incapacitated": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -64655,6 +64683,10 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "incapacitated": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -68854,6 +68886,10 @@
                                                 "minItems": 1,
                                                 "maxItems": 8
                                               },
+                                              "incapacitated": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
                                               "$comment": {}
                                             },
                                             "additionalProperties": false
@@ -72264,6 +72300,10 @@
                                         "minItems": 1,
                                         "maxItems": 8
                                       },
+                                      "incapacitated": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -75154,6 +75194,10 @@
                                       "minItems": 1,
                                       "maxItems": 8
                                     },
+                                    "incapacitated": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
@@ -76968,6 +77012,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -81167,6 +81215,10 @@
                                                   "minItems": 1,
                                                   "maxItems": 8
                                                 },
+                                                "incapacitated": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
                                                 "$comment": {}
                                               },
                                               "additionalProperties": false
@@ -84576,6 +84628,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -96095,6 +96151,10 @@
                                           "minItems": 1,
                                           "maxItems": 8
                                         },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -100331,6 +100391,10 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 8
+                                          },
+                                          "incapacitated": {
+                                            "type": "boolean",
+                                            "const": true
                                           },
                                           "$comment": {}
                                         },
@@ -105207,6 +105271,10 @@
                                                 },
                                                 "minItems": 1,
                                                 "maxItems": 8
+                                              },
+                                              "incapacitated": {
+                                                "type": "boolean",
+                                                "const": true
                                               },
                                               "$comment": {}
                                             },
@@ -112238,6 +112306,10 @@
                                     "minItems": 1,
                                     "maxItems": 8
                                   },
+                                  "incapacitated": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -113619,6 +113691,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "incapacitated": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -120390,6 +120466,10 @@
                                                   "minItems": 1,
                                                   "maxItems": 8
                                                 },
+                                                "incapacitated": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
                                                 "$comment": {}
                                               },
                                               "additionalProperties": false
@@ -125265,6 +125345,10 @@
                                                       },
                                                       "minItems": 1,
                                                       "maxItems": 8
+                                                    },
+                                                    "incapacitated": {
+                                                      "type": "boolean",
+                                                      "const": true
                                                     },
                                                     "$comment": {}
                                                   },
@@ -132296,6 +132380,10 @@
                                           "minItems": 1,
                                           "maxItems": 8
                                         },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -133677,6 +133765,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -140454,6 +140546,10 @@
                                                   "minItems": 1,
                                                   "maxItems": 8
                                                 },
+                                                "incapacitated": {
+                                                  "type": "boolean",
+                                                  "const": true
+                                                },
                                                 "$comment": {}
                                               },
                                               "additionalProperties": false
@@ -145329,6 +145425,10 @@
                                                       },
                                                       "minItems": 1,
                                                       "maxItems": 8
+                                                    },
+                                                    "incapacitated": {
+                                                      "type": "boolean",
+                                                      "const": true
                                                     },
                                                     "$comment": {}
                                                   },
@@ -152360,6 +152460,10 @@
                                           "minItems": 1,
                                           "maxItems": 8
                                         },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "$comment": {}
                                       },
                                       "additionalProperties": false
@@ -153741,6 +153845,10 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 8
+                                        },
+                                        "incapacitated": {
+                                          "type": "boolean",
+                                          "const": true
                                         },
                                         "$comment": {}
                                       },
@@ -169827,6 +169935,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "incapacitated": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -171257,6 +171369,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "incapacitated": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -172673,6 +172789,10 @@
                               },
                               "minItems": 1,
                               "maxItems": 8
+                            },
+                            "incapacitated": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },
@@ -177300,6 +177420,10 @@
                               "minItems": 1,
                               "maxItems": 8
                             },
+                            "incapacitated": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -179062,6 +179186,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "seenByHolder": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "grows": {
                       "type": "object",
                       "properties": {
@@ -179392,6 +179520,10 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 8
+                                  },
+                                  "incapacitated": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -180795,6 +180927,10 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 8
+                                      },
+                                      "incapacitated": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "$comment": {}
                                     },
@@ -182219,6 +182355,10 @@
                     "minItems": 1,
                     "maxItems": 8
                   },
+                  "incapacitated": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -182882,6 +183022,10 @@
                               },
                               "minItems": 1,
                               "maxItems": 8
+                            },
+                            "incapacitated": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },

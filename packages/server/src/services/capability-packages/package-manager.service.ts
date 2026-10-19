@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that ends when its holder is incapacitated, or an aura only to whom its holder sees
+ *  (1.555): a knight's Leadership. */
+function carriesLeadership555(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLeadership555(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.endsWhenHolder)?.incapacitated !== undefined) return true;
+  if (record.distance !== undefined && record.seenByHolder !== undefined) return true;
+  return featureValues(record).some((one) => carriesLeadership555(one, depth + 1));
+}
+
 /** A creature's move toward a hostile it can see (1.554): an orc's Aggressive. */
 function carriesMoveToward554(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7594,6 +7606,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that ends when its holder is incapacitated, or an aura only to whom its holder sees, 1.555.
+  if (
+    !declaresApi(555) &&
+    (carriesLeadership555(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLeadership555(document)))
+  ) {
+    return "A ruleset with a condition that ends when its holder is incapacitated, or an aura only its holder's seen get (endsWhenHolder.incapacitated, aura.seenByHolder), requires schemaVersion 2 and capabilityApi 1.555 or newer";
+  }
   // A creature's move toward a hostile it can see, 1.554.
   if (
     !declaresApi(554) &&

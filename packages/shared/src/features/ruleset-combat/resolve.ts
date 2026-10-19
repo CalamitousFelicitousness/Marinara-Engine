@@ -3256,6 +3256,7 @@ function applyConditionId(
             ...(applies.endsWhenHolder.uses ? { uses: [...applies.endsWhenHolder.uses] } : {}),
             ...(applies.endsWhenHolder.downed ? { downed: true as const } : {}),
             ...(applies.endsWhenHolder.gains ? { gains: [...applies.endsWhenHolder.gains] } : {}),
+            ...(applies.endsWhenHolder.incapacitated ? { incapacitated: true as const } : {}),
           },
         }
       : {}),
@@ -3770,6 +3771,25 @@ function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void 
     const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
     if (ends?.gains?.some((id) => held.has(id)) && rulesetCombatConditions(ctx.definition, target).includes(condition))
       removeCondition(ctx, target, condition, "spent");
+  }
+  // Or its holder incapacitated (1.555): a knight's Leadership.
+  if (
+    (target.tracked.some((one) => one.endsWhenHolder?.incapacitated) ||
+      [...held].some(
+        (id) => ctx.combat.conditions?.find((rule) => rule.condition === id)?.endsWhenHolder?.incapacitated,
+      )) &&
+    rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) =>
+      entry.effects.includes("cannot-act"),
+    )
+  ) {
+    for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.incapacitated)) {
+      if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "spent");
+    }
+    for (const condition of rulesetCombatConditions(ctx.definition, target)) {
+      const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
+      if (ends?.incapacitated && rulesetCombatConditions(ctx.definition, target).includes(condition))
+        removeCondition(ctx, target, condition, "spent");
+    }
   }
   if (!rulesetCombatStanding(target)) {
     for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.downed)) {

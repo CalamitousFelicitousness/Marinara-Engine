@@ -3885,6 +3885,7 @@ export interface RulesetConditionEndsWhenHolder {
   castsAtFoes?: true;
   downed?: true;
   gains?: string[];
+  incapacitated?: true;
 }
 const conditionEndsWhenHolderSchema: z.ZodType<RulesetConditionEndsWhenHolder, z.ZodTypeDef, unknown> = z
   .object({
@@ -3904,11 +3905,18 @@ const conditionEndsWhenHolderSchema: z.ZodType<RulesetConditionEndsWhenHolder, z
     downed: z.literal(true).optional(),
     /** Its holder coming to hold one of these conditions (Capability API 1.387): Rage. */
     gains: uniqueIds(8).optional(),
+    /** Its holder holding anything that keeps them from acting, `cannot-act` (Capability API 1.555):
+     *  a knight's Leadership, "This effect ends if the knight is incapacitated". */
+    incapacitated: z.literal(true).optional(),
   })
   .strict()
-  .refine((ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains, {
-    message: 'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains" or more than one',
-  })
+  .refine(
+    (ends) => ends.moves || ends.acts || ends.attacks || ends.casts || ends.downed || ends.gains || ends.incapacitated,
+    {
+      message:
+        'Say what ends it: "moves", "acts", "attacks", "casts", "downed", "gains", "incapacitated" or more than one',
+    },
+  )
   .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
     message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
   });
@@ -4665,6 +4673,7 @@ export interface RulesetHolderEnding {
   uses?: string[];
   downed?: true;
   gains?: string[];
+  incapacitated?: true;
 }
 const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> = z
   .object({
@@ -4697,12 +4706,25 @@ const holderEndingSchema: z.ZodType<RulesetHolderEnding, z.ZodTypeDef, unknown> 
     /** Its holder coming to hold one of these conditions, however (Capability API 1.387): 5e's Rage,
      *  "knocked unconscious", by a blow or by Sleep. */
     gains: uniqueIds(8).optional(),
+    /** Its holder holding anything with `cannot-act` (Capability API 1.555): Leadership. */
+    incapacitated: z.literal(true).optional(),
   })
   .strict()
-  .refine((ends) => ends.attacks || ends.casts || ends.moves || ends.acts || ends.uses || ends.downed || ends.gains, {
-    message:
-      "Say what ends it: attacking, casting, moving, acting or using one of its actions, or going down or gaining a condition",
-  })
+  .refine(
+    (ends) =>
+      ends.attacks ||
+      ends.casts ||
+      ends.moves ||
+      ends.acts ||
+      ends.uses ||
+      ends.downed ||
+      ends.gains ||
+      ends.incapacitated,
+    {
+      message:
+        "Say what ends it: attacking, casting, moving, acting or using one of its actions, or going down, gaining a condition or being incapacitated",
+    },
+  )
   .refine((ends) => !ends.castsAtFoes || !!ends.casts, {
     message: '"castsAtFoes" narrows "casts" to a cast that reaches a foe, so it goes with "casts"',
   });
@@ -11662,6 +11684,7 @@ export interface RulesetConditionAura {
   sourcesOf?: string[];
   chosenKind?: true;
   orSeen?: true;
+  seenByHolder?: true;
   harms?: { dice?: string; flat?: number; type?: string; on?: "holder-turn" | "their-turn" };
   grows?: { by: number; upTo: number };
   lingers?: true;
@@ -11706,6 +11729,9 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     /** Also to whoever can see its holder, however far off (Capability API 1.270): Antipathy's
      *  "can see the target or comes within 60 feet". */
     orSeen: z.literal(true).optional(),
+    /** Only to whoever its holder can see (Capability API 1.555): a knight's Leadership, "a
+     *  nonhostile creature that it can see". */
+    seenByHolder: z.literal(true).optional(),
     /** It reaches `by` further as each of its holder's turns starts, to no more than `upTo`, in the
      *  ruleset's distance (Capability API 1.320): Frost Debt, 20 feet growing by 10 to 40. */
     grows: z

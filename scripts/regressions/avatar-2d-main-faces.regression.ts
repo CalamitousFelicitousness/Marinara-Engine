@@ -6,7 +6,7 @@
  *     (`happy_2`) is the face it was drawn as;
  *   - a new face starts from its sprite alone: talk and blink pictures made for an older picture are dropped from
  *     it (their files stay on disk);
- *   - a PNGTuber Plus import keeps its own faces, and a full setup gains no face past the 64-face cap;
+ *   - a PNGTuber Plus import keeps its own faces, and a full setup gains no face past the 64-face cap, nor offers one;
  *   - the face lists offer every sprite face, sprites named after a feeling too, never talk, blink or full-body
  *     sprites, and nothing from sprites for a PNGTuber Plus import;
  *   - the result is a valid setup that saving blink and talk pictures keeps.
@@ -205,6 +205,14 @@ try {
   assert.equal(Object.keys(capped.layers).length, 64, "a full setup gains no face");
   assert.deepEqual(capped.expressionMap.happy, before.expressionMap.happy, "so happy keeps its face");
   assert.deepEqual(capped.expressionMap.sad, user("face_3"), "a face it already has can still be used");
+  assert.equal(layers.pngtuberFaceChoices(full, fromSprites), full.layers, "a full setup offers no sprite face");
+  const roomForTwo = { ...full, layers: Object.fromEntries(Object.entries(full.layers).slice(0, 62)) };
+  const nearlyFull = layers.pngtuberFaceChoices(roomForTwo, fromSprites);
+  assert.equal(Object.keys(nearlyFull).length, 64, "the face lists stop at the 64-face cap");
+  assert.ok(
+    avatarKindDataSchema.safeParse({ pngtuber: { ...roomForTwo, layers: nearlyFull } }).success,
+    "choosing any offered face keeps the PUT body valid",
+  );
 
   // ── Saving blink and talk pictures afterwards keeps the new faces ──
   const kept = mergePngtuberVariants(afterAll as never, [{ key: "happy", variants: ["mouth-open"], keepOthers: true }]);

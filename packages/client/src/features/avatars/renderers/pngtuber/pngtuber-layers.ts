@@ -144,14 +144,18 @@ export function buildPngtuberLayersFromSprites(sprites: readonly SpriteLike[]): 
 }
 
 /** Every face a feeling can be given: the setup's own, then each sprite face it doesn't have yet, also ones named
- *  after a feeling, so any sprite can be chosen. A PNGTuber Plus import keeps its own faces. */
+ *  after a feeling, so any sprite can be chosen, as many as the 64-face cap leaves room for. A PNGTuber Plus
+ *  import keeps its own faces. */
 export function pngtuberFaceChoices(
   shown: PngtuberAvatarData | null,
   fromSprites: PngtuberAvatarData | null,
 ): Record<string, PngtuberLayerSet> {
   if (!shown) return {};
   if (shown.source === "pngtuber-plus" || !fromSprites) return shown.layers;
-  const added = Object.entries(fromSprites.layers).filter(([key]) => !Object.hasOwn(shown.layers, key));
+  const room = Math.max(0, MAX_LAYER_SETS - Object.keys(shown.layers).length);
+  const added = Object.entries(fromSprites.layers)
+    .filter(([key]) => !Object.hasOwn(shown.layers, key))
+    .slice(0, room);
   return added.length ? { ...shown.layers, ...Object.fromEntries(added) } : shown.layers;
 }
 

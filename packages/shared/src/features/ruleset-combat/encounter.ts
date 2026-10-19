@@ -4752,7 +4752,8 @@ function sheetCombatant(
   }
   // What an entry that duplicates others casts (1.421): every other entry of its catalog no higher
   // than its `upTo`, each its own option, with its maker's numbers, paid for as the duplicating entry
-  // is and needing none of its components. 5e's Wish.
+  // is and needing none of its components. 5e's Wish; and an item's use (1.587), paid for with the
+  // item as that use is: a Ring of Three Wishes.
   for (const wish of [...actions]) {
     const duplicates = wish.duplicates;
     if (!duplicates) continue;
@@ -4780,6 +4781,7 @@ function sheetCombatant(
       action.entry = ref;
       if (wish.use) action.use = { ...wish.use };
       else delete action.use;
+      if (wish.itemUse) action.itemUse = structuredClone(wish.itemUse);
       delete action.components;
       action.duplicatedBy = wish.id;
       actions.push(action);

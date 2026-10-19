@@ -2740,6 +2740,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item's use that casts other entries (1.587): a Ring of Three Wishes. */
+function carriesItemDuplicates587(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemDuplicates587(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const item = plainRecord(record.item);
+  if (item) {
+    const uses = [
+      item.use,
+      ...(Array.isArray(item.moreUses) ? item.moreUses.map((more) => plainRecord(more)?.use) : []),
+    ];
+    if (uses.some((use) => plainRecord(use)?.duplicates !== undefined)) return true;
+  }
+  return featureValues(record).some((one) => carriesItemDuplicates587(one, depth + 1));
+}
+
 /** An item that adds to its holder's proficiency bonus (1.586): an Ioun Stone of Mastery. */
 function carriesProficiencyBonus586(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7975,6 +7992,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use that casts other entries, 1.587.
+  if (
+    !declaresApi(587) &&
+    (carriesItemDuplicates587(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemDuplicates587(document)))
+  )
+    return "A ruleset with an item use that casts other entries (use.duplicates) requires schemaVersion 2 and capabilityApi 1.587 or newer";
   // An item that adds to its holder's proficiency bonus, 1.586.
   if (
     !declaresApi(586) &&

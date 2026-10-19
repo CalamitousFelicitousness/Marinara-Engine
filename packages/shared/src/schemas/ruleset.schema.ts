@@ -10422,11 +10422,13 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.endsLayers &&
       // Or keeps a missile caught (1.573): Gloves of Missile Snaring.
       !use.keepsCaught &&
+      // Or casts other entries (1.587): a Ring of Three Wishes.
+      !use.duplicates &&
       (!use.zone || !use.area)
     ) {
       issue(
         "kind",
-        "A utility use leaves an area standing, clears growth, teleports or calls creatures, so it has an area and a zone, clears, a teleport or calls",
+        "A utility use leaves an area standing, clears growth, teleports, calls creatures or casts other entries, so it has an area and a zone, clears, a teleport, calls or duplicates",
       );
     }
     if (use.endsLayers && !use.endsLayersAs) {
@@ -20285,6 +20287,11 @@ function useIssues(
   const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
   const value = itemValueChecker(definition, add);
   if (use.save && !saves.has(use.save.save)) add([...at, "save", "save"], `Unknown save "${use.save.save}"`);
+  // What it casts (1.587) is a catalog of the ruleset's, and it casts nothing else.
+  if (use.duplicates && !definition.catalogs?.some((catalog) => catalog.id === use.duplicates!.catalog))
+    add([...at, "duplicates", "catalog"], `Unknown catalog "${use.duplicates.catalog}"`);
+  if (use.duplicates && (use.kind !== "utility" || use.amount || use.applies?.length || use.area))
+    add([...at, "duplicates"], 'A use that casts other entries is a "utility" use that does nothing else');
   // Its time drawn from the item's charges (1.570): an item that has them, and something it puts on.
   if (use.chargesPerRound && !item.charges)
     add([...at, "chargesPerRound"], '"chargesPerRound" spends the item\'s charges, so the item has "charges"');

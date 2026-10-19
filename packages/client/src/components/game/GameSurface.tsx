@@ -25,6 +25,7 @@ import {
   type RulesetStartingGearSelection,
   type GameInventoryStack,
   type PlayerStats,
+  type SpritePlacement,
   type RulesetLiveStates,
   rulesetCardItems,
   rulesetReadsItems,
@@ -67,6 +68,13 @@ import {
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "../chat/ChatControlWindow";
 import type { ChatImage } from "../../hooks/use-gallery";
+import {
+  loadLocalSpriteVisualSettings,
+  saveLocalSpriteVisualSettings,
+  normalizeSpriteCharacterVisualSettingsMap,
+  type LocalSpriteVisualSettings,
+} from "../chat/local-sprite-visual-settings";
+import { normalizeSpritePlacements } from "../chat/sprite-placement";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
 import { useAgentStore } from "../../stores/agent.store";
@@ -2427,6 +2435,56 @@ function GameSurfaceComponent({
   const dismissDiceRollResult = useGameModeStore((s) => s.dismissDiceRollResult);
   const weatherEffectsEnabled = useUIStore((s) => s.weatherEffects);
   const gameFullBodySpriteScale = useUIStore((s) => s.gameFullBodySpriteScale);
+  const [avatarArrangeMode, setAvatarArrangeMode] = useState(false);
+  const [avatarVisualSettings, setAvatarVisualSettings] = useState<LocalSpriteVisualSettings>(() =>
+    loadLocalSpriteVisualSettings(activeChatId),
+  );
+  useEffect(() => {
+    setAvatarArrangeMode(false);
+    setAvatarVisualSettings(loadLocalSpriteVisualSettings(activeChatId));
+  }, [activeChatId]);
+  const avatarPlacements = useMemo(
+    () => normalizeSpritePlacements(avatarVisualSettings.spritePlacements ?? chatMeta.spritePlacements),
+    [avatarVisualSettings.spritePlacements, chatMeta.spritePlacements],
+  );
+  const avatarCharacterSettings = useMemo(
+    () =>
+      normalizeSpriteCharacterVisualSettingsMap(
+        avatarVisualSettings.characterOverrides ?? chatMeta.spriteCharacterVisualSettings,
+      ),
+    [avatarVisualSettings.characterOverrides, chatMeta.spriteCharacterVisualSettings],
+  );
+  const changeAvatarPlacement = useCallback(
+    (key: string, placement: SpritePlacement) => {
+      setAvatarVisualSettings((previous) =>
+        saveLocalSpriteVisualSettings(
+          activeChatId,
+          {
+            spritePlacements: { ...avatarPlacements, [key]: placement },
+          },
+          previous,
+        ),
+      );
+    },
+    [activeChatId, avatarPlacements],
+  );
+  const changeAvatarScale = useCallback(
+    (ownerId: string, scale: number) => {
+      setAvatarVisualSettings((previous) =>
+        saveLocalSpriteVisualSettings(
+          activeChatId,
+          {
+            characterOverrides: {
+              ...avatarCharacterSettings,
+              [ownerId]: { ...avatarCharacterSettings[ownerId], fullBodySpriteScale: scale },
+            },
+          },
+          previous,
+        ),
+      );
+    },
+    [activeChatId, avatarCharacterSettings],
+  );
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const gameMiddleMouseNav = useUIStore((s) => s.gameMiddleMouseNav);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
@@ -12833,7 +12891,14 @@ function GameSurfaceComponent({
                 participants={avatarParticipants}
                 enabledAgentIds={avatarAgentIds}
                 side="center"
-                scale={gameFullBodySpriteScale}
+                scale={avatarVisualSettings.fullBodySpriteScale ?? gameFullBodySpriteScale}
+                placements={avatarPlacements}
+                characterVisualSettings={avatarCharacterSettings}
+                editing={avatarArrangeMode}
+                onToggleEditing={() => setAvatarArrangeMode((previous) => !previous)}
+                onFinishPlacement={() => setAvatarArrangeMode(false)}
+                onPlacementChange={changeAvatarPlacement}
+                onScaleChange={changeAvatarScale}
               />
             </Suspense>
           )}

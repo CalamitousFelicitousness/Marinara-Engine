@@ -118,18 +118,52 @@ for (const mode of ["roleplay", "game"] as const) {
         )
         .toBe(true);
       await page.screenshot({ path: info.outputPath(`${mode}-before.png`) });
-      await stage.getByRole("button", { name: "Arrange avatars", exact: true }).click();
+      const arrange = page.getByRole("button", { name: "Arrange avatars", exact: true });
+      if (isMobile) await arrange.tap();
+      else await arrange.click();
       const before = await canvas.boundingBox();
       expect(before).not.toBeNull();
+      const originalLeft = await avatar.evaluate((node: HTMLElement) => node.style.left);
       const start = { x: before!.x + before!.width / 2, y: before!.y + before!.height / 2 };
-      await page.mouse.move(start.x, start.y);
-      await page.mouse.down();
-      await page.mouse.move(start.x - 45, start.y - 35, { steps: 8 });
-      await page.mouse.up();
-      await expect.poll(() => avatar.evaluate((node: HTMLElement) => Number.parseFloat(node.style.left))).not.toBe(50);
+      if (isMobile) {
+        // Tap uses the emulated touchscreen/hit test; the following browser pointer events exercise a
+        // held touch, which Playwright's cross-browser touchscreen API does not expose.
+        await canvas.tap();
+        await canvas.dispatchEvent("pointerdown", {
+          ...start,
+          clientX: start.x,
+          clientY: start.y,
+          pointerId: 7,
+          pointerType: "touch",
+          button: 0,
+        });
+        await page.evaluate(({ x, y }) => {
+          window.dispatchEvent(
+            new PointerEvent("pointermove", { pointerId: 7, pointerType: "touch", clientX: x + 45, clientY: y - 35 }),
+          );
+          window.dispatchEvent(
+            new PointerEvent("pointerup", { pointerId: 7, pointerType: "touch", clientX: x + 45, clientY: y - 35 }),
+          );
+        }, start);
+      } else {
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        await page.mouse.move(start.x + 45, start.y - 35, { steps: 8 });
+        await page.mouse.up();
+      }
+      await expect.poll(() => avatar.evaluate((node: HTMLElement) => node.style.left)).not.toBe(originalLeft);
+      const draggedLeft = await avatar.evaluate((node: HTMLElement) => Number.parseFloat(node.style.left));
+      await canvas.focus();
+      await canvas.press("ArrowLeft");
+      await expect
+        .poll(() => avatar.evaluate((node: HTMLElement) => Number.parseFloat(node.style.left)))
+        .toBeLessThan(draggedLeft);
       const moved = await avatar.evaluate((node: HTMLElement) => ({ left: node.style.left, top: node.style.top }));
-      const size = avatar.getByRole("slider", { name: "Maukie's avatar size" });
-      await size.fill("0.7");
+      const size = page.getByRole("slider", { name: "Maukie's avatar size" });
+      await size.focus();
+      await size.press("Home");
+      for (let step = 0; step < 13; step += 1) await size.press("ArrowRight");
+      await expect(size).toHaveValue("0.7");
       await expect.poll(async () => (await canvas.boundingBox())!.height).toBeLessThan(before!.height * 0.8);
       const resized = await canvas.boundingBox();
       await page.screenshot({ path: info.outputPath(`${mode}-arranging.png`) });
@@ -137,12 +171,15 @@ for (const mode of ["roleplay", "game"] as const) {
       await expect(avatar).toHaveCSS("pointer-events", "none");
       await page.reload();
       await expect(avatar).toHaveAttribute("data-avatar-kind", "vrm", { timeout: 60_000 });
-      await expect(avatar).toHaveCSS("left", await avatar.evaluate((node) => getComputedStyle(node).left));
       await expect
         .poll(() => avatar.evaluate((node: HTMLElement) => ({ left: node.style.left, top: node.style.top })))
         .toEqual(moved);
       await expect.poll(async () => Math.round((await canvas.boundingBox())!.height)).toBe(Math.round(resized!.height));
-      await page.emulateMedia({ colorScheme: "light" });
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme("light");
+      });
+      await page.getByRole("button", { name: "Arrange avatars", exact: true }).click();
       await page.screenshot({ path: info.outputPath(`${mode}-${isMobile ? "phone" : "desktop"}-restored.png`) });
     } finally {
       if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);

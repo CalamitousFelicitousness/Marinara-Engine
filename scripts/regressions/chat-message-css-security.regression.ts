@@ -172,11 +172,18 @@ function assertEveryRuleScoped(css: string, scope: string, message: string) {
   root.walkRules((rule) => {
     if (rule.parent?.type === "atrule" && /keyframes$/iu.test((rule.parent as import("postcss").AtRule).name)) return;
     for (const selector of rule.selectors) {
-      assert.ok(selector.startsWith(scope), `${message}: ${selector}`);
-      assert.doesNotMatch(selector.slice(scope.length), /^(?:[^\s~+>]*)\s*(?:~|\+|\|\|)/u, `${message}: ${selector}`);
+      const rest = selector.slice(scope.length);
+      // The scope must end at a selector boundary: `.mari-card-css-other` is a different element.
+      assert.ok(selector.startsWith(scope) && /^(?:$|[\s>:[.#])/u.test(rest), `${message}: ${selector}`);
+      assert.doesNotMatch(rest, /^(?:[^\s~+>]*)\s*(?:~|\+|\|\|)/u, `${message}: ${selector}`);
     }
   });
 }
+assert.throws(
+  () => assertEveryRuleScoped(".mari-card-css-other .a { color: red }", ".mari-card-css", "prefix"),
+  assert.AssertionError,
+  "a class that only starts with the scope name is not inside the scope",
+);
 
 const escapedQuoteCardCss = scopeChatCss(
   '.a { --x: \\"; } .probe { color: red } .b { color: blue; content: "\\"" } .after { color: green }',

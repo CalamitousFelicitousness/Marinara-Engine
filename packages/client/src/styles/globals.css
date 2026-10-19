@@ -4341,6 +4341,12 @@ strong {
   cursor: progress !important;
   opacity: 0.7 !important;
 }
+@media (pointer: coarse) {
+  .mari-remote-image-load {
+    min-height: 2.5rem !important;
+    padding: 0 0.75rem !important;
+  }
+}
 
 /* Markdown heading sizes inside chat messages — mirrors Discord / ST sizing */
 .mari-message-content h1.mari-md-heading,

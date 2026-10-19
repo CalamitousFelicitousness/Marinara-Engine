@@ -1803,8 +1803,6 @@ export function ConversationInput({
   const handleGifSelect = useCallback(
     async (gifUrl: string) => {
       if (!activeChatId) return;
-      // The user picked this GIF, so it shows in the chat without asking again.
-      useUIStore.getState().approveRemoteImageUrl(gifUrl);
 
       // Fetch the GIF and convert to PNG so all providers can handle it
       let gifAttachments: Array<{ type: string; data: string }> | undefined;
@@ -1818,6 +1816,8 @@ export function ConversationInput({
       }
 
       if (isSendBlocked) return;
+      // The user sent this GIF, so it shows in the chat without asking again.
+      useUIStore.getState().approveRemoteImageUrl(gifUrl);
 
       await generate({
         chatId: activeChatId,

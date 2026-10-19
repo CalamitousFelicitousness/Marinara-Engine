@@ -2663,6 +2663,15 @@ export function rulesetActionAvailable(
     );
     if (stopped) return false;
   }
+  // An entry a condition stops by name (1.593): Wish, once it is lost.
+  if (
+    action.entry &&
+    definition?.combat?.conditions?.some((one) => one.forbids?.entries) &&
+    rulesetActiveConditions(definition, definition.combat, actor, state).some((entry) =>
+      entry.forbids?.entries?.includes(action.entry!),
+    )
+  )
+    return false;
   if (action.innate?.coven) {
     const coven = action.innate.coven;
     if (!state || !coven) return false;

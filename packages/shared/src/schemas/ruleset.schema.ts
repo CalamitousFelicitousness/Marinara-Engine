@@ -2592,8 +2592,12 @@ export interface RulesetConditionHarms {
     | "source-turn-end"
     | "attacks-source"
     | "attacks-source-side"
-    | "defies";
+    | "defies"
+    | "casts";
   once?: true;
+  perLevel?: true;
+  unblockable?: true;
+  catalogs?: string[];
   dice?: string;
   flat?: number;
   type?: string;
@@ -2620,7 +2624,16 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
       "attacks-source",
       "attacks-source-side",
       "defies",
+      "casts",
     ]),
+    /** With `at: "casts"` (Capability API 1.593): as its holder casts an entry of these catalogs,
+     *  once for each level it was cast at with `perLevel`. 5e's Wish's stress, "each time you cast a
+     *  spell until you finish a long rest, you take 1d10 necrotic damage per level of that spell". */
+    catalogs: z.array(sheetId).min(1).max(8).optional(),
+    perLevel: z.literal(true).optional(),
+    /** Neither resistance nor immunity counts against it (Capability API 1.593): "This damage can't be
+     *  reduced or prevented in any way". */
+    unblockable: z.literal(true).optional(),
     /** It harms only once while it holds (Capability API 1.509): Geas's "no more than once each
      *  day". */
     once: z.literal(true).optional(),
@@ -2647,6 +2660,14 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
   .strict()
   .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
     message: "What it harms with names dice, a flat amount, or both",
+  })
+  .refine((harm) => (harm.at === "casts") === (harm.catalogs !== undefined), {
+    message: 'A harm as its holder casts names the "catalogs" cast from, and only then',
+    path: ["catalogs"],
+  })
+  .refine((harm) => !harm.perLevel || harm.at === "casts", {
+    message: '"perLevel" counts the level of what was cast, so it harms "at": "casts"',
+    path: ["perLevel"],
   })
   .refine(
     (harm) => {
@@ -3035,6 +3056,7 @@ export interface RulesetConditionForbids {
   casts?: string[];
   concentration?: true;
   items?: { tags?: string[] };
+  entries?: string[];
 }
 const conditionForbidsSchema: z.ZodType<RulesetConditionForbids, z.ZodTypeDef, unknown> = z
   .object({
@@ -3056,11 +3078,22 @@ const conditionForbidsSchema: z.ZodType<RulesetConditionForbids, z.ZodTypeDef, u
       .object({ tags: uniqueIds(8).optional() })
       .strict()
       .optional(),
+    /** Nothing of these entries used while it holds (Capability API 1.593), `<catalog>/<entry>`: 5e's
+     *  Wish lost, "unable to cast wish ever again". */
+    entries: z
+      .array(z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z0-9][a-z0-9_-]*$/))
+      .min(1)
+      .max(24)
+      .refine((entries) => new Set(entries).size === entries.length, { message: "An entry is named once" })
+      .optional(),
   })
   .strict()
-  .refine((forbids) => forbids.components || forbids.casts || forbids.concentration || forbids.items, {
-    message: 'Say what it stops: "components", "casts", "concentration", "items" or more than one',
-  });
+  .refine(
+    (forbids) => forbids.components || forbids.casts || forbids.concentration || forbids.items || forbids.entries,
+    {
+      message: 'Say what it stops: "components", "casts", "concentration", "items", "entries" or more than one',
+    },
+  );
 export interface RulesetZoneWards {
   catalogs: string[];
   maxLevel: number;
@@ -4957,6 +4990,7 @@ export interface RulesetCatalogSaveEnds {
 export interface RulesetCatalogApplies {
   condition: string;
   duration: z.infer<typeof catalogDurationSchema>;
+  chance?: number;
   saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "own-hit" | "attacked" | "attacked-by-source" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
@@ -5016,6 +5050,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** Put on only a target with this much health left or less as it lands (Capability API 1.397):
      *  5e's Divine Word, deafened at 50 or fewer, blinded too at 40, stunned too at 30. */
     targetHealthAtMost: z.number().int().min(0).max(100000).optional(),
+    /** Put on only on a d100 of this or lower (Capability API 1.593), rolled for each it would land
+     *  on: 5e's Wish, "a 33 percent chance that you are unable to cast wish ever again". */
+    chance: z.number().int().min(1).max(99).optional(),
     /** Put on only when its entry is paid this many steps above its lowest cost, or more, or fewer
      *  (Capability API 1.464): 5e's Magic Weapon, +1 from a 2nd-level slot (`atMost: 1`), +2 from a
      *  4th (`atLeast: 2, atMost: 3`), +3 from a 6th (`atLeast: 4`), each its own condition. */
@@ -17726,6 +17763,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "light"], "Light is read where combat.sight.darkness makes the dark real");
       componentIssues(def, entry.forbids?.components, [...path, "forbids", "components"], issue);
       castsIssues(def, entry.forbids?.casts, [...path, "forbids", "casts"], issue);
+      // Entries stopped by name, and catalogs cast from that harm (1.593), are the ruleset's own.
+      entry.forbids?.entries?.forEach((ref, refIndex) => {
+        const catalogId = ref.slice(0, ref.indexOf("/"));
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId))
+          issue([...path, "forbids", "entries", refIndex], `Unknown catalog "${catalogId}"`);
+      });
+      entry.harms?.catalogs?.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId))
+          issue([...path, "harms", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+      });
       componentIssues(def, entry.waives, [...path, "waives"], issue);
       if (entry.aware) awareIssues(def, entry.aware, [...path, "aware"], issue);
       if (entry.presence) {

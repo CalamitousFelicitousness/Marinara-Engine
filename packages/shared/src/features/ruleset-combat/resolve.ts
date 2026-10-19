@@ -3223,6 +3223,8 @@ function applyConditionId(
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  // Only on a roll (1.593): Wish lost, 33 in 100.
+  if (applies.chance !== undefined && ctx.roll(100) > applies.chance) return;
   // Only on a target already holding what it asks, as it stands now (1.354): a kraken's swallow.
   if (applies.targetHolds && !rulesetHoldsFor(ctx.definition, target, extra.sourceId ?? "", applies.targetHolds))
     return;
@@ -4586,6 +4588,37 @@ function harmForDefiance(
     if (!defied || actor.defeated) continue;
     if (harms.once) entry.harmedOnce = true;
     harmFromCondition(ctx, actor, entry, harms.at);
+  }
+}
+
+/** What a condition deals its holder as they cast from its catalogs (1.593), for each level it was
+ *  cast at where it says, and past every resistance where it says: Wish's stress. */
+function harmForCasting(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  payWith: string | undefined,
+): void {
+  const catalog = action.catalog ?? action.casts;
+  if (catalog === undefined || !ctx.combat.conditions?.some((one) => one.harms?.at === "casts")) return;
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state)) {
+    const harms = entry.harms;
+    if (harms?.at !== "casts" || !harms.catalogs?.includes(catalog) || actor.defeated) continue;
+    const times = harms.perLevel ? rulesetPaidLevel(ctx.definition, actor, action, payWith) : 1;
+    if (times < 1) continue;
+    const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
+    const rolls = dice ? rollRulesetDice(ctx.roll, dice.count * times, dice.sides) : [];
+    const flat = ((dice?.flat ?? 0) + (harms.flat ?? 0)) * times;
+    const dealt = applyDamage(ctx, actor, {
+      sourceId: actor.id,
+      label: ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition,
+      ...(harms.type ? { damageType: harms.type } : {}),
+      rolls,
+      flat,
+      amount: sumOf(rolls) + flat,
+      ...(harms.unblockable ? { unblockable: true as const } : {}),
+    });
+    afterBlow(ctx, actor, dealt, false);
   }
 }
 
@@ -12927,6 +12960,8 @@ function resolveAction(
   const reachedFrom = ctx.events.length;
   // Harmed for acting against who put a condition on (1.509): Geas.
   if (!held) harmForDefiance(ctx, actor, action, targets);
+  // Harmed for casting (1.593): Wish's stress.
+  if (!held) harmForCasting(ctx, actor, action, payWith);
   // What shakes surprise off, taken first (1.237): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
   // Its light lit or put out (1.296), and nothing else: what it shows is asked as the step ends.

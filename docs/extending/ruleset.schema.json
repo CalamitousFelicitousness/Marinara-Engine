@@ -39996,6 +39996,11 @@
                                     "minimum": 0,
                                     "maximum": 100000
                                   },
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 99
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -45172,6 +45177,11 @@
                                         "type": "integer",
                                         "minimum": 0,
                                         "maximum": 100000
+                                      },
+                                      "chance": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 99
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -52463,6 +52473,11 @@
                             "minimum": 0,
                             "maximum": 100000
                           },
+                          "chance": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 99
+                          },
                           "paidSteps": {
                             "type": "object",
                             "properties": {
@@ -53867,6 +53882,11 @@
                             "type": "integer",
                             "minimum": 0,
                             "maximum": 100000
+                          },
+                          "chance": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 99
                           },
                           "paidSteps": {
                             "type": "object",
@@ -59197,6 +59217,11 @@
                                   "minimum": 0,
                                   "maximum": 100000
                                 },
+                                "chance": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 99
+                                },
                                 "paidSteps": {
                                   "type": "object",
                                   "properties": {
@@ -60630,6 +60655,11 @@
                                   "type": "integer",
                                   "minimum": 0,
                                   "maximum": 100000
+                                },
+                                "chance": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 99
                                 },
                                 "paidSteps": {
                                   "type": "object",
@@ -63315,6 +63345,11 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "chance": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -65152,6 +65187,11 @@
                                     "type": "integer",
                                     "minimum": 0,
                                     "maximum": 100000
+                                  },
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 99
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -69492,6 +69532,11 @@
                                             "minimum": 0,
                                             "maximum": 100000
                                           },
+                                          "chance": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 99
+                                          },
                                           "paidSteps": {
                                             "type": "object",
                                             "properties": {
@@ -73045,6 +73090,11 @@
                                     "minimum": 0,
                                     "maximum": 100000
                                   },
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 99
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -75962,6 +76012,11 @@
                                   "minimum": 0,
                                   "maximum": 100000
                                 },
+                                "chance": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 99
+                                },
                                 "paidSteps": {
                                   "type": "object",
                                   "properties": {
@@ -77799,6 +77854,11 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -82139,6 +82199,11 @@
                                               "minimum": 0,
                                               "maximum": 100000
                                             },
+                                            "chance": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 99
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -85691,6 +85756,11 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -97344,6 +97414,11 @@
                                       "minimum": 0,
                                       "maximum": 100000
                                     },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -101814,6 +101889,11 @@
                                         "type": "integer",
                                         "minimum": 0,
                                         "maximum": 100000
+                                      },
+                                      "chance": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 99
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -106824,6 +106904,11 @@
                                             "type": "integer",
                                             "minimum": 0,
                                             "maximum": 100000
+                                          },
+                                          "chance": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 99
                                           },
                                           "paidSteps": {
                                             "type": "object",
@@ -114015,6 +114100,11 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "chance": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -115419,6 +115509,11 @@
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100000
+                              },
+                              "chance": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
                               },
                               "paidSteps": {
                                 "type": "object",
@@ -122504,6 +122599,11 @@
                                               "minimum": 0,
                                               "maximum": 100000
                                             },
+                                            "chance": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 99
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -127513,6 +127613,11 @@
                                                   "type": "integer",
                                                   "minimum": 0,
                                                   "maximum": 100000
+                                                },
+                                                "chance": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 99
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -134704,6 +134809,11 @@
                                       "minimum": 0,
                                       "maximum": 100000
                                     },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -136108,6 +136218,11 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -143199,6 +143314,11 @@
                                               "minimum": 0,
                                               "maximum": 100000
                                             },
+                                            "chance": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 99
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -148208,6 +148328,11 @@
                                                   "type": "integer",
                                                   "minimum": 0,
                                                   "maximum": 100000
+                                                },
+                                                "chance": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 99
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -155399,6 +155524,11 @@
                                       "minimum": 0,
                                       "maximum": 100000
                                     },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -156803,6 +156933,11 @@
                                       "type": "integer",
                                       "minimum": 0,
                                       "maximum": 100000
+                                    },
+                                    "chance": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 99
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -171325,6 +171460,15 @@
                     },
                     "additionalProperties": false
                   },
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 24
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false
@@ -173032,6 +173176,11 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "chance": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 99
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -174485,6 +174634,11 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "chance": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 99
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -175924,6 +176078,11 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 100000
+                        },
+                        "chance": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 99
                         },
                         "paidSteps": {
                           "type": "object",
@@ -179382,8 +179541,27 @@
                       "source-turn-end",
                       "attacks-source",
                       "attacks-source-side",
-                      "defies"
+                      "defies",
+                      "casts"
                     ]
+                  },
+                  "catalogs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  },
+                  "perLevel": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "unblockable": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "once": {
                     "type": "boolean",
@@ -180671,6 +180849,11 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 100000
+                        },
+                        "chance": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 99
                         },
                         "paidSteps": {
                           "type": "object",
@@ -182796,6 +182979,11 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "chance": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -184221,6 +184409,11 @@
                                     "type": "integer",
                                     "minimum": 0,
                                     "maximum": 100000
+                                  },
+                                  "chance": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 99
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -186356,6 +186549,11 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "chance": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 99
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -187995,6 +188193,11 @@
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 100000
+                      },
+                      "chance": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 99
                       },
                       "paidSteps": {
                         "type": "object",

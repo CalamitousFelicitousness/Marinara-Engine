@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Harm for casting, a condition put on by chance, or an entry stopped by name (1.593): Wish. */
+function carriesCastingStress593(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCastingStress593(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.harms)?.at === "casts") return true;
+  if (plainRecord(record.forbids)?.entries !== undefined) return true;
+  if (typeof record.condition === "string" && typeof record.chance === "number") return true;
+  return featureValues(record).some((one) => carriesCastingStress593(one, depth + 1));
+}
+
 /** A ward of only some entries (1.592): 5e's Mind Blank. */
 function carriesWardEntries592(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8063,6 +8075,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Harm for casting, a condition put on by chance, or an entry stopped by name, 1.593.
+  if (
+    !declaresApi(593) &&
+    (carriesCastingStress593(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCastingStress593(document)))
+  )
+    return "A ruleset with harm for casting, a condition put on by chance or an entry stopped by name (harms.at casts, applies[].chance, forbids.entries) requires schemaVersion 2 and capabilityApi 1.593 or newer";
   // A ward of only some entries, 1.592.
   if (
     !declaresApi(592) &&

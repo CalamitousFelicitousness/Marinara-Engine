@@ -83,6 +83,7 @@ import {
   VIDEO_SCENE_DURATION_MAX,
   VIDEO_SCENE_DURATION_MIN,
   compileImagePrompt,
+  createImageStyleProfileId,
   normalizeImageStyleProfileSettings,
   normalizeVideoGenerationUserSettings,
   createFolderEntry,
@@ -869,12 +870,7 @@ function ImageStyleProfilesEditor({
   );
 
   const cloneSelected = useCallback(() => {
-    let suffix = 1;
-    let id = `${selected.id}-custom`;
-    while (settings.profiles.some((profile) => profile.id === id)) {
-      suffix += 1;
-      id = `${selected.id}-custom-${suffix}`;
-    }
+    const id = createImageStyleProfileId(selected.id, settings.profiles);
     const clone = { ...selected, id, name: `${selected.name} Custom`, builtIn: false };
     commit({ ...settings, profiles: [...settings.profiles, clone], defaultProfileId: id });
     setSelectedId(id);

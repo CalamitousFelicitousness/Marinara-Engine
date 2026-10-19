@@ -5141,6 +5141,7 @@
   "settings.storageOptimization.found_one": "Found 1 abandoned avatar older than {{minutes}} minutes ({{size}}).",
   "settings.storageOptimization.found_other": "Found {{count}} abandoned avatars older than {{minutes}} minutes ({{size}}).",
   "settings.storageOptimization.scanning": "Checking avatar storage…",
+  "settings.sync.tooLarge": "Settings are too big to save, so delete some image style profiles to make room.",
   "settings.tabs.addons.description": "Personal Extensions and custom themes.",
   "settings.tabs.addons.label": "Addons",
   "settings.tabs.advanced.description": "Admin access, updates, tools, backups, and danger zone.",

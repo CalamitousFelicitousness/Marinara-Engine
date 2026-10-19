@@ -183,6 +183,11 @@ assert.deepEqual(scene.patch, { location: "Docks", worldCustomFields: [] }, "onl
 const rejected = buildGameStateEditorPatch(gameState, [{ sectionId: "quest", value: { not: "an array" } }]);
 assert.ok("error" in rejected);
 assert.equal(rejected.sectionId, "quest", "a slice's validation error names its section");
+assert.deepEqual(
+  rejected.error,
+  { code: "notArray", field: "activeQuests" },
+  "the error is a code the modal localizes",
+);
 
 const agentUpdated = { ...gameState, location: "Lighthouse" } as GameState;
 assert.deepEqual(

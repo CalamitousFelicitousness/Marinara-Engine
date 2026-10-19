@@ -100,13 +100,13 @@ async function connectionRow(request: APIRequestContext, id: string) {
 
 const isPhone = (testInfo: TestInfo) => testInfo.project.name.includes("mobile");
 
-/** Opens the input-box menu and, on phones, the models step for the connection. */
+/** Opens the input-box menu and, on phones, the models step for the connection (its row's arrow, #7660). */
 async function openModels(page: Page, testInfo: TestInfo, connectionId: string): Promise<Locator> {
   if (isPhone(testInfo)) {
     await page.getByRole("button", { name: "Quick Switcher", exact: true }).click();
     const sheet = page.locator("[data-quick-switcher-mobile-menu]");
     await expect(sheet).toBeVisible();
-    await sheet.locator(`[data-connection-option="${connectionId}"]`).click();
+    await sheet.locator(`[data-connection-models="${connectionId}"]`).click();
     const picker = sheet.locator("[data-connection-model-picker]");
     await expect(picker.locator("[data-model-back]")).toBeVisible();
     return picker;
@@ -172,13 +172,15 @@ test("the Connections menu lists, pins, picks, refreshes and types models withou
       ]) {
         expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
-      // The back control returns to the connection list.
+      // The back control returns to the connection list; the row switches and its arrow opens the models.
       await picker.locator("[data-model-back]").click();
       await expect(sheet.locator("[data-connection-model-picker]")).toHaveCount(0);
       const connectionButton = sheet.locator(`[data-connection-option="${main.id}"]`);
       await expect(connectionButton).toBeVisible();
       expect((await connectionButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await connectionButton.click();
+      const modelsButton = sheet.locator(`[data-connection-models="${main.id}"]`);
+      expect((await modelsButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await modelsButton.click();
       picker = sheet.locator("[data-connection-model-picker]");
       await expect(modelRow(picker, "all", "vendor/beta")).toBeVisible();
     } else {

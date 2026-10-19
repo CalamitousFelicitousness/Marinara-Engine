@@ -976,7 +976,11 @@ test("Roleplay users send and edit private whispers and notes in Manual group ch
     expect(await preview(narrator.id)).toContain("ONLY_NOTE_SECRET");
     expect(await preview(bob.id)).not.toContain("ONLY_NOTE_SECRET");
     const malformed = await sendPrivateCommand('[whisper: character="Bob", text="UNFINISHED_PRIVATE_SECRET');
-    await malformed.getByRole("button", { name: "Mari used whisper command!", exact: true }).click();
+    // #7412: a failed private command has lost its place in the message, so its notice starts open.
+    await expect(malformed.getByRole("button", { name: "Mari used whisper command!", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await expect(malformed).toContainText(
       "This private command could not be read. Your original text is preserved below.",
     );

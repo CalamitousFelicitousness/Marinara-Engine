@@ -4,7 +4,12 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateClientId } from "../lib/utils";
-import { activeSeasonalMariPack, getMariAppearancePack, mariSeasonKey } from "../lib/mari-work-animations";
+import {
+  activeSeasonalMariPack,
+  getMariAppearancePack,
+  mariSeasonKey,
+  resolveMariAppearancePack,
+} from "../lib/mari-work-animations";
 import {
   IMAGE_STYLE_PROFILES_STORAGE_KEY,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -29,7 +34,14 @@ import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
 import { UI_PERSISTENCE } from "../lib/ui-persistence";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
-import { withSeasonalYear, type SeasonalThemeId, type SeasonalYears } from "../lib/seasonal-themes";
+import {
+  readSeasonalPreview,
+  seasonalThemeFor,
+  withSeasonalYear,
+  type SeasonalPreview,
+  type SeasonalThemeId,
+  type SeasonalYears,
+} from "../lib/seasonal-themes";
 
 export type Panel =
   | "chat"
@@ -732,6 +744,8 @@ interface UIState {
   mariUnlockedPackIds: string[];
   /** `mariSeasonKey` of the dated pack window the user picked another pack in; "" follows the dated pack. */
   mariSeasonOptOut: string;
+  /** The same for a `?seasonalPreview=` page: this page load only, never saved or synced. */
+  mariSeasonPreviewOptOut: string;
   /** Connection Professor Mari's window answers with. Null until she is first given one. */
   mariConnectionId: string | null;
   chatBackground: string | null;
@@ -998,6 +1012,8 @@ interface UIState {
   seasonalGreetingYears: SeasonalYears;
   /** Per seasonal theme, the year it was turned off from its greeting. */
   seasonalThemeOffYears: SeasonalYears;
+  /** `?seasonalPreview=` on this page load, with its own greeting and "Turn it off" records; never saved or synced. */
+  seasonalPreview: SeasonalPreview | null;
   /** When true, show the global Music Player surface. */
   musicPlayerEnabled: boolean;
   /** Which Music Player surface to show. */
@@ -1546,6 +1562,21 @@ function normalizePersistedMainSurface(persisted: Record<string, unknown>) {
 }
 
 /**
+ * The pack Professor Mari wears for this state (`resolveMariAppearancePack`). Its dated pack follows the seasonal
+ * theme worn for the user (`seasonalThemeFor`), and a preview page reads its own unsaved opt-out.
+ */
+export function shownMariAppearancePack(state: UIState, playHours: number | null = null, now: Date = new Date()) {
+  return resolveMariAppearancePack(
+    state.mariAppearancePackId,
+    state.mariUnlockedPackIds,
+    playHours,
+    state.seasonalPreview ? state.mariSeasonPreviewOptOut : state.mariSeasonOptOut,
+    seasonalThemeFor(state, now).themeId,
+    now,
+  );
+}
+
+/**
  * Returns the subset of UI state that is synced to the server so it persists
  * across devices and browsers. Excludes device-local sizing preferences,
  * legacy migration flags, auto-computed fields (userStatus), and items tracked
@@ -2001,6 +2032,9 @@ export function pickPersistedUIState(state: UIState) {
   };
 }
 
+/** `?seasonalPreview=` on this page load, read once when the store is made. */
+const pageSeasonalPreviewId = readSeasonalPreview(globalThis.location?.search ?? "");
+
 export const useUIStore = create<UIState>()(
   persist(
     (setState, get) => {
@@ -2064,6 +2098,7 @@ export const useUIStore = create<UIState>()(
         mariAppearancePackId: "basic",
         mariUnlockedPackIds: [],
         mariSeasonOptOut: "",
+        mariSeasonPreviewOptOut: "",
         mariConnectionId: null,
         chatBackground: null,
         defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
@@ -2207,6 +2242,7 @@ export const useUIStore = create<UIState>()(
         seasonalThemesDisabled: false,
         seasonalGreetingYears: {},
         seasonalThemeOffYears: {},
+        seasonalPreview: pageSeasonalPreviewId ? { themeId: pageSeasonalPreviewId, greeted: {}, turnedOff: {} } : null,
         musicPlayerEnabled: true,
         musicPlayerSource: "youtube" as MusicPlayerSource,
         youtubePlayerVolume: 70,
@@ -2440,11 +2476,15 @@ export const useUIStore = create<UIState>()(
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
         // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
+        // A preview page keeps its opt-out unsaved, so trying the preview never opts out of the real holiday.
         setMariAppearancePack: (packId) => {
           const pack = getMariAppearancePack(packId);
-          const seasonal = activeSeasonalMariPack(get().seasonalThemesDisabled);
-          if (pack.season) set({ mariSeasonOptOut: "" });
-          else set({ mariAppearancePackId: pack.id, ...(seasonal && { mariSeasonOptOut: mariSeasonKey(seasonal) }) });
+          const state = get();
+          const seasonal = activeSeasonalMariPack(seasonalThemeFor(state).themeId);
+          const optOut = (key: string) =>
+            state.seasonalPreview ? { mariSeasonPreviewOptOut: key } : { mariSeasonOptOut: key };
+          if (pack.season) set(optOut(""));
+          else set({ mariAppearancePackId: pack.id, ...(seasonal && optOut(mariSeasonKey(seasonal))) });
         },
         markMariPackUnlocked: (packId) =>
           set((state) =>
@@ -3109,10 +3149,19 @@ export const useUIStore = create<UIState>()(
         // Switching seasonal themes back on also undoes a "Turn it off" from this year's greeting.
         setSeasonalThemesDisabled: (v) =>
           set(v ? { seasonalThemesDisabled: true } : { seasonalThemesDisabled: false, seasonalThemeOffYears: {} }),
+        // A preview page records its greeting and "Turn it off" in its own unsaved preview only.
         markSeasonalGreetingShown: (id, year) =>
-          set((state) => ({ seasonalGreetingYears: withSeasonalYear(state.seasonalGreetingYears, id, year) })),
+          set(({ seasonalPreview: preview, seasonalGreetingYears }) =>
+            preview
+              ? { seasonalPreview: { ...preview, greeted: withSeasonalYear(preview.greeted, id, year) } }
+              : { seasonalGreetingYears: withSeasonalYear(seasonalGreetingYears, id, year) },
+          ),
         turnOffSeasonalTheme: (id, year) =>
-          set((state) => ({ seasonalThemeOffYears: withSeasonalYear(state.seasonalThemeOffYears, id, year) })),
+          set(({ seasonalPreview: preview, seasonalThemeOffYears }) =>
+            preview
+              ? { seasonalPreview: { ...preview, turnedOff: withSeasonalYear(preview.turnedOff, id, year) } }
+              : { seasonalThemeOffYears: withSeasonalYear(seasonalThemeOffYears, id, year) },
+          ),
         setMusicPlayerEnabled: (v) => set({ musicPlayerEnabled: v }),
         setMusicPlayerSource: (v) =>
           set({

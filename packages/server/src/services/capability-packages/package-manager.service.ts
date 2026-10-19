@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A call that sets down what it calls within some distance of its caller (1.568): Animate Trees. */
+function carriesCallWithin568(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallWithin568(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.within !== undefined) return true;
+  return featureValues(record).some((one) => carriesCallWithin568(one, depth + 1));
+}
+
 /** A call commanded only within some distance of its caller (1.567): the Staff of the Python. */
 function carriesCommandedWithin567(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7751,6 +7761,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call that sets down what it calls within some distance of its caller, 1.568.
+  if (
+    !declaresApi(568) &&
+    (carriesCallWithin568(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallWithin568(document)))
+  ) {
+    return "A ruleset with a call that sets down what it calls within some distance of its caller (calls.within) requires schemaVersion 2 and capabilityApi 1.568 or newer";
+  }
   // A call commanded only within some distance of its caller, 1.567.
   if (
     !declaresApi(567) &&

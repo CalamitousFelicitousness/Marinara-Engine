@@ -503,6 +503,8 @@ export interface RulesetStatBlockAction {
     dismissible?: true | { budget: string };
     /** They leave once their caller is farther than this (1.557). */
     leash?: number;
+    /** Set down within this of their caller, seen when it says (1.568). */
+    within?: { distance: number; seen?: true };
     /** Offered only where it says (1.561). */
     onlyWhere?: RulesetCallWhere;
     /** They appear after this many of their caller's turns (1.561). */
@@ -1290,6 +1292,9 @@ export interface RulesetCombatAction {
     /** Commanded only while their caller is within this, in the ruleset's distance, and able to act
      *  (1.567). */
     commandedWithin?: number;
+    /** Set down on open cells within `distance` of their caller, in the ruleset's distance, ones the
+     *  caller sees with `seen`, nearest its foes first (1.568). */
+    within?: { distance: number; seen?: true };
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */

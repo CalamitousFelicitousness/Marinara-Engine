@@ -50693,6 +50693,25 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "within": {
+                          "type": "object",
+                          "properties": {
+                            "distance": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "seen": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "distance"
+                          ],
+                          "additionalProperties": false
+                        },
                         "hostileUnless": {
                           "type": "object",
                           "properties": {
@@ -70821,6 +70840,25 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "within": {
+                              "type": "object",
+                              "properties": {
+                                "distance": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "seen": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "distance"
+                              ],
+                              "additionalProperties": false
+                            },
                             "onlyWhere": {
                               "type": "object",
                               "properties": {
@@ -83274,6 +83312,25 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "within": {
+                                "type": "object",
+                                "properties": {
+                                  "distance": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "seen": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "distance"
+                                ],
+                                "additionalProperties": false
                               },
                               "onlyWhere": {
                                 "type": "object",
@@ -111369,6 +111426,25 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "within": {
+                              "type": "object",
+                              "properties": {
+                                "distance": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "seen": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "distance"
+                              ],
+                              "additionalProperties": false
+                            },
                             "hostileUnless": {
                               "type": "object",
                               "properties": {
@@ -131620,6 +131696,25 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "within": {
+                                    "type": "object",
+                                    "properties": {
+                                      "distance": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "seen": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "distance"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "hostileUnless": {
                                     "type": "object",
@@ -151878,6 +151973,25 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "within": {
+                                    "type": "object",
+                                    "properties": {
+                                      "distance": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "seen": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "distance"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "hostileUnless": {
                                     "type": "object",

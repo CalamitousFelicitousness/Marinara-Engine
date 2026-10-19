@@ -318,6 +318,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
             ...(action.calls.dismissible ? { dismissible: structuredClone(action.calls.dismissible) } : {}),
             ...(action.calls.leash ? { leash: action.calls.leash } : {}),
+            // Set down within so far of it, seen (1.568): Animate Trees.
+            ...(action.calls.within ? { within: { ...action.calls.within } } : {}),
             ...(action.calls.onlyWhere ? { onlyWhere: structuredClone(action.calls.onlyWhere) } : {}),
             ...(action.calls.arrivesIn && amountOf(action.calls.arrivesIn)
               ? { arrivesIn: amountOf(action.calls.arrivesIn)! }

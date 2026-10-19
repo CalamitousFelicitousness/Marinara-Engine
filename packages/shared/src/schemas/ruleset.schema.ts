@@ -5899,6 +5899,15 @@ const callWhereSchema: z.ZodType<RulesetCallWhere, z.ZodTypeDef, unknown> = z
 
 /** What called creatures take from their caller (1.505), typed by hand to keep the definition's
  *  type small. */
+/** Where a call sets down what it calls (1.568): see the call's `within`. */
+export interface RulesetCallWithin {
+  distance: number;
+  seen?: true;
+}
+const callWithinSchema: z.ZodType<RulesetCallWithin, z.ZodTypeDef, unknown> = z
+  .object({ distance: z.number().finite().gt(0).max(10000), seen: z.literal(true).optional() })
+  .strict();
+
 const callFromCallerSchema: z.ZodType<
   { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef },
   z.ZodTypeDef,
@@ -6069,6 +6078,10 @@ export const catalogCallsSchema = z
      *  themselves and going at their caller's foes, and their caller pays nothing for it. 5e's Staff of
      *  the Python, "if it is within 60 feet of you and you aren't incapacitated". */
     commandedWithin: z.number().finite().gt(0).max(10000).optional(),
+    /** Where those it calls are set down (Capability API 1.568): on open cells within `distance` (the
+     *  ruleset's distance) of their caller, and with `seen` only ones the caller can see, nearest its
+     *  foes first. 5e's treant's Animate Trees, "one or two trees it can see within 60 feet of it". */
+    within: callWithinSchema.optional(),
     /** They come against their user, on the other side, unless the user's derived value `derived`
      *  is at least `atLeast` (Capability API 1.558): a Horn of Valhalla's requirement, "If you blow
      *  the horn without meeting its requirement, the summoned berserkers attack you". */
@@ -8160,6 +8173,10 @@ const creatureActionSchema = z
         /** They leave once their caller is farther from them than this (Capability API 1.557): a
          *  treant's animated trees, 120 feet. */
         leash: z.number().finite().gt(0).max(10000).optional(),
+        /** Where those it calls are set down (Capability API 1.568): on open cells within `distance` (the
+         *  ruleset's distance) of their caller, and with `seen` only ones the caller can see, nearest its
+         *  foes first. 5e's treant's Animate Trees, "one or two trees it can see within 60 feet of it". */
+        within: callWithinSchema.optional(),
         /** Offered only where it says (Capability API 1.561), as an option's `onlyWhere`. */
         onlyWhere: callWhereSchema.optional(),
         /** They appear only after this many of their caller's turns (Capability API 1.561), rolled as

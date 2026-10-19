@@ -9659,6 +9659,43 @@ function durationsPaid(
 }
 
 /** Calls an action's creatures into the fight (1.325), as many as its count throws, and says so. */
+/** The open cells within `within.distance` of a caller, ones it sees with `seen`, nearest its foes
+ *  first and then nearest itself (1.568): where a treant's Animate Trees wakes trees. Nothing off a
+ *  board. */
+function callCellsWithin(
+  ctx: RulesetCombatContext,
+  caller: RulesetCombatant,
+  within: { distance: number; seen?: true },
+): RulesetCombatCell[] | undefined {
+  const grid = ctx.state.board?.grid;
+  const perCell = ctx.definition.combat?.distance?.perCell;
+  if (!grid || perCell === undefined || !rulesetPositionOf(caller)) return undefined;
+  const reach = rulesetInCells(within.distance, perCell);
+  const foes = ctx.state.combatants.filter(
+    (one) => one.side !== caller.side && rulesetCombatStanding(one) && !!rulesetPositionOf(one),
+  );
+  const taken = new Set(
+    ctx.state.combatants
+      .filter((one) => !one.defeated || one.object)
+      .flatMap((one) => rulesetFootprint(one))
+      .map((cell) => `${cell.x},${cell.y}`),
+  );
+  const cells: Array<{ cell: RulesetCombatCell; foe: number; self: number }> = [];
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const cell = { x, y };
+      if (rulesetCellBlocked(grid, x, y) || taken.has(`${x},${y}`)) continue;
+      const self = rulesetDistanceTo(cell, caller);
+      if (self > reach) continue;
+      if (within.seen && !rulesetSeesCell(ctx.definition, ctx.state, caller, cell)) continue;
+      const foe = foes.length ? Math.min(...foes.map((one) => rulesetDistanceTo(cell, one))) : 0;
+      cells.push({ cell, foe, self });
+    }
+  }
+  cells.sort((a, b) => a.foe - b.foe || a.self - b.self || a.cell.y - b.cell.y || a.cell.x - b.cell.x);
+  return cells.map((one) => one.cell);
+}
+
 function callCreatures(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9711,7 +9748,9 @@ function callCreatures(
   // And so many more for each step past the steps it needs (1.484): Animate Dead's two.
   const more = action.calls.perStep ? action.calls.perStep * Math.max(0, steps - (action.calls.fromStep ?? 0)) : 0;
   const count = rollAmount(ctx, action.calls.count).total * (per ? 1 + Math.floor(steps / per) : 1) + more;
-  const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells);
+  // Set down only where it says (1.568): a treant wakes no tree it cannot see.
+  const only = !!action.calls.within && cells !== undefined;
+  const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells, only);
   // Kept by what called them (1.344): its concentration, and its rounds.
   for (const id of ids) {
     const called = rulesetCombatant(ctx.state, id);
@@ -12499,7 +12538,12 @@ function resolveAction(
       ? targets.find((one) => rulesetRaisableCorpse(ctx.definition, ctx.state, action.calls!.atCorpse!, one))
       : undefined;
     if (action.calls.atCorpse && !corpse) return null;
-    const cells = corpse ? rulesetFootprint(corpse) : undefined;
+    // Or on open cells within so far of their caller, seen (1.568): a treant's trees.
+    const cells = corpse
+      ? rulesetFootprint(corpse)
+      : action.calls.within
+        ? callCellsWithin(ctx, actor, action.calls.within)
+        : undefined;
     if (corpse) {
       corpse.corpseRaised = true;
       delete corpse.x;

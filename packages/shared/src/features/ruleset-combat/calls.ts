@@ -33,6 +33,8 @@ export function rulesetCallCreatures(
   count: number,
   roll: RulesetCombatRoller,
   cells?: readonly RulesetCombatCell[],
+  /** Only on `cells` (1.568): none set down anywhere else, so those with no cell left do not come. */
+  only = false,
 ): string[] {
   const calls = action.calls;
   if (!calls) return [];
@@ -67,7 +69,7 @@ export function rulesetCallCreatures(
         const fit = rulesetFitCell(grid, cell, 1, taken);
         return fit?.x === cell.x && fit.y === cell.y;
       });
-      const at = inside ?? (near ? rulesetFitCell(grid, near, 1, taken) : null);
+      const at = inside ?? (near && !only ? rulesetFitCell(grid, near, 1, taken) : null);
       if (!at) continue;
       placements[entry.id] = at;
       taken.add(`${at.x},${at.y}`);

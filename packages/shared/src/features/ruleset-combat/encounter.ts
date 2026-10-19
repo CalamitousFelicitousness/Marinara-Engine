@@ -5579,6 +5579,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.cantCall ? { cantCall: true as const } : {}),
       ...(calls.leash ? { leash: calls.leash } : {}),
       ...(calls.commandedWithin ? { commandedWithin: calls.commandedWithin } : {}),
+      ...(calls.within ? { within: { ...calls.within } } : {}),
       ...(calls.hostileUnless ? { hostileUnless: { ...calls.hostileUnless } } : {}),
       ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
       ...(calls.becomesItem ? { becomesItem: true as const } : {}),
@@ -6053,6 +6054,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
           ...(source.calls.cantCall ? { cantCall: true as const } : {}),
           ...(source.calls.leash ? { leash: source.calls.leash } : {}),
+          ...(source.calls.within ? { within: { ...source.calls.within } } : {}),
         };
         // They arrive after their caller's turns (1.561), whichever option comes.
         if (source.calls.arrivesIn) action.callsArriveIn = { ...source.calls.arrivesIn };
@@ -6078,6 +6080,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.atCorpse ? { atCorpse: structuredClone(source.calls.atCorpse) } : {}),
         ...(source.calls.atMost ? { atMost: source.calls.atMost } : {}),
         ...(source.calls.leash ? { leash: source.calls.leash } : {}),
+        ...(source.calls.within ? { within: { ...source.calls.within } } : {}),
         ...(source.calls.onlyWhere ? { onlyWhere: structuredClone(source.calls.onlyWhere) } : {}),
         ...(source.calls.arrivesIn ? { arrivesIn: { ...source.calls.arrivesIn } } : {}),
       };

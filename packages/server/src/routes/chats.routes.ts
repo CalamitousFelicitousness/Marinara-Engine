@@ -63,6 +63,7 @@ import {
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
   DEFAULT_GENERATION_PARAMS,
+  omitChatMetadataLocalDestinations,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -4664,7 +4665,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     metadata: Record<string, unknown>,
     knownNpcNames: Set<string>,
   ): Record<string, unknown> => {
-    const sanitized = { ...metadata };
+    // Outside addresses and keys (Discord mirror, translator, haptics server) stay on this install.
+    const sanitized = omitChatMetadataLocalDestinations(metadata);
     delete sanitized.branchParentChatId;
     delete sanitized.branchParentMessageId;
     delete sanitized.branchMessageId;

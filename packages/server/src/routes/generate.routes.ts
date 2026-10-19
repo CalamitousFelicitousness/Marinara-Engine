@@ -14752,7 +14752,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 // A clip takes minutes; it finishes after "done" while the stream stays open for media.
                 const videoMessage = startConversationVideoCommand({
                   command,
-                  persona: illustratorCast().persona,
+                  // Who the user is: the persona, or a character played as the user who is not one of the chat's
+                  // characters (the cast lists that character after the chat's own).
+                  persona: (() => {
+                    const cast = illustratorCast();
+                    return (
+                      cast.persona ??
+                      cast.chatCharacters.find((entry) => !charInfo.some((character) => character.id === entry.id)) ??
+                      null
+                    );
+                  })(),
                   characterId,
                   chatId: input.chatId,
                   messageId,

@@ -506,6 +506,22 @@ try {
   assert.doesNotMatch(videoWriterRequests.at(-1) ?? "", /<character_appearance>/u);
   assert.match(comfyText(), /Mira's Appearance: silver braid, green coat/u, "pasted after the prompt, as before");
 
+  // Playing as a character who is not one of the chat's characters: a clip that names them describes them too.
+  const kit = await createCharactersStorage(db).create(
+    characterDataSchema.parse({ name: "Kit", extensions: { appearance: "shaved head, orange scarf" } }),
+  );
+  assert.ok(kit);
+  const switched = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${looks.id}`,
+    payload: { personaId: null, personaCharacterId: kit.id },
+  });
+  assert.equal(switched.statusCode, 200, switched.body);
+  mainReply = 'Here! [video: context="waving at Kit"]';
+  await generate(looks.id, "Send me a video of us, Mira!");
+  assert.match(comfyText(), /Kit's Appearance: shaved head, orange scarf/u, "the character played as the user");
+  assert.doesNotMatch(comfyText(), /Rae's Appearance/u, "not the persona the chat no longer uses");
+
   console.log("agent-generated-videos regression passed");
 } finally {
   await app.close();

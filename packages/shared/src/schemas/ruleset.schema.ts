@@ -5990,6 +5990,9 @@ export const catalogCallsSchema = z
     /** An item's rolled call is used this many times over the item's existence (Capability API
      *  1.538), each use past them its `pastLifetime` option: the Efreeti Bottle's 3. */
     lifetimeUses: z.number().int().min(1).max(100).optional(),
+    /** They leave once their caller is farther from them than this, in the ruleset's distance
+     *  (Capability API 1.557): a treant's animated trees, "more than 120 feet from the tree". */
+    leash: z.number().finite().gt(0).max(10000).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -8035,7 +8038,12 @@ const creatureActionSchema = z
         rounds: z.number().int().min(1).max(14400).optional(),
         endsWithCaller: z.literal(true).optional(),
         cantCall: z.literal(true).optional(),
-        dismissible: z.literal(true).optional(),
+        /** `{ "budget": "<id>" }` (Capability API 1.557): sent away on that budget instead of the
+         *  action's own, a treant's bonus action to turn its tree back. */
+        dismissible: z.union([z.literal(true), z.object({ budget: sheetId }).strict()]).optional(),
+        /** They leave once their caller is farther from them than this (Capability API 1.557): a
+         *  treant's animated trees, 120 feet. */
+        leash: z.number().finite().gt(0).max(10000).optional(),
         /** Raised from a corpse (Capability API 1.501): aimed at one creature that died no more than
          *  `withinRounds` rounds ago and is `is` (when given), within the action's reach; the called
          *  creature rises in its space and the corpse is gone. 5e's wraith's Create Specter,
@@ -18903,6 +18911,11 @@ function creatureIssues(
     }
     if (action.draws && !budgets.has(action.draws.spends)) {
       add([...path, "draws", "spends"], `Unknown budget "${action.draws.spends}"`);
+    }
+    // Sent away on a budget of its own (1.557).
+    const dismissal = action.calls?.dismissible;
+    if (typeof dismissal === "object" && !budgets.has(dismissal.budget)) {
+      add([...path, "calls", "dismissible", "budget"], `Unknown budget "${dismissal.budget}"`);
     }
     // Engulfing (1.350): sizes the fight has, and a save the sheet has.
     if (action.engulf) {

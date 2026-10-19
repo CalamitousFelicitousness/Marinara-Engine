@@ -9668,6 +9668,9 @@ function callCreatures(
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
+    // Held within so far of their caller (1.557): a treant's trees.
+    if (action.calls.leash)
+      called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
     // Commanded by their caller (1.505), the turn they come on free.
     if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
     // An image, not a creature (1.515).
@@ -9881,6 +9884,16 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
     if (!caller.defeated) continue;
     dismissCalled(ctx, caller, (one) => !!one.calledEndsWithCaller, "caller");
   }
+  // And those held within so far of their caller (1.557), once it is farther: a treant's trees.
+  for (const caller of ctx.state.combatants) {
+    if (caller.defeated || !rulesetPositionOf(caller)) continue;
+    dismissCalled(
+      ctx,
+      caller,
+      (one) => one.calledLeash !== undefined && !!rulesetPositionOf(one) && rulesetGap(caller, one) > one.calledLeash,
+      "leash",
+    );
+  }
 }
 
 /** Sends away those `caller` called that `which` picks (1.344): off the board and out of the fight. */
@@ -9910,7 +9923,7 @@ function dismissCalled(
   ctx: RulesetCombatContext,
   caller: RulesetCombatant,
   which: (one: RulesetCombatant) => boolean,
-  reason: "rounds" | "concentration" | "caller" | "dismissed",
+  reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash",
 ): void {
   const going = ctx.state.combatants.filter(
     (one) => one.calledBy === caller.id && !one.dismissed && !one.defeated && which(one),

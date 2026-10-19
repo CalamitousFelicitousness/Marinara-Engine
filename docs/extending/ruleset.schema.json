@@ -50634,6 +50634,11 @@
                           "minimum": 1,
                           "maximum": 100
                         },
+                        "leash": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -70574,8 +70579,32 @@
                               "const": true
                             },
                             "dismissible": {
-                              "type": "boolean",
-                              "const": true
+                              "anyOf": [
+                                {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "budget": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "budget"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            "leash": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
                             },
                             "atCorpse": {
                               "type": "object",
@@ -82911,8 +82940,32 @@
                                 "const": true
                               },
                               "dismissible": {
-                                "type": "boolean",
-                                "const": true
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "budget"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "leash": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
                               },
                               "atCorpse": {
                                 "type": "object",
@@ -110819,6 +110872,11 @@
                               "minimum": 1,
                               "maximum": 100
                             },
+                            "leash": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -130904,6 +130962,11 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "leash": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
                                   },
                                   "$comment": {}
                                 },
@@ -150996,6 +151059,11 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "leash": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
                                   },
                                   "$comment": {}
                                 },

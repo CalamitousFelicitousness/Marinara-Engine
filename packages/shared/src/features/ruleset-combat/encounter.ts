@@ -5474,6 +5474,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.illusion ? { illusion: true as const } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
+      ...(calls.leash ? { leash: calls.leash } : {}),
     };
   };
   if (calls.creature && calls.count) {
@@ -5925,7 +5926,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           id: `dismiss-called:${action.id}`,
           kind: "switch",
           label: action.label,
-          budget: action.budget,
+          // On a budget of its own (1.557): a treant's bonus action.
+          budget: typeof source.calls.dismissible === "object" ? source.calls.dismissible.budget : action.budget,
           targets: { side: "self", count: 0 },
           switches: { called: action.id },
         });
@@ -5939,6 +5941,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
           ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
           ...(source.calls.cantCall ? { cantCall: true as const } : {}),
+          ...(source.calls.leash ? { leash: source.calls.leash } : {}),
         };
         action.callChoice = true;
         return;
@@ -5961,6 +5964,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.cantCall ? { cantCall: true as const } : {}),
         ...(source.calls.atCorpse ? { atCorpse: structuredClone(source.calls.atCorpse) } : {}),
         ...(source.calls.atMost ? { atMost: source.calls.atMost } : {}),
+        ...(source.calls.leash ? { leash: source.calls.leash } : {}),
       };
       // Aimed at the corpse it rises from (1.501).
       if (source.calls.atCorpse) action.targets = { side: "any", count: 1 };

@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Called creatures leashed to their caller, or sent away on a budget of its own (1.557): a
+ *  treant's animated trees. */
+function carriesCallLeash557(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallLeash557(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls && (calls.leash !== undefined || plainRecord(calls.dismissible))) return true;
+  return featureValues(record).some((one) => carriesCallLeash557(one, depth + 1));
+}
+
 /** What obscures for everybody but its caster (1.556): an Insect Cloud. */
 function carriesNotForCaster556(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7616,6 +7628,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Called creatures leashed to their caller, or sent away on a budget of its own, 1.557.
+  if (
+    !declaresApi(557) &&
+    (carriesCallLeash557(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallLeash557(document)))
+  ) {
+    return "A ruleset whose called creatures leave once their caller is too far (calls.leash), or are sent away on a budget of its own (calls.dismissible.budget), requires schemaVersion 2 and capabilityApi 1.557 or newer";
+  }
   // What obscures for everybody but its caster, 1.556.
   if (
     !declaresApi(556) &&

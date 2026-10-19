@@ -496,8 +496,10 @@ export interface RulesetStatBlockAction {
     rounds?: number;
     endsWithCaller?: true;
     cantCall?: true;
-    /** Its caller may send them away as an action (1.396). */
-    dismissible?: true;
+    /** Its caller may send them away as an action (1.396), or on another budget (1.557). */
+    dismissible?: true | { budget: string };
+    /** They leave once their caller is farther than this (1.557). */
+    leash?: number;
     /** Raised from a corpse (1.501): Create Specter. */
     atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
     /** No more than this many stand at once (1.501). */
@@ -1254,6 +1256,8 @@ export interface RulesetCombatAction {
     commandedWith?: string;
     /** Images, not creatures (1.515): Mislead's double. */
     illusion?: true;
+    /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
+    leash?: number;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
@@ -1813,6 +1817,8 @@ export interface RulesetCombatant {
   illusion?: { seenBy: string[] };
   /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
   calledTurned?: true;
+  /** They leave once their caller is farther than this many cells (1.557): a treant's tree. */
+  calledLeash?: number;
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
    *  standing for a fight's end. */
   turnless?: true;
@@ -3199,7 +3205,12 @@ export type RulesetCombatEvent =
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
   /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }
-  | { type: "sentAway"; actorId: string; ids: string[]; reason: "rounds" | "concentration" | "caller" | "dismissed" }
+  | {
+      type: "sentAway";
+      actorId: string;
+      ids: string[];
+      reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash";
+    }
   /** Called creatures that turn on their caller's side as its concentration breaks (1.485). */
   | { type: "turnedOn"; actorId: string; ids: string[] }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */

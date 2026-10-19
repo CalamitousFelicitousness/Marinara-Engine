@@ -6498,6 +6498,7 @@
   "ui.characters.onboarding.addQuestion": "Add Question",
   "ui.characters.onboarding.allowOwnAnswer": "Allow own answer",
   "ui.characters.onboarding.allowOwnAnswerHelp": "Players can type their own answer instead of picking an option.",
+  "ui.characters.onboarding.answerCharacterQuestions": "Answer this card's questions",
   "ui.characters.onboarding.cardQuestions": "Character Questions",
   "ui.characters.onboarding.cardQuestionsHeading": "Character questions",
   "ui.characters.onboarding.cardQuestionsHelp": "Saved on the chat, so this card reads each chat's own answer. Use the name in Description, Personality, Backstory, Appearance or Scenario.",

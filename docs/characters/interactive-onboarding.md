@@ -52,10 +52,11 @@ Those five fields are the ones the model reads, so they are the ones a character
 
 The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona. The window shows an **About you** section only when one is being made.
 
-Two things an author should know:
+Three things an author should know:
 
 - **An answer that is never filled in stays a literal tag.** A free-text question with no default is not seeded, so a chat started without the wizard shows `{{name}}` as written. Choice questions seed their first option, which covers most cards.
 - **If two cards in one chat declare the same name, they share one value.** A chat stores one answer per name, so the last one saved is what both cards read. The window warns about this when it happens.
+- **A card that leaves a chat takes its answers with it.** When a character is removed, the chat variables its character questions own are deleted, unless another character still in the chat declares the same name. A shared name stays, because the remaining card may still read it.
 
 ### Write the persona fields
 
@@ -91,6 +92,11 @@ The **Rendered preview** at the bottom shows the persona built from example answ
 6. Click **Create persona**, or **Save answers** when you are not making one. The character answers are saved on the chat, and the wizard continues.
 
 Onboarding questions are asked in the Roleplay new chat wizard. Quick Start, the Conversation setup, and starting a chat straight from a character card do not ask them yet. A chat started that way still fills in each question's first option, so `{{relationshipToUser}}` resolves instead of showing the tag. Answering in the wizard replaces that default, for that chat only.
+
+Both paths also work after setup, from **Chat Settings**:
+
+- The **Persona** picker in a Roleplay chat lists **Create your persona** for every card in the chat that offers one. Use it when you skipped the wizard or want a new persona later.
+- The onboarding marker next to a character in **Characters** reopens that card's character questions on their own. It opens on the answers the chat already holds, so saving one change leaves the others as they were; saving again also restores an answer you deleted from Chat Variables. Other cards' answers are not touched — except a name two cards share, which is one value, so both cards read the new answer.
 
 ## Sharing cards with onboarding
 

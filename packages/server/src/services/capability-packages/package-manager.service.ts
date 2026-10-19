@@ -2741,6 +2741,33 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** Every `dismisses.while` anywhere in it (1.574), for a way back at will. */
+function dismissedWhile574(value: unknown, into: Set<string>, depth = 0): void {
+  if (!value || depth > 40) return;
+  if (Array.isArray(value)) return value.forEach((one) => dismissedWhile574(one, into, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return;
+  const away = plainRecord(record.dismisses)?.while;
+  if (typeof away === "string") into.add(away);
+  featureValues(record).forEach((one) => dismissedWhile574(one, into, depth + 1));
+}
+
+/** Away under a condition its holder may take off at will (1.574): a Robe of Stars' Astral Plane. */
+function carriesAwayAtWill574(ruleset: unknown, documents: readonly unknown[]): boolean {
+  const conditions = plainRecord(plainRecord(ruleset)?.combat)?.conditions;
+  const endable = new Set(
+    (Array.isArray(conditions) ? conditions : []).flatMap((one) => {
+      const record = plainRecord(one);
+      return record?.endable !== undefined && typeof record.condition === "string" ? [record.condition] : [];
+    }),
+  );
+  if (endable.size === 0) return false;
+  const away = new Set<string>();
+  dismissedWhile574(ruleset, away);
+  for (const document of documents) dismissedWhile574(document, away);
+  return [...away].some((id) => endable.has(id));
+}
+
 /** A missile caught and kept (1.573): Gloves of Missile Snaring. */
 function carriesKeepsCaught573(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7811,6 +7838,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Away under a condition its holder may take off at will, 1.574.
+  if (!declaresApi(574) && carriesAwayAtWill574(ruleset, [...(catalogDocuments?.values() ?? [])]))
+    return "A ruleset that sends its holder away under a condition they may take off at will (dismisses with endable) requires schemaVersion 2 and capabilityApi 1.574 or newer";
   // A missile caught and kept, 1.573.
   if (
     !declaresApi(573) &&

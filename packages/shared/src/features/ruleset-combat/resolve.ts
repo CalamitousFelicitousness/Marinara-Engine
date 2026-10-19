@@ -7099,6 +7099,13 @@ function applyChoice(
     return finish();
   }
 
+  // The way back at will (1.574): what keeps them away taken off, a Robe of Stars' wearer returning.
+  if (working.away?.turns && working.away.while && option.id === `end-condition:${working.away.while}`) {
+    endOwnCondition(ctx, working, working.away.while);
+    noteOutcome(ctx);
+    return finish();
+  }
+
   // Rolling the sphere one is shut in (1.314): its share of their speed, to walk.
   if (option.rollsSealed) {
     const sealed = rulesetSealed(definition, working, ctx.state);
@@ -15409,10 +15416,11 @@ function resolveActionBodyIn(
       }
       // Moved where its user picked (1.512), once what holds it there has gone on: Telekinesis.
       if (action.movesTarget && ctx.carriesTo && !target.defeated) carryTarget(ctx, actor, action, target);
-      // Sent out of the fight (1.236), last of all.
+      // Sent out of the fight (1.236), last of all; its user too where they still take their turns
+      // away (1.574), as a Robe of Stars takes its wearer to the Astral Plane.
       if (
         action.dismisses &&
-        target.id !== actor.id &&
+        (target.id !== actor.id || (typeof action.dismisses === "object" && !!action.dismisses.turns)) &&
         !slain &&
         rulesetTargetIs(ctx.definition, target, action.dismissesIs)
       )
@@ -16260,13 +16268,15 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   // Blinked away (1.453), back as their next turn starts, they are still in it.
   // Set aside by a zone (1.480), it is still in it too.
   // Nor one under nobody's control (1.562).
+  // Gone of its own accord and back when it likes (1.574), a Robe of Stars' wearer is still in it.
   const out = (combatant: RulesetCombatant) =>
     combatant.turnless ||
     !!combatant.calledWild ||
     (!rulesetCombatStanding(combatant) &&
       !combatant.regrowing &&
       !combatant.away?.blinked &&
-      !combatant.away?.setAside);
+      !combatant.away?.setAside &&
+      !(combatant.away?.turns && combatant.away.by === combatant.id));
   if (enemies.length > 0 && enemies.every(out)) return "victory";
   if (party.length > 0 && party.every(out)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.

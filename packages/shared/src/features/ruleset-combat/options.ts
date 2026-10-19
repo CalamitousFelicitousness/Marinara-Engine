@@ -4393,8 +4393,25 @@ export function rulesetUncompelledOptions(
     label: "End turn",
     targets: { side: "self", count: 0 },
   };
-  // Away and still taking turns (1.313): only the way back, by what ends what keeps them away.
-  if (actor.away?.turns) return [...endingOptions(definition, combat, actor), endTurn];
+  // Away and still taking turns (1.313): only the way back, by what ends what keeps them away; or
+  // taking it off at will where it is `endable` (1.574): a Robe of Stars' return from the Astral Plane.
+  if (actor.away?.turns) {
+    const back = actor.away.while
+      ? actor.actions.find((one) => one.id === `end-condition:${actor.away!.while}`)
+      : undefined;
+    const option = back
+      ? optionFrom(
+          definition,
+          combat,
+          state,
+          actor,
+          back,
+          false,
+          rulesetConditionEconomy(definition, combat, actor, state),
+        )
+      : null;
+    return [...endingOptions(definition, combat, actor), ...(option ? [option] : []), endTurn];
+  }
   if (!rulesetCombatStanding(actor) || blocked(definition, combat, state, actor)) return [endTurn];
 
   const options: RulesetCombatOption[] = [];

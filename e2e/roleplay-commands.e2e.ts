@@ -996,7 +996,10 @@ test("Roleplay users send and edit private whispers and notes in Manual group ch
       expect(changed.ok()).toBeTruthy();
       const rejected = await sendPrivateCommand(`[whisper: character="${invalid.target}", text="REJECTED_SECRET"]`);
       const failedWhisper = rejected.locator('[data-roleplay-command="whisper"]');
-      await failedWhisper.getByRole("button", { name: "Mari used whisper command!", exact: true }).click();
+      // #7412: a rejected private command's notice starts open too.
+      await expect(
+        failedWhisper.getByRole("button", { name: "Mari used whisper command!", exact: true }),
+      ).toHaveAttribute("aria-expanded", "true");
       await expect(failedWhisper).toContainText(invalid.reason);
       await expect(failedWhisper).toContainText("REJECTED_SECRET");
       for (const character of characters) expect(await preview(character.id)).not.toContain("REJECTED_SECRET");

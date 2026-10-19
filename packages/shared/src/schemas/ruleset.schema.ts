@@ -11903,6 +11903,18 @@ const combatConditionDelaysSchema: z.ZodType<RulesetConditionDelays, z.ZodTypeDe
  *  distance, while they hold none of `unless` (Capability API 1.597): 5e's Cat's Grace, `{ "upTo": 20,
  *  "unless": ["incapacitated"] }`. */
 export type RulesetFallsSafely = true | { upTo: number; unless?: string[] };
+/** Attacks at others near its holder are made at its holder instead (Capability API 1.605): not a
+ *  reaction, nothing spent and nobody asked. `within` is in the ruleset's distance; `blow` narrows it
+ *  to blows struck in reach or from afar, and `weapon` to a weapon's blow. 5e's Shield of Missile
+ *  Attraction's curse, `{ "within": 10, "blow": "ranged", "weapon": true }`. */
+const drawsAimSchema = z
+  .object({
+    within: z.number().finite().gt(0).max(10000),
+    blow: z.enum(["melee", "ranged"]).optional(),
+    weapon: z.literal(true).optional(),
+  })
+  .strict();
+
 const fallsSafelySchema: z.ZodType<RulesetFallsSafely, z.ZodTypeDef, unknown> = z.union([
   z.literal(true),
   z
@@ -12707,6 +12719,8 @@ const combatConditionSchema = z
     /** Whoever moves unseen this near its holder is given away while it holds (Capability API 1.319),
      *  in the ruleset's distance: an alarm, a wind-chime. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
+    /** Attacks at others near its holder are made at its holder instead (Capability API 1.605). */
+    drawsAim: drawsAimSchema.optional(),
     /** A condition's `unseen` hides its holder from nobody while this holds (Capability API 1.180):
      *  5e's Faerie Fire, under which the invisible are outlined. */
     cancelsUnseen: z.literal(true).optional(),
@@ -13409,6 +13423,9 @@ const rulesetItemEffectObjectSchema = z
     /** It gives away whoever moves unseen this near its holder (Capability API 1.319), in the
      *  ruleset's distance: the showcase's Wind-Chime, `15`. */
     alerts: z.number().finite().gt(0).max(10000).optional(),
+    /** Attacks at others near its holder are made at its holder instead (Capability API 1.605): the
+     *  Shield of Missile Attraction's curse. */
+    drawsAim: drawsAimSchema.optional(),
     /** Its holder takes no falling damage and is not left prone by a fall (Capability API 1.424):
      *  5e's Ring of Feather Falling. Or only some falls, as a condition's (Capability API 1.597). */
     fallsSafely: fallsSafelySchema.optional(),
@@ -13491,6 +13508,7 @@ const rulesetItemEffectObjectSchema = z
       !entry.senses &&
       !entry.light &&
       !entry.alerts &&
+      !entry.drawsAim &&
       !entry.fallsSafely &&
       !entry.suppresses &&
       !entry.conditionImmunitiesFrom &&
@@ -13509,7 +13527,7 @@ const rulesetItemEffectObjectSchema = z
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, what its charges pay for, who leaves its wearer alone, or its holder's proficiency bonus",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, what its charges pay for, who leaves its wearer alone, attacks it draws, or its holder's proficiency bonus",
       });
     }
     if (abilities.length > 12) {

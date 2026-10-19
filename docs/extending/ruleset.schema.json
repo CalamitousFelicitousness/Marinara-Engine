@@ -89766,6 +89766,32 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "drawsAim": {
+                          "type": "object",
+                          "properties": {
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "blow": {
+                              "type": "string",
+                              "enum": [
+                                "melee",
+                                "ranged"
+                              ]
+                            },
+                            "weapon": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "within"
+                          ],
+                          "additionalProperties": false
+                        },
                         "fallsSafely": {
                           "anyOf": [
                             {
@@ -92044,6 +92070,32 @@
                           "type": "number",
                           "exclusiveMinimum": 0,
                           "maximum": 10000
+                        },
+                        "drawsAim": {
+                          "type": "object",
+                          "properties": {
+                            "within": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "blow": {
+                              "type": "string",
+                              "enum": [
+                                "melee",
+                                "ranged"
+                              ]
+                            },
+                            "weapon": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "within"
+                          ],
+                          "additionalProperties": false
                         },
                         "fallsSafely": {
                           "anyOf": [
@@ -94510,6 +94562,32 @@
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
+                              },
+                              "drawsAim": {
+                                "type": "object",
+                                "properties": {
+                                  "within": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "blow": {
+                                    "type": "string",
+                                    "enum": [
+                                      "melee",
+                                      "ranged"
+                                    ]
+                                  },
+                                  "weapon": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "within"
+                                ],
+                                "additionalProperties": false
                               },
                               "fallsSafely": {
                                 "anyOf": [
@@ -173588,6 +173666,32 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 10000
+              },
+              "drawsAim": {
+                "type": "object",
+                "properties": {
+                  "within": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "blow": {
+                    "type": "string",
+                    "enum": [
+                      "melee",
+                      "ranged"
+                    ]
+                  },
+                  "weapon": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "within"
+                ],
+                "additionalProperties": false
               },
               "cancelsUnseen": {
                 "type": "boolean",

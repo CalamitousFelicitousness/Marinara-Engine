@@ -13993,6 +13993,57 @@ function chargedAction(action: RulesetCombatAction, charge: RulesetCombatCharge)
 }
 
 /**
+ * The targets an attack goes to once whoever draws aim near them has drawn it (1.605): the Shield of
+ * Missile Attraction's curse, "you become the target instead". Not a reaction, so nothing is spent and
+ * nobody is asked. The nearest such holder to a target takes its place, never its maker, nor one the
+ * attack is already aimed at. Only on a board, which says who is near.
+ */
+function drawnAim(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  targets: RulesetCombatant[],
+): RulesetCombatant[] {
+  if (!rulesetIsAttack(action) || action.area || action.around || targets.length === 0) return targets;
+  const perCell = ctx.combat.distance?.perCell;
+  if (perCell === undefined || !ctx.state.board) return targets;
+  const drawers = ctx.state.combatants.flatMap((one) => {
+    if (one.id === actor.id || one.defeated || !rulesetPositionOf(one)) return [];
+    const rules = rulesetActiveConditions(ctx.definition, ctx.combat, one, ctx.state).flatMap((source) =>
+      source.drawsAim ? [{ rule: source.drawsAim, name: source.condition }] : [],
+    );
+    return rules.length ? [{ one, rules }] : [];
+  });
+  if (drawers.length === 0) return targets;
+  const aimedAt = new Set(targets.map((one) => one.id));
+  return targets.map((target) => {
+    if (target.id === actor.id || !rulesetPositionOf(target)) return target;
+    const drawing = drawers
+      .flatMap(({ one, rules }) => {
+        if (one.id === target.id || aimedAt.has(one.id)) return [];
+        const found = rules.find(
+          ({ rule }) =>
+            (!rule.blow || rulesetBlowKind(ctx.state, actor, target, action) === rule.blow) &&
+            (!rule.weapon || rulesetWeaponBlow(action)) &&
+            rulesetGap(target, one) <= rulesetInCells(rule.within, perCell),
+        );
+        return found ? [{ one, name: found.name }] : [];
+      })
+      .sort((a, b) => rulesetGap(target, a.one) - rulesetGap(target, b.one))[0];
+    if (!drawing) return target;
+    aimedAt.add(drawing.one.id);
+    ctx.events.push({
+      type: "tookAim",
+      actorId: drawing.one.id,
+      targetId: target.id,
+      sourceId: actor.id,
+      label: drawing.name,
+    });
+    return drawing.one;
+  });
+}
+
+/**
  * The targets an attack or a harmful entry goes to once every sanctuary among them has been tried
  * (1.370): its maker saves against each it is aimed at, an area aside; a failure sends it to the
  * nearest other creature it could be aimed at that is not already one of its targets and holds no
@@ -14342,6 +14393,8 @@ function resolveActionBodyIn(
   // Kept off a sanctuary's holder by a failed save (1.370), before anything is rolled at them. A held
   // blow picking up was let through already.
   if (!held) targets = sanctuaryTargets(ctx, actor, action, targets);
+  // Drawn to whoever near them draws it (1.605), forced, before anything is rolled at them.
+  if (!held) targets = drawnAim(ctx, actor, action, targets);
   // Aimed at a lasting area rather than a creature (1.374): Dispel Magic on a wall.
   if (action.endsSpells && ctx.dispel && !held) {
     endSpellZone(ctx, actor, action, rulesetPaidLevel(ctx.definition, actor, action, payWith));

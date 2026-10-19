@@ -765,6 +765,7 @@ export function rulesetActiveConditions(
     ...(source.senses ? { senses: { ...source.senses } } : {}),
     ...(source.light ? { light: { ...source.light } } : {}),
     ...(source.alerts ? { alerts: source.alerts } : {}),
+    ...(source.drawsAim ? { drawsAim: { ...source.drawsAim } } : {}),
     ...(source.fallsSafely
       ? {
           fallsSafely:

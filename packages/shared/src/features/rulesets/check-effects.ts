@@ -113,6 +113,8 @@ export interface RulesetCheckSource {
   light?: Readonly<{ bright: number; dim: number }>;
   /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
+  /** Attacks at others near its holder are made at its holder instead (Capability API 1.605). */
+  drawsAim?: Readonly<{ within: number; blow?: "melee" | "ranged"; weapon?: true }>;
   /** A fall does its holder no harm (Capability API 1.424 on an item; a condition's since 1.124). */
   fallsSafely?: true | Readonly<{ upTo: number; unless?: readonly string[] }>;
   /** Conditions on its holder it holds off, not ends (Capability API 1.424 on an item). */

@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Attacks at others near its holder made at its holder instead (1.605): 5e's Shield of Missile
+ *  Attraction's curse. */
+function carriesDrawsAim605(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDrawsAim605(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.drawsAim)) return true;
+  return featureValues(record).some((one) => carriesDrawsAim605(one, depth + 1));
+}
+
 /** Ammunition with clauses of its own on the shot it is fired as (1.604): 5e's Arrow of Slaying. */
 function carriesAmmoRider604(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8187,6 +8198,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Attacks at others near its holder made at its holder instead, 1.605.
+  if (
+    !declaresApi(605) &&
+    (carriesDrawsAim605(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDrawsAim605(document)))
+  )
+    return "A ruleset with attacks drawn to whoever holds a drawsAim near their target requires schemaVersion 2 and capabilityApi 1.605 or newer";
   // Ammunition with clauses of its own on the shot it is fired as, 1.604.
   if (
     !declaresApi(604) &&

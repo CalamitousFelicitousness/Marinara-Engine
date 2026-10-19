@@ -101,7 +101,6 @@ export function useSpritePlacementDrag({
     setCurrent(next);
     onPlacementChange?.(placementKey, next);
   };
-  const commitPlacement = () => onPlacementChange?.(placementKey, currentRef.current);
 
-  return { placement: current, dragging, onPointerDown, nudgePlacement, commitPlacement };
+  return { placement: current, dragging, onPointerDown, nudgePlacement };
 }

@@ -3,11 +3,11 @@
  * background-removed or stored as a cut-out (faces without a background come from sprite generation, which
  * draws them on a plain colour and removes it). The maintainer reversed the cut-outs of #7623 on 2026-10-14.
  *   - there is no sprite cut-out route; the avatar shows the sprite file itself (resolveAvatarImage);
- *   - blink and talk pictures are drawn from the sprite as it is. From a sprite with a background, the drawn
- *     picture is kept, background and all, and saving stores the sprite itself as their base. From a
- *     see-through sprite they still take exactly its outline and keep its own edge pixels (no lighter or
- *     darker rim) while what the model drew inside stays, even where the outline's alpha is just short of
- *     solid;
+ *   - blink and talk pictures are drawn from the sprite as it is and keep only the eyes or mouth the model
+ *     drew (avatarVariantPicture). From a sprite with a background, its background stays, and saving stores
+ *     the sprite itself as their base. From a see-through sprite they keep exactly its alpha and its own edge
+ *     pixels (no lighter or darker rim, no fringe, no stripe along a bust cut at the canvas bottom) while the
+ *     eyes or mouth the model drew stay, even where the alpha is just short of solid;
  *   - a PNGTuber Plus costume drawn on a background of its own is stored as it is;
  *   - a mesh avatar is built from the sprite as it is;
  *   - the avatar's folder never gets a cut-out, and the sprite files stay byte for byte as they were;
@@ -51,7 +51,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
 const { avatarOwnerDir, readAvatarConfig, writeAvatarFiles, updateAvatarConfig } =
   await import("../../packages/server/src/services/avatars/storage.js");
-const { applyAvatarSourceOutline, readAvatarSourceSprite } =
+const { avatarVariantPicture, readAvatarSourceSprite } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { generatePngtuberVariants, savePngtuberVariants } =
   await import("../../packages/server/src/services/avatars/generation/pngtuber-variants.js");
@@ -285,12 +285,11 @@ try {
     const softCut = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
       .png()
       .toBuffer();
-    const softSource = { ...(await readAvatarSourceSprite(owner.ownerId, "clear")), png: softCut };
     const marked = await sharp(opaqueBust)
       .composite([{ input: mark, left: 270, top: 330 }])
       .png()
       .toBuffer();
-    const outlined = await applyAvatarSourceOutline(marked, softSource);
+    const outlined = await avatarVariantPicture(softCut, marked, "mouth-open");
     assert.deepEqual((await pixelAt(outlined, 300, 360)).slice(0, 3), [255, 0, 0], "the drawn mark stays");
     assert.deepEqual(await alphaChannel(outlined), await alphaChannel(softCut), "with the sprite's alpha");
     const [after, before] = [await rgba(outlined), await rgba(softCut)];
@@ -309,47 +308,67 @@ try {
       .composite([{ input: stripe, left: 0, top: 716 }])
       .png()
       .toBuffer();
-    const restored = await applyAvatarSourceOutline(striped, await readAvatarSourceSprite(owner.ownerId, "clear"));
-    assert.deepEqual(
-      await pixelAt(restored, 300, 719),
-      await pixelAt(clearBust, 300, 719),
-      "the bust keeps its bottom edge",
-    );
+    const restored = await avatarVariantPicture(clearBust, striped, "mouth-open");
+    for (const x of [130, 300, 470]) {
+      assert.deepEqual(
+        await pixelAt(restored, x, 719),
+        await pixelAt(clearBust, x, 719),
+        "the bust keeps its bottom edge",
+      );
+    }
     await assertDrawnMark(restored, "the bottom-edge repair");
 
-    // A provider's pale fringe can extend beyond the soft alpha edge. Reproduce an inward fringe at
-    // the observed scale, without stripping intentional white hair or teeth farther inside the sprite.
-    const fringeAndFace = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="720">
-      <rect x="100" y="230" width="28" height="40" fill="white"/>
-      <rect x="145" y="240" width="12" height="20" fill="white"/>
-      <rect x="225" y="282" width="50" height="6" fill="#111"/>
-      <rect x="290" y="392" width="20" height="10" fill="white"/>
-    </svg>`);
-    const fringed = await sharp(opaqueBust)
-      .composite([{ input: fringeAndFace }])
-      .png()
-      .toBuffer();
-    const clean = await applyAvatarSourceOutline(fringed, await readAvatarSourceSprite(owner.ownerId, "clear"));
-    assert.deepEqual(
-      await pixelAt(clean, 125, 250),
-      await pixelAt(clearBust, 125, 250),
-      "the inward hair fringe is the source's own colour",
+    // A provider's pale fringe can extend beyond the soft alpha edge, and it can add a white hair highlight.
+    // A blink keeps only the closed eyes, a talk picture only the open mouth; the fringe and the highlight are
+    // the sprite's own in both, and so is the part of the face the picture wasn't asked to change.
+    const fringe = `<rect x="100" y="230" width="28" height="40" fill="white"/><rect x="145" y="240" width="12" height="20" fill="white"/>`;
+    const closedEyes = [250, 350]
+      .map(
+        (cx) =>
+          `<ellipse cx="${cx}" cy="283" rx="36" ry="18" fill="${SKIN}"/><path d="M${cx - 30} 286 Q${cx} 296 ${cx + 30} 286" stroke="#111" stroke-width="4" fill="none"/>`,
+      )
+      .join("");
+    const openMouth = `<ellipse cx="300" cy="400" rx="20" ry="12" fill="#5a1a1a"/><rect x="288" y="389" width="24" height="5" fill="white"/>`;
+    const drawnOver = (png: Buffer, shapes: string) =>
+      sharp(png)
+        .composite([
+          { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="720">${shapes}</svg>`) },
+        ])
+        .png()
+        .toBuffer();
+    const blinked = await avatarVariantPicture(
+      clearBust,
+      await drawnOver(opaqueBust, fringe + closedEyes),
+      "eyes-closed",
     );
-    assert.deepEqual(await pixelAt(clean, 150, 250), [255, 255, 255, 255], "an interior white hair highlight stays");
-    assert.deepEqual(await pixelAt(clean, 250, 285), [17, 17, 17, 255], "the drawn closed eye stays");
-    assert.deepEqual(await pixelAt(clean, 300, 397), [255, 255, 255, 255], "the drawn white teeth stay");
+    const talked = await avatarVariantPicture(clearBust, await drawnOver(opaqueBust, fringe + openMouth), "mouth-open");
+    for (const [picture, what] of [
+      [blinked, "a blink"],
+      [talked, "a talk picture"],
+    ] as const) {
+      assert.deepEqual(await pixelAt(picture, 125, 250), await pixelAt(clearBust, 125, 250), `${what}: no fringe`);
+      assert.deepEqual(await pixelAt(picture, 150, 250), await pixelAt(clearBust, 150, 250), `${what}: no highlight`);
+    }
+    for (const x of [250, 350]) {
+      assert.deepEqual(await pixelAt(blinked, x, 278), [242, 201, 168, 255], `the drawn closed eye at ${x} stays`);
+    }
+    assert.deepEqual(await pixelAt(blinked, 300, 397), await pixelAt(clearBust, 300, 397), "a blink keeps the mouth");
+    assert.deepEqual(await pixelAt(talked, 300, 403), [90, 26, 26, 255], "the drawn open mouth stays");
+    assert.deepEqual(await pixelAt(talked, 300, 391), [255, 255, 255, 255], "with its white teeth");
+    assert.deepEqual(await pixelAt(talked, 250, 285), await pixelAt(clearBust, 250, 285), "talking keeps the eyes");
     const paleHair = await sharp(Buffer.from(bustSvg(null).toString().replace("#5a3a22", "#ffffff")))
       .png()
       .toBuffer();
-    const paleDrawn = await sharp(paleHair)
-      .composite([{ input: fringeAndFace }])
-      .png()
-      .toBuffer();
-    const pale = await applyAvatarSourceOutline(paleDrawn, { ...softSource, png: paleHair });
+    const pale = await avatarVariantPicture(paleHair, await drawnOver(paleHair, fringe + closedEyes), "eyes-closed");
     assert.deepEqual(await pixelAt(pale, 125, 250), [255, 255, 255, 255], "white source hair stays white");
-    assert.deepEqual(await pixelAt(pale, 250, 285), [17, 17, 17, 255], "white hair does not prevent the drawn blink");
+    assert.deepEqual(
+      await pixelAt(pale, 250, 278),
+      [242, 201, 168, 255],
+      "white hair does not prevent the drawn blink",
+    );
 
-    // A small, closely cropped face still accepts edits near its eyes and mouth.
+    // A small, closely cropped face still accepts edits near its eyes and mouth. (A change has to be a few
+    // pixels across to be told apart from a line the model drew a pixel to the side.)
     const smallFace = await sharp(
       Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
       <ellipse cx="32" cy="32" rx="31" ry="31" fill="${SKIN}"/>
@@ -357,22 +376,28 @@ try {
     )
       .png()
       .toBuffer();
-    const smallEdits = await sharp(smallFace)
-      .composite([
-        {
-          input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
-      <rect x="10" y="24" width="12" height="3" fill="#111"/><rect x="28" y="48" width="8" height="4" fill="white"/>
-    </svg>`),
-        },
-      ])
-      .png()
-      .toBuffer();
-    const small = await applyAvatarSourceOutline(smallEdits, { ...softSource, png: smallFace, width: 64, height: 64 });
-    assert.deepEqual(await pixelAt(small, 13, 25), [17, 17, 17, 255], "a small cropped eye edit stays");
-    assert.deepEqual(await pixelAt(small, 32, 49), [255, 255, 255, 255], "a small cropped mouth edit stays");
+    const smallEdit = (shape: string) =>
+      sharp(smallFace)
+        .composite([
+          { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">${shape}</svg>`) },
+        ])
+        .png()
+        .toBuffer();
+    const smallBlink = await avatarVariantPicture(
+      smallFace,
+      await smallEdit(`<rect x="10" y="23" width="12" height="5" fill="#111"/>`),
+      "eyes-closed",
+    );
+    const smallTalk = await avatarVariantPicture(
+      smallFace,
+      await smallEdit(`<rect x="28" y="47" width="8" height="6" fill="white"/>`),
+      "mouth-open",
+    );
+    assert.deepEqual(await pixelAt(smallBlink, 13, 25), [17, 17, 17, 255], "a small cropped eye edit stays");
+    assert.deepEqual(await pixelAt(smallTalk, 32, 49), [255, 255, 255, 255], "a small cropped mouth edit stays");
 
-    // Saving keeps the kept picture exactly. It already has the sprite's outline; giving it the outline again
-    // lays it over the sprite once more, and inside a soft mask the open eyes would show through the blink.
+    // Saving keeps the kept picture exactly. It already has the sprite's alpha and pixels; laying it over the
+    // sprite again would show the open eyes through the blink inside a soft mask.
     const { data: softer } = await rgba(clearBust);
     for (let i = 3; i < softer.length; i += 4) if (softer[i] === 255) softer[i] = 200;
     writeFileSync(

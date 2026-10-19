@@ -171,9 +171,11 @@ async function cancel(request: { close: () => void }, kind: string) {
 }
 
 const pngtuberBody = { owner, labels: ["neutral"], variants: ["eyes-closed"], connectionId: image.id };
-const opaquePicture = await sharp({
-  create: { width: 1024, height: 1536, channels: 3, background: { r: 250, g: 250, b: 250 } },
-})
+// The edit the provider answers with: the sprite where it was put on GPT Image 1's 1024x1536 canvas, with a
+// closed eye drawn on it (a picture with no change is refused).
+const opaquePicture = await sharp(await sharp(sprite).resize(1024, 1365).png().toBuffer())
+  .extend({ top: 85, bottom: 86, background: "#fff" })
+  .composite([{ input: { create: { width: 160, height: 56, channels: 3, background: "#222" } }, left: 432, top: 650 }])
   .png()
   .toBuffer();
 

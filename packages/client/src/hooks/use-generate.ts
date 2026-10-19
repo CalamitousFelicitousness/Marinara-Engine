@@ -4140,7 +4140,8 @@ export function useGenerate() {
                   : translate("ui.chat.chatarea.videoSavedToGalleryOnly"),
               );
               void qc.invalidateQueries({ queryKey: ["gallery", "scene-videos", chatId] });
-              if (isActiveChat()) qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+              // Also when the user moved to another chat meanwhile: an inactive query is only marked stale.
+              void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
               break;
             }
             case "video_error": {

@@ -89656,6 +89656,11 @@
                           ],
                           "additionalProperties": false
                         },
+                        "proficiencyBonus": {
+                          "type": "integer",
+                          "minimum": -6,
+                          "maximum": 6
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -91691,6 +91696,11 @@
                             "entries"
                           ],
                           "additionalProperties": false
+                        },
+                        "proficiencyBonus": {
+                          "type": "integer",
+                          "minimum": -6,
+                          "maximum": 6
                         },
                         "$comment": {}
                       },
@@ -93914,6 +93924,11 @@
                                   "entries"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "proficiencyBonus": {
+                                "type": "integer",
+                                "minimum": -6,
+                                "maximum": 6
                               },
                               "$comment": {}
                             },

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item that adds to its holder's proficiency bonus (1.586): an Ioun Stone of Mastery. */
+function carriesProficiencyBonus586(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesProficiencyBonus586(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const key of ["worn", "carried"]) if (plainRecord(record[key])?.proficiencyBonus !== undefined) return true;
+  return featureValues(record).some((one) => carriesProficiencyBonus586(one, depth + 1));
+}
+
 /** A condition that gives way as its holder first sees somebody (1.585): a Philter of Love. */
 function carriesFirstSeen585(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7965,6 +7975,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item that adds to its holder's proficiency bonus, 1.586.
+  if (
+    !declaresApi(586) &&
+    (carriesProficiencyBonus586(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesProficiencyBonus586(document)))
+  )
+    return "A ruleset with an item that adds to its holder's proficiency bonus (proficiencyBonus) requires schemaVersion 2 and capabilityApi 1.586 or newer";
   // A condition that gives way as its holder first sees somebody, 1.585.
   if (
     !declaresApi(585) &&

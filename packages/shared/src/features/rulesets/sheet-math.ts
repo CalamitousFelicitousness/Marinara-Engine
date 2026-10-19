@@ -372,6 +372,21 @@ function itemAbilityChanges(
   return changes;
 }
 
+/** What a character's items add to their proficiency bonus (1.586), from each worn item's `worn` effect
+ *  and each other item's `carried` one, one item once. */
+function itemProficiencyBonus(items: ReadonlyArray<RulesetSheetItem> | undefined): number {
+  const seen = new Set<unknown>();
+  let total = 0;
+  for (const held of items ?? []) {
+    const does = rulesetHeldItemDoes(held);
+    const effect = held.worn ? does.worn : does.carried;
+    if (!effect?.proficiencyBonus || seen.has(effect)) continue;
+    seen.add(effect);
+    total += effect.proficiencyBonus;
+  }
+  return total;
+}
+
 /** A stat over the items a character holds (`itemStat`). The items are picked by where they are and
  *  by slot, category and tag; `sum` adds each one's value times how many, `max` and `min` read one
  *  value, and `count` counts the items (only the ones that give the stat, when one is named). An item
@@ -610,10 +625,17 @@ export function evaluateRulesetSheet(
   // Validation guarantees the value feeding the proficiency bonus never reads a skill or save
   // modifier, so resolving it lazily, the first time a modifier is asked for, cannot recurse.
   let proficiencyBonus: number | null = null;
+  // What items add to it (1.586): onto the derived value it reads where it reads one, so everything
+  // else reading that value (a spell save DC) has it too; else onto the bonus itself.
+  const itemProficiency = itemProficiencyBonus(live?.items);
+  const bonusRef = resolution.proficiency?.bonus as Record<string, unknown> | undefined;
+  const proficiencyDerived = typeof bonusRef?.derived === "string" ? bonusRef.derived : undefined;
   const readProficiencyBonus = (): number => {
     if (proficiencyBonus === null) {
       proficiencyBonus = 0; // a malformed definition that does recurse reads 0 instead of overflowing
-      proficiencyBonus = resolution.proficiency ? resolveRef(resolution.proficiency.bonus) : 0;
+      proficiencyBonus = resolution.proficiency
+        ? resolveRef(resolution.proficiency.bonus) + (proficiencyDerived === undefined ? itemProficiency : 0)
+        : 0;
     }
     return proficiencyBonus;
   };
@@ -680,6 +702,7 @@ export function evaluateRulesetSheet(
             ? entry.table[key]!
             : entry.default;
       } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
+      if (entry.id === proficiencyDerived && itemProficiency) derived[entry.id] = derived[entry.id]! + itemProficiency;
     }
   };
   workOutDerived();

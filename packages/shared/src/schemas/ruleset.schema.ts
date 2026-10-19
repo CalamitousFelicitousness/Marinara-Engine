@@ -13223,6 +13223,15 @@ const rulesetItemEffectObjectSchema = z
       })
       .strict()
       .optional(),
+    /** Added to its holder's proficiency bonus (Capability API 1.586), and so to everything that reads
+     *  it: 5e's Ioun Stone of Mastery, `1`. */
+    proficiencyBonus: z
+      .number()
+      .int()
+      .min(-6)
+      .max(6)
+      .refine((value) => value !== 0, "Adding 0 changes nothing")
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -13248,13 +13257,14 @@ const rulesetItemEffectObjectSchema = z
       !entry.absorbs &&
       !entry.turns &&
       !entry.paysSlots &&
-      !entry.ignoredBy
+      !entry.ignoredBy &&
+      !entry.proficiencyBonus
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["effects"],
         message:
-          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, what its charges pay for, or who leaves its wearer alone",
+          "An item's effect does something: effects, modifiers, saves it fails, abilities it changes, senses it gives, light it sheds, movers it gives away, a fall it softens, harm or conditions it keeps or holds off, a walk it keeps or slips free with, a jump it lengthens, conditions it keeps on, what it takes in or turns back, what its charges pay for, who leaves its wearer alone, or its holder's proficiency bonus",
       });
     }
     if (abilities.length > 12) {

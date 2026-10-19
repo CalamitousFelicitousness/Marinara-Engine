@@ -714,8 +714,8 @@ async function executeManualIllustratorPromptRequest(args: {
 }
 
 /**
- * Who a re-run Illustrator's clip can show: the chat's characters, a character used as the user, and the persona,
- * as the picture references below read them from the agent context.
+ * Who a re-run Illustrator can show, for its picture references and its clips alike: the chat's characters, a
+ * character used as the user, and the persona, read from the agent context.
  */
 async function retryIllustratorClipCast(
   agentContext: AgentContext,
@@ -762,6 +762,9 @@ async function retryIllustratorClipCast(
             agentContext.memory._personaImageAppearanceOverride.trim()
               ? agentContext.memory._personaImageAppearanceOverride.trim()
               : null,
+          characterSheetImageId:
+            typeof personaRow?.characterSheetImageId === "string" ? personaRow.characterSheetImageId : null,
+          useCharacterSheetAsReference: personaRow?.useCharacterSheetAsReference === "true",
         }
       : null;
   return { chatCharacters, persona };
@@ -3731,9 +3734,7 @@ async function applyRetryResultEffects(args: {
           // A clip the writer chose without saying how it moves is skipped (Pictures and clips); Clips only always
           // makes one.
           const wantsVideo = clipsOnly || (!!videoOffer && illData.generateVideo === true && !!writtenMotion);
-          const clipCast = videoOffer
-            ? await retryIllustratorClipCast(agentContext, chars)
-            : { chatCharacters: [], persona: null };
+          const clipCast = await retryIllustratorClipCast(agentContext, chars);
           const clipTools = videoOffer
             ? createRoleplayClipTools({
                 db: app.db,
@@ -3916,80 +3917,12 @@ async function applyRetryResultEffects(args: {
                 });
             assertRetryActive();
             let referenceImages: string[] | undefined;
-            const retryIdentityId =
-              typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
-            const retryIdentitySource =
-              agentContext.memory._userIdentitySource === "persona" ||
-              agentContext.memory._userIdentitySource === "character"
-                ? agentContext.memory._userIdentitySource
-                : null;
-            const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
-            const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
-            assertRetryActive();
-            // #7053: a character-backed user identity ("Add persona as character")
-            // carries its override on the identity, not on `_personaId`, which is
-            // reserved for persona-store rows. Read whichever id this identity
-            // actually uses, so both flavours reach the appearance block.
-            const retryIdentityOverride =
-              retryIdentitySource === "character"
-                ? readIllustratorImageAppearanceOverride(agentContext.memory, retryIdentityId)
-                : null;
-            const retryCharacterIdentity =
-              retryIdentitySource === "character" && retryIdentityId && agentContext.persona
-                ? {
-                    id: retryIdentityId,
-                    name: agentContext.persona.name,
-                    avatarPath:
-                      typeof agentContext.memory._personaAvatarPath === "string"
-                        ? agentContext.memory._personaAvatarPath
-                        : null,
-                    appearance: agentContext.persona.appearance,
-                    appearanceOverride: retryIdentityOverride,
-                  }
-                : null;
             const referenceResolution = await resolveIllustratorCharacterReferences({
               charactersStore: chars,
               characterGallery: createCharacterGalleryStorage(app.db),
               personaGallery: createPersonaGalleryStorage(app.db),
-              chatCharacters: [
-                ...agentContext.characters.map((character) => ({
-                  id: character.id,
-                  name: character.name,
-                  appearance: character.appearance,
-                  appearanceOverride: readIllustratorImageAppearanceOverride(agentContext.memory, character.id),
-                })),
-                ...(retryCharacterIdentity &&
-                !agentContext.characters.some((character) => character.id === retryCharacterIdentity.id)
-                  ? [retryCharacterIdentity]
-                  : []),
-              ],
-              persona:
-                retryIdentitySource === "persona" && agentContext.persona
-                  ? {
-                      id: retryPersonaId,
-                      name: agentContext.persona.name,
-                      avatarPath:
-                        typeof retryPersonaReference?.avatarPath === "string"
-                          ? retryPersonaReference.avatarPath
-                          : typeof agentContext.memory._personaAvatarPath === "string"
-                            ? agentContext.memory._personaAvatarPath
-                            : null,
-                      appearance: agentContext.persona.appearance,
-                      // #7053: same override-wins rule as the caption path, so the
-                      // engine-appended appearance block matches the agent's own
-                      // `<character_appearance_reference>` instead of sending prose.
-                      appearanceOverride:
-                        typeof agentContext.memory._personaImageAppearanceOverride === "string" &&
-                        agentContext.memory._personaImageAppearanceOverride.trim()
-                          ? agentContext.memory._personaImageAppearanceOverride.trim()
-                          : null,
-                      characterSheetImageId:
-                        typeof retryPersonaReference?.characterSheetImageId === "string"
-                          ? retryPersonaReference.characterSheetImageId
-                          : null,
-                      useCharacterSheetAsReference: retryPersonaReference?.useCharacterSheetAsReference === "true",
-                    }
-                  : null,
+              // The same cast its clips use: the chat's characters, a character used as the user, and the persona.
+              ...clipCast,
               requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),
               promptText: [
                 [...agentContext.recentMessages].reverse().find((message) => message.role === "user")?.content ?? "",

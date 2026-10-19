@@ -590,6 +590,21 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
   }
 }
 
+/** What lasts until its source acts again comes off as they take another action (1.546): 5e's
+ *  Interposing Hand, until the hand is given a different command. */
+function endOnSourceActing(ctx: RulesetCombatContext, source: RulesetCombatant): void {
+  const acts = new Set(
+    (ctx.combat.conditions ?? []).filter((one) => one.endsWhenSource?.acts).map((one) => one.condition),
+  );
+  if (acts.size === 0) return;
+  for (const holder of ctx.state.combatants) {
+    for (const entry of [...holder.tracked]) {
+      if (acts.has(entry.condition) && entry.source === source.id)
+        removeCondition(ctx, holder, entry.condition, "expired");
+    }
+  }
+}
+
 /** Who holds a condition that `controls` them fights on its source's side while it holds and the
  *  source stands, and on their own again after (1.524): Magic Jar. As a holder of one with
  *  `holderDies` dies, its source throws that save against the difficulty off their own sheet, and dies
@@ -6791,6 +6806,8 @@ function applyChoice(
   }
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
+  // Another action of theirs ends what lasts until they act again (1.546): the Interposing Hand.
+  endOnSourceActing(ctx, working);
 
   // One attack given up for one by what they called (1.435): out of a strike in hand, or the attack
   // action taken now with the rest of its strikes put in hand; the called one pays its own budget.
@@ -6808,6 +6825,7 @@ function applyChoice(
     }
     working.flags.attackAction = [...(working.flags.attackAction ?? []), option.label];
     spendBudget(ctx, called, spends);
+    endOnSourceActing(ctx, called);
     ctx.events.push({ type: "lent", actorId: working.id, calledId: called.id, label: attack.label });
     spendAvailability(ctx, called, attack);
     resolveAction(ctx, called, attack, workingTargets);

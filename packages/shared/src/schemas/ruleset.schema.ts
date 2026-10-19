@@ -12317,10 +12317,14 @@ const combatConditionSchema = z
         conditions: z.array(sheetId).min(1).max(12).optional(),
         components: z.array(sheetId).min(1).max(6).optional(),
         holderLacks: z.array(sheetId).min(1).max(4).optional(),
+        /** Or once whoever applied it takes another action (Capability API 1.546), anything but a
+         *  move, a reaction or ending their turn: 5e's Arcane Hand's Interposing Hand, "until you give
+         *  the hand a different command". What that action puts on goes on afresh. */
+        acts: z.literal(true).optional(),
       })
       .strict()
-      .refine((rule) => rule.effects || rule.conditions || rule.components || rule.holderLacks, {
-        message: 'Say what ends it: "effects", "conditions", "components" or "holderLacks"',
+      .refine((rule) => rule.effects || rule.conditions || rule.components || rule.holderLacks || rule.acts, {
+        message: 'Say what ends it: "effects", "conditions", "components", "holderLacks" or "acts"',
       })
       .optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied

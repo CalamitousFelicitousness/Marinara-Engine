@@ -175059,6 +175059,10 @@
                     "minItems": 1,
                     "maxItems": 4
                   },
+                  "acts": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false

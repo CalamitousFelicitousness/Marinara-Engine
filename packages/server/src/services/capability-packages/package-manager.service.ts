@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that ends once its source acts again (1.546): Interposing Hand. */
+function carriesEndsWhenSourceActs546(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsWhenSourceActs546(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && plainRecord(record.endsWhenSource)?.acts !== undefined) return true;
+  return featureValues(record).some((one) => carriesEndsWhenSourceActs546(one, depth + 1));
+}
+
 /** A contest's winner moving with the one it pushes (1.545): Forceful Hand. */
 function carriesContestFollows545(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7496,6 +7506,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that ends once its source acts again, 1.546.
+  if (
+    !declaresApi(546) &&
+    (carriesEndsWhenSourceActs546(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsWhenSourceActs546(document)))
+  ) {
+    return "A ruleset with a condition that ends once its source takes another action (endsWhenSource.acts) requires schemaVersion 2 and capabilityApi 1.546 or newer";
+  }
   // A contest's winner moving with the one it pushes, 1.545.
   if (
     !declaresApi(545) &&

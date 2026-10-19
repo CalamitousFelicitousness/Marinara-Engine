@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition's harm its saves wear down (1.582): a Potion of Poison. */
+function carriesHarmDrops582(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHarmDrops582(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.harms)?.save)?.drops !== undefined) return true;
+  return featureValues(record).some((one) => carriesHarmDrops582(one, depth + 1));
+}
+
 /** A condition's entry used at numbers of its own (1.581): a Potion of Animal Friendship. */
 function carriesFixedConditionActions581(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7918,6 +7928,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition's harm its saves wear down, 1.582.
+  if (
+    !declaresApi(582) &&
+    (carriesHarmDrops582(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHarmDrops582(document)))
+  )
+    return "A ruleset with a condition's harm its saves wear down (harms.save.drops) requires schemaVersion 2 and capabilityApi 1.582 or newer";
   // A condition's entry used at numbers of its own, 1.581.
   if (
     !declaresApi(581) &&

@@ -4546,12 +4546,31 @@ function harmFromCondition(
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
+  const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
   // Spared this time by a save (1.350): a shambling mound's engulfed.
   if (harms.save) {
     const difficulty = harms.save.difficulty ?? entry.difficulty;
-    if (difficulty !== undefined && rollSave(ctx, holder, harms.save.save, difficulty, entry.source)) return;
+    if (difficulty !== undefined && rollSave(ctx, holder, harms.save.save, difficulty, entry.source)) {
+      // Each save takes some of its dice off for good (1.582), and with none left it is over: a
+      // Potion of Poison.
+      const drops = harms.save.drops ? parseRulesetCombatDice(harms.save.drops) : null;
+      if (drops && dice) {
+        entry.harmDropped = (entry.harmDropped ?? 0) + drops.count;
+        if (entry.harmDropped >= dice.count && holder.tracked.includes(entry))
+          removeCondition(ctx, holder, entry.condition, "save");
+      }
+      return;
+    }
   }
-  conditionHarm(ctx, holder, entry.condition, entry.source, harms, entry.stacks ?? 1, entry.harmsMore);
+  // What its saves have taken off (1.582).
+  const left =
+    entry.harmDropped && dice
+      ? {
+          ...harms,
+          dice: `${Math.max(0, dice.count - entry.harmDropped)}d${dice.sides}${dice.flat ? `+${dice.flat}` : ""}`,
+        }
+      : harms;
+  conditionHarm(ctx, holder, entry.condition, entry.source, left, entry.stacks ?? 1, entry.harmsMore);
 }
 
 /** What a condition deals its holder, from whoever put it on: as a turn starts or ends (1.189), or

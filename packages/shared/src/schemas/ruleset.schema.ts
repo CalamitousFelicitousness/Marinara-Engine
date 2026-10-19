@@ -2587,7 +2587,7 @@ export interface RulesetConditionHarms {
   flat?: number;
   type?: string;
   healedOnlyByRest?: true;
-  save?: { save: string; difficulty?: number };
+  save?: { save: string; difficulty?: number; drops?: string };
 }
 const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unknown> = z
   .object({
@@ -2617,14 +2617,30 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
      *  one it was put on with: a shambling mound's "must succeed on a DC 14 Constitution saving throw
      *  ... or take 13 (2d8 + 4) bludgeoning damage". */
     save: z
-      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000).optional() })
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(1000).optional(),
+        /** Each save made takes these dice off what it harms with from then on (Capability API
+         *  1.582), and with none left the condition ends: 5e's Potion of Poison, 3d6 poison "decreases
+         *  by 1d6" on each success and "ends when the damage decreases to 0". Dice of its own size. */
+        drops: catalogDice.optional(),
+      })
       .strict()
       .optional(),
   })
   .strict()
   .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
     message: "What it harms with names dice, a flat amount, or both",
-  });
+  })
+  .refine(
+    (harm) => {
+      if (!harm.save?.drops) return true;
+      const drops = /^(\d+)d(\d+)$/.exec(harm.save.drops);
+      const own = harm.dice ? /^(\d+)d(\d+)/.exec(harm.dice) : null;
+      return !!drops && !!own && drops[2] === own[2];
+    },
+    { message: '"drops" takes off dice of the size it harms with', path: ["save", "drops"] },
+  );
 
 /** Health its holder regains as each of their own turns starts (Capability API 1.346): a troll's
  *  Regeneration, 5e's Survivor. `flat` and `dice`, plus `add` read off the holder's own sheet (Survivor's

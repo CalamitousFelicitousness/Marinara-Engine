@@ -1756,6 +1756,8 @@ export interface RulesetTrackedCondition {
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
    *  (1.255): Acid Arrow's extra 1d4 a slot level. */
   harmsMore?: RulesetCombatAmount;
+  /** How many of its harm's dice its saves have taken off (1.582): a Potion of Poison's. */
+  harmDropped?: number;
   /** The number its applier gave it as it went on (1.274): Heroism's spellcasting modifier. */
   value?: number;
   /** The level of the spell that put it on, as it was paid for (1.299): what magical darkness of

@@ -10455,6 +10455,14 @@ const catalogItemObjectSchema = z
         /** Found holding a rolled count rather than full (Capability API 1.520): each stack starts
          *  with these dice, rolled once for it and never past `max`. A Rod of Absorption's `"1d10"`. */
         rolled: catalogDice.optional(),
+        /** Used on past its last charge (Capability API 1.571): each use it has none for is a `chance`
+         *  in 100 of tearing it apart for nothing, and with `cumulative` that chance again for each such
+         *  use since its charges last came back. 5e's Wind Fan, `{ "chance": 20, "cumulative": true }`
+         *  on 1 charge back at dawn. */
+        overuse: z
+          .object({ chance: z.number().int().min(1).max(100), cumulative: z.literal(true).optional() })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

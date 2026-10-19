@@ -63,7 +63,8 @@ export interface GameInventoryStack {
    *  made. Kept on a stack of one item only. */
   form?: number;
   /** What is left of each of its further uses that counts its own (Capability API 1.466), by its
-   *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full. */
+   *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full.
+   *  Under `o` (1.571), the times it was used on with no charges left since they last came back. */
   usesLeft?: Record<string, number>;
   /** How long it has waited, in minutes of game time, for its charges (`"charges"`) or a use's own
    *  uses (its `usesLeft` key) to come back `after` a wait (Capability API 1.503), and how long it
@@ -550,8 +551,9 @@ function readUsesLeft(raw: unknown): Record<string, number> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const kept = Object.entries(raw as Record<string, unknown>).filter(
     (entry): entry is [string, number] =>
-      // A further use's place from 1, or a hit's spend's after "h" (1.481).
-      /^(?:[1-9]|1[0-6]|h[1-4])$/.test(entry[0]) &&
+      // A further use's place from 1, or a hit's spend's after "h" (1.481), or "o" for the times it
+      // was used on with no charges left (1.571).
+      /^(?:[1-9]|1[0-6]|h[1-4]|o)$/.test(entry[0]) &&
       typeof entry[1] === "number" &&
       Number.isInteger(entry[1]) &&
       entry[1] >= 0 &&

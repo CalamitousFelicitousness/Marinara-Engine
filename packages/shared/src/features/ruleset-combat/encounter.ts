@@ -2273,6 +2273,7 @@ function itemUseActions(
               cost: use.charges,
               max,
               ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
+              ...(item.charges?.overuse ? { overuse: { ...item.charges.overuse } } : {}),
               ...(use.chargeStep
                 ? {
                     step: {
@@ -3108,6 +3109,7 @@ function itemAttackActions(
                   cost: spend.charges ?? 1,
                   max: chargesMax!,
                   ...(item.charges?.breaksOn ? { breaksOn: lastChargeDie(item.charges.breaksOn) } : {}),
+                  ...(item.charges?.overuse ? { overuse: { ...item.charges.overuse } } : {}),
                   ...(spend.chargeStep && step ? { step: { max: spend.chargeStep.max, amount: step } } : {}),
                 },
               }),

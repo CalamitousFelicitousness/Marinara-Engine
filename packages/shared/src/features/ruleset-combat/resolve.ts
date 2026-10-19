@@ -46,6 +46,8 @@ import {
   rulesetItemOn,
   rulesetModedAction,
   rulesetItemChargesLeft,
+  rulesetItemOverused,
+  rulesetItemUseLeft,
   spendRulesetShots,
   rulesetShotsAvailable,
   rulesetStoredNow,
@@ -428,6 +430,9 @@ interface RulesetCombatContext {
   releasing?: Set<string>;
   /** The action being resolved follows its own charge (1.521): the run is spent, so it carries none. */
   uncharged?: true;
+  /** The item the action being resolved was used on with no charges left tore for it (1.571): it does
+   *  nothing. */
+  tore?: true;
   /** Where the action being resolved moves its target to (1.512), and how many levels up. */
   carriesTo?: { x: number; y: number; rises: number };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
@@ -6181,8 +6186,13 @@ function markUsedOn(
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   // Paid already, as it was readied (1.288).
   if (rulesetUseIsFree(actor.id, action.id)) return;
+  // Used on with none of its charges left (1.571): a Wind Fan past its once a dawn.
+  const use = action.itemUse;
+  const overusing =
+    !!use?.charges?.overuse && !use.consumes && !use.ownUses && rulesetItemUseLeft(actor, use) < use.charges.cost;
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
+  if (overusing) overuseItem(ctx, actor, action);
   // The last charge spent: an item that may break rolls for it now.
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
   if (broke) ctx.events.push(broke);
@@ -6212,6 +6222,23 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
       if (other.recharge?.group === group && !actor.spent.includes(other.id)) actor.spent.push(other.id);
     }
   }
+}
+
+/** An item used on with no charges left (1.571) counts it, and rolls its d100 against its chance (that
+ *  chance again for each such use since they came back, where it is cumulative): at or under it, the
+ *  item tears, gone for good, and the use does nothing. */
+function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const use = action.itemUse!;
+  const rule = use.charges!.overuse!;
+  const count = Math.min(100, rulesetItemOverused(actor, use.item) + 1);
+  (actor.usesLeft ??= {})[`${use.item}:o`] = count;
+  const chance = Math.min(100, rule.chance * (rule.cumulative ? count : 1));
+  const face = ctx.roll(100);
+  if (face > chance) return;
+  (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
+  (actor.broken ??= {})[use.item] = true;
+  ctx.events.push({ type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face });
+  ctx.tore = true;
 }
 
 /** Why an option the caller named is not on the menu, as precisely as the rules can say. */
@@ -7314,6 +7341,12 @@ function applyChoice(
   // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
   // asked about a use that never happened.
   if (action.itemUse?.gate && !passesGate(ctx, working, action, action.itemUse.gate)) {
+    noteOutcome(ctx);
+    return finish();
+  }
+  // Torn as it was used on with no charges left (1.571): it did nothing.
+  if (ctx.tore) {
+    delete ctx.tore;
     noteOutcome(ctx);
     return finish();
   }

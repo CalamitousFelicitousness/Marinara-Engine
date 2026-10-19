@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** An item used on past its last charge (1.571): the Wind Fan. */
+function carriesOveruse571(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOveruse571(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.charges)?.overuse !== undefined) return true;
+  return featureValues(record).some((one) => carriesOveruse571(one, depth + 1));
+}
+
 /** An item use whose condition lasts while the item's charges do (1.570): the Boots of Speed. */
 function carriesChargesPerRound570(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7781,6 +7791,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item used on past its last charge, 1.571.
+  if (
+    !declaresApi(571) &&
+    (carriesOveruse571(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOveruse571(document)))
+  )
+    return "A ruleset with an item used on past its last charge (charges.overuse) requires schemaVersion 2 and capabilityApi 1.571 or newer";
   // An item use whose condition lasts while the item's charges do, 1.570.
   if (
     !declaresApi(570) &&

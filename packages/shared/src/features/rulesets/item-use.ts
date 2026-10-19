@@ -565,10 +565,18 @@ export function rechargeRulesetItems(input: {
     const now = Math.max(before, Math.min(max, before + gain(recharge.amount, max)));
     if (now === before) return next;
     recharged.push({ item: entry!.name, now, max });
-    const { charges: _charges, ...rest } = next;
+    const { charges: _charges, ...rest } = withoutOveruse(next);
     return now >= max ? rest : { ...rest, charges: now };
   });
   return { stacks: recharged.length > 0 ? stacks : [...input.stacks], recharged };
+}
+
+/** A stack whose charges came back counts its uses on none from nothing again (1.571). */
+function withoutOveruse(stack: GameInventoryStack): GameInventoryStack {
+  if (stack.usesLeft?.o === undefined) return stack;
+  const { o: _o, ...others } = stack.usesLeft;
+  const { usesLeft: _usesLeft, ...plain } = stack;
+  return Object.keys(others).length > 0 ? { ...plain, usesLeft: others } : plain;
 }
 
 /** How long a wait counted in game time runs, in minutes (1.503), its hours rolled where they are
@@ -681,7 +689,7 @@ export function passRulesetItemTime(input: {
       if (now === 0) continue;
       recharged.push({ item: count.label, now, max: count.max, ...(count.uses ? { uses: true as const } : {}) });
       if (count.key === "charges") {
-        const { charges: _charges, ...rest } = next;
+        const { charges: _charges, ...rest } = withoutOveruse(next);
         next = now >= count.max ? rest : { ...rest, charges: now };
       } else {
         const { [count.key]: _was, ...others } = next.usesLeft ?? {};

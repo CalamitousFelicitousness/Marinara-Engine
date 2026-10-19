@@ -192,6 +192,8 @@ export interface RulesetItemUseFact {
     recharge?: { rests: string[]; amount: "max" | string; after?: { days?: number; hours?: string } };
     /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
     breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
+    /** Used on with none left (1.571): its chance in 100 of tearing, cumulative or not. */
+    overuse?: { chance: number; cumulative?: true };
   };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
@@ -407,6 +409,7 @@ function rulesetItemUseFacts(
                   },
                 }
               : {}),
+            ...(item.charges?.overuse ? { overuse: { ...item.charges.overuse } } : {}),
             ...(item.charges?.breaksOn
               ? {
                   breaksOn: {
@@ -1506,6 +1509,9 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       : "",
     use.charges?.breaksOn?.atMost !== undefined
       ? `${use.charges.breaksOn.becomes ? `becomes ${use.charges.breaksOn.becomes}` : "breaks"} on ${rulesetBreakFaces({ atMost: use.charges.breaksOn.atMost })} on a d${use.charges.breaksOn.die} when emptied`
+      : "",
+    use.charges?.overuse
+      ? `may be used with none left, ${use.charges.overuse.chance}% ${use.charges.overuse.cumulative ? "more each time " : ""}to tear apart for nothing`
       : "",
     use.charges?.breaksOn?.regains
       ? `regains ${use.charges.breaksOn.regains.amount} on ${rulesetRegainFaces(use.charges.breaksOn.die, use.charges.breaksOn.regains.atLeast)} on a d${use.charges.breaksOn.die} when emptied`

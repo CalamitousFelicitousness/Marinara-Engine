@@ -1415,6 +1415,9 @@ export interface RulesetCombatAction {
         /** What it becomes in place of breaking (1.272), "<catalog>/<entry>". */
         becomes?: string;
       };
+      /** Used on with none left (1.571), each such use a `chance` in 100 of tearing it, the chance
+       *  again for each such use since its charges came back where `cumulative`. */
+      overuse?: { chance: number; cumulative?: true };
       /** More charges its user may spend, each a step of a higher cost (1.269), and farther pushed for
        *  each, in cells (1.271). */
       step?: { max: number; amount?: RulesetCombatAmount; targets?: number; push?: number };

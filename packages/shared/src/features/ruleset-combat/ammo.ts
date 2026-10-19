@@ -138,11 +138,20 @@ export function rulesetItemUseLeft(actor: RulesetCombatant, use: NonNullable<Rul
   return Math.max(0, Math.min(use.charges.max, now));
 }
 
+/** How many times an item has been used on with no charges left since they last came back (1.571):
+ *  as this fight left the count, else as its stack kept it (under `usesLeft.o`), else none. */
+export function rulesetItemOverused(actor: RulesetCombatant, item: number): number {
+  return actor.usesLeft?.[`${item}:o`] ?? actor.sheet?.items?.[item]?.usesLeft?.o ?? 0;
+}
+
 /** Whether what an action shoots or loads lets it happen now: an attack needs a shot loaded or
  *  carried, a reload a clip with room in it and, where it loads from the bag, something to load. An
  *  item's use needs one of it left, or the charges it spends. */
 export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.itemUse) {
+    // Used on past its last charge while it holds together (1.571): a Wind Fan.
+    if (action.itemUse.charges?.overuse && !action.itemUse.consumes && !action.itemUse.ownUses)
+      return !actor.broken?.[action.itemUse.item];
     const left = rulesetItemUseLeft(actor, action.itemUse);
     return action.itemUse.consumes || action.itemUse.ownUses ? left >= 1 : left >= (action.itemUse.charges?.cost ?? 0);
   }

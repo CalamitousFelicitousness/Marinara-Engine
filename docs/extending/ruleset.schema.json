@@ -39784,6 +39784,11 @@
                                             "minItems": 1,
                                             "maxItems": 9
                                           },
+                                          "remainingOf": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
                                           "$comment": {}
                                         },
                                         "required": [
@@ -44834,6 +44839,11 @@
                                                 },
                                                 "minItems": 1,
                                                 "maxItems": 9
+                                              },
+                                              "remainingOf": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
                                               },
                                               "$comment": {}
                                             },
@@ -52068,6 +52078,11 @@
                                     "minItems": 1,
                                     "maxItems": 9
                                   },
+                                  "remainingOf": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -53453,6 +53468,11 @@
                                     },
                                     "minItems": 1,
                                     "maxItems": 9
+                                  },
+                                  "remainingOf": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -58708,6 +58728,11 @@
                                           "minItems": 1,
                                           "maxItems": 9
                                         },
+                                        "remainingOf": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -60122,6 +60147,11 @@
                                           },
                                           "minItems": 1,
                                           "maxItems": 9
+                                        },
+                                        "remainingOf": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "$comment": {}
                                       },
@@ -62788,6 +62818,11 @@
                                         "minItems": 1,
                                         "maxItems": 9
                                       },
+                                      "remainingOf": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -64606,6 +64641,11 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 9
+                                          },
+                                          "remainingOf": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "$comment": {}
                                         },
@@ -68813,6 +68853,11 @@
                                                     "minItems": 1,
                                                     "maxItems": 9
                                                   },
+                                                  "remainingOf": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
                                                   "$comment": {}
                                                 },
                                                 "required": [
@@ -72324,6 +72369,11 @@
                                             "minItems": 1,
                                             "maxItems": 9
                                           },
+                                          "remainingOf": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
                                           "$comment": {}
                                         },
                                         "required": [
@@ -75222,6 +75272,11 @@
                                           "minItems": 1,
                                           "maxItems": 9
                                         },
+                                        "remainingOf": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -77040,6 +77095,11 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
+                                            },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -81247,6 +81307,11 @@
                                                       "minItems": 1,
                                                       "maxItems": 9
                                                     },
+                                                    "remainingOf": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                                    },
                                                     "$comment": {}
                                                   },
                                                   "required": [
@@ -84757,6 +84822,11 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
+                                            },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -96280,6 +96350,11 @@
                                               "minItems": 1,
                                               "maxItems": 9
                                             },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -100528,6 +100603,11 @@
                                                 },
                                                 "minItems": 1,
                                                 "maxItems": 9
+                                              },
+                                              "remainingOf": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
                                               },
                                               "$comment": {}
                                             },
@@ -105412,6 +105492,11 @@
                                                     },
                                                     "minItems": 1,
                                                     "maxItems": 9
+                                                  },
+                                                  "remainingOf": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
                                                   },
                                                   "$comment": {}
                                                 },
@@ -112546,6 +112631,11 @@
                                         "minItems": 1,
                                         "maxItems": 9
                                       },
+                                      "remainingOf": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -113931,6 +114021,11 @@
                                         },
                                         "minItems": 1,
                                         "maxItems": 9
+                                      },
+                                      "remainingOf": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
                                       },
                                       "$comment": {}
                                     },
@@ -120710,6 +120805,11 @@
                                                       "minItems": 1,
                                                       "maxItems": 9
                                                     },
+                                                    "remainingOf": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                                    },
                                                     "$comment": {}
                                                   },
                                                   "required": [
@@ -125593,6 +125693,11 @@
                                                           },
                                                           "minItems": 1,
                                                           "maxItems": 9
+                                                        },
+                                                        "remainingOf": {
+                                                          "type": "string",
+                                                          "maxLength": 40,
+                                                          "pattern": "^[a-z][a-z0-9_]*$"
                                                         },
                                                         "$comment": {}
                                                       },
@@ -132727,6 +132832,11 @@
                                               "minItems": 1,
                                               "maxItems": 9
                                             },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -134112,6 +134222,11 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
+                                            },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -140897,6 +141012,11 @@
                                                       "minItems": 1,
                                                       "maxItems": 9
                                                     },
+                                                    "remainingOf": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                                    },
                                                     "$comment": {}
                                                   },
                                                   "required": [
@@ -145780,6 +145900,11 @@
                                                           },
                                                           "minItems": 1,
                                                           "maxItems": 9
+                                                        },
+                                                        "remainingOf": {
+                                                          "type": "string",
+                                                          "maxLength": 40,
+                                                          "pattern": "^[a-z][a-z0-9_]*$"
                                                         },
                                                         "$comment": {}
                                                       },
@@ -152914,6 +153039,11 @@
                                               "minItems": 1,
                                               "maxItems": 9
                                             },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
                                             "$comment": {}
                                           },
                                           "required": [
@@ -154299,6 +154429,11 @@
                                               },
                                               "minItems": 1,
                                               "maxItems": 9
+                                            },
+                                            "remainingOf": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
                                             },
                                             "$comment": {}
                                           },
@@ -170406,6 +170541,11 @@
                                   "minItems": 1,
                                   "maxItems": 9
                                 },
+                                "remainingOf": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -171840,6 +171980,11 @@
                                   "minItems": 1,
                                   "maxItems": 9
                                 },
+                                "remainingOf": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -173260,6 +173405,11 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 9
+                                },
+                                "remainingOf": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },
@@ -177891,6 +178041,11 @@
                                   "minItems": 1,
                                   "maxItems": 9
                                 },
+                                "remainingOf": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -179992,6 +180147,11 @@
                                         "minItems": 1,
                                         "maxItems": 9
                                       },
+                                      "remainingOf": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
                                       "$comment": {}
                                     },
                                     "required": [
@@ -181398,6 +181558,11 @@
                                             },
                                             "minItems": 1,
                                             "maxItems": 9
+                                          },
+                                          "remainingOf": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
                                           },
                                           "$comment": {}
                                         },
@@ -183493,6 +183658,11 @@
                                   },
                                   "minItems": 1,
                                   "maxItems": 9
+                                },
+                                "remainingOf": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
                                 },
                                 "$comment": {}
                               },

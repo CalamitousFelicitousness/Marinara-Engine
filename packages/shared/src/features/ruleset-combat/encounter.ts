@@ -1596,6 +1596,17 @@ export function rulesetModeRuleHolds(
   return true;
 }
 
+/** The rounds left of `condition` on `holder` from when it last came off before it ran out (1.563),
+ *  counted down a round each round since; undefined when it never did. */
+export function rulesetConditionLeft(
+  state: RulesetEncounterState,
+  holder: RulesetCombatant,
+  condition: string,
+): number | undefined {
+  const left = holder.conditionLeft?.[condition];
+  return left ? Math.max(0, left.rounds - Math.max(0, state.round - left.round)) : undefined;
+}
+
 /** The places a board may be that are indoors (1.561), by the tactical generator's names; any other,
  *  or a board that names none, is outdoors. */
 export const RULESET_INDOOR_PLACES: readonly string[] = Object.freeze([

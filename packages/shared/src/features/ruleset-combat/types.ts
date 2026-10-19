@@ -179,6 +179,8 @@ export interface RulesetCombatApplies {
         bySteps?: Array<number | "until-dispelled">;
         /** Paid high enough to have no clock (1.429): on until something takes it off. */
         untilDispelled?: true;
+        /** No longer than what was left of this condition when it last came off (1.563). */
+        remainingOf?: string;
       };
   /** Its source holds no more than this many with it at once (1.320). */
   heldAtMost?: number;
@@ -2139,6 +2141,9 @@ export interface RulesetCombatant {
   /** The presence senses already said since they came on (1.391), by condition. */
   presenceSaid?: string[];
   regrowing?: true;
+  /** What was left of each condition that came off before it ran out (1.563), by condition: its
+   *  rounds then and the round it came off. Wind Walk's cloud, for the way back into it. */
+  conditionLeft?: Record<string, { rounds: number; round: number }>;
   /** Their own ways of moving while a condition gives them more (1.345); `speeds` and `hover` are
    *  what they have now. Absent while nothing gives them any. */
   baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };

@@ -93,6 +93,7 @@ import {
   rulesetModeAllowances,
   rulesetModeRuleHolds,
   rulesetCallWhereHolds,
+  rulesetConditionLeft,
   rulesetMovesOnly,
   rulesetMovementAllowance,
   rulesetSlipCost,
@@ -2488,6 +2489,13 @@ export function rulesetActionAvailable(
   if (!rulesetActionUsable(definition, actor, action)) return false;
   // Made only as a row another action rolled (1.506).
   if (action.rolledPart) return false;
+  // Back under a condition for what is left of it (1.563): only while some is, and not while under it.
+  for (const entry of action.applies ?? []) {
+    const of = typeof entry.duration === "object" ? entry.duration.remainingOf : undefined;
+    if (of === undefined || !state) continue;
+    if ((rulesetConditionLeft(state, actor, of) ?? 0) < 1) return false;
+    if (actor.tracked.some((one) => one.condition === of || one.condition === entry.condition)) return false;
+  }
   // A call only where it says (1.561).
   if (definition && action.calls?.onlyWhere && !rulesetCallWhereHolds(definition, actor, state, action.calls.onlyWhere))
     return false;

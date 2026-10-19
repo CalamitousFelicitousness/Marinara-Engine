@@ -143,6 +143,7 @@ import {
   rulesetMovesOnly,
   rulesetLightMatches,
   rulesetModeRuleHolds,
+  rulesetConditionLeft,
   rulesetStepTimes,
   rulesetItemCallRoll,
 } from "./encounter.js";
@@ -3210,10 +3211,19 @@ function applyConditionId(
     ctx.events.push({ type: "shaped", targetId: target.id, condition, form: applies.form.name, refused: true });
     return;
   }
+  // For what is left of another (1.563): Wind Walk's cloud again, or nothing once it has run out.
+  const remainingOf = typeof applies.duration === "object" ? applies.duration.remainingOf : undefined;
+  const left = remainingOf !== undefined ? rulesetConditionLeft(ctx.state, target, remainingOf) : undefined;
+  if (left !== undefined && left < 1) return;
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   // Paid high enough to have no clock (1.429): Bestow Curse from a 9th-level slot.
   const rounds =
-    typeof applies.duration === "object" && !applies.duration.untilDispelled ? applies.duration.rounds : null;
+    typeof applies.duration === "object" && !applies.duration.untilDispelled
+      ? left !== undefined
+        ? Math.min(applies.duration.rounds, left)
+        : applies.duration.rounds
+      : null;
+  if (target.conditionLeft?.[condition]) delete target.conditionLeft[condition];
   const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
   // On its source's clock (1.119), counted from their NEXT turn: put on in the middle of their own
   // turn, the end of this one is not "the end of your next turn".
@@ -3906,6 +3916,9 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // What was left of it, come off before it ran out (1.563): Wind Walk's cloud, for the way back.
+  if (removed?.rounds && removed.rounds > 0 && reason !== "expired")
+    (target.conditionLeft ??= {})[condition] = { rounds: removed.rounds, round: ctx.state.round };
   // What lasted only while they held it ends with it, on anybody (1.500): a pin with its grapple.
   for (const one of ctx.state.combatants) {
     for (const entry of [...one.tracked]) {

@@ -4665,6 +4665,11 @@ const catalogDurationSchema = z.union([
         .min(1)
         .max(9)
         .optional(),
+      /** No longer than what was left of this condition on its target when it last came off before
+       *  it ran out (Capability API 1.563), `rounds` at most; and the entry is offered only while
+       *  some of that is left and its user is not under it again. 5e's Wind Walk, back into the
+       *  cloud for what is left of the spell's 8 hours. */
+      remainingOf: sheetId.optional(),
     })
     .strict()
     .refine((duration) => !duration.perStep || !duration.bySteps, {
@@ -21502,6 +21507,11 @@ export function rulesetCatalogEntryIssues(
       const path = [index, "mechanics", "applies", appliesIndex];
       if (!liveConditions.has(applies.condition)) {
         add([...path, "condition"], `Unknown condition "${applies.condition}"`);
+      }
+      // What is left of a condition (1.563).
+      const remainingOf = typeof applies.duration === "object" ? applies.duration.remainingOf : undefined;
+      if (remainingOf !== undefined && !liveConditions.has(remainingOf)) {
+        add([...path, "duration", "remainingOf"], `Unknown condition "${remainingOf}"`);
       }
       escapeDcIssues(definition, applies, path, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {

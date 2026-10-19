@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+function carriesRemainingOf563(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRemainingOf563(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.duration)?.remainingOf !== undefined) return true;
+  return featureValues(record).some((one) => carriesRemainingOf563(one, depth + 1));
+}
+
 /** A call whose creatures are under nobody's control, tamed while holding a condition (1.562): Pipes
  *  of the Sewers. */
 function carriesWildCall562(value: unknown, depth = 0): boolean {
@@ -7697,6 +7707,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition put on for what was left of another, 1.563.
+  if (
+    !declaresApi(563) &&
+    (carriesRemainingOf563(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRemainingOf563(document)))
+  ) {
+    return "A ruleset with a condition put on for what was left of another (duration.remainingOf) requires schemaVersion 2 and capabilityApi 1.563 or newer";
+  }
   // A call whose creatures are under nobody's control, 1.562.
   if (
     !declaresApi(562) &&

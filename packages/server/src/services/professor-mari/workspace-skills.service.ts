@@ -1,4 +1,5 @@
 import { rm, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import type {
@@ -334,9 +335,14 @@ export class ProfessorMariWorkspaceSkillsService {
   private async writeRecords(records: SkillRecord[]) {
     await mkdir(rootDir(), { recursive: true });
     // Write then rename, so a crash never leaves a half-written index.
-    const tempPath = `${indexPath()}.tmp`;
-    await writeFile(tempPath, JSON.stringify(records, null, 2), "utf8");
-    await rename(tempPath, indexPath());
+    const tempPath = `${indexPath()}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tempPath, JSON.stringify(records, null, 2), "utf8");
+      await rename(tempPath, indexPath());
+    } catch (err) {
+      await rm(tempPath, { force: true });
+      throw err;
+    }
   }
 
   private uniqueId(baseName: string, records: SkillRecord[]) {

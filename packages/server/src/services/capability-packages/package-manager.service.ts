@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A call commanded only within some distance of its caller (1.567): the Staff of the Python. */
+function carriesCommandedWithin567(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCommandedWithin567(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.commandedWithin !== undefined) return true;
+  return featureValues(record).some((one) => carriesCommandedWithin567(one, depth + 1));
+}
+
 /** A worn item that keeps creatures of some entries from aiming at its wearer (1.566): the Pipes of
  *  the Sewers' rats. */
 function carriesIgnoredBy566(value: unknown, depth = 0): boolean {
@@ -7741,6 +7751,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call commanded only within some distance of its caller, 1.567.
+  if (
+    !declaresApi(567) &&
+    (carriesCommandedWithin567(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCommandedWithin567(document)))
+  ) {
+    return "A ruleset with a call commanded only within some distance of its caller (calls.commandedWithin) requires schemaVersion 2 and capabilityApi 1.567 or newer";
+  }
   // A worn item that keeps creatures of some entries off its wearer, 1.566.
   if (
     !declaresApi(566) &&

@@ -1287,6 +1287,9 @@ export interface RulesetCombatAction {
     arrivesIn?: RulesetCombatAmount;
     /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
     leash?: number;
+    /** Commanded only while their caller is within this, in the ruleset's distance, and able to act
+     *  (1.567). */
+    commandedWithin?: number;
     /** They leave as soon as their caller is out (1.393). */
     endsWithCaller?: true;
     /** They come without any calling actions of their own (1.393). */
@@ -1854,6 +1857,11 @@ export interface RulesetCombatant {
   calledTurned?: true;
   /** They leave once their caller is farther than this many cells (1.557): a treant's tree. */
   calledLeash?: number;
+  /** Commanded only while their caller is within this many cells and able to act (1.567): the Staff
+   *  of the Python's snake. */
+  calledCommandWithin?: number;
+  /** Out of their caller's command this turn (1.567), so acting on their own: the Engine runs them. */
+  calledOnOwn?: true;
   /** The item of their caller's that called them (1.559), by its place on the sheet: spent if they
    *  die (`spends`), its wait held while they stay (`departure`). */
   calledItem?: { item: number; spends?: true; departure?: true; becomes?: true };

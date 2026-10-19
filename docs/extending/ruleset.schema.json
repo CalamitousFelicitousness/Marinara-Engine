@@ -50688,6 +50688,11 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "commandedWithin": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "hostileUnless": {
                           "type": "object",
                           "properties": {
@@ -111359,6 +111364,11 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "commandedWithin": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
                             "hostileUnless": {
                               "type": "object",
                               "properties": {
@@ -131602,6 +131612,11 @@
                                     "maximum": 100
                                   },
                                   "leash": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "commandedWithin": {
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
@@ -151855,6 +151870,11 @@
                                     "maximum": 100
                                   },
                                   "leash": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "commandedWithin": {
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000

@@ -1633,6 +1633,26 @@ export function rulesetNoteProvoked(state: RulesetEncounterState, wearerId: stri
   if (!wearer.provoked?.includes(targetId)) (wearer.provoked ??= []).push(targetId);
 }
 
+/** Whether a called creature's caller can command it now (1.567): standing, able to act, and within
+ *  its `calledCommandWithin` of it where there is a board. One with no such reach always can. */
+export function rulesetCommandReaches(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  called: RulesetCombatant,
+): boolean {
+  if (called.calledCommandWithin === undefined) return true;
+  const caller = called.calledBy ? rulesetCombatant(state, called.calledBy) : undefined;
+  if (!caller || !rulesetCombatStanding(caller) || caller.away) return false;
+  const combat = definition.combat;
+  if (
+    combat &&
+    rulesetActiveConditions(definition, combat, caller, state).some((entry) => entry.effects.includes("cannot-act"))
+  )
+    return false;
+  if (!state.board?.grid || !rulesetPositionOf(caller) || !rulesetPositionOf(called)) return true;
+  return rulesetGap(caller, called) <= called.calledCommandWithin;
+}
+
 export function rulesetConditionLeft(
   state: RulesetEncounterState,
   holder: RulesetCombatant,
@@ -5558,6 +5578,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
       ...(calls.leash ? { leash: calls.leash } : {}),
+      ...(calls.commandedWithin ? { commandedWithin: calls.commandedWithin } : {}),
       ...(calls.hostileUnless ? { hostileUnless: { ...calls.hostileUnless } } : {}),
       ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
       ...(calls.becomesItem ? { becomesItem: true as const } : {}),

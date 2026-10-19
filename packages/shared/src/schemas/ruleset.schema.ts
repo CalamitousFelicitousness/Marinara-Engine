@@ -6064,6 +6064,11 @@ export const catalogCallsSchema = z
     /** They leave once their caller is farther from them than this, in the ruleset's distance
      *  (Capability API 1.557): a treant's animated trees, "more than 120 feet from the tree". */
     leash: z.number().finite().gt(0).max(10000).optional(),
+    /** Their caller commands them only while within this distance of them and able to act (Capability
+     *  API 1.567); otherwise each turn they act on their own, as the Engine runs them, defending
+     *  themselves and going at their caller's foes, and their caller pays nothing for it. 5e's Staff of
+     *  the Python, "if it is within 60 feet of you and you aren't incapacitated". */
+    commandedWithin: z.number().finite().gt(0).max(10000).optional(),
     /** They come against their user, on the other side, unless the user's derived value `derived`
      *  is at least `atLeast` (Capability API 1.558): a Horn of Valhalla's requirement, "If you blow
      *  the horn without meeting its requirement, the summoned berserkers attack you". */

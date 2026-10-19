@@ -144,6 +144,7 @@ import {
   rulesetLightMatches,
   rulesetModeRuleHolds,
   rulesetConditionLeft,
+  rulesetCommandReaches,
   rulesetNoteProvoked,
   rulesetStepTimes,
   rulesetItemCallRoll,
@@ -9739,6 +9740,12 @@ function callCreatures(
     // Held within so far of their caller (1.557): a treant's trees.
     if (action.calls.leash)
       called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
+    // Commanded only within so far of their caller (1.567): the Staff of the Python's snake.
+    if (action.calls.commandedWithin)
+      called.calledCommandWithin = rulesetInCells(
+        action.calls.commandedWithin,
+        ctx.definition.combat?.distance?.perCell ?? 1,
+      );
     // Commanded by their caller (1.505), the turn they come on free.
     if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
     // An image, not a creature (1.515).
@@ -15661,9 +15668,15 @@ function beginNextTurn(
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
+    // Out of their caller's command (1.567): too far, or the caller unable to act. They act on their
+    // own this turn, and the caller pays nothing for it.
+    if (actor.calledCommandWithin !== undefined) {
+      if (rulesetCommandReaches(definition, ctx.state, actor)) delete actor.calledOnOwn;
+      else actor.calledOnOwn = true;
+    }
     // Commanded by their caller (1.505): the caller pays for this turn, or it passes.
     const command = actor.calledCommand;
-    if (command && !actor.defeated && !actor.calledTurned) {
+    if (command && !actor.defeated && !actor.calledTurned && !actor.calledOnOwn) {
       const caller = actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
       if (command.free) delete command.free;
       else if (caller && rulesetCombatStanding(caller) && (caller.budgets[command.budget] ?? 0) >= 1) {

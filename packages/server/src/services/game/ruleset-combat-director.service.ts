@@ -584,6 +584,8 @@ export function rulesetController(
   // party's side (1.325) is the Engine's unless the player took them.
   if (combatant.side === "party") {
     const chosen = fight.controllers[combatant.id];
+    // Out of their caller's command (1.567), they act on their own, whoever took them.
+    if (combatant.calledOnOwn) return "ai";
     return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
   }
   return state.gm && fight.bosses.includes(combatant.id) ? "gm" : "ai";

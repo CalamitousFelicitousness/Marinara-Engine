@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { getCsrfTrustedOrigins, getHost, getPort, getServerProtocol } from "../config/runtime-config.js";
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
-import { isPrivateNetworkIp, isLoopbackIp } from "./ip-allowlist.js";
+import { isPrivateNetworkIp, isLoopbackRequest } from "./ip-allowlist.js";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const SAFE_FETCH_SITES = new Set(["same-origin", "same-site", "none"]);
@@ -110,7 +110,7 @@ function isAllowedOrigin(originValue: string, request: FastifyRequest): boolean 
 
   try {
     const parsed = new URL(origin);
-    if (isLoopbackHostname(parsed.hostname) && isLoopbackIp(request.ip)) return true;
+    if (isLoopbackHostname(parsed.hostname) && isLoopbackRequest(request)) return true;
     if (originUsesServerPort(parsed) && isTrustedLiteralHostname(parsed.hostname)) return true;
   } catch {
     return false;

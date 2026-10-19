@@ -2060,9 +2060,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               <div className="relative z-[1] w-full p-[clamp(0.65rem,1vw,1.25rem)]">
                 <section
                   ref={heroRef}
-                  className="mari-home-hero flex min-w-0 flex-col items-center gap-2 px-[clamp(0.35rem,0.8vw,0.9rem)] pb-[clamp(0.7rem,1.1vw,1rem)] pt-[clamp(0.4rem,0.7vw,0.7rem)] text-center"
+                  className="mari-home-hero relative flex min-w-0 flex-col items-center gap-2 px-[clamp(0.35rem,0.8vw,0.9rem)] pb-[clamp(0.7rem,1.1vw,1rem)] pt-[clamp(0.4rem,0.7vw,0.7rem)] text-center"
                   data-tour="home-hub"
                 >
+                  {/* Painted only while a seasonal theme is on (styles/themes/seasonal-*.css). */}
+                  <div className="mari-seasonal-home" aria-hidden="true">
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__ground" />
+                  </div>
                   <div className="min-w-0 max-w-5xl">
                     <div className="flex min-w-0 flex-col items-center">
                       <img

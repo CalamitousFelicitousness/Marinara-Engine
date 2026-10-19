@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -8,6 +11,13 @@ import multipart from "../../packages/server/node_modules/@fastify/multipart/ind
 // The router decodes percent-escapes before matching, so "/%61pi/..." reaches
 // an "/api/..." handler. API-only hooks must not decide on the raw URL alone.
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-encoded-api-path-"));
+process.on("exit", () => rmSync(dataDir, { recursive: true, force: true }));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "file-storage");
+process.env.MARINARA_FILE_STORAGE_DIR = join(dataDir, "file-storage");
+process.env.NODE_ENV = "test";
+process.env.MARINARA_LITE = "true";
 process.env.HOST = "0.0.0.0";
 delete process.env.CSRF_TRUSTED_ORIGINS;
 delete process.env.MARINARA_E2E_DISABLE_RATE_LIMIT;
@@ -150,7 +160,30 @@ try {
   await app.close();
 }
 
-// The no-store and compression onSend hooks share the same API test.
+// The production app's no-store and JSON compression hooks apply to an encoded
+// API path too. Compression needs a real socket: app.inject() replies stay plain.
+const { buildApp } = await import("../../packages/server/src/app.js");
+const productionApp = await buildApp();
+try {
+  await productionApp.listen({ port: 0, host: "127.0.0.1" });
+  const { port } = productionApp.server.address() as AddressInfo;
+  for (const path of ["/api/prompts", "/%61pi/prompts"]) {
+    const headers = await new Promise<Record<string, string | string[] | undefined>>((resolveHeaders, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port, path, headers: { "accept-encoding": "br" } }, (res) => {
+        assert.equal(res.statusCode, 200, `${path} must reach the prompts route`);
+        res.resume();
+        res.on("end", () => resolveHeaders(res.headers));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    assert.equal(headers["cache-control"], "no-store", `${path} must not be cached`);
+    assert.equal(headers["content-encoding"], "br", `${path} JSON must be compressed`);
+  }
+} finally {
+  await productionApp.close().catch(() => {});
+}
+
 const sources = {
   "packages/server/src/app.ts": readFileSync(join(repositoryRoot, "packages/server/src/app.ts"), "utf8"),
   "packages/server/src/middleware/compress-json.ts": readFileSync(
@@ -173,7 +206,5 @@ for (const [file, source] of Object.entries(sources)) {
     `${file} must not gate on the raw URL`,
   );
 }
-assert.match(sources["packages/server/src/app.ts"], /isApiRequest\(req\) && !reply\.hasHeader\("Cache-Control"\)/u);
-assert.match(sources["packages/server/src/middleware/compress-json.ts"], /!isApiRequest\(req\)/u);
 
 console.log("Encoded API path security regressions passed.");

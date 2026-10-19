@@ -10,6 +10,7 @@ import {
 } from "../lib/mari-work-animations";
 import { useUIStore } from "../stores/ui.store";
 import { useActivityOverview } from "./use-chat-insights";
+import { useMinuteClock } from "./use-seasonal-theme";
 
 /** The pack that renders: an open dated pack, the stored choice, or Basic while that choice is locked (R12). */
 export function useMariAppearancePack() {
@@ -17,7 +18,8 @@ export function useMariAppearancePack() {
   const unlockedIds = useUIStore((state) => state.mariUnlockedPackIds);
   const seasonOptOut = useUIStore((state) => state.mariSeasonOptOut);
   const seasonsOff = useUIStore((state) => state.seasonalThemesDisabled);
-  return resolveMariAppearancePack(id, unlockedIds, null, seasonOptOut, seasonsOff);
+  const now = useMinuteClock();
+  return resolveMariAppearancePack(id, unlockedIds, null, seasonOptOut, seasonsOff, now);
 }
 
 /**

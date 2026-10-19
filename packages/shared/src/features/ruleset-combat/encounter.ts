@@ -520,6 +520,26 @@ function nearProp(
 
 /** Whether somebody stands on one of these terrains, or the board's environment is one (1.425).
  *  Never off a board. */
+/** Set while the light a condition holds only in is read (1.552), so that light, which reads what
+ *  everybody holds, never reads it again. */
+let readingLight = false;
+
+/** Whether its holder stands in one of these lights (1.552). */
+function heldInLight(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  light: NonNullable<RulesetCheckModeRule["light"]>,
+): boolean {
+  readingLight = true;
+  try {
+    return rulesetModeRuleHolds(definition, combat, combatant, state, { mode: "disadvantage", light });
+  } finally {
+    readingLight = false;
+  }
+}
+
 function onTerrain(
   combatant: RulesetCombatant,
   state: RulesetEncounterState | undefined,
@@ -622,6 +642,10 @@ export function rulesetActiveConditions(
     if (combatant.harmStopped?.includes(entry.condition)) return [];
     if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];
     if (entry.whileOffTerrain && onTerrain(combatant, state, entry.whileOffTerrain)) return [];
+    // Only in the light it names (1.552): a shadow's Sunlight Weakness. Read while no light is being
+    // worked out, since the light itself reads what everybody holds.
+    if (entry.heldOnlyIn && !readingLight && !heldInLight(definition, combat, combatant, state, entry.heldOnlyIn.light))
+      return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];
     // Or near enough, seen or not (1.275): Antipathy's 60 feet.

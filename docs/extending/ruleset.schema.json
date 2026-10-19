@@ -173941,6 +173941,30 @@
                 },
                 "additionalProperties": false
               },
+              "heldOnlyIn": {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "sunlight",
+                        "bright",
+                        "dim",
+                        "dark"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 4
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "light"
+                ],
+                "additionalProperties": false
+              },
               "suppresses": {
                 "type": "array",
                 "items": {

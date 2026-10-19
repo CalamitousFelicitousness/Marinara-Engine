@@ -12223,6 +12223,19 @@ const combatConditionSchema = z
         message: 'Say what holds it off: "conditions", "effects" or both',
       })
       .optional(),
+    /** Holds only while its holder stands in one of these lights (Capability API 1.552), read where
+     *  they stand as `checkModes.light` is; anywhere else it is held off, not ended. 5e's shadow's
+     *  Sunlight Weakness, kept on with disadvantage on its own attacks, checks and saves:
+     *  `{ "light": ["sunlight"] }`. */
+    heldOnlyIn: z
+      .object({
+        light: z
+          .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+          .min(1)
+          .max(4),
+      })
+      .strict()
+      .optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API
      *  1.275): what they do stops and their clocks run on, and they hold again once this ends.
      *  Calm Emotions' charm and fright, Mindless Rage's. */

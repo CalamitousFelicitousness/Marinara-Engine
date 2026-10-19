@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that holds only in some light (1.552): a shadow's Sunlight Weakness. */
+function carriesHeldOnlyIn552(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldOnlyIn552(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.heldOnlyIn !== undefined) return true;
+  return featureValues(record).some((one) => carriesHeldOnlyIn552(one, depth + 1));
+}
+
 /** An entry made again only once its target is down (1.551): Hunter's Mark. */
 function carriesAfterTargetDown551(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7558,6 +7568,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that holds only in some light, 1.552.
+  if (
+    !declaresApi(552) &&
+    (carriesHeldOnlyIn552(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldOnlyIn552(document)))
+  ) {
+    return "A ruleset with a condition that holds only in some light (heldOnlyIn) requires schemaVersion 2 and capabilityApi 1.552 or newer";
+  }
   // An entry made again only once its target is down, 1.551.
   if (
     !declaresApi(551) &&

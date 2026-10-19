@@ -17,6 +17,7 @@ import {
   buildGameStateEditorSections,
   findGameStateSectionsChangedSince,
 } from "../../lib/state-editor/game-state-editor-source";
+import { trackerSliceErrorMessage } from "../../lib/agent-suite-tracker-slices";
 import type { StateEditorChange } from "../../lib/state-editor/state-editor.types";
 import { chatKeys } from "../../hooks/use-chats";
 import { useChatStore } from "../../stores/chat.store";
@@ -216,7 +217,9 @@ export function GameStateEditorModal({ open, onClose, chatId, initialSectionId }
       const result = buildGameStateEditorPatch(fresh, changes);
       if ("error" in result) {
         const section = sections.find((item) => item.id === result.sectionId);
-        const message = result.error ?? localizeUi("ui.stateEditor.gameState.unknownSection");
+        const message = result.error
+          ? trackerSliceErrorMessage(result.error, localizeUi)
+          : localizeUi("ui.stateEditor.gameState.unknownSection");
         throw new Error(section ? `${section.label}: ${message}` : message);
       }
       // Aim at the exact snapshot row, like the tracker panel's own patcher.

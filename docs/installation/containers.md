@@ -144,6 +144,7 @@ The lite image removes the features that need large local files:
 | Local embedding model | No on-device text embeddings. |
 | Memory Recall (semantic search) | Depends on the local embedding model. |
 | Local Whisper voice input | Speech-to-text for Conversation calls is gone. |
+| Avatar mood reader | 2D and 3D Avatars pick faces from a word list instead of the small local emotion model. |
 
 Everything else works the same: chat, roleplay, Game Mode, agents, lorebooks, characters, and connections to remote AI providers. To use any AI features with the lite image, you must connect an external provider (for example OpenRouter, OpenAI, or a self-hosted model). See [Connecting to an AI Provider](../connections/connecting-to-a-provider.md).
 

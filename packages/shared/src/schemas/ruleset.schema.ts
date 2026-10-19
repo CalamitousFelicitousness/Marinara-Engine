@@ -7923,6 +7923,10 @@ const creatureSpellcastingSchema = z
             uses: creatureUsesSchema.optional(),
             level: z.number().int().min(0).max(20).optional(),
             coven: z.literal(true).optional(),
+            /** Its own save difficulty and attack, in place of the trait's (Capability API 1.589): a
+             *  hag's innate spells at DC 12 beside her coven's at DC 13. */
+            saveDifficulty: z.number().int().min(1).max(60).optional(),
+            toHit: z.number().int().min(-50).max(100).optional(),
             /** What casting it this way needs, in place of the entry's own (Capability API 1.181):
              *  `[]` for innate spellcasting that needs no components. */
             components: componentOverrideSchema.optional(),
@@ -7934,6 +7938,13 @@ const creatureSpellcastingSchema = z
     /** What every spell of the trait needs, in place of each entry's own, unless a spell says
      *  (Capability API 1.181): 5e's "requiring no material components" is `["verbal", "somatic"]`. */
     components: componentOverrideSchema.optional(),
+    /** Spell slots by spell level (Capability API 1.589): a spell of the trait with no `uses` and a
+     *  level of 1 or more spends one, the lowest it has at or above that level. A coven's slots are
+     *  shared by every member of the coven: 5e's "1st level (4 slots)". */
+    slots: z
+      .record(z.string().regex(/^[1-9]$/, "A slot level is 1 to 9"), z.number().int().min(1).max(20))
+      .refine((slots) => Object.keys(slots).length > 0, { message: "slots names at least one level" })
+      .optional(),
     coven: z
       .object({ id: sheetId, size: z.number().int().min(2).max(6), within: z.number().finite().positive() })
       .strict()

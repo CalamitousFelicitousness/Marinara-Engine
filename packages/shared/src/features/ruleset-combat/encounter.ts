@@ -4090,13 +4090,18 @@ function innateActions(
       entry.rows?.some((row) => row.list === ability.list),
     );
     const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-    const difficulty = casting.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+    // A spell's own numbers before its trait's (1.589).
+    const difficulty =
+      spell.saveDifficulty ??
+      casting.saveDifficulty ??
+      (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
     const action = mechanicsAction(definition, entry.mechanics, {
       id: spell.entry,
       kind: "ability",
       label: entry.label,
       budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
       toHit:
+        spell.toHit ??
         casting.toHit ??
         (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
       ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
@@ -4113,6 +4118,10 @@ function innateActions(
       baseLevel,
       ...(spell.coven && casting.coven
         ? { coven: { ...casting.coven, within: casting.coven.within / (perCell ?? 1) } }
+        : {}),
+      // Paid with a slot (1.589).
+      ...(casting.slots && !spell.uses && (spell.level ?? baseLevel) >= 1
+        ? { slot: spell.level ?? baseLevel, slots: { ...casting.slots } }
         : {}),
     };
     if (spell.uses) action.uses = { ...spell.uses };
@@ -5185,6 +5194,12 @@ function contestActions(
 function startingUses(actions: readonly RulesetCombatAction[]): Record<string, number> {
   const uses: Record<string, number> = {};
   for (const action of actions) if (action.uses && !action.innate?.coven) uses[action.id] = action.uses.count;
+  // A trait's spell slots (1.589), each level once; a coven's are kept by the fight instead.
+  for (const action of actions) {
+    const innate = action.innate;
+    if (!innate?.slots || innate.coven) continue;
+    for (const [level, count] of Object.entries(innate.slots)) uses[`slot:${level}`] ??= count;
+  }
   return uses;
 }
 

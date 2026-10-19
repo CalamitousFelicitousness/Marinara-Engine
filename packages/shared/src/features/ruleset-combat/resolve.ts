@@ -242,6 +242,8 @@ import {
   rulesetHoldsFor,
   rulesetCostSteps,
   rulesetActionUses,
+  rulesetInnateSlot,
+  rulesetInnateSlotsLeft,
   rulesetPaidLevel,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
@@ -6312,6 +6314,13 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   // The last charge spent: an item that may break rolls for it now.
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
   if (broke) ctx.events.push(broke);
+  // A slot of a creature's trait (1.589), its coven's where it is a coven spell.
+  const slot = rulesetInnateSlot(actor, action, ctx.state);
+  if (slot !== undefined) {
+    const left = Math.max(0, rulesetInnateSlotsLeft(actor, action, slot, ctx.state) - 1);
+    if (action.innate?.coven) (ctx.state.covenUses ??= {})[`${action.innate.coven.id}/slot:${slot}`] = left;
+    else actor.uses[`slot:${slot}`] = left;
+  }
   if (action.uses) {
     const left = Math.max(0, rulesetActionUses(actor, action, ctx.state) - 1);
     if (action.innate?.coven) (ctx.state.covenUses ??= {})[`${action.innate.coven.id}/${action.id}`] = left;

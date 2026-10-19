@@ -1232,7 +1232,14 @@ export interface RulesetCombatAction {
   reach?: number;
   range?: RulesetCombatRange;
   /** The level of a spell cast without slots, and the base it scales from (1.123). */
-  innate?: { level: number; baseLevel: number; coven?: { id: string; size: number; within: number } };
+  innate?: {
+    level: number;
+    baseLevel: number;
+    coven?: { id: string; size: number; within: number };
+    /** Cast with a slot of this level or higher (1.589), from its trait's `slots`. */
+    slot?: number;
+    slots?: Record<string, number>;
+  };
   /** Cast from what it was stored in (1.471): the item's place on its holder's sheet, none for the
    *  holder itself, and the stored entry. Offered once, and from an item only while it is worn. */
   storedIn?: { item?: number; record: RulesetStoredEntry };

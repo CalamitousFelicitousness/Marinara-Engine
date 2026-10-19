@@ -2740,6 +2740,22 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's spell slots, or a spell of its trait with its own numbers (1.589): a hag coven. */
+function carriesInnateSlots589(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesInnateSlots589(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const casting = plainRecord(record.spellcasting);
+  if (casting) {
+    if (casting.slots !== undefined) return true;
+    const spells = Array.isArray(casting.spells) ? casting.spells : [];
+    if (spells.some((one) => plainRecord(one)?.saveDifficulty !== undefined || plainRecord(one)?.toHit !== undefined))
+      return true;
+  }
+  return featureValues(record).some((one) => carriesInnateSlots589(one, depth + 1));
+}
+
 /** A mount that carries riders by weight, or riders weighed (1.588): a Carpet of Flying. */
 function carriesMountWeights588(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8003,6 +8019,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's spell slots, or a spell of its trait with its own numbers, 1.589.
+  if (
+    !declaresApi(589) &&
+    (carriesInnateSlots589(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesInnateSlots589(document)))
+  )
+    return "A ruleset with a creature's spell slots or a spell of its trait with its own numbers (spellcasting.slots, spells[].saveDifficulty) requires schemaVersion 2 and capabilityApi 1.589 or newer";
   // A mount that carries riders by weight, 1.588.
   if (
     !declaresApi(588) &&

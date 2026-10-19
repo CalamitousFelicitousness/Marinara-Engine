@@ -310,6 +310,8 @@ export {
   RULESET_DISMOUNT_OPTION,
   RULESET_JUMP_OPTION,
   rulesetMountsFor,
+  rulesetInnateSlot,
+  rulesetInnateSlotsLeft,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   RULESET_RELIGHT_OPTION_PREFIX,

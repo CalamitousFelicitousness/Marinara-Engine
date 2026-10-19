@@ -2348,6 +2348,35 @@ export function rulesetWarded(
   });
 }
 
+/** The slot level a spell of a creature's trait is cast with now (1.589): the lowest at or above its
+ *  own with one left, its coven's where it is a coven spell. Undefined with none left, or for a spell
+ *  no slot pays for. */
+export function rulesetInnateSlot(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  state?: RulesetEncounterState,
+): number | undefined {
+  const innate = action.innate;
+  if (!innate?.slot || !innate.slots) return undefined;
+  for (let level = innate.slot; level <= 9; level++) {
+    if (rulesetInnateSlotsLeft(actor, action, level, state) >= 1) return level;
+  }
+  return undefined;
+}
+
+/** How many of one level's slots a creature's trait has left (1.589). */
+export function rulesetInnateSlotsLeft(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  level: number,
+  state?: RulesetEncounterState,
+): number {
+  const innate = action.innate;
+  const declared = innate?.slots?.[String(level)] ?? 0;
+  if (innate?.coven) return state?.covenUses?.[`${innate.coven.id}/slot:${level}`] ?? declared;
+  return actor.uses[`slot:${level}`] ?? 0;
+}
+
 /** Uses left on this holder, or shared by its coven for this spell (1.123). */
 export function rulesetActionUses(
   actor: RulesetCombatant,
@@ -2632,6 +2661,8 @@ export function rulesetActionAvailable(
     if (members.length < coven.size) return false;
   }
   if (action.uses && rulesetActionUses(actor, action, state) < 1) return false;
+  // A slot to cast it with (1.589).
+  if (action.innate?.slot && rulesetInnateSlot(actor, action, state) === undefined) return false;
   // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
   if (!rulesetShotsAvailable(actor, action)) return false;
   // Nor once the item is spent for good (1.538): an Efreeti Bottle that lost its magic.
@@ -3326,6 +3357,11 @@ function optionFrom(
     if (cheapest && cheapest.cost.length > 0) option.cost = cheapest.cost;
   }
   if (action.uses) option.left = rulesetActionUses(actor, action, state);
+  // The slots left at the level it would be cast with (1.589).
+  if (action.innate?.slot) {
+    const level = rulesetInnateSlot(actor, action, state);
+    option.left = level === undefined ? 0 : rulesetInnateSlotsLeft(actor, action, level, state);
+  }
   if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
   if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
   // What an item has left to use: its stack, its charges, or a use's own (1.466).

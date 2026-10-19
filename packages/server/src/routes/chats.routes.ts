@@ -767,7 +767,6 @@ async function dropRemovedChatCardVariables(app: FastifyInstance, chatId: string
   // A card whose onboarding is switched off owns nothing: seeding never wrote for
   // it. Skip the remaining cards' reads in that case.
   if (!removed.some((onboarding) => onboarding?.enabled)) return null;
-  const removedSet = new Set(removedIds);
 
   // Same dynamic import as the seeding above, and for the same load-order reason.
   const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
@@ -779,10 +778,13 @@ async function dropRemovedChatCardVariables(app: FastifyInstance, chatId: string
     // any card in the chat declares now has to be kept. A card added after this
     // read is safe too, because its own seeding patch is queued behind this one:
     // it writes the default instead of finding a value this cleanup removed.
+    //
+    // The live roster IS the remaining set: it must not be filtered against the
+    // ids this PATCH removed, because a concurrent PATCH may have re-added one of
+    // them, and that card's answers are live again.
     const live = await chatsStore.getById(chatId);
     const remaining: Array<CharacterOnboarding | null> = [];
     for (const characterId of resolveChatCharacterIds(live?.characterIds)) {
-      if (removedSet.has(characterId)) continue;
       remaining.push(await readOnboarding(characterId));
     }
     const drop = cardVariableNamesToDrop(removed, remaining);

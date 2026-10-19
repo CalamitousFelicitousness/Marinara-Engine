@@ -906,7 +906,7 @@ export function rulesetCombatEventLine(
       });
     // Creatures called into the fight (1.325): Jars Burst.
     case "called":
-      return key(event.ids.length ? "called" : "calledNone", {
+      return key(event.ids.length ? (event.disobeys ? "calledDisobeys" : "called") : "calledNone", {
         actor: names.combatant(event.actorId),
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),

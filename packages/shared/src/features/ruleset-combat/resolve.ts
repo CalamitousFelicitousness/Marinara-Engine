@@ -7521,7 +7521,8 @@ function applyChoice(
     } else if (switching?.switches && "called" in switching.switches) {
       // Those it called sent away as an action (1.396): Summon Demon's dismissal.
       const by = switching.switches.called;
-      dismissCalled(ctx, working, (one) => one.calledWith === by, "dismissed");
+      // Not those ignoring every order (1.612).
+      dismissCalled(ctx, working, (one) => one.calledWith === by && !one.calledDisobeys, "dismissed");
     } else if (switching?.switches && "form" in switching.switches) {
       // Into another of its forms (1.522): the item as that form, and what it does then.
       const { item: index, to } = switching.switches.form;
@@ -10239,6 +10240,12 @@ function callCreatures(
   // Set down only where it says (1.568): a treant wakes no tree it cannot see.
   const only = !!action.calls.within && cells !== undefined;
   const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells, only);
+  // Ignoring every order (1.612), on a d100 rolled as they come: the obsidian steed.
+  const disobeys =
+    !!action.calls.disobeys &&
+    ids.length > 0 &&
+    rulesetSheetWithin(ctx.definition, actor, action.calls.disobeys.when) &&
+    ctx.roll(100) <= action.calls.disobeys.chance;
   // Kept by what called them (1.344): its concentration, and its rounds.
   for (const id of ids) {
     const called = rulesetCombatant(ctx.state, id);
@@ -10264,6 +10271,10 @@ function callCreatures(
       };
     // Under nobody's control (1.562): Pipes of the Sewers' swarms.
     if (action.calls.wild) called.calledWild = { ...action.calls.wild };
+    if (disobeys) {
+      called.calledWild = {};
+      called.calledDisobeys = true;
+    }
     // Held within so far of their caller (1.557): a treant's trees.
     if (action.calls.leash)
       called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
@@ -10331,7 +10342,7 @@ function callCreatures(
       }
     }
   }
-  ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+  ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids, ...(disobeys ? { disobeys } : {}) });
   departuresOf(ctx, actor);
   // On their way, there after so many of their caller's turns (1.561): Children of the Night's.
   const arrivesIn = action.calls.arrivesIn ?? action.callsArriveIn;

@@ -5848,6 +5848,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
       ...(calls.becomesItem ? { becomesItem: true as const } : {}),
       ...(calls.side === "none" ? { wild: calls.tamedWhile ? { tamedWhile: calls.tamedWhile } : {} } : {}),
+      ...(calls.disobeys ? { disobeys: structuredClone(calls.disobeys) } : {}),
     };
   };
   if (calls.creature && calls.count) {

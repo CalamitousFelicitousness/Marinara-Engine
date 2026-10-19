@@ -2013,6 +2013,7 @@
   "game.combat.ruleset.event.brokeBecomes": "{{label}} becomes {{becomes}} (a {{roll}} on its die).",
   "game.combat.ruleset.event.budget": "{{actor}} has {{left}} {{budget}} left.",
   "game.combat.ruleset.event.called": "{{label}}: {{actor}} calls {{names}} into the fight.",
+  "game.combat.ruleset.event.calledDisobeys": "{{label}}: {{actor}} calls {{names}} into the fight, who ignore every order.",
   "game.combat.ruleset.event.calledNone": "{{label}}: {{actor}} calls, and nobody comes.",
   "game.combat.ruleset.event.cancelled": "{{by}} stops {{actor}}: {{label}} never happens.",
   "game.combat.ruleset.event.carried": "{{label}}: {{actor}} moves {{target}} through the air and sets them down.",

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A call whose creatures may ignore every order (1.612): the obsidian steed. */
+function carriesDisobeys612(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDisobeys612(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.disobeys !== undefined) return true;
+  return featureValues(record).some((one) => carriesDisobeys612(one, depth + 1));
+}
+
 /** A condition an item's use puts on that lasts while the item is worn (1.611). */
 function carriesWhileItemWorn611(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8258,6 +8268,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call whose creatures may ignore every order, 1.612.
+  if (
+    !declaresApi(612) &&
+    (carriesDisobeys612(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDisobeys612(document)))
+  )
+    return "A ruleset with a call whose creatures may ignore every order (calls.disobeys) requires schemaVersion 2 and capabilityApi 1.612 or newer";
   // A condition an item's use puts on that lasts while the item is worn, 1.611.
   if (
     !declaresApi(611) &&

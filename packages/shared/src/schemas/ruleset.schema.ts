@@ -6310,6 +6310,15 @@ export const catalogCallsSchema = z
      *  by the shortest available route but aren't under your control otherwise". */
     side: z.literal("none").optional(),
     tamedWhile: sheetId.optional(),
+    /** A chance in 100, rolled as they are called, that they ignore every order (Capability API
+     *  1.612): under nobody's control as `side: "none"` is, and not sent away by a dismissal, for as
+     *  long as they stay. Rolled only while `when` holds on the caller's sheet. 5e's obsidian steed,
+     *  "If you have a good alignment, the figurine has a 10 percent chance each time you use it to
+     *  ignore your orders, including a command to revert to figurine form". */
+    disobeys: z
+      .object({ chance: z.number().int().min(1).max(99), when: sheetBoundsSchema("when", "met").optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {

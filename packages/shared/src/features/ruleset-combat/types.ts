@@ -1342,6 +1342,8 @@ export interface RulesetCombatAction {
     becomesItem?: true;
     /** Under nobody's control (1.562), tamed while holding `tamedWhile`: Pipes of the Sewers. */
     wild?: { tamedWhile?: string };
+    /** The chance in 100 they ignore every order once called, while `when` holds (1.612). */
+    disobeys?: { chance: number; when?: RulesetSheetBounds };
     /** Offered only where it says (1.561): Children of the Night's bats away from the sun. */
     onlyWhere?: RulesetCallWhere;
     /** They appear after this many of their caller's turns (1.561), rolled as they are called. */
@@ -1952,6 +1954,8 @@ export interface RulesetCombatant {
   /** Under nobody's control (1.562): each turn only walking toward its caller, unless it holds
    *  `tamedWhile`; it keeps no side standing. Pipes of the Sewers' swarms. */
   calledWild?: { tamedWhile?: string };
+  /** Ignoring every order (1.612), a dismissal's too: the obsidian steed. */
+  calledDisobeys?: true;
   /** An image, not a creature (1.515), and the sides that have seen it for one: Mislead's double. */
   illusion?: { seenBy: string[] };
   /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
@@ -3364,7 +3368,7 @@ export type RulesetCombatEvent =
   /** Something aimed at an image passed through it (1.515), and its maker's side saw it for one. */
   | { type: "seenThrough"; actorId: string; targetId: string; label: string }
   /** Creatures called into the fight (1.325), by whom and with what. */
-  | { type: "called"; actorId: string; label: string; ids: string[] }
+  | { type: "called"; actorId: string; label: string; ids: string[]; disobeys?: true }
   /** Called creatures sent away (1.344): their time is up, or the concentration holding them ended. */
   /** Health regained as a turn starts (1.346), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }

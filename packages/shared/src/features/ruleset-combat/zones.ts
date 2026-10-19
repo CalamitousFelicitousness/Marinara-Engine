@@ -96,6 +96,8 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
+    // One that blocks only spells (1.549) closes no cell.
+    if (bits === 0) continue;
     // A broken section closes nothing (1.200).
     const broken = new Set(
       (zone.sections ?? [])

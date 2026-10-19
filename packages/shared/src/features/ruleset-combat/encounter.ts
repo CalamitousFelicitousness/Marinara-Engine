@@ -2310,6 +2310,7 @@ export function rulesetZoneAction(
     out.blocks = {
       ...(blocks.includes("move") ? { move: true } : {}),
       ...(blocks.includes("sight") ? { sight: true } : {}),
+      ...(blocks.includes("spells") ? { spells: true } : {}),
     };
   }
   if (zone.cover) out.cover = zone.cover;
@@ -3686,6 +3687,7 @@ function mechanicsAction(
         size: rulesetInCells(mechanics.area.size, perCell),
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
+        ...(mechanics.area.ringOnly ? { ringOnly: true as const } : {}),
         ...(mechanics.area.copies !== undefined ? { copies: mechanics.area.copies } : {}),
         ...(mechanics.area.copiesWithin !== undefined
           ? { copiesWithin: rulesetInCells(mechanics.area.copiesWithin, perCell) }

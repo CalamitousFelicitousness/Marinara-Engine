@@ -1556,6 +1556,8 @@ export interface RulesetCombatArea {
   width?: number;
   /** A wall that may be laid instead as a ring this many cells across (1.177). */
   ring?: number;
+  /** Always laid as that ring (1.549): Forcecage. */
+  ringOnly?: true;
   /** How many of it may be set down at once, each touching another (1.178): Fire Storm's cubes. */
   copies?: number;
   /** Its copies' middles each within this many CELLS of another's, rather than touching (1.301). */
@@ -3855,6 +3857,8 @@ export interface RulesetCombatOption {
     width?: number;
     /** A wall that may be laid as a ring this many across, and one with a side to choose (1.177). */
     ring?: number;
+    /** Laid only as that ring (1.549). */
+    ringOnly?: true;
     sided?: true;
     /** How many times it may be set down at once (1.178). */
     copies?: number;
@@ -4030,8 +4034,9 @@ export interface RulesetCombatZoneRule {
   /** What it deals, with no save and in place of its effect, to whoever starts a turn in it held by
    *  this condition from its caster (1.175). */
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
-  /** A wall nobody moves or sees through (1.177). */
-  blocks?: { move?: boolean; sight?: boolean };
+  /** A wall nobody moves or sees through (1.177). No spell is cast into, out of or across one that
+   *  blocks `spells` (1.549), a wall or not: Forcecage. */
+  blocks?: { move?: boolean; sight?: boolean; spells?: boolean };
   /** What it does from one of its caster's turns on (1.504), its amounts in the fight's own: Storm of
    *  Vengeance. */
   stages?: Array<{

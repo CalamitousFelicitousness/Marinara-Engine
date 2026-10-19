@@ -702,7 +702,7 @@ function boxCells(
  */
 export function rulesetWallShape(
   grid: TacticalGrid,
-  area: { size: number; width?: number; ring?: number },
+  area: { size: number; width?: number; ring?: number; ringOnly?: true },
   at: RulesetCombatCell,
   maker: RulesetCombatCell,
   toward?: RulesetCombatCell,
@@ -724,7 +724,8 @@ export function rulesetWallShape(
   };
   const sideCells: RulesetCombatCell[] = [];
   const reach = side ? Math.max(1, Math.round(side.distance)) : 0;
-  if (asRing && area.ring) {
+  // One laid only as a ring (1.549) is one whichever way it was asked for.
+  if ((asRing || area.ringOnly) && area.ring) {
     const radius = Math.max(1, Math.round(area.ring / 2));
     const inner = radius - thick + 1;
     const box = boardBox(grid, at, radius + reach);

@@ -664,6 +664,9 @@ export function rulesetTargetRefusal(
   // Through a layered wall's standing layer that stops it (1.439): Prismatic Wall's red and orange.
   const own = actor ? actionOf(actor, optionId) : undefined;
   if (own && target && rulesetLayersStop(state, own, from, rulesetPositionOf(target) ?? to)) return "no-line-of-sight";
+  // Into, out of or across a zone that blocks spells (1.549): Forcecage.
+  if (own && target && rulesetSpellsBlocked(state, own, from, rulesetPositionOf(target) ?? to))
+    return "no-line-of-sight";
   // Into, out of or across a storm's stage where no ranged weapon is shot (1.504).
   if (own && target && reach.max > 1 && rulesetStormStops(state, own, from, rulesetPositionOf(target) ?? to))
     return "no-line-of-sight";
@@ -718,6 +721,27 @@ export function rulesetStormStops(
   return storms.some(({ caster, zone }) =>
     rulesetZoneCells(state, caster, zone).some((cell) => path.has(`${cell.x},${cell.y}`)),
   );
+}
+
+/** Whether a zone that blocks spells stops this one between two cells (1.549): cast into, out of or
+ *  across it. 5e's Forcecage as a box, or a ring's bars. */
+export function rulesetSpellsBlocked(
+  state: RulesetEncounterState,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell,
+): boolean {
+  if (!rulesetIsSpell(action)) return false;
+  const cages = rulesetStandingZones(state).filter(({ action: made }) => made.zone?.blocks?.spells);
+  if (cages.length === 0) return false;
+  const path = rulesetPathCells(from, to);
+  return cages.some(({ caster, zone }) => {
+    const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+    const inFrom = cells.has(`${from.x},${from.y}`);
+    const inTo = cells.has(`${to.x},${to.y}`);
+    if (inFrom || inTo) return inFrom !== inTo;
+    return path.some((cell) => cells.has(`${cell.x},${cell.y}`));
+  });
 }
 
 /** Whether a layered wall's standing layer stops this between two cells (1.439): an attack from afar,
@@ -886,6 +910,8 @@ export function rulesetAimLegal(
   if (rulesetDistanceTo(at, actor) > reach.max) return false;
   // Not cast across a layered wall's layer that stops spells (1.439): Prismatic Wall's indigo.
   if (rulesetLayersStop(state, action, from, at)) return false;
+  // Nor into, out of or across a zone that blocks spells (1.549).
+  if (rulesetSpellsBlocked(state, action, from, at)) return false;
   return rulesetFootprint(actor).some((cell) => rulesetLineOfSight(grid, cell, at));
 }
 
@@ -1027,7 +1053,11 @@ export function rulesetAimedCells(
   };
   const cells = new Map<string, RulesetCombatCell>();
   for (const aim of [at, ...(lay?.also ?? [])]) {
-    for (const cell of one(aim)) cells.set(`${cell.x},${cell.y}`, cell);
+    for (const cell of one(aim)) {
+      // Not over into the far side of a zone that blocks spells (1.549): Forcecage's box.
+      if (rulesetSpellsBlocked(state, action, aim, cell)) continue;
+      cells.set(`${cell.x},${cell.y}`, cell);
+    }
   }
   return [...cells.values()];
 }
@@ -3262,6 +3292,7 @@ function optionFrom(
       ...(action.area.width !== undefined ? { width: action.area.width } : {}),
       // How a wall may be laid (1.177) and how many times it may be set down (1.178).
       ...(action.area.ring !== undefined ? { ring: action.area.ring } : {}),
+      ...(action.area.ringOnly ? { ringOnly: true as const } : {}),
       ...(action.zone?.side ? { sided: true as const } : {}),
       ...(action.area.copies !== undefined ? { copies: action.area.copies } : {}),
       range: reach?.max ?? action.area.size,

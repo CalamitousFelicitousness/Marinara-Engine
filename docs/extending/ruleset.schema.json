@@ -38769,6 +38769,10 @@
                           "type": "number",
                           "exclusiveMinimum": 0
                         },
+                        "ringOnly": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "copies": {
                           "type": "integer",
                           "minimum": 2,
@@ -44392,11 +44396,12 @@
                             "type": "string",
                             "enum": [
                               "move",
-                              "sight"
+                              "sight",
+                              "spells"
                             ]
                           },
                           "minItems": 1,
-                          "maxItems": 2
+                          "maxItems": 3
                         },
                         "cover": {
                           "type": "string",
@@ -68194,11 +68199,12 @@
                                 "type": "string",
                                 "enum": [
                                   "move",
-                                  "sight"
+                                  "sight",
+                                  "spells"
                                 ]
                               },
                               "minItems": 1,
-                              "maxItems": 2
+                              "maxItems": 3
                             },
                             "cover": {
                               "type": "string",
@@ -80470,11 +80476,12 @@
                                   "type": "string",
                                   "enum": [
                                     "move",
-                                    "sight"
+                                    "sight",
+                                    "spells"
                                   ]
                                 },
                                 "minItems": 1,
-                                "maxItems": 2
+                                "maxItems": 3
                               },
                               "cover": {
                                 "type": "string",
@@ -104486,11 +104493,12 @@
                                 "type": "string",
                                 "enum": [
                                   "move",
-                                  "sight"
+                                  "sight",
+                                  "spells"
                                 ]
                               },
                               "minItems": 1,
-                              "maxItems": 2
+                              "maxItems": 3
                             },
                             "cover": {
                               "type": "string",
@@ -124515,11 +124523,12 @@
                                       "type": "string",
                                       "enum": [
                                         "move",
-                                        "sight"
+                                        "sight",
+                                        "spells"
                                       ]
                                     },
                                     "minItems": 1,
-                                    "maxItems": 2
+                                    "maxItems": 3
                                   },
                                   "cover": {
                                     "type": "string",
@@ -144550,11 +144559,12 @@
                                       "type": "string",
                                       "enum": [
                                         "move",
-                                        "sight"
+                                        "sight",
+                                        "spells"
                                       ]
                                     },
                                     "minItems": 1,
-                                    "maxItems": 2
+                                    "maxItems": 3
                                   },
                                   "cover": {
                                     "type": "string",

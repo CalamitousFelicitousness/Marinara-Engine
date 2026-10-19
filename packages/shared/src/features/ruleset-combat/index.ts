@@ -262,6 +262,7 @@ export {
   rulesetCoverBonus,
   rulesetStormStops,
   rulesetShotsTurned,
+  rulesetSpellsBlocked,
   rulesetDefenseAgainst,
   rulesetForbiddenTargets,
   rulesetFreeStrike,

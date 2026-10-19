@@ -3228,7 +3228,7 @@ export interface RulesetCatalogZone {
   damageCap?: number;
   damageType?: string;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
-  blocks?: Array<"move" | "sight">;
+  blocks?: Array<"move" | "sight" | "spells">;
   cover?: "half" | "three-quarters";
   turnsShots?: { spares?: string[] };
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
@@ -3710,11 +3710,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  found with Intelligence (Investigation). */
     hidden: z.object({ check: sheetId }).strict().optional(),
     /** A wall that nobody walks through, sees through, or both (Capability API 1.177): 5e's Wall of
-     *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only. */
+     *  Stone and Wall of Ice block both, Wall of Force movement only, Wall of Fire sight only.
+     *  `spells` (Capability API 1.549): no spell is cast into, out of or across it, a wall or not:
+     *  5e's Forcecage as a box. */
     blocks: z
-      .array(z.enum(["move", "sight"]))
+      .array(z.enum(["move", "sight", "spells"]))
       .min(1)
-      .max(2)
+      .max(3)
       .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
       .optional(),
     /** Cover it gives (Capability API 1.502): an attack or effect whose line to its target crosses a
@@ -5218,6 +5220,7 @@ export interface RulesetCatalogArea {
   size: number;
   width?: number;
   ring?: number;
+  ringOnly?: true;
   copies?: number;
   copiesWithin?: number;
   sizePerCostStep?: number;
@@ -5233,6 +5236,8 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
     width: z.number().finite().gt(0).optional(),
     /** A wall its caster may lay as a ring instead (1.177), this many across: 5e's Wall of Fire, 20. */
     ring: z.number().finite().gt(0).optional(),
+    /** Always laid as its ring, never as a straight wall (Capability API 1.549): 5e's Forcecage. */
+    ringOnly: z.literal(true).optional(),
     /** How many of it its maker sets down at once (1.178), each touching another: 5e's Fire Storm,
      *  ten 10-ft cubes. Only a burst or a box. */
     copies: z.number().int().min(2).max(10).optional(),
@@ -5270,6 +5275,10 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
   .refine((area) => area.ring === undefined || area.shape === "wall", {
     message: "Only a wall is a ring",
     path: ["ring"],
+  })
+  .refine((area) => !area.ringOnly || area.ring !== undefined, {
+    message: '"ringOnly" lays it as its ring, so it has "ring"',
+    path: ["ringOnly"],
   })
   .refine((area) => area.copies === undefined || area.shape === "burst" || area.shape === "box", {
     message: "Only a burst or a box is set down several times",
@@ -6754,8 +6763,10 @@ function zoneIssue(mechanics: {
   const zone = mechanics.zone;
   if (!zone) return mechanics.area?.shape === "wall" ? "A wall only ever stays, so it needs a zone" : undefined;
   const wall = mechanics.area?.shape === "wall";
-  if ((zone.blocks || zone.side) && !wall) return 'Only a wall "blocks" or has a "side"';
-  if (zone.sections && !zone.blocks) return 'A wall in "sections" is one that "blocks"';
+  if ((zone.blocks?.some((kind) => kind !== "spells") || zone.side) && !wall)
+    return 'Only a wall "blocks" or has a "side"';
+  if (zone.sections && !zone.blocks?.some((kind) => kind !== "spells"))
+    return 'A wall in "sections" is one that "blocks"';
   if (zone.sections?.broken?.save && !mechanics.save) {
     return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
   }
@@ -6832,7 +6843,9 @@ function zoneIssue(mechanics: {
                 !zone.detonates &&
                 !zone.burns &&
                 !zone.lights &&
-                !zone.dispelsDark
+                !zone.dispelsDark &&
+                // Blocking spells is what it does to its ground (1.549): Forcecage's box.
+                !zone.blocks
               ? "A zone names at least one trigger, unless it is a wall, or what it does is to its ground or to whoever stands in it"
               : (zone.move || zone.drift) && (zone.anchor === "caster" || mechanics.area.shape !== "burst")
                 ? "Only a burst held at a point is moved or drifts"

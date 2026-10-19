@@ -2487,7 +2487,7 @@ const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int(
 export interface RulesetItemRechargeRule {
   rests: string[];
   amount: "max" | { dice?: string; flat?: number };
-  after?: { days?: number; hours?: { dice?: string; flat?: number } };
+  after?: { days?: number; hours?: { dice?: string; flat?: number }; fromDeparture?: true };
 }
 const itemRechargeSchema: z.ZodType<RulesetItemRechargeRule, z.ZodTypeDef, unknown> = z
   .object({
@@ -2503,6 +2503,10 @@ const itemRechargeSchema: z.ZodType<RulesetItemRechargeRule, z.ZodTypeDef, unkno
             message: "A wait in hours names dice or a flat number above 0",
           })
           .optional(),
+        /** The wait starts once the creature its use called has left, not at the use (Capability API
+         *  1.559): a Ring of Djinni Summoning, "After the djinni departs, it can't be summoned again
+         *  for 24 hours". Its stay past a fight is counted with `combat.roundSeconds`. */
+        fromDeparture: z.literal(true).optional(),
       })
       .strict()
       .refine((after) => after.days !== undefined || after.hours !== undefined, {
@@ -6000,6 +6004,10 @@ export const catalogCallsSchema = z
       .object({ derived: sheetId, atLeast: z.number().finite().min(-1000).max(1000) })
       .strict()
       .optional(),
+    /** An item's call: the item is spent for good once a creature it called dies (Capability API
+     *  1.559), as a rolled option's `spendsItem` is when it comes: a Ring of Djinni Summoning, "the
+     *  ring becomes nonmagical if the djinni dies". */
+    spendsItemOnDeath: z.literal(true).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -13531,6 +13539,10 @@ const combatObjectSchema = z
       })
       .strict()
       .optional(),
+    /** How long one round of a fight lasts, in seconds of game time (Capability API 1.559): what a
+     *  called creature's stay past the fight counts for, where an item's wait starts at its
+     *  departure. 5e's 6. */
+    roundSeconds: z.number().int().min(1).max(3600).optional(),
     economy: z
       .object({
         budgets: z.array(combatBudgetSchema).min(1).max(8),
@@ -19555,6 +19567,11 @@ function itemIssues(
       else if (item.moreUses?.some((other) => other.use === named && other.alongside))
         add(where, "A use beside another has nothing beside it itself");
     });
+    if (more.uses?.recharge?.after?.fromDeparture && !definition.combat?.roundSeconds)
+      add(
+        [...at, "moreUses", index, "uses", "recharge", "after", "fromDeparture"],
+        'A wait from a departure counts the stay in rounds, so the fight says its "roundSeconds"',
+      );
     more.uses?.recharge?.rests.forEach((rest, at2) => {
       if (!definition.rests.some((entry) => entry.id === rest))
         add([...at, "moreUses", index, "uses", "recharge", "rests", at2], `Unknown rest "${rest}"`);
@@ -19613,6 +19630,11 @@ function itemIssues(
       add([...at, "stats", (max as { stat: string }).stat], "An item that holds charges holds at least one");
     }
     const recharge = item.charges.recharge;
+    if (recharge?.after?.fromDeparture && !definition.combat?.roundSeconds)
+      add(
+        [...at, "charges", "recharge", "after", "fromDeparture"],
+        'A wait from a departure counts the stay in rounds, so the fight says its "roundSeconds"',
+      );
     recharge?.rests.forEach((rest, index) => {
       if (!definition.rests.some((entry) => entry.id === rest)) {
         add([...at, "charges", "recharge", "rests", index], `Unknown rest "${rest}"`);

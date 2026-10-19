@@ -2158,6 +2158,7 @@
   "game.combat.ruleset.event.heldGroundReleasedNamed": "{{label}} lets go: death is held here no longer.",
   "game.combat.ruleset.event.initiative": "Initiative: {{order}}.",
   "game.combat.ruleset.event.inside": "{{target}} is taken inside {{holder}}.",
+  "game.combat.ruleset.event.itemSpent": "{{actor}}'s {{label}} is spent for good.",
   "game.combat.ruleset.event.jumped": "{{actor}} jumps to {{x}}, {{y}} for {{cost}} and has {{left}} left.",
   "game.combat.ruleset.event.lair": "{{actor}}'s lair acts: {{label}}.",
   "game.combat.ruleset.event.left": "{{actor}} leaves the fight with {{label}}.",

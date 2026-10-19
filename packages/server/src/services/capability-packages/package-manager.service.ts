@@ -2740,6 +2740,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item spent as what it called dies, or a wait from the departure of what it called, or a
+ *  fight's round length (1.559): a Ring of Djinni Summoning. */
+function carriesDeparture559(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDeparture559(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.spendsItemOnDeath !== undefined) return true;
+  if (plainRecord(plainRecord(record.recharge)?.after)?.fromDeparture !== undefined) return true;
+  if (record.economy !== undefined && record.roundSeconds !== undefined) return true;
+  return featureValues(record).some((one) => carriesDeparture559(one, depth + 1));
+}
+
 /** Called creatures that come against their user unless it meets a requirement (1.558): a Horn of
  *  Valhalla. */
 function carriesHostileUnless558(value: unknown, depth = 0): boolean {
@@ -7639,6 +7652,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item spent as what it called dies, or a wait from its departure, 1.559.
+  if (
+    !declaresApi(559) &&
+    (carriesDeparture559(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDeparture559(document)))
+  ) {
+    return "A ruleset with an item spent as what it called dies (calls.spendsItemOnDeath), a wait from a called creature's departure (recharge.after.fromDeparture) or a round's length (combat.roundSeconds) requires schemaVersion 2 and capabilityApi 1.559 or newer";
+  }
   // Called creatures that come against their user unless it meets a requirement, 1.558.
   if (
     !declaresApi(558) &&

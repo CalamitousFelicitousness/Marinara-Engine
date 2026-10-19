@@ -5476,6 +5476,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.cantCall ? { cantCall: true as const } : {}),
       ...(calls.leash ? { leash: calls.leash } : {}),
       ...(calls.hostileUnless ? { hostileUnless: { ...calls.hostileUnless } } : {}),
+      ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
     };
   };
   if (calls.creature && calls.count) {

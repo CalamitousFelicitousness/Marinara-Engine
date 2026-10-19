@@ -276,6 +276,8 @@ export interface RulesetItemCallRoll {
   kept?: number;
   ever?: number;
   spent?: true;
+  /** Rounds the creature it called still stays (1.559), for a wait that starts at its departure. */
+  outRounds?: number;
 }
 
 export interface RulesetSheetItem {

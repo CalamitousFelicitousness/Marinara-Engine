@@ -9668,6 +9668,19 @@ function callCreatures(
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
+    // Spent with them, or waiting on their departure (1.559): a Ring of Djinni Summoning.
+    const item = action.itemUse?.item;
+    const held = item !== undefined ? actor.sheet?.items?.[item]?.item : undefined;
+    const departure =
+      !!held &&
+      (!!held.charges?.recharge?.after?.fromDeparture ||
+        !!held.moreUses?.some((more) => more.uses?.recharge?.after?.fromDeparture));
+    if (item !== undefined && (action.calls.spendsItemOnDeath || departure))
+      called.calledItem = {
+        item,
+        ...(action.calls.spendsItemOnDeath ? { spends: true as const } : {}),
+        ...(departure ? { departure: true as const } : {}),
+      };
     // Held within so far of their caller (1.557): a treant's trees.
     if (action.calls.leash)
       called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
@@ -9730,6 +9743,7 @@ function callCreatures(
     }
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
+  departuresOf(ctx, actor);
   // Or unless their caller meets a requirement (1.558): a Horn of Valhalla's.
   const unless = action.calls.hostileUnless;
   if (unless && !hostile) {
@@ -9857,6 +9871,17 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 /** What a creature does as it dies (1.487): its own burst around it, on whoever it catches, never
  *  held for an answer. A mephit's Death Burst, a balor's Death Throes. */
 function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
+  // The item that called it spent for good (1.559): a Ring of Djinni Summoning's djinni.
+  const caller = dead.calledBy ? rulesetCombatant(ctx.state, dead.calledBy) : undefined;
+  if (caller && dead.calledItem && !dead.dismissed) {
+    const { item, spends } = dead.calledItem;
+    if (spends && !rulesetItemCallRoll(caller, item).spent) {
+      (caller.callRolls ??= {})[item] = { ...rulesetItemCallRoll(caller, item), spent: true };
+      const held = caller.sheet?.items?.[item];
+      ctx.events.push({ type: "itemSpent", actorId: caller.id, label: held?.name ?? "" });
+    }
+    departuresOf(ctx, caller);
+  }
   const action = dead.actions.find((entry) => entry.onDeath);
   if (!action?.around || dead.dismissed) return;
   // One that leaves an area behind (a smoke mephit's cloud) lays it where it fell, outlasting it.
@@ -9956,6 +9981,29 @@ function dismissCalled(
     delete one.y;
   }
   ctx.events.push({ type: "sentAway", actorId: caller.id, ids: going.map((one) => one.id), reason });
+  departuresOf(ctx, caller);
+}
+
+/** How long what each of `caller`'s items called still stays (1.559), in rounds, kept on the item
+ *  for a wait that starts at their departure: the longest stay of those still standing, or none
+ *  once all have left. One without `rounds` stays to the fight's end. */
+function departuresOf(ctx: RulesetCombatContext, caller: RulesetCombatant): void {
+  const stays = new Map<number, number>();
+  for (const one of ctx.state.combatants) {
+    if (one.calledBy !== caller.id || !one.calledItem?.departure) continue;
+    const item = one.calledItem.item;
+    const left =
+      one.dismissed || one.defeated
+        ? 0
+        : one.calledUntil !== undefined
+          ? Math.max(0, one.calledUntil - ctx.state.round)
+          : 0;
+    stays.set(item, Math.max(stays.get(item) ?? 0, left));
+  }
+  for (const [item, left] of stays) {
+    const { outRounds: _was, ...rest } = rulesetItemCallRoll(caller, item);
+    (caller.callRolls ??= {})[item] = left > 0 ? { ...rest, outRounds: left } : rest;
+  }
 }
 
 /**
@@ -15486,6 +15534,8 @@ function beginNextTurn(
     sensePresence(ctx, actor, true);
     // Whoever it called for a while (1.344) leaves as its time comes round.
     dismissCalled(ctx, actor, (one) => one.calledUntil !== undefined && round >= one.calledUntil, "rounds");
+    // What its items called stays a round less (1.559).
+    departuresOf(ctx, actor);
     recoverFromCrash(ctx, actor);
     // Its own drifting zones move first (1.173), then starting a turn in a zone (1.172), before
     // the turn's own conditions tick.

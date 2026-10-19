@@ -524,6 +524,9 @@ export interface GameInventoryCallRoll {
   kept?: number;
   ever?: number;
   spent?: true;
+  /** Rounds the creature it called still stays past the fight (1.559), before a wait from its
+   *  departure starts. */
+  outRounds?: number;
 }
 
 function readCallRoll(raw: unknown): GameInventoryCallRoll | undefined {
@@ -533,9 +536,11 @@ function readCallRoll(raw: unknown): GameInventoryCallRoll | undefined {
     typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= most ? value : undefined;
   const kept = count(source.kept, 8);
   const ever = count(source.ever, 1000);
+  const outRounds = count(source.outRounds, 1_000_000);
   const read: GameInventoryCallRoll = {
     ...(kept !== undefined ? { kept } : {}),
     ...(ever !== undefined ? { ever } : {}),
+    ...(outRounds !== undefined ? { outRounds } : {}),
     ...(source.spent === true ? { spent: true as const } : {}),
   };
   return Object.keys(read).length > 0 ? read : undefined;

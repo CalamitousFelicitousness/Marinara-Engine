@@ -926,6 +926,9 @@ export function rulesetCombatEventLine(
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
     // Called creatures turning on their caller's side (1.485): Conjure Elemental's, concentration broken.
+    // An item spent for good as what it called dies (1.559): a Ring of Djinni Summoning.
+    case "itemSpent":
+      return key("itemSpent", { actor: names.combatant(event.actorId), label: event.label });
     case "turnedOn":
       return key("turnedOn", {
         actor: names.combatant(event.actorId),

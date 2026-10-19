@@ -1258,6 +1258,8 @@ export interface RulesetCombatAction {
     illusion?: true;
     /** They come against their caller unless its derived value is at least this (1.558). */
     hostileUnless?: { derived: string; atLeast: number };
+    /** An item's call: the item is spent for good once one of them dies (1.559). */
+    spendsItemOnDeath?: true;
     /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
     leash?: number;
     /** They leave as soon as their caller is out (1.393). */
@@ -1821,6 +1823,9 @@ export interface RulesetCombatant {
   calledTurned?: true;
   /** They leave once their caller is farther than this many cells (1.557): a treant's tree. */
   calledLeash?: number;
+  /** The item of their caller's that called them (1.559), by its place on the sheet: spent if they
+   *  die (`spends`), its wait held while they stay (`departure`). */
+  calledItem?: { item: number; spends?: true; departure?: true };
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
    *  standing for a fight's end. */
   turnless?: true;
@@ -3215,6 +3220,8 @@ export type RulesetCombatEvent =
     }
   /** Called creatures that turn on their caller's side as its concentration breaks (1.485). */
   | { type: "turnedOn"; actorId: string; ids: string[] }
+  /** An item spent for good as the creature it called dies (1.559): a Ring of Djinni Summoning. */
+  | { type: "itemSpent"; actorId: string; label: string }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
   | { type: "auraGrows"; actorId: string; condition: string; distance: number }
   /** A board's light rule catching somebody (1.319), after this many round ends in its light. */

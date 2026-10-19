@@ -635,6 +635,18 @@ export function passRulesetItemTime(input: {
     if (counts.length === 0 && !stack.waits) return stack;
     let next = stack;
     const waits = { ...(stack.waits ?? {}) };
+    // What its call still keeps out past a fight (1.559): a wait from its departure starts after it.
+    const roundSeconds = input.definition.combat?.roundSeconds;
+    const outRounds = stack.callRoll?.outRounds ?? 0;
+    const stayMinutes = roundSeconds && outRounds > 0 ? Math.ceil((outRounds * roundSeconds) / 60) : 0;
+    const stayed = Math.min(stayMinutes, minutes);
+    if (stayMinutes > 0) {
+      const { outRounds: _out, ...rest } = next.callRoll ?? {};
+      const left = Math.ceil(((stayMinutes - stayed) * 60) / roundSeconds!);
+      const callRoll = left > 0 ? { ...rest, outRounds: left } : rest;
+      const { callRoll: _was, ...plain } = next;
+      next = Object.keys(callRoll).length > 0 ? { ...plain, callRoll } : plain;
+    }
     for (const count of counts) {
       const left = Math.min(
         count.max,
@@ -645,7 +657,10 @@ export function passRulesetItemTime(input: {
         continue;
       }
       const wait = waits[count.key] ?? { waited: 0, for: rulesetItemWaitMinutes(count.rule.after!, input.roll) };
-      const waited = Math.min(wait.for, wait.waited + minutes);
+      // Counted only from the departure of what it called (1.559).
+      const passing = count.rule.after?.fromDeparture ? minutes - stayed : minutes;
+      if (passing <= 0) continue;
+      const waited = Math.min(wait.for, wait.waited + passing);
       if (waited < wait.for) {
         waits[count.key] = { waited, for: wait.for };
         continue;

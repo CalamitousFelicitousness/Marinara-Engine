@@ -50660,6 +50660,10 @@
                           ],
                           "additionalProperties": false
                         },
+                        "spendsItemOnDeath": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -97904,6 +97908,10 @@
                                             },
                                             "additionalProperties": false
                                           },
+                                          "fromDeparture": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
                                           "$comment": {}
                                         },
                                         "additionalProperties": false
@@ -110918,6 +110926,10 @@
                                 "atLeast"
                               ],
                               "additionalProperties": false
+                            },
+                            "spendsItemOnDeath": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },
@@ -131030,6 +131042,10 @@
                                       "atLeast"
                                     ],
                                     "additionalProperties": false
+                                  },
+                                  "spendsItemOnDeath": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },
@@ -151149,6 +151165,10 @@
                                     ],
                                     "additionalProperties": false
                                   },
+                                  "spendsItemOnDeath": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
@@ -158520,6 +158540,10 @@
                                         },
                                         "additionalProperties": false
                                       },
+                                      "fromDeparture": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "$comment": {}
                                     },
                                     "additionalProperties": false
@@ -158634,6 +158658,10 @@
                                     "$comment": {}
                                   },
                                   "additionalProperties": false
+                                },
+                                "fromDeparture": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "$comment": {}
                               },
@@ -165101,6 +165129,11 @@
             "measure"
           ],
           "additionalProperties": false
+        },
+        "roundSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
         },
         "economy": {
           "type": "object",

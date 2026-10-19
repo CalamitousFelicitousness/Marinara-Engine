@@ -12768,8 +12768,25 @@ const combatConditionSchema = z
     sealed: conditionSealedSchema.optional(),
     /** Catalog entries its holder may use while it holds (Capability API 1.236), paying nothing for
      *  them but the budget each spends, with their own numbers as their spells': 5e's Dispel Evil and
-     *  Good, whose caster may Break Enchantment or Dismiss. */
-    actions: z.array(catalogEntryRef).min(1).max(6).optional(),
+     *  Good, whose caster may Break Enchantment or Dismiss. An entry may instead be written
+     *  `{ "entry": ref, "saveDifficulty"?: n, "toHit"?: n }` (Capability API 1.581), used at those
+     *  numbers whatever its holder's own: a Potion of Animal Friendship's spell at save DC 13. */
+    actions: z
+      .array(
+        z.union([
+          catalogEntryRef,
+          z
+            .object({
+              entry: catalogEntryRef,
+              saveDifficulty: z.number().int().min(0).max(1000).optional(),
+              toHit: z.number().int().min(-100).max(1000).optional(),
+            })
+            .strict(),
+        ]),
+      )
+      .min(1)
+      .max(6)
+      .optional(),
     /** Its holder may take it off at will, paying 1 of `budget` (Capability API 1.569): offered as
      *  "End" with its label while they hold it. 5e's Ring of Invisibility, "until you use a bonus
      *  action to become visible again", and the Potion of Gaseous Form. */
@@ -17718,7 +17735,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "sealed", "brokenBy", refIndex], `Unknown catalog "${catalogId}"`);
         }
       });
-      entry.actions?.forEach((ref, refIndex) => {
+      entry.actions?.forEach((one, refIndex) => {
+        const ref = typeof one === "string" ? one : one.entry;
         const catalogId = ref.slice(0, ref.indexOf("/"));
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
           issue([...path, "actions", refIndex], `Unknown catalog "${catalogId}"`);

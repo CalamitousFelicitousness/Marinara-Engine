@@ -2740,6 +2740,21 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition's entry used at numbers of its own (1.581): a Potion of Animal Friendship. */
+function carriesFixedConditionActions581(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFixedConditionActions581(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    record.condition !== undefined &&
+    Array.isArray(record.actions) &&
+    record.actions.some((one) => plainRecord(one)?.entry !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesFixedConditionActions581(one, depth + 1));
+}
+
 /** A target test for a creature under nobody else's control (1.580): Pipes of the Sewers. */
 function carriesUncontrolled580(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7903,6 +7918,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition's entry used at numbers of its own, 1.581.
+  if (
+    !declaresApi(581) &&
+    (carriesFixedConditionActions581(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFixedConditionActions581(document)))
+  )
+    return "A ruleset with a condition's entry used at numbers of its own (actions with entry and saveDifficulty or toHit) requires schemaVersion 2 and capabilityApi 1.581 or newer";
   // A target under nobody else's control, 1.580.
   if (
     !declaresApi(580) &&

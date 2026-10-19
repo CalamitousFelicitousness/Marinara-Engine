@@ -4233,7 +4233,10 @@ function conditionActions(
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   return granting
     .flatMap((condition) =>
-      (condition.actions ?? []).flatMap((ref) => {
+      (condition.actions ?? []).flatMap((one) => {
+        // At numbers of its own (1.581), whatever its holder's: a Potion of Animal Friendship's DC 13.
+        const ref = typeof one === "string" ? one : one.entry;
+        const fixed = typeof one === "string" ? undefined : one;
         const entry = byRef.get(ref);
         if (!entry?.mechanics) return [];
         const catalogId = ref.slice(0, ref.indexOf("/"));
@@ -4242,13 +4245,16 @@ function conditionActions(
           entry.rows?.some((row) => row.list === ability.list),
         );
         const difficulty =
-          casting?.saveDifficulty ?? (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+          fixed?.saveDifficulty ??
+          casting?.saveDifficulty ??
+          (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
         const action = mechanicsAction(definition, entry.mechanics, {
           id: `granted:${condition.condition}:${ref}`,
           kind: "ability",
           label: entry.label,
           budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
           toHit:
+            fixed?.toHit ??
             casting?.toHit ??
             (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
           ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),

@@ -3,7 +3,8 @@
  * Hand, "moves with the target to remain within 5 feet of it".
  *
  *   - `onWin.follows`: pushed two squares, the pusher steps into the last cell the target left.
- *   - Without it, the pusher stays put; with nowhere to step, it stays too.
+ *   - One two cells a side steps to the open place beside the target nearest it, not over them.
+ *   - Without it, the pusher stays put.
  *   - Refused without a push, and the install gate.
  */
 import assert from "node:assert/strict";
@@ -73,7 +74,7 @@ try {
     height: 3,
     tiles: Array.from({ length: 3 }, () => Array.from({ length: 8 }, () => "plains" as const)),
   };
-  const push = (definition: RulesetDefinition, blocker = false) => {
+  const push = (definition: RulesetDefinition, blocker = false, wide = false) => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
@@ -85,9 +86,13 @@ try {
       ],
       board: {
         grid,
-        placements: { hero: { x: 1, y: 1 }, wolf: { x: 2, y: 1 }, ...(blocker ? { rock: { x: 4, y: 1 } } : {}) },
+        placements: wide
+          ? { hero: { x: 0, y: 0 }, wolf: { x: 2, y: 0 } }
+          : { hero: { x: 1, y: 1 }, wolf: { x: 2, y: 1 }, ...(blocker ? { rock: { x: 4, y: 1 } } : {}) },
       },
     } as never);
+    // Two cells a side (1.194), as the Arcane Hand.
+    if (wide) rulesetCombatant(state, "hero")!.span = 2;
     state.order = ["hero", "wolf", ...(blocker ? ["rock"] : [])];
     state.turn = 0;
     const option = rulesetCombatOptions(definition, state, "hero").find((one) => one.label === "Forceful push");
@@ -127,6 +132,14 @@ try {
     const done = push(parsed(document()), true);
     assert.deepEqual(done.wolf, { x: 3, y: 1 }, "up against the rock");
     assert.deepEqual(done.hero, { x: 2, y: 1 });
+  }
+
+  // ── Two cells a side, pushing away from itself: beside the target again, not over it ──
+  {
+    const done = push(parsed(document()), false, true);
+    assert.deepEqual(done.wolf, { x: 4, y: 0 });
+    assert.deepEqual(done.hero, { x: 2, y: 0 }, "its right edge beside the wolf");
+    assert.deepEqual(done.pushed[0]!.followed, { from: { x: 0, y: 0 }, to: { x: 2, y: 0 } });
   }
 
   // ── Refused without a push ──

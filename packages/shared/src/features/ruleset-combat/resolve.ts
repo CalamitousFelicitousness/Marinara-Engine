@@ -8247,8 +8247,10 @@ function pushTarget(
   return event;
 }
 
-/** The pusher moved with the one it pushed (1.545), into the last cell they left on the way, unless
- *  still beside them or with no room there. Drawing no strikes, as a push draws none. */
+/** The pusher moved with the one it pushed (1.545), into the last cell they left on the way, or for
+ *  one wider than a cell (or with no room there) the open place beside them nearest where it stands,
+ *  unless still beside them or with no room anywhere beside. Drawing no strikes, as a push draws
+ *  none. The Arcane Hand, two cells a side, follows a goblin pushed away from it. */
 function followPushed(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -8258,8 +8260,27 @@ function followPushed(
   const grid = ctx.state.board?.grid;
   const from = rulesetPositionOf(actor);
   if (!grid || !from || target.defeated || rulesetGap(actor, target) <= 1) return;
-  const into = pushed.path.length > 1 ? pushed.path[pushed.path.length - 2]! : pushed.from;
-  if (!rulesetRoomAt(ctx.state, grid, actor, into)) return;
+  const last = pushed.path.length > 1 ? pushed.path[pushed.path.length - 2]! : pushed.from;
+  const span = rulesetSpanOf(actor);
+  const reach = rulesetSpanOf(target);
+  const to = rulesetPositionOf(target)!;
+  let into: RulesetCombatCell | undefined;
+  let best = Number.POSITIVE_INFINITY;
+  // Every place that leaves them beside the target, nearest the pusher, then nearest the last cell left.
+  for (let y = to.y - span; y <= to.y + reach; y++) {
+    for (let x = to.x - span; x <= to.x + reach; x++) {
+      const cell = { x, y };
+      if (rulesetGapFrom(cell, span, target) !== 1 || !rulesetRoomAt(ctx.state, grid, actor, cell)) continue;
+      const score =
+        Math.max(Math.abs(x - from.x), Math.abs(y - from.y)) * 1000 +
+        Math.max(Math.abs(x - last.x), Math.abs(y - last.y));
+      if (score < best) {
+        best = score;
+        into = cell;
+      }
+    }
+  }
+  if (!into) return;
   const before = zonesAround(ctx);
   actor.x = into.x;
   actor.y = into.y;

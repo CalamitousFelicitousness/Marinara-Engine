@@ -1612,7 +1612,7 @@ A combat condition's `hangsOn` may say `"ends": true`: once it works, the condit
 
 More contests (Capability API 1.544). `combat.contests` holds up to 16 entries, up from 12. A ruleset declaring more than 12 needs Capability API 1.544.
 
-A contest's `onWin` may say `"follows": true` alongside `push`: the winner moves with the one it pushed, into the last cell they left on the way, so it stays beside them. It draws no strikes, as the push draws none, and with no room there it stays where it is. 5e's Arcane Hand's Forceful Hand, "the hand moves with the target to remain within 5 feet of it": `{"onWin": {"push": 5, "pushRead": {...}, "follows": true}}`. A ruleset using it needs Capability API 1.545.
+A contest's `onWin` may say `"follows": true` alongside `push`: the winner moves with the one it pushed, into the last cell they left on the way, so it stays beside them; one wider than a cell, or with no room there, moves to the open place beside them nearest where it stood. It draws no strikes, as the push draws none, and with no room there it stays where it is. 5e's Arcane Hand's Forceful Hand, "the hand moves with the target to remain within 5 feet of it": `{"onWin": {"push": 5, "pushRead": {...}, "follows": true}}`. A ruleset using it needs Capability API 1.545.
 
 A combat condition's `endsWhenSource` may say `"acts": true`: it comes off once whoever applied it takes another action, anything but a move, a reaction or ending their turn. Using the same action again puts it on afresh, where that action says. 5e's Arcane Hand's Interposing Hand, "until you give the hand a different command": `{"condition": "interposed", "endsWhenSource": {"acts": true}, "coverFor": {...}}`. A ruleset using it needs Capability API 1.546.
 

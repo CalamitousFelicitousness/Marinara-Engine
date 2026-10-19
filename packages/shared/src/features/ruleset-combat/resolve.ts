@@ -7088,36 +7088,43 @@ function applyChoice(
   const grow = areaGrowth(definition, actor, option.id, choice.payWith);
   // A burst centred on its user (1.282) catches whom it reaches, and is pointed at nobody.
   const around = actor.actions.find((entry) => entry.id === option.id && entry.around);
-  const targets = dispel
-    ? []
-    : around
-      ? rulesetAroundTargets(state, actor, around).filter((one) => !rulesetSealedApart(definition, state, actor, one))
-      : area
-        ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
-            toward: choice.toward,
-            ring: choice.ring,
-            also,
-            ...(grow ? { grow } : {}),
-          })
-            .map((id) => rulesetCombatant(state, id)!)
-            // A sphere keeps an area out, and in (1.314).
-            .filter((one) => !rulesetSealedApart(definition, state, actor, one))
-        : pickTargets(
-            definition,
-            state,
-            actor,
-            mode
-              ? {
-                  id: option.id,
-                  targets: { ...option.targets, count: mode.targets },
-                  // A mode's own reach (1.190): a javelin of lightning's bolt.
-                  ...modeRange(actor, option.id, mode.id),
-                }
-              : paidCount !== undefined
-                ? { id: option.id, targets: { ...option.targets, count: paidCount } }
-                : option,
-            choice.targetIds,
-          );
+  // Off a board, an area that leaves a zone may be set down on nobody in particular: the Eversmoking
+  // Bottle's smoke, poured out where its user stands.
+  const laidOnNobody =
+    !state.board?.grid &&
+    choice.targetIds.length === 0 &&
+    actor.actions.some((entry) => entry.id === option.id && !!entry.zone && !!entry.area);
+  const targets =
+    dispel || laidOnNobody
+      ? []
+      : around
+        ? rulesetAroundTargets(state, actor, around).filter((one) => !rulesetSealedApart(definition, state, actor, one))
+        : area
+          ? rulesetAreaTargets(state, actor.id, option.id, choice.at!, {
+              toward: choice.toward,
+              ring: choice.ring,
+              also,
+              ...(grow ? { grow } : {}),
+            })
+              .map((id) => rulesetCombatant(state, id)!)
+              // A sphere keeps an area out, and in (1.314).
+              .filter((one) => !rulesetSealedApart(definition, state, actor, one))
+          : pickTargets(
+              definition,
+              state,
+              actor,
+              mode
+                ? {
+                    id: option.id,
+                    targets: { ...option.targets, count: mode.targets },
+                    // A mode's own reach (1.190): a javelin of lightning's bolt.
+                    ...modeRange(actor, option.id, mode.id),
+                  }
+                : paidCount !== undefined
+                  ? { id: option.id, targets: { ...option.targets, count: paidCount } }
+                  : option,
+              choice.targetIds,
+            );
   if (!Array.isArray(targets)) return refusal(state, choice.actorId, targets, option.id);
   // A target named behind a ward this payment does not get through (1.179).
   const named = actor.actions.find((entry) => entry.id === option.id);

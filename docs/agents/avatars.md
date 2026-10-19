@@ -73,7 +73,7 @@ Mesh avatars need WebGL2, which current browsers have. Without it, or when the b
 
 **3D Avatars** shows VRM models, the format that VRoid Studio, the VRM add-on for Blender and UniVRM for Unity export. VRM 1.0 and VRM 0.x files both work.
 
-You can also make a VRM model from a full-body sprite with Tripo, using your own Tripo account. See [Make a 3D model with Tripo](#make-a-3d-model-with-tripo).
+No model yet? [Make one in VRoid Studio](#get-a-3d-model), a free app, and import it.
 
 1. Open **3D Avatars** in the Agent editor and pick the character or persona.
 2. Under **VRM model**, select **Import VRM** and choose a `.vrm` file.
@@ -83,7 +83,7 @@ You can also make a VRM model from a full-body sprite with Tripo, using your own
 
 **Replace model** keeps the idle animation, because VRM animations fit any VRM model. **Remove model** deletes the model and its idle animation.
 
-While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. A model with no mouth shapes, such as one made with Tripo, moves its body more instead: it sways and breathes more while it waits, and nods and tilts its head with each phrase it speaks. Its head stays near the top of its spot: a wide spot shows the head and shoulders, and a narrower one shows more of the body. Some VRM 1.0 models keep the mouth still while they show a face; while such a model talks, that face shows at partial strength so the mouth can still move. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
+While a chat runs, the model looks at you, blinks on its own when it has a blink expression, and tilts its head while it thinks or listens. Its head stays near the top of its spot: a wide spot shows the head and shoulders, and a narrower one shows more of the body. Some VRM 1.0 models keep the mouth still while they show a face; while such a model talks, that face shows at partial strength so the mouth can still move. With reduced motion on, the face and mouth still change, but the model stops swaying, breathing and playing its idle animation.
 
 Some files can't be used, and the import says why:
 
@@ -97,8 +97,6 @@ There is no size limit beyond the app's usual upload limit, but large models tak
 
 If the character or persona has no VRM model yet, make one with VRoid Studio. It's a free app from pixiv for Windows, macOS and iPad, and models you make in it are yours to use. A few of its built-in items and any textures you buy have their own terms, so check those first. Its models come with the six faces, the five mouth shapes and blinking, so faces and lip sync work right away.
 
-Or let Tripo make one from a full-body sprite, with your own Tripo account: see [Make a 3D model with Tripo](#make-a-3d-model-with-tripo). It costs Tripo credits, and the model's face doesn't move.
-
 On the **3D Avatars** page, pick the character or persona. Under **Get a 3D model**, **Read the guide** opens this section and **Copy prompt** copies a description of their look.
 
 1. Download [VRoid Studio](https://vroid.com/en/studio) and install it.
@@ -111,31 +109,7 @@ On the **3D Avatars** page, pick the character or persona. Under **Get a 3D mode
 
 **What moves.** The face follows the reply and the mouth moves with the text or the voice when the model has expressions for them. A VRM from another tool may have fewer or none, and **Faces and mouth shapes** shows which it has. Some websites say they make a VRM with face expressions from a picture or a description, but none could be confirmed when this guide was written (October 2026), so this guide doesn't recommend one.
 
-### Make a 3D model with Tripo
-
-Tripo is a paid service that makes 3D models from pictures. On the **3D Avatars** page, **Make 3D model** under **Get a 3D model** turns one full-body sprite into a VRM model with your own Tripo account. A model costs about 60 Tripo credits (about $0.60) and takes about 3 minutes.
-
-1. Sign in at Tripo, then create an API key on [Tripo's key page](https://developers.tripo3d.ai/en/keys). Buy credits there too.
-2. Open **3D Avatars** in **Agents** and pick the character or persona. Under **Get a 3D model**, paste the key into **Tripo API key** and select **Save**. **Get a key** next to it opens Tripo's key page. The key is kept for every character and persona, so you paste it only once. **Remove** deletes it.
-3. With the key saved, your Tripo balance shows. The full-body neutral sprite is picked for you; you can choose another. Use a full-body sprite where the whole character is visible: a bust or a cropped sprite gives a model without legs, and it is refused.
-4. Check your balance and the cost, then select **Make 3D model**. Each step shows as it finishes, with the credits used so far: Tripo draws the sprite standing in a T-pose (5 credits), makes the 3D model (30 credits) and adds a skeleton (25 credits), then Marinara Engine turns it into a VRM file.
-5. Look at the pictures, then select **Save as the VRM model**, or **Discard**. The result is marked **Body only, the face doesn't move.** Saving replaces the character's or persona's current VRM model.
-
-**Body only.** A Tripo model moves its body, arms and head, but its face doesn't move: it has no face expressions, so it can't smile, blink or move its mouth. While it speaks, it nods and tilts its head with each phrase instead. **Faces and mouth shapes** says so instead of offering faces to pick. Hair, coats and tails are part of the body and don't swing, and the hands have no fingers to bend.
-
-**Cancel** stops waiting at once. Tripo can't stop a step it has already started, so it may still finish that step and charge for it. Tripo gives back the credits of a step that fails.
-
-If something goes wrong, the setup says what to do:
-
-- **Key not accepted:** paste a working key into **Tripo API key** on the **3D Avatars** page and select **Save**. **Get a key** opens Tripo's key page.
-- **Not enough credits:** top up at Tripo. The balance is checked before anything starts, so nothing is spent.
-- **Content policy:** Tripo refused the picture. Try another sprite.
-- **Busy:** try again in a minute.
-- **Arms down or no legs:** the model can't move like an avatar, so it's refused before anything is saved. Try another full-body sprite.
-
-**What is sent.** Your sprite goes to Tripo, with its background removed first when it has one. The key is stored encrypted on the server, is sent only to Tripo's API, and is never shown in the app, written to a log or included in a profile export. With debug mode on, the server log shows each Tripo request's settings and task numbers.
-
-**Who may use the model.** Under Tripo's terms, models made by paying users belong to them, and Tripo keeps the rights to models made for free. The art in your sprite may also belong to someone else. So the model file claims only personal, non-commercial use by you, asks for credit, says not to share the file, and links to [Tripo's terms](https://developers.tripo3d.ai/en/terms). **The author's terms** shows these. Check them before you share the model.
+A model made earlier with the removed Tripo generator still loads and moves its body, but its face doesn't move.
 
 ## How faces and mouths follow the reply
 
@@ -183,7 +157,12 @@ On the **2D Avatars** page in the Agent editor, choose a character or persona, t
 
 ### Faces from the avatar
 
-**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference. It starts with the six main faces, Neutral, Happy, Angry, Sad, Relaxed and Surprised, and offers 23 more feelings, such as Pride, Grief and Realization. Each extra feeling sits in the row of the main face it shows until it has its own face. Choose **All faces** for all 29, **Main faces** for the six, or any faces you like. The faces are drawn in batches, main faces first, with as many in each picture as the grid holds; older GPT Image models draw one face per picture. A picture that fails is tried again once; if it fails again, the run stops with **Retry picture**, and **Cancel** keeps the faces already made. With **Expose media prompts before sending** on, you review the prompts for every picture at once before the first is sent. Every face is drawn with open eyes and a closed mouth, so its blink and talk pictures have something to close and open. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. When the avatar is already saved, each new face becomes the face of the feeling it was drawn for, even one you renamed; your other sprites stay, and you can choose them again under **Face for each feeling**. A face made again starts without blink and talk pictures, because the old ones would not match it; make new ones under [Blink and talk pictures](#blink-and-talk-pictures). A PNGTuber Plus import keeps its own faces. It needs an avatar and an image generation connection.
+**Make faces from the avatar** makes faces without a background, also for a character or persona with no sprites yet. It opens sprite generation, the same one as in the character and persona editors, with the avatar checked as the reference.
+
+1. It starts with the six main faces, Neutral, Happy, Angry, Sad, Relaxed and Surprised, and offers 23 more feelings, such as Pride, Grief and Realization. Each extra feeling sits in the row of the main face it shows until it has its own face. Choose **All faces** for all 29, **Main faces** for the six, or any faces you like.
+2. The faces are drawn in batches, main faces first, with as many in each picture as the grid holds; older GPT Image models draw one face per picture. A picture that fails is tried again once; if it fails again, the run stops with **Retry picture**, and **Cancel** keeps the faces already made.
+3. With **Expose media prompts before sending** on, you review the prompts for every picture at once before the first is sent. Every face is drawn with open eyes and a closed mouth, so its blink and talk pictures have something to close and open.
+4. It draws new expression sprites from the avatar on a plain color, removes that color, and saves them as the character's or persona's sprites. A new sprite replaces the one with the same name, so rename it in the last step to keep the old one. When the avatar is already saved, each new face becomes the face of the feeling it was drawn for, even one you renamed; your other sprites stay, and you can choose them again under **Face for each feeling**. A face made again starts without blink and talk pictures, because the old ones would not match it; make new ones under [Blink and talk pictures](#blink-and-talk-pictures). A PNGTuber Plus import keeps its own faces. It needs an avatar and an image generation connection.
 
 ### Blink and talk pictures
 

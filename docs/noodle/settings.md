@@ -204,6 +204,9 @@ This table lists every Noodle setting with its default and range.
 | **Images/refresh** | 3 | 0 to 50 |
 | **Attach gallery images** | off | on or off |
 | **Show images to the writer** | on | on or off |
+| **Image captioning** | follows the Generation connection | on or off |
+| **Captioning connection** | Use Noodle generation connection | any vision-capable connection |
+| **Use connection default** | on | on or off; restores the Generation connection's captioning setting |
 | **Lorebook context** | off | on or off |
 | **Enhanced tone & continuity** | off | on or off |
 | **Carryover: Conversations** | off | on or off |

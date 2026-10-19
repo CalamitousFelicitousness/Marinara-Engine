@@ -1072,7 +1072,9 @@ client half is `packages/client/src/features/avatars/contract.ts`. The user guid
 There is no new manifest field. An avatar package declares schema version 2 and Capability API 1.73,
 so an Engine without these surfaces refuses the install instead of listing an agent that shows
 nothing. The change that introduced 1.73 shipped these surfaces as inert stubs; the Engine's setup,
-stage and renderers are now on `staging`, and the two packages are published to the preview catalog.
+stage and renderers are now on `staging`, and the two packages are listed in the preview catalog.
+Their referenced artifact URLs must be published before installation works; a catalog entry alone
+is not proof that its downloadable artifact is available.
 The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
 collection in its `defaultSettings`, with the ids in `AVATAR_PROMPT_TEMPLATE_IDS`; the Agent editor
 merges and resets them like any other built-in template collection.

@@ -83,7 +83,7 @@ Below the provider settings are four toggles. All four are off by default.
 
 **Auto-Translate Responses** translates every AI response automatically, right after it is generated. In Game mode, Marinara removes game-master-only tags from the narration before translating it.
 
-**Translate My Messages** translates your own message into the target language just before it is sent to the AI. The translation replaces your typed text. If the translation fails, Marinara sends your original text instead and shows an error message.
+**Translate My Messages** translates your own message into **Model Language** just before it is sent to the AI. The translation replaces your typed text. If the translation fails, Marinara sends your original text instead and shows an error message.
 
 **Show Draft Translate Button** adds a **Translate draft** button next to the **Send** button. This lets you translate your message and review or edit the result before you send it. This is the manual alternative to **Translate My Messages**, which translates on send with no chance to review.
 
@@ -108,7 +108,7 @@ Every chat message, whether from you or the AI, has a **Translate** button in it
 
 A translation made this way is saved with the message. It survives a page refresh and stays when you switch chats and come back.
 
-The per-message button uses the same provider and target language you set in the **Translation** section.
+The per-message button uses the same provider and **My Language** you set in the **Translation** section.
 
 ## Provider limits
 

@@ -40,7 +40,7 @@ The editor does not save on its own. Your changes are only kept after you click 
 
 To export a preset, open it and click the export button (up-arrow icon) in the top bar. Marinara asks to save first if you have unsaved edits. To delete a preset, use the trash icon in the top bar.
 
-## The Overview, Sections, and Prompts tabs
+## The Preset Editor's five tabs
 
 The **Preset Editor** has five tabs.
 

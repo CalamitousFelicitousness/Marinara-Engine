@@ -98,6 +98,8 @@ test("a dated pack shows by itself inside its window, and another pick wins unti
     rightPanelOpen: false,
     sidebarOpen: false,
     seasonalThemesDisabled: false,
+    // The Halloween theme shares the window; its greeting would cover the page.
+    seasonalGreetingYears: { halloween: 2026 },
   });
   await page.clock.setFixedTime(new Date("2026-10-30T12:00:00"));
   await page.goto("/");

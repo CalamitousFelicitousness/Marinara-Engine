@@ -225,7 +225,11 @@ For the full parameter reference, see [Generation Parameters](../prompts/generat
 
 On a computer, the Game's controls open from buttons near the top right of the chat. On a phone, find them in the movable **Chat tools** three-dot menu:
 
-- **Game controls** (the game controller): **Retry turn**, **Retry scene analysis**, **Retry Music DJ** when Music DJ plays the Game's music, and **Retry assets image generation**. When a storyboard plays as the Game background, it also has replay, play/pause and mute. In a game with a world, **Show the scene** and **Show the overworld** switch views, and **Show the map** returns to an open dungeon, cave or station map. **Edit game data** fixes the game's saved data by hand (see [Editing game data by hand](sessions-and-saves.md#editing-game-data-by-hand)), and **Checkpoints** takes the game back to an earlier moment (see [How your game saves](sessions-and-saves.md#how-your-game-saves)).
+- **Game controls** (the game controller):
+  - **Retry turn**, **Retry scene analysis**, **Retry Music DJ** when Music DJ plays the Game's music, and **Retry assets image generation**.
+  - When a storyboard plays as the Game background, it also has replay, play/pause and mute.
+  - In a game with a world, **Show the scene** and **Show the overworld** switch views, and **Show the map** returns to an open dungeon, cave or station map.
+  - **Edit game data** fixes the game's saved data by hand (see [Editing game data by hand](sessions-and-saves.md#editing-game-data-by-hand)), and **Checkpoints** takes the game back to an earlier moment (see [How your game saves](sessions-and-saves.md#how-your-game-saves)).
 - **Session** (the feather): session history, the journal and session controls. See [Game Mode: Sessions and Saves](sessions-and-saves.md).
 - **Volume** (the speaker): the **Master**, **Music**, **Sound Effects**, **TTS** and **Ambient** volume.
 - **Game Assets** (the folder): scene media and the Asset Browser. See [Game Assets](game-assets.md).

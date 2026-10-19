@@ -1,16 +1,17 @@
 // ──────────────────────────────────────────────
-// Seasonal themes: holiday looks that switch on by themselves for one day.
+// Seasonal themes: holiday looks that switch on by themselves for a few days.
 // ──────────────────────────────────────────────
-// Each entry is worn for its day on the device's own calendar. App.tsx marks
+// Each entry is worn for its window on the device's own clock. App.tsx marks
 // <html data-seasonal-theme="<id>">, the look lives in
 // styles/themes/seasonal-<id>.css, and SeasonalGreetingModal says hello once a
 // year. Adding a holiday means one entry here, its stylesheet and its greeting copy.
 
+import { HALLOWEEN_SEASON, isInMariSeason } from "./mari-work-animations";
+
 export type SeasonalThemeId = "halloween";
 
 export const SEASONAL_THEMES: ReadonlyArray<{ id: SeasonalThemeId; isActive: (date: Date) => boolean }> = [
-  // October 31 from 00:00 to 23:59 local time. getMonth() counts from 0.
-  { id: "halloween", isActive: (date) => date.getMonth() === 9 && date.getDate() === 31 },
+  { id: "halloween", isActive: (date) => isInMariSeason(HALLOWEEN_SEASON, date) },
 ];
 
 /** `?seasonalPreview=halloween` wears that theme and shows its greeting on any date, saving nothing. */

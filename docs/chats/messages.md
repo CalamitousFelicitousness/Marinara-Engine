@@ -100,7 +100,7 @@ Two toggles change what extra detail shows on messages. Both live in **Settings*
 
 A related toggle in the same **Message Tools** section, **Show model name on messages**, adds the name of the AI model that wrote each reply. It is also off by default.
 
-When older messages had to be left out of the prompt to make it fit, a short note under the reply says how many, for example "1109 older messages not sent". To hide this note, turn off **Show "older messages not sent" note** in the same section. It is on by default. Notes about a reply that was cut off or came back empty still show.
+When older messages had to be left out of the prompt to make it fit, a short note under the reply says how many, for example "1109 older messages not sent". To hide this note under the reply, turn off **Show "older messages not sent" note** in the same section. Opening Checkup can still show it. It is on by default. Notes about a reply that was cut off or came back empty still show.
 
 ## Related guides
 

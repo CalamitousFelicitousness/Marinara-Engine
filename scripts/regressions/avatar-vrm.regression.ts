@@ -15,7 +15,8 @@
  *     framing, VRM 0.x mirroring) behaves;
  *   - a generated (body-only) model keeps its colour map when the page's connect-src refuses blob: URLs, sways
  *     and nods visibly with no idle animation, and a model with a face moves exactly as before.
- * Models are synthetic: no VRM file is committed.
+ * Models are synthetic: built here, except the generated one, which is the file the withdrawn one-click Tripo
+ * generator made from a synthetic model (fixtures/tripo-made-avatar.vrm).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -1071,8 +1072,8 @@ assert.ok(
 // blob: URLs, as the Engine's does: fetch() refuses them, and pictures load as images (img-src allows blob:).
 {
   const { loadStoredVrm } = await import("../../packages/client/src/features/avatars/renderers/vrm/vrm-renderer.js");
-  const { generatedVrm } = await import("./fixtures/avatar-3d-fixtures.js");
-  const served = await generatedVrm([200, 60, 40]);
+  const { tripoMadeVrm } = await import("./fixtures/avatar-3d-fixtures.js");
+  const served = tripoMadeVrm();
   const pictures: string[] = [];
   class PageImage extends EventTarget {
     crossOrigin: string | null = null;

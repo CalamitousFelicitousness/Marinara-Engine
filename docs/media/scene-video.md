@@ -43,7 +43,7 @@ For **SwarmUI**, Marinara fills in the local address `http://127.0.0.1:7801`. Pa
 
 ### Video Prompting Instructions
 
-A Video Generation connection has a **Video Prompting Instructions** box. Use it to tell the AI that writes your video prompts what your video model expects, such as camera moves, prompt length or sound. It guides Roleplay Gallery animations, Conversation video messages and Storyboard's **Image-aware shot planning**. If the AI copies a full sentence of it into the video prompt, Marinara removes that sentence. Game Mode scene videos, call clips and animated expressions use fixed prompts, so they don't use it.
+A Video Generation connection has a **Video Prompting Instructions** box. Use it to tell the AI that writes your video prompts what your video model expects, such as camera moves, prompt length or sound. It guides Roleplay Gallery animations, Conversation video messages and Storyboard's **Image-aware shot planning**. If the AI copies a full sentence of it into the video prompt, Marinara removes that sentence. Game Mode scene videos, call clips and animated expressions use their own prompt builders, templates or overrides; they do not use **Video Prompting Instructions**.
 
 ### Make it the default video connection
 

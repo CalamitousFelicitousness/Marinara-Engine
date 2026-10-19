@@ -1,17 +1,21 @@
-/** A dated pack's window: inclusive local "MM-DD" dates. */
+/** A dated window on the device's local clock: "MM-DD HH:mm", `from` inclusive, `to` exclusive. */
 export interface MariSeason {
   from: string;
   to: string;
 }
 
-const monthDay = (now: Date) =>
-  `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+const pad = (n: number) => String(n).padStart(2, "0");
+const monthDayTime = (now: Date) =>
+  `${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
 // ponytail: string compare, so a window cannot wrap New Year; split it in two if one ever must.
 export function isInMariSeason(season: MariSeason, now: Date = new Date()): boolean {
-  const today = monthDay(now);
-  return today >= season.from && today <= season.to;
+  const today = monthDayTime(now);
+  return today >= season.from && today < season.to;
 }
+
+/** Halloween: October 30 00:00 until November 1 12:00. Shared by the seasonal theme and the dated pack. */
+export const HALLOWEEN_SEASON: MariSeason = { from: "10-30 00:00", to: "11-01 12:00" };
 
 export const MARI_STORY_STATES = [
   "thinking",
@@ -165,7 +169,7 @@ export const MARI_APPEARANCE_PACKS: readonly MariAppearancePack[] = [
     },
     stories: packStories("raccoon"),
     poses: packPoses("raccoon"),
-    season: { from: "10-29", to: "11-01" },
+    season: HALLOWEEN_SEASON,
   },
 ];
 

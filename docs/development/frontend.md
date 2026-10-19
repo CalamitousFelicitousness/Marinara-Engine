@@ -59,7 +59,7 @@ Major editors and heavy components are lazy-loaded in `AppShell.tsx` using `Reac
 
 ### Zustand stores (client state)
 
-The client uses a set of Zustand stores in `packages/client/src/stores/` for UI and runtime state. `ui.store.ts` is the only persisted store. The others hold runtime state for chats, agents, games, the local model runtime, translation, dialogs, backfill, and table games.
+The client uses a set of Zustand stores in `packages/client/src/stores/` for UI and runtime state. `ui.store.ts` is the only persisted store. The others hold runtime state for chats, agents, games, the local model runtime, translation, dialogs, and backfill.
 
 The current store files are: `agent.store.ts`, `backfill.store.ts`, `chat-tools-menu.store.ts`, `chat.store.ts`, `conversation-games.store.ts`, `dialog.store.ts`, `encounter.store.ts`, `floating-window.store.ts`, `gallery.store.ts`, `game-asset.store.ts`, `game-mode.store.ts`, `game-state.store.ts`, `sidecar.store.ts`, `translation.store.ts`, and `ui.store.ts`. The table-game stores moved into their downloadable packages; `conversation-games.store.ts` only tracks the Conversation game picker and setup.
 

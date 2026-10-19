@@ -125,7 +125,7 @@ You can also write `[whisper: character="name" text="the secret"]` in your own R
 
 The same command works when you edit a character's or the narrator's message: after you save, it becomes that message's whisper. Whisper text can span several lines and quote dialogue as is, for example `text=""I love you.""`.
 
-A message that holds nothing but a whisper is left out entirely for the characters it does not reach, so they do not see that anyone whispered. Its recipient and the appointed narrator still get it.
+A message that holds nothing but a whisper is left out entirely for the characters it does not reach, so they do not see that anyone whispered. Its recipient and the appointed narrator still get it. A character also receives the message if you shared a private note on it with that character.
 
 ### Your private notes
 

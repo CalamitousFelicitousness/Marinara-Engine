@@ -265,7 +265,7 @@ Set a long, random value for `ADMIN_SECRET` on the server:
 ADMIN_SECRET=replace-this-with-a-long-random-secret
 ```
 
-On the machine running the server (loopback), these actions usually work without the secret. Requests that a reverse proxy or tunnel on that machine passes along count as remote. From another device, the app must send the secret. Paste the same value into the app under **Settings**, then **Advanced**, then **Admin Access**. After that, the app sends it for you.
+On the machine running the server (loopback), these actions usually work without the secret. By default, requests that a reverse proxy or tunnel on that machine passes along count as remote. If you deliberately set `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false`, those forwarded requests are treated as local and the loopback secret bypass applies to them too. Keep that safeguard on for a public proxy or tunnel. Direct requests from another device still need the secret. Paste the same value into the app under **Settings**, then **Advanced**, then **Admin Access**. After that, the app sends it for you.
 
 Related privileged settings:
 

@@ -165,7 +165,7 @@ Some systems do not add a bonus to a roll. Instead, the number on the sheet is h
 
 A ruleset can roll its checks in other ways too. The Engine still throws the dice, and the dice card follows the ruleset:
 
-- **Keep the highest die.** Throw a handful of dice and read only the highest one.
+- **Keep the highest dice.** Throw a handful of dice and read the highest one, two, or three, as the ruleset specifies.
 - **Roll against your sheet.** Roll at or under a number on your sheet, such as a skill percentage, instead of adding a bonus to the dice.
 - **Dice with their own faces.** Faces can be worth something other than their number, such as minus, blank and plus. Some dice carry symbols, such as success, advantage and their opposites, instead of numbers.
 - **Results in bands.** A check can land in one of several results, such as a critical success or a success at a cost, rather than a plain pass or fail. The dice card names the band, and the Game Master narrates it.

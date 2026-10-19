@@ -69,11 +69,9 @@ The count at the top of the window includes the achievements of the agents you h
 
 You can turn the whole feature on or off with one toggle. Open **Settings**, go to the **General** tab, and find the **App Behavior** section. The toggle is labeled **Achievements**, and it is on by default.
 
-The help text reads: "Shows the Home achievements button and unlock notifications. Tracking stays silent in the current profile when this is off."
-
 Here is what the toggle does:
 
-- On: the Home screen **Achievements** bookmark, the optional **Achievements** widget and the window appear, and you get a pop-up notice when something unlocks.
+- On: the Home screen **Achievements** bookmark and the window are available, and you get a pop-up notice when something unlocks. The optional **Achievements** widget appears only if you added it to your Home layout.
 - Off: the bookmark and widget are hidden and the pop-up notices stop. The app still records your unlocks quietly in the background.
 
 Because tracking continues while the setting is off, your progress is not lost. If you turn the setting back on later, everything you earned in the meantime is already there.

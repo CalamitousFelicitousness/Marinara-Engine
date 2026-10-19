@@ -45,7 +45,7 @@ Off: only rate limits are retried, as before.
 
 Setting key: `usageAndActivationStats`. No environment variable.
 
-On: after each generation, Marinara records which lorebook entries were activated, so you can sort and filter entries by use in the lorebook editor.
+On: after a reply is successfully saved, Marinara records which lorebook entries were activated, so you can sort and filter entries by use in the lorebook editor. Continue chunks do not add activation records.
 
 Off: nothing is recorded, and the lorebook editor hides its activation stats.
 

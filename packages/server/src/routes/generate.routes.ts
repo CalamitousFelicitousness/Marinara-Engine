@@ -1,4 +1,10 @@
-import { applyClockCommandTags, TTS_SETTINGS_KEY, type RulesetClocks } from "@marinara-engine/shared";
+import {
+  applyClockCommandTags,
+  normalizeVideoGenerationUserSettings,
+  TTS_SETTINGS_KEY,
+  VIDEO_GENERATION_SETTINGS_KEY,
+  type RulesetClocks,
+} from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -924,7 +930,6 @@ import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
   loadVideoRunInterval,
-  MAX_CHARACTER_VIDEOS_PER_REPLY,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
 import {
@@ -14633,8 +14638,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             return members;
           };
           try {
-            // Up to MAX_CHARACTER_VIDEOS_PER_REPLY videos per reply, one per character, once the Video Run Interval
-            // has passed.
+            // Up to the Videos per reply setting (Settings, Generations, Video), one per character, once the Video
+            // Run Interval has passed. A group turn is one reply, so this is what lets several characters each send one.
+            // ponytail: clips past the limit are dropped (logged). Upgrade path: a button on each reply whose clip was
+            // skipped that makes it on request and attaches it to that reply.
             const automaticVideoAllowedNow = automaticVideoAllowed(
               await chats.listMessages(input.chatId),
               chatMeta,
@@ -14642,7 +14649,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               false,
               input.regenerateMessageId,
             );
-            let videosLeft = automaticVideoAllowedNow ? MAX_CHARACTER_VIDEOS_PER_REPLY : 0;
+            let videosLeft = automaticVideoAllowedNow
+              ? normalizeVideoGenerationUserSettings(await appSettings.get(VIDEO_GENERATION_SETTINGS_KEY))
+                  .maxCharacterVideosPerReply
+              : 0;
             const videoCharacterIds = new Set<string>();
             for (const { command, characterId, messageId, swipeIndex } of collectedCommands) {
               if (

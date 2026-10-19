@@ -106,13 +106,6 @@ export function resolveVideoRunInterval(chatMetadata: Record<string, unknown>, i
 }
 
 /**
- * The most character [video] clips one reply may start, one per character; a group turn is one reply.
- * ponytail: clips past the cap are dropped. Upgrade path: show a button on each reply whose clip was skipped that
- * makes it on request and attaches it to that reply, then disappears.
- */
-export const MAX_CHARACTER_VIDEOS_PER_REPLY = 3;
-
-/**
  * Whether an automatic video may run now. Anchored on the message the last automatic video joined
  * (`lastAutomaticVideoMessageId`); with no usable anchor the first one is allowed. A new swipe of that
  * same message (`targetMessageId`) replaces the reply the clip belonged to, so it may have its own.

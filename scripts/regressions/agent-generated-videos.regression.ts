@@ -27,6 +27,7 @@ try {
   const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
   const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
   const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
+  const { appSettingsRoutes } = await import("../../packages/server/src/routes/app-settings.routes.js");
   const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
   const { createConnectionsStorage } =
@@ -143,6 +144,7 @@ try {
   await app.register(generateRoutes, { prefix: "/api/generate" });
   await app.register(chatsRoutes, { prefix: "/api/chats" });
   await app.register(connectionsRoutes, { prefix: "/api/connections" });
+  await app.register(appSettingsRoutes, { prefix: "/api/app-settings" });
   const chats = createChatsStorage(db);
 
   // The Generated Videos toggles are saved through Chat Settings' own route, and each comes back as sent.
@@ -574,7 +576,7 @@ try {
   assert.ok(cut && cut[1]!.length <= VIDEO_CONTEXT_MAX_CHARS, "cut at the limit");
 
   // ── Group replies ──
-  // Every character in a group turn may send a clip, one each, up to three per reply.
+  // Every character in a group turn may send a clip, one each, up to Videos per reply (3 by default).
   const extras = await Promise.all(
     ["Bo", "Cy"].map((name) => createCharactersStorage(db).create(characterDataSchema.parse({ name }))),
   );
@@ -601,6 +603,15 @@ try {
     3,
     "one clip per character",
   );
+  // Videos per reply, saved through Settings' own route, sets the limit.
+  const savedLimit = await app.inject({
+    method: "PUT",
+    url: "/api/app-settings/video-generation",
+    payload: { value: JSON.stringify({ maxCharacterVideosPerReply: 2 }) },
+  });
+  assert.equal(savedLimit.statusCode, 200, savedLimit.body);
+  await generate(group.id, "Everyone, one more video!");
+  assert.equal((await videoAttachments(group.id)).length, 3 + 2, "two clips with Videos per reply set to 2");
 
   console.log("agent-generated-videos regression passed");
 } finally {

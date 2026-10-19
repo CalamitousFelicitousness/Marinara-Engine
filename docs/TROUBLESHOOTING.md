@@ -31,6 +31,10 @@ If Vite stops with `Reached heap limit` or `JavaScript heap out of memory`, the 
 
 Close other apps before retrying. Phones with less than about 3 GB of RAM can still run out of memory or be stopped by Android; keep the complete launcher output when reporting that case. Do not delete your chats or profile to repair a build failure.
 
+### Desktop: JavaScript heap out of memory while type-checking the client
+
+If the client build stops with `JavaScript heap out of memory` and then says `The client type-check needs about 2.5 GiB of Node.js heap`, the heap limit set in your `NODE_OPTIONS` is too small. The build keeps a limit you set instead of raising it. If `NODE_OPTIONS` contains `--max-old-space-size-percentage`, raise that percentage; it overrides `--max-old-space-size`. If using `--max-old-space-size` alone, raise it to 2560 or more. Or remove those options so the build picks its own limit. Then run the launcher again. Your chats and settings are not touched.
+
 ### Termux: missing multiplayer guest asset
 
 If startup still reports a missing `packages/client/dist/multiplayer/guest.js` after rebuilding, update Engine and rerun `./start-termux.sh`. The launcher now runs the complete low-memory client build, including the guest assets checked at startup. You do not need to enable multiplayer to repair this build error.
@@ -108,6 +112,10 @@ rm -rf node_modules .pnpm .pnpm-store
 ```
 
 Then start Marinara again with `./start.sh`. If you install by hand, run `pnpm install` after removing those folders.
+
+### Install says "Ignored build scripts: @google/genai"
+
+This notice is harmless: that package's install script does nothing, and Marinara does not need it. Do not run `pnpm approve-builds`, because it changes a file Marinara tracks, and every later update then has to set that change aside. Current versions no longer show the notice. If an install that already showed it keeps showing it after you update, delete the file `node_modules/.modules.yaml` in your Marinara folder, then run the launcher again. Your chats and settings are not touched.
 
 ### ERR_PNPM_TRUST_DOWNGRADE during install
 

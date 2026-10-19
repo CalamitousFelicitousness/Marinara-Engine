@@ -138,9 +138,9 @@ jobs:
   # assignment, plus ~2 minutes of setup and server boot per shard, the slowest
   # shard is now about 25 min (desktop), 22 (mobile Chromium) and 24 (WebKit),
   # and no boundary shift puts more than 27 min in one shard.
-  # --global-timeout (40 min) ends a slow shard as a failure, with its report
-  # and evidence, before the 45-minute job timeout. A job timeout cancels the
-  # job, so failure() is false then and the upload also runs on cancelled().
+  # The 40-minute budget starts before checkout and includes action setup.
+  # Playwright gets only the remaining time, leaving five minutes of the
+  # 45-minute job for reporting and failure evidence.
   # Re-measure before changing a count.
   desktop-chromium-shards:
     name: desktop-chromium ${{ matrix.shard }}/16
@@ -158,6 +158,9 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
     steps:
+      - name: Start shard budget
+        run: echo "PLAYWRIGHT_SHARD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -199,6 +202,9 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
     steps:
+      - name: Start shard budget
+        run: echo "PLAYWRIGHT_SHARD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -241,6 +247,9 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 
     steps:
+      - name: Start shard budget
+        run: echo "PLAYWRIGHT_SHARD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

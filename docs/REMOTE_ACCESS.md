@@ -98,7 +98,7 @@ How the IP allowlist behaves:
 - Any address not in the list is rejected with **403 Forbidden**.
 - Loopback is always allowed, so you cannot lock yourself out of local access. Visitors that a reverse proxy or tunnel on the same machine passes along are not loopback, so the allowlist blocks them. Use Basic Auth behind a proxy.
 - On Docker Desktop, OrbStack, and rootless Docker, every device reaches the container from the same gateway address, so the allowlist cannot tell them apart. Use Basic Auth there.
-- Tailscale and same-host Docker bridge/gateway traffic also skips the list, unless you turn their bypass off (see below).
+- Direct Tailscale traffic also skips the list, unless you turn its bypass off. Docker bridge/gateway traffic skips it only when you set `BYPASS_AUTH_DOCKER=true` (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - Invalid entries are ignored and logged. They do not crash the server.
 - The allowlist stays strict even with Basic Auth on. Listed addresses skip the password prompt. Every other address is still blocked with **403 Forbidden** and never gets a login prompt.
 

@@ -1515,10 +1515,11 @@ export function rulesetZoneCells(
     const toward = { x: at.x + zone.facing.dx, y: at.y + zone.facing.dy };
     return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
   }
-  // Around every cell its caster (or holder) fills (1.194), each cell once.
+  // Around every cell its caster (or holder) fills (1.194), each cell once, as wide as it has spread
+  // (1.584).
   const cells = new Map<string, RulesetCombatCell>();
   for (const from of rulesetFootprint(holder ?? caster)) {
-    for (const cell of rulesetAreaCells("burst", action.area.size, from, from, grid))
+    for (const cell of rulesetAreaCells("burst", action.area.size + (zone.widened ?? 0), from, from, grid))
       cells.set(`${cell.x},${cell.y}`, cell);
   }
   return [...cells.values()];

@@ -1116,6 +1116,15 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
   assert.equal(printed.get("itemSpent"), "Brenna's Figurine of Wondrous Power is spent for good.");
   assert.equal(printed.get("missileKept"), "Brenna catches the Arrow and keeps it.");
+  // A zone closed by its caster, and spreading (1.584).
+  assert.equal(
+    say({ type: "zone", actorId: "brenna", label: "Eversmoking Bottle", outcome: "closed" }),
+    "Brenna closes Eversmoking Bottle.",
+  );
+  assert.equal(
+    say({ type: "zone", actorId: "brenna", label: "Eversmoking Bottle", outcome: "spread" }),
+    "Brenna’s Eversmoking Bottle spreads wider.",
+  );
   assert.equal(printed.get("backfired"), "Horn of Blasting backfires on Brenna and is destroyed (a 7 on the d100).");
   assert.equal(printed.get("arrived"), "Brenna's call brings Thorn Lurker.");
   assert.equal(printed.get("duplicate"), "Thorn Lurker's attack turns onto one of Brenna's duplicates (6, needing 6).");

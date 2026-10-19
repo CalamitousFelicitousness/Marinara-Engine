@@ -1164,6 +1164,13 @@ export function rulesetCombatEventLine(
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }
+      // Closed by its caster, and widened (1.584): an Eversmoking Bottle.
+      if (event.outcome === "closed" || event.outcome === "spread") {
+        return key(event.outcome === "closed" ? "zoneClosed" : "zoneSpread", {
+          actor: names.combatant(event.actorId),
+          label: event.label,
+        });
+      }
       // On to its next stage (1.504).
       if (event.outcome === "stage") {
         return key("zoneStage", {

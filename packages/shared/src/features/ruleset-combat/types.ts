@@ -3437,7 +3437,10 @@ export type RulesetCombatEvent =
         | "layer-gone"
         | "layer-held"
         /** On to its stage `layer` names (1.504). */
-        | "stage";
+        | "stage"
+        /** Closed by its caster (1.584), ended or lingering, and widened (1.584). */
+        | "closed"
+        | "spread";
       /** The layer it was about (1.437), or with `stage` (1.504) the stage it is at now. */
       layer?: string;
       targetId?: string;
@@ -4121,6 +4124,10 @@ export interface RulesetCombatZoneRule {
   /** A line or cone held by its caster that they may turn to face another way, spending `budget`
    *  (1.182). */
   turn?: { budget: string };
+  /** Its caster may close it, spending `budget` (1.584): ended, or staying `lingers` more rounds. */
+  close?: { budget: string; lingers?: number };
+  /** A burst widening by `by` cells every `every` of its caster's turns, to a radius of `upTo` (1.584). */
+  spreads?: { by: number; every: number; upTo: number };
   /** It goes off as it ends, doing its effect once to everybody in it (1.183): `grows` is added to its
    *  amount at the end of each of its caster's turns, and `touched` sets it off when somebody moves
    *  onto its middle and fails its save. */
@@ -4329,6 +4336,11 @@ export interface RulesetCombatZone {
   rammed?: string;
   /** How many of its caster's turns have ended since it was cast, each adding its `grows` (1.183). */
   grown?: number;
+  /** Cells its burst has widened by (1.584), and its caster's turns ended toward the next widening. */
+  widened?: number;
+  spreadTurns?: number;
+  /** Closed by its caster (1.584), lingering out its last rounds. */
+  closed?: true;
   /** Its sections and the health each has left (1.200); one at 0 is broken. */
   sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
   /** Set alight, and burning away (1.183). */

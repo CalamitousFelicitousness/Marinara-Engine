@@ -510,6 +510,8 @@ export const RULESET_MOVE_OPTION = "move:walk";
 export const RULESET_ZONE_OPTION_PREFIX = "zone:";
 /** Turning a line or cone its caster carries to face another way (1.182): this, then the action's id. */
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
+/** Closing a zone its caster holds (1.584): an Eversmoking Bottle stoppered. */
+export const RULESET_ZONE_CLOSE_OPTION_PREFIX = "zone-close:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** Climbing out of whoever it was inside, once they have fallen (1.352): a purple worm's corpse. */
 export const RULESET_CLIMB_OUT_OPTION = "move:climb-out";
@@ -4476,6 +4478,18 @@ export function rulesetUncompelledOptions(
       budget: move.budget,
       targets: { side: "self", count: 0 },
       cells,
+    });
+  }
+  // Closing a zone its caster holds (1.584), once: an Eversmoking Bottle stoppered.
+  for (const zone of actor.zones ?? []) {
+    const close = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.close;
+    if (!close || zone.closed || (actor.budgets[close.budget] ?? 0) < 1) continue;
+    options.push({
+      id: `${RULESET_ZONE_CLOSE_OPTION_PREFIX}${zone.actionId}`,
+      kind: "standard",
+      label: `Close ${zone.label}`,
+      budget: close.budget,
+      targets: { side: "self", count: 0 },
     });
   }
   // Turning a line or cone its caster carries (1.182): picked on the board as the cell it now faces.

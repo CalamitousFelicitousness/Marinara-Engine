@@ -43455,7 +43455,7 @@
                         "rounds": {
                           "type": "integer",
                           "minimum": 1,
-                          "maximum": 1000
+                          "maximum": 14400
                         },
                         "untilLair": {
                           "type": "boolean",
@@ -43530,6 +43530,53 @@
                           },
                           "required": [
                             "budget"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "close": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "lingers": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "budget"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "spreads": {
+                          "type": "object",
+                          "properties": {
+                            "by": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "every": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 14400
+                            },
+                            "upTo": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "by",
+                            "every",
+                            "upTo"
                           ],
                           "additionalProperties": false
                         },
@@ -67640,7 +67687,7 @@
                             "rounds": {
                               "type": "integer",
                               "minimum": 1,
-                              "maximum": 1000
+                              "maximum": 14400
                             },
                             "untilLair": {
                               "type": "boolean",
@@ -67715,6 +67762,53 @@
                               },
                               "required": [
                                 "budget"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "close": {
+                              "type": "object",
+                              "properties": {
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "lingers": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 14400
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "budget"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "spreads": {
+                              "type": "object",
+                              "properties": {
+                                "by": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "every": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 14400
+                                },
+                                "upTo": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "by",
+                                "every",
+                                "upTo"
                               ],
                               "additionalProperties": false
                             },
@@ -80173,7 +80267,7 @@
                               "rounds": {
                                 "type": "integer",
                                 "minimum": 1,
-                                "maximum": 1000
+                                "maximum": 14400
                               },
                               "untilLair": {
                                 "type": "boolean",
@@ -80248,6 +80342,53 @@
                                 },
                                 "required": [
                                   "budget"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "close": {
+                                "type": "object",
+                                "properties": {
+                                  "budget": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "lingers": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "budget"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "spreads": {
+                                "type": "object",
+                                "properties": {
+                                  "by": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "every": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 14400
+                                  },
+                                  "upTo": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "by",
+                                  "every",
+                                  "upTo"
                                 ],
                                 "additionalProperties": false
                               },
@@ -104736,7 +104877,7 @@
                             "rounds": {
                               "type": "integer",
                               "minimum": 1,
-                              "maximum": 1000
+                              "maximum": 14400
                             },
                             "untilLair": {
                               "type": "boolean",
@@ -104811,6 +104952,53 @@
                               },
                               "required": [
                                 "budget"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "close": {
+                              "type": "object",
+                              "properties": {
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "lingers": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 14400
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "budget"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "spreads": {
+                              "type": "object",
+                              "properties": {
+                                "by": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "every": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 14400
+                                },
+                                "upTo": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "by",
+                                "every",
+                                "upTo"
                               ],
                               "additionalProperties": false
                             },
@@ -125341,7 +125529,7 @@
                                   "rounds": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "maximum": 1000
+                                    "maximum": 14400
                                   },
                                   "untilLair": {
                                     "type": "boolean",
@@ -125416,6 +125604,53 @@
                                     },
                                     "required": [
                                       "budget"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "close": {
+                                    "type": "object",
+                                    "properties": {
+                                      "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "lingers": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "budget"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "spreads": {
+                                    "type": "object",
+                                    "properties": {
+                                      "by": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "every": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      "upTo": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "by",
+                                      "every",
+                                      "upTo"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -145952,7 +146187,7 @@
                                   "rounds": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "maximum": 1000
+                                    "maximum": 14400
                                   },
                                   "untilLair": {
                                     "type": "boolean",
@@ -146027,6 +146262,53 @@
                                     },
                                     "required": [
                                       "budget"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "close": {
+                                    "type": "object",
+                                    "properties": {
+                                      "budget": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "lingers": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "budget"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "spreads": {
+                                    "type": "object",
+                                    "properties": {
+                                      "by": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "every": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 14400
+                                      },
+                                      "upTo": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "by",
+                                      "every",
+                                      "upTo"
                                     ],
                                     "additionalProperties": false
                                   },

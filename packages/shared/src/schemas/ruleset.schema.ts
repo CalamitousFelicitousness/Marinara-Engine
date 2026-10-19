@@ -3263,6 +3263,8 @@ export interface RulesetCatalogZone {
   move?: { budget: string; distance: number; ram?: true };
   drift?: { distance: number };
   turn?: { budget: string };
+  close?: { budget: string; lingers?: number };
+  spreads?: { by: number; every: number; upTo: number };
   terrain?: {
     difficult?: true;
     costTimes?: number;
@@ -3516,7 +3518,8 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .max(60)
       .regex(/^bz_[a-z0-9]+(?:_[a-z0-9]+)*$/, "A zone's art is bz_ then lowercase words joined by _")
       .optional(),
-    rounds: z.number().int().min(1).max(1000),
+    /** Up to 14400 (Capability API 1.584; 1000 before): an Oil of Slipperiness's 8 hours, 4800. */
+    rounds: z.number().int().min(1).max(14400),
     /** It ends as its maker's lair count next comes round (Capability API 1.324), if `rounds` has
      *  not ended it first: "until the next lair action", The Owed's Freezing Fog. */
     untilLair: z.literal(true).optional(),
@@ -3550,6 +3553,24 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
     /** Its caster may turn it to blast another way on their turn (Capability API 1.182), spending
      *  `budget`: a line or cone that moves with them, as 5e's Gust of Wind on a bonus action. */
     turn: z.object({ budget: sheetId }).strict().optional(),
+    /** Its caster may close it on their turn, spending `budget` (Capability API 1.584): it ends then,
+     *  or with `lingers` stays that many more rounds and spreads no more. 5e's Eversmoking Bottle,
+     *  stoppered with an action, its smoke dispersing after 10 minutes. */
+    close: z
+      .object({ budget: sheetId, lingers: z.number().int().min(1).max(14400).optional() })
+      .strict()
+      .optional(),
+    /** A burst that widens by `by` every `every` of its caster's turns, to a radius of `upTo`, in the
+     *  ruleset's distance (Capability API 1.584): the Eversmoking Bottle's smoke, 10 feet each minute
+     *  to 120 feet. */
+    spreads: z
+      .object({
+        by: z.number().finite().gt(0).max(10000),
+        every: z.number().int().min(1).max(14400),
+        upTo: z.number().finite().gt(0).max(10000),
+      })
+      .strict()
+      .optional(),
     /** It does nothing where it stands until it goes off (Capability API 1.183): when it ends, by its
      *  concentration ending or its rounds running out, it does the entry's own effect once to
      *  everybody in it. Its amount `grows` by this at the end of each of its caster's turns, and

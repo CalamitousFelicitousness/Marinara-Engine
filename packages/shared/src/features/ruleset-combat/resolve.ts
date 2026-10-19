@@ -206,6 +206,7 @@ import {
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
+  RULESET_ZONE_CLOSE_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
@@ -4716,6 +4717,30 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   }
 }
 
+/** A burst that widens as it lasts (1.584), by its `spreads` every so many of its caster's turns to its
+ *  most, never once closed: one held at a point laid again around where it was put. */
+function spreadZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): void {
+  const action = caster.actions.find((entry) => entry.id === zone.actionId);
+  const rule = action?.zone?.spreads;
+  if (!rule || !action?.area || zone.closed) return;
+  const size = action.area.size + (zone.widened ?? 0);
+  if (size >= rule.upTo) return;
+  zone.spreadTurns = (zone.spreadTurns ?? 0) + 1;
+  if (zone.spreadTurns < rule.every) return;
+  zone.spreadTurns = 0;
+  zone.widened = Math.min(rule.upTo, size + rule.by) - action.area.size;
+  const grid = ctx.state.board?.grid;
+  if (zone.anchor === "point" && zone.at && grid) {
+    const cells = new Map<string, RulesetCombatCell>();
+    for (const middle of [zone.at, ...(zone.also ?? [])]) {
+      for (const cell of rulesetAreaCells("burst", action.area.size + zone.widened, middle, middle, grid))
+        cells.set(`${cell.x},${cell.y}`, cell);
+    }
+    zone.cells = [...cells.values()];
+  }
+  ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "spread" });
+}
+
 /** A zone that goes off as it ends (1.183): the entry's own effect, once, on everybody in it, with
  *  what it has grown by added to its amount. Its caster's, though they may be down by now. Whether it
  *  stays, as what it `becomes` (1.400). */
@@ -6410,6 +6435,15 @@ function whyNotOffered(
     }
     return "unreachable";
   }
+  // Closing a zone (1.584): none to close, or nothing left to close it with.
+  if (optionId.startsWith(RULESET_ZONE_CLOSE_OPTION_PREFIX)) {
+    const actionId = optionId.slice(RULESET_ZONE_CLOSE_OPTION_PREFIX.length);
+    const close = actor.actions.find((entry) => entry.id === actionId)?.zone?.close;
+    if (close && actor.zones?.some((zone) => zone.actionId === actionId) && (actor.budgets[close.budget] ?? 0) < 1) {
+      return "no-budget";
+    }
+    return "unreachable";
+  }
   // Moving a zone (1.173): none to move, or nothing left to move it with.
   if (optionId.startsWith(RULESET_ZONE_OPTION_PREFIX)) {
     const actionId = optionId.slice(RULESET_ZONE_OPTION_PREFIX.length);
@@ -6795,6 +6829,23 @@ function applyChoice(
     working.dropped = (working.dropped ?? []).filter((thing) => thing.key !== key);
     if (!working.dropped.length) delete working.dropped;
     ctx.events.push({ type: "pickedUp", actorId: working.id, label: option.label });
+    noteOutcome(ctx);
+    return finish();
+  }
+
+  // Closing a zone its caster holds (1.584): ended, or lingering its last rounds.
+  if (option.id.startsWith(RULESET_ZONE_CLOSE_OPTION_PREFIX)) {
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    spendBudget(ctx, working, option.budget!);
+    const actionId = option.id.slice(RULESET_ZONE_CLOSE_OPTION_PREFIX.length);
+    const zone = working.zones!.find((entry) => entry.actionId === actionId)!;
+    const lingers = working.actions.find((entry) => entry.id === actionId)?.zone?.close?.lingers;
+    ctx.events.push({ type: "zone", actorId: working.id, label: zone.label, outcome: "closed" });
+    if (lingers) {
+      zone.closed = true;
+      zone.rounds = Math.min(zone.rounds, lingers);
+    } else endZones(ctx, working, actionId);
     noteOutcome(ctx);
     return finish();
   }
@@ -15753,6 +15804,8 @@ export function advanceRulesetTurn(
       if (leaving.actions.find((entry) => entry.id === zone.actionId)?.zone?.detonates?.grows) {
         zone.grown = (zone.grown ?? 0) + 1;
       }
+      // Widening as it lasts (1.584), until closed: an Eversmoking Bottle's smoke.
+      spreadZone(ctx, leaving, zone);
       if (leaving.flags.freshZones?.includes(zone.actionId)) continue;
       zone.rounds -= 1;
       if (zone.rounds <= 0) endZones(ctx, leaving, zone.actionId);

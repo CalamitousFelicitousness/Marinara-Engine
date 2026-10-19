@@ -2382,6 +2382,15 @@ export function rulesetZoneAction(
   }
   if (drift) out.drift = rulesetInCells(drift.distance, perCell ?? 1);
   if (zone.turn) out.turn = { budget: zone.turn.budget };
+  // Closed by its caster, and widening as it lasts (1.584): an Eversmoking Bottle.
+  if (zone.close) out.close = { ...zone.close };
+  if (zone.spreads) {
+    out.spreads = {
+      by: rulesetInCells(zone.spreads.by, perCell ?? 1),
+      every: zone.spreads.every,
+      upTo: rulesetInCells(zone.spreads.upTo, perCell ?? 1),
+    };
+  }
   if (terrain?.towardCaster) out.towardCaster = true;
   const { detonates, burns } = zone;
   if (detonates) {

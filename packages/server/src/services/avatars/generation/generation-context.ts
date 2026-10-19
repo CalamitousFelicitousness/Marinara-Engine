@@ -173,8 +173,8 @@ export function listAvatarSourceSprites(ownerId: string, { all = false } = {}): 
     .sort((a, b) => a.localeCompare(b));
 }
 
-/** Path of the owner's raster sprite with this exact label, or null. */
-export function findAvatarSpriteFile(ownerId: string, label: string): string | null {
+/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
+export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
   const dir = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, ownerId));
   const filename = existsSync(dir)
     ? readdirSync(dir).find(
@@ -182,11 +182,8 @@ export function findAvatarSpriteFile(ownerId: string, label: string): string | n
           SPRITE_SOURCE_EXTENSIONS.has(extname(name).toLowerCase()) && name.slice(0, -extname(name).length) === label,
       )
     : undefined;
-  return filename ? assertInsideDir(dir, join(dir, filename)) : null;
-}
-
-/** Decodes a sprite file to PNG, first frame for animated sprites. */
-export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Promise<AvatarSourceSprite> {
+  if (!filename) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
+  const bytes = await readFile(assertInsideDir(dir, join(dir, filename)));
   if (!isAllowedImageBuffer(bytes)) {
     throw new AvatarGenerationError(422, `The sprite "${label}" is not a picture the image model can read.`);
   }
@@ -201,13 +198,6 @@ export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Pr
     transparent: !stats.isOpaque,
     hash: createHash("sha256").update(bytes).digest("hex"),
   };
-}
-
-/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
-export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
-  const file = findAvatarSpriteFile(ownerId, label);
-  if (!file) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
-  return decodeAvatarSourceSprite(label, await readFile(file));
 }
 
 // ── The 2D Avatars agent: templates and connection ──
@@ -498,17 +488,17 @@ export async function applyAvatarSourceOutline(picture: Buffer, source: AvatarSo
     .toBuffer();
 }
 
-/** The pixels along a cut-out's outline (1) and inside it (0), from RGBA pixels: those within a few pixels
- *  of a pixel that is less than half covered. Not every pixel short of solid: the AI remover's mask leaves
- *  many inside the face (over the eyes too), and those must take the drawn picture. The band widens with
- *  the picture because that mask is made at 320 pixels and scaled up, so its soft edge widens too. */
+/** The pixels along a cut-out's outline (1) and inside it (0), from RGBA pixels: those close to a pixel
+ *  that is less than half covered, or the canvas boundary. Not every pixel short of solid: the AI remover's
+ *  mask leaves many inside the face (over the eyes too), and those must take the drawn picture. Protect an
+ *  eight-pixel collar at the mask's 320-pixel scale, including the provider's fringe just inside that edge. */
 function avatarOutlineBand(rgba: Buffer, width: number, height: number): Uint8Array {
-  const reach = Math.max(4, Math.ceil(Math.max(width, height) / 160));
+  const reach = Math.max(4, Math.ceil(Math.max(width, height) / 40));
   const far = reach + 1;
   // Chessboard distance to the nearest mostly see-through pixel, counted up to `far`, in two passes.
   const distance = new Uint16Array(width * height);
   for (let pixel = 0; pixel < distance.length; pixel += 1) distance[pixel] = rgba[pixel * 4 + 3]! < 128 ? 0 : far;
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? far : distance[y * width + x]!);
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? 0 : distance[y * width + x]!);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const pixel = y * width + x;

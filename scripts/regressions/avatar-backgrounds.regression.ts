@@ -11,13 +11,12 @@
  *   - a PNGTuber Plus costume drawn on a background of its own is stored as it is;
  *   - a mesh avatar is built from the sprite as it is;
  *   - the avatar's folder never gets a cut-out, and the sprite files stay byte for byte as they were;
- *   - avatarCutout, which cleans only the picture sent to Tripo for a 3D model, uses the AI remover when it
- *     is the configured engine and the built-in cleaner when it is missing, fails or is off (Lite, Termux);
  *   - saved avatar files are never rewritten when they load.
+ * avatarCutout, which cleaned only the sprite sent to Tripo for a 3D model, and its checks went with the one-click
+ * Tripo generator (withdrawn by the maintainer on 2026-10-19).
  */
 import assert from "node:assert/strict";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -39,7 +38,7 @@ process.env.NODE_ENV = "test";
 process.env.MARINARA_LITE = "true";
 process.env.IMAGE_LOCAL_URLS_ENABLED = "true";
 process.env.LOG_LEVEL = "silent";
-// No AI remover unless a test sets one up.
+// No AI remover.
 process.env.BACKGROUNDREMOVER_DISABLED = "true";
 
 const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
@@ -52,7 +51,6 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
 const { avatarOwnerDir, readAvatarConfig, writeAvatarFiles, updateAvatarConfig } =
   await import("../../packages/server/src/services/avatars/storage.js");
-const { avatarCutout } = await import("../../packages/server/src/services/avatars/cutouts.js");
 const { applyAvatarSourceOutline, readAvatarSourceSprite } =
   await import("../../packages/server/src/services/avatars/generation/generation-context.js");
 const { generatePngtuberVariants, savePngtuberVariants } =
@@ -100,10 +98,6 @@ const goodLayout = {
 async function rgba(png: Buffer) {
   return sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 }
-async function alphaAt(png: Buffer, x: number, y: number) {
-  const { data, info } = await rgba(png);
-  return data[(y * info.width + x) * 4 + 3]!;
-}
 async function alphaChannel(png: Buffer) {
   return sharp(png).ensureAlpha().extractChannel(3).raw().toBuffer();
 }
@@ -134,25 +128,6 @@ async function assertBackground(png: Buffer, what: string) {
 async function assertDrawnMark(png: Buffer, what: string) {
   const [red, green, blue, alpha] = await pixelAt(png, 300, 360);
   assert.ok(red! > 200 && green! < 60 && blue! < 60 && alpha === 255, `${what}: what the model drew shows`);
-}
-/** Corners and the face's middle: see-through around the bust, solid on it (avatarCutout's result). */
-async function assertCutout(png: Buffer, what: string) {
-  for (const [x, y] of [
-    [2, 2],
-    [597, 2],
-    [2, 600],
-    [597, 717],
-    [40, 360],
-  ] as const) {
-    assert.equal(await alphaAt(png, x, y), 0, `${what}: the background at ${x},${y} is see-through`);
-  }
-  for (const [x, y] of [
-    [300, 330],
-    [300, 600],
-    [250, 285],
-  ] as const) {
-    assert.equal(await alphaAt(png, x, y), 255, `${what}: the bust at ${x},${y} stays solid`);
-  }
 }
 const dataUrlPng = (url: string) => Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
 
@@ -243,47 +218,6 @@ try {
       url: `/api/avatar-models/character/${owner.ownerId}/sprite-cutouts/neutral?v=1`,
     });
     assert.equal(route.statusCode, 404, "there is no sprite cut-out route");
-  }
-
-  // ── avatarCutout (Tripo's picture only): the AI remover when configured, the built-in cleaner without it ──
-  {
-    const lite = await avatarCutout(opaqueBust);
-    assert.equal(lite.cleaned, true);
-    await assertCutout(lite.png, "the built-in cleaner (no AI remover, as on Lite and Termux)");
-    if (process.platform !== "win32") {
-      const tools = mkdtempSync(join(tmpdir(), "marinara-fake-bgrem-"));
-      const marker = join(tools, "ran");
-      const fake = join(tools, "backgroundremover");
-      // Called as `backgroundremover -i <in> -o <out>`; answers with the bust's true cut-out.
-      writeFileSync(join(tools, "answer.png"), clearBust);
-      writeFileSync(fake, `#!/bin/sh\ntouch "${marker}"\ncp "${join(tools, "answer.png")}" "$4"\n`);
-      chmodSync(fake, 0o755);
-      const failing = join(tools, "broken");
-      writeFileSync(failing, "#!/bin/sh\nexit 3\n");
-      chmodSync(failing, 0o755);
-      const savedPath = process.env.PATH;
-      delete process.env.BACKGROUNDREMOVER_DISABLED;
-      process.env.SPRITE_BACKGROUND_REMOVAL_ENGINE = "backgroundremover";
-      try {
-        process.env.BACKGROUNDREMOVER_COMMAND = fake;
-        const ai = await avatarCutout(opaqueBust);
-        assert.ok(existsSync(marker), "the AI remover runs when it is the configured engine");
-        await assertCutout(ai.png, "the AI remover's cut-out");
-        process.env.BACKGROUNDREMOVER_COMMAND = failing;
-        await assertCutout((await avatarCutout(opaqueBust)).png, "a failing AI remover falls back to the built-in");
-        delete process.env.BACKGROUNDREMOVER_COMMAND;
-        const empty = join(tools, "empty");
-        mkdirSync(empty);
-        process.env.PATH = empty; // and none on PATH
-        await assertCutout((await avatarCutout(opaqueBust)).png, "a missing AI remover falls back to the built-in");
-      } finally {
-        process.env.PATH = savedPath;
-        delete process.env.SPRITE_BACKGROUND_REMOVAL_ENGINE;
-        delete process.env.BACKGROUNDREMOVER_COMMAND;
-        process.env.BACKGROUNDREMOVER_DISABLED = "true";
-        rmSync(tools, { recursive: true, force: true });
-      }
-    }
   }
 
   // ── PNGTuber blink and talk pictures from the sprite with a background ──

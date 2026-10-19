@@ -2297,6 +2297,8 @@ function GeneralSettings() {
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
   const setConvertLatexSymbols = useUIStore((s) => s.setConvertLatexSymbols);
+  const loadRemoteMessageImages = useUIStore((s) => s.loadRemoteMessageImages);
+  const setLoadRemoteMessageImages = useUIStore((s) => s.setLoadRemoteMessageImages);
   const trimIncompleteModelOutput = useUIStore((s) => s.trimIncompleteModelOutput);
   const setTrimIncompleteModelOutput = useUIStore((s) => s.setTrimIncompleteModelOutput);
   const continueAddsNewline = useUIStore((s) => s.continueAddsNewline);
@@ -2616,6 +2618,13 @@ function GeneralSettings() {
             checked={convertLatexSymbols}
             onChange={setConvertLatexSymbols}
             help={localizeUi("ui.panels.generalsettings.turnsCommonModelWrittenLatexCommandsLikeRightarrowNeq")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("load-remote-message-images")}
+            label={localizeUi("settings.controls.loadRemoteMessageImages.label")}
+            checked={loadRemoteMessageImages}
+            onChange={setLoadRemoteMessageImages}
+            help={localizeUi("settings.controls.loadRemoteMessageImages.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("color-inline-names")}

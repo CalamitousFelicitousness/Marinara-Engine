@@ -21,6 +21,7 @@ import {
 } from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
 import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
+import { normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import {
   normalizeChatWidgetColor,
@@ -347,6 +348,16 @@ export function useSettingsSync() {
                     useUIStore.setState({ [key]: true });
                   }
                 }
+              }
+
+              // A loaded image stays loaded: keep approvals from this browser and the server alike.
+              const localApprovals = useUIStore.getState().approvedRemoteImageUrls;
+              const serverApprovals = normalizeApprovedRemoteImageUrls(parsed.settings.approvedRemoteImageUrls);
+              const approvals = normalizeApprovedRemoteImageUrls([...localApprovals, ...serverApprovals]);
+              if (JSON.stringify(approvals) !== JSON.stringify(serverApprovals)) staleSyncedShape = true;
+              parsed.settings.approvedRemoteImageUrls = approvals;
+              if (JSON.stringify(approvals) !== JSON.stringify(localApprovals)) {
+                useUIStore.setState({ approvedRemoteImageUrls: approvals });
               }
 
               const serverUpdatedAt = parsed.updatedAt;

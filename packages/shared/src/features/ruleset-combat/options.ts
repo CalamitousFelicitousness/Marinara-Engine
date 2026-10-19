@@ -70,6 +70,9 @@ import {
   rulesetTargetDamageKind,
   rulesetDamageMinimum,
   rulesetCombatEffects,
+  rulesetDefiableConditions,
+  rulesetDefiance,
+  rulesetDefying,
   rulesetCombatStanding,
   rulesetAllyBeside,
   rulesetCombatHurt,
@@ -4207,6 +4210,65 @@ function movementOptions(
  * price the sheet would refuse is left out rather than offered and then refused.
  */
 export function rulesetCombatOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
+  const options = commandedOptions(definition, state, actorId);
+  // What a command its actor may break at a cost stops is offered too (1.591), marked with the
+  // conditions it breaks: 5e's Geas. Not while it is already being broken.
+  const actor = rulesetCombatant(state, actorId);
+  const combat = definition.combat;
+  if (!actor || !combat || rulesetDefiance()) return options;
+  const defiable = rulesetDefiableConditions(definition, combat, actor, state);
+  if (defiable.length === 0) return options;
+  const freed = rulesetDefying(actorId, defiable, () => commandedOptions(definition, state, actorId));
+  const normal = new Map(options.map((option) => [option.id, option]));
+  // Which of them each is broken by alone, or all of them where it takes more than one.
+  let each: Array<[string, RulesetCombatOption[]]> | undefined;
+  const brokenBy = (has: (options: RulesetCombatOption[]) => boolean): string[] => {
+    each ??= defiable.map((condition) => [
+      condition,
+      rulesetDefying(actorId, [condition], () => commandedOptions(definition, state, actorId)),
+    ]);
+    const by = each.flatMap(([condition, list]) => (has(list) ? [condition] : []));
+    return by.length > 0 ? by : defiable;
+  };
+  const key = (cell: RulesetCombatCell) => `${cell.x},${cell.y}`;
+  const merged = freed.map((option): RulesetCombatOption => {
+    const kept = normal.get(option.id);
+    if (!kept) {
+      return {
+        ...option,
+        defies: { conditions: brokenBy((list) => list.some((one) => one.id === option.id)) },
+      };
+    }
+    // A walk to somewhere it may not go (1.591): those cells too, each marked.
+    if (option.cells && kept.cells) {
+      const had = new Set(kept.cells.map(key));
+      const extra = option.cells.filter((cell) => !had.has(key(cell)));
+      if (extra.length > 0) {
+        const first = extra[0]!;
+        return {
+          ...kept,
+          cells: [...kept.cells, ...extra],
+          defies: {
+            conditions: brokenBy((list) =>
+              list.some((one) => one.id === option.id && !!one.cells?.some((cell) => key(cell) === key(first))),
+            ),
+            cells: extra.map((cell) => ({ x: cell.x, y: cell.y })),
+          },
+        };
+      }
+    }
+    return kept;
+  });
+  const listed = new Set(merged.map((option) => option.id));
+  return [...merged, ...options.filter((option) => !listed.has(option.id))];
+}
+
+/** The menu as what holds its actor commands it (1.264), every command kept. */
+function commandedOptions(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,

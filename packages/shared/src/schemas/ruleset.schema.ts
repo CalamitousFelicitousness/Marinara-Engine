@@ -2578,10 +2578,21 @@ const conditionInsideSchema: z.ZodType<true | RulesetConditionInside, z.ZodTypeD
     .strict(),
 ]);
 
+/** The effects of a condition its holder may break at a cost (Capability API 1.591), beside its
+ *  `forbids` and `behavior`. */
+export const RULESET_DEFIABLE_EFFECTS = ["cannot-harm", "cannot-approach-source"] as const;
+
 /** Damage a combat condition deals its holder each turn (Capability API 1.189). Typed by hand:
  *  written out, its inferred type is too long for the definition schema around it to emit. */
 export interface RulesetConditionHarms {
-  at: "turn-start" | "turn-end" | "source-turn-start" | "source-turn-end" | "attacks-source" | "attacks-source-side";
+  at:
+    | "turn-start"
+    | "turn-end"
+    | "source-turn-start"
+    | "source-turn-end"
+    | "attacks-source"
+    | "attacks-source-side"
+    | "defies";
   once?: true;
   dice?: string;
   flat?: number;
@@ -2597,6 +2608,10 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
      *  whoever put it on (`attacks-source`) or at anybody of their side (`attacks-source-side`): 5e's
      *  Geas, "takes 5d10 psychic damage each time it acts in a manner directly counter to your
      *  instructions". */
+    /** Or (Capability API 1.591) as its holder breaks what the condition commands (`defies`): what
+     *  its `forbids` and `behavior` stop, and its "cannot-harm" and "cannot-approach-source" effects,
+     *  stop nothing, and doing any of it deals this. 5e's Geas, "You can't cast spells", "Stay within
+     *  this room". */
     at: z.enum([
       "turn-start",
       "turn-end",
@@ -2604,6 +2619,7 @@ const conditionHarmsSchema: z.ZodType<RulesetConditionHarms, z.ZodTypeDef, unkno
       "source-turn-end",
       "attacks-source",
       "attacks-source-side",
+      "defies",
     ]),
     /** It harms only once while it holds (Capability API 1.509): Geas's "no more than once each
      *  day". */
@@ -13118,6 +13134,20 @@ const combatConditionSchema = z
         code: z.ZodIssueCode.custom,
         path: ["stacks"],
         message: "Stacks multiply what a condition harms with, so it names harms",
+      });
+    }
+    // A command broken at a cost (1.591) commands something.
+    if (
+      entry.harms?.at === "defies" &&
+      !entry.forbids &&
+      !entry.behavior &&
+      !entry.effects.some((effect) => (RULESET_DEFIABLE_EFFECTS as readonly string[]).includes(effect))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["harms", "at"],
+        message:
+          'A command its holder may break says what it commands: "forbids", "behavior", "cannot-harm" or "cannot-approach-source"',
       });
     }
   });

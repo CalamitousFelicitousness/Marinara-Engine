@@ -3872,6 +3872,9 @@ export interface RulesetCombatAlterOffer {
 }
 
 export interface RulesetCombatOption {
+  /** Breaks what these conditions on its actor command (1.591), and is harmed for it: 5e's Geas.
+   *  With `cells`, only a walk ending at one of them does; the rest of the walk breaks nothing. */
+  defies?: { conditions: string[]; cells?: RulesetCombatCell[] };
   /** The holder must pass this save to cancel (1.131). */
   cancelSave?: { save: string; dc: number; label: string };
   /** Rolling the sphere its actor is shut in (1.314): `condition` is the sphere's. */

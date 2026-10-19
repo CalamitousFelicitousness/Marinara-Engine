@@ -92,6 +92,8 @@ import {
   rulesetTargetTypesAllow,
   rulesetCombatConditions,
   rulesetCombatEffects,
+  rulesetDefiance,
+  rulesetDefying,
   rulesetMovementAllowance,
   rulesetSpeedZero,
   rulesetSealed,
@@ -4587,6 +4589,29 @@ function harmForDefiance(
   }
 }
 
+/** What breaking a condition's command deals its holder (1.591), once the choice that broke it is
+ *  done, once while it holds where it says: 5e's Geas. */
+function harmForBreaking(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  step: RulesetCombatStep,
+  actorId: string,
+  conditions: readonly string[],
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const { ctx, finish } = begin(definition, combat, step.state, roller);
+  const actor = rulesetCombatant(ctx.state, actorId);
+  for (const entry of [...(actor?.tracked ?? [])]) {
+    if (!actor || !conditions.includes(entry.condition) || actor.defeated) continue;
+    const harms = combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
+    if (harms?.at !== "defies" || (harms.once && entry.harmedOnce)) continue;
+    if (harms.once) entry.harmedOnce = true;
+    harmFromCondition(ctx, actor, entry, "defies");
+  }
+  const after = finish();
+  return { state: after.state, events: [...step.events, ...after.events] };
+}
+
 /** A condition's own harm as a turn starts or ends (1.189), from whoever put it on. */
 function harmFromCondition(
   ctx: RulesetCombatContext,
@@ -6811,6 +6836,20 @@ function applyChoice(
     return refusal(state, choice.actorId, "down", choice.optionId);
 
   const option = rulesetCombatOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
+  // Breaking what a condition commands (1.591): worked out with what it stops lifted, and then
+  // harmed for it. A walk breaks it only where it ends at a cell it may not go.
+  const defies = option?.defies;
+  if (
+    defies &&
+    !rulesetDefiance() &&
+    (!defies.cells || defies.cells.some((cell) => cell.x === choice.to?.x && cell.y === choice.to?.y))
+  ) {
+    const step = rulesetDefying(actor.id, defies.conditions, () =>
+      applyChoice(definition, state, choice, roller, alters, picks),
+    );
+    if (step.state === state) return step;
+    return harmForBreaking(definition, combat, step, actor.id, defies.conditions, roller);
+  }
   if (!option) {
     if (rulesetCombatEffects(definition, combat, actor, state).has("cannot-act")) {
       return refusal(state, choice.actorId, "cannot-act", choice.optionId);

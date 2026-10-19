@@ -179122,7 +179122,8 @@
                       "source-turn-start",
                       "source-turn-end",
                       "attacks-source",
-                      "attacks-source-side"
+                      "attacks-source-side",
+                      "defies"
                     ]
                   },
                   "once": {

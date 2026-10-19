@@ -1217,6 +1217,16 @@ export function RulesetCombatMenu({
                         })}
                       </span>
                     )}
+                    {/* Breaks a command at a cost (1.591): a Geas. */}
+                    {option.defies && (
+                      <span className="block text-[0.65rem] text-rose-300/80">
+                        {t(
+                          option.defies.cells
+                            ? "game.combat.ruleset.menu.defiesCells"
+                            : "game.combat.ruleset.menu.defies",
+                        )}
+                      </span>
+                    )}
                     {cost && <span className="mt-0.5 block text-[0.65rem] text-white/45">{cost}</span>}
                     {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
                   </button>

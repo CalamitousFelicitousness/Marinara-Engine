@@ -34,6 +34,7 @@ import {
   type RulesetSheetBuild,
   type RulesetTargetIs,
   type RulesetValueRef,
+  RULESET_DEFIABLE_EFFECTS,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
 import { elevationAt } from "../tactical-combat/math.js";
@@ -593,6 +594,50 @@ export function rulesetNearProp(
  * which saves it is about. `state` is what a gate that measures anything needs; without it a gated
  * condition simply counts, which is what it does in a fight with no board anyway.
  */
+/** Who is breaking what a condition commands (1.591), and which conditions: what they stop, stops
+ *  nothing for that one while the choice is offered or worked out. */
+let defying: { actorId: string; conditions: ReadonlySet<string> } | undefined;
+
+/** `work` done as `actorId` breaks what `conditions` command (1.591): 5e's Geas. */
+export function rulesetDefying<T>(actorId: string, conditions: readonly string[], work: () => T): T {
+  const before = defying;
+  defying = { actorId, conditions: new Set(conditions) };
+  try {
+    return work();
+  } finally {
+    defying = before;
+  }
+}
+
+/** Who is breaking what a condition commands right now (1.591), if anybody. */
+export function rulesetDefiance(): typeof defying {
+  return defying;
+}
+
+/** The conditions on this combatant whose commands they may break at a cost (1.591). */
+export function rulesetDefiableConditions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): string[] {
+  if (!combat.conditions?.some((one) => one.harms?.at === "defies")) return [];
+  return rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) =>
+    entry.harms?.at === "defies" ? [entry.condition] : [],
+  );
+}
+
+/** A condition whose commands are being broken (1.591), with nothing it stops. */
+function brokenCommand<T extends RulesetCombatCondition>(entry: T): T {
+  const broken: T = {
+    ...entry,
+    effects: entry.effects.filter((one) => !(RULESET_DEFIABLE_EFFECTS as readonly string[]).includes(one)),
+  };
+  delete broken.forbids;
+  delete broken.behavior;
+  return broken;
+}
+
 export function rulesetActiveConditions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -639,8 +684,11 @@ export function rulesetActiveConditions(
         ]
       : [];
   });
-  const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
-    if (!active.has(entry.condition)) return [];
+  const conditions = (combat.conditions ?? []).flatMap((given): RulesetActiveCondition[] => {
+    if (!active.has(given.condition)) return [];
+    // Its commands being broken (1.591): it stops nothing.
+    const entry =
+      defying?.actorId === combatant.id && defying.conditions.has(given.condition) ? brokenCommand(given) : given;
     // Stopped by damage until their next turn (1.461).
     if (combatant.harmStopped?.includes(entry.condition)) return [];
     if (entry.whileNearProp && !nearProp(combatant, state, combat, entry.whileNearProp)) return [];

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition whose commands its holder may break at a cost (1.591): 5e's Geas. */
+function carriesDefiance591(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDefiance591(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.harms)?.at === "defies") return true;
+  return featureValues(record).some((one) => carriesDefiance591(one, depth + 1));
+}
+
 /** A sequence step rolled for, made after another's hit, or left out at will (1.590): a grick. */
 function carriesSequenceSteps590(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8042,6 +8052,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition whose commands its holder may break at a cost, 1.591.
+  if (
+    !declaresApi(591) &&
+    (carriesDefiance591(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDefiance591(document)))
+  )
+    return "A ruleset with a condition whose commands its holder may break at a cost (harms.at defies) requires schemaVersion 2 and capabilityApi 1.591 or newer";
   // A sequence step rolled for, made after another's hit, or left out at will, 1.590.
   if (
     !declaresApi(590) &&

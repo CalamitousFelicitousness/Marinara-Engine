@@ -2256,6 +2256,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                           <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
                             {t("home.whatsNew.description")}
                           </p>
+                        </div>
+                        {/* Full card width: on phones the 68% text column is too narrow for both actions on one line. */}
+                        <div className="flex flex-wrap items-center gap-x-3">
+                          <button
+                            type="button"
+                            onClick={() => useUIStore.getState().requestWhatsNew()}
+                            className="mt-2 inline-flex min-h-8 items-center text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
+                          >
+                            {t("home.whatsNew.open")}
+                          </button>
                           <a
                             href={ENGINE_RELEASE_URL}
                             target="_blank"

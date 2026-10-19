@@ -11451,6 +11451,7 @@ export interface RulesetConditionBehavior {
   drops?: RulesetBehaviorDrops;
   table?: { dice: string; rows: Array<{ atMost: number; does: "wander" | "nothing" | "strike" | "normal" }> };
   nearest?: true;
+  actions?: true;
 }
 /** What its holder lets fall from their hands (1.266): Command's "drop", Fear. */
 export interface RulesetBehaviorDrops {
@@ -11564,6 +11565,9 @@ const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef,
      *  not beside them (Capability API 1.490): 5e's golems' Berserk, "attacks the nearest creature
      *  it can see". Seeing nobody, the turn is their own. */
     nearest: z.literal(true).optional(),
+    /** With `only`, the condition's own `actions` stay offered too (Capability API 1.548): 5e's Wind
+     *  Walk, whose holder may only Dash or revert, the revert one of its actions. */
+    actions: z.literal(true).optional(),
   })
   .strict()
   .refine((behavior) => Object.keys(behavior).length > 0, "A behavior says at least one thing")
@@ -17218,6 +17222,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             issue([...path, "behavior", key, namedIndex], `This ruleset has no standard action "${named}"`);
         });
       }
+      // Its own actions kept (1.548): it has some, and an `only` they are kept through.
+      if (entry.behavior?.actions && (!entry.actions?.length || !entry.behavior.only))
+        issue(
+          [...path, "behavior", "actions"],
+          '"actions" keeps the condition\'s own actions through "only", so it has both',
+        );
       const drops = entry.behavior?.drops;
       if (drops) {
         const at = [...path, "behavior", "drops"];

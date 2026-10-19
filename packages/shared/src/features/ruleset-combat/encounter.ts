@@ -3213,7 +3213,9 @@ function mechanicsAction(
     // And breaking a layered wall's layer (1.438): Passwall.
     !mechanics.endsLayers &&
     // And an item's use rolled for (1.506): a Wand of Wonder.
-    !(mechanics as { rollsTable?: true }).rollsTable
+    !(mechanics as { rollsTable?: true }).rollsTable &&
+    // And ending its user's own condition and nothing else (1.548): Wind Walk's revert.
+    !mechanics.endsCondition
   ) {
     return null;
   }

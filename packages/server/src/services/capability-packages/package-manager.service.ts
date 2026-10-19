@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A behavior that keeps its condition's own actions (1.548): Wind Walk's revert. */
+function carriesBehaviorActions548(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBehaviorActions548(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.actions !== undefined) return true;
+  return featureValues(record).some((one) => carriesBehaviorActions548(one, depth + 1));
+}
+
 /** A creature moved through only by the strong, or filling none of its space (1.547): Arcane Hand. */
 function carriesPassableBy547(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7516,6 +7526,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A behavior that keeps its condition's own actions, 1.548.
+  if (
+    !declaresApi(548) &&
+    (carriesBehaviorActions548(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehaviorActions548(document)))
+  ) {
+    return "A ruleset with a behavior that keeps its condition's own actions (behavior.actions) requires schemaVersion 2 and capabilityApi 1.548 or newer";
+  }
   // A creature moved through only by the strong, or filling none of its space, 1.547.
   if (
     !declaresApi(547) &&

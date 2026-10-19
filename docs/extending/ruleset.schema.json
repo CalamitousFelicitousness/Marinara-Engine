@@ -181931,6 +181931,10 @@
                     "type": "boolean",
                     "const": true
                   },
+                  "actions": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false

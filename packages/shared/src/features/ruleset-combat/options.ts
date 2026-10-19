@@ -4097,7 +4097,9 @@ function compelled(
   }
   // One that frees a turn begun with nowhere to walk (1.266) holds nothing of it then.
   const rules = rulesetActiveConditions(definition, combat, actor, state).flatMap((entry) =>
-    entry.behavior?.only && !(entry.behavior.onlyWhenStuck === "any" && actor.flags.stuck) ? [entry.behavior] : [],
+    entry.behavior?.only && !(entry.behavior.onlyWhenStuck === "any" && actor.flags.stuck)
+      ? [{ ...entry.behavior, condition: entry.condition }]
+      : [],
   );
   if (!rules.length) return kept;
   const walks = kept.some((option) => option.id === RULESET_MOVE_OPTION && (option.cells?.length ?? 0) > 0);
@@ -4119,6 +4121,9 @@ function compelled(
     }
     // Slipping free (1.433) is breaking free too.
     if (option.slip) return allowed("escape");
+    // What the condition itself gives, where it keeps its own actions (1.548): Wind Walk's revert.
+    const lent = actor.actions.find((entry) => entry.id === option.id)?.whileHolds;
+    if (lent !== undefined) return rules.every((rule) => rule.actions && rule.condition === lent);
     return false;
   });
 }

@@ -6441,7 +6441,16 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // auras, Holy Nimbus. Held for the whole fight and never written back to a sheet.
   for (const combatant of state.combatants) {
     const kept = [
-      ...heldEntries(combatant).flatMap((entry) => entry.mechanics?.keepsOn ?? []),
+      // A line with a `when` (1.600) only while it reads above zero off their sheet.
+      ...heldEntries(combatant).flatMap((entry) =>
+        (entry.mechanics?.keepsOn ?? []).flatMap((kept) =>
+          typeof kept === "string"
+            ? [kept]
+            : combatant.sheet && resolveRulesetValueRef(definition, combatant.sheet.build, kept.when) > 0
+              ? [kept.condition]
+              : [],
+        ),
+      ),
       ...(combatant.block?.keepsOn ?? []),
     ];
     for (const condition of new Set(kept)) {

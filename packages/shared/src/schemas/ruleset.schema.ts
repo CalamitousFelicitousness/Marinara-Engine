@@ -2974,6 +2974,28 @@ export interface RulesetZoneInside {
   chooses?: "type";
   save?: { save: string; ignoresUntilLeaves: true; onCast?: true };
 }
+/** A condition kept on (1.263, 1.460), or kept on only while a number read off the sheet is above
+ *  zero (Capability API 1.600): a Holy Avenger's aura of 30 feet from paladin level 17. */
+export type RulesetKeptOn = string | { condition: string; when: RulesetValueRef };
+const keptOnSchema: z.ZodType<RulesetKeptOn[], z.ZodTypeDef, unknown> = z
+  .array(
+    z.union([
+      sheetId,
+      z
+        .object({
+          condition: sheetId,
+          when: z.lazy(() => rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>),
+        })
+        .strict(),
+    ]),
+  )
+  .min(1)
+  .max(4);
+/** The condition a `keepsOn` line keeps on. */
+export function rulesetKeptOnCondition(kept: RulesetKeptOn): string {
+  return typeof kept === "string" ? kept : kept.condition;
+}
+
 const uniqueIds = (max: number) =>
   z
     .array(sheetId)
@@ -6600,8 +6622,10 @@ const catalogMechanicsObject = z
     afterAttack: afterAttackSchema.optional(),
     /** Held on a sheet's list, these conditions are on its holder through every fight (Capability
      *  API 1.263), as long as nothing they are immune to: 5e's Aura of Protection, whose condition
-     *  spreads the aura. Never written to the sheet; the fight ends, they are gone with it. */
-    keepsOn: uniqueIds(4).optional(),
+     *  spreads the aura. Never written to the sheet; the fight ends, they are gone with it. A line
+     *  may be `{ "condition": id, "when": valueRef }` (Capability API 1.600), kept on only while that
+     *  reads above zero: Aura of Protection's 30 feet from paladin level 18. */
+    keepsOn: keptOnSchema.optional(),
     /** Used, it puts a weapon in its user's hand for the rest of the fight (Capability API 1.306),
      *  one of `items` (melee weapons of the item catalogs) picked as it is used, or one they already
      *  hold that `binds` matches: 5e's Pact of the Blade. Whatever amends this entry amends that
@@ -13378,8 +13402,10 @@ const rulesetItemEffectObjectSchema = z
     jumps: conditionJumpsSchema.optional(),
     /** The sheet's own conditions on its holder for as long as this applies (Capability API 1.460),
      *  never written to the sheet: 5e's Ioun Stone of Awareness, Ring of Water Walking, Cloak of
-     *  Displacement, each a condition that does what the item says. */
-    keepsOn: uniqueIds(4).optional(),
+     *  Displacement, each a condition that does what the item says. A line may be `{ "condition":
+     *  id, "when": valueRef }` (Capability API 1.600), kept on only while that reads above zero off
+     *  the wearer's sheet: a Holy Avenger's 30-foot aura for a paladin of level 17 or higher. */
+    keepsOn: keptOnSchema.optional(),
     /** A foe's entry aimed at its holder alone, taken in (Capability API 1.469): 5e's Rod of
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 9, "charges": "gains" }`, and Ioun Stone of
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 4, "charges": "spends" }`. */
@@ -19927,6 +19953,19 @@ function creatureIssues(
 
 /** The skills and saves a condition, a level or an item's effect names, each one the sheet declares:
  *  its own `skills`, `saves` and `failsSaves`, and each modifier's `skills` and `saves`. */
+/** A `keepsOn` line's `when` (1.600) reads the sheet as anything worked out in play does. */
+function keptWhenIssues(
+  definition: RulesetDefinition,
+  kept: RulesetKeptOn,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  if (typeof kept === "string") return;
+  const names = rulesetSheetNames(definition.sheet, definition.items);
+  for (const issue of rulesetValueRefIssues(kept.when, names, names.derived, true))
+    add([...at, "when", issue.key], issue.message);
+}
+
 function effectNameIssues(
   entry: {
     skills?: string[];
@@ -20340,8 +20379,10 @@ function itemHideIssues(
       add([...at, "suppresses", index], `Unknown condition "${condition}"`);
   });
   // What it keeps on (1.460) is the sheet's own conditions, and a jump reads one of its abilities.
-  effect.keepsOn?.forEach((condition, index) => {
+  effect.keepsOn?.forEach((kept, index) => {
+    const condition = rulesetKeptOnCondition(kept);
     if (!conditions.has(condition)) add([...at, "keepsOn", index], `Unknown condition "${condition}"`);
+    keptWhenIssues(definition, kept, [...at, "keepsOn", index], add);
   });
   // What it takes in (1.469) is off the ruleset's own catalogs.
   effect.absorbs?.catalogs.forEach((catalog, index) => {
@@ -22361,7 +22402,10 @@ export function rulesetCatalogEntryIssues(
         '"teleport" is measured in cells, so the combat block declares "distance" too',
       );
     mechanics?.keepsOn?.forEach((kept, keptIndex) => {
-      if (!liveConditions.has(kept)) add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${kept}"`);
+      const condition = rulesetKeptOnCondition(kept);
+      if (!liveConditions.has(condition))
+        add([index, "mechanics", "keepsOn", keptIndex], `Unknown condition "${condition}"`);
+      keptWhenIssues(definition, kept, [index, "mechanics", "keepsOn", keptIndex], add);
     });
     // The weapon bound out of the fight is named in a live text field (1.309).
     const boundIn = mechanics?.conjures?.boundIn;

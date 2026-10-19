@@ -17,6 +17,7 @@ import type {
   RulesetCreatureHideEntry,
   RulesetDefinition,
   RulesetItemUse,
+  RulesetKeptOn,
   RulesetSheetBuild,
   RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
@@ -243,6 +244,21 @@ export function rulesetItemSources(
 ): RulesetCheckSource[] {
   const sources: RulesetCheckSource[] = [];
   const seen = new Set<unknown>();
+  // What an effect keeps on (1.460), and a line with a `when` only while it reads above zero (1.600).
+  const asSource = (
+    effect: Omit<RulesetCheckSource, "keepsOn" | "name"> & { keepsOn?: readonly RulesetKeptOn[] },
+    name: string,
+  ): RulesetCheckSource => {
+    const { keepsOn: lines, ...rest } = effect;
+    const keepsOn = lines?.flatMap((kept) =>
+      typeof kept === "string"
+        ? [kept]
+        : resolveRulesetValueRef(definition, build, kept.when, sheet()) > 0
+          ? [kept.condition]
+          : [],
+    );
+    return { ...rest, name, ...(keepsOn ? { keepsOn } : {}) };
+  };
   for (const held of items ?? []) {
     const name = held.name ?? held.item.category;
     // A fake does what it truly does (1.79), under the name it is shown by.
@@ -250,14 +266,14 @@ export function rulesetItemSources(
     const effect = held.worn ? does.worn : does.carried;
     if (effect && !seen.has(effect)) {
       seen.add(effect);
-      sources.push({ ...effect, name });
+      sources.push(asSource(effect, name));
     }
     // What the wearer falls short of, while it is worn.
     if (!held.worn || !does.requires || seen.has(does.requires)) continue;
     seen.add(does.requires);
     for (const requirement of does.requires) {
       if (resolveRulesetValueRef(definition, build, requirement.value, sheet()) >= requirement.atLeast) continue;
-      sources.push({ ...requirement.otherwise, name });
+      sources.push(asSource(requirement.otherwise, name));
     }
   }
   return sources;

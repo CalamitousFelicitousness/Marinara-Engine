@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition kept on only while a sheet value reads above zero (1.600): 5e's Holy Avenger. */
+function carriesKeptWhen600(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKeptWhen600(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.keepsOn) && record.keepsOn.some((one) => plainRecord(one))) return true;
+  return featureValues(record).some((one) => carriesKeptWhen600(one, depth + 1));
+}
+
 /** A save said to be against a quality, or a modifier for such saves (1.599): 5e's gases. */
 function carriesSaveQualities599(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8141,6 +8151,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition kept on only while a sheet value reads above zero, 1.600.
+  if (
+    !declaresApi(600) &&
+    (carriesKeptWhen600(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKeptWhen600(document)))
+  )
+    return "A ruleset with a condition kept on only while a sheet value reads above zero (keepsOn[].when) requires schemaVersion 2 and capabilityApi 1.600 or newer";
   // A save said to be against a quality, or a modifier for such saves, 1.599.
   if (
     !declaresApi(599) &&

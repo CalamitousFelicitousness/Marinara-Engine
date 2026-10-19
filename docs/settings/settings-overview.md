@@ -77,6 +77,10 @@ Chooses how quotation marks are unified. Unlike the two rules above, this change
 - **Straight**: keeps plain typewriter marks, like `"Hello," it's me.` This is the default.
 - **Typographic**: replaces straight marks with curved quotation marks and apostrophes.
 
+### Load images from other websites in messages
+
+Off by default. When off, an image from another website in a message, greeting or card preview shows the website's name and a **Load image** button instead, so a message cannot contact other sites on its own. Select **Load image** to show that image; Marinara remembers it on all your devices. Turn the setting on to show every image right away. Images stored in Marinara, such as gallery pictures, avatars and sprites, always show.
+
 ## Responses and Input & Editing
 
 These two **General** sections tune how replies arrive and how you type and edit. Here are the controls, with links to the full guides.

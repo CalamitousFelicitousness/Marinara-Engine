@@ -229,7 +229,7 @@ test("Author's Notes preserves a newer draft when an earlier save fails", async 
   }
 });
 
-test("Author's Notes preset sets replace a chat's presets and stay per chat", async ({ page, request }, testInfo) => {
+test("Author's Notes preset sets toggle a chat's presets and stay per chat", async ({ page, request }, testInfo) => {
   test.setTimeout(90000);
   const a = await seedChat(request, "Sets A", "fixture-connection");
   const b = await seedChat(request, "Sets B", "fixture-connection");
@@ -253,6 +253,7 @@ test("Author's Notes preset sets replace a chat's presets and stay per chat", as
       presetIds.push(((await response.json()) as { id: string }).id);
     }
     const combatIds = [presetIds[0]!, presetIds[1]!].sort();
+    const allIds = [...presetIds].sort();
     await prepare(page, a);
     await openNotes(page);
     await toggle("Sets Terse");
@@ -262,14 +263,17 @@ test("Author's Notes preset sets replace a chat's presets and stay per chat", as
     await page.getByRole("button", { name: "Save enabled presets as a set", exact: true }).click();
     await page.getByPlaceholder("Set name").fill("Sets Combat");
     await page.getByRole("button", { name: "Save set", exact: true }).click();
-    const combat = page.getByRole("button", { name: "Enable only the presets in Sets Combat", exact: true });
-    await expect(combat, "The set just saved matches the chat").toHaveAttribute("aria-pressed", "true");
+    const combat = page.getByRole("button", { name: "Turn Sets Combat on or off", exact: true });
+    await expect(combat, "The set just saved is on").toHaveAttribute("aria-pressed", "true");
 
     await toggle("Sets Banter");
-    await expect(combat, "An extra preset breaks the match").toHaveAttribute("aria-pressed", "false");
+    await expect(combat, "An extra preset leaves the set on").toHaveAttribute("aria-pressed", "true");
+    await combat.click();
+    await expect(combat).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(() => readActivePresetIds(request, a), "Clicking an on set removes it").toEqual([presetIds[2]!]);
     await combat.click();
     await expect(combat).toHaveAttribute("aria-pressed", "true");
-    await expect.poll(() => readActivePresetIds(request, a), "Applying replaces, not adds").toEqual(combatIds);
+    await expect.poll(() => readActivePresetIds(request, a), "Clicking adds, not replaces").toEqual(allIds);
     await page.screenshot({ path: testInfo.outputPath("notes-set-applied.png"), animations: "disabled" });
 
     await closeNotes();
@@ -287,7 +291,7 @@ test("Author's Notes preset sets replace a chat's presets and stay per chat", as
     await page.getByRole("button", { name: "Delete set", exact: true }).click();
     await expect(combat).toHaveCount(0);
     await expect.poll(async () => (await (await request.get("/api/author-note-presets/sets")).json()).length).toBe(0);
-    expect(await readActivePresetIds(request, a), "Deleting a set leaves the chat's presets on").toEqual(combatIds);
+    expect(await readActivePresetIds(request, a), "Deleting a set leaves the chat's presets on").toEqual(allIds);
   } finally {
     await page.unrouteAll({ behavior: "wait" });
     await request.put("/api/author-note-presets/sets", { data: [] });

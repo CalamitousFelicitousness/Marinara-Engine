@@ -27,26 +27,51 @@ export function normalizeAuthorNoteRole(value: unknown): AuthorNoteRole {
 }
 
 /**
- * First set whose live presets equal the chat's live enabled ones, or null.
- * Drives the highlighted chip in the Author's Notes panel.
+ * Whether every live preset of the set is enabled. Drives the highlighted chips
+ * in the Author's Notes panel and the add/remove choice of a chip click.
  *
- * Ids of deleted presets are ignored on both sides. A set saved empty matches
- * a chat with nothing on; a set emptied by deletions matches nothing.
+ * Ids of deleted presets are ignored on both sides. A set saved empty is on
+ * when nothing is enabled; a set emptied by deletions is never on.
  */
-export function findMatchingAuthorNotePresetSet(
-  sets: readonly AuthorNotePresetSet[],
+export function isAuthorNotePresetSetActive(
+  set: AuthorNotePresetSet,
   activeIds: readonly string[],
   libraryIds: readonly string[],
-): AuthorNotePresetSet | null {
+): boolean {
   const library = new Set(libraryIds);
-  const active = new Set(activeIds.filter((id) => library.has(id)));
-  return (
-    sets.find((set) => {
-      const live = new Set(set.presetIds.filter((id) => library.has(id)));
-      if (live.size === 0 && set.presetIds.length > 0) return false;
-      return live.size === active.size && [...live].every((id) => active.has(id));
-    }) ?? null
+  const live = set.presetIds.filter((id) => library.has(id));
+  if (set.presetIds.length === 0) return !activeIds.some((id) => library.has(id));
+  const active = new Set(activeIds);
+  return live.length > 0 && live.every((id) => active.has(id));
+}
+
+/**
+ * The chat's enabled preset ids after clicking a set chip. An off set adds its
+ * presets; an on set removes them, keeping those still held by another on set
+ * that is not a subset of it. A set saved empty clears everything.
+ */
+export function toggleAuthorNotePresetSet(
+  sets: readonly AuthorNotePresetSet[],
+  set: AuthorNotePresetSet,
+  activeIds: readonly string[],
+  libraryIds: readonly string[],
+): string[] {
+  const library = new Set(libraryIds);
+  const current = activeIds.filter((id) => library.has(id));
+  if (set.presetIds.length === 0) return [];
+  const live = set.presetIds.filter((id) => library.has(id));
+  if (!isAuthorNotePresetSetActive(set, current, libraryIds)) {
+    return [...current, ...live.filter((id) => !current.includes(id))];
+  }
+  const own = new Set(live);
+  const held = new Set(
+    sets
+      .filter((other) => other.id !== set.id && isAuthorNotePresetSetActive(other, current, libraryIds))
+      .map((other) => other.presetIds.filter((id) => library.has(id)))
+      .filter((otherLive) => otherLive.some((id) => !own.has(id)))
+      .flat(),
   );
+  return current.filter((id) => !own.has(id) || held.has(id));
 }
 
 const authorNotePresetShape = z.object({

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import type { AuthorNotePreset, AuthorNotePresetSet } from "../../packages/shared/dist/index.js";
 import {
   authorNotePresetSetListSchema,
-  findMatchingAuthorNotePresetSet,
+  isAuthorNotePresetSetActive,
+  toggleAuthorNotePresetSet,
   normalizeAuthorNoteDepth,
   normalizeAuthorNoteRole,
 } from "../../packages/shared/dist/index.js";
@@ -271,26 +272,47 @@ for (const entry of combined) {
 }
 assert.equal(contextText!.split("\n\n").length, combined.length);
 
-// ── Preset sets: which chip the panel highlights ──
+// ── Preset sets: which chips are on, and what a chip click does ──
 const set = (id: string, presetIds: string[]): AuthorNotePresetSet => ({ id, name: `set-${id}`, presetIds });
-const live = ["a", "b", "c"];
-const matchId = (sets: AuthorNotePresetSet[], active: string[]) =>
-  findMatchingAuthorNotePresetSet(sets, active, live)?.id ?? null;
+const live = ["a", "b", "c", "d"];
+const isOn = (s: AuthorNotePresetSet, active: string[]) => isAuthorNotePresetSetActive(s, active, live);
 
-// Membership, not order.
-assert.equal(matchId([set("x", ["a", "b"])], ["b", "a"]), "x");
-// Subset and superset are not matches.
-assert.equal(matchId([set("x", ["a", "b"])], ["a"]), null);
-assert.equal(matchId([set("x", ["a"])], ["a", "b"]), null);
-// Deleted ids are ignored on both sides, so applying a set with one still matches it.
-assert.equal(matchId([set("x", ["a", "gone"])], ["a"]), "x");
-assert.equal(matchId([set("x", ["a"])], ["a", "gone"]), "x");
-// Saved empty = "all off"; emptied by deletions = matches nothing.
-assert.equal(matchId([set("off", [])], []), "off");
-assert.equal(matchId([set("off", [])], ["gone"]), "off");
-assert.equal(matchId([set("emptied", ["gone"])], []), null);
-// Identical sets: first in list order wins.
-assert.equal(matchId([set("first", ["c"]), set("second", ["c"])], ["c"]), "first");
+// All of its presets enabled, in any order, alongside anything else.
+assert.equal(isOn(set("x", ["a", "b"]), ["b", "a"]), true);
+assert.equal(isOn(set("x", ["a"]), ["a", "b"]), true);
+assert.equal(isOn(set("x", ["a", "b"]), ["a"]), false);
+// Deleted ids are ignored on both sides.
+assert.equal(isOn(set("x", ["a", "gone"]), ["a"]), true);
+assert.equal(isOn(set("x", ["a"]), ["a", "gone"]), true);
+// Saved empty = "all off"; emptied by deletions = never on.
+assert.equal(isOn(set("off", []), []), true);
+assert.equal(isOn(set("off", []), ["gone"]), true);
+assert.equal(isOn(set("off", []), ["a"]), false);
+assert.equal(isOn(set("emptied", ["gone"]), []), false);
+
+const one = set("1", ["a", "b"]);
+const two = set("2", ["b", "c"]);
+const pair = [one, two];
+const click = (sets: AuthorNotePresetSet[], s: AuthorNotePresetSet, active: string[]) =>
+  toggleAuthorNotePresetSet(sets, s, active, live);
+
+// Clicking adds; nothing already on is turned off.
+assert.deepEqual(click(pair, one, ["d"]), ["d", "a", "b"]);
+assert.deepEqual(click(pair, two, ["a", "b"]), ["a", "b", "c"]);
+// Clicking an on set again keeps what another on set still holds.
+assert.deepEqual(click(pair, two, ["a", "b", "c"]), ["a", "b"]);
+assert.deepEqual(click(pair, one, ["a", "b", "c", "d"]), ["b", "c", "d"]);
+// An off set holds nothing.
+assert.deepEqual(click(pair, two, ["b", "c"]), []);
+// A subset of the clicked set does not hold its presets.
+const inner = set("inner", ["a"]);
+assert.deepEqual(click([one, inner], one, ["a", "b"]), []);
+assert.deepEqual(click([set("first", ["c"]), set("second", ["c"])], set("first", ["c"]), ["c"]), []);
+// Deleted ids are dropped from the result.
+assert.deepEqual(click(pair, set("x", ["a", "gone"]), ["gone"]), ["a"]);
+// Saved empty clears; emptied by deletions changes nothing but stale ids.
+assert.deepEqual(click(pair, set("off", []), ["a", "c"]), []);
+assert.deepEqual(click(pair, set("emptied", ["gone"]), ["a"]), ["a"]);
 
 // ── Set list validation: what PUT /author-note-presets/sets accepts ──
 assert.deepEqual(authorNotePresetSetListSchema.parse([{ id: "s1", name: "  Combat ", presetIds: ["a", "b", "a"] }]), [

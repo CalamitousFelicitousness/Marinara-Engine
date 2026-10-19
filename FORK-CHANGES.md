@@ -567,13 +567,16 @@ the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered b
 Named preset sets switch several presets at once. A set is a name plus a list of preset ids,
 stored as one JSON array in `app_settings` under `author-note-preset-sets` and served by
 `GET`/`PUT /api/author-note-presets/sets`; the `PUT` replaces the whole list. The panel shows
-sets as a chip row above the preset list. Clicking a chip replaces the chat's
-`activeAuthorNotePresetIds` with the set's, `+` saves the presets enabled now as a new set, and
-the `⋯` toggle turns the next chip click into update, rename, or delete. Sets are snapshots: a
-chat never records which set it came from, so editing a set changes no chat. The chip whose
-presets equal the chat's enabled ones is highlighted by `findMatchingAuthorNotePresetSet` in
-`packages/shared`. Ids of deleted presets are ignored on both sides; a set emptied by deletions
-matches nothing, while one saved empty matches a chat with nothing on.
+sets as a chip row above the preset list. A set is on when all its presets are enabled, and its
+chip is highlighted. Clicking an off chip adds the set's presets to the chat's
+`activeAuthorNotePresetIds`; clicking an on chip removes them, except presets another on set
+still holds. An on set that is a subset of the clicked one holds nothing, since nothing tells
+whether it was turned on itself. `+` saves the presets enabled now as a new set, and the `⋯`
+toggle turns the next chip click into update, rename, or delete. Sets are snapshots: a chat never
+records which set it came from, so editing a set changes no chat. Both rules are
+`isAuthorNotePresetSetActive` and `toggleAuthorNotePresetSet` in `packages/shared`. Ids of
+deleted presets are ignored on both sides; a set emptied by deletions is never on, while one
+saved empty is on when nothing is enabled and clears the chat when clicked.
 
 Sets live in `app_settings` because a new table would need registering in both
 `FILE_BACKED_TABLES` and the launcher's `SHARDED_TABLES` copy. Chat settings profiles still carry

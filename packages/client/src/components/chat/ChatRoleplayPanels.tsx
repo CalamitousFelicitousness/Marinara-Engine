@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import {
   AUTHOR_NOTE_ROLES,
-  findMatchingAuthorNotePresetSet,
+  isAuthorNotePresetSetActive,
+  toggleAuthorNotePresetSet,
   normalizeAuthorNoteRole,
   type AuthorNotePresetSet,
   type AuthorNoteRole,
@@ -524,7 +525,6 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
   const activeIdSet = new Set(activeIds);
   const libraryIds = presets.map((preset) => preset.id);
   const libraryIdSet = new Set(libraryIds);
-  const matchingSet = findMatchingAuthorNotePresetSet(presetSets, activeIds, libraryIds);
 
   const patchDraft = (patch: Partial<AuthorNoteDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -676,8 +676,11 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
 
   // Ids of deleted presets are dropped on every write, so neither the chat
   // nor a set picks up new stale ids from here.
-  const applySet = (set: AuthorNotePresetSet) => {
-    updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: set.presetIds.filter((id) => libraryIdSet.has(id)) });
+  const toggleSet = (set: AuthorNotePresetSet) => {
+    updateMeta.mutate({
+      id: chatId,
+      activeAuthorNotePresetIds: toggleAuthorNotePresetSet(presetSets, set, activeIds, libraryIds),
+    });
   };
 
   const writeSets = (next: AuthorNotePresetSet[]) => {
@@ -848,16 +851,16 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
               {localizeUi("ui.chat.authornotespanel.sets")}
             </span>
             {presetSets.map((set) => {
-              const isMatch = matchingSet?.id === set.id;
+              const isMatch = isAuthorNotePresetSetActive(set, activeIds, libraryIds);
               const label = localizeUi(
-                managingSets ? "ui.chat.authornotespanel.manageSet" : "ui.chat.authornotespanel.applySet",
+                managingSets ? "ui.chat.authornotespanel.manageSet" : "ui.chat.authornotespanel.toggleSet",
                 { name: set.name },
               );
               return (
                 <button
                   key={set.id}
                   type="button"
-                  onClick={() => (managingSets ? void handleManageSet(set) : applySet(set))}
+                  onClick={() => (managingSets ? void handleManageSet(set) : toggleSet(set))}
                   aria-pressed={managingSets ? undefined : isMatch}
                   aria-label={label}
                   title={label}

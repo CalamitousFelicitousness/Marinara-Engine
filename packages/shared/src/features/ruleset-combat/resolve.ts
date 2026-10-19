@@ -586,7 +586,9 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
           rulesetCombatConditions(ctx.definition, source).some((id) => rule.conditions!.includes(id))) ||
         (rule.components &&
           theirs.some((one) => one.forbids?.components?.some((component) => rule.components!.includes(component)))) ||
-        (rule.holderLacks && !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, rule.holderLacks));
+        (rule.holderLacks && !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, rule.holderLacks)) ||
+        // Or its source holding none of these (1.564): a swarm swayed only while its piper plays.
+        (rule.lacks && !rulesetCombatConditions(ctx.definition, source).some((id) => rule.lacks!.includes(id)));
       if (ends) removeCondition(ctx, holder, entry.condition, "expired");
     }
   }

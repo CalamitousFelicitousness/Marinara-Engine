@@ -3623,6 +3623,8 @@ function mechanicsAction(
   // Made again while concentrated on (1.310): Vampiric Touch.
   if ("repeats" in mechanics && mechanics.repeats) action.repeats = { ...mechanics.repeats };
   if (mechanics.usableIn) action.usableIn = { light: [...mechanics.usableIn.light] };
+  // Only while its user holds one of these (1.564): the Pipes of the Sewers while played.
+  if (mechanics.userHolds) action.userHolds = [...mechanics.userHolds];
   // Only beside a prop (1.332): a verse sung at the Year-Wheel.
   if (mechanics.usableNear && perCell !== undefined)
     action.usableNear = {

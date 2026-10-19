@@ -6380,6 +6380,9 @@ const catalogMechanicsObject = z
       .object({ prop: z.string().trim().min(1).max(60), within: z.number().finite().gt(0).max(10000) })
       .strict()
       .optional(),
+    /** Used only while its user holds one of these conditions (Capability API 1.564): the Pipes of the
+     *  Sewers' call and sway, offered only while their user is playing them, `["piping"]`. */
+    userHolds: uniqueIds(8).optional(),
     /** Held on a sheet's list, surprise is shaken off by using this entry first on the surprised
      *  turn (Capability API 1.237), when nothing keeps its holder from acting: 5e's Feral Instinct
      *  with Rage. The entry is otherwise passive. */
@@ -12545,11 +12548,15 @@ const combatConditionSchema = z
          *  move, a reaction or ending their turn: 5e's Arcane Hand's Interposing Hand, "until you give
          *  the hand a different command". What that action puts on goes on afresh. */
         acts: z.literal(true).optional(),
+        /** Or once whoever applied it holds none of these conditions (Capability API 1.564): a swarm
+         *  swayed by the Pipes of the Sewers, only while its piper still plays, `["piping"]`. */
+        lacks: uniqueIds(8).optional(),
       })
       .strict()
-      .refine((rule) => rule.effects || rule.conditions || rule.components || rule.holderLacks || rule.acts, {
-        message: 'Say what ends it: "effects", "conditions", "components", "holderLacks" or "acts"',
-      })
+      .refine(
+        (rule) => rule.effects || rule.conditions || rule.components || rule.holderLacks || rule.acts || rule.lacks,
+        { message: 'Say what ends it: "effects", "conditions", "components", "holderLacks", "acts" or "lacks"' },
+      )
       .optional(),
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
      *  it or their side. Source-side harm finishes resolving before the condition ends. Or
@@ -17239,6 +17246,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!knownConditions.has(id))
             issue([...path, "endsWhenSource", "conditions", at], `Unknown condition "${id}"`);
         });
+        sourceRule.lacks?.forEach((id, at) => {
+          if (!knownConditions.has(id)) issue([...path, "endsWhenSource", "lacks", at], `Unknown condition "${id}"`);
+        });
         sourceRule.components?.forEach((id, at) => {
           if (!knownComponents.has(id))
             issue([...path, "endsWhenSource", "components", at], `Unknown component "${id}"`);
@@ -19960,6 +19970,10 @@ function useIssues(
   const types = declared ? new Set(declared.map((type) => type.trim().toLowerCase())) : null;
   const value = itemValueChecker(definition, add);
   if (use.save && !saves.has(use.save.save)) add([...at, "save", "save"], `Unknown save "${use.save.save}"`);
+  // Only while its user holds one of these (1.564): conditions the sheet has.
+  use.userHolds?.forEach((id, index) => {
+    if (!conditions.has(id)) add([...at, "userHolds", index], `Unknown condition "${id}"`);
+  });
   if (use.sheetDifficulty) {
     const names = rulesetSheetNames(definition.sheet, definition.items);
     for (const issue of rulesetValueRefIssues(use.sheetDifficulty, names, names.derived, true)) {
@@ -21779,6 +21793,9 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.oncePerTarget && !definition.rests.some((one) => one.id === mechanics.oncePerTarget!.until)) {
       add([index, "mechanics", "oncePerTarget", "until"], `Unknown rest "${mechanics.oncePerTarget.until}"`);
     }
+    mechanics?.userHolds?.forEach((id, at) => {
+      if (!liveConditions.has(id)) add([index, "mechanics", "userHolds", at], `Unknown condition "${id}"`);
+    });
     if (mechanics?.endsCondition && !liveConditions.has(mechanics.endsCondition)) {
       add([index, "mechanics", "endsCondition"], `Unknown condition "${mechanics.endsCondition}"`);
     }

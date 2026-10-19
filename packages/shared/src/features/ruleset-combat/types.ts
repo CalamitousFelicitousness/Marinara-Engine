@@ -912,6 +912,8 @@ export interface RulesetCombatAction {
   endsCondition?: string;
   /** Used only while its user stands in one of these lights (1.303). */
   usableIn?: { light: RulesetBoardLight[] };
+  /** Used only while its user holds one of these conditions (1.564). */
+  userHolds?: string[];
   /** Only within `within` cells of a standing prop named `prop` by id or label (1.332). */
   usableNear?: { prop: string; within: number };
   /** Whoever it lands on leaves the fight (1.236): for good, or only while they hold `while`, put on

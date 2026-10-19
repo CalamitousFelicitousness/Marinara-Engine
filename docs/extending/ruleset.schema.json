@@ -46887,6 +46887,16 @@
                       ],
                       "additionalProperties": false
                     },
+                    "userHolds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
+                    },
                     "ignoresSurpriseWith": {
                       "type": "string",
                       "maxLength": 121,
@@ -107540,6 +107550,16 @@
                           ],
                           "additionalProperties": false
                         },
+                        "userHolds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "ignoresSurpriseWith": {
                           "type": "string",
                           "maxLength": 121,
@@ -127740,6 +127760,16 @@
                                   "within"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "userHolds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
                               },
                               "ignoresSurpriseWith": {
                                 "type": "string",
@@ -147947,6 +147977,16 @@
                                   "within"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "userHolds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
                               },
                               "ignoresSurpriseWith": {
                                 "type": "string",
@@ -176234,6 +176274,17 @@
                   "acts": {
                     "type": "boolean",
                     "const": true
+                  },
+                  "lacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "uniqueItems": true
                   },
                   "$comment": {}
                 },

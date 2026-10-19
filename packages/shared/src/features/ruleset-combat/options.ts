@@ -2532,6 +2532,11 @@ export function rulesetActionAvailable(
     if (!definition || !state || !at) return false;
     if (!action.usableIn.light.includes(rulesetLightAt(definition, state, at))) return false;
   }
+  // Only while its user holds one of these (1.564): the Pipes of the Sewers while played.
+  if (action.userHolds && definition) {
+    const held = rulesetCombatConditions(definition, actor);
+    if (!action.userHolds.some((id) => held.includes(id))) return false;
+  }
   // Nothing but a wall's layer to break (1.438): only while such a wall stands within reach.
   if (action.endsLayers?.only && !(state && rulesetDispelTargets(state, actor, action).length > 0)) return false;
   // Only beside a prop (1.332): Fennick's Hymnal at the Year-Wheel.

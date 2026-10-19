@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** A use offered only while its user holds a condition, and a condition kept only while its source
+ *  holds one (1.564): the Pipes of the Sewers. */
+function carriesUserHolds564(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUserHolds564(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.userHolds !== undefined || plainRecord(record.endsWhenSource)?.lacks !== undefined) return true;
+  return featureValues(record).some((one) => carriesUserHolds564(one, depth + 1));
+}
+
 function carriesRemainingOf563(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesRemainingOf563(one, depth + 1));
@@ -7707,6 +7718,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A use offered only while its user holds a condition, 1.564.
+  if (
+    !declaresApi(564) &&
+    (carriesUserHolds564(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUserHolds564(document)))
+  ) {
+    return "A ruleset with a use offered only while its user holds a condition (userHolds), or a condition its source keeps only while holding one (endsWhenSource.lacks), requires schemaVersion 2 and capabilityApi 1.564 or newer";
+  }
   // A condition put on for what was left of another, 1.563.
   if (
     !declaresApi(563) &&

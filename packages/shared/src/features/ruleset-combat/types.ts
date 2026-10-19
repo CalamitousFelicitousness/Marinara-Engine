@@ -4380,8 +4380,10 @@ export interface RulesetCombatZone {
   foundBy?: string[];
   /** Who made its inside save and ignores what it does inside until they leave (1.407). */
   shrugged?: string[];
-  /** Whom its inside works on, chosen as it was cast (1.413). */
+  /** Whom its inside works on, chosen as it was cast (1.413), or by a tag (1.613). */
   insideIs?: RulesetTargetIs;
+  /** Creature types left out of what it keeps out, chosen as it was cast (1.613): Hallow's. */
+  keptOutSpares?: string[];
   /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
   trippedBy?: string;
   /** The id of its caster's own action stored in it (1.401), cast as it goes off. */

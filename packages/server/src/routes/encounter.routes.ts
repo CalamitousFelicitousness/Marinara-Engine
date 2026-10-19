@@ -321,6 +321,8 @@ export const encounterBlueprintSchema = z
                   kind: z.string().min(1).max(80).optional().catch(undefined),
                   mode: z.string().min(1).max(200).optional().catch(undefined),
                   into: z.string().min(1).max(200).optional().catch(undefined),
+                  spares: z.array(z.string().min(1).max(80)).max(8).optional().catch(undefined),
+                  tag: z.string().min(1).max(80).optional().catch(undefined),
                 })
                 .strip(),
             )
@@ -362,6 +364,8 @@ export const encounterBlueprintSchema = z
                   kind: z.string().min(1).max(80).optional().catch(undefined),
                   mode: z.string().min(1).max(200).optional().catch(undefined),
                   into: z.string().min(1).max(200).optional().catch(undefined),
+                  spares: z.array(z.string().min(1).max(80)).max(8).optional().catch(undefined),
+                  tag: z.string().min(1).max(80).optional().catch(undefined),
                 })
                 .strip(),
             )

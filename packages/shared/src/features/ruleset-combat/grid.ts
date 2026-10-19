@@ -1442,6 +1442,19 @@ function provokedBy(
 }
 
 /** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
+/** Whom a zone keeps out (1.399): its rule's kinds, less those its caster left out as it was cast
+ *  (1.613), Hallow's "You can exclude one or more of those types of creatures". */
+export function rulesetKeptOutIs(
+  zone: RulesetCombatZone,
+  rule: NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]>,
+): NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]>["is"] {
+  if (!zone.keptOutSpares?.length) return rule.is;
+  return {
+    ...rule.is,
+    except: { ...rule.is.except, types: [...new Set([...(rule.is.except?.types ?? []), ...zone.keptOutSpares])] },
+  };
+}
+
 /** The zones that keep this combatant out, or in (1.399), each with its cells: Magic Circle and
  *  Hallow against the kinds they name. */
 export function rulesetKeptBy(
@@ -1453,7 +1466,7 @@ export function rulesetKeptBy(
   return state.combatants.flatMap((caster) =>
     (caster.zones ?? []).flatMap((zone) => {
       const rule = caster.actions.find((entry) => entry.id === zone.actionId)?.zone?.keepsOut;
-      if (!rule || !rulesetTargetIs(definition, combatant, rule.is)) return [];
+      if (!rule || !rulesetTargetIs(definition, combatant, rulesetKeptOutIs(zone, rule))) return [];
       return [{ cells: new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`)), rule }];
     }),
   );

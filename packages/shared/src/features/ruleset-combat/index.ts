@@ -224,6 +224,8 @@ export {
   rulesetSpanOf,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
+  rulesetKeptBy,
+  rulesetKeptOutIs,
 } from "./grid.js";
 export {
   planRulesetCombatCost,

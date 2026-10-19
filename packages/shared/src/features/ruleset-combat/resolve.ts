@@ -199,6 +199,7 @@ import {
   rulesetSpanOf,
   rulesetWalkingDistances,
   rulesetWardedFrom,
+  rulesetKeptOutIs,
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
@@ -10644,6 +10645,12 @@ export interface RulesetStandingZone {
   /** Cast into something that stores it (1.471), by name: an item of theirs, or of the one `on`
    *  names first, or that creature itself. Paid for off their sheet at its own level. */
   into?: string;
+  /** Creature types, by id or name, left out of what a zone keeps out (1.613): Hallow's excluded
+   *  kinds. Each must be one it keeps out. */
+  spares?: string[];
+  /** Whom a zone's inside works on, by a tag they carry (1.613): Hallow's "creatures that follow a
+   *  specific deity or leader". */
+  tag?: string;
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -10855,6 +10862,23 @@ export function rulesetStandingAtStart(
     if (caster.flags.freshZones) {
       caster.flags.freshZones = caster.flags.freshZones.filter((id) => id !== action.id);
       if (caster.flags.freshZones.length === 0) delete caster.flags.freshZones;
+    }
+    // What its caster left out of what it keeps out, and whom its inside works on by a tag (1.613).
+    const placed = [...(caster.zones ?? [])].reverse().find((zone) => zone.actionId === action.id);
+    if (placed && one.spares?.length) {
+      const keeps = action.zone?.keepsOut?.is.types ?? [];
+      const kinds = definition.combat?.creatureTypes?.types ?? [];
+      const spared = one.spares.flatMap((name) => {
+        const kind = kinds.find((entry) => entry.id === name || lower(entry.label) === lower(name));
+        if (kind && keeps.includes(kind.id)) return [kind.id];
+        skipped.push(`${caster.name}'s ${action.label} does not keep "${name}" out, so it cannot leave it out.`);
+        return [];
+      });
+      if (spared.length) placed.keptOutSpares = spared;
+    }
+    if (placed && one.tag) {
+      if (action.zone?.inside) placed.insideIs = { tags: [one.tag] };
+      else skipped.push(`${caster.name}'s ${action.label} does nothing inside it, so "${one.tag}" changes nothing.`);
     }
     if (action.zone?.hidden) ctx.events.length = mark;
   }
@@ -11270,7 +11294,7 @@ function sweptKept(
       (one) =>
         one.id !== around &&
         rulesetCombatStanding(one) &&
-        rulesetTargetIs(ctx.definition, one, rule.is) &&
+        rulesetTargetIs(ctx.definition, one, rulesetKeptOutIs(zone, rule)) &&
         rulesetZoneHoldsOne(cells, one),
     )
     .map((one) => one.id);
@@ -11323,7 +11347,7 @@ function zonesEntered(
       for (const entry of [...mover.tracked]) {
         if (!kept.frees.includes(entry.condition) || !entry.source) continue;
         const source = rulesetCombatant(ctx.state, entry.source);
-        if (source && rulesetTargetIs(ctx.definition, source, kept.is)) {
+        if (source && rulesetTargetIs(ctx.definition, source, rulesetKeptOutIs(zone, kept))) {
           removeCondition(ctx, mover, entry.condition, "freed");
         }
       }

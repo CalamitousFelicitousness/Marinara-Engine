@@ -20,6 +20,9 @@ import "./styles/globals.css";
 // React from the global scope, so expose the host runtime before any package
 // client is imported.
 Object.assign(globalThis, { React, ReactDOM });
+// One UI settings store, owned by the Engine: package clients read and change this live store instead of bundling
+// their own copy (docs/development/optional-agent-packages.md, "Host UI settings store").
+Object.assign(globalThis, { __MARINARA_HOST_UI_STORE__: { version: 1, store: useUIStore } });
 
 registerClientRuntimeDiagnostics(formatRuntimeBuild(APP_VERSION, __MARINARA_BUILD_COMMIT__));
 // Prevent Chrome/Edge from sleeping this tab

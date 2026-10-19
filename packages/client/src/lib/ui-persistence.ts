@@ -1,28 +1,28 @@
 export const UI_PERSISTENCE = { name: "marinara-engine-ui", version: 103 } as const;
 
-// ponytail: older catalog packages bundle their own copy of the UI store (v74) and rewrite this key with only the
-// settings that copy knows. The Engine cannot stop that write, so every save also goes to a host-only copy, and a
-// load takes back from it what an older blob is missing. Ceiling: it repairs only blobs below the current version,
-// keeps every value the older blob still holds, and needs a copy saved at the current version, so the first load
-// after an Engine upgrade cannot repair yet. Remove it once no supported package bundles the UI store.
+// ponytail: package clients built before the host UI store bridge (main.tsx) bundle their own copy of this store at
+// v74 and save over this key with only the settings that copy knows. The Engine cannot stop that write, so each save
+// also goes to a host-only copy, and a load ignores a blob older than this version while that copy is current.
+// Ceiling: settings lost before this Engine ran cannot come back, and leaving an older Engine (before this copy
+// existed) for this one brings back the settings saved here before, not the ones changed there. Remove it once no
+// supported package bundles the UI store.
 export const UI_PERSISTENCE_HOST_COPY = `${UI_PERSISTENCE.name}:host`;
 
-type StoredUIState = { state: Record<string, unknown>; version: number };
-
-function parseStoredUIState(raw: string | null): StoredUIState | null {
+function storedVersion(raw: string | null): number | null {
   try {
-    const parsed = raw ? (JSON.parse(raw) as Partial<StoredUIState> | null) : null;
-    if (!parsed?.state || typeof parsed.state !== "object" || typeof parsed.version !== "number") return null;
-    return parsed as StoredUIState;
+    const parsed = raw ? (JSON.parse(raw) as { state?: unknown; version?: unknown } | null) : null;
+    return parsed?.state && typeof parsed.state === "object" && typeof parsed.version === "number"
+      ? parsed.version
+      : null;
   } catch {
     return null;
   }
 }
 
-/** The host copy's settings that an older stored blob lacks, or null when the blob needs no repair. */
-export function readHostCopyRepair(stored: string | null, hostCopy: string | null): Record<string, unknown> | null {
-  const blob = parseStoredUIState(stored);
-  const copy = parseStoredUIState(hostCopy);
-  if (!blob || !copy || blob.version >= UI_PERSISTENCE.version || copy.version !== UI_PERSISTENCE.version) return null;
-  return Object.fromEntries(Object.entries(copy.state).filter(([key]) => !(key in blob.state)));
+/** The saved UI settings to load: the host copy when an older blob has replaced the Engine's own save. */
+export function readUIPersistence(stored: string | null, hostCopy: string | null): string | null {
+  const version = storedVersion(stored);
+  return version !== null && version < UI_PERSISTENCE.version && storedVersion(hostCopy) === UI_PERSISTENCE.version
+    ? hostCopy
+    : stored;
 }

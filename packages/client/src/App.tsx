@@ -42,6 +42,7 @@ import { api, requestTimeoutSignal } from "./lib/api-client";
 import { forceRefreshSpa, reloadBrowser } from "./lib/browser-runtime";
 import { recordClientError } from "./lib/client-runtime-diagnostics";
 import { showAppUpdatePrompt } from "./lib/app-update-prompt";
+import { UI_PERSISTENCE_HOST_COPY } from "./lib/ui-persistence";
 import { formatRuntimeBuild, getServerRuntimeBuild, isRuntimeBuildCurrent } from "./lib/runtime-build";
 import {
   getCssColorFallback,
@@ -168,6 +169,7 @@ export class AppRecoveryBoundary extends Component<{ children: ReactNode }, { er
   private resetLocalUiState = () => {
     try {
       window.localStorage.removeItem("marinara-engine-ui");
+      window.localStorage.removeItem(UI_PERSISTENCE_HOST_COPY);
       window.localStorage.removeItem("marinara-active-chat-id");
       window.localStorage.removeItem("marinara-input-drafts");
       window.sessionStorage.removeItem("marinara-input-drafts");

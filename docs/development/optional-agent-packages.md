@@ -51,6 +51,26 @@ lore-entry selection, JSON-ish response parsing, and resolved language-model cal
 Connection credentials, provider implementations, database handles, and storage
 objects remain private to Engine.
 
+### Host UI settings store
+
+The Engine owns the one UI settings store, `useUIStore` in `packages/client/src/stores/ui.store.ts`, and it is the
+only code that saves the browser's `marinara-engine-ui` key. Packages never bundle a copy of that module. Before any
+package client loads, the client entry sets this host bridge:
+
+```ts
+globalThis.__MARINARA_HOST_UI_STORE__ = { version: 1, store: useUIStore };
+```
+
+`store` is the live zustand store, so `store.getState()`, `store.setState()` and `store.subscribe()` read and change
+the same settings the Engine shows and saves. `version` changes only when the bridge's shape does. A package build
+that compiles Engine hooks importing `ui.store.ts` aliases that module to a small adapter whose `useUIStore`,
+`getState`, `setState` and `subscribe` delegate to the bridge's store. On an Engine without the bridge, the adapter is
+a store that never persists: it is seeded read-only from `marinara-engine-ui` and never writes or removes that key.
+
+Package clients built before the bridge bundle their own copy of the store at version 74 and save over the key with
+only the settings that copy knows. The Engine also saves each write to a host-only `marinara-engine-ui:host` copy, and
+when it loads, it ignores a stored blob older than its own version while that copy is at the current version.
+
 ### Capability API 1.7 chat branches
 
 Capability API 1.7 adds normalized branch metadata to `CapabilityChatRecord`:

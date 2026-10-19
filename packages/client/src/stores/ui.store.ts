@@ -31,7 +31,7 @@ import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-t
 import { deferEditorLeave } from "../lib/editor-leave";
 import { OMNIBAR_ASIDE_DELAY_MS, readLegacyMariConnectionId } from "../lib/omnibar-aside-text";
 import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
-import { readHostCopyRepair, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../lib/ui-persistence";
+import { readUIPersistence, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../lib/ui-persistence";
 import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
@@ -2043,9 +2043,6 @@ export function pickPersistedUIState(state: UIState) {
   };
 }
 
-// Read with the stored blob and applied after migrate, so migrations only ever see the older blob.
-let hostCopyRepair: Record<string, unknown> | null = null;
-
 /** `?seasonalPreview=` on this page load, read once when the store is made. */
 const pageSeasonalPreviewId = readSeasonalPreview(globalThis.location?.search ?? "");
 
@@ -3489,7 +3486,8 @@ export const useUIStore = create<UIState>()(
             try {
               localStorage.setItem(UI_PERSISTENCE_HOST_COPY, pendingValue);
             } catch {
-              // The copy only repairs foreign writes; a full quota must not undo the real save.
+              // A full quota must not undo the real save, and a stale copy must never be loaded over it.
+              localStorage.removeItem(UI_PERSISTENCE_HOST_COPY);
             }
             pendingName = null;
             pendingValue = null;
@@ -3511,8 +3509,16 @@ export const useUIStore = create<UIState>()(
 
         return {
           getItem: (name: string) => {
-            const value = localStorage.getItem(name);
-            hostCopyRepair = readHostCopyRepair(value, localStorage.getItem(UI_PERSISTENCE_HOST_COPY));
+            const stored = localStorage.getItem(name);
+            const value = readUIPersistence(stored, localStorage.getItem(UI_PERSISTENCE_HOST_COPY));
+            if (value !== stored && value !== null) {
+              try {
+                // Put the Engine's own save back, so the older blob's leftovers leave the key as well.
+                localStorage.setItem(name, value);
+              } catch {
+                // Loading the copy is what matters; a failed write here must not fail hydration.
+              }
+            }
             return value;
           },
           setItem: (name: string, value: string) => {
@@ -4131,14 +4137,7 @@ export const useUIStore = create<UIState>()(
       },
       merge: (persistedState: unknown, currentState) => {
         const persisted =
-          persistedState && typeof persistedState === "object"
-            ? { ...(persistedState as Record<string, unknown>) }
-            : {};
-        // Settings still at their default stay with the migrations, which may derive them from other settings.
-        for (const [key, value] of Object.entries(hostCopyRepair ?? {})) {
-          if (JSON.stringify(value) !== JSON.stringify(currentState[key as keyof UIState])) persisted[key] = value;
-        }
-        hostCopyRepair = null;
+          persistedState && typeof persistedState === "object" ? (persistedState as Record<string, unknown>) : {};
         return {
           ...currentState,
           ...persisted,

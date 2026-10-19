@@ -93,6 +93,7 @@ const DROPPED_BY_V74_COPY = [
 // Browser-only settings the v74 copy drops; the server never holds them, so nothing else can bring them back.
 const LOCAL_SETTINGS = { roleplayReducedPaintEffects: true, activeImpersonatePromptTemplateId: "e2e-template" };
 const LEGACY_MARI_CONNECTION_KEY = "marinara:home-professor-mari-connection-id";
+const PACKAGE_ID = "e2e-ui-store-package";
 
 async function prepare(page: Page) {
   // Keep the proof local: a server copy of the synced settings must not refill what the browser lost.
@@ -100,21 +101,70 @@ async function prepare(page: Page) {
   await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), APP_VERSION);
 }
 
-/** Arms a rewrite of the key, made before the app loads, the way the bundled v74 store leaves it. */
-async function armForeignWrite(page: Page) {
-  await page.addInitScript(
-    ({ name, dropped }) => {
-      if (sessionStorage.getItem("e2e:foreign-write") !== "armed") return;
-      sessionStorage.setItem("e2e:foreign-write", "done");
-      const state = { ...JSON.parse(localStorage.getItem(name)!).state };
-      for (const key of dropped) delete state[key];
-      // The v74 copy also writes its own retired settings.
-      Object.assign(state, { installedExtensions: [], characterPanelSearch: "" });
-      localStorage.setItem(name, JSON.stringify({ state, version: 74 }));
-    },
-    { name: UI_PERSISTENCE.name, dropped: DROPPED_BY_V74_COPY },
+/** Installs one package whose client module is `body`, and records the stored blob's version as each page starts. */
+async function installPackageClient(page: Page, body: string) {
+  await page.addInitScript((name) => {
+    const versions = JSON.parse(sessionStorage.getItem("e2e:stored-versions") ?? "[]") as unknown[];
+    versions.push(JSON.parse(localStorage.getItem(name) ?? "null")?.version ?? null);
+    sessionStorage.setItem("e2e:stored-versions", JSON.stringify(versions));
+  }, UI_PERSISTENCE.name);
+  const manifest = {
+    schemaVersion: 1,
+    id: PACKAGE_ID,
+    name: "UI Store Fixture",
+    version: "1.0.0",
+    description: "UI store fixture.",
+    engine: { min: "2.3.0", maxExclusive: "4.0.0" },
+    kind: ["agent"],
+    entrypoints: { agents: "agents.json", client: "client.js" },
+    files: [{ path: "client.js", sha256: "0".repeat(64), bytes: 1 }],
+    permissions: ["ui"],
+    restartRequired: false,
+  };
+  await page.route("**/api/capability-packages/installed", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: PACKAGE_ID,
+          version: manifest.version,
+          manifest,
+          installedAt: "2026-10-01T00:00:00.000Z",
+          status: "active",
+          error: null,
+          readiness: "ready",
+          readinessError: null,
+          legacy: false,
+        },
+      ],
+    }),
   );
-  return () => page.evaluate(() => sessionStorage.setItem("e2e:foreign-write", "armed"));
+  await page.route(`**/api/capability-packages/${PACKAGE_ID}/client?*`, (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `${body}
+customElements.get("marinara-capability-${PACKAGE_ID}") ||
+  customElements.define("marinara-capability-${PACKAGE_ID}", class extends HTMLElement {});
+globalThis.__e2ePackageLoads = (globalThis.__e2ePackageLoads ?? 0) + 1;`,
+    }),
+  );
+}
+
+/**
+ * A client built before the host bridge: its bundled v74 store reads the key once, keeps only the settings it knows
+ * and saves them at v74 (again as the page goes away, after the Engine's own last save).
+ */
+function oldPackageClient() {
+  return `
+const name = ${JSON.stringify(UI_PERSISTENCE.name)};
+const stored = JSON.parse(localStorage.getItem(name) ?? "null");
+if (stored && stored.version !== 74) {
+  const state = { ...stored.state };
+  for (const key of ${JSON.stringify(DROPPED_BY_V74_COPY)}) delete state[key];
+  Object.assign(state, { installedExtensions: [], characterPanelSearch: "" });
+  const save = () => localStorage.setItem(name, JSON.stringify({ state, version: 74 }));
+  save();
+  addEventListener("pagehide", save);
+}`;
 }
 
 function readPersisted(page: Page) {
@@ -131,6 +181,16 @@ function readStored(page: Page) {
   } | null>;
 }
 
+function storedVersionsAtStart(page: Page) {
+  return page.evaluate(() => JSON.parse(sessionStorage.getItem("e2e:stored-versions") ?? "[]") as unknown[]);
+}
+
+async function waitForPackageClient(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => (globalThis as { __e2ePackageLoads?: number }).__e2ePackageLoads))
+    .toBe(1);
+}
+
 function pick(state: Record<string, unknown>, keys: readonly string[]) {
   return Object.fromEntries(keys.map((key) => [key, state[key]]));
 }
@@ -140,33 +200,67 @@ test.describe("UI settings and an old package's copy of the UI store", () => {
     test.skip(!testInfo.project.name.includes("desktop"), "One browser proves the shared browser-storage path.");
   });
 
-  test("browser-only settings survive the package rewriting the store at v74", async ({ page }) => {
+  test("package clients load after the host UI store bridge and change the live store", async ({ page }) => {
     await prepare(page);
     await seedUIState(page, { hasCompletedOnboarding: true }, "if-missing");
-    const armRewrite = await armForeignWrite(page);
+    await installPackageClient(
+      page,
+      `const bridge = globalThis.__MARINARA_HOST_UI_STORE__;
+globalThis.__e2eBridgeAtImport = bridge ? { version: bridge.version, store: bridge.store } : null;
+bridge?.store.getState().setRoleplayReducedPaintEffects(true);`,
+    );
     await page.goto("/");
+    await waitForPackageClient(page);
+    expect(
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        const seen = (globalThis as { __e2eBridgeAtImport?: { version: number; store: unknown } | null })
+          .__e2eBridgeAtImport;
+        return {
+          version: seen?.version,
+          liveStore: seen?.store === useUIStore,
+          changed: useUIStore.getState().roleplayReducedPaintEffects,
+        };
+      }),
+    ).toEqual({ version: 1, liveStore: true, changed: true });
+    // The package changed the Engine's own settings, so the Engine saves them.
+    await expect.poll(async () => (await readStored(page))?.state.roleplayReducedPaintEffects).toBe(true);
+  });
+
+  test("settings survive an old package client saving its v74 copy over them", async ({ page }) => {
+    await prepare(page);
+    // From a v74 blob, migrations would size the sheet like this background and restore this old Mari connection;
+    // the user's saved sheet size and cleared connection must win instead.
+    await seedUIState(page, { hasCompletedOnboarding: true, imageBackgroundWidth: 1536 }, "if-missing");
+    await page.addInitScript((key) => localStorage.setItem(key, "e2e-legacy-mari"), LEGACY_MARI_CONNECTION_KEY);
+    await installPackageClient(page, oldPackageClient());
+    await page.goto("/");
+    await waitForPackageClient(page);
+    // The package saved its copy when it loaded; the user's changes come after it.
     await page.evaluate(async (settings) => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       const ui = useUIStore.getState();
+      ui.setSidebarWidth(400);
       ui.setRoleplayReducedPaintEffects(settings.roleplayReducedPaintEffects);
       ui.selectImpersonatePromptTemplate({ id: settings.activeImpersonatePromptTemplateId, prompt: "Stay in voice." });
     }, LOCAL_SETTINGS);
-    // The package rewrites what the user really saved, so wait for the debounced save first.
     await expect
       .poll(async () => pick((await readStored(page))?.state ?? {}, Object.keys(LOCAL_SETTINGS)))
       .toEqual(LOCAL_SETTINGS);
-    const saved = pick(await readPersisted(page), DROPPED_BY_V74_COPY);
+    const saved = pick(await readPersisted(page), [...DROPPED_BY_V74_COPY, "sidebarWidth"]);
+    expect(pick(saved, ["imageCharacterSheetWidth", "mariConnectionId", "sidebarWidth"])).toEqual({
+      imageCharacterSheetWidth: 1280,
+      mariConnectionId: null,
+      sidebarWidth: 400,
+    });
 
-    await armRewrite();
-    await page.reload();
-    expect(await page.evaluate(() => sessionStorage.getItem("e2e:foreign-write"))).toBe("done");
-    expect(pick(await readPersisted(page), DROPPED_BY_V74_COPY)).toEqual(saved);
-    await expect.poll(async () => (await readStored(page))?.version).toBe(UI_PERSISTENCE.version);
-
-    // The repaired blob is the one the next load reads.
-    await page.reload();
-    expect(pick(await readPersisted(page), DROPPED_BY_V74_COPY)).toEqual(saved);
-    expect(pick((await readStored(page))!.state, Object.keys(LOCAL_SETTINGS))).toEqual(LOCAL_SETTINGS);
+    for (let reload = 1; reload <= 2; reload += 1) {
+      await page.reload();
+      await waitForPackageClient(page);
+      // The package's v74 copy, made before the user's changes, is what the first reload finds in the key.
+      if (reload === 1) expect(await storedVersionsAtStart(page)).toEqual([UI_PERSISTENCE.version, 74]);
+      expect(pick(await readPersisted(page), Object.keys(saved))).toEqual(saved);
+    }
   });
 
   for (const legacy of [
@@ -216,25 +310,6 @@ test.describe("UI settings and an old package's copy of the UI store", () => {
       await expect.poll(async () => (await readStored(page))?.version).toBe(UI_PERSISTENCE.version);
     });
   }
-
-  test("an older blob still migrates the settings the user never changed", async ({ page }) => {
-    await prepare(page);
-    await seedUIState(page, { hasCompletedOnboarding: true, imageBackgroundWidth: 1536 }, "if-missing");
-    await page.addInitScript((name) => {
-      if (sessionStorage.getItem("e2e:legacy-rewrite") !== "armed") return;
-      sessionStorage.setItem("e2e:legacy-rewrite", "done");
-      const stored = JSON.parse(localStorage.getItem(name)!);
-      delete stored.state.imageCharacterSheetWidth;
-      localStorage.setItem(name, JSON.stringify({ state: stored.state, version: 99 }));
-    }, UI_PERSISTENCE.name);
-    await page.goto("/");
-    await expect.poll(async () => (await readStored(page))?.state.imageCharacterSheetWidth).toBe(1280);
-    await page.evaluate(() => sessionStorage.setItem("e2e:legacy-rewrite", "armed"));
-    await page.reload();
-    expect(await page.evaluate(() => sessionStorage.getItem("e2e:legacy-rewrite"))).toBe("done");
-    // The sheet size was never changed, so the v99 migration still derives it from the background size.
-    expect((await readPersisted(page)).imageCharacterSheetWidth).toBe(1536);
-  });
 
   test("preferences seeded at the current version win over the saved copy", async ({ page }) => {
     await prepare(page);

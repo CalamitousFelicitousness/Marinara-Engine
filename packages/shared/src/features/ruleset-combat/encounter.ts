@@ -3628,6 +3628,9 @@ function mechanicsAction(
   if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.maxAgainst) action.maxAgainst = structuredClone(mechanics.maxAgainst);
+  const against = mechanics.amountAgainst ? amountOf(mechanics.amountAgainst.amount) : null;
+  if (mechanics.amountAgainst && against)
+    action.amountAgainst = { is: structuredClone(mechanics.amountAgainst.is), amount: against };
   if (mechanics.usableWhen) action.usableWhen = { ...mechanics.usableWhen };
   if (mechanics.chance) action.chance = structuredClone(mechanics.chance);
   if (mechanics.save) {

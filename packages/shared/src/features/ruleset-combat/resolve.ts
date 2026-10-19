@@ -14940,11 +14940,19 @@ function resolveActionBodyIn(
         });
       });
     } else if (damage && action.damage) {
-      // At its most against what it names (1.185): Blight on a plant.
+      // At its most against what it names (1.185): Blight on a plant. Another amount instead against
+      // what it names (1.576): a Horn of Blasting's 10d6 to glass.
       const rolled =
         action.maxAgainst && rulesetTargetIs(ctx.definition, target, action.maxAgainst)
-          ? maxAmount(action.damage, extra)
-          : damage();
+          ? maxAmount(
+              action.amountAgainst && rulesetTargetIs(ctx.definition, target, action.amountAgainst.is)
+                ? action.amountAgainst.amount
+                : action.damage,
+              extra,
+            )
+          : action.amountAgainst && rulesetTargetIs(ctx.definition, target, action.amountAgainst.is)
+            ? rollAmount(ctx, action.amountAgainst.amount, extra, action.damage.reroll)
+            : damage();
       const bonus = critical
         ? empowerCritical(criticalExtra(ctx, action.damage, extra, action.damage.reroll), action.damage)
         : { rolls: [], flat: 0 };

@@ -2740,7 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
-/** A condition put on for what was left of another (1.563): Wind Walk's way back into the cloud. */
+/** Another amount dealt instead to what it names (1.576): a Horn of Blasting against glass. */
+function carriesAmountAgainst576(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAmountAgainst576(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.amountAgainst !== undefined) return true;
+  return featureValues(record).some((one) => carriesAmountAgainst576(one, depth + 1));
+}
+
 /** An item's use that needs senses, or an entry once a target over an area (1.575): the Pipes of
  *  Haunting. */
 function carriesUseNeeds575(value: unknown, depth = 0): boolean {
@@ -7854,6 +7863,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Another amount dealt instead to what it names, 1.576.
+  if (
+    !declaresApi(576) &&
+    (carriesAmountAgainst576(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAmountAgainst576(document)))
+  )
+    return "A ruleset with an entry dealing another amount to what it names (amountAgainst) requires schemaVersion 2 and capabilityApi 1.576 or newer";
   // An item's use that needs senses, or an entry once a target over an area, 1.575.
   if (
     !declaresApi(575) &&

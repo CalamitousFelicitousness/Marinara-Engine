@@ -6221,6 +6221,12 @@ const catalogMechanicsObject = z
     /** It deals its most to a target that is this (Capability API 1.185): every die at its top face.
      *  5e's Blight, against a plant creature. */
     maxAgainst: targetIsSchema.optional(),
+    /** Another amount, dealt instead to a target that is this (Capability API 1.576): a Horn of
+     *  Blasting's 10d6 thunder to a creature of glass or crystal, 5d6 to anybody else. */
+    amountAgainst: z
+      .object({ is: targetIsSchema, amount: z.object(catalogAmountShape).strict() })
+      .strict()
+      .optional(),
     /** In the catalog's own distance unit. 0 is self or touch. */
     range: z.number().finite().min(0).optional(),
     /** How far it still carries beyond `range`, in the same unit (Capability API 1.367), made harder
@@ -18509,6 +18515,9 @@ function targetTestIssues(
     };
     save?: RulesetSaveExtras;
     maxAgainst?: RulesetTargetIs;
+    amountAgainst?: { is: RulesetTargetIs; amount: { dice?: string; flat?: number } };
+    amount?: unknown;
+    heals?: unknown;
     dismissesIs?: RulesetTargetIs;
   },
   at: (string | number)[],
@@ -18549,6 +18558,16 @@ function targetTestIssues(
   targetIsIssues(definition, carrier.targetTypes?.is, [...at, "targetTypes", "is"], add);
   targetIsIssues(definition, carrier.targetTypes?.not, [...at, "targetTypes", "not"], add);
   targetIsIssues(definition, carrier.maxAgainst, [...at, "maxAgainst"], add);
+  targetIsIssues(definition, carrier.amountAgainst?.is, [...at, "amountAgainst", "is"], add);
+  // Instead of the amount it deals (1.576), so only on one that deals some.
+  if (carrier.amountAgainst && (carrier.amount === undefined || carrier.heals))
+    add([...at, "amountAgainst"], '"amountAgainst" is on an entry that deals no damage');
+  if (
+    carrier.amountAgainst &&
+    carrier.amountAgainst.amount.dice === undefined &&
+    carrier.amountAgainst.amount.flat === undefined
+  )
+    add([...at, "amountAgainst", "amount"], '"amountAgainst" says no dice and no flat amount');
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
   for (const key of ["abilityAtMost", "abilityAtLeast"] as const) {
     for (const id of Object.keys(carrier.targetTypes?.[key] ?? {})) {

@@ -865,6 +865,8 @@ export interface RulesetCombatAction {
   };
   /** Dealt at its most to a target that is this (1.185). */
   maxAgainst?: RulesetTargetIs;
+  /** Another amount, dealt instead to a target that is this (1.576). */
+  amountAgainst?: { is: RulesetTargetIs; amount: RulesetCombatAmount };
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;

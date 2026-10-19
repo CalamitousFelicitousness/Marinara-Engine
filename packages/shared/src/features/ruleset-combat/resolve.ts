@@ -611,7 +611,7 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
         (rule.holderLacks && !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, rule.holderLacks)) ||
         // Or its source holding none of these (1.564): a swarm swayed only while its piper plays.
         (rule.lacks && !rulesetCombatConditions(ctx.definition, source).some((id) => rule.lacks!.includes(id)));
-      if (ends) removeCondition(ctx, holder, entry.condition, "expired");
+      if (ends) removeCondition(ctx, holder, entry.condition, "expired", "endsWhenSource");
     }
   }
 }
@@ -635,7 +635,8 @@ function unheardSources(ctx: RulesetCombatContext, holder: RulesetCombatant): vo
         perCell !== undefined &&
         !!ctx.state.board?.grid &&
         rulesetCombatantDistance(ctx.state, holder, source) > rulesetInCells(rule.beyond, perCell));
-    if (unheard && holder.tracked.includes(entry)) removeCondition(ctx, holder, entry.condition, "expired");
+    if (unheard && holder.tracked.includes(entry))
+      removeCondition(ctx, holder, entry.condition, "expired", "cantHearSource");
   }
 }
 
@@ -3967,6 +3968,9 @@ function removeCondition(
     | "dispelled"
     | "freed"
     | "slipped",
+  /** What ended it, where that is more than `reason` says (1.579): its source's `endsWhenSource`, or
+   *  its holder no longer hearing whoever put it on. Read by `onEnd.when`. */
+  cause?: "endsWhenSource" | "cantHearSource",
 ): void {
   if (target.dazed?.condition === condition) return;
   const removed = target.tracked.find((entry) => entry.condition === condition);
@@ -4042,7 +4046,9 @@ function removeCondition(
   }
   // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
   // replaces it without ending it, so that never comes here.
-  const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
+  const leftBehind = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
+  // Only as it ended the ways it names (1.579): Pipes of the Sewers' day unswayed, once unheard.
+  const ending = leftBehind?.when && !leftBehind.when.some((way) => way === (cause ?? reason)) ? undefined : leftBehind;
   // Its tracks moved as it ends (1.239), by nobody else's doing: Frenzy's exhaustion.
   if (ending?.tracks && !target.defeated) {
     for (const moved of ending.tracks) moveTrack(ctx, target, target, moved.track, moved.by);

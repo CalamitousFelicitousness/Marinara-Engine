@@ -186844,6 +186844,29 @@
                     },
                     "additionalProperties": false
                   },
+                  "when": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "expired",
+                        "save",
+                        "damage",
+                        "harmed",
+                        "concentration",
+                        "spent",
+                        "cured",
+                        "dispelled",
+                        "contest",
+                        "freed",
+                        "slipped",
+                        "endsWhenSource",
+                        "cantHearSource"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 13
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false

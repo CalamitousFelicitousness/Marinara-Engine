@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** What a condition leaves behind only as it ends some ways (1.579): Pipes of the Sewers. */
+function carriesOnEndWhen579(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOnEndWhen579(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.onEnd)?.when !== undefined) return true;
+  return featureValues(record).some((one) => carriesOnEndWhen579(one, depth + 1));
+}
+
 /** An area that pushes out whoever saved (1.578): a Bead of Force. */
 function carriesPushesOutSaved578(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7883,6 +7893,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What a condition leaves behind only as it ends some ways, 1.579.
+  if (
+    !declaresApi(579) &&
+    (carriesOnEndWhen579(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOnEndWhen579(document)))
+  )
+    return "A ruleset with a condition leaving something behind only as it ends some ways (onEnd.when) requires schemaVersion 2 and capabilityApi 1.579 or newer";
   // An area that pushes out whoever saved, 1.578.
   if (
     !declaresApi(578) &&

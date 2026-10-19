@@ -11737,7 +11737,26 @@ export interface RulesetConditionOnEnd {
   applies?: RulesetCatalogApplies[];
   tracks?: Array<{ track: string; by: number }>;
   harm?: RulesetConditionEndHarm;
+  when?: RulesetConditionEndedBy[];
 }
+
+/** The ways a condition can end that its `onEnd.when` names (Capability API 1.579). */
+export const RULESET_CONDITION_ENDINGS = [
+  "expired",
+  "save",
+  "damage",
+  "harmed",
+  "concentration",
+  "spent",
+  "cured",
+  "dispelled",
+  "contest",
+  "freed",
+  "slipped",
+  "endsWhenSource",
+  "cantHearSource",
+] as const;
+export type RulesetConditionEndedBy = (typeof RULESET_CONDITION_ENDINGS)[number];
 const conditionOnEndSchema: z.ZodType<RulesetConditionOnEnd, z.ZodTypeDef, unknown> = z
   .object({
     applies: z
@@ -11758,6 +11777,12 @@ const conditionOnEndSchema: z.ZodType<RulesetConditionOnEnd, z.ZodTypeDef, unkno
      *  the holder is what `unless` names: Hurl Through Hell's 10d10 psychic, which a fiend
      *  never takes. */
     harm: conditionEndHarmSchema.optional(),
+    /** Only as it ends these ways (Capability API 1.579), and not when it ends any other: running out
+     *  (`expired`), a save, damage, its concentration, being spent, cured or dispelled, a contest,
+     *  breaking free, its source's `endsWhenSource`, or its holder no longer hearing its source
+     *  (`cantHearSource`). 5e's Pipes of the Sewers: a swarm unswayable for a day only once it cannot
+     *  hear the pipes, `["cantHearSource"]`, not when its piper merely stops playing. */
+    when: z.array(z.enum(RULESET_CONDITION_ENDINGS)).min(1).max(13).optional(),
   })
   .strict()
   .refine((ending) => ending.applies || ending.tracks || ending.harm, {

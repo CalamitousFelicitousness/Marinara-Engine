@@ -2599,6 +2599,9 @@ export function rulesetZoneAction(
       maxLevel: zone.wards.maxLevel,
       ...(zone.wards.by ? { by: zone.wards.by } : {}),
       ...(zone.wards.maxLevelPerCostStep ? { maxLevelPerCostStep: zone.wards.maxLevelPerCostStep } : {}),
+      // Only some entries (1.592).
+      ...(zone.wards.where ? { where: { ...zone.wards.where } } : {}),
+      ...(zone.wards.entries ? { entries: [...zone.wards.entries] } : {}),
     };
   }
   // Kinds it keeps out (1.399): Magic Circle, Hallow.

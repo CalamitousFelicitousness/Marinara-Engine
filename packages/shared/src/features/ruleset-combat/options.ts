@@ -70,6 +70,7 @@ import {
   rulesetTargetDamageKind,
   rulesetDamageMinimum,
   rulesetCombatEffects,
+  rulesetCatalogWhereReads,
   rulesetDefiableConditions,
   rulesetDefiance,
   rulesetDefying,
@@ -2322,13 +2323,28 @@ export function rulesetWarded(
   if (!catalog) return false;
   const wards = rulesetWardsOn(state, target);
   // Its holder's own (1.467), from anybody but themselves: a rakshasa's Limited Magic Immunity.
-  const held =
+  let held =
     actor.id !== target.id && definition.combat
       ? rulesetActiveConditions(definition, definition.combat, target, state).flatMap((entry) =>
           entry.wards ? [entry.wards] : [],
         )
       : [];
   if (wards.length === 0 && held.length === 0) return false;
+  // Only the entries its filter reads so, or names (1.592): Mind Blank's divination, Wish's one spell.
+  const takes = (ward: { where?: { filter: string; equals: string | number }; entries?: string[] }) => {
+    if (ward.entries && !(action.entry && ward.entries.includes(action.entry))) return false;
+    if (!ward.where) return true;
+    const ref = action.entry;
+    const entry = ref
+      ? definition.catalogs
+          ?.find((one) => one.id === ref.slice(0, ref.indexOf("/")))
+          ?.entries?.find((one) => one.id === ref.slice(ref.indexOf("/") + 1))
+      : undefined;
+    return !!entry && rulesetCatalogWhereReads(entry, ward.where);
+  };
+  held = held.filter(takes);
+  const zoned = wards.filter(({ wards: ward }) => takes(ward));
+  if (zoned.length === 0 && held.length === 0) return false;
   const own = new Set(rulesetWardsOn(state, actor).map((ward) => ward.key));
   const paid = rulesetPaidLevel(definition, actor, action, payWith);
   // Its own base level, however it was paid (1.181): Globe of Invulnerability.
@@ -2336,7 +2352,7 @@ export function rulesetWarded(
   if (held.some((ward) => ward.catalogs.includes(catalog) && (ward.by === "base" ? base : paid) <= ward.maxLevel)) {
     return true;
   }
-  return wards.some(({ key, wards: ward, caster, zone }) => {
+  return zoned.some(({ key, wards: ward, caster, zone }) => {
     if (own.has(key) || !ward.catalogs.includes(catalog)) return false;
     // Raised for each step the ward's own cast was paid above its base (1.181).
     const cast = caster.actions.find((entry) => entry.id === zone.actionId);

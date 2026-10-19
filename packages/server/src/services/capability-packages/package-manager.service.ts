@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A ward of only some entries (1.592): 5e's Mind Blank. */
+function carriesWardEntries592(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWardEntries592(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const wards = plainRecord(record.wards);
+  if (wards && (wards.where !== undefined || wards.entries !== undefined)) return true;
+  return featureValues(record).some((one) => carriesWardEntries592(one, depth + 1));
+}
+
 /** A condition whose commands its holder may break at a cost (1.591): 5e's Geas. */
 function carriesDefiance591(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8052,6 +8063,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A ward of only some entries, 1.592.
+  if (
+    !declaresApi(592) &&
+    (carriesWardEntries592(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardEntries592(document)))
+  )
+    return "A ruleset with a ward of only some entries (wards.where, wards.entries) requires schemaVersion 2 and capabilityApi 1.592 or newer";
   // A condition whose commands its holder may break at a cost, 1.591.
   if (
     !declaresApi(591) &&

@@ -3066,6 +3066,8 @@ export interface RulesetZoneWards {
   maxLevel: number;
   by?: "base" | "paid";
   maxLevelPerCostStep?: number;
+  where?: RulesetCatalogWhere;
+  entries?: string[];
 }
 const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
   .object({
@@ -3078,6 +3080,17 @@ const zoneWardsSchema: z.ZodType<RulesetZoneWards, z.ZodTypeDef, unknown> = z
     /** It keeps out this many levels more for each step its own cast was paid above its base
      *  (Capability API 1.181): Globe, one higher for each slot level above 6th. */
     maxLevelPerCostStep: z.number().int().min(1).max(10).optional(),
+    /** Only the entries whose declared filter reads so (Capability API 1.592), as an amend's `where`
+     *  (1.361): 5e's Mind Blank, divination spells, `{"filter": "school", "equals": "divination"}`. */
+    where: z.lazy(() => catalogWhereSchema).optional(),
+    /** Only these entries, `<catalog>/<entry>` (Capability API 1.592): 5e's Wish, "immunity to a
+     *  single spell". */
+    entries: z
+      .array(z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z0-9][a-z0-9_-]*$/))
+      .min(1)
+      .max(24)
+      .refine((entries) => new Set(entries).size === entries.length, { message: "An entry is named once" })
+      .optional(),
   })
   .strict();
 
@@ -17926,6 +17939,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "wards", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
         }
       });
+      // Its entries (1.592) are of its own catalogs.
+      wardEntriesIssues(entry.wards, [...path, "wards"], issue);
       entry.absorbs?.catalogs.forEach((catalogId, catalogIndex) => {
         if (!def.catalogs?.some((catalog) => catalog.id === catalogId)) {
           issue([...path, "absorbs", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
@@ -18980,6 +18995,19 @@ function componentIssues(
   });
 }
 
+/** A ward's own entries (1.592) are of the catalogs it wards. */
+function wardEntriesIssues(
+  wards: RulesetZoneWards | undefined,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  wards?.entries?.forEach((ref, index) => {
+    const catalog = ref.slice(0, ref.indexOf("/"));
+    if (!wards.catalogs.includes(catalog))
+      add([...at, "entries", index], `"${ref}" is not of a catalog this ward names`);
+  });
+}
+
 /** What a zone does to whoever stands in it, stops, or wards off names the ruleset's own words (1.179). */
 function zoneInsideIssues(
   definition: RulesetDefinition,
@@ -19059,6 +19087,7 @@ function zoneInsideIssues(
   zone.wards?.catalogs.forEach((catalog, index) => {
     if (!catalogs.has(catalog)) add([...at, "wards", "catalogs", index], `Unknown catalog "${catalog}"`);
   });
+  wardEntriesIssues(zone.wards, [...at, "wards"], add);
   zone.forbids?.casts?.forEach((catalog, index) => {
     if (!catalogs.has(catalog)) add([...at, "forbids", "casts", index], `Unknown catalog "${catalog}"`);
   });

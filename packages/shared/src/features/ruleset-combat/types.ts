@@ -4278,7 +4278,15 @@ export interface RulesetCombatZoneRule {
   /** `teleport` an object (1.550): out of it only past that save. */
   forbids?: { components?: string[]; teleport?: true | { save: string; difficulty: "caster" }; casts?: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
-  wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
+  wards?: {
+    catalogs: string[];
+    maxLevel: number;
+    by?: "base" | "paid";
+    maxLevelPerCostStep?: number;
+    /** Only the entries its filter reads so, or these (1.592). */
+    where?: { filter: string; equals: string | number };
+    entries?: string[];
+  };
   /** What does nothing inside it (1.468): conditions off these catalogs, items with these tags. */
   suppresses?: { catalogs?: string[]; tags?: string[]; setsAsideCalled?: true };
   /** Kinds it keeps out of it, or in it (1.399): Magic Circle, Hallow. */

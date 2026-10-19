@@ -44438,6 +44438,43 @@
                               "minimum": 1,
                               "maximum": 10
                             },
+                            "where": {
+                              "type": "object",
+                              "properties": {
+                                "filter": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "equals": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ]
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "filter",
+                                "equals"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "entries": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 24
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -68720,6 +68757,43 @@
                                   "minimum": 1,
                                   "maximum": 10
                                 },
+                                "where": {
+                                  "type": "object",
+                                  "properties": {
+                                    "filter": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "equals": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 80
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "filter",
+                                    "equals"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "entries": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 24
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -81329,6 +81403,43 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 10
+                                  },
+                                  "where": {
+                                    "type": "object",
+                                    "properties": {
+                                      "filter": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "equals": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ]
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "filter",
+                                      "equals"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "entries": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 24
                                   },
                                   "$comment": {}
                                 },
@@ -105979,6 +106090,43 @@
                                   "minimum": 1,
                                   "maximum": 10
                                 },
+                                "where": {
+                                  "type": "object",
+                                  "properties": {
+                                    "filter": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "equals": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 80
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "filter",
+                                    "equals"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "entries": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 24
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -126630,6 +126778,43 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 10
+                                      },
+                                      "where": {
+                                        "type": "object",
+                                        "properties": {
+                                          "filter": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "equals": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 80
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "filter",
+                                          "equals"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "entries": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 24
                                       },
                                       "$comment": {}
                                     },
@@ -147288,6 +147473,43 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 10
+                                      },
+                                      "where": {
+                                        "type": "object",
+                                        "properties": {
+                                          "filter": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "equals": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 80
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "filter",
+                                          "equals"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "entries": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 24
                                       },
                                       "$comment": {}
                                     },
@@ -178823,6 +179045,43 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 10
+                  },
+                  "where": {
+                    "type": "object",
+                    "properties": {
+                      "filter": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "equals": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "filter",
+                      "equals"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]*\\/[a-z0-9][a-z0-9_-]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 24
                   },
                   "$comment": {}
                 },

@@ -2061,9 +2061,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               <div className="relative z-[1] w-full p-[clamp(0.65rem,1vw,1.25rem)]">
                 <section
                   ref={heroRef}
-                  className="mari-home-hero flex min-w-0 flex-col items-center gap-2 px-[clamp(0.35rem,0.8vw,0.9rem)] pb-[clamp(0.7rem,1.1vw,1rem)] pt-[clamp(0.4rem,0.7vw,0.7rem)] text-center"
+                  className="mari-home-hero relative flex min-w-0 flex-col items-center gap-2 px-[clamp(0.35rem,0.8vw,0.9rem)] pb-[clamp(0.7rem,1.1vw,1rem)] pt-[clamp(0.4rem,0.7vw,0.7rem)] text-center"
                   data-tour="home-hub"
                 >
+                  {/* Painted only while a seasonal theme is on (styles/themes/seasonal-*.css). */}
+                  <div className="mari-seasonal-home" aria-hidden="true">
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__sky" />
+                    <span className="mari-seasonal-home__ground" />
+                  </div>
                   <div className="min-w-0 max-w-5xl">
                     <div className="flex min-w-0 flex-col items-center">
                       <img
@@ -2262,6 +2269,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                           <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
                             {t("home.whatsNew.description")}
                           </p>
+                        </div>
+                        {/* Full card width: on phones the 68% text column is too narrow for both actions on one line. */}
+                        <div className="flex flex-wrap items-center gap-x-3">
+                          <button
+                            type="button"
+                            onClick={() => useUIStore.getState().requestWhatsNew()}
+                            className="mt-2 inline-flex min-h-8 items-center text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
+                          >
+                            {t("home.whatsNew.open")}
+                          </button>
                           <a
                             href={ENGINE_RELEASE_URL}
                             target="_blank"

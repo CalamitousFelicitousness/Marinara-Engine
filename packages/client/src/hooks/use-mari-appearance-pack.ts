@@ -16,7 +16,8 @@ export function useMariAppearancePack() {
   const id = useUIStore((state) => state.mariAppearancePackId);
   const unlockedIds = useUIStore((state) => state.mariUnlockedPackIds);
   const seasonOptOut = useUIStore((state) => state.mariSeasonOptOut);
-  return resolveMariAppearancePack(id, unlockedIds, null, seasonOptOut);
+  const seasonsOff = useUIStore((state) => state.seasonalThemesDisabled);
+  return resolveMariAppearancePack(id, unlockedIds, null, seasonOptOut, seasonsOff);
 }
 
 /**

@@ -24,14 +24,14 @@ export async function seedUIState(
       }
       localStorage.setItem(name, JSON.stringify({ state: { ...previous, ...state }, version }));
     },
-    // Keep unrelated proofs clear of surprise visits, the one-time chat introduction and dated Mari packs, so a
-    // run inside a pack's date window still sees the default Home copy.
+    // Keep unrelated proofs clear of surprise visits, the one-time chat introduction and, on its holiday, the
+    // seasonal theme greeting.
     {
       ...UI_PERSISTENCE,
       state: {
         chibiProfessorMariEnabled: false,
         chatWindowIntroDismissed: true,
-        mariSeasonOptOut: `raccoon-${new Date().getFullYear()}`,
+        seasonalThemesDisabled: true,
         ...state,
       },
       mode,

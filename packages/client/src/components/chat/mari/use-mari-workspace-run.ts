@@ -187,6 +187,7 @@ export function useMariWorkspaceRun({
         ui.mariUnlockedPackIds,
         null,
         ui.mariSeasonOptOut,
+        ui.seasonalThemesDisabled,
       );
       try {
         for await (const event of api.streamEvents(

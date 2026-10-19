@@ -3,6 +3,7 @@
 @import "./themes/sillytavern.css";
 @import "./themes/chat-widgets.css";
 @import "./themes/chat-widget-surfaces.css";
+@import "./themes/seasonal-halloween.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {

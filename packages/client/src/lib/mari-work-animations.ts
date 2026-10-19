@@ -248,13 +248,17 @@ export function isMariPackUnlocked(
   return playHours !== null && playHours >= pack.unlock.playHours;
 }
 
-/** Packs the chooser lists: every undated pack, and a dated one only inside its window. */
-export function visibleMariAppearancePacks(now: Date = new Date()): MariAppearancePack[] {
-  return MARI_APPEARANCE_PACKS.filter((pack) => !pack.season || isInMariSeason(pack.season, now));
+/**
+ * Packs the chooser lists: every undated pack, and a dated one only inside its window. `seasonsOff` is
+ * Settings → General → Disable seasonal ME themes: then dated packs do not exist for the user at all.
+ */
+export function visibleMariAppearancePacks(seasonsOff = false, now: Date = new Date()): MariAppearancePack[] {
+  return MARI_APPEARANCE_PACKS.filter((pack) => !pack.season || (!seasonsOff && isInMariSeason(pack.season, now)));
 }
 
 /** The dated pack whose window is open now, if any. */
-export function activeSeasonalMariPack(now: Date = new Date()): MariAppearancePack | undefined {
+export function activeSeasonalMariPack(seasonsOff = false, now: Date = new Date()): MariAppearancePack | undefined {
+  if (seasonsOff) return undefined;
   return MARI_APPEARANCE_PACKS.find((pack) => pack.season && isInMariSeason(pack.season, now));
 }
 
@@ -274,12 +278,13 @@ export function resolveMariAppearancePack(
   unlockedIds: readonly string[],
   playHours: number | null = null,
   seasonOptOut = "",
+  seasonsOff = false,
   now: Date = new Date(),
 ): MariAppearancePack {
-  const seasonal = activeSeasonalMariPack(now);
+  const seasonal = activeSeasonalMariPack(seasonsOff, now);
   if (seasonal && seasonOptOut !== mariSeasonKey(seasonal, now)) return seasonal;
   const pack = getMariAppearancePack(storedId);
-  if (pack.season && !isInMariSeason(pack.season, now)) return MARI_APPEARANCE_PACKS[0]!;
+  if (pack.season && (seasonsOff || !isInMariSeason(pack.season, now))) return MARI_APPEARANCE_PACKS[0]!;
   return isMariPackUnlocked(pack, unlockedIds, playHours) ? pack : MARI_APPEARANCE_PACKS[0]!;
 }
 

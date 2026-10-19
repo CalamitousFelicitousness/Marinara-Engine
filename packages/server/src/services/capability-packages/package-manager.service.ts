@@ -2740,6 +2740,21 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A call whose creatures are under nobody's control, tamed while holding a condition (1.562): Pipes
+ *  of the Sewers. */
+function carriesWildCall562(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWildCall562(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls && (calls.side !== undefined || calls.tamedWhile !== undefined)) return true;
+  // Charges more that only call more (1.562).
+  const step = plainRecord(record.chargeStep);
+  if (step && calls && step.amount === undefined && step.targets === undefined && step.push === undefined) return true;
+  return featureValues(record).some((one) => carriesWildCall562(one, depth + 1));
+}
+
 /** A call offered only where it says, or whose creatures arrive after their caller's turns (1.561): a
  *  vampire's Children of the Night. */
 function carriesCallWhere561(value: unknown, depth = 0): boolean {
@@ -7682,6 +7697,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call whose creatures are under nobody's control, 1.562.
+  if (
+    !declaresApi(562) &&
+    (carriesWildCall562(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWildCall562(document)))
+  ) {
+    return 'A ruleset with a call whose creatures are under nobody\'s control (calls.side "none", calls.tamedWhile) requires schemaVersion 2 and capabilityApi 1.562 or newer';
+  }
   // A call offered only where it says, or arriving after its caller's turns, 1.561.
   if (
     !declaresApi(561) &&

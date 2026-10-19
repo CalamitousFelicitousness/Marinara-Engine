@@ -9683,6 +9683,8 @@ function callCreatures(
         // The item itself, out of its holder's hands while it stands (1.560).
         ...(action.calls.becomesItem ? { becomes: true as const } : {}),
       };
+    // Under nobody's control (1.562): Pipes of the Sewers' swarms.
+    if (action.calls.wild) called.calledWild = { ...action.calls.wild };
     // Held within so far of their caller (1.557): a treant's trees.
     if (action.calls.leash)
       called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
@@ -15612,6 +15614,23 @@ function beginNextTurn(
         }
       }
     }
+    // Under nobody's control (1.562), unless tamed: it walks toward its caller, and that is its turn.
+    const wild = actor.calledWild;
+    if (
+      wild &&
+      !actor.defeated &&
+      !(wild.tamedWhile && rulesetCombatConditions(definition, actor).includes(wild.tamedWhile))
+    ) {
+      const caller = actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
+      const budget = combat.economy.budgets.find((one) => (actor.budgets[one.id] ?? 0) >= 1)?.id;
+      if (caller && rulesetPositionOf(caller) && budget) drawTarget(ctx, caller, actor, budget);
+      tickConditions(ctx, actor, "turn-end");
+      ctx.events.push({ type: "skip", actorId: actor.id, reason: "wild" });
+      if (rulesetEncounterOutcome(ctx.state) === "ongoing") {
+        beginNextTurn(definition, combat, ctx);
+        return;
+      }
+    }
     if (actor.dazed) {
       const dazed = actor.dazed;
       tickConditions(ctx, actor, "turn-end");
@@ -15981,8 +16000,10 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   // An object called to take no turns (1.426) keeps no side standing.
   // Blinked away (1.453), back as their next turn starts, they are still in it.
   // Set aside by a zone (1.480), it is still in it too.
+  // Nor one under nobody's control (1.562).
   const out = (combatant: RulesetCombatant) =>
     combatant.turnless ||
+    !!combatant.calledWild ||
     (!rulesetCombatStanding(combatant) &&
       !combatant.regrowing &&
       !combatant.away?.blinked &&

@@ -1269,6 +1269,8 @@ export interface RulesetCombatAction {
     spendsItemOnDeath?: true;
     /** An item's call: the item becomes them, out of its holder's hands while they stand (1.560). */
     becomesItem?: true;
+    /** Under nobody's control (1.562), tamed while holding `tamedWhile`: Pipes of the Sewers. */
+    wild?: { tamedWhile?: string };
     /** Offered only where it says (1.561): Children of the Night's bats away from the sun. */
     onlyWhere?: RulesetCallWhere;
     /** They appear after this many of their caller's turns (1.561), rolled as they are called. */
@@ -1830,6 +1832,9 @@ export interface RulesetCombatant {
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
    *  (1.505): 5e's Arcane Hand. */
   calledCommand?: { budget: string; free?: true };
+  /** Under nobody's control (1.562): each turn only walking toward its caller, unless it holds
+   *  `tamedWhile`; it keeps no side standing. Pipes of the Sewers' swarms. */
+  calledWild?: { tamedWhile?: string };
   /** An image, not a creature (1.515), and the sides that have seen it for one: Mislead's double. */
   illusion?: { seenBy: string[] };
   /** Turned on whoever called them (1.485): on the other side, no longer theirs to command. */
@@ -3036,7 +3041,7 @@ export type RulesetCombatEvent =
       text?: string;
     }
   /** `uncommanded` (1.505): a called creature whose caller did not pay for its turn. */
-  | { type: "skip"; actorId: string; reason: "daze" | "uncommanded" }
+  | { type: "skip"; actorId: string; reason: "daze" | "uncommanded" | "wild" }
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }

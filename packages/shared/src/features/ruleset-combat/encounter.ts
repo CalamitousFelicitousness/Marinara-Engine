@@ -5511,6 +5511,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.hostileUnless ? { hostileUnless: { ...calls.hostileUnless } } : {}),
       ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
       ...(calls.becomesItem ? { becomesItem: true as const } : {}),
+      ...(calls.side === "none" ? { wild: calls.tamedWhile ? { tamedWhile: calls.tamedWhile } : {} } : {}),
     };
   };
   if (calls.creature && calls.count) {

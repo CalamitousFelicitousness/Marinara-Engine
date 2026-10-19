@@ -50720,6 +50720,15 @@
                             }
                           ]
                         },
+                        "side": {
+                          "type": "string",
+                          "const": "none"
+                        },
+                        "tamedWhile": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -111189,6 +111198,15 @@
                                 }
                               ]
                             },
+                            "side": {
+                              "type": "string",
+                              "const": "none"
+                            },
+                            "tamedWhile": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -131360,6 +131378,15 @@
                                         "additionalProperties": false
                                       }
                                     ]
+                                  },
+                                  "side": {
+                                    "type": "string",
+                                    "const": "none"
+                                  },
+                                  "tamedWhile": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },
@@ -151538,6 +151565,15 @@
                                         "additionalProperties": false
                                       }
                                     ]
+                                  },
+                                  "side": {
+                                    "type": "string",
+                                    "const": "none"
+                                  },
+                                  "tamedWhile": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "$comment": {}
                                 },

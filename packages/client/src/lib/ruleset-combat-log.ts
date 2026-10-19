@@ -435,6 +435,8 @@ export function rulesetCombatEventLine(
     case "skip":
       // Not commanded by its caller (1.505).
       if (event.reason === "uncommanded") return key("skipUncommanded", { actor: names.combatant(event.actorId) });
+      // Under nobody's control (1.562): it only walks toward its caller.
+      if (event.reason === "wild") return key("skipWild", { actor: names.combatant(event.actorId) });
       return key("skipDazed", { actor: names.combatant(event.actorId) });
     case "heal":
       if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });

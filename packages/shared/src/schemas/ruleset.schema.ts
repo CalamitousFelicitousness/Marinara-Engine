@@ -5875,6 +5875,23 @@ const callWhereSchema: z.ZodType<RulesetCallWhere, z.ZodTypeDef, unknown> = z
     message: 'A call is made "outdoors" or "indoors", not both',
   });
 
+/** What called creatures take from their caller (1.505), typed by hand to keep the definition's
+ *  type small. */
+const callFromCallerSchema: z.ZodType<
+  { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef },
+  z.ZodTypeDef,
+  unknown
+> = z
+  .object({
+    health: z.literal(true).optional(),
+    toHit: rulesetValueRefSchema.optional(),
+    adds: rulesetValueRefSchema.optional(),
+  })
+  .strict()
+  .refine((from) => from.health || from.toHit || from.adds, {
+    message: 'Say what they take from their caller: "health", "toHit", "adds" or more',
+  });
+
 /** How many of their caller's turns called creatures take to arrive (1.561), typed by hand. */
 const callArrivesSchema: z.ZodType<{ dice?: string; flat?: number }, z.ZodTypeDef, unknown> = z
   .object(catalogAmountShape)
@@ -6002,17 +6019,7 @@ export const catalogCallsSchema = z
      *  maximum, `toHit` makes each of their attacks' bonus a value read off their caller's sheet, and
      *  `adds` adds one read off it to each of their damage amounts. 5e's Arcane Hand, "hit points equal
      *  to your hit point maximum", your spell attack bonus and your spellcasting modifier. */
-    fromCaller: z
-      .object({
-        health: z.literal(true).optional(),
-        toHit: rulesetValueRefSchema.optional(),
-        adds: rulesetValueRefSchema.optional(),
-      })
-      .strict()
-      .refine((from) => from.health || from.toHit || from.adds, {
-        message: 'Say what they take from their caller: "health", "toHit", "adds" or more',
-      })
-      .optional(),
+    fromCaller: callFromCallerSchema.optional(),
     /** They act only as their caller commands (Capability API 1.505): at each of their turns but the
      *  first, their caller pays 1 of this budget, or the turn passes. With `"initiative": "after"`
      *  that turn comes right after their caller's. 5e's Arcane Hand, a bonus action. */
@@ -6053,6 +6060,13 @@ export const catalogCallsSchema = z
      *  the use's own budget, or with `{ "budget": "<id>" }` on that one: a Staff of the Python's
      *  bonus action to turn it back into a staff. */
     dismissible: z.union([z.literal(true), z.object({ budget: sheetId }).strict()]).optional(),
+    /** `"none"` (Capability API 1.562): they are under nobody's control, acting on their own, each
+     *  turn only moving toward their caller by the shortest way, and keep no side standing. With
+     *  `tamedWhile`, one that holds that condition is its caller's to command as any called
+     *  creature is, for as long as it holds it. Pipes of the Sewers' swarms, "move toward the music
+     *  by the shortest available route but aren't under your control otherwise". */
+    side: z.literal("none").optional(),
+    tamedWhile: sheetId.optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -10189,7 +10203,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.chargeStep.targets &&
       !use.chargeStep.push &&
       !use.chargeStep.amount?.dice &&
-      !use.chargeStep.amount?.flat
+      !use.chargeStep.amount?.flat &&
+      // Or calls more for each (1.562): Pipes of the Sewers' swarm a charge.
+      !use.calls?.perStep &&
+      !use.calls?.timesPerSteps
     ) {
       issue("chargeStep", "A charge more adds an amount, targets, a push, or some of them");
     }
@@ -20098,6 +20115,15 @@ function useIssues(
   if (typeof dismissal === "object" && !combat.economy.budgets.some((budget) => budget.id === dismissal.budget)) {
     add([...at, "calls", "dismissible", "budget"], `Unknown budget "${dismissal.budget}"`);
   }
+  if (use.calls?.tamedWhile !== undefined) {
+    if (!definition.sheet.live.conditions.some((condition) => condition.id === use.calls!.tamedWhile))
+      add([...at, "calls", "tamedWhile"], `Unknown condition "${use.calls.tamedWhile}"`);
+    if (use.calls.side !== "none")
+      add(
+        [...at, "calls", "tamedWhile"],
+        'Only a call whose creatures are under nobody\'s control ("side": "none") is tamed',
+      );
+  }
   const unlessRequirement = use.calls?.hostileUnless;
   if (
     unlessRequirement &&
@@ -21884,6 +21910,14 @@ export function rulesetCatalogEntryIssues(
       add(
         [index, "mechanics", "calls", entryCalls.becomesItem ? "becomesItem" : "spendsItemOnDeath"],
         '"spendsItemOnDeath" and "becomesItem" are for an item\'s call',
+      );
+    // A call's own creatures tamed while they hold a condition (1.562).
+    if (entryCalls?.tamedWhile !== undefined && !liveConditions.has(entryCalls.tamedWhile))
+      add([index, "mechanics", "calls", "tamedWhile"], `Unknown condition "${entryCalls.tamedWhile}"`);
+    if (entryCalls?.tamedWhile !== undefined && entryCalls.side !== "none")
+      add(
+        [index, "mechanics", "calls", "tamedWhile"],
+        'Only a call whose creatures are under nobody\'s control ("side": "none") is tamed',
       );
     const entryDismissal = entryCalls?.dismissible;
     if (typeof entryDismissal === "object" && budgets && !budgets.has(entryDismissal.budget)) {

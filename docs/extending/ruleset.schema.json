@@ -194264,6 +194264,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "seesTrue": {
+                "type": "boolean",
+                "const": true
+              },
               "$comment": {}
             },
             "required": [

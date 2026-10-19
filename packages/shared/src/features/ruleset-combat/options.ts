@@ -155,6 +155,7 @@ import {
 } from "./zones.js";
 import {
   rulesetCanSee,
+  rulesetSeesTrue,
   rulesetCarriesLight,
   rulesetHiddenFrom,
   rulesetHidingTraits,
@@ -2192,6 +2193,13 @@ export function rulesetOptionTargets(
         if (pinned !== undefined && combatant.id !== pinned) return false;
         // An image seen for one is aimed at no more (1.515).
         if (combatant.illusion?.seenBy.includes(actor.side)) return false;
+        // Nor by one who sees it truly (1.596): Witch Sight.
+        if (
+          combatant.illusion &&
+          combatant.calledBy !== actor.id &&
+          rulesetSeesTrue(definition, state, actor, combatant)
+        )
+          return false;
         // Bringing back the dead is aimed at the dead, and only them (1.176), and so is raising one
         // from a corpse (1.501).
         if (cure?.revives) {

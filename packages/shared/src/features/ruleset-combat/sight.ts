@@ -505,6 +505,22 @@ export function rulesetCanSee(
   );
 }
 
+/** Whether `viewer` sees `seen` as it truly is (1.596): with a sense that `seesTrue`, `seen` within
+ *  its range, and in sight. 5e's Witch Sight, which no image or duplicate fools. */
+export function rulesetSeesTrue(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  viewer: RulesetCombatant,
+  seen: RulesetCombatant,
+): boolean {
+  const senses = (definition.combat?.senses ?? []).filter((one) => one.seesTrue);
+  if (!senses.length || viewer.id === seen.id) return false;
+  const ranges = rulesetSenseRanges(definition, viewer, state);
+  const away = rulesetPositionOf(viewer) && rulesetPositionOf(seen) ? rulesetGap(viewer, seen) : 0;
+  if (!senses.some((sense) => (ranges[sense.id] ?? 0) > 0 && (ranges[sense.id] ?? 0) >= away)) return false;
+  return rulesetCanSee(definition, state, viewer, seen);
+}
+
 /** Who lends `viewer` their senses now (1.428): standing, holding a condition `viewer` put on them
  *  whose rule lends its holder's senses. */
 function lendersOf(

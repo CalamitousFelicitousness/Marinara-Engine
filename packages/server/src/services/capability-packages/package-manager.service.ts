@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A sense that sees things as they truly are (1.596): 5e's Witch Sight. */
+function carriesSeesTrue596(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSeesTrue596(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.seesTrue !== undefined) return true;
+  return featureValues(record).some((one) => carriesSeesTrue596(one, depth + 1));
+}
+
 /** A condition saying its holder understands nothing, or everything (1.595): Feeblemind, Tongues. */
 function carriesHeldLanguages595(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8095,6 +8105,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A sense that sees things as they truly are, 1.596.
+  if (
+    !declaresApi(596) &&
+    (carriesSeesTrue596(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSeesTrue596(document)))
+  )
+    return "A ruleset with a sense that sees things as they truly are (combat.senses[].seesTrue) requires schemaVersion 2 and capabilityApi 1.596 or newer";
   // A condition saying its holder understands nothing, or everything, 1.595.
   if (
     !declaresApi(595) &&

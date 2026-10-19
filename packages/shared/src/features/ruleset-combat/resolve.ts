@@ -62,6 +62,7 @@ import {
   rulesetLightAt,
   rulesetSeesCell,
   rulesetSenseRanges,
+  rulesetSeesTrue,
   rulesetStaysHidden,
 } from "./sight.js";
 import {
@@ -3149,6 +3150,8 @@ function divertedToDuplicate(
   const left = Math.min(rule.count, tracked?.duplicatesLeft ?? rule.count);
   if (left < 1) return null;
   if (!rulesetCanSee(ctx.definition, ctx.state, actor, target)) return null;
+  // Seen truly (1.596): Witch Sight.
+  if (rulesetSeesTrue(ctx.definition, ctx.state, actor, target)) return null;
   if (rule.pierced) {
     const ranges = rulesetSenseRanges(ctx.definition, actor, ctx.state);
     const positioned = !!rulesetPositionOf(actor) && !!rulesetPositionOf(target);

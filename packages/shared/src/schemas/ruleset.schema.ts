@@ -11844,6 +11844,7 @@ export interface RulesetCombatSense {
   label: string;
   sheet?: RulesetValueRef;
   blind?: true;
+  seesTrue?: true;
 }
 /** Conditions kept off when a creature that is `from` puts them on (1.191). */
 export interface RulesetConditionImmunityFrom {
@@ -11852,7 +11853,16 @@ export interface RulesetConditionImmunityFrom {
   catalogs?: string[];
 }
 const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = z
-  .object({ id: sheetId, label, sheet: rulesetValueRefSchema.optional(), blind: z.literal(true).optional() })
+  .object({
+    id: sheetId,
+    label,
+    sheet: rulesetValueRefSchema.optional(),
+    blind: z.literal(true).optional(),
+    /** It sees things as they truly are (Capability API 1.596), within its range and in sight: an
+     *  image (`calls.illusion`) is never taken for a creature, and illusory duplicates (`duplicates`)
+     *  draw nothing from it. 5e's Witch Sight. */
+    seesTrue: z.literal(true).optional(),
+  })
   .strict();
 
 /** The dark keeping eyes from seeing (1.294): see `combat.sight.darkness`. */

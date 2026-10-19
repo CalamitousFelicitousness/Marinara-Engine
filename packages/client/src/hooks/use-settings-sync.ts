@@ -110,7 +110,11 @@ function readLocalUpdatedAt(): number | null {
 }
 
 function writeLocalUpdatedAt(updatedAt: number): void {
-  window.localStorage.setItem(LOCAL_UPDATED_AT_KEY, String(updatedAt));
+  try {
+    window.localStorage.setItem(LOCAL_UPDATED_AT_KEY, String(updatedAt));
+  } catch {
+    // Full or blocked browser storage must not stop the push; the server copy stays the source of truth.
+  }
 }
 
 function hasLocalPersistedUiState(): boolean {

@@ -27,8 +27,8 @@ export type ManagedGenerationParameterDefinitionInput = z.infer<typeof managedGe
 
 /**
  * Longest settings value the server stores. The "ui" value holds every image style profile, which has no count
- * limit; a typical profile is about 1,000 characters. This leaves room for thousands of profiles while the value
- * still fits in the browser storage that keeps the same settings locally (about 5 MB).
+ * limit; a typical profile is about 1,000 characters, so this leaves room for thousands of profiles. The server copy
+ * is the source of truth: if a browser cannot cache the whole value locally, the next load restores it from here.
  */
 export const MAX_APP_SETTINGS_VALUE_LENGTH = 4_000_000;
 

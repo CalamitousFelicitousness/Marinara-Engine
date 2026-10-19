@@ -17,136 +17,145 @@ process.env.MARINARA_LITE = "true";
 process.env.IMAGE_LOCAL_URLS_ENABLED = "true";
 process.env.LOG_LEVEL = "silent";
 
-const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
-const Fastify = requireServer("fastify") as typeof import("fastify").default;
-const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
-const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
-const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
-const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
-const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
-const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
-const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-const { createGameSceneVideosStorage } =
-  await import("../../packages/server/src/services/storage/game-scene-videos.storage.js");
-const { parseCharacterCommands } =
-  await import("../../packages/server/src/services/conversation/character-commands.js");
-const { filterEnabledConversationCommands } =
-  await import("../../packages/server/src/services/generation/conversation-command-runtime.js");
-const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
-
-replaceBuiltInAgentDefinitions([
-  {
-    id: "illustrator",
-    name: "Illustrator",
-    description: "Generated videos fixture",
-    phase: "post_processing",
-    enabledByDefault: true,
-    category: "utility",
-    defaultTools: [],
-    defaultSettings: { contextSize: 2 },
-    defaultPromptTemplate: 'AGENT_WRITER Return JSON {"shouldGenerate":true,"prompt":"..."}.',
-  },
-]);
-
-const png = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
-const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
-
-let mainReply = "";
-let failVideo = false;
-// Runs once when the next clip reaches the video service (after the reply is saved).
-let beforeVideo: (() => Promise<void>) | null = null;
-let illustratorReply: Record<string, unknown> = {
-  shouldGenerate: true,
-  prompt: "1girl, lantern, rain",
-  generateVideo: true,
-  videoPrompt: "The lantern light flickers as Aster turns",
-};
-const videoWriterRequests: string[] = [];
-const directorRequests: string[] = [];
-const agentRequests: string[] = [];
-const comfyPrompts: string[] = [];
-const provider = createServer(async (request, response) => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
-  const body = Buffer.concat(chunks).toString();
-  const url = request.url ?? "";
-  const json = (value: unknown) => {
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(value));
-  };
-  if (url.endsWith("/prompt")) {
-    if (failVideo) {
-      response.statusCode = 500;
-      return json({ error: "ComfyUI is down" });
-    }
-    comfyPrompts.push(body);
-    const hook = beforeVideo;
-    beforeVideo = null;
-    if (hook) await hook();
-    return json({ prompt_id: "job" });
-  }
-  if (url.includes("/history/")) {
-    return json({
-      job: {
-        status: { completed: true, status_str: "success" },
-        outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
-      },
-    });
-  }
-  if (url.startsWith("/view")) {
-    response.setHeader("content-type", "video/mp4");
-    return response.end(mp4);
-  }
-  if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
-  const messages = JSON.stringify(JSON.parse(body).messages ?? []);
-  let content = mainReply;
-  if (messages.includes("<source_exchange>")) {
-    // A Roleplay video director writing a clip's prompt.
-    directorRequests.push(messages);
-    content = JSON.stringify({ narrationBeat: "Lantern light sways as the scene moves" });
-  } else if (messages.includes("AGENT_WRITER")) {
-    agentRequests.push(messages);
-    content = JSON.stringify(illustratorReply);
-  } else if (messages.includes("video prompt writer")) {
-    videoWriterRequests.push(messages);
-    content = "Aster waves at the camera";
-  }
-  json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }], usage: { total_tokens: 20 } });
-});
-
-const db = await getDB();
-const app = Fastify();
-app.decorate("db", db);
-await app.register(generateRoutes, { prefix: "/api/generate" });
-await app.register(chatsRoutes, { prefix: "/api/chats" });
-await app.register(connectionsRoutes, { prefix: "/api/connections" });
-const chats = createChatsStorage(db);
-
-// The Generated Videos toggles are saved through Chat Settings' own route, and each comes back as sent.
-const saveChatSettings = async (chatId: string, patch: Record<string, unknown>) => {
-  const response = await app.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
-  assert.equal(response.statusCode, 200, response.body);
-  const raw = (await chats.getById(chatId))?.metadata;
-  const saved = (typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>;
-  for (const [key, value] of Object.entries(patch)) assert.deepEqual(saved[key], value, key);
-};
-
-const videoAttachments = async (chatId: string) => {
-  const messages = await chats.listMessages(chatId);
-  return messages.flatMap((message) => {
-    const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {});
-    return ((extra as { attachments?: Array<{ type?: string }> }).attachments ?? [])
-      .filter((attachment) => attachment.type === "video")
-      .map((attachment) => ({ messageId: message.id, attachment }));
-  });
-};
-
+let appHandle: { close: () => Promise<unknown> } | undefined;
+let providerHandle: import("node:http").Server | undefined;
+let closeDatabase: (() => Promise<void>) | undefined;
 try {
+  const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+  const Fastify = requireServer("fastify") as typeof import("fastify").default;
+  const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+  const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+  const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+  const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
+  const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
+  const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
+  const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
+  const { createGameSceneVideosStorage } =
+    await import("../../packages/server/src/services/storage/game-scene-videos.storage.js");
+  const { parseCharacterCommands } =
+    await import("../../packages/server/src/services/conversation/character-commands.js");
+  const { filterEnabledConversationCommands } =
+    await import("../../packages/server/src/services/generation/conversation-command-runtime.js");
+  const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
+
+  replaceBuiltInAgentDefinitions([
+    {
+      id: "illustrator",
+      name: "Illustrator",
+      description: "Generated videos fixture",
+      phase: "post_processing",
+      enabledByDefault: true,
+      category: "utility",
+      defaultTools: [],
+      defaultSettings: { contextSize: 2 },
+      defaultPromptTemplate: 'AGENT_WRITER Return JSON {"shouldGenerate":true,"prompt":"..."}.',
+    },
+  ]);
+
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+
+  let mainReply = "";
+  let failVideo = false;
+  // Runs once when the next clip reaches the video service (after the reply is saved).
+  let beforeVideo: (() => Promise<void>) | null = null;
+  let illustratorReply: Record<string, unknown> = {
+    shouldGenerate: true,
+    prompt: "1girl, lantern, rain",
+    generateVideo: true,
+    videoPrompt: "The lantern light flickers as Aster turns",
+  };
+  const videoWriterRequests: string[] = [];
+  const directorRequests: string[] = [];
+  const agentRequests: string[] = [];
+  const comfyPrompts: string[] = [];
+  const provider = (providerHandle = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString();
+    const url = request.url ?? "";
+    const json = (value: unknown) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(value));
+    };
+    if (url.endsWith("/prompt")) {
+      if (failVideo) {
+        response.statusCode = 500;
+        return json({ error: "ComfyUI is down" });
+      }
+      comfyPrompts.push(body);
+      const hook = beforeVideo;
+      beforeVideo = null;
+      if (hook) await hook();
+      return json({ prompt_id: "job" });
+    }
+    if (url.includes("/history/")) {
+      return json({
+        job: {
+          status: { completed: true, status_str: "success" },
+          outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
+        },
+      });
+    }
+    if (url.startsWith("/view")) {
+      response.setHeader("content-type", "video/mp4");
+      return response.end(mp4);
+    }
+    if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
+    const messages = JSON.stringify(JSON.parse(body).messages ?? []);
+    let content = mainReply;
+    if (messages.includes("<source_exchange>")) {
+      // A Roleplay video director writing a clip's prompt.
+      directorRequests.push(messages);
+      content = JSON.stringify({ narrationBeat: "Lantern light sways as the scene moves" });
+    } else if (messages.includes("AGENT_WRITER")) {
+      agentRequests.push(messages);
+      content = JSON.stringify(illustratorReply);
+    } else if (messages.includes("video prompt writer")) {
+      videoWriterRequests.push(messages);
+      content = "Aster waves at the camera";
+    }
+    json({
+      choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }],
+      usage: { total_tokens: 20 },
+    });
+  }));
+
+  const db = await getDB();
+  closeDatabase = closeDB;
+  const app = Fastify();
+  appHandle = app;
+  app.decorate("db", db);
+  await app.register(generateRoutes, { prefix: "/api/generate" });
+  await app.register(chatsRoutes, { prefix: "/api/chats" });
+  await app.register(connectionsRoutes, { prefix: "/api/connections" });
+  const chats = createChatsStorage(db);
+
+  // The Generated Videos toggles are saved through Chat Settings' own route, and each comes back as sent.
+  const saveChatSettings = async (chatId: string, patch: Record<string, unknown>) => {
+    const response = await app.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
+    assert.equal(response.statusCode, 200, response.body);
+    const raw = (await chats.getById(chatId))?.metadata;
+    const saved = (typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(patch)) assert.deepEqual(saved[key], value, key);
+  };
+
+  const videoAttachments = async (chatId: string) => {
+    const messages = await chats.listMessages(chatId);
+    return messages.flatMap((message) => {
+      const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {});
+      return ((extra as { attachments?: Array<{ type?: string }> }).attachments ?? [])
+        .filter((attachment) => attachment.type === "video")
+        .map((attachment) => ({ messageId: message.id, attachment }));
+    });
+  };
+
   // The [video] command parses like [selfie], and stays off unless Generated Videos is on.
   // Free text may quote dialogue and wrap lines; an unclosed tag never swallows text or the next command.
   const quoted = parseCharacterCommands(
@@ -524,8 +533,9 @@ try {
 
   console.log("agent-generated-videos regression passed");
 } finally {
-  await app.close();
-  await new Promise<void>((resolve) => provider.close(() => resolve()));
-  await closeDB();
+  await appHandle?.close();
+  const fakeProvider = providerHandle;
+  if (fakeProvider?.listening) await new Promise<void>((resolve) => fakeProvider.close(() => resolve()));
+  await closeDatabase?.();
   rmSync(fixtureDir, { recursive: true, force: true });
 }

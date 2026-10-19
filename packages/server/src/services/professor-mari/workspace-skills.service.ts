@@ -278,7 +278,9 @@ export class ProfessorMariWorkspaceSkillsService {
     const timestamp = now();
     await mkdir(skillDir(id), { recursive: true });
     await writeFile(skillFilePath(id), buildSkillContent({ name: id, description, content }), "utf8");
-    await this.writeRecords([{ id, name: id, description, enabled: false, createdAt: timestamp, updatedAt: timestamp }]);
+    await this.writeRecords([
+      { id, name: id, description, enabled: false, createdAt: timestamp, updatedAt: timestamp },
+    ]);
   }
 
   private async readRecords(): Promise<SkillRecord[]> {

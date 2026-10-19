@@ -77,7 +77,8 @@ assert.deepEqual(splitNodeOptions(""), []);
 
 // A heap the user set is kept even when the type-check (2304 MiB) does not fit in it, so a type-check
 // that ran out of memory under it says how to fix it: SIGABRT, or exit code 134 on Windows.
-const hint = (env, result = { status: null, signal: "SIGABRT" }) => typeCheckHeapHint({ ...result, env });
+const hint = (env, result = { status: null, signal: "SIGABRT" }, heapLimitMb = 3072) =>
+  typeCheckHeapHint({ ...result, env, heapLimitMb });
 assert.match(hint({ NODE_OPTIONS: "--max-old-space-size=2048" }), /about 2\.5 GiB.*limits it to 2048 MiB.*2560/u);
 assert.match(hint({ NODE_OPTIONS: "--max-old-space-size=2048" }, { status: 134, signal: null }), /2048 MiB/u);
 assert.match(
@@ -94,6 +95,36 @@ assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size=2048 --max-old-space-siz
 assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size=2304" }), null, "a heap the type-check fits in is not blamed");
 assert.equal(hint({}), null, "without a heap the user set, the build chose the heap");
 assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size-percentage=50" }), null);
+for (const NODE_OPTIONS of [
+  "--max-old-space-size-percentage=1",
+  "--max-old-space-size=4096 --max-old-space-size-percentage=1",
+  "--max-old-space-size-percentage=1 --max-old-space-size=4096",
+  "--max_old_space_size_percentage=1",
+  "--max-old-space-size-percentage 1",
+]) {
+  assert.match(
+    hint({ NODE_OPTIONS }, undefined, 512),
+    /limits it to 512 MiB with --max-old-space-size-percentage.*Raise that percentage/u,
+    "a percentage limit uses Node's resolved heap and advice for the effective flag",
+  );
+}
+for (const NODE_OPTIONS of [
+  "--max-old-space-size=1024 --max-old-space-size-percentage=50",
+  "--max-old-space-size-percentage=50 --max-old-space-size=1024",
+]) {
+  assert.equal(hint({ NODE_OPTIONS }), null, "an ineffective small absolute limit is not blamed");
+}
+assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, undefined, 2304), null);
+assert.equal(
+  hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, { status: 2, signal: null }, 512),
+  null,
+  "a percentage limit does not turn a type error into a heap failure",
+);
+assert.equal(
+  hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, { status: null, signal: "SIGTERM" }, 512),
+  null,
+  "a different terminating signal is not a heap failure",
+);
 assert.equal(
   hint({ NODE_OPTIONS: "--max-old-space-size=2048" }, { status: 2, signal: null }),
   null,

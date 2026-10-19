@@ -87,13 +87,22 @@ export function resolveDesktopClientBuildHeapMb({
 /**
  * The line to print when the desktop type-check stopped the way V8 stops when it runs out of heap
  * (SIGABRT, or exit code 134 on Windows) under a smaller heap the user set in NODE_OPTIONS, which the
- * build keeps; otherwise null. Node reads the last --max-old-space-size it is given.
+ * build keeps; otherwise null. A percentage setting wins over absolute limits in either order;
+ * use V8's resolved heap for it. Otherwise Node reads the last --max-old-space-size it is given.
  */
-export function typeCheckHeapHint({ status, signal, env = process.env }) {
+export function typeCheckHeapHint({
+  status,
+  signal,
+  env = process.env,
+  heapLimitMb = Math.floor(getHeapStatistics().heap_size_limit / 1024 / 1024),
+}) {
   if (signal !== "SIGABRT" && status !== 134) return null;
-  const heapOptions = splitNodeOptions(env.NODE_OPTIONS ?? "").filter((option) =>
-    /^--max[-_]old[-_]space[-_]size=/u.test(option),
-  );
+  const options = splitNodeOptions(env.NODE_OPTIONS ?? "");
+  if (options.some((option) => /^--max[-_]old[-_]space[-_]size[-_]percentage(?:=|$)/u.test(option))) {
+    if (!(heapLimitMb < DESKTOP_TYPECHECK_HEAP_MB)) return null;
+    return `[build] The client type-check needs about 2.5 GiB of Node.js heap, but NODE_OPTIONS limits it to ${heapLimitMb} MiB with --max-old-space-size-percentage. Raise that percentage in NODE_OPTIONS, or remove it.`;
+  }
+  const heapOptions = options.filter((option) => /^--max[-_]old[-_]space[-_]size=/u.test(option));
   const heapMb = Number(heapOptions.at(-1)?.split("=")[1]);
   if (!(heapMb < DESKTOP_TYPECHECK_HEAP_MB)) return null;
   return `[build] The client type-check needs about 2.5 GiB of Node.js heap, but NODE_OPTIONS limits it to ${heapMb} MiB. Raise --max-old-space-size in NODE_OPTIONS to 2560 or more, or remove it.`;

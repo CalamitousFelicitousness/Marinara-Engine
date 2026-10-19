@@ -8628,8 +8628,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatMode === "roleplay" &&
             !input.impersonate &&
             isRoleplayCommandEnabled(chatMeta, "video") &&
+            // Counted over the whole chat, as the check before making the clip is, not the trimmed context.
             automaticVideoAllowed(
-              chatMessages,
+              allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
               chatMeta,
               await loadVideoRunInterval(agentsStore, chatMeta),
               true,
@@ -12512,17 +12513,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (firstFrame !== "picture") {
                 pendingRoleplayMedia.push(
                   (async () => {
+                    let videoRun: AutomaticVideoRunClaim | null = null;
                     try {
-                      const latestMeta = parseExtra((await chats.getById(input.chatId))?.metadata);
-                      // Re-checked here: another clip may have landed since [video] was offered.
-                      const allowed = automaticVideoAllowed(
-                        await chats.listMessages(input.chatId),
-                        latestMeta,
-                        await loadVideoRunInterval(agentsStore, latestMeta),
-                        false,
-                        request.messageId,
+                      // Re-checked here, as the clip starts: another clip may have started since [video] was offered.
+                      // The check and the Video Run Interval's new starting point are one step; the starting point is
+                      // given back if the clip fails.
+                      videoRun = await claimAutomaticVideoRun(chats, input.chatId, request.messageId, async (current) =>
+                        automaticVideoAllowed(
+                          await chats.listMessages(input.chatId),
+                          current,
+                          await loadVideoRunInterval(agentsStore, current),
+                          false,
+                          request.messageId,
+                        ),
                       );
-                      if (!allowed) return;
+                      if (!videoRun) return;
                       // The storyteller's subject and motion are the request; the Clip Director writes the clip to
                       // the video connection's instructions.
                       const prompt = await writeClipPrompt({
@@ -12549,6 +12554,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       });
                       // The clip is saved by now, so it counts as made: failing to add it to the reply only logs,
                       // and the Video Run Interval counts from this reply either way.
+                      await videoRun.settle(true);
                       let attachedTo: string | null = null;
                       try {
                         const attached = await attachVideoToMessage(
@@ -12561,11 +12567,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       } catch (attachErr) {
                         logger.warn(attachErr, "[roleplay/commands] Saved clip %s but could not attach it", video.id);
                       }
-                      await chats
-                        .patchMetadata(input.chatId, () => ({ lastAutomaticVideoMessageId: request.messageId }))
-                        .catch((err) =>
-                          logger.warn(err, "[roleplay/commands] Could not record the clip for the run interval"),
-                        );
                       sendSseEvent(reply, {
                         type: "video",
                         data: {
@@ -12576,6 +12577,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         },
                       });
                     } catch (error) {
+                      await videoRun?.settle(false);
                       if (agentSignal.aborted) return;
                       logger.warn(error, "[roleplay/commands] Video request failed");
                       sendSseEvent(reply, {

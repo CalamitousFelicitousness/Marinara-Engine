@@ -13547,6 +13547,21 @@ function resolveActionFalling(
   return result;
 }
 
+/** Ammunition spent as its clause reached a target (1.604): an Arrow of Slaying become a plain arrow.
+ *  The share of it that would have come back comes back after the fight as its holder's plain
+ *  ammunition of the same tag, where they carry any, and otherwise not at all. */
+function spendShot(actor: RulesetCombatant, action: RulesetCombatAction, clause: RulesetCombatDamageClause): void {
+  const shot = clause.shot;
+  if (!shot?.spends || shot.spent || !action.ammo) return;
+  shot.spent = true;
+  const back = Math.min(actor.recoverable?.[shot.item] ?? 0, action.ammo.recover ?? 0);
+  if (back <= 0) return;
+  actor.recoverable![shot.item] = actor.recoverable![shot.item]! - back;
+  const tag = action.ammo.tag;
+  const plain = (actor.sheet?.items ?? []).findIndex((held) => !held.item.ammoRider && held.item.tags?.includes(tag));
+  if (plain >= 0) (actor.recoverableInto ??= {})[plain] = (actor.recoverableInto?.[plain] ?? 0) + back;
+}
+
 /** Whether a clause of a blow reaches this target: one that is what it names and not what it is kept
  *  off (1.187), on a blow struck the way it says (1.187). */
 function clauseReaches(
@@ -14251,6 +14266,21 @@ function resolveActionBodyIn(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
+  // The ammunition it was shot with (1.604): an Arrow of Slaying's clauses on the blow it rides.
+  const rider =
+    action.ammo && !action.clip && actor.lastShot !== undefined
+      ? action.ammo.riders?.[String(actor.lastShot)]
+      : undefined;
+  if (rider && action.damage) {
+    const shot = { item: actor.lastShot!, ...(rider.spends ? { spends: true as const } : {}) };
+    action = {
+      ...action,
+      damage: {
+        ...action.damage,
+        plus: [...(action.damage.plus ?? []), ...rider.plus.map((clause) => ({ ...clause, shot }))],
+      },
+    };
+  }
   if (action.sequence) {
     return resolveSequence(
       ctx,
@@ -15320,6 +15350,7 @@ function resolveActionBodyIn(
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFromFor(target), against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
+        spendShot(actor, action, clause);
         const clauseHalved = clause.save ? own : halved;
         const type = clause.type ?? action.damage?.type;
         const thrown = throwHarm(ctx, target, clause, type, 0, undefined, true, { qualities: attack?.qualities });
@@ -15377,6 +15408,7 @@ function resolveActionBodyIn(
           ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id, saveFromFor(target), against)
           : false;
         if (own && clause.save?.onSuccess === "none") return;
+        spendShot(actor, action, clause);
         // Halved by its own save when it has one, and by the action's save-for-half when it does not.
         const clauseHalved = clause.save ? own : halved;
         const rolledClause = clauses[index]!();

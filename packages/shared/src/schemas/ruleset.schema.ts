@@ -10775,6 +10775,21 @@ const catalogItemObjectSchema = z
       })
       .strict()
       .optional(),
+    /** What it adds to the shot it is fired as (Capability API 1.604): ammunition, which a weapon's
+     *  `ammo` draws by its tag, with clauses of its own on that blow, each with its own `targetIs`.
+     *  Each such stack is offered as its own way to shoot the weapon, and plain ammunition is shot
+     *  first otherwise. With `spentOnUse` it is spent once one of its clauses reaches a target: what
+     *  of it comes back after the fight comes back as its holder's plain ammunition of that tag.
+     *  5e's Arrow of Slaying, `{ "plus": [{ "dice": "6d10", "type": "piercing", "save": { "save":
+     *  "con_save", "difficulty": 17, "onSuccess": "half" }, "targetIs": { "types": ["dragon"] } }],
+     *  "spentOnUse": true }`. */
+    ammoRider: z
+      .object({
+        plus: z.array(itemPlusClauseSchema).min(1).max(6),
+        spentOnUse: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -20208,6 +20223,22 @@ function itemIssues(
       add([...at, "attack", "plus", index, "when"], 'A clause dealt while the item is on needs the item\'s "toggle"');
     }
   });
+  // Ammunition's own clauses (1.604): drawn by a weapon by its tag, so it has one, and never dealt
+  // while switched on, since ammunition has no switch of its own.
+  if (item.ammoRider) {
+    if (!item.tags?.length) {
+      add([...at, "ammoRider"], "Ammunition is drawn by its tag, so an item with an ammoRider has one");
+    }
+    item.ammoRider.plus.forEach((clause, index) => {
+      plusClauseIssues(definition, clause, [...at, "ammoRider", "plus", index], add);
+      if (clause.when === "toggled") {
+        add(
+          [...at, "ammoRider", "plus", index, "when"],
+          "Ammunition has no switch: its clause is dealt always, or on a critical hit",
+        );
+      }
+    });
+  }
   if (item.use) useIssues(definition, item, item.use, [...at, "use"], add);
   item.moreUses?.forEach((more, index) =>
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),

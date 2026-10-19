@@ -57,6 +57,8 @@ export function rulesetModedAction(
         }
       : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+    // Out of the stack picked (1.604): an Arrow of Slaying.
+    ...(mode.ammoFrom !== undefined ? { ammoFrom: mode.ammoFrom } : {}),
     // Its own reach and clauses (1.190): a javelin of lightning's bolt, 4d6 more on a hit.
     ...(mode.range ? { range: { ...mode.range } } : {}),
     ...(mode.plus?.length && action.damage
@@ -123,6 +125,11 @@ export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string): number {
   return left;
 }
 
+/** How many are left of one stack of the fighter's (1.604). */
+function stackLeft(actor: RulesetCombatant, index: number): number {
+  return Math.max(0, (actor.sheet?.items?.[index]?.quantity ?? 0) - (actor.itemsUsed?.[index] ?? 0));
+}
+
 /** What a weapon has loaded now: what this fight has left in it, else what its stack kept, else a
  *  full clip, since a weapon nobody has fired yet is loaded. */
 export function rulesetLoaded(actor: RulesetCombatant, clip: NonNullable<RulesetCombatAction["clip"]>): number {
@@ -170,19 +177,29 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
   }
   const per = shotsPer(action);
   if (action.clip) return rulesetLoaded(actor, action.clip) >= per;
-  if (action.ammo) return rulesetAmmoLeft(actor, action.ammo.tag) >= per;
+  if (action.ammo) {
+    if (action.ammoFrom !== undefined) return stackLeft(actor, action.ammoFrom) >= per;
+    return rulesetAmmoLeft(actor, action.ammo.tag) >= per;
+  }
   return true;
 }
 
 /** Takes up to `count` of the items with this tag out of the fighter's bag, first stack first, and
- *  notes the share of them that comes back after a won fight. How many were taken. */
-function draw(actor: RulesetCombatant, tag: string, count: number, recover?: number): number {
+ *  notes the share of them that comes back after a won fight. How many were taken. Plain ammunition
+ *  goes before any with clauses of its own (1.604), and `from` takes out of that stack alone. */
+function draw(actor: RulesetCombatant, tag: string, count: number, recover?: number, from?: number): number {
   let wanted = count;
-  (actor.sheet?.items ?? []).forEach((held, index) => {
-    if (wanted <= 0 || !held.item.tags?.includes(tag)) return;
+  const items = actor.sheet?.items ?? [];
+  const order = items
+    .map((_, index) => index)
+    .filter((index) => from === undefined || index === from)
+    .sort((a, b) => Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider));
+  for (const index of order) {
+    const held = items[index]!;
+    if (wanted <= 0 || !held.item.tags?.includes(tag)) continue;
     const used = actor.itemsUsed?.[index] ?? 0;
     const take = Math.min(wanted, Math.max(0, held.quantity - used));
-    if (take <= 0) return;
+    if (take <= 0) continue;
     (actor.itemsUsed ??= {})[index] = used + take;
     // Where the shot came from (1.498), for ammunition destroyed as it hits.
     actor.lastShot = index;
@@ -191,7 +208,7 @@ function draw(actor: RulesetCombatant, tag: string, count: number, recover?: num
       recoverable[index] = (recoverable[index] ?? 0) + take * recover;
     }
     wanted -= take;
-  });
+  }
   return count - wanted;
 }
 
@@ -230,7 +247,7 @@ export function spendRulesetShots(
     return { ...said, left, of: action.clip.max };
   }
   if (!action.ammo) return null;
-  draw(actor, action.ammo.tag, per, action.ammo.recover);
+  draw(actor, action.ammo.tag, per, action.ammo.recover, action.ammoFrom);
   return { ...said, left: rulesetAmmoLeft(actor, action.ammo.tag) };
 }
 
@@ -273,6 +290,19 @@ export function recoverRulesetAmmo(state: RulesetEncounterState): RulesetCombatE
       });
     }
     delete combatant.recoverable;
+    // Ammunition spent as it struck (1.604), back as the plain ammunition it became: the stack grows.
+    for (const [index, share] of Object.entries(combatant.recoverableInto ?? {})) {
+      const back = Math.floor(share + 1e-9);
+      if (back <= 0) continue;
+      (combatant.itemsUsed ??= {})[index] = (combatant.itemsUsed[index] ?? 0) - back;
+      events.push({
+        type: "recovered",
+        actorId: combatant.id,
+        label: combatant.sheet?.items?.[Number(index)]?.name ?? "",
+        count: back,
+      });
+    }
+    delete combatant.recoverableInto;
   }
   return events;
 }

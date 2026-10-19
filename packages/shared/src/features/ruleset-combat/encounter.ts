@@ -3031,6 +3031,29 @@ function itemAttackActions(
         ];
       });
     const plus = clausesOf(attack.plus);
+    // Ammunition it shoots with clauses of its own (1.604), each a way to shoot it: an Arrow of
+    // Slaying. A clip loads whatever comes first, so only a weapon shot from the bag has them.
+    const shots =
+      attack.ammo && !attack.clip
+        ? items.flatMap((shot, at) =>
+            shot.item.ammoRider && shot.item.tags?.includes(attack.ammo!.tag)
+              ? [{ at, name: itemAttackLabel(definition, shot), rider: shot.item.ammoRider }]
+              : [],
+          )
+        : [];
+    const riders = shots.length
+      ? Object.fromEntries(
+          shots.map(({ at, rider }) => [
+            String(at),
+            { plus: clausesOf(rider.plus), ...(rider.spentOnUse ? { spends: true as const } : {}) },
+          ]),
+        )
+      : undefined;
+    const shotModes: RulesetCombatMode[] = shots.map(({ at, name }) => ({
+      id: `shot:${at}`,
+      label: name,
+      ammoFrom: at,
+    }));
     // The item's own charges, which a slay spends (1.187): a stat holds its own range, held to the
     // most a written count may be. One that reads nothing never slays.
     const counted = item.charges ? read(item.charges.max) : undefined;
@@ -3108,9 +3131,11 @@ function itemAttackActions(
       toHit: aim.toHit,
       ...(aim.target !== undefined ? { target: aim.target } : {}),
       damage: damageOf(damageAbility),
-      ...(ammo ? { ammo } : {}),
+      ...(ammo ? { ammo: riders ? { ...ammo, riders } : ammo } : {}),
       ...(clip ? { clip } : {}),
-      ...(attack.modes?.length ? { modes: attack.modes.flatMap((mode) => modeOf(mode)) } : {}),
+      ...(attack.modes?.length || shotModes.length
+        ? { modes: [...(attack.modes ?? []).flatMap((mode) => modeOf(mode)), ...shotModes] }
+        : {}),
       ...(attack.onHit?.length
         ? {
             onHit: attack.onHit.map((entry) => ({

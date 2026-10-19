@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Ammunition with clauses of its own on the shot it is fired as (1.604): 5e's Arrow of Slaying. */
+function carriesAmmoRider604(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAmmoRider604(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.ammoRider)) return true;
+  return featureValues(record).some((one) => carriesAmmoRider604(one, depth + 1));
+}
+
 /** A use that gives back spent pools by itself, so many of them (1.603): 5e's Pearl of Power. */
 function carriesRecoverCount603(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8177,6 +8187,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ammunition with clauses of its own on the shot it is fired as, 1.604.
+  if (
+    !declaresApi(604) &&
+    (carriesAmmoRider604(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAmmoRider604(document)))
+  )
+    return "A ruleset with ammunition that adds to the shot it is fired as (item ammoRider) requires schemaVersion 2 and capabilityApi 1.604 or newer";
   // A use that gives back spent pools by itself, so many of them, 1.603.
   if (
     !declaresApi(603) &&

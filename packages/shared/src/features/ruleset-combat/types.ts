@@ -79,6 +79,9 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   tempHp?: true;
   /** Dealt only to a target carrying this condition from its maker (1.189). */
   marked?: string;
+  /** The ammunition it rides on (1.604): its stack, and whether it is spent once this reaches a
+   *  target, shared by every clause of one shot. */
+  shot?: { item: number; spends?: true; spent?: true };
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
@@ -1372,7 +1375,17 @@ export interface RulesetCombatAction {
   contest?: RulesetCombatContest;
   /** What a weapon shoots: `per` of the holder's carried items with this tag each attack, and the
    *  share of what was shot that comes back after a fight the party wins. */
-  ammo?: { tag: string; per: number; recover?: number };
+  ammo?: {
+    tag: string;
+    per: number;
+    recover?: number;
+    /** What each carried stack of it with clauses of its own adds to the blow (1.604), by its place
+     *  in `sheet.items`, and whether it is spent once one of them reaches a target. */
+    riders?: Record<string, { plus: RulesetCombatDamageClause[]; spends?: true }>;
+  };
+  /** Shot out of this stack of the holder's (its place in `sheet.items`) only (1.604): a mode
+   *  picked for its ammunition, an Arrow of Slaying. */
+  ammoFrom?: number;
   /** The loaded count a weapon keeps on itself: which of the holder's items it is (its place in
    *  `sheet.items`) and how many it holds. An attack spends what is loaded; a `reload` fills it. */
   clip?: { item: number; max: number };
@@ -1543,6 +1556,8 @@ export interface RulesetCombatMode {
   id: string;
   label: string;
   ammo?: number;
+  /** Shot out of this stack only (1.604): ammunition with clauses of its own. */
+  ammoFrom?: number;
   toHit?: number;
   target?: number;
   targets?: number;
@@ -2135,6 +2150,9 @@ export interface RulesetCombatant {
   itemsUsed?: Record<string, number>;
   loaded?: Record<string, number>;
   recoverable?: Record<string, number>;
+  /** Ammunition spent as it struck (1.604), the share of it that comes back after a won fight as
+   *  the plain stack of its tag at this place in `sheet.items`. */
+  recoverableInto?: Record<string, number>;
   /** What each weapon has taken off its damage rolls for good (1.498), corroded, keyed as the rest
    *  are: as the fight began and since. */
   corroded?: Record<string, number>;

@@ -4020,6 +4020,21 @@ const conditionAbilitiesSchema: z.ZodType<RulesetConditionAbilities, z.ZodTypeDe
   ]),
 );
 
+/** A condition's `derivedChanges` (1.609): see the combat condition's own. */
+export type RulesetConditionDerivedChanges = Record<string, { times?: number; add?: number }>;
+const conditionDerivedChangesSchema: z.ZodType<RulesetConditionDerivedChanges, z.ZodTypeDef, unknown> = z.record(
+  sheetId,
+  z
+    .object({
+      times: z.number().finite().gt(0).max(100).optional(),
+      add: z.number().finite().min(-100000).max(100000).optional(),
+    })
+    .strict()
+    .refine((change) => change.times !== undefined || change.add !== undefined, {
+      message: "A derived value's change multiplies it, adds to it, or both",
+    }),
+);
+
 /** A condition's `endsWhenHolder` (1.311): see the combat condition's own. */
 export interface RulesetConditionEndsWhenHolder {
   moves?: true;
@@ -12935,6 +12950,12 @@ const combatConditionSchema = z
      *  worked out again, their health and speed staying as they are. 5e's Potion of Hill Giant
      *  Strength, `{ "str": { "set": 21 } }`; Feeblemind, `{ "int": { "to": 1 }, "cha": { "to": 1 } }`. */
     abilities: conditionAbilitiesSchema.optional(),
+    /** What it does to its holder's derived values while it holds (Capability API 1.609), by derived
+     *  id: `times` multiplies the value as it is worked out, then `add` goes on top, and everything
+     *  that reads it reads the changed value. Held on the sheet or put on in a fight, as `abilities`.
+     *  5e's Enhance Ability (Bull's Strength) doubles carrying capacity, `{ "carry_capacity":
+     *  { "times": 2 } }`. */
+    derivedChanges: conditionDerivedChangesSchema.optional(),
     /** Its holder's dying rolls are made with this (Capability API 1.447): 5e's Beacon of Hope,
      *  `"advantage"`. */
     deathSaves: z.enum(["advantage", "disadvantage"]).optional(),
@@ -17771,6 +17792,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!def.sheet.live.conditions.some((one) => one.id === id))
             issue([...path, "fallsSafely", "unless", index], `Unknown condition "${id}"`);
         });
+      }
+      // The derived values it changes (1.609), the sheet's own, at most 12.
+      const derivedChanged = Object.keys(entry.derivedChanges ?? {});
+      if (derivedChanged.length > 12)
+        issue([...path, "derivedChanges"], "A condition changes at most 12 derived values");
+      for (const id of derivedChanged) {
+        if (!def.sheet.derived.some((one) => one.id === id))
+          issue([...path, "derivedChanges", id], `Unknown derived value "${id}"`);
       }
       // The abilities it changes (1.462), at most 12, never by nothing.
       const changed = Object.entries(entry.abilities ?? {});

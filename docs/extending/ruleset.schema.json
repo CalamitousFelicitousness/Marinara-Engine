@@ -180436,6 +180436,33 @@
                   "$comment": {}
                 }
               },
+              "derivedChanges": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "times": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 100
+                    },
+                    "add": {
+                      "type": "number",
+                      "minimum": -100000,
+                      "maximum": 100000
+                    },
+                    "$comment": {}
+                  },
+                  "additionalProperties": false
+                },
+                "propertyNames": {
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "properties": {
+                  "$comment": {}
+                }
+              },
               "deathSaves": {
                 "type": "string",
                 "enum": [

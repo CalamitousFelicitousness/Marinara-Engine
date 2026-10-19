@@ -13,6 +13,7 @@ import {
   type RulesetCatalogItem,
   type RulesetCombatAbilitySource,
   type RulesetConditionAbilities,
+  type RulesetConditionDerivedChanges,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetResolution,
@@ -252,6 +253,9 @@ export interface RulesetSheetLiveValues {
   items?: ReadonlyArray<RulesetSheetItem>;
   /** What the conditions they hold do to their abilities (Capability API 1.462), one per condition. */
   conditionAbilities?: ReadonlyArray<Readonly<RulesetConditionAbilities>>;
+  /** What the conditions they hold do to their derived values (Capability API 1.609), one per
+   *  condition. */
+  conditionDerived?: ReadonlyArray<Readonly<RulesetConditionDerivedChanges>>;
   /** Abilities raised for good (Capability API 1.463): onto the score, and onto its most. */
   abilityRaises?: Readonly<Record<string, { score: number; max: number }>>;
 }
@@ -703,6 +707,15 @@ export function evaluateRulesetSheet(
             : entry.default;
       } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
       if (entry.id === proficiencyDerived && itemProficiency) derived[entry.id] = derived[entry.id]! + itemProficiency;
+      // As the conditions they hold change it (1.609), before anything after it reads it: every
+      // multiplier, then every addition. Bull's Strength's doubled carrying capacity.
+      const changes = live?.conditionDerived?.flatMap((one) => (one[entry.id] ? [one[entry.id]!] : [])) ?? [];
+      if (changes.length) {
+        let value = derived[entry.id]!;
+        for (const change of changes) value *= change.times ?? 1;
+        for (const change of changes) value += change.add ?? 0;
+        derived[entry.id] = value;
+      }
     }
   };
   workOutDerived();

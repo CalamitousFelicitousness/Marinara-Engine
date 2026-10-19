@@ -972,10 +972,17 @@ export function evaluateRulesetSheetLive(
         entry.abilities && held.has(entry.condition) ? [entry.abilities] : [],
       )
     : [];
+  // And to their derived values (1.609): Bull's Strength's carrying capacity.
+  const conditionDerived = held.size
+    ? (definition.combat?.conditions ?? []).flatMap((entry) =>
+        entry.derivedChanges && held.has(entry.condition) ? [entry.derivedChanges] : [],
+      )
+    : [];
   return evaluateRulesetSheet(definition, build, {
     ...live,
     ...(items ? { items } : {}),
     ...(conditionAbilities.length ? { conditionAbilities } : {}),
+    ...(conditionDerived.length ? { conditionDerived } : {}),
   });
 }
 

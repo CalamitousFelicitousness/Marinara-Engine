@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition changing its holder's derived values (1.609): 5e's Bull's Strength. */
+function carriesDerivedChanges609(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDerivedChanges609(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.derivedChanges)) return true;
+  return featureValues(record).some((one) => carriesDerivedChanges609(one, depth + 1));
+}
+
 /** A starting gear choice's option offered only to some sheets (1.608): 5e's "(if proficient)". */
 function carriesOfferedOption608(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8228,6 +8238,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition changing its holder's derived values, 1.609.
+  if (
+    !declaresApi(609) &&
+    (carriesDerivedChanges609(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDerivedChanges609(document)))
+  )
+    return "A ruleset whose conditions change their holder's derived values (a combat condition's derivedChanges) requires schemaVersion 2 and capabilityApi 1.609 or newer";
   // A starting gear choice's option offered only to some sheets, 1.608.
   if (
     !declaresApi(608) &&

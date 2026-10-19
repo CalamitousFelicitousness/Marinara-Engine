@@ -89,6 +89,7 @@ export function CharacterOnboardingModal({
   withPersona,
   onBack,
   onCreated,
+  chatFloatingPanel = false,
 }: {
   open: boolean;
   /**
@@ -118,6 +119,11 @@ export function CharacterOnboardingModal({
   onBack: () => void;
   /** The window stays open and locked until this settles. */
   onCreated: (personaId: string | null, cardVariables: Record<string, string>) => void | Promise<void>;
+  /**
+   * Inherit the chat's floating-panel styling, for a window opened from Chat
+   * Settings rather than from the full-screen setup wizard.
+   */
+  chatFloatingPanel?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const createPersona = useCreatePersona();
@@ -391,6 +397,7 @@ export function CharacterOnboardingModal({
         )}
         width="max-w-lg"
         closeDisabled={busy}
+        chatFloatingPanel={chatFloatingPanel}
       >
         <fieldset disabled={busy} className="min-w-0 space-y-4 p-4">
           <p className="text-xs text-[var(--muted-foreground)]">
@@ -554,6 +561,7 @@ export function CharacterOnboardingModal({
           onClose={() => setReviewing(false)}
           title={localizeUi("ui.characters.onboarding.reviewTitle")}
           width="max-w-lg"
+          chatFloatingPanel={chatFloatingPanel}
         >
           <div className="space-y-4">
             <p className="text-xs text-[var(--muted-foreground)]">

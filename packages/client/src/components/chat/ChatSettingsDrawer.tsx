@@ -26,6 +26,7 @@ import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-f
 import {
   X,
   Users,
+  UserPlus,
   User,
   BookOpen,
   ChevronDown,
@@ -119,6 +120,10 @@ import {
   BUILT_IN_AGENTS,
   VIDEO_FIRST_FRAMES,
   normalizeVideoFirstFrame,
+  type CardOnboarding,
+  canBuildPersona,
+  hasOnboardingContent,
+  readCardOnboarding,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -155,6 +160,7 @@ import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
+import { CharacterOnboardingModal } from "../characters/CharacterOnboardingModal";
 import { SecretPlotPanel } from "../agents/SecretPlotPanel";
 import { SummariesEditorModal } from "./SummariesEditorModal";
 import { AdvancedMemorySettings } from "./AdvancedMemorySettings";
@@ -2707,6 +2713,34 @@ export function ChatSettingsDrawer({
     [chatCharIds, characters],
   );
 
+  // One parse pass over every card, shared by the available-list badge, the
+  // persona rows and the in-chat question action. The gate is the wizard's:
+  // onboarding is enabled and offers something. A card that is enabled but empty
+  // never shows a marker or a row.
+  const onboardingByCharacterId = useMemo(() => {
+    const byId = new Map<string, CardOnboarding>();
+    for (const character of characters) {
+      const cardOnboarding = readCardOnboarding(character.data);
+      if (!cardOnboarding?.onboarding.enabled || !hasOnboardingContent(cardOnboarding.onboarding)) continue;
+      byId.set(character.id, cardOnboarding);
+    }
+    return byId;
+  }, [characters]);
+
+  // Every character in this chat whose card can build a persona from interactive
+  // onboarding. Roleplay only: the Roleplay wizard is what asks onboarding, and
+  // Game Mode's party uses a separate picker. The wizard offers exactly the same
+  // rows (`canBuildPersona`), so a card is offered here under the same rule.
+  const onboardingPersonaTemplates = useMemo(() => {
+    if (isGame || isConversation) return [];
+    return chatCharIds.flatMap((characterId) => {
+      const character = characters.find((entry) => entry.id === characterId);
+      const cardOnboarding = onboardingByCharacterId.get(characterId);
+      if (!character || !cardOnboarding || !canBuildPersona(cardOnboarding.onboarding)) return [];
+      return [{ character, cardOnboarding }];
+    });
+  }, [characters, chatCharIds, isConversation, isGame, onboardingByCharacterId]);
+
   const chatCharacterCount = allCharacters == null ? chatCharIds.length : chatCharacters.length;
 
   const activePersona = useMemo(
@@ -3880,6 +3914,40 @@ export function ChatSettingsDrawer({
   }, [chat.id]);
   const [connectionSearch, setConnectionSearch] = useState("");
   const [personaSearch, setPersonaSearch] = useState("");
+  // The onboarding template whose questions window is open, picked from the
+  // persona picker. A character, not a persona: nothing exists until Create.
+  const [onboardingTemplateId, setOnboardingTemplateId] = useState<string | null>(null);
+  const onboardingTemplate = onboardingTemplateId
+    ? (onboardingPersonaTemplates.find((entry) => entry.character.id === onboardingTemplateId) ?? null)
+    : null;
+  // The card can leave the chat while its window is open. Drop the stale choice
+  // with it, or re-adding the card later would pop the window open again.
+  useEffect(() => {
+    if (onboardingTemplateId && !onboardingTemplate) setOnboardingTemplateId(null);
+  }, [onboardingTemplate, onboardingTemplateId]);
+  useEffect(() => {
+    setOnboardingTemplateId(null);
+  }, [chat.id]);
+  /**
+   * A persona created from a card's onboarding questions in this drawer (#7796).
+   * The persona already exists by the time this runs, so a failed selection must
+   * close the window: leaving it open would let a second Create duplicate it. The
+   * persona stays in the library, and the picker opens so it can be picked there.
+   */
+  const handleOnboardingPersonaCreated = useCallback(
+    async (personaId: string | null) => {
+      setOnboardingTemplateId(null);
+      if (!personaId) return;
+      try {
+        await updateChat.mutateAsync({ id: chat.id, personaId, personaCharacterId: null });
+      } catch {
+        toast.error(localizeUi("ui.characters.onboarding.selectFailed"));
+        setShowPersonaPicker(true);
+      }
+    },
+    [chat.id, localizeUi, updateChat],
+  );
+
   const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
   const [charSearch, setCharSearch] = useState("");
   const [lbSearch, setLbSearch] = useState("");
@@ -5986,6 +6054,50 @@ export function ChatSettingsDrawer({
                   onClose={() => setShowPersonaPicker(false)}
                   placeholder={localizeUi("ui.chat.chatsettingsdrawer.searchPersonas")}
                 >
+                  {/* Onboarding templates, above None like the setup wizard's
+                      Your Persona picker: Create is a positive choice, not an
+                      escape hatch. One row per card in this chat that can build
+                      a persona. */}
+                  {onboardingPersonaTemplates.map(({ character }) => {
+                    const name = charName(character);
+                    return (
+                      <button
+                        key={`onboarding-template-${character.id}`}
+                        type="button"
+                        onClick={() => {
+                          setShowPersonaPicker(false);
+                          setOnboardingTemplateId(character.id);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all hover:bg-[var(--accent)]"
+                      >
+                        {character.avatarPath ? (
+                          <span className="relative block h-6 w-6 shrink-0 overflow-hidden rounded-full">
+                            <img
+                              src={character.avatarPath}
+                              alt=""
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                              style={getAvatarCropStyle(getCharacterInfo(character).avatarCrop)}
+                            />
+                          </span>
+                        ) : (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[0.625rem] font-semibold">
+                            {name[0]}
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1 truncate text-xs font-medium">
+                            <UserPlus size="0.625rem" className="shrink-0 text-[var(--primary)]" />
+                            {localizeUi("ui.characters.onboarding.modalTitle")}
+                          </span>
+                          <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                            {localizeUi("ui.characters.onboarding.templateSource", { value1: name })}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {onboardingPersonaTemplates.length > 0 && <div className="border-t border-[var(--border)]" />}
                   {/* None option */}
                   <button
                     onClick={() => {
@@ -10204,6 +10316,27 @@ export function ChatSettingsDrawer({
         existingChoices={metadata.presetChoices ?? {}}
         chatFloatingPanel
       />
+
+      {/* Create a persona from a card's onboarding questions (#7796). Persona
+          questions only: `cards` is empty on purpose, so opening this window in a
+          running chat can never replace character-question answers with defaults. */}
+      {onboardingTemplate && (
+        <CharacterOnboardingModal
+          // Re-keyed by the template so switching cards starts from fresh answers.
+          key={onboardingTemplate.character.id}
+          open
+          cards={[]}
+          participantNames={[onboardingTemplate.cardOnboarding.name || charName(onboardingTemplate.character)]}
+          persona={{
+            characterName: onboardingTemplate.cardOnboarding.name || charName(onboardingTemplate.character),
+            onboarding: onboardingTemplate.cardOnboarding.onboarding,
+          }}
+          withPersona
+          chatFloatingPanel
+          onBack={() => setOnboardingTemplateId(null)}
+          onCreated={handleOnboardingPersonaCreated}
+        />
+      )}
 
       {/* Automatic summarization editor */}
       <SummariesEditorModal chat={chat} open={showSummariesModal} onClose={() => setShowSummariesModal(false)} />

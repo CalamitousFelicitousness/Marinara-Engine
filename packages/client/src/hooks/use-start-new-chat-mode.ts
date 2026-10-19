@@ -1,7 +1,9 @@
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useApplyChatPreset, useChatPresets } from "./use-chat-presets";
 import { useCreateChat } from "./use-chats";
-import { useConnections } from "./use-connections";
+import { connectionListQuery, useConnections } from "./use-connections";
 import { useChatStore } from "../stores/chat.store";
 import { isMobileShellViewport, useUIStore } from "../stores/ui.store";
 import { CHAT_MODE_OPTIONS, type ChatLaunchMode } from "../components/chat/ChatModeSelectorModal";
@@ -17,13 +19,27 @@ import { CHAT_MODE_OPTIONS, type ChatLaunchMode } from "../components/chat/ChatM
  */
 export function useStartNewChatMode() {
   const { t: localizeUi } = useUiTranslation();
-  const { data: connections } = useConnections();
+  const queryClient = useQueryClient();
+  // Starts loading the connection list as soon as the buttons show.
+  useConnections();
   const { data: chatPresetsData } = useChatPresets();
   const createChat = useCreateChat();
   const applyChatPreset = useApplyChatPreset();
+  const waitingForConnections = useRef(false);
 
   return async (mode: ChatLaunchMode) => {
-    const connectionRows = ((connections ?? []) as Array<{ id: string }>).filter((connection) => !!connection.id);
+    // Right after Home opens (slowest on phones, the APK and Termux) the list can still be loading, which is not
+    // the same as having no connections, so wait for it. Taps while it loads are ignored, so a second tap can't
+    // make a second chat. A list that fails to load counts as no connections, as before.
+    if (waitingForConnections.current) return;
+    waitingForConnections.current = true;
+    const connections = await queryClient
+      .ensureQueryData(connectionListQuery)
+      .catch(() => [])
+      .finally(() => {
+        waitingForConnections.current = false;
+      });
+    const connectionRows = (connections as Array<{ id: string }>).filter((connection) => !!connection.id);
     const store = useChatStore.getState();
     if (connectionRows.length === 0) {
       store.setPendingNewChatMode(mode, "home");

@@ -33,6 +33,14 @@ You should see the button change to **Creating backup…** while it works. When 
 
 Full steps for backups and restoring are in [Backing Up and Restoring Marinara](data/backup-and-restore.md).
 
+## Updating from 2.5.0
+
+The steps for each platform below are the same as before. A few changes can affect a server that other devices or people use:
+
+- **A reverse proxy or tunnel on the same computer.** Visitors that nginx, Caddy, Cloudflare Tunnel, Tailscale Serve, or ngrok pass to Marinara now count as remote. Without Basic Auth they see the setup page, and backups and other protected actions need the admin secret. See [Reverse proxies and tunnels on the same computer](REMOTE_ACCESS.md#reverse-proxies-and-tunnels-on-the-same-computer).
+- **Docker with a password or an allowlist.** With Basic Auth set, the browser on the host computer now asks for the login too. With only `IP_ALLOWLIST` set, the host browser is refused unless you list the container's gateway, so use Basic Auth instead. See [Tailscale and Docker bypass](REMOTE_ACCESS.md#tailscale-and-docker-bypass).
+- **Chats and profiles moved to another install.** A chat log, settings profile, or full profile no longer carries its **Discord Mirror**, **DeepLX URL**, **DeepL API Key**, or **Intiface URL** to a different install. Enter them again there. Your own settings profiles, and a full profile restored on the same install, keep them.
+
 ## Upgrade by platform
 
 Pick the section that matches how you installed Marinara. A "git checkout" below means a copy installed with the Git tool. A "clone" is a downloaded copy made with Git.
@@ -158,7 +166,7 @@ The **Apply Update** button appears only when your install can update itself fro
 - A git-based install (Docker and packaged installs cannot apply this way).
 - The server owner set `UPDATES_APPLY_ENABLED=true` in the server `.env` file. An `.env` file holds server settings.
 
-If you click **Apply Update** on the machine that runs the server, this is all you need. No secret is required there.
+If you click **Apply Update** on the machine that runs the server, this is all you need. No secret is required there. This means opening Marinara at `http://127.0.0.1:7860` or `http://localhost:7860`, and the same goes for the channel switch above. An address served by a reverse proxy or tunnel counts as a different device, even on the same computer.
 
 Applying from a different device is off by default. It needs all three of the following.
 

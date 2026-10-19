@@ -179,6 +179,7 @@ Generation errors appear as a toast at the bottom of the screen. If a connection
 - **The AI returned an empty response. Try sending your message again.**: send your message again. If it keeps happening, try a different model or connection.
 - **A generation is already in progress for this chat**: one reply is still streaming. Wait for it to finish or click the Stop button, then try again.
 - **No connections are marked for the random pool**: you turned on random connection routing but marked no connections for the pool. Add at least one connection to the pool, or turn random routing off.
+- Every message fails with a network error, and your computer reaches the internet only through a proxy (for example v2rayN without TUN mode): tell Marinara about the proxy. See [Outbound HTTP proxy](CONFIGURATION.md#outbound-http-proxy).
 
 ## Local Model problems
 
@@ -209,7 +210,7 @@ For full setup, see [Local Model Setup](connections/local-model.md).
 1. Open **Chat Settings** > **Memory Recall** and confirm **Enable Memory Recall** is on.
 2. Open **Access memories for this chat**. In the **Memories for This Chat** window, look at each chunk's status.
 3. A status of **Waiting for vector** means the memory is still being processed. Wait, then chat again.
-4. A status of **Embedding unavailable** means no embedding source is working. Configure an embedding connection, or let the built-in local model load. See [Local Model Setup](connections/local-model.md).
+4. A status of **Embedding unavailable** means no embedding source is working. Configure an embedding connection, or let the built-in local model load. See [Local Model Setup](connections/local-model.md). To use one embedding source for every chat, pick it under **Embeddings** in the **Defaults** section of the **Connections** panel.
 
 A memory needs at least 5 new messages before it is created. Recall also only shows memories that closely match your new message, so it can return nothing even when memories exist.
 
@@ -234,7 +235,7 @@ Chat summaries need a working text connection to write them.
 
 ## Card Browser problems
 
-The **Card Browser** lets you search public character sites and import characters. Open it from the **Card Browser** icon in the top bar, then click **Download Cards**.
+The **Card Browser** lets you search public character sites and import characters. Open it with the **Download** button at the top of the **Characters** or **Personas** panel.
 
 - If JannyAI search or a character page fails with a Cloudflare block, Marinara shows a message. It asks you to visit the JannyAI site once in the same browser to clear the challenge, then retry.
 - If your Pygmalion login stops working after you restart the server, that is expected. That login lives only in server memory and clears on restart. Open the login window and paste your token again.
@@ -283,7 +284,7 @@ If starting a game fails because the model returned broken JSON, Marinara opens 
 
 - If characters do not speak during a call, Text to Speech is not set up. Open **Connections** > **Text to Speech**, enable it, choose a source, enter your key, pick a voice, and save. A character with no voice appears as text only.
 - If speech stops with **No audio after 60 s**, your voice server is slower than Marinara waits. A local server on a laptop often is. Raise **Request timeout (seconds)** in **Connections** > **Text to Speech**, or in the audio connection the message names. See [Request timeout](media/tts-setup.md#request-timeout).
-- If the microphone is not working, you may need the local speech model. Install **Calls** from **Agents > Download Agents**, then open **Connections** > **Local Model**, expand the card, find **Local Speech Model**, choose a Whisper model, and click **Download Whisper**. Firefox in particular needs this because it lacks browser speech recognition. Uninstalling Calls deletes its Whisper models to reclaim disk space.
+- If the microphone is not working, you may need the local speech model. Install **Calls** from **Agents > Download Agents**, then open **Connections** > **Local Model**, expand the card, find **Local Speech Model**, choose a Whisper model, and click **Download Whisper**. Firefox in particular needs this because it lacks browser speech recognition. Uninstalling Calls deletes its Whisper models to reclaim disk space. You can also use your own speech-to-text server from the **Speech to Text** card in **Connections**; see [Use your own speech-to-text server](conversation/calls.md#use-your-own-speech-to-text-server).
 - On a Lite build, the message **Local Whisper is disabled in Lite mode** means that small build cannot run the local speech model. Use a full Marinara install instead.
 
 ### Music DJ Spotify login fails on a remote or network install
@@ -309,7 +310,7 @@ Do not launch another server against the same data directory while the old one i
 
 Marinara allows only one running server to write to a local data directory. If startup reports **Another Marinara Engine process ... may be using** the directory, close the other Marinara process and start again.
 
-After a crash or a moved Docker data volume, startup can instead report **The storage writer lease ... is incomplete or invalid** or identify a process that no longer exists on this host. First verify that every Marinara process and container using that data directory is stopped. Then remove only the `.writer-lease` directory named in the error and restart Marinara. Do not remove the surrounding `storage` directory or any table files. On Linux, Android, and container hosts whose data directory lives on a local disk, Marinara reclaims a lease left by a crashed or force-killed process on its own, including after a reboot; the manual step remains the fallback for network or shared storage.
+After a crash or a moved Docker data volume, startup can instead report **The storage writer lease ... is incomplete or invalid** or identify a process that no longer exists on this host. First verify that every Marinara process and container using that data directory is stopped. Then remove only the `.writer-lease` directory named in the error and restart Marinara. Do not remove the surrounding `storage` directory or any table files. On Linux, Android, and container hosts whose data directory lives on a local disk, Marinara reclaims a lease left by a crashed or force-killed process on its own, including after a reboot; the manual step remains the fallback for network or shared storage. Windows does the same when the data directory is on one of the computer's own drives. On Windows, the manual step remains the fallback for a network drive, a shared folder, a removable drive such as a USB stick, or a computer renamed after the crash.
 
 ### Data seems missing after an update
 
@@ -345,7 +346,7 @@ Docker and Podman keep data in the `marinara-data` volume, so run the command in
 
 ### Backup or Export returns 403
 
-Loopback sessions can make backups without an admin secret. From another device, a network address, or Docker, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.
+Loopback sessions can make backups without an admin secret. From another device, a network address, Docker, or a reverse proxy or tunnel on the same computer, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.
 
 ### Import says the file is not a readable ZIP archive
 
@@ -406,7 +407,7 @@ To reduce it: exempt Termux from battery optimization and allow background activ
 
 The built Marinara app is not several gigabytes, and Noodle does not download its own AI models. A large temporary footprint during an update usually comes from pnpm's dependency store and virtual store, especially after several releases or an interrupted forced reinstall.
 
-The current launcher prunes packages left over from older releases and avoids rebuilding the dependency store more than once for the same update. If an older launcher already filled the device, update the launcher and reclaim its unreferenced cache before trying again:
+The current launcher prunes packages left over from older releases and avoids rebuilding the dependency store more than once for the same update. In-app updates from **Settings** > **Advanced** > **Updates** now install only the Android packages too, instead of copies for every other platform. If an older launcher already filled the device, update the launcher and reclaim its unreferenced cache before trying again:
 
 ```bash
 cd Marinara-Engine

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A starting gear choice's option offered only to some sheets (1.608): 5e's "(if proficient)". */
+function carriesOfferedOption608(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOfferedOption608(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.lines) && record.offeredWhen !== undefined) return true;
+  return featureValues(record).some((one) => carriesOfferedOption608(one, depth + 1));
+}
+
 /** A mount's own speed past its full-pace load (1.607): 5e's Broom of Flying. */
 function carriesSlowedSpeed607(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8218,6 +8228,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A starting gear choice's option offered only to some sheets, 1.608.
+  if (
+    !declaresApi(608) &&
+    (carriesOfferedOption608(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOfferedOption608(document)))
+  )
+    return "A ruleset with starting gear options offered only to some sheets (offeredWhen on a gear choice's option) requires schemaVersion 2 and capabilityApi 1.608 or newer";
   // A mount's own speed past its full-pace load, 1.607.
   if (
     !declaresApi(607) &&

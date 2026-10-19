@@ -15,6 +15,7 @@ import {
   rulesetStartingGearCoins,
   rulesetBuilderStartingGearOptions,
   rulesetStartingGearFits,
+  rulesetStartingGearOptionOffered,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
   type GameInventoryStack,
@@ -348,40 +349,45 @@ export function StartingGearPicker({
                   <ul className="space-y-1">{chosen.lines.map((line, index) => renderLine(line, String(index)))}</ul>
                 </div>
               )}
-              {chosen.choices.map((choice, choiceIndex) => (
-                <fieldset key={choiceIndex} className="space-y-1.5">
-                  <legend className={labelClass}>{choice.label}</legend>
-                  {choice.options.map((option, optionIndex) => (
-                    <div key={optionIndex} className="space-y-1">
-                      <label className="flex items-start gap-2 text-xs text-[var(--foreground)]">
-                        <input
-                          type="radio"
-                          name={`starting-gear-choice-${choiceIndex}`}
-                          checked={choices[choiceIndex] === optionIndex}
-                          onChange={() => {
-                            setChoices((current) =>
-                              current.map((value, index) => (index === choiceIndex ? optionIndex : value)),
-                            );
-                            // Another option's lists are its own: a pick made for the last one goes.
-                            setPicks((current) =>
-                              Object.fromEntries(
-                                Object.entries(current).filter(([key]) => !key.startsWith(`${choiceIndex}.`)),
-                              ),
-                            );
-                          }}
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
-                        />
-                        <span className="min-w-0 flex-1">{option.label}</span>
-                      </label>
-                      {choices[choiceIndex] === optionIndex && (
-                        <ul className="ml-6 space-y-1">
-                          {option.lines.map((line, lineIndex) => renderLine(line, `${choiceIndex}.${lineIndex}`))}
-                        </ul>
-                      )}
-                    </div>
-                  ))}
-                </fieldset>
-              ))}
+              {chosen.choices.map((choice, choiceIndex) =>
+                // Only the options offered to this sheet (1.608), and no choice with none.
+                !choice.options.some((one) => rulesetStartingGearOptionOffered(definition, one, build)) ? null : (
+                  <fieldset key={choiceIndex} className="space-y-1.5">
+                    <legend className={labelClass}>{choice.label}</legend>
+                    {choice.options.map((option, optionIndex) =>
+                      !rulesetStartingGearOptionOffered(definition, option, build) ? null : (
+                        <div key={optionIndex} className="space-y-1">
+                          <label className="flex items-start gap-2 text-xs text-[var(--foreground)]">
+                            <input
+                              type="radio"
+                              name={`starting-gear-choice-${choiceIndex}`}
+                              checked={choices[choiceIndex] === optionIndex}
+                              onChange={() => {
+                                setChoices((current) =>
+                                  current.map((value, index) => (index === choiceIndex ? optionIndex : value)),
+                                );
+                                // Another option's lists are its own: a pick made for the last one goes.
+                                setPicks((current) =>
+                                  Object.fromEntries(
+                                    Object.entries(current).filter(([key]) => !key.startsWith(`${choiceIndex}.`)),
+                                  ),
+                                );
+                              }}
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+                            />
+                            <span className="min-w-0 flex-1">{option.label}</span>
+                          </label>
+                          {choices[choiceIndex] === optionIndex && (
+                            <ul className="ml-6 space-y-1">
+                              {option.lines.map((line, lineIndex) => renderLine(line, `${choiceIndex}.${lineIndex}`))}
+                            </ul>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </fieldset>
+                ),
+              )}
               {resolved?.ok === false && resolved.reason === "empty" && (
                 <p className="text-[0.6875rem] text-[var(--destructive)]">{t("game.ruleset.startingGear.empty")}</p>
               )}

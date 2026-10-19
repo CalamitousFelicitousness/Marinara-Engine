@@ -9530,6 +9530,23 @@ const startingGearLineSchema = z
     }
   });
 
+/** One option of a starting gear choice, with its lines. `offeredWhen` (Capability API 1.608), read
+ *  off the sheet, offers it only while that reads above zero: 5e's "a martial weapon (if proficient)".
+ *  A choice none of whose options is offered asks nothing. Typed by its own name, as written out the
+ *  definition's inferred type grows too long for the compiler to emit. */
+export interface RulesetStartingGearOption {
+  label: string;
+  lines: RulesetStartingGearLine[];
+  offeredWhen?: RulesetValueRef;
+}
+const startingGearOptionSchema: z.ZodType<RulesetStartingGearOption, z.ZodTypeDef, unknown> = z
+  .object({
+    label,
+    lines: z.array(startingGearLineSchema).min(1).max(40),
+    offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+  })
+  .strict();
+
 /** Gear a character may take into their bag at the start (Capability API 1.78), never on their own:
  *  the player asks for it, once for each `group` (a class's gear beside a background's). `fits` says
  *  which characters it is for, read off the sheet; it orders the list and refuses nobody. */
@@ -9546,10 +9563,7 @@ const startingGearSchema = z
         z
           .object({
             label,
-            options: z
-              .array(z.object({ label, lines: z.array(startingGearLineSchema).min(1).max(40) }).strict())
-              .min(2)
-              .max(6),
+            options: z.array(startingGearOptionSchema).min(2).max(6),
           })
           .strict(),
       )
@@ -16319,11 +16333,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (gear.fits) checkRef(gear.fits.value, [...path, "fits", "value"], derivedIds, false);
       gear.lines.forEach((line, lineIndex) => checkGearLine(line, [...path, "lines", lineIndex]));
       gear.choices.forEach((choice, choiceIndex) =>
-        choice.options.forEach((option, optionIndex) =>
+        choice.options.forEach((option, optionIndex) => {
           option.lines.forEach((line, lineIndex) =>
             checkGearLine(line, [...path, "choices", choiceIndex, "options", optionIndex, "lines", lineIndex]),
-          ),
-        ),
+          );
+          if (option.offeredWhen) {
+            checkRef(
+              option.offeredWhen,
+              [...path, "choices", choiceIndex, "options", optionIndex, "offeredWhen"],
+              derivedIds,
+              false,
+            );
+          }
+        }),
       );
     });
     const market = items.market;

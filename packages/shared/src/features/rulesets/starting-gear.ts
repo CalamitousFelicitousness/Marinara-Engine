@@ -157,17 +157,34 @@ export interface RulesetStartingGearBuilderContext {
   freeEdit?: boolean;
 }
 
-/** The lines a selection takes, each with the key a pick names it by. */
+/** Whether a choice's option is offered to this sheet (1.608): one with no `offeredWhen`, or whose
+ *  `offeredWhen` reads above zero. Every option is offered where there is no sheet to read. */
+export function rulesetStartingGearOptionOffered(
+  definition: RulesetDefinition,
+  option: RulesetStartingGear["choices"][number]["options"][number],
+  build: RulesetSheetBuild | undefined,
+): boolean {
+  return !option.offeredWhen || !build || resolveRulesetValueRef(definition, build, option.offeredWhen) > 0;
+}
+
+/** The lines a selection takes, each with the key a pick names it by. An option not offered to the
+ *  sheet is refused (1.608), and a choice none of whose options is offered takes nothing. */
 function selectedLines(
+  definition: RulesetDefinition,
   gear: RulesetStartingGear,
   choices: readonly number[],
+  build: RulesetSheetBuild | undefined,
 ): { lines: Array<{ key: string; line: RulesetStartingGearLine }> } | { refused: string } {
   if (choices.length !== gear.choices.length) return { refused: `"${gear.label}" asks ${gear.choices.length} choices` };
   const lines = gear.lines.map((line, index) => ({ key: String(index), line }));
   for (const [choiceIndex, choice] of gear.choices.entries()) {
+    if (!choice.options.some((one) => rulesetStartingGearOptionOffered(definition, one, build))) continue;
     const optionIndex = choices[choiceIndex]!;
     const option = Number.isInteger(optionIndex) ? choice.options[optionIndex] : undefined;
     if (!option) return { refused: `Choose one of "${choice.label}"` };
+    if (!rulesetStartingGearOptionOffered(definition, option, build)) {
+      return { refused: `"${option.label}" is not offered to this sheet` };
+    }
     option.lines.forEach((line, lineIndex) => lines.push({ key: `${choiceIndex}.${lineIndex}`, line }));
   }
   return { lines };
@@ -199,7 +216,7 @@ export function resolveRulesetStartingGear(
   ) {
     return { ok: false, reason: "does-not-fit", detail: `Starting gear "${gear.label}" does not fit this sheet` };
   }
-  const selected = selectedLines(gear, selection.choices);
+  const selected = selectedLines(definition, gear, selection.choices, builder?.build ?? amounts?.build);
   if ("refused" in selected) return { ok: false, reason: "choice", detail: selected.refused };
 
   // The game's own catalog items: what a layer hides is not among them, and nor is a coin, an item the

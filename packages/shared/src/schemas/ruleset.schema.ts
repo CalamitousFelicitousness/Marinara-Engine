@@ -8893,16 +8893,23 @@ const creatureFields = {
   /** Ridden by as many as its back bears (Capability API 1.588), weighed as `combat.mounts.weights`
    *  says: up to `weight` at its full speed and, with `slowedUpTo`, up to that much at half speed. Its
    *  first rider steers it; the rest are carried along. Any size may ride it. 5e's Carpet of Flying,
-   *  4 by 6 feet: `{ "weight": 400, "slowedUpTo": 800 }`. */
+   *  4 by 6 feet: `{ "weight": 400, "slowedUpTo": 800 }`. `slowedSpeed` (Capability API 1.607) is the
+   *  speed it keeps past `weight`, in the ruleset's distance, in place of half: 5e's Broom of Flying,
+   *  `{ "weight": 200, "slowedUpTo": 400, "slowedSpeed": 30 }`. */
   mountCarries: z
     .object({
       weight: z.number().finite().gt(0).max(1000000),
       slowedUpTo: z.number().finite().gt(0).max(1000000).optional(),
+      slowedSpeed: z.number().finite().gt(0).max(10000).optional(),
     })
     .strict()
     .refine((carries) => carries.slowedUpTo === undefined || carries.slowedUpTo > carries.weight, {
       message: '"slowedUpTo" is more than "weight"',
       path: ["slowedUpTo"],
+    })
+    .refine((carries) => carries.slowedSpeed === undefined || carries.slowedUpTo !== undefined, {
+      message: '"slowedSpeed" is its speed past "weight", so it carries more than that, up to "slowedUpTo"',
+      path: ["slowedSpeed"],
     })
     .optional(),
   initiativeModifier: z.number().int().min(-50).max(100),

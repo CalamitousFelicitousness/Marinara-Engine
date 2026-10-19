@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A mount's own speed past its full-pace load (1.607): 5e's Broom of Flying. */
+function carriesSlowedSpeed607(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSlowedSpeed607(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.mountCarries)?.slowedSpeed !== undefined) return true;
+  return featureValues(record).some((one) => carriesSlowedSpeed607(one, depth + 1));
+}
+
 /** A zone sealing out gases and fog, or blocking shots from afar (1.606): 5e's Cube of Force. */
 function carriesSealedZone606(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8208,6 +8218,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A mount's own speed past its full-pace load, 1.607.
+  if (
+    !declaresApi(607) &&
+    (carriesSlowedSpeed607(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSlowedSpeed607(document)))
+  )
+    return "A ruleset with a mount's own speed past its full-pace load (mountCarries.slowedSpeed) requires schemaVersion 2 and capabilityApi 1.607 or newer";
   // A zone sealing out gases and fog, or blocking shots from afar, 1.606.
   if (
     !declaresApi(606) &&

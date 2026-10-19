@@ -6,6 +6,7 @@
  *   - It bears riders while their weight is within what it carries, at half speed past its full-speed
  *     weight; one more than that is not offered.
  *   - Its riders go where it flies; its rider getting down hands it to the next.
+ *   - A Broom of Flying keeps 30 feet past its full load, not half (Capability API 1.607).
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -126,9 +127,13 @@ try {
   const of = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T) =>
     events.filter((one): one is Extract<RulesetCombatEvent, { type: T }> => one.type === type);
   const who = (state: RulesetEncounterState, id: string) => rulesetCombatant(state, id)!;
-  const step = (state: RulesetEncounterState, choice: Partial<RulesetCombatChoice> & { actorId: string }) => {
+  const step = (
+    state: RulesetEncounterState,
+    choice: Partial<RulesetCombatChoice> & { actorId: string },
+    rules = definition,
+  ) => {
     state.turn = state.order.indexOf(choice.actorId);
-    const taken = applyRulesetCombatChoice(definition, state, { optionId: "end-turn", targetIds: [], ...choice }, roll);
+    const taken = applyRulesetCombatChoice(rules, state, { optionId: "end-turn", targetIds: [], ...choice }, roll);
     assert.deepEqual(of(taken.events, "refused"), [], JSON.stringify(of(taken.events, "refused")));
     return taken.state;
   };
@@ -136,8 +141,8 @@ try {
     state.turn = state.order.indexOf(id);
     return rulesetCombatOptions(definition, state, id).map((one) => one.id);
   };
-  const cells = (state: RulesetEncounterState, id: string) =>
-    rulesetMovementAllowance(definition, definition.combat!, who(state, id), state);
+  const cells = (state: RulesetEncounterState, id: string, rules = definition) =>
+    rulesetMovementAllowance(rules, rules.combat!, who(state, id), state);
 
   // ── Called out by its item, and mounted by its caller ──
   {
@@ -184,16 +189,21 @@ try {
   }
 
   // ── Riders by weight ──
-  const fight = (): RulesetEncounterState => {
+  const fight = (rules = definition, carries?: Record<string, unknown>): RulesetEncounterState => {
     const state = createRulesetEncounter({
-      definition,
+      definition: rules,
       seed: 1,
       roller: roll,
       combatants: [
         { id: "ada", name: "Ada", side: "party", block: person() },
         { id: "bo", name: "Bo", side: "party", block: person() },
         { id: "cy", name: "Cy", side: "party", block: person() },
-        { id: "carpet", name: "Carpet", side: "party", block: carpetBlock() as unknown as RulesetStatBlock },
+        {
+          id: "carpet",
+          name: "Carpet",
+          side: "party",
+          block: carpetBlock(carries) as unknown as RulesetStatBlock,
+        },
         { id: "goblin", name: "Goblin", side: "enemy", block: person("small") },
       ],
       board: {
@@ -238,6 +248,35 @@ try {
   assert.equal(who(state, "carpet").riddenBy, "bo");
   assert.equal(who(state, "carpet").passengers, undefined);
   assert.equal(cells(state, "carpet"), 16, "180 pounds again");
+
+  // ── A broom keeps its own speed past its full load (1.607) ──
+  {
+    const broom = { weight: 200, slowedUpTo: 400, slowedSpeed: 30 };
+    const rules = parsed(document(undefined, broom));
+    let flown = fight(rules, broom);
+    flown = step(flown, { actorId: "ada", optionId: mount }, rules);
+    assert.equal(cells(flown, "carpet", rules), 16, "within its 200");
+    flown = step(flown, { actorId: "bo", optionId: mount }, rules);
+    assert.equal(cells(flown, "carpet", rules), 6, "past it: 30 feet, not half of 80");
+    refused(document(undefined, { weight: 200, slowedSpeed: 30 }), /slowedSpeed/);
+    const gate =
+      "A ruleset with a mount's own speed past its full-pace load (mountCarries.slowedSpeed) requires schemaVersion 2 and capabilityApi 1.607 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    assert.equal(getCapabilityPackageInstallIssue(manifest(606) as never, document(undefined, broom)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(607) as never, document(undefined, broom)), gate);
+  }
 
   // ── Refusals ──
   refused(document(null), /needs combat\.mounts\.weights/);

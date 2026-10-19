@@ -5448,9 +5448,12 @@ export function rulesetMovementAllowance(
   let speed = base;
   for (const { modifier } of changes) speed += modifier.flat ?? 0;
   for (const { modifier } of changes) speed *= modifier.times ?? 1;
-  // Bearing more than it carries at its full pace (1.588): half speed.
+  // Bearing more than it carries at its full pace (1.588): half speed, or the speed it keeps then
+  // (1.607), a Broom of Flying's 30 feet.
   const carries = combatant.block?.mountCarries;
-  if (carries && state && rulesetMountLoad(definition, combat, state, combatant) > carries.weight) speed /= 2;
+  if (carries && state && rulesetMountLoad(definition, combat, state, combatant) > carries.weight) {
+    speed = carries.slowedSpeed !== undefined ? Math.min(speed, carries.slowedSpeed) : speed / 2;
+  }
   if (!Number.isFinite(speed) || speed <= 0) return 0;
   return Math.max(1, Math.floor(speed / perCell));
 }

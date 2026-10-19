@@ -682,7 +682,7 @@ export interface RulesetStatBlock {
   /** Ridden, it acts as it will (1.443): an intelligent mount. */
   mountIndependent?: true;
   /** Ridden by as many as its back bears, by weight (1.588): a Carpet of Flying. */
-  mountCarries?: { weight: number; slowedUpTo?: number };
+  mountCarries?: { weight: number; slowedUpTo?: number; slowedSpeed?: number };
   /** Its hands are full, so a `twoHanded` alternative never holds (1.102). */
   shield?: true;
   /** One of `combat.sizes`, by id (1.103). */

@@ -58016,6 +58016,11 @@
                           "exclusiveMinimum": 0,
                           "maximum": 1000000
                         },
+                        "slowedSpeed": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "$comment": {}
                       },
                       "required": [

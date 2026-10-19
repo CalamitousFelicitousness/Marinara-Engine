@@ -41400,6 +41400,10 @@
                                       ]
                                     }
                                   },
+                                  "whileItemWorn": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "targetHolds": {
                                     "type": "object",
                                     "properties": {
@@ -46775,6 +46779,10 @@
                                             "liveTrack"
                                           ]
                                         }
+                                      },
+                                      "whileItemWorn": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "targetHolds": {
                                         "type": "object",
@@ -54449,6 +54457,10 @@
                               ]
                             }
                           },
+                          "whileItemWorn": {
+                            "type": "boolean",
+                            "const": true
+                          },
                           "targetHolds": {
                             "type": "object",
                             "properties": {
@@ -56037,6 +56049,10 @@
                                 "liveTrack"
                               ]
                             }
+                          },
+                          "whileItemWorn": {
+                            "type": "boolean",
+                            "const": true
                           },
                           "targetHolds": {
                             "type": "object",
@@ -61561,6 +61577,10 @@
                                     ]
                                   }
                                 },
+                                "whileItemWorn": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "targetHolds": {
                                   "type": "object",
                                   "properties": {
@@ -63178,6 +63198,10 @@
                                       "liveTrack"
                                     ]
                                   }
+                                },
+                                "whileItemWorn": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "targetHolds": {
                                   "type": "object",
@@ -66057,6 +66081,10 @@
                                   ]
                                 }
                               },
+                              "whileItemWorn": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "targetHolds": {
                                 "type": "object",
                                 "properties": {
@@ -68078,6 +68106,10 @@
                                         "liveTrack"
                                       ]
                                     }
+                                  },
+                                  "whileItemWorn": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "targetHolds": {
                                     "type": "object",
@@ -72607,6 +72639,10 @@
                                               ]
                                             }
                                           },
+                                          "whileItemWorn": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
                                           "targetHolds": {
                                             "type": "object",
                                             "properties": {
@@ -76344,6 +76380,10 @@
                                       ]
                                     }
                                   },
+                                  "whileItemWorn": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "targetHolds": {
                                     "type": "object",
                                     "properties": {
@@ -79455,6 +79495,10 @@
                                     ]
                                   }
                                 },
+                                "whileItemWorn": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "targetHolds": {
                                   "type": "object",
                                   "properties": {
@@ -81476,6 +81520,10 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "targetHolds": {
                                       "type": "object",
@@ -86005,6 +86053,10 @@
                                                 ]
                                               }
                                             },
+                                            "whileItemWorn": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "targetHolds": {
                                               "type": "object",
                                               "properties": {
@@ -89741,6 +89793,10 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "targetHolds": {
                                       "type": "object",
@@ -102370,6 +102426,10 @@
                                         ]
                                       }
                                     },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "targetHolds": {
                                       "type": "object",
                                       "properties": {
@@ -107034,6 +107094,10 @@
                                             "liveTrack"
                                           ]
                                         }
+                                      },
+                                      "whileItemWorn": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "targetHolds": {
                                         "type": "object",
@@ -112243,6 +112307,10 @@
                                                 "liveTrack"
                                               ]
                                             }
+                                          },
+                                          "whileItemWorn": {
+                                            "type": "boolean",
+                                            "const": true
                                           },
                                           "targetHolds": {
                                             "type": "object",
@@ -119817,6 +119885,10 @@
                                   ]
                                 }
                               },
+                              "whileItemWorn": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "targetHolds": {
                                 "type": "object",
                                 "properties": {
@@ -121405,6 +121477,10 @@
                                     "liveTrack"
                                   ]
                                 }
+                              },
+                              "whileItemWorn": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "targetHolds": {
                                 "type": "object",
@@ -128689,6 +128765,10 @@
                                                 ]
                                               }
                                             },
+                                            "whileItemWorn": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "targetHolds": {
                                               "type": "object",
                                               "properties": {
@@ -133897,6 +133977,10 @@
                                                       "liveTrack"
                                                     ]
                                                   }
+                                                },
+                                                "whileItemWorn": {
+                                                  "type": "boolean",
+                                                  "const": true
                                                 },
                                                 "targetHolds": {
                                                   "type": "object",
@@ -141471,6 +141555,10 @@
                                         ]
                                       }
                                     },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "targetHolds": {
                                       "type": "object",
                                       "properties": {
@@ -143059,6 +143147,10 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "targetHolds": {
                                       "type": "object",
@@ -150349,6 +150441,10 @@
                                                 ]
                                               }
                                             },
+                                            "whileItemWorn": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "targetHolds": {
                                               "type": "object",
                                               "properties": {
@@ -155557,6 +155653,10 @@
                                                       "liveTrack"
                                                     ]
                                                   }
+                                                },
+                                                "whileItemWorn": {
+                                                  "type": "boolean",
+                                                  "const": true
                                                 },
                                                 "targetHolds": {
                                                   "type": "object",
@@ -163131,6 +163231,10 @@
                                         ]
                                       }
                                     },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "targetHolds": {
                                       "type": "object",
                                       "properties": {
@@ -164719,6 +164823,10 @@
                                           "liveTrack"
                                         ]
                                       }
+                                    },
+                                    "whileItemWorn": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "targetHolds": {
                                       "type": "object",
@@ -181771,6 +181879,10 @@
                             ]
                           }
                         },
+                        "whileItemWorn": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "targetHolds": {
                           "type": "object",
                           "properties": {
@@ -183408,6 +183520,10 @@
                             ]
                           }
                         },
+                        "whileItemWorn": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "targetHolds": {
                           "type": "object",
                           "properties": {
@@ -185031,6 +185147,10 @@
                               "liveTrack"
                             ]
                           }
+                        },
+                        "whileItemWorn": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "targetHolds": {
                           "type": "object",
@@ -190063,6 +190183,10 @@
                             ]
                           }
                         },
+                        "whileItemWorn": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "targetHolds": {
                           "type": "object",
                           "properties": {
@@ -192371,6 +192495,10 @@
                                   ]
                                 }
                               },
+                              "whileItemWorn": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "targetHolds": {
                                 "type": "object",
                                 "properties": {
@@ -193980,6 +194108,10 @@
                                         "liveTrack"
                                       ]
                                     }
+                                  },
+                                  "whileItemWorn": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "targetHolds": {
                                     "type": "object",
@@ -196299,6 +196431,10 @@
                             ]
                           }
                         },
+                        "whileItemWorn": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "targetHolds": {
                           "type": "object",
                           "properties": {
@@ -198122,6 +198258,10 @@
                             "liveTrack"
                           ]
                         }
+                      },
+                      "whileItemWorn": {
+                        "type": "boolean",
+                        "const": true
                       },
                       "targetHolds": {
                         "type": "object",

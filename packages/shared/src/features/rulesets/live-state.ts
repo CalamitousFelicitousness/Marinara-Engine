@@ -95,6 +95,9 @@ export interface RulesetLiveState {
   daySaves?: Record<string, RulesetLiveDaySave>;
   /** Days left of each condition that lasts so many (1.610), keyed by condition: Quivering Palm's. */
   dayClocks?: Record<string, number>;
+  /** The inventory stack whose item keeps each condition on while it is worn (1.611), keyed by
+   *  condition: Armor of Invulnerability's. */
+  wornFrom?: Record<string, string>;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.473). */
@@ -175,6 +178,7 @@ const liveAbilityRaiseSchema = z
   .strict();
 
 const liveDayClock = z.number().int().min(1).max(3650);
+const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
 
 const liveDaySaveSchema = z
   .object({
@@ -203,6 +207,7 @@ export const rulesetLiveStateSchema = z
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
     daySaves: boundedRecord(liveDaySaveSchema, MAX_LIVE_CONDITIONS, "saves made as days pass").optional(),
     dayClocks: boundedRecord(liveDayClock, MAX_LIVE_CONDITIONS, "days conditions last").optional(),
+    wornFrom: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "conditions worn items keep on").optional(),
   })
   .strip();
 
@@ -775,6 +780,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (daySaves) state.daySaves = daySaves;
   const dayClocks = keepValid(source.dayClocks, liveDayClock, MAX_LIVE_CONDITIONS);
   if (dayClocks) state.dayClocks = dayClocks;
+  const wornFrom = keepValid(source.wornFrom, liveStackId, MAX_LIVE_CONDITIONS);
+  if (wornFrom) state.wornFrom = wornFrom;
   return state;
 }
 
@@ -802,6 +809,9 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   // So do the days a condition lasts (1.610).
   const dayClocks = Object.entries(state.dayClocks ?? {}).filter(([condition]) => held.has(condition));
   if (dayClocks.length > 0) normalized.dayClocks = Object.fromEntries(dayClocks);
+  // And the item that keeps one on (1.611).
+  const wornFrom = Object.entries(state.wornFrom ?? {}).filter(([condition]) => held.has(condition));
+  if (wornFrom.length > 0) normalized.wornFrom = Object.fromEntries(wornFrom);
   return normalized;
 }
 
@@ -950,6 +960,37 @@ export function rulesetLiveWithDayClock(stored: unknown, condition: string, days
   return { ...state, dayClocks: { ...state.dayClocks, [condition]: Math.max(1, Math.min(3650, Math.trunc(days))) } };
 }
 
+/** A live state with `condition` kept on only while the item on inventory stack `stackId` is worn
+ *  (1.611). */
+export function rulesetLiveWithWornFrom(stored: unknown, condition: string, stackId: string): RulesetLiveState {
+  const state = readStoredLiveStateAsIs(stored);
+  return { ...state, wornFrom: { ...state.wornFrom, [condition]: stackId } };
+}
+
+/** A live state without what only a worn item kept on (1.611) once that item is not worn: `worn` is
+ *  the inventory stacks worn now. Says which conditions came off; the state as it was when none did. */
+export function rulesetLiveWornOff(
+  stored: unknown,
+  worn: ReadonlySet<string>,
+): { live: RulesetLiveState; off: string[] } {
+  const state = readStoredLiveStateAsIs(stored);
+  const off = Object.entries(state.wornFrom ?? {}).flatMap(([condition, stackId]) =>
+    worn.has(stackId) ? [] : [condition],
+  );
+  if (off.length === 0) return { live: state, off };
+  const { wornFrom: _wornFrom, ...rest } = state;
+  const wornFrom = { ...state.wornFrom };
+  for (const condition of off) delete wornFrom[condition];
+  return {
+    live: {
+      ...rest,
+      conditions: (state.conditions ?? []).filter((id) => !off.includes(id)),
+      ...(Object.keys(wornFrom).length > 0 ? { wornFrom } : {}),
+    },
+    off: off.filter((condition) => (state.conditions ?? []).includes(condition)),
+  };
+}
+
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */
 export function rulesetStateDefault(state: { values: readonly string[]; default?: string }): string {
   return state.default !== undefined && state.values.includes(state.default) ? state.default : state.values[0]!;
@@ -978,7 +1019,15 @@ export function evaluateRulesetSheetLive(
   /** Conditions a fight has on them besides the sheet's own (1.462), for what they do to abilities. */
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
-  const live = readRulesetLive(definition, build, stored);
+  // What only a worn item kept on (1.611) is not held once that item is not worn.
+  const live = readRulesetLive(
+    definition,
+    build,
+    items
+      ? rulesetLiveWornOff(stored, new Set(items.flatMap((held) => (held.worn && held.stack ? [held.stack.id] : []))))
+          .live
+      : stored,
+  );
   // What the conditions they hold do to their abilities (1.462): the sheet's own, and the fight's.
   const held = new Set([
     ...live.conditions.filter((condition) => condition.active).map((condition) => condition.id),

@@ -29,6 +29,7 @@ import {
   readRulesetLive,
   rulesetLiveWithDayClock,
   rulesetLiveWithDaySave,
+  rulesetLiveWithWornFrom,
   rulesetRecoverPicks,
   type RulesetLiveState,
   type RulesetSheetOp,
@@ -3363,6 +3364,7 @@ function applyConditionId(
     ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(days !== undefined ? { days } : {}),
+    ...(applies.wornItem ? { wornItem: applies.wornItem } : {}),
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
     ...(sourced ? { clockOf: "source" as const } : {}),
@@ -9226,6 +9228,12 @@ export function liftRulesetFightEffects(
         if (entry.days === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
         combatant.sheet.live = rulesetLiveWithDayClock(combatant.sheet.live, entry.condition, entry.days);
+      }
+      // And the worn item that keeps it on (1.611), off once it is taken off.
+      for (const entry of combatant.tracked) {
+        if (entry.wornItem === undefined || entry.rounds !== null) continue;
+        if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
+        combatant.sheet.live = rulesetLiveWithWornFrom(combatant.sheet.live, entry.condition, entry.wornItem);
       }
     }
     const dazed = combatant.dazed;

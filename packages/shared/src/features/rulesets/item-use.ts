@@ -39,6 +39,7 @@ import {
   raiseRulesetLiveAbilities,
   readRulesetLive,
   readRulesetWoundPenalty,
+  rulesetLiveWithWornFrom,
   rulesetRecoverPicks,
   type RulesetLiveState,
   type RulesetSheetOp,
@@ -292,6 +293,10 @@ export function useRulesetItemOutsideFight(input: {
       // Read off the user as it applies (1.167), what came before it included.
       if (applies.when && !sheetWithin(applies.when)) continue;
       if (!write({ op: "condition", condition: applies.condition, active: true })) continue;
+      // Kept on while the item is worn (1.611), by its stack.
+      const needs = gameInventoryWearNeeds(item);
+      if (applies.whileItemWorn && (needs.equipped || needs.bound))
+        live = rulesetLiveWithWornFrom(live, applies.condition, stack.id);
       const label =
         definition.sheet.live.conditions.find((condition) => condition.id === applies.condition)?.label ??
         applies.condition;

@@ -5065,6 +5065,7 @@ export interface RulesetCatalogApplies {
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
   lastsDays?: RulesetValueRef;
+  whileItemWorn?: true;
   targetHolds?: RulesetTargetHolds;
   endsOnTarget?: string[];
   harmsPuller?: { dice?: string; flat?: number; type?: string };
@@ -5297,6 +5298,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  still on as the fight ends, counted down by the days that pass. 5e's Quivering Palm, "a
      *  number of days equal to your monk level". */
     lastsDays: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** Put on by an item's use, it ends once that item is no longer worn (Capability API 1.611): 5e's
+     *  Armor of Invulnerability, "for 10 minutes or until you are no longer wearing the armor". */
+    whileItemWorn: z.literal(true).optional(),
     /** It goes on only a target that already holds one of these, from anybody (`conditions`) or
      *  from whoever applies it (`fromSelf`), read as it goes on (Capability API 1.354), so one put on
      *  earlier in the same list counts. A kraken's Bite swallows only a creature the kraken grapples;
@@ -22340,6 +22344,8 @@ export function rulesetCatalogEntryIssues(
       if (remainingOf !== undefined && !liveConditions.has(remainingOf)) {
         add([...path, "duration", "remainingOf"], `Unknown condition "${remainingOf}"`);
       }
+      // Kept on by the item that put it on (1.611): an item's use, not a catalog entry's.
+      if (applies.whileItemWorn) add([...path, "whileItemWorn"], '"whileItemWorn" is for what an item\'s use puts on');
       escapeDcIssues(definition, applies, path, add);
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...path, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);

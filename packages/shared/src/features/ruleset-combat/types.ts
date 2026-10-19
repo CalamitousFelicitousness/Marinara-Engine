@@ -243,6 +243,10 @@ export interface RulesetCombatApplies {
   value?: RulesetValueRef;
   /** Days it lasts, off its applier's sheet as it goes on (1.610): no clock in the fight. */
   lastsDays?: RulesetValueRef;
+  /** Put on by an item's use, it ends once that item is no longer worn (1.611). */
+  whileItemWorn?: true;
+  /** The inventory stack of the item whose use put it on, where `whileItemWorn` (1.611). */
+  wornItem?: string;
   /** It goes on only a target holding one of these, read as it goes on (1.354): a kraken's swallow. */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
   /** What its applier had put on the target, taken off once it is on (1.354): the swallow's grapple. */
@@ -1753,6 +1757,8 @@ export interface RulesetTrackedCondition {
   rounds: number | null;
   /** Days it lasts once the fight is over (1.610), on a sheet: Quivering Palm. */
   days?: number;
+  /** The inventory stack whose item keeps it on while worn (1.611): Armor of Invulnerability. */
+  wornItem?: string;
   saveEnds?: RulesetCombatSaveEnds;
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
   clock?: "turn-start";

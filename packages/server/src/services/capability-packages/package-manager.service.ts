@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition an item's use puts on that lasts while the item is worn (1.611). */
+function carriesWhileItemWorn611(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWhileItemWorn611(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.whileItemWorn !== undefined) return true;
+  return featureValues(record).some((one) => carriesWhileItemWorn611(one, depth + 1));
+}
+
 /** A condition that lasts a number of days (1.610): 5e's Quivering Palm. */
 function carriesLastsDays610(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8248,6 +8258,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition an item's use puts on that lasts while the item is worn, 1.611.
+  if (
+    !declaresApi(611) &&
+    (carriesWhileItemWorn611(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWhileItemWorn611(document)))
+  )
+    return "A ruleset with a condition that lasts while the item that put it on is worn (an applied condition's whileItemWorn) requires schemaVersion 2 and capabilityApi 1.611 or newer";
   // A condition that lasts a number of days, 1.610.
   if (
     !declaresApi(610) &&

@@ -44,6 +44,7 @@ import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
   readRulesetLive,
+  rulesetLiveWornOff,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -2357,6 +2358,12 @@ function itemUseActions(
       use.gate && gateDifficulty !== undefined
         ? rulesetItemGateCheck(definition, build, evaluated, use.gate, gateDifficulty)
         : null;
+    // What lasts only while the item is worn (1.611) remembers which stack it is.
+    const stackId = held.stack?.id;
+    const keptBy = (list: RulesetCombatAction["applies"]) =>
+      list && stackId ? list.map((one) => (one.whileItemWorn ? { ...one, wornItem: stackId } : one)) : list;
+    if (action.applies?.some((one) => one.whileItemWorn)) action.applies = keptBy(action.applies);
+    if (action.appliesSelf?.some((one) => one.whileItemWorn)) action.appliesSelf = keptBy(action.appliesSelf);
     action.itemUse = {
       item: index,
       ...(held.truly ? { fake: { name: held.truly.name, ...(real ? { does: real } : { dud: true as const }) } } : {}),
@@ -6196,7 +6203,13 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       initiativeRoll,
       roll,
       build: entry.build,
-      live: readStoredLive(entry.live),
+      // What only a worn item kept on (1.611) is off when that item no longer is.
+      live: entry.items
+        ? rulesetLiveWornOff(
+            readStoredLive(entry.live),
+            new Set(entry.items.flatMap((held) => (held.worn && held.stack ? [held.stack.id] : []))),
+          ).live
+        : readStoredLive(entry.live),
       catalogs: entry.catalogs ?? {},
       perCell,
       ...(entry.items ? { items: entry.items } : {}),

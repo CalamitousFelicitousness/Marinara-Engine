@@ -30,6 +30,9 @@ import {
   gameWorldKitFromMetadata,
   worldKitItems,
   rulesetLayerOptionKey,
+  rulesetLiveWornOff,
+  gameInventoryWearMet,
+  gameInventoryWearNeeds,
   type RulesetLayerOptions,
   type CombatItemEffect,
   type GameInventoryFightLine,
@@ -48,7 +51,7 @@ import { loadGameRulesetSheetContext, sheetCommandCards } from "./ruleset-sheet-
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
-import { createGameStateStorage } from "../storage/game-state.storage.js";
+import { createGameStateStorage, parseStoredRulesetLive } from "../storage/game-state.storage.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
 import { addEventEntry, addInventoryEntry, createJournal, type Journal } from "./journal.service.js";
 import { rollDieSecurely } from "./dice-rng.js";
@@ -384,12 +387,64 @@ export async function applyGameInventoryChangeHeld<T>(
     },
     { metadataQueueHeld: true },
   );
+  // What only a worn item kept on (1.611) comes off with the change that took the item off. Never at
+  // the cost of the change itself.
+  if (outcome.stacks !== before) {
+    try {
+      await endWhatWornItemsKept(db, chatId, metadata, outcome.stacks);
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not end what a worn item kept on in chat %s", chatId);
+    }
+  }
   const foundOut = found ? { foundOut: found.events.map((event) => event.content) } : {};
   if (outcome.stacks === before || target.kind === "none") {
     return { stacks: outcome.stacks, value: outcome.value, ...foundOut };
   }
   const playerStats = await followOnRow(db, chatId, before, outcome.stacks, target);
   return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value, ...foundOut };
+}
+
+/**
+ * The conditions an item's use kept on only while that item is worn (1.611, Armor of Invulnerability),
+ * taken off every sheet whose item is no longer worn, or no longer there, on the row the sheet shows.
+ */
+async function endWhatWornItemsKept(
+  db: DB,
+  chatId: string,
+  metadata: Record<string, unknown>,
+  stacks: readonly GameInventoryStack[],
+): Promise<void> {
+  if (metadata.gameRuleset == null) return;
+  const states = createGameStateStorage(db);
+  const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
+  const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+  const stored = parseStoredRulesetLive(row?.rulesetLive);
+  if (!row || !stored) return;
+  const kept = Object.values(stored).some(
+    (live) => live && typeof live === "object" && Object.keys((live as { wornFrom?: object }).wornFrom ?? {}).length,
+  );
+  if (!kept) return;
+  const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  if (resolved.status !== "ok") return;
+  const book = await loadGameInventoryItemBook(db, { metadata, resolved }, "player");
+  if (!book) return;
+  const worn = new Set(
+    stacks.flatMap((stack) => {
+      const item = stack.item ? book.itemOf(stack.item)?.entry.item : undefined;
+      return item && gameInventoryWearMet(stack, gameInventoryWearNeeds(item)) ? [stack.id] : [];
+    }),
+  );
+  let changed = false;
+  const next = Object.fromEntries(
+    Object.entries(stored).map(([name, live]) => {
+      const before = Object.keys((live as { wornFrom?: object } | null)?.wornFrom ?? {}).length;
+      const after = rulesetLiveWornOff(live, worn);
+      if (Object.keys(after.live.wornFrom ?? {}).length === before) return [name, live];
+      changed = true;
+      return [name, after.live];
+    }),
+  );
+  if (changed) await states.updateByMessage(row.messageId, row.swipeIndex, chatId, { rulesetLive: next });
 }
 
 /** A change with what it found out: the revealed stacks, the journal's lines, and a telling's record (a

@@ -3,6 +3,7 @@ import {
   normalizeIllustratorVideoMode,
   parseAgentSettingsRecord,
 } from "@marinara-engine/shared";
+import { logger } from "../../lib/logger.js";
 
 type AgentsStore = {
   getLastSuccessfulRunByType(agentType: string, chatId: string): Promise<{ messageId?: string | null } | null>;
@@ -123,6 +124,37 @@ export function automaticVideoAllowed(
   if (anchor && anchor === targetMessageId) return true;
   const since = countMessagesSinceAgentRun(messages, anchor, countUpcomingAssistantMessage);
   return since === null || since >= interval;
+}
+
+/**
+ * Records `messageId` as where the Video Run Interval counts from, when an automatic clip starts: a clip takes
+ * minutes, and a later reply must not start another one meanwhile. The returned function gives the previous
+ * starting point back when the clip fails, unless a newer clip has taken its place since.
+ */
+export async function claimAutomaticVideoRun(
+  chats: {
+    patchMetadata(id: string, updater: (current: Record<string, unknown>) => Record<string, unknown>): Promise<unknown>;
+  },
+  chatId: string,
+  messageId: string,
+): Promise<() => Promise<void>> {
+  let previous: unknown = null;
+  try {
+    await chats.patchMetadata(chatId, (current) => {
+      previous = current.lastAutomaticVideoMessageId ?? null;
+      return { lastAutomaticVideoMessageId: messageId };
+    });
+  } catch (err) {
+    logger.warn(err, "[video] Could not record the clip for the Video Run Interval");
+    return async () => undefined;
+  }
+  return async () => {
+    await chats
+      .patchMetadata(chatId, (current) =>
+        current.lastAutomaticVideoMessageId === messageId ? { lastAutomaticVideoMessageId: previous } : {},
+      )
+      .catch((err) => logger.warn(err, "[video] Could not give back the Video Run Interval after a failed clip"));
+  };
 }
 
 /** `resolveVideoRunInterval` with the Illustrator agent's saved settings looked up. */

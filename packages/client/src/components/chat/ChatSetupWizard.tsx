@@ -117,6 +117,7 @@ import {
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
 import { AdvancedMemorySettings } from "./AdvancedMemorySettings";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { MultiplayerPrepareButton } from "../../features/multiplayer/MultiplayerPrepareButton";
 
 // ─── Step definitions ─────────────────────────
@@ -2132,6 +2133,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
 
 function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }: WizardWithDefaultsProps) {
   const { t: localizeUi } = useUiTranslation();
+  const localizeText = useLocalizedUiText();
   const defaultDisplayStyle = useUIStore((state) => state.roleplayDisplayStyle);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
   const STEPS = ROLEPLAY_STEPS;
@@ -3571,7 +3573,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
                 {agentAddIntervalMeta && agentAddPreview.runInterval != null && (
                   <label className="space-y-1">
                     <span className="block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                      {agentAddIntervalMeta.label}
+                      {localizeText(agentAddIntervalMeta.label)}
                     </span>
                     <DraftNumberInput
                       min={agentAddIntervalMeta.min ?? 1}

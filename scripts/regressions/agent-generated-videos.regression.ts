@@ -362,10 +362,17 @@ try {
   );
   assert.equal(JSON.parse(comfyPrompts.at(-1) ?? "{}").prompt["1"].inputs.image, png.toString("base64"));
 
-  // Clips only, clip fails: the picture is shown instead.
+  // Clips only, clip fails: the picture is shown instead, and the Video Run Interval's starting point, taken
+  // when the clip started, is given back.
+  const runAnchor = async () => {
+    const raw = (await chats.getById(roleplay.id))?.metadata;
+    return ((typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>).lastAutomaticVideoMessageId;
+  };
+  const anchorBeforeFailure = await runAnchor();
   failVideo = true;
   await generate(roleplay.id, "Aster steps outside.");
   failVideo = false;
+  assert.equal(await runAnchor(), anchorBeforeFailure, "a failed clip gives the interval back");
   const fellBack = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
   assert.equal((await videoAttachments(roleplay.id)).filter((item) => item.messageId === fellBack?.id).length, 0);
   assert.equal((await imagesOn(fellBack?.id)).length, 1, "a failed clip leaves its picture in the reply");
@@ -377,6 +384,8 @@ try {
   beforeVideo = async () => {
     const latest = (await chats.listMessages(roleplay.id)).filter((message) => message.role === "assistant").at(-1);
     assert.ok(latest);
+    // The interval already counts from this reply while its clip is still being made.
+    assert.equal(await runAnchor(), latest.id, "the clip's reply is recorded as it starts");
     await db.update(messageSwipes).set({ extra: "{not json" }).where(eq(messageSwipes.messageId, latest.id));
   };
   const unattachedStream = await generate(roleplay.id, "Aster looks back.");

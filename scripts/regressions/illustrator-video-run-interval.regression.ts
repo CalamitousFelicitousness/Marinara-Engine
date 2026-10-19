@@ -272,9 +272,13 @@ try {
   await generate(convo.id, "Video please");
   assert.equal(await videoCount(convo.id), 1, "the first automatic clip is allowed");
   assert.match(replyRequests.at(-1) ?? "", /\[video\]/u, "the command was offered");
+  // A short context window (here 1 message) must not hide the last clip: the interval counts over the whole chat,
+  // so the command is not offered where the clip would then be refused.
+  await saveChatSettings(convo.id, { contextMessageLimit: 1 });
   await generate(convo.id, "Another?");
   assert.equal(await videoCount(convo.id), 1, "held back: only 2 messages since the last clip");
   assert.doesNotMatch(replyRequests.at(-1) ?? "", /\[video\] or \[video:/u, "and not offered");
+  await saveChatSettings(convo.id, { contextMessageLimit: null });
   await generate(convo.id, "And now?");
   assert.equal(await videoCount(convo.id), 2, "allowed again after the interval");
 

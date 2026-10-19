@@ -929,6 +929,7 @@ import { injectMemoryRecallContext } from "../services/generation/memory-recall-
 import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
+  claimAutomaticVideoRun,
   loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
@@ -4135,8 +4136,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             db: app.db,
             wrapFormat,
             resolvePromptMacros,
+            // Counted over the whole chat, as the check before making the clip is, not the trimmed context.
             videoCommandAllowed: automaticVideoAllowed(
-              chatMessages,
+              allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
               chatMeta,
               await loadVideoRunInterval(agentsStore, chatMeta),
               true,
@@ -6957,9 +6959,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
           // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
           delete memory._generatedVideos;
-          // Offered only once the Video Run Interval has passed (re-runs from a message are asked for, so not gated).
+          // Offered only once the Video Run Interval has passed, counted over the whole chat as the check before making
+          // the clip is, not the trimmed context. Re-runs from a message are asked for, so they are not gated.
           const videoOffer = automaticVideoAllowed(
-            chatMessages,
+            allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
             chatMeta,
             await loadVideoRunInterval(agentsStore, chatMeta),
             true,
@@ -13640,10 +13643,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 } catch (attachErr) {
                   logger.warn(attachErr, "[illustrator] Saved clip %s but could not attach it", video.id);
                 }
-                // The Video Run Interval counts from this reply, attached or not: the clip was made.
-                await chats
-                  .patchMetadata(input.chatId, () => ({ lastAutomaticVideoMessageId: clipMessageId }))
-                  .catch((err) => logger.warn(err, "[illustrator] Could not record the clip for the run interval"));
                 sendSseEvent(reply, {
                   type: "video",
                   data: {
@@ -13827,6 +13826,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 if (clipOnlyFrame !== "picture" && messageId) {
                   pendingRoleplayMedia.push(
                     (async () => {
+                      let releaseVideoRun: () => Promise<void> = async () => undefined;
                       try {
                         const latestMeta = parseExtra((await chats.getById(input.chatId))?.metadata);
                         const allowed = automaticVideoAllowed(
@@ -13837,6 +13837,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           messageId,
                         );
                         if (!allowed) return;
+                        // The Video Run Interval counts from this reply as the clip starts; given back if it fails.
+                        releaseVideoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId);
                         const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
                         // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
                         // to the video connection's instructions.
@@ -13860,6 +13862,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         });
                         await attachClipToReply(video, messageId, targetSwipeIndex);
                       } catch (videoErr) {
+                        await releaseVideoRun();
                         logger.warn(videoErr, "[illustrator] Clip failed");
                         sendSseEvent(reply, {
                           type: "video_error",
@@ -14265,6 +14268,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           messageId,
                         )
                       ) {
+                        // The Video Run Interval counts from this reply as the clip starts; given back if it fails.
+                        const releaseVideoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId);
                         try {
                           const appearanceBlock =
                             chatMeta.illustratorVideoIncludeCharacterAppearance === true
@@ -14317,6 +14322,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                 });
                           await attachClipToReply(video, messageId, targetSwipeIndex);
                         } catch (videoErr) {
+                          await releaseVideoRun();
                           logger.warn(videoErr, "[illustrator] Generated video failed");
                           sendSseEvent(reply, {
                             type: "video_error",

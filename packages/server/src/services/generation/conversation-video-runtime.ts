@@ -18,6 +18,7 @@ import {
   resolveIllustratorCharacterReferences,
   type IllustratorPersonaReference,
 } from "../image/illustrator-references.js";
+import { claimAutomaticVideoRun } from "./agent-cadence.js";
 import { CONVERSATION_VIDEO, loadPrompt } from "../prompt-overrides/index.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
@@ -669,6 +670,8 @@ export function startConversationVideoCommand(args: {
   const characterId = args.characterId;
   args.sendEvent({ type: "video_started", data: { characterId, messageId: args.messageId } });
   return (async () => {
+    // The Video Run Interval counts from this message as the clip starts, and is given back if it fails.
+    const releaseVideoRun = await claimAutomaticVideoRun(createChatsStorage(args.db), args.chatId, args.messageId);
     try {
       // A bare [video] reads the recent conversation, as /video does: the user's request and the reply around it,
       // so a clip the user asked for shows what they asked for even when the reply jokes around it.
@@ -687,7 +690,10 @@ export function startConversationVideoCommand(args: {
         debugMode: args.debugMode,
         serviceTier: args.serviceTier,
       });
-      if (!("video" in result)) return;
+      if (!("video" in result)) {
+        await releaseVideoRun();
+        return;
+      }
       // The clip is saved by now, so it counts as made: failing to add it to the message only logs.
       let messageId: string | null = null;
       try {
@@ -701,10 +707,6 @@ export function startConversationVideoCommand(args: {
       } catch (attachErr) {
         logger.warn(attachErr, "[commands] Saved video %s but could not attach it", result.video.id);
       }
-      // The Video Run Interval counts from here, attached or not: the clip was made.
-      await createChatsStorage(args.db)
-        .patchMetadata(args.chatId, () => ({ lastAutomaticVideoMessageId: args.messageId }))
-        .catch((err) => logger.warn(err, "[commands] Could not record the video message for the run interval"));
       args.sendEvent({
         type: "video",
         data: {
@@ -716,6 +718,7 @@ export function startConversationVideoCommand(args: {
         },
       });
     } catch (err) {
+      await releaseVideoRun();
       logger.error(err, "[commands] Video message failed");
       args.sendEvent({
         type: "video_error",

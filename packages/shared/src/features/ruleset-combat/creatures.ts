@@ -318,6 +318,10 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
             ...(action.calls.dismissible ? { dismissible: structuredClone(action.calls.dismissible) } : {}),
             ...(action.calls.leash ? { leash: action.calls.leash } : {}),
+            ...(action.calls.onlyWhere ? { onlyWhere: structuredClone(action.calls.onlyWhere) } : {}),
+            ...(action.calls.arrivesIn && amountOf(action.calls.arrivesIn)
+              ? { arrivesIn: amountOf(action.calls.arrivesIn)! }
+              : {}),
             ...(action.calls.atCorpse ? { atCorpse: structuredClone(action.calls.atCorpse) } : {}),
             ...(action.calls.atMost ? { atMost: action.calls.atMost } : {}),
           },

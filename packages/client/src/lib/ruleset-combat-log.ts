@@ -623,6 +623,12 @@ export function rulesetCombatEventLine(
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
+    // Called creatures come after their caller's turns (1.561): Children of the Night's.
+    case "arrived":
+      return key("arrived", {
+        actor: names.combatant(event.actorId),
+        names: event.ids.map((id) => names.combatant(id)).join(", "),
+      });
     // What a creature does as it dies (1.487): a mephit's Death Burst.
     case "turnRoll":
       return key(event.roll >= event.atLeast ? "turnRollMet" : "turnRollMissed", {

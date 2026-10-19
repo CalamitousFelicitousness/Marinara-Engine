@@ -15,6 +15,7 @@ import type {
   RulesetSheetBuild,
   RulesetShapeForms,
   RulesetCatalogCalls,
+  RulesetCallWhere,
   RulesetRegeneration,
   RulesetHangsOn,
   RulesetTargetIs,
@@ -500,6 +501,10 @@ export interface RulesetStatBlockAction {
     dismissible?: true | { budget: string };
     /** They leave once their caller is farther than this (1.557). */
     leash?: number;
+    /** Offered only where it says (1.561). */
+    onlyWhere?: RulesetCallWhere;
+    /** They appear after this many of their caller's turns (1.561). */
+    arrivesIn?: RulesetCombatAmount;
     /** Raised from a corpse (1.501): Create Specter. */
     atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
     /** No more than this many stand at once (1.501). */
@@ -932,6 +937,8 @@ export interface RulesetCombatAction {
    *  `modes` when it names options. */
   callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true };
   callChoice?: true;
+  /** Whichever of its options comes arrives after this many of its caller's turns (1.561). */
+  callsArriveIn?: RulesetCombatAmount;
   /** Which call it makes is rolled as it is used (1.506), never picked: each as likely as its
    *  `weight`, calling nobody without a `call`, those it calls joining the other side when `hostile`.
    *  A Bag of Tricks, an Efreeti Bottle. */
@@ -1262,6 +1269,10 @@ export interface RulesetCombatAction {
     spendsItemOnDeath?: true;
     /** An item's call: the item becomes them, out of its holder's hands while they stand (1.560). */
     becomesItem?: true;
+    /** Offered only where it says (1.561): Children of the Night's bats away from the sun. */
+    onlyWhere?: RulesetCallWhere;
+    /** They appear after this many of their caller's turns (1.561), rolled as they are called. */
+    arrivesIn?: RulesetCombatAmount;
     /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
     leash?: number;
     /** They leave as soon as their caller is out (1.393). */
@@ -1934,6 +1945,8 @@ export interface RulesetCombatant {
     blinked?: true;
     /** Set aside by a zone it was called into (1.480), back once it no longer covers them. */
     setAside?: true;
+    /** Called and on its way (1.561): it arrives after this many more of its caller's turns. */
+    arriving?: number;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
@@ -3483,6 +3496,8 @@ export type RulesetCombatEvent =
   | { type: "left"; actorId: string; label: string; by?: string }
   /** Back from where it was sent (1.236), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
+  /** Called creatures that came after their caller's turns (1.561): Children of the Night's. */
+  | { type: "arrived"; actorId: string; ids: string[] }
   /** A called creature set aside by a zone that covers it (1.480): Antimagic Field's summons. */
   | { type: "setAside"; targetId: string; label: string }
   /** A foe's entry taken in by its only target (1.469): a Rod of Absorption's, its charges now. */

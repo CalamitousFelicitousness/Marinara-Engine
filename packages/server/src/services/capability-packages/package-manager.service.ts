@@ -2740,6 +2740,22 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A call offered only where it says, or whose creatures arrive after their caller's turns (1.561): a
+ *  vampire's Children of the Night. */
+function carriesCallWhere561(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallWhere561(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    record.onlyWhere !== undefined &&
+    (record.creature !== undefined || record.from !== undefined || record.options !== undefined)
+  )
+    return true;
+  if (plainRecord(record.calls)?.arrivesIn !== undefined) return true;
+  return featureValues(record).some((one) => carriesCallWhere561(one, depth + 1));
+}
+
 /** An item that becomes the creature it calls, or a catalog entry's or an item's call its user may
  *  dismiss (1.560): a Staff of the Python. */
 function carriesBecomesItem560(value: unknown, depth = 0): boolean {
@@ -7666,6 +7682,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call offered only where it says, or arriving after its caller's turns, 1.561.
+  if (
+    !declaresApi(561) &&
+    (carriesCallWhere561(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallWhere561(document)))
+  ) {
+    return "A ruleset with a call offered only where it says (onlyWhere), or whose creatures arrive after their caller's turns (calls.arrivesIn), requires schemaVersion 2 and capabilityApi 1.561 or newer";
+  }
   // An item that becomes the creature it calls, or a dismissible catalog or item call, 1.560.
   if (
     !declaresApi(560) &&

@@ -92,6 +92,7 @@ import {
   rulesetAbilityScore,
   rulesetModeAllowances,
   rulesetModeRuleHolds,
+  rulesetCallWhereHolds,
   rulesetMovesOnly,
   rulesetMovementAllowance,
   rulesetSlipCost,
@@ -2487,6 +2488,9 @@ export function rulesetActionAvailable(
   if (!rulesetActionUsable(definition, actor, action)) return false;
   // Made only as a row another action rolled (1.506).
   if (action.rolledPart) return false;
+  // A call only where it says (1.561).
+  if (definition && action.calls?.onlyWhere && !rulesetCallWhereHolds(definition, actor, state, action.calls.onlyWhere))
+    return false;
   // No more of them than it may hold at once (1.501): a wraith's seven specters.
   const most = action.calls?.atMost;
   if (
@@ -3454,6 +3458,8 @@ function optionFrom(
       if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
       // One that spends the item's charges only while it has them (1.190).
       if (mode.charges && rulesetItemChargesLeft(actor, mode.charges) < mode.charges.cost) return [];
+      // A call only where it says (1.561): Children of the Night's bats away from the sun.
+      if (mode.call?.onlyWhere && !rulesetCallWhereHolds(definition, actor, state, mode.call.onlyWhere)) return [];
       const expected = forecastFor(definition, combat, state, actor, moded);
       return [
         { id: mode.id, label: mode.label, targets: moded.targets.count, ...(expected ? { forecast: expected } : {}) },

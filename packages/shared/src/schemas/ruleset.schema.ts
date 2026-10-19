@@ -5850,6 +5850,39 @@ const calledCount = z
     message: "A call brings at least one creature",
   });
 
+/** Where a call may be made (1.561): not in one of `notLight` where its caller stands, only outdoors
+ *  or only indoors by the board's place. */
+export interface RulesetCallWhere {
+  notLight?: Array<"sunlight" | "bright" | "dim" | "dark">;
+  outdoors?: true;
+  indoors?: true;
+}
+const callWhereSchema: z.ZodType<RulesetCallWhere, z.ZodTypeDef, unknown> = z
+  .object({
+    notLight: z
+      .array(z.enum(["sunlight", "bright", "dim", "dark"]))
+      .min(1)
+      .max(4)
+      .optional(),
+    outdoors: z.literal(true).optional(),
+    indoors: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((where) => where.notLight || where.outdoors || where.indoors, {
+    message: 'Say where: "notLight", "outdoors" or "indoors"',
+  })
+  .refine((where) => !(where.outdoors && where.indoors), {
+    message: 'A call is made "outdoors" or "indoors", not both',
+  });
+
+/** How many of their caller's turns called creatures take to arrive (1.561), typed by hand. */
+const callArrivesSchema: z.ZodType<{ dice?: string; flat?: number }, z.ZodTypeDef, unknown> = z
+  .object(catalogAmountShape)
+  .strict()
+  .refine((count) => count.dice !== undefined || (count.flat ?? 0) >= 1, {
+    message: "They arrive after one turn at least",
+  });
+
 /** One of the creatures a call picks among (1.344), typed by hand so the definition's type stays
  *  small enough to write out. */
 export interface RulesetCalledOption {
@@ -5866,6 +5899,7 @@ export interface RulesetCalledOption {
   rounds?: number;
   spendsItem?: true;
   pastLifetime?: true;
+  onlyWhere?: RulesetCallWhere;
 }
 
 /** The creatures a call picks among as it is used (1.344), up to 8, each like a weapon's mode. */
@@ -5901,6 +5935,10 @@ const calledOptionsSchema: z.ZodType<RulesetCalledOption[], z.ZodTypeDef, unknow
         /** It comes, never rolled, at each use past the call's `lifetimeUses` (Capability API 1.538),
          *  and at no other: the Efreeti Bottle's fourth opening, the efreeti escaping. */
         pastLifetime: z.literal(true).optional(),
+        /** Offered only where its caller stands in no light of `notLight`, or only `outdoors` (or
+         *  `indoors`) by the board's place (Capability API 1.561): a vampire's Children of the
+         *  Night, bats or rats "provided that the sun isn't up", wolves "while outdoors". */
+        onlyWhere: callWhereSchema.optional(),
       })
       .strict()
       .refine((option) => option.none || (option.creature === undefined) !== (option.from === undefined), {
@@ -8066,6 +8104,12 @@ const creatureActionSchema = z
         /** They leave once their caller is farther from them than this (Capability API 1.557): a
          *  treant's animated trees, 120 feet. */
         leash: z.number().finite().gt(0).max(10000).optional(),
+        /** Offered only where it says (Capability API 1.561), as an option's `onlyWhere`. */
+        onlyWhere: callWhereSchema.optional(),
+        /** They appear only after this many of their caller's turns (Capability API 1.561), rolled as
+         *  they are called: a vampire's Children of the Night, "The called creatures arrive in 1d4
+         *  rounds". */
+        arrivesIn: callArrivesSchema.optional(),
         /** Raised from a corpse (Capability API 1.501): aimed at one creature that died no more than
          *  `withinRounds` rounds ago and is `is` (when given), within the action's reach; the called
          *  creature rises in its space and the corpse is gone. 5e's wraith's Create Specter,

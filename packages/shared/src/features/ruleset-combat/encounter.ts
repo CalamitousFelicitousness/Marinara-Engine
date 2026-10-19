@@ -17,6 +17,7 @@ import {
   type RulesetCatalogItem,
   type RulesetCatalogMechanics,
   type RulesetCatalogCalls,
+  type RulesetCallWhere,
   type RulesetCatalogFrom,
   type RulesetRegeneration,
   type RulesetHangsOn,
@@ -1592,6 +1593,38 @@ export function rulesetModeRuleHolds(
     if (!rule.terrain.some((one) => one === tile || (board?.environment !== undefined && one === board.environment)))
       return false;
   }
+  return true;
+}
+
+/** The places a board may be that are indoors (1.561), by the tactical generator's names; any other,
+ *  or a board that names none, is outdoors. */
+export const RULESET_INDOOR_PLACES: readonly string[] = Object.freeze([
+  "dungeon",
+  "cave",
+  "castle",
+  "spaceship",
+  "mansion",
+]);
+
+/** Whether a call may be made where `caller` stands (1.561): in none of `notLight`, and outdoors or
+ *  indoors as it says. Children of the Night. */
+export function rulesetCallWhereHolds(
+  definition: RulesetDefinition,
+  caller: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  where: RulesetCallWhere,
+): boolean {
+  const combat = definition.combat;
+  if (
+    combat &&
+    where.notLight &&
+    rulesetModeRuleHolds(definition, combat, caller, state, { mode: "advantage", light: where.notLight })
+  )
+    return false;
+  const place = state?.board?.environment;
+  const indoors = place !== undefined && RULESET_INDOOR_PLACES.includes(place);
+  if (where.outdoors && indoors) return false;
+  if (where.indoors && !indoors) return false;
   return true;
 }
 
@@ -5547,6 +5580,7 @@ function fillCatalogCallsAsWritten(
       return matching(option.from, option.upTo, option.fromStep ?? 0).flatMap(({ ref, fromStep }) => {
         const call = found(ref, option.count, stepped(fromStep));
         if (!call) return [];
+        if (option.onlyWhere) call.onlyWhere = structuredClone(option.onlyWhere);
         const label = `${call.name} ×${many(option.count)}`;
         return [
           { id: `call-${index}-${ref.split("/")[1]}`, label: option.label ? `${option.label}: ${label}` : label, call },
@@ -5555,6 +5589,8 @@ function fillCatalogCallsAsWritten(
     }
     const call = option.creature ? found(option.creature, option.count, stepped(option.fromStep ?? 0)) : null;
     if (!call) return [];
+    // Only where it says (1.561): Children of the Night's wolves outdoors.
+    if (option.onlyWhere) call.onlyWhere = structuredClone(option.onlyWhere);
     return [{ id: `call-${index}`, label: option.label ?? `${call.name} ×${many(option.count)}`, call }];
   });
 }
@@ -5946,6 +5982,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ...(source.calls.cantCall ? { cantCall: true as const } : {}),
           ...(source.calls.leash ? { leash: source.calls.leash } : {}),
         };
+        // They arrive after their caller's turns (1.561), whichever option comes.
+        if (source.calls.arrivesIn) action.callsArriveIn = { ...source.calls.arrivesIn };
         action.callChoice = true;
         return;
       }
@@ -5968,6 +6006,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.atCorpse ? { atCorpse: structuredClone(source.calls.atCorpse) } : {}),
         ...(source.calls.atMost ? { atMost: source.calls.atMost } : {}),
         ...(source.calls.leash ? { leash: source.calls.leash } : {}),
+        ...(source.calls.onlyWhere ? { onlyWhere: structuredClone(source.calls.onlyWhere) } : {}),
+        ...(source.calls.arrivesIn ? { arrivesIn: { ...source.calls.arrivesIn } } : {}),
       };
       // Aimed at the corpse it rises from (1.501).
       if (source.calls.atCorpse) action.targets = { side: "any", count: 1 };

@@ -9746,6 +9746,19 @@ function callCreatures(
   }
   ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids });
   departuresOf(ctx, actor);
+  // On their way, there after so many of their caller's turns (1.561): Children of the Night's.
+  const arrivesIn = action.calls.arrivesIn ?? action.callsArriveIn;
+  if (arrivesIn && ids.length) {
+    const turns = rollAmount(ctx, arrivesIn).total;
+    if (turns >= 1) {
+      for (const id of ids) {
+        const called = rulesetCombatant(ctx.state, id);
+        if (!called) continue;
+        called.defeated = true;
+        called.away = { by: actor.id, label: action.label, arriving: turns };
+      }
+    }
+  }
   // Or unless their caller meets a requirement (1.558): a Horn of Valhalla's.
   const unless = action.calls.hostileUnless;
   if (unless && !hostile) {
@@ -12794,6 +12807,25 @@ function blinkAway(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
   holder.away = { by: holder.id, label, blinked: true };
 }
 
+/** Those `caller` called that are on their way (1.561) a turn nearer as its turn starts, and those
+ *  whose time has come set down where they were to be, or the nearest free place. */
+function arriveCalled(ctx: RulesetCombatContext, caller: RulesetCombatant): void {
+  const came: string[] = [];
+  for (const one of ctx.state.combatants) {
+    const away = one.away;
+    if (one.calledBy !== caller.id || away?.arriving === undefined || one.dismissed) continue;
+    if (away.arriving > 1) {
+      away.arriving -= 1;
+      continue;
+    }
+    delete one.away;
+    one.defeated = false;
+    placeNearest(ctx, one);
+    came.push(one.id);
+  }
+  if (came.length) ctx.events.push({ type: "arrived", actorId: caller.id, ids: came });
+}
+
 /** Back from a blink as its turn starts (1.453): where it vanished, or the nearest free place. */
 function blinkBack(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (!actor.away?.blinked) return;
@@ -15502,6 +15534,8 @@ function beginNextTurn(
   if (actor) {
     // Back from a blink before anything of the turn (1.453).
     blinkBack(ctx, actor);
+    // What it called on their way come a turn nearer, and arrive (1.561).
+    arriveCalled(ctx, actor);
     refreshRulesetBudgets(combat, actor.budgets, "turn");
     refreshSpendLimits(actor, "turn");
     // A spare reaction for each head beyond one (1.497), for opportunity attacks only.

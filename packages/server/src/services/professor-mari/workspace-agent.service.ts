@@ -66,8 +66,6 @@ import {
   MARI_RUNTIME_SETTINGS_KEY,
   DEFAULT_MARI_RUNTIME,
   isMariRuntime,
-  isInMariSeason,
-  MARI_RACCOON_SEASON,
   type MariRuntime,
   MODEL_LISTS,
   buildMariChangeExcerpts,
@@ -801,7 +799,8 @@ export function buildQuickContextPayload(
   });
 }
 
-// Dated flavor only: it may color `say`, never what she does or the literal approval text.
+// Sent only while the client shows the dated raccoon pack (its window, minus a user opt-out). Flavor only: it
+// may color `say`, never what she does or the literal approval text.
 const MARI_RACCOON_SEASON_FLAVOR =
   "Seasonal flavor: it is Halloween week and you are wearing your feral raccoon onesie. In `say` only, you may add one light, playful raccoon or Halloween touch (gnawing, rummaging, a tiny growl). Answers, facts, actions, `reason`, `authorization`, and approval, review, or diff text stay exactly as they would be any other day.";
 
@@ -3387,6 +3386,8 @@ export class ProfessorMariWorkspaceService {
     attachments?: ProfessorMariPromptAttachment[];
     existingUserMessageId?: string;
     context?: ProfessorMariAskContext;
+    /** The dated Mari pack the client is showing, if any; it only flavors her voice. */
+    seasonalPackId?: string;
     onEvent: PromptEventSink;
   }) {
     if (!this.enabled) throw new Error("Professor Mari workspace mode is disabled.");
@@ -3577,6 +3578,7 @@ export class ProfessorMariWorkspaceService {
         permissionsMode,
         handoffContextPrompt,
         runtime.active,
+        args.seasonalPackId,
       );
       const baseOptions: ChatOptions = {
         ...this.baseChatOptions(
@@ -4285,6 +4287,7 @@ export class ProfessorMariWorkspaceService {
     permissionsMode: MariPermissionsMode,
     handoffContextPrompt: string | null,
     runtime: MariRuntime = "classic",
+    seasonalPackId?: string,
   ): Promise<{
     messages: ChatMessage[];
     manualApprovalArmed: boolean;
@@ -4334,7 +4337,7 @@ export class ProfessorMariWorkspaceService {
       `Embedding model: ${embeddingModelConfigured ? "configured" : "none"}`,
       `permissionsMode: ${permissionsMode}`,
       `decisionAuthoring: ${JSON.stringify(decisionContext)}`,
-      ...(isInMariSeason(MARI_RACCOON_SEASON) ? [MARI_RACCOON_SEASON_FLAVOR] : []),
+      ...(seasonalPackId === "raccoon" ? [MARI_RACCOON_SEASON_FLAVOR] : []),
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [

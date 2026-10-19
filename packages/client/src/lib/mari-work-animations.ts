@@ -1,4 +1,17 @@
-import { isInMariSeason, MARI_RACCOON_SEASON, type MariSeason } from "@marinara-engine/shared";
+/** A dated pack's window: inclusive local "MM-DD" dates. */
+export interface MariSeason {
+  from: string;
+  to: string;
+}
+
+const monthDay = (now: Date) =>
+  `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+// ponytail: string compare, so a window cannot wrap New Year; split it in two if one ever must.
+export function isInMariSeason(season: MariSeason, now: Date = new Date()): boolean {
+  const today = monthDay(now);
+  return today >= season.from && today <= season.to;
+}
 
 export const MARI_STORY_STATES = [
   "thinking",
@@ -152,7 +165,7 @@ export const MARI_APPEARANCE_PACKS: readonly MariAppearancePack[] = [
     },
     stories: packStories("raccoon"),
     poses: packPoses("raccoon"),
-    season: MARI_RACCOON_SEASON,
+    season: { from: "10-29", to: "11-01" },
   },
 ];
 

@@ -20062,6 +20062,8 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
 test("home browser hub scales cleanly and opens FAQ as a bookmark window", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   const mobile = testInfo.project.name.includes("mobile");
+  // It checks the default Home copy, which a dated Mari pack replaces inside its window.
+  await seedUIState(page, {}, "merge");
   await page.addInitScript(() => {
     if (localStorage.getItem("marinara:home:widget-visibility:v2") !== null) return;
     localStorage.setItem(

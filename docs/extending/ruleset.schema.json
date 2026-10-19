@@ -38573,6 +38573,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "uncontrolled": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -72478,6 +72482,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "uncontrolled": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -84968,6 +84976,10 @@
                                 "const": true
                               },
                               "understands": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "uncontrolled": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -99875,6 +99887,10 @@
                               "const": true
                             },
                             "understands": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "uncontrolled": {
                               "type": "boolean",
                               "const": true
                             },
@@ -120440,6 +120456,10 @@
                                     "const": true
                                   },
                                   "understands": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "uncontrolled": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -141011,6 +141031,10 @@
                                     "const": true
                                   },
                                   "understands": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "uncontrolled": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -181594,6 +181618,10 @@
                           "const": true
                         },
                         "understands": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "uncontrolled": {
                           "type": "boolean",
                           "const": true
                         },

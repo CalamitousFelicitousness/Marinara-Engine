@@ -862,6 +862,8 @@ export interface RulesetCombatAction {
     calledBySelf?: true;
     /** Only one that understands a language its user does (1.508). */
     understands?: true;
+    /** Only one under nobody else's control (1.580). */
+    uncontrolled?: true;
   };
   /** Dealt at its most to a target that is this (1.185). */
   maxAgainst?: RulesetTargetIs;

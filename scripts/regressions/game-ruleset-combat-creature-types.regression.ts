@@ -267,7 +267,7 @@ try {
     refused((doc) => (holy(doc).plus[0].targetIs = {}), /names types, tags or both/);
     refused(
       (doc) => (holy(doc).targetTypes = {}),
-      /"is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf", "understands" or several/,
+      /"is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf", "understands", "uncontrolled" or several/,
     );
     refused((doc) => (doc.combat.creatureTypes.default = "giant"), /Unknown creature type "giant"/);
     refused((doc) => (doc.combat.creatureTypes.field = "level"), /text or choice field/);

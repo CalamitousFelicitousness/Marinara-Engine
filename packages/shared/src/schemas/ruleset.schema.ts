@@ -5506,6 +5506,7 @@ const catalogTargetTypesSchema: z.ZodType<
     notImmuneTo?: string[];
     calledBySelf?: true;
     understands?: true;
+    uncontrolled?: true;
   },
   z.ZodTypeDef,
   unknown
@@ -5531,11 +5532,16 @@ const catalogTargetTypesSchema: z.ZodType<
      *  `combat.languages` and a creature's own `languages`: 5e's Suggestion, Command. One whose
      *  languages are not written down is not kept out by it. */
     understands: z.literal(true).optional(),
+    /** Only a creature under no other creature's control (Capability API 1.580): not called into the
+     *  fight by anybody else, or called but wild or turned on its caller. Its user's own calls pass.
+     *  5e's Pipes of the Sewers, "a swarm of rats that isn't under another creature's control". */
+    uncontrolled: z.literal(true).optional(),
   })
   .strict()
   .refine(
     (types) =>
       types.understands !== undefined ||
+      types.uncontrolled !== undefined ||
       types.is !== undefined ||
       types.not !== undefined ||
       types.abilityAtMost !== undefined ||
@@ -5544,7 +5550,7 @@ const catalogTargetTypesSchema: z.ZodType<
       types.calledBySelf !== undefined,
     {
       message:
-        '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf", "understands" or several',
+        '"targetTypes" says "is", "not", "abilityAtMost", "abilityAtLeast", "notImmuneTo", "calledBySelf", "understands", "uncontrolled" or several',
     },
   );
 

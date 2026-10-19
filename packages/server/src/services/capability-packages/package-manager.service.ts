@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A target test for a creature under nobody else's control (1.580): Pipes of the Sewers. */
+function carriesUncontrolled580(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUncontrolled580(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.targetTypes)?.uncontrolled !== undefined) return true;
+  return featureValues(record).some((one) => carriesUncontrolled580(one, depth + 1));
+}
+
 /** What a condition leaves behind only as it ends some ways (1.579): Pipes of the Sewers. */
 function carriesOnEndWhen579(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7893,6 +7903,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A target under nobody else's control, 1.580.
+  if (
+    !declaresApi(580) &&
+    (carriesUncontrolled580(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUncontrolled580(document)))
+  )
+    return "A ruleset with a target test for a creature under nobody else's control (targetTypes.uncontrolled) requires schemaVersion 2 and capabilityApi 1.580 or newer";
   // What a condition leaves behind only as it ends some ways, 1.579.
   if (
     !declaresApi(579) &&

@@ -997,6 +997,7 @@ export function rulesetTargetTypesAllow(
         notImmuneTo?: string[];
         calledBySelf?: true;
         understands?: true;
+        uncontrolled?: true;
       }
     | undefined,
   /** Who it is pointed by (1.434), for `calledBySelf`: nobody given, nobody passes it. */
@@ -1006,6 +1007,15 @@ export function rulesetTargetTypesAllow(
   // Only one its user called (1.434): Find Familiar's own familiar.
   // Never one that turned on them (1.485).
   if (targetTypes.calledBySelf && (!by || combatant.calledBy !== by.id || combatant.calledTurned)) return false;
+  // Under nobody else's control (1.580): uncalled, its user's own, wild or turned on its caller.
+  if (
+    targetTypes.uncontrolled &&
+    combatant.calledBy !== undefined &&
+    combatant.calledBy !== by?.id &&
+    !combatant.calledWild &&
+    !combatant.calledTurned
+  )
+    return false;
   // Only one that understands a language its user speaks (1.508): Suggestion. Either one's languages
   // not written down keeps nobody out.
   if (targetTypes.understands && by && by.id !== combatant.id) {

@@ -10510,7 +10510,10 @@ export function rulesetStandingAtStart(
     const caster = rulesetCombatant(ctx.state, one.casterId);
     if (!caster || !rulesetCombatStanding(caster)) continue;
     const named = (action: RulesetCombatAction, name: string) =>
-      action.id === name || action.label.trim().toLowerCase() === name.trim().toLowerCase();
+      action.id === name ||
+      action.label.trim().toLowerCase() === name.trim().toLowerCase() ||
+      // An item's use by its own name too, as the ruleset wrote it: "Apply the Oil".
+      (!!action.itemUse && action.label.trim().toLowerCase().endsWith(`: ${name.trim().toLowerCase()}`));
     const action =
       caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
       // Any other entry of theirs (1.412), done as the fight starts.

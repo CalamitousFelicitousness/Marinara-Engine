@@ -1,4 +1,4 @@
-import { rm, mkdir, readFile, writeFile } from "node:fs/promises";
+import { rm, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import type {
@@ -55,6 +55,9 @@ While this skill is on, ask before you create or change something whenever a mis
 - Skip the questions when the request already has what you need, or when the user says to just do it.
 - Do not stage or apply changes while a question waits for an answer.`,
 };
+
+// One seed per process, so two first calls cannot both seed and the late one overwrite a user edit.
+let seeding: Promise<void> | null = null;
 
 function rootDir() {
   return join(DATA_DIR, ".mari-workspace", "skills");
@@ -272,6 +275,14 @@ export class ProfessorMariWorkspaceSkillsService {
   }
 
   private async ensureStorage() {
+    seeding ??= this.seedExample().catch((err: unknown) => {
+      seeding = null;
+      throw err;
+    });
+    await seeding;
+  }
+
+  private async seedExample() {
     await mkdir(rootDir(), { recursive: true });
     if (existsSync(indexPath())) return;
     const { id, description, content } = EXAMPLE_SKILL;
@@ -322,7 +333,10 @@ export class ProfessorMariWorkspaceSkillsService {
 
   private async writeRecords(records: SkillRecord[]) {
     await mkdir(rootDir(), { recursive: true });
-    await writeFile(indexPath(), JSON.stringify(records, null, 2), "utf8");
+    // Write then rename, so a crash never leaves a half-written index.
+    const tempPath = `${indexPath()}.tmp`;
+    await writeFile(tempPath, JSON.stringify(records, null, 2), "utf8");
+    await rename(tempPath, indexPath());
   }
 
   private uniqueId(baseName: string, records: SkillRecord[]) {

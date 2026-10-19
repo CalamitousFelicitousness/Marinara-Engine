@@ -14,7 +14,8 @@ const { renderMariSkillsPrompt } =
 
 try {
   const service = new ProfessorMariWorkspaceSkillsService();
-  const { skills } = await service.list();
+  // Two first calls at once still seed one skill.
+  const [{ skills }] = await Promise.all([service.list(), new ProfessorMariWorkspaceSkillsService().list()]);
   assert.deepEqual(
     skills.map((skill) => [skill.id, skill.enabled]),
     [["ask-before-building", false]],

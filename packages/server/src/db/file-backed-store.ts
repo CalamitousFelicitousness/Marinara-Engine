@@ -292,6 +292,8 @@ export type FileNativeStoreTestHooks = {
   onTableWriteSkipped?: (table: string) => void;
   writerLeaseScopeId?: string;
   writerLeaseBootId?: string;
+  /** Overrides this process's machine ID hash; null simulates a failed probe (#7801). */
+  writerLeaseHostId?: string | null;
   /** Overrides the filesystem check behind writerLeaseStorageIsMachineLocal (#5744). */
   writerLeaseStorageIsMachineLocal?: boolean;
   /** Overrides the PID namespace recorded in and compared against the lease (#5744). */
@@ -1491,23 +1493,30 @@ function readStableMachineId() {
   }
 
   if (process.platform === "win32") {
-    try {
-      const executable = process.env.SystemRoot ? join(process.env.SystemRoot, "System32", "reg.exe") : "reg.exe";
-      const output = execFileSync(
-        executable,
-        ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
-        {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: 1_000,
-          maxBuffer: 64 * 1024,
-          windowsHide: true,
-        },
-      );
-      return output.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i)?.[1]?.trim() ?? null;
-    } catch {
-      return null;
+    const executable = process.env.SystemRoot ? join(process.env.SystemRoot, "System32", "reg.exe") : "reg.exe";
+    // The first reg.exe launch in a process can take about 2 s on some
+    // machines, while later ones take milliseconds. Without a machine ID this
+    // process cannot prove that a crashed writer's lease is its own (#7801),
+    // so a timed-out probe gets one retry.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const output = execFileSync(
+          executable,
+          ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
+          {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"],
+            timeout: 2_000,
+            maxBuffer: 64 * 1024,
+            windowsHide: true,
+          },
+        );
+        return output.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i)?.[1]?.trim() ?? null;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ETIMEDOUT") return null;
+      }
     }
+    return null;
   }
 
   return (
@@ -1571,6 +1580,31 @@ function probeWindowsBootId(): string | null {
   }
 }
 
+// Windows prints LastBootUpTime from the current clock minus uptime, so one
+// boot can print values seconds apart once the clock is corrected (#7801).
+// Counting close values as one boot only skips the boot proof: the PID checks
+// still decide, so a wider window never reclaims a lease whose writer is alive.
+const WINDOWS_BOOT_ID_TOLERANCE_MS = 5 * 60_000;
+const WINDOWS_BOOT_ID_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
+
+/** Whether a lease's recorded boot id names the same OS boot as `current`. */
+export function writerLeaseBootIdsMatch(
+  recorded: string | undefined,
+  current: string,
+  platform: NodeJS.Platform = process.platform,
+) {
+  if (recorded === current) return true;
+  if (platform !== "win32" || !recorded) return false;
+  if (!WINDOWS_BOOT_ID_PATTERN.test(recorded) || !WINDOWS_BOOT_ID_PATTERN.test(current)) return false;
+  const recordedMs = Date.parse(recorded);
+  const currentMs = Date.parse(current);
+  return (
+    Number.isFinite(recordedMs) &&
+    Number.isFinite(currentMs) &&
+    Math.abs(recordedMs - currentMs) <= WINDOWS_BOOT_ID_TOLERANCE_MS
+  );
+}
+
 const CURRENT_HOST_ID = (() => {
   const machineId = readStableMachineId();
   if (!machineId) return null;
@@ -1604,9 +1638,9 @@ const CURRENT_CLOCK_TICKS_PER_SECOND = (() => {
   }
 })();
 
-function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord) {
+function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord, hostId: string | null) {
   if (record.version === 2 || record.version === 4) {
-    return Boolean(CURRENT_HOST_ID && record.hostId === CURRENT_HOST_ID);
+    return Boolean(hostId && record.hostId === hostId);
   }
   if (CURRENT_LEGACY_HOST_ID && record.hostId === CURRENT_LEGACY_HOST_ID) return true;
 
@@ -1865,8 +1899,10 @@ const MACHINE_LOCAL_FILESYSTEM_MAGICS = new Set<number>([
  * and Podman container, and Linux hosts without /etc/machine-id — so the host
  * comparison can never match it. When the storage is machine-local, that
  * writer provably ran here and the same staleness proofs as a same-host lease
- * apply (#5744). Only Linux and Android expose the statfs magic reliably; other
- * platforms always have a stable machine ID and keep the strict path.
+ * apply (#5744). The same holds when this process is the one without an ID
+ * (#7801). Only Linux and Android expose the statfs magic reliably; other
+ * platforms keep the strict path, and Windows retries a timed-out machine ID
+ * probe instead.
  */
 export function writerLeaseStorageIsMachineLocal(rootDir: string) {
   if (process.platform !== "linux" && process.platform !== "android") return false;
@@ -2584,6 +2620,8 @@ class FileTableStore {
         ? createHash("sha256").update(`marinara-writer-lease-boot\n${writerBootId}`).digest("hex")
         : null);
     const writerPidNamespace = this.testHooks?.writerLeasePidNamespace ?? CURRENT_PID_NAMESPACE;
+    const writerHostId =
+      this.testHooks?.writerLeaseHostId !== undefined ? this.testHooks.writerLeaseHostId : CURRENT_HOST_ID;
     for (let attempt = 0; attempt < 10; attempt++) {
       const token = randomUUID();
       let created = false;
@@ -2604,7 +2642,7 @@ class FileTableStore {
           const record: StorageWriterLeaseRecord = {
             version: writerBootId ? 4 : liveness ? 3 : 2,
             pid: process.pid,
-            hostId: CURRENT_HOST_ID,
+            hostId: writerHostId,
             ...(liveness ? { scopeId: liveness.scopeId } : {}),
             ...(writerBootId ? { bootId: writerBootId } : {}),
             ...(writerPidNamespace ? { pidNamespace: writerPidNamespace } : {}),
@@ -2647,15 +2685,16 @@ class FileTableStore {
 
       let staleReason: "boot" | "liveness" | "pid" | "pid-reused" | null = null;
       // Same-host proof, in order of strength: the recorded machine ID matches
-      // ours; the storage is Termux's app-private HOME; or the writer could not
-      // identify its machine at all (hostId null) but left the lease on storage
-      // only this machine can mount (#5744). A lease that names a different
-      // machine never qualifies for the storage-based proof.
+      // ours; the storage is Termux's app-private HOME; or one side could not
+      // identify its machine (the writer left hostId null, #5744, or this
+      // process could not read its own ID, #7801) and the lease sits on
+      // storage only this machine can mount. A lease that names a machine
+      // other than our known one never qualifies for the storage-based proof.
       let hostProof: "host-id" | "termux-home" | "local-storage" | null = null;
-      if (writerLeaseBelongsToCurrentHost(existing.record)) hostProof = "host-id";
+      if (writerLeaseBelongsToCurrentHost(existing.record, writerHostId)) hostProof = "host-id";
       else if (isTermuxPrivateHomeStorage(this.rootDir)) hostProof = "termux-home";
       else if (
-        existing.record.hostId === null &&
+        (existing.record.hostId === null || writerHostId === null) &&
         (this.testHooks?.writerLeaseStorageIsMachineLocal ?? writerLeaseStorageIsMachineLocal(this.rootDir))
       ) {
         hostProof = "local-storage";
@@ -2670,7 +2709,12 @@ class FileTableStore {
       const pidProofUsable =
         hostProof !== "local-storage" ||
         (writerPidNamespace !== null && existing.record.pidNamespace === writerPidNamespace);
-      if (existing.record.version === 4 && sameHost && writerBootId && existing.record.bootId !== writerBootId) {
+      if (
+        existing.record.version === 4 &&
+        sameHost &&
+        writerBootId &&
+        !writerLeaseBootIdsMatch(existing.record.bootId, writerBootId)
+      ) {
         staleReason = "boot";
       } else if (existing.record.version === 3 || (existing.record.version === 4 && existing.record.scopeId)) {
         // A socket refusal is proof only within the same host kernel. Shared

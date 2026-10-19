@@ -12,6 +12,7 @@ import {
   STORAGE_WRITER_LEASE_FILENAME,
   STORAGE_WRITER_OWNER_FILENAME,
   StorageWriterLeaseError,
+  writerLeaseBootIdsMatch,
   writerLeaseStorageIsMachineLocal,
 } from "../../packages/server/src/db/file-backed-store.js";
 import { appSettings, lorebookEntries, lorebooks } from "../../packages/server/src/db/schema/index.js";
@@ -455,6 +456,71 @@ try {
         "a lease naming a different machine is never reclaimed through the storage proof",
       );
       rmSync(leasePath(dir), { recursive: true });
+
+      // The mirror case (#7801): the lease recorded a machine ID, but this
+      // process could not read its own (a timed-out Windows probe), so the ID
+      // comparison can never match. On machine-local storage the writer ran
+      // here, so the PID checks decide: an exited writer's lease is
+      // reclaimed, a live one keeps it, and shared storage stays locked.
+      const unidentifiedSelf = {
+        ...localStorage,
+        writerLeaseHostId: null,
+        writerLeaseBootId: "writer-lock-current-boot",
+      };
+      const writeIdentifiedLease = (overrides: Partial<LeaseRecord>) =>
+        writeUnidentifiedLease({
+          version: 4,
+          pidNamespace,
+          hostId: "stable-id-recorded-by-the-previous-run",
+          bootId: "writer-lock-current-boot",
+          ...overrides,
+        });
+
+      writeIdentifiedLease({ pid: await exitedPid(), token: "identified-exited-pid-token" });
+      const afterProbeTimeout = await createFileNativeDB(unidentifiedSelf);
+      assert.notEqual(
+        readJson<LeaseRecord>(ownerPath(dir)).token,
+        "identified-exited-pid-token",
+        "an exited writer's lease is reclaimed when this process cannot read its own machine ID",
+      );
+      await afterProbeTimeout._fileStore.close();
+
+      writeIdentifiedLease({ pid: process.pid, token: "identified-live-pid-token" });
+      await assert.rejects(
+        createFileNativeDB(unidentifiedSelf),
+        StorageWriterLeaseError,
+        "a live writer keeps its lease when this process cannot read its own machine ID",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      writeIdentifiedLease({ pid: await exitedPid(), token: "identified-shared-storage-token" });
+      await assert.rejects(
+        createFileNativeDB({ ...unidentifiedSelf, writerLeaseStorageIsMachineLocal: false }),
+        StorageWriterLeaseError,
+        "without its own machine ID, this process still never reclaims a lease on shared storage",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      // Windows boot ids are LastBootUpTime timestamps that drift by seconds
+      // within one boot (#7801); only there do near values count as one boot.
+      const bootA = "2026-10-15T19:54:17.5000180Z";
+      const bootAJittered = "2026-10-15T19:54:23.2735070Z";
+      assert.equal(
+        writerLeaseBootIdsMatch(bootA, bootAJittered, "win32"),
+        true,
+        "Windows boot time jitter is one boot",
+      );
+      assert.equal(
+        writerLeaseBootIdsMatch(bootA, "2026-10-15T21:54:17.5000180Z", "win32"),
+        false,
+        "a Windows boot hours later is a different boot",
+      );
+      assert.equal(writerLeaseBootIdsMatch(bootA, bootAJittered, "linux"), false, "other platforms compare exactly");
+      assert.equal(
+        writerLeaseBootIdsMatch("writer-lock-previous-boot", "writer-lock-current-boot", "win32"),
+        false,
+        "non-timestamp boot ids compare exactly on Windows",
+      );
 
       if (linuxLikePlatform) {
         assert.equal(

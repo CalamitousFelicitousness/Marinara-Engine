@@ -74,7 +74,7 @@ try {
               role: "assistant",
               content: roleplayDirector
                 ? JSON.stringify({ narrationBeat: "Aster turns to Jamie at the window" })
-                : "Aster waves to Jamie",
+                : "Aster waves to Jamie and Rowan",
             },
             finish_reason: "stop",
           },
@@ -122,6 +122,12 @@ try {
     "/api/avatars/file/aster.png",
   );
   assert.ok(aster);
+  // A character the user plays as, who is not one of the chat's characters.
+  const rowan = await createCharactersStorage(db).create(
+    characterDataSchema.parse({ name: "Rowan", extensions: { appearance: "braided black hair" } }),
+  );
+  assert.ok(rowan);
+  const ROWAN_APPEARANCE = /Rowan's Appearance: braided black hair/u;
   const chats = createChatsStorage(db);
   const lastComfyInputs = () =>
     (JSON.parse(comfyPrompts.at(-1) ?? "{}") as { prompt?: Record<string, { inputs: Record<string, string> }> })
@@ -187,6 +193,18 @@ try {
   assert.match(videos.inputs?.text ?? "", PERSONA_APPEARANCE);
   assert.equal(videos.body.firstFrame, "avatar");
   assert.equal(videos.inputs?.image, png.toString("base64"));
+  assert.doesNotMatch(videos.inputs?.text ?? "", ROWAN_APPEARANCE);
+
+  // Playing as a character outside the chat: that character's Appearance line joins when the clip names them.
+  const switched = await server.inject({
+    method: "PATCH",
+    url: `/api/chats/${convo.id}`,
+    payload: { personaId: null, personaCharacterId: rowan.id },
+  });
+  assert.equal(switched.statusCode, 200, switched.body);
+  const playedCharacter = await sendVideo({ selfieVideoIncludeCharacterAppearance: true });
+  assert.match(playedCharacter.inputs?.text ?? "", ROWAN_APPEARANCE);
+  assert.doesNotMatch(playedCharacter.inputs?.text ?? "", PERSONA_APPEARANCE);
 
   // ── Roleplay ──
   const roleplay = await chats.create({

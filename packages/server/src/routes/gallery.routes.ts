@@ -1264,10 +1264,11 @@ export async function galleryRoutes(app: FastifyInstance) {
         chatMeta: parseChatMetadata(chat.metadata),
         characterId: input.characterId,
         charInfo,
-        // The persona with its Appearance, for a clip that names them; a character played as the user is listed already.
+        // Who the user is (a persona, or a character played as the user), with their Appearance, for a clip that
+        // names them. A played character already in the chat is matched as a chat character instead.
         persona: await (async () => {
           const identity = await resolveChatUserIdentity(characters, chat);
-          return identity?.source === "persona"
+          return identity && !chatCharacterIds.includes(identity.id)
             ? {
                 id: identity.id,
                 name: identity.name,

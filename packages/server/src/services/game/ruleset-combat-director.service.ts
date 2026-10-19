@@ -38,6 +38,7 @@ import {
   readRulesetLive,
   rulesetAimCells,
   rulesetAnswerDeflects,
+  rulesetBlowKind,
   rulesetCombatant,
   rulesetCreatureKind,
   rulesetActiveConditions,
@@ -954,8 +955,15 @@ function rulesetCandidates(
   // a standard action (dodging, say) above every attack it has and stand there all fight. A standard
   // action or an empty turn is what is left when there is nothing better, never a rival. Judged over
   // the WHOLE list, walks included, so a creature that has to take a step first still takes it.
-  if (everything || !candidates.some((candidate) => worth(candidate) > 0)) return candidates;
-  return candidates.filter((candidate) => !candidate.hold && candidate.action.option.kind !== "standard");
+  if (everything) return candidates;
+  // A free trait taken before an attack (1.553) is taken as the attack is made, never in its place.
+  const actor = rulesetCombatant(encounter, actorId);
+  const own = candidates.filter((candidate) => {
+    const action = actor?.actions.find((one) => one.id === candidate.action.option.id);
+    return !(action?.free && action.beforeAttack);
+  });
+  if (!own.some((candidate) => worth(candidate) > 0)) return own;
+  return own.filter((candidate) => !candidate.hold && candidate.action.option.kind !== "standard");
 }
 
 /**
@@ -2165,11 +2173,37 @@ function playRulesetTurn(
     // what is left once there is nowhere better to stand.
     if (picked.option.kind === "standard" && walkTowardsTrouble(definition, state, fight, actorId)) continue;
     if (picked.to && !stepBefore(definition, state, fight, actorId, picked.to)) break;
+    // Reckless first (1.553), as it is about to make a melee weapon attack.
+    takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
   }
   advanceTurn(definition, state, fight);
+}
+
+/**
+ * A free trait of its own taken before its first attack of the turn (1.553), when what it is about
+ * to do is a melee weapon attack: a berserker's or a minotaur's Reckless, landing on itself.
+ */
+function takeBeforeMelee(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+  choice: RulesetCombatChoice,
+): void {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const blow = actor?.actions.find((one) => one.id === choice.optionId);
+  const target = choice.targetIds[0] ? rulesetCombatant(fight.encounter, choice.targetIds[0]) : undefined;
+  if (!actor || !blow || !target || blow.toHit === undefined || blow.catalog || blow.area) return;
+  if ((actor.flags.attacks ?? 0) > 0) return;
+  if (rulesetBlowKind(fight.encounter, actor, target, blow) !== "melee") return;
+  for (const option of rulesetCombatOptions(definition, fight.encounter, actorId)) {
+    const own = actor.actions.find((one) => one.id === option.id);
+    if (!own?.free || !own.beforeAttack || own.targets.side !== "self") continue;
+    applyChoice(definition, state, fight, { actorId, optionId: option.id, targetIds: [actorId] });
+  }
 }
 
 /**

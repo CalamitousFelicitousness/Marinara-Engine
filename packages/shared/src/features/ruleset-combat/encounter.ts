@@ -4324,6 +4324,9 @@ function blockActions(
       : {}),
     ...(action.signature ? { signature: { cost: action.signature.cost } } : {}),
     ...(action.lair ? { lair: true as const } : {}),
+    // Free, and only before its first attack of its own turn (1.553): a berserker's Reckless.
+    ...(action.free ? { free: true as const } : {}),
+    ...(action.beforeAttack ? { beforeAttack: true as const } : {}),
     ...(action.reaction
       ? {
           reaction: {

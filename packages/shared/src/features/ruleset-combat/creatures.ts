@@ -275,6 +275,9 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(action.self ? { self: true as const } : {}),
+    // Free, and only before its first attack of its own turn (1.553): Reckless.
+    ...(action.free ? { free: true as const } : {}),
+    ...(action.beforeAttack ? { beforeAttack: true as const } : {}),
     // In the ruleset's distance, as push is (1.276): the encounter turns it into cells.
     ...(action.teleport ? { teleport: { ...action.teleport } } : {}),
     // In the ruleset's distance too (1.283).

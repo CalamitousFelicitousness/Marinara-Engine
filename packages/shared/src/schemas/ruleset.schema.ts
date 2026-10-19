@@ -7886,6 +7886,12 @@ const creatureActionSchema = z
     reaction: rulesetReactionMomentSchema.optional(),
     /** It lands on the creature itself rather than on somebody else: a parry, a guard, a hardening. */
     self: z.literal(true).optional(),
+    /** Costs no budget (Capability API 1.553), as a catalog entry's `free` does. */
+    free: z.literal(true).optional(),
+    /** Offered only on its own turn before it has made an attack in it (Capability API 1.553), as a
+     *  catalog entry's `beforeAttack` is. The Engine-run creature takes a free one of these with
+     *  `self` as it is about to make a melee weapon attack: a berserker's Reckless. */
+    beforeAttack: z.literal(true).optional(),
     /** A move bought with points between turns (Capability API 1.283), to a cell its maker picks:
      *  `share` of its speed (a tarrasque's half), or `distance` in the ruleset's own unit (a mummy
      *  lord's 60 feet), its own speed when neither is given. `noOpportunity`: nobody strikes at it

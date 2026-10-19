@@ -66946,6 +66946,14 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "free": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "beforeAttack": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "move": {
                           "type": "object",
                           "properties": {
@@ -79244,6 +79252,14 @@
                             }
                           },
                           "self": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "free": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "beforeAttack": {
                             "type": "boolean",
                             "const": true
                           },

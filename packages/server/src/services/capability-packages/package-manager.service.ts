@@ -2740,6 +2740,22 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature action that is free or taken before it attacks (1.553): a berserker's Reckless. A
+ *  creature's action has a `name`, where a catalog entry's mechanics never do. */
+function carriesCreatureFree553(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureFree553(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    record.name !== undefined &&
+    record.budget !== undefined &&
+    (record.free !== undefined || record.beforeAttack !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesCreatureFree553(one, depth + 1));
+}
+
 /** A condition that holds only in some light (1.552): a shadow's Sunlight Weakness. */
 function carriesHeldOnlyIn552(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7568,6 +7584,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature action that is free or taken before it attacks, 1.553.
+  if (
+    !declaresApi(553) &&
+    (carriesCreatureFree553(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureFree553(document)))
+  ) {
+    return "A ruleset with a creature action that is free or taken before it attacks (free, beforeAttack) requires schemaVersion 2 and capabilityApi 1.553 or newer";
+  }
   // A condition that holds only in some light, 1.552.
   if (
     !declaresApi(552) &&

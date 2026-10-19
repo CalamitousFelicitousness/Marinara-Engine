@@ -585,6 +585,9 @@ export interface RulesetStatBlockAction {
   };
   /** It lands on the creature itself. */
   self?: true;
+  /** Costs no budget, and is offered only before its first attack of its own turn (1.553). */
+  free?: true;
+  beforeAttack?: true;
 }
 
 /** An opponent's numbers. A bestiary entry becomes one of these, and a hand-written one is still

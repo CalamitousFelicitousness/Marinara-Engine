@@ -670,8 +670,9 @@ export function startConversationVideoCommand(args: {
   const characterId = args.characterId;
   args.sendEvent({ type: "video_started", data: { characterId, messageId: args.messageId } });
   return (async () => {
-    // The Video Run Interval counts from this message as the clip starts, and is given back if it fails.
-    const releaseVideoRun = await claimAutomaticVideoRun(createChatsStorage(args.db), args.chatId, args.messageId);
+    // The Video Run Interval counts from this message as the clip starts, and is given back if it fails. Whether a
+    // clip may run was decided with the reply, so this claim is never refused.
+    const videoRun = await claimAutomaticVideoRun(createChatsStorage(args.db), args.chatId, args.messageId);
     try {
       // A bare [video] reads the recent conversation, as /video does: the user's request and the reply around it,
       // so a clip the user asked for shows what they asked for even when the reply jokes around it.
@@ -691,10 +692,11 @@ export function startConversationVideoCommand(args: {
         serviceTier: args.serviceTier,
       });
       if (!("video" in result)) {
-        await releaseVideoRun();
+        await videoRun?.settle(false);
         return;
       }
       // The clip is saved by now, so it counts as made: failing to add it to the message only logs.
+      await videoRun?.settle(true);
       let messageId: string | null = null;
       try {
         const attached = await attachVideoToMessage(
@@ -718,7 +720,7 @@ export function startConversationVideoCommand(args: {
         },
       });
     } catch (err) {
-      await releaseVideoRun();
+      await videoRun?.settle(false);
       logger.error(err, "[commands] Video message failed");
       args.sendEvent({
         type: "video_error",

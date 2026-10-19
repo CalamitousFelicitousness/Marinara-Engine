@@ -126,34 +126,66 @@ export function automaticVideoAllowed(
   return since === null || since >= interval;
 }
 
+/** An automatic clip's hold on the Video Run Interval; `settle` reports whether the clip was made. */
+export type AutomaticVideoRunClaim = { settle(made: boolean): Promise<void> };
+
+/** Clips still being made, per chat and message, with the starting point they replaced. */
+const openVideoRuns = new Map<string, { count: number; made: boolean; previous: unknown }>();
+
 /**
  * Records `messageId` as where the Video Run Interval counts from, when an automatic clip starts: a clip takes
- * minutes, and a later reply must not start another one meanwhile. The returned function gives the previous
- * starting point back when the clip fails, unless a newer clip has taken its place since.
+ * minutes, and a later reply must not start another one meanwhile. `allowed`, when given, is checked against the
+ * chat's current metadata inside the same serialized write, so two replies can't both pass it before either claims;
+ * a refused claim returns null. Several clips may share one message (a merged group reply). Once the last of them
+ * settles and none was made, the previous starting point comes back, unless a newer clip has taken its place.
  */
 export async function claimAutomaticVideoRun(
   chats: {
-    patchMetadata(id: string, updater: (current: Record<string, unknown>) => Record<string, unknown>): Promise<unknown>;
+    patchMetadata(
+      id: string,
+      updater: (current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    ): Promise<unknown>;
   },
   chatId: string,
   messageId: string,
-): Promise<() => Promise<void>> {
-  let previous: unknown = null;
+  allowed?: (current: Record<string, unknown>) => boolean | Promise<boolean>,
+): Promise<AutomaticVideoRunClaim | null> {
+  const key = `${chatId}:${messageId}`;
+  let granted = true;
   try {
-    await chats.patchMetadata(chatId, (current) => {
-      previous = current.lastAutomaticVideoMessageId ?? null;
+    await chats.patchMetadata(chatId, async (current) => {
+      const open = openVideoRuns.get(key);
+      if (open) {
+        open.count += 1;
+        return {};
+      }
+      if (allowed && !(await allowed(current))) {
+        granted = false;
+        return {};
+      }
+      openVideoRuns.set(key, { count: 1, made: false, previous: current.lastAutomaticVideoMessageId ?? null });
       return { lastAutomaticVideoMessageId: messageId };
     });
   } catch (err) {
     logger.warn(err, "[video] Could not record the clip for the Video Run Interval");
-    return async () => undefined;
+    return { settle: async () => undefined };
   }
-  return async () => {
-    await chats
-      .patchMetadata(chatId, (current) =>
-        current.lastAutomaticVideoMessageId === messageId ? { lastAutomaticVideoMessageId: previous } : {},
-      )
-      .catch((err) => logger.warn(err, "[video] Could not give back the Video Run Interval after a failed clip"));
+  if (!granted) return null;
+  return {
+    settle: async (made) => {
+      const open = openVideoRuns.get(key);
+      if (!open) return;
+      open.made ||= made;
+      open.count -= 1;
+      if (open.count > 0) return;
+      openVideoRuns.delete(key);
+      if (open.made) return;
+      await chats
+        .patchMetadata(chatId, (current) =>
+          current.lastAutomaticVideoMessageId === messageId ? { lastAutomaticVideoMessageId: open.previous } : {},
+        )
+        .catch((err) => logger.warn(err, "[video] Could not give back the Video Run Interval after a failed clip"));
+    },
   };
 }
 

@@ -16,140 +16,211 @@ process.env.MARINARA_LITE = "true";
 process.env.IMAGE_LOCAL_URLS_ENABLED = "true";
 process.env.LOG_LEVEL = "silent";
 
-const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
-const Fastify = requireServer("fastify") as typeof import("fastify").default;
-const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
-const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
-const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
-const { agentsRoutes } = await import("../../packages/server/src/routes/agents.routes.js");
-const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
-const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
-const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-const { applyIllustratorChatRunInterval, automaticVideoAllowed, resolveVideoRunInterval } =
-  await import("../../packages/server/src/services/generation/agent-cadence.js");
-const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
-
-// ── The rules ──
-// Clips only: every Illustrator run is a clip, so the Video Run Interval paces it instead of the Image Run Interval.
-assert.equal(
-  applyIllustratorChatRunInterval(
-    "illustrator",
-    { runInterval: 2 },
-    { illustratorVideoMode: "clips_only", illustratorRunInterval: 1, illustratorVideoRunInterval: 4 },
-    "roleplay",
-  ).runInterval,
-  4,
-);
-assert.equal(
-  applyIllustratorChatRunInterval(
-    "illustrator",
-    { runInterval: 2 },
-    { illustratorVideoMode: "pictures_and_clips", illustratorRunInterval: 1, illustratorVideoRunInterval: 4 },
-    "roleplay",
-  ).runInterval,
-  1,
-  "other modes keep the Image Run Interval",
-);
-assert.equal(resolveVideoRunInterval({}, {}), 5, "default");
-assert.equal(resolveVideoRunInterval({}, { videoRunInterval: "2" }), 2, "agent default");
-assert.equal(resolveVideoRunInterval({ illustratorVideoRunInterval: 0 }, { videoRunInterval: 2 }), 0, "chat wins");
-const messages = ["m1", "m2", "m3", "m4"].map((id, index) => ({ id, role: index % 2 ? "assistant" : "user" }));
-assert.equal(automaticVideoAllowed(messages, {}, 3), true, "no anchor: the first is allowed");
-assert.equal(automaticVideoAllowed(messages, {}, 0), false, "0: never on its own");
-assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "m2" }, 3), false, "2 since < 3");
-assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "m2" }, 3, true), true, "+ upcoming");
-assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "gone" }, 3), true, "deleted anchor");
-const anchoredOnLast = { lastAutomaticVideoMessageId: "m4" };
-assert.equal(
-  automaticVideoAllowed(messages, anchoredOnLast, 3, false, "m4"),
-  true,
-  "a new swipe of the clip's message",
-);
-assert.equal(automaticVideoAllowed(messages, anchoredOnLast, 3, false, "m5"), false, "a different message");
-assert.equal(automaticVideoAllowed(messages, anchoredOnLast, 0, false, "m4"), false, "0 still means never");
-
-replaceBuiltInAgentDefinitions([
-  {
-    id: "illustrator",
-    name: "Illustrator",
-    description: "Video interval fixture",
-    phase: "post_processing",
-    enabledByDefault: true,
-    category: "utility",
-    defaultTools: [],
-    defaultSettings: { contextSize: 2 },
-    defaultPromptTemplate: 'AGENT_WRITER Return JSON {"shouldGenerate":true,"prompt":"..."}.',
-  },
-]);
-
-const png = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
-const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
-let mainReply = "";
-const agentRequests: string[] = [];
-const replyRequests: string[] = [];
-const provider = createServer(async (request, response) => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
-  const body = Buffer.concat(chunks).toString();
-  const url = request.url ?? "";
-  const json = (value: unknown) => {
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(value));
-  };
-  if (url.endsWith("/prompt")) return json({ prompt_id: "job" });
-  if (url.includes("/history/")) {
-    return json({
-      job: {
-        status: { completed: true, status_str: "success" },
-        outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
-      },
-    });
-  }
-  if (url.startsWith("/view")) {
-    response.setHeader("content-type", "video/mp4");
-    return response.end(mp4);
-  }
-  if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
-  const requestMessages = JSON.stringify(JSON.parse(body).messages ?? []);
-  let content = mainReply;
-  if (requestMessages.includes("AGENT_WRITER")) {
-    agentRequests.push(requestMessages);
-    content = JSON.stringify({ shouldGenerate: true, prompt: "rain", generateVideo: true, videoPrompt: "Rain falls" });
-  } else if (requestMessages.includes("video prompt writer")) {
-    content = "Aster waves";
-  } else {
-    replyRequests.push(requestMessages);
-  }
-  json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }], usage: { total_tokens: 20 } });
-});
-
-const db = await getDB();
-const app = Fastify();
-app.decorate("db", db);
-await app.register(generateRoutes, { prefix: "/api/generate" });
-await app.register(chatsRoutes, { prefix: "/api/chats" });
-await app.register(agentsRoutes, { prefix: "/api/agents" });
-const chats = createChatsStorage(db);
-// Chat Settings saves through this route; it returns what the chat now holds for each key sent.
-const saveChatSettings = async (chatId: string, patch: Record<string, unknown>) => {
-  const response = await app.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
-  assert.equal(response.statusCode, 200, response.body);
-  const raw = (await chats.getById(chatId))?.metadata;
-  return (typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>;
-};
-const videoCount = async (chatId: string) =>
-  (await chats.listMessages(chatId)).reduce((count, message) => {
-    const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {});
-    const attachments = (extra as { attachments?: Array<{ type?: string }> }).attachments ?? [];
-    return count + attachments.filter((attachment) => attachment.type === "video").length;
-  }, 0);
-
+// Everything after the environment runs inside one try, so a failed import or setup still cleans up.
+let appHandle: { close: () => Promise<unknown> } | undefined;
+let providerHandle: import("node:http").Server | undefined;
+let closeDatabase: (() => Promise<void>) | undefined;
 try {
+  const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+  const Fastify = requireServer("fastify") as typeof import("fastify").default;
+  const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+  const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+  const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+  const { agentsRoutes } = await import("../../packages/server/src/routes/agents.routes.js");
+  const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
+  const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
+  const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
+  const { applyIllustratorChatRunInterval, automaticVideoAllowed, claimAutomaticVideoRun, resolveVideoRunInterval } =
+    await import("../../packages/server/src/services/generation/agent-cadence.js");
+  const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
+
+  // ── The rules ──
+  // Clips only: every Illustrator run is a clip, so the Video Run Interval paces it instead of the Image Run Interval.
+  assert.equal(
+    applyIllustratorChatRunInterval(
+      "illustrator",
+      { runInterval: 2 },
+      { illustratorVideoMode: "clips_only", illustratorRunInterval: 1, illustratorVideoRunInterval: 4 },
+      "roleplay",
+    ).runInterval,
+    4,
+  );
+  assert.equal(
+    applyIllustratorChatRunInterval(
+      "illustrator",
+      { runInterval: 2 },
+      { illustratorVideoMode: "pictures_and_clips", illustratorRunInterval: 1, illustratorVideoRunInterval: 4 },
+      "roleplay",
+    ).runInterval,
+    1,
+    "other modes keep the Image Run Interval",
+  );
+  assert.equal(resolveVideoRunInterval({}, {}), 5, "default");
+  assert.equal(resolveVideoRunInterval({}, { videoRunInterval: "2" }), 2, "agent default");
+  assert.equal(resolveVideoRunInterval({ illustratorVideoRunInterval: 0 }, { videoRunInterval: 2 }), 0, "chat wins");
+  const messages = ["m1", "m2", "m3", "m4"].map((id, index) => ({ id, role: index % 2 ? "assistant" : "user" }));
+  assert.equal(automaticVideoAllowed(messages, {}, 3), true, "no anchor: the first is allowed");
+  assert.equal(automaticVideoAllowed(messages, {}, 0), false, "0: never on its own");
+  assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "m2" }, 3), false, "2 since < 3");
+  assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "m2" }, 3, true), true, "+ upcoming");
+  assert.equal(automaticVideoAllowed(messages, { lastAutomaticVideoMessageId: "gone" }, 3), true, "deleted anchor");
+  const anchoredOnLast = { lastAutomaticVideoMessageId: "m4" };
+  assert.equal(
+    automaticVideoAllowed(messages, anchoredOnLast, 3, false, "m4"),
+    true,
+    "a new swipe of the clip's message",
+  );
+  assert.equal(automaticVideoAllowed(messages, anchoredOnLast, 3, false, "m5"), false, "a different message");
+  assert.equal(automaticVideoAllowed(messages, anchoredOnLast, 0, false, "m4"), false, "0 still means never");
+
+  // Claiming the interval as a clip starts, against a store that runs metadata writes one at a time, as chats do.
+  const fakeChat = () => {
+    let meta: Record<string, unknown> = { lastAutomaticVideoMessageId: "old" };
+    let queue: Promise<unknown> = Promise.resolve();
+    return {
+      anchor: () => meta.lastAutomaticVideoMessageId,
+      patchMetadata(_id: string, updater: (current: Record<string, unknown>) => unknown) {
+        const run = queue.then(async () => {
+          meta = { ...meta, ...((await updater({ ...meta })) as Record<string, unknown>) };
+        });
+        queue = run.catch(() => undefined);
+        return run;
+      },
+    };
+  };
+  {
+    // Two replies that both pass the check before either claims: only the first starts a clip.
+    const store = fakeChat();
+    const freeOfOld = async (current: Record<string, unknown>) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return current.lastAutomaticVideoMessageId === "old";
+    };
+    const [first, second] = await Promise.all([
+      claimAutomaticVideoRun(store, "race", "r1", freeOfOld),
+      claimAutomaticVideoRun(store, "race", "r2", freeOfOld),
+    ]);
+    assert.ok(first, "the first claim starts its clip");
+    assert.equal(second, null, "the second sees the first's claim and is refused");
+    assert.equal(store.anchor(), "r1");
+    // A failed clip gives the previous starting point back.
+    await first.settle(false);
+    assert.equal(store.anchor(), "old", "a failed clip gives the interval back");
+  }
+  {
+    // Two clips from one merged group reply: one fails while the other is made, so the reply stays the anchor.
+    const store = fakeChat();
+    const [a, b] = await Promise.all([
+      claimAutomaticVideoRun(store, "group", "g1"),
+      claimAutomaticVideoRun(store, "group", "g1"),
+    ]);
+    assert.ok(a && b);
+    await a.settle(false);
+    assert.equal(store.anchor(), "g1", "still counting from the reply while the other clip is made");
+    await b.settle(true);
+    assert.equal(store.anchor(), "g1", "one clip of the reply was made");
+    // Both failing gives the interval back.
+    const [c, d] = await Promise.all([
+      claimAutomaticVideoRun(store, "group", "g2"),
+      claimAutomaticVideoRun(store, "group", "g2"),
+    ]);
+    await c!.settle(false);
+    await d!.settle(false);
+    assert.equal(store.anchor(), "g1", "neither was made");
+  }
+
+  replaceBuiltInAgentDefinitions([
+    {
+      id: "illustrator",
+      name: "Illustrator",
+      description: "Video interval fixture",
+      phase: "post_processing",
+      enabledByDefault: true,
+      category: "utility",
+      defaultTools: [],
+      defaultSettings: { contextSize: 2 },
+      defaultPromptTemplate: 'AGENT_WRITER Return JSON {"shouldGenerate":true,"prompt":"..."}.',
+    },
+  ]);
+
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+  let mainReply = "";
+  const agentRequests: string[] = [];
+  const replyRequests: string[] = [];
+  const provider = (providerHandle = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString();
+    const url = request.url ?? "";
+    const json = (value: unknown) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(value));
+    };
+    if (url.endsWith("/prompt")) return json({ prompt_id: "job" });
+    if (url.includes("/history/")) {
+      return json({
+        job: {
+          status: { completed: true, status_str: "success" },
+          outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
+        },
+      });
+    }
+    if (url.startsWith("/view")) {
+      response.setHeader("content-type", "video/mp4");
+      return response.end(mp4);
+    }
+    if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
+    const requestMessages = JSON.stringify(JSON.parse(body).messages ?? []);
+    let content = mainReply;
+    if (requestMessages.includes("AGENT_WRITER")) {
+      agentRequests.push(requestMessages);
+      content = JSON.stringify({
+        shouldGenerate: true,
+        prompt: "rain",
+        generateVideo: true,
+        videoPrompt: "Rain falls",
+      });
+    } else if (requestMessages.includes("video prompt writer")) {
+      content = "Aster waves";
+    } else {
+      replyRequests.push(requestMessages);
+    }
+    json({
+      choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }],
+      usage: { total_tokens: 20 },
+    });
+  }));
+
+  // Registered first: closeDB also cleans up after a failed getDB().
+  closeDatabase = closeDB;
+  const db = await getDB();
+  const app = Fastify();
+  appHandle = app;
+  app.decorate("db", db);
+  await app.register(generateRoutes, { prefix: "/api/generate" });
+  await app.register(chatsRoutes, { prefix: "/api/chats" });
+  await app.register(agentsRoutes, { prefix: "/api/agents" });
+  const chats = createChatsStorage(db);
+  // Chat Settings saves through this route; it returns what the chat now holds for each key sent.
+  const saveChatSettings = async (chatId: string, patch: Record<string, unknown>) => {
+    const response = await app.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
+    assert.equal(response.statusCode, 200, response.body);
+    const raw = (await chats.getById(chatId))?.metadata;
+    return (typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>;
+  };
+  const videoCount = async (chatId: string) =>
+    (await chats.listMessages(chatId)).reduce((count, message) => {
+      const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : (message.extra ?? {});
+      const attachments = (extra as { attachments?: Array<{ type?: string }> }).attachments ?? [];
+      return count + attachments.filter((attachment) => attachment.type === "video").length;
+    }, 0);
+
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
   const address = provider.address();
   assert.ok(address && typeof address === "object");
@@ -337,8 +408,9 @@ try {
   assert.equal(await videoCount(roleplay.id), 1, "an image, but no clip, inside the interval");
   console.log("illustrator-video-run-interval regression passed");
 } finally {
-  await app.close();
-  await new Promise<void>((resolve) => provider.close(() => resolve()));
-  await closeDB();
+  await appHandle?.close();
+  const fakeProvider = providerHandle;
+  if (fakeProvider?.listening) await new Promise<void>((resolve) => fakeProvider.close(() => resolve()));
+  await closeDatabase?.();
   rmSync(fixtureDir, { recursive: true, force: true });
 }

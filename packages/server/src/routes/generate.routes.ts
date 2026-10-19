@@ -930,6 +930,7 @@ import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
   claimAutomaticVideoRun,
+  type AutomaticVideoRunClaim,
   loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
@@ -13826,19 +13827,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 if (clipOnlyFrame !== "picture" && messageId) {
                   pendingRoleplayMedia.push(
                     (async () => {
-                      let releaseVideoRun: () => Promise<void> = async () => undefined;
+                      let videoRun: AutomaticVideoRunClaim | null = null;
                       try {
-                        const latestMeta = parseExtra((await chats.getById(input.chatId))?.metadata);
-                        const allowed = automaticVideoAllowed(
-                          await chats.listMessages(input.chatId),
-                          latestMeta,
-                          await loadVideoRunInterval(agentsStore, latestMeta),
-                          false,
-                          messageId,
+                        // The Video Run Interval is checked and counts from this reply as the clip starts, in one
+                        // step, so two replies can't both start a clip; it is given back if the clip fails.
+                        videoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+                          automaticVideoAllowed(
+                            await chats.listMessages(input.chatId),
+                            current,
+                            await loadVideoRunInterval(agentsStore, current),
+                            false,
+                            messageId,
+                          ),
                         );
-                        if (!allowed) return;
-                        // The Video Run Interval counts from this reply as the clip starts; given back if it fails.
-                        releaseVideoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId);
+                        if (!videoRun) return;
                         const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
                         // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
                         // to the video connection's instructions.
@@ -13860,9 +13862,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           queue: true,
                           debugMode: input.debugMode,
                         });
+                        await videoRun.settle(true);
                         await attachClipToReply(video, messageId, targetSwipeIndex);
                       } catch (videoErr) {
-                        await releaseVideoRun();
+                        await videoRun?.settle(false);
                         logger.warn(videoErr, "[illustrator] Clip failed");
                         sendSseEvent(reply, {
                           type: "video_error",
@@ -14251,25 +14254,22 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           await show().catch((err) => logger.warn(err, "[illustrator] Could not show a picture"));
                         }
                       };
-                      const latestVideoMeta = wantsVideo
-                        ? parseExtra((await chats.getById(input.chatId))?.metadata)
-                        : chatMeta;
-                      if (
-                        wantsVideo &&
-                        firstGalleryImageId &&
-                        messageId &&
-                        chatMode === "roleplay" &&
-                        // Re-checked here: another clip may have landed since the agent was offered one.
-                        automaticVideoAllowed(
-                          await chats.listMessages(input.chatId),
-                          latestVideoMeta,
-                          await loadVideoRunInterval(agentsStore, latestVideoMeta),
-                          false,
-                          messageId,
-                        )
-                      ) {
-                        // The Video Run Interval counts from this reply as the clip starts; given back if it fails.
-                        const releaseVideoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId);
+                      // Re-checked here, as the clip starts: another clip may have started since the agent was offered
+                      // one. The check and the Video Run Interval's new starting point are one step, so two replies
+                      // can't both start a clip; the starting point is given back if the clip fails.
+                      const videoRun =
+                        wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay"
+                          ? await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+                              automaticVideoAllowed(
+                                await chats.listMessages(input.chatId),
+                                current,
+                                await loadVideoRunInterval(agentsStore, current),
+                                false,
+                                messageId,
+                              ),
+                            )
+                          : null;
+                      if (videoRun && firstGalleryImageId && messageId) {
                         try {
                           const appearanceBlock =
                             chatMeta.illustratorVideoIncludeCharacterAppearance === true
@@ -14320,9 +14320,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   queue: true,
                                   debugMode: input.debugMode,
                                 });
+                          await videoRun.settle(true);
                           await attachClipToReply(video, messageId, targetSwipeIndex);
                         } catch (videoErr) {
-                          await releaseVideoRun();
+                          await videoRun.settle(false);
                           logger.warn(videoErr, "[illustrator] Generated video failed");
                           sendSseEvent(reply, {
                             type: "video_error",

@@ -1078,10 +1078,11 @@ export interface RulesetCombatAction {
   takes?: Array<"dash" | "disengage" | "dodge">;
   /** The same made again while its user concentrates on this one (1.310): Vampiric Touch. This is
    *  the cast; `again` marks the copy offered on `budget`. */
-  repeats?: { budget: string; notSaved?: true; sameTargets?: true; group?: string };
+  repeats?: { budget: string; notSaved?: true; sameTargets?: true; group?: string; afterTargetDown?: true };
   /** A concentration entry's effect made again (1.310): offered only while its user concentrates on
    *  `of`, costing nothing off the sheet, at what the cast was paid at. */
-  again?: { of: string; notSaved?: true; sameTargets?: true; group?: string };
+  /** `afterTargetDown` (1.551): only once everybody the cast was last aimed at is down. */
+  again?: { of: string; notSaved?: true; sameTargets?: true; group?: string; afterTargetDown?: true };
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
    *  the pool and its family are what a higher-pool payment is measured against. */

@@ -13625,6 +13625,20 @@ function resolveActionBodyIn(
     if (rulesetIsSpell(action)) actor.concentrating.level = rulesetPaidLevel(ctx.definition, actor, action, payWith);
     actor.concentrating.targets = targets.map((one) => one.id);
   }
+  // Moved on from those who are down (1.551): what the cast put on them goes, and the new target is
+  // the one it waits on next. Hunter's Mark.
+  if (!held && action.again?.afterTargetDown && actor.concentrating && rulesetRepeatsHeld(actor, action.again)) {
+    const moving = new Set((action.applies ?? []).map((one) => one.condition));
+    for (const id of actor.concentrating.targets ?? []) {
+      const one = rulesetCombatant(ctx.state, id);
+      if (!one) continue;
+      for (const entry of [...one.tracked]) {
+        if (entry.source === actor.id && moving.has(entry.condition))
+          removeCondition(ctx, one, entry.condition, "moved");
+      }
+    }
+    actor.concentrating.targets = targets.map((one) => one.id);
+  }
   // What it puts on its own user as it is made (1.307), whatever its targets do: Sunbeam's mote,
   // held by the same concentration and given the level it was cast at.
   if (!held) applySelf(ctx, actor, action, payWith, steps);

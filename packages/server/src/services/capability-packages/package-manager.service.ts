@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An entry made again only once its target is down (1.551): Hunter's Mark. */
+function carriesAfterTargetDown551(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAfterTargetDown551(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.repeats)?.afterTargetDown !== undefined) return true;
+  return featureValues(record).some((one) => carriesAfterTargetDown551(one, depth + 1));
+}
+
 /** A zone that lets nobody teleport out of it unsaved (1.550): Forcecage. */
 function carriesTeleportSave550(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7548,6 +7558,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An entry made again only once its target is down, 1.551.
+  if (
+    !declaresApi(551) &&
+    (carriesAfterTargetDown551(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAfterTargetDown551(document)))
+  ) {
+    return "A ruleset with an entry made again only once its target is down (repeats.afterTargetDown) requires schemaVersion 2 and capabilityApi 1.551 or newer";
+  }
   // A zone that lets nobody teleport out of it unsaved, 1.550.
   if (
     !declaresApi(550) &&

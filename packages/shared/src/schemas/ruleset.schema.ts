@@ -6494,6 +6494,11 @@ const catalogMechanicsObject = z
          *  user concentrates on any of them, every one of them is offered again. Eyebite's asleep,
          *  panicked and sickened, picked anew for each creature. */
         group: sheetId.optional(),
+        /** Offered again only once everybody the cast was last aimed at is down (Capability API
+         *  1.551), and what it put on them moves to the new target: 5e's Hunter's Mark and Hex, "if
+         *  the target drops to 0 hit points before this spell ends, you can use a bonus action on a
+         *  subsequent turn of yours to mark a new creature". */
+        afterTargetDown: z.literal(true).optional(),
       })
       .strict()
       .optional(),
@@ -6910,6 +6915,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["repeats"],
       message: '"repeats" is made again while its user concentrates on it, so it goes with "concentration"',
+    });
+  }
+  if (mechanics.repeats?.afterTargetDown && (!mechanics.applies?.length || mechanics.repeats.sameTargets)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["repeats", "afterTargetDown"],
+      message:
+        '"afterTargetDown" moves what the entry applies to a new target, so it applies something and is not "sameTargets"',
     });
   }
   if (mechanics.teleport && (mechanics.area || mechanics.reaction)) {

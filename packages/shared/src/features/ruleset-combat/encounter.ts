@@ -5994,6 +5994,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(action.repeats.notSaved ? { notSaved: true as const } : {}),
         ...(action.repeats.sameTargets ? { sameTargets: true as const } : {}),
         ...(action.repeats.group ? { group: action.repeats.group } : {}),
+        ...(action.repeats.afterTargetDown ? { afterTargetDown: true as const } : {}),
       };
       delete copy.repeats;
       delete copy.concentration;

@@ -2549,6 +2549,16 @@ export function rulesetActionAvailable(
   }
   // Made again only while its cast is concentrated on (1.310).
   if (action.again && !rulesetRepeatsHeld(actor, action.again)) return false;
+  // Or only once everybody it was last aimed at is down (1.551): Hunter's Mark moved on.
+  if (
+    action.again?.afterTargetDown &&
+    state &&
+    (actor.concentrating?.targets ?? []).some((id) => {
+      const one = rulesetCombatant(state, id);
+      return !!one && rulesetCombatStanding(one);
+    })
+  )
+    return false;
   // Kept up only while what it put on is still on somebody (1.378).
   if (action.sustain && state && !state.combatants.some((one) => rulesetSustainedOn(actor, action.sustain!.of, one)))
     return false;

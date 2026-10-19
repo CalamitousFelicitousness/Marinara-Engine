@@ -151,42 +151,48 @@ export async function claimAutomaticVideoRun(
   allowed?: (current: Record<string, unknown>) => boolean | Promise<boolean>,
 ): Promise<AutomaticVideoRunClaim | null> {
   const key = `${chatId}:${messageId}`;
+  // The entry this call joined or opened, so only its own hold is ever released.
+  let held: { count: number; made: boolean; previous: unknown } | undefined;
+  const settle = async (made: boolean) => {
+    const open = held;
+    held = undefined;
+    if (!open) return;
+    open.made ||= made;
+    open.count -= 1;
+    if (open.count > 0) return;
+    if (openVideoRuns.get(key) === open) openVideoRuns.delete(key);
+    if (open.made) return;
+    await chats
+      .patchMetadata(chatId, (current) =>
+        current.lastAutomaticVideoMessageId === messageId ? { lastAutomaticVideoMessageId: open.previous } : {},
+      )
+      .catch((err) => logger.warn(err, "[video] Could not give back the Video Run Interval after a failed clip"));
+  };
   let granted = true;
   try {
     await chats.patchMetadata(chatId, async (current) => {
       const open = openVideoRuns.get(key);
       if (open) {
         open.count += 1;
+        held = open;
         return {};
       }
       if (allowed && !(await allowed(current))) {
         granted = false;
         return {};
       }
-      openVideoRuns.set(key, { count: 1, made: false, previous: current.lastAutomaticVideoMessageId ?? null });
+      held = { count: 1, made: false, previous: current.lastAutomaticVideoMessageId ?? null };
+      openVideoRuns.set(key, held);
       return { lastAutomaticVideoMessageId: messageId };
     });
   } catch (err) {
+    // A write that failed after this call took its hold gives it back, as a clip that was not made.
+    await settle(false);
     logger.warn(err, "[video] Could not record the clip for the Video Run Interval");
     return { settle: async () => undefined };
   }
   if (!granted) return null;
-  return {
-    settle: async (made) => {
-      const open = openVideoRuns.get(key);
-      if (!open) return;
-      open.made ||= made;
-      open.count -= 1;
-      if (open.count > 0) return;
-      openVideoRuns.delete(key);
-      if (open.made) return;
-      await chats
-        .patchMetadata(chatId, (current) =>
-          current.lastAutomaticVideoMessageId === messageId ? { lastAutomaticVideoMessageId: open.previous } : {},
-        )
-        .catch((err) => logger.warn(err, "[video] Could not give back the Video Run Interval after a failed clip"));
-    },
-  };
+  return { settle };
 }
 
 /** `resolveVideoRunInterval` with the Illustrator agent's saved settings looked up. */

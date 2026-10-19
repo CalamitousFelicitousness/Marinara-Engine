@@ -130,6 +130,22 @@ try {
     await d!.settle(false);
     assert.equal(store.anchor(), "g1", "neither was made");
   }
+  {
+    // A metadata write that fails after the claim took its hold gives the hold back, so a later clip for the same
+    // message is checked again instead of joining a hold that never ends.
+    const store = fakeChat();
+    const failing = {
+      patchMetadata: (id: string, updater: (current: Record<string, unknown>) => unknown) =>
+        store.patchMetadata(id, async (current) => {
+          await updater(current);
+          throw new Error("disk full");
+        }),
+    };
+    const lost = await claimAutomaticVideoRun(failing, "broken", "b1");
+    assert.ok(lost, "the clip may still be made");
+    const refused = await claimAutomaticVideoRun(store, "broken", "b1", () => false);
+    assert.equal(refused, null, "the next claim is checked, not joined to a stale hold");
+  }
 
   replaceBuiltInAgentDefinitions([
     {

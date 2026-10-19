@@ -63,7 +63,7 @@ The image connection is the image provider that draws the final picture. You set
 
 Two settings on the Illustrator card help characters look consistent. Both are off by default.
 
-**Attach Card Appearance** adds each visible character's saved appearance text to the image prompt. Its help text reads: "Append matched character appearance lines to image prompts, using only visible/generated names." Turn it on when you want the picture to match how a character is written.
+For pictures, **Attach Card Appearance** adds each visible character's saved appearance text to the image prompt. Video prompts get it only when you include videos, as described below. Its help text reads: "Append matched character appearance lines to image prompts, using only visible/generated names." Turn it on when you want the picture to match how a character is written.
 
 In a Roleplay chat's **Chat Settings**, **Attach Card Appearance** is a dropdown with four choices:
 

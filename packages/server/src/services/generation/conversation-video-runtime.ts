@@ -66,6 +66,8 @@ const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_196;
 const SELFIE_CONTEXT_MAX_CHARS = 2_000;
 const PICTURE_PROMPT_MAX_CHARS = 1_500;
 const UNCLOSED_THINKING_RE = /^<(?:think|thinking|reasoning)\b/iu;
+/** A character's own description longer than this is shortened before the writers see it. */
+export const VIDEO_CONTEXT_MAX_CHARS = 2_000;
 
 type PromptCharacter = Parameters<typeof handleConversationSelfieCommand>[0]["charInfo"][number];
 type ReadyFrame = {
@@ -134,6 +136,8 @@ export async function generateConversationVideo(args: {
 
   // Settings and pictures are checked first, so a request that can't work fails before any paid call.
   const plan = await planFirstFrame({ ...args, characterName, avatarPath: characterRow.avatarPath ?? null });
+  // Everything below (the writers, the selfie first frame, who the clip shows) reads the fitted description.
+  args = { ...args, context: await fitVideoContext(args, connections, debugOverrideEnabled) };
 
   // A clip the user asks for (/video, the Gallery's Video button) has no context of its own: it reads the recent
   // conversation instead, as much of it as Illustrator reads for a picture (its Agent Budget). The video prompt and
@@ -310,6 +314,75 @@ export async function generateConversationVideo(args: {
   });
   logger.info("[conversation/video] %s sent video %s in chat %s", characterName, video.id, args.chatId);
   return { video, characterName, firstFrame: firstFrame.kind };
+}
+
+/**
+ * A description past VIDEO_CONTEXT_MAX_CHARS goes back to the Prompt Model once to be shortened. When that fails or
+ * still runs long, it is cut at the limit, so the clip is made either way.
+ */
+async function fitVideoContext(
+  args: Parameters<typeof generateConversationVideo>[0],
+  connections: ReturnType<typeof createConnectionsStorage>,
+  debugOverrideEnabled: boolean,
+): Promise<string | null | undefined> {
+  const context = args.context?.trim();
+  if (!context || context.length <= VIDEO_CONTEXT_MAX_CHARS) return args.context;
+  try {
+    const promptRuntime = await resolveIllustratorPromptRuntime({
+      chatMetadata: args.chatMeta,
+      defaultConnection: args.promptConnection,
+      defaultConnectionId: args.promptConnectionId,
+      connections,
+      resolveBaseUrl,
+    });
+    // ponytail: a fixed instruction, not a Prompt Overrides entry; register one if users ask to edit it.
+    const system =
+      `Shorten this description of a short video message to under ${VIDEO_CONTEXT_MAX_CHARS} characters. ` +
+      "Keep who is in it, what they wear and do, the setting, the camera, and any spoken lines. " +
+      "Reply with the shortened description only.";
+    logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] shorten-context system:\n%s", system);
+    const result = await promptRuntime.provider.chatComplete(
+      [
+        { role: "system", content: system },
+        { role: "user", content: context },
+      ],
+      {
+        model: promptRuntime.model,
+        ...(promptRuntime.suppressModelParameters
+          ? {}
+          : { temperature: 0.3, maxTokens: VIDEO_PROMPT_WRITER_MAX_TOKENS, serviceTier: args.serviceTier ?? null }),
+        suppressModelParameters: promptRuntime.suppressModelParameters,
+        signal: args.signal,
+        enableCaching: promptRuntime.enableCaching,
+        anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
+      },
+    );
+    const answer = extractLeadingThinkingBlocks(result.content ?? "").content.trim();
+    if (answer && !UNCLOSED_THINKING_RE.test(answer) && answer.length <= VIDEO_CONTEXT_MAX_CHARS) {
+      logDebugOverride(
+        debugOverrideEnabled,
+        "[debug/conversation/video] shortened a %d-character description to %d:\n%s",
+        context.length,
+        answer.length,
+        answer,
+      );
+      return answer;
+    }
+    logger.warn(
+      "[conversation/video] The Prompt Model did not shorten a %d-character video description; cutting it at %d",
+      context.length,
+      VIDEO_CONTEXT_MAX_CHARS,
+    );
+  } catch (err) {
+    if (args.signal?.aborted) throw err;
+    logger.warn(
+      err,
+      "[conversation/video] Could not shorten a %d-character video description; cutting it at %d",
+      context.length,
+      VIDEO_CONTEXT_MAX_CHARS,
+    );
+  }
+  return context.slice(0, VIDEO_CONTEXT_MAX_CHARS);
 }
 
 async function planFirstFrame(

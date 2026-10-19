@@ -454,7 +454,8 @@ const CROSS_POST_RE = /\[cross_post:\s*target="([^"]+)"\]/gi;
 const SELFIE_RE = /\[selfie(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^\]\r\n"]+)))?\]/gi;
 // Free text may quote dialogue or on-screen text and wrap lines, so it runs to the closing "]". It stops at
 // "[" and is capped, so an unclosed tag cannot swallow the rest of the reply or the next command.
-const VIDEO_RE = /\[video(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^[\]]{1,2000})))?\]/gi;
+// Free text has no length cap: a long description is shortened by the Prompt Model when the clip is made.
+const VIDEO_RE = /\[video(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^[\]]+)))?\]/gi;
 const MEMORY_RE = /\[memory:\s*target="([^"]+)"\s*,\s*summary="([^"]+)"\]/gi;
 const SCENE_RE = new RegExp(`\\[scene:\\s*(${QUOTED_PARAM_BLOCK})\\]`, "gi");
 const CALL_RE = new RegExp(`\\[call(?::\\s*(${QUOTED_PARAM_BLOCK}))?\\]`, "gi");

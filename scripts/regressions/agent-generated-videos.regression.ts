@@ -37,6 +37,8 @@ try {
     await import("../../packages/server/src/services/storage/game-scene-videos.storage.js");
   const { parseCharacterCommands } =
     await import("../../packages/server/src/services/conversation/character-commands.js");
+  const { VIDEO_CONTEXT_MAX_CHARS } =
+    await import("../../packages/server/src/services/generation/conversation-video-runtime.js");
   const { filterEnabledConversationCommands } =
     await import("../../packages/server/src/services/generation/conversation-command-runtime.js");
   const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
@@ -72,6 +74,8 @@ try {
     videoPrompt: "The lantern light flickers as Aster turns",
   };
   const videoWriterRequests: string[] = [];
+  const shortenRequests: string[] = [];
+  let shortenReply = "";
   const directorRequests: string[] = [];
   const agentRequests: string[] = [];
   const comfyPrompts: string[] = [];
@@ -117,6 +121,9 @@ try {
     } else if (messages.includes("AGENT_WRITER")) {
       agentRequests.push(messages);
       content = JSON.stringify(illustratorReply);
+    } else if (messages.includes("Shorten this description of a short video message")) {
+      shortenRequests.push(messages);
+      content = shortenReply;
     } else if (messages.includes("video prompt writer")) {
       videoWriterRequests.push(messages);
       content = "Aster waves at the camera";
@@ -539,6 +546,61 @@ try {
   await generate(looks.id, "Send me a video of us, Mira!");
   assert.match(comfyText(), /Kit's Appearance: shaved head, orange scarf/u, "the character played as the user");
   assert.doesNotMatch(comfyText(), /Rae's Appearance/u, "not the persona the chat no longer uses");
+
+  // ── Long descriptions ──
+  // A description of any length is read as a command; past the limit, the Prompt Model shortens it before the
+  // writer sees it, and when it can't, the description is cut at the limit and the clip is still made.
+  const longContext =
+    `Aster waves from the bus stop. ${"The rain keeps drumming on the shelter roof. ".repeat(60)}`.trim();
+  assert.ok(longContext.length > VIDEO_CONTEXT_MAX_CHARS);
+  assert.deepEqual(parseCharacterCommands(`Here! [video: ${longContext}]`).commands, [
+    { type: "video", context: longContext },
+  ]);
+  mainReply = `Here! [video: ${longContext}]`;
+  shortenReply = "Aster waves from the bus stop while rain drums on the shelter roof.";
+  let clips = (await videoAttachments(convo.id)).length;
+  await generate(convo.id, "One more video!");
+  assert.equal((await videoAttachments(convo.id)).length, clips + 1, "the long description makes a clip");
+  assert.equal(shortenRequests.length, 1, "the Prompt Model is asked once to shorten it");
+  assert.match(videoWriterRequests.at(-1) ?? "", /Context for the video message: Aster waves from the bus stop while/u);
+  assert.doesNotMatch(videoWriterRequests.at(-1) ?? "", /The rain keeps drumming/u);
+  shortenReply = "";
+  clips = (await videoAttachments(convo.id)).length;
+  await generate(convo.id, "And another!");
+  assert.equal((await videoAttachments(convo.id)).length, clips + 1, "a failed shortening still makes a clip");
+  const cut = /Context for the video message: (Aster waves from the bus stop\. The rain[^"\\]*)/u.exec(
+    videoWriterRequests.at(-1) ?? "",
+  );
+  assert.ok(cut && cut[1]!.length <= VIDEO_CONTEXT_MAX_CHARS, "cut at the limit");
+
+  // ── Group replies ──
+  // Every character in a group turn may send a clip, one each, up to three per reply.
+  const extras = await Promise.all(
+    ["Bo", "Cy"].map((name) => createCharactersStorage(db).create(characterDataSchema.parse({ name }))),
+  );
+  const group = await chats.create({
+    name: "Group",
+    mode: "conversation",
+    characterIds: [aster.id, mira.id, ...extras.map((character) => character!.id)],
+    connectionId: text.id,
+  });
+  assert.ok(group);
+  await saveChatSettings(group.id, {
+    ...convoMeta,
+    conversationCommandToggles: { video: true },
+    illustratorVideoRunInterval: 1,
+    groupChatMode: "individual",
+    groupResponseOrder: "sequential",
+  });
+  mainReply = 'Watch! [video: context="first take"] and [video: context="second take"]';
+  await generate(group.id, "Everyone, send me a video!");
+  const groupClips = await videoAttachments(group.id);
+  assert.equal(groupClips.length, 3, "three clips at most per reply");
+  assert.equal(
+    new Set(groupClips.map(({ attachment }) => (attachment as { characterName?: string }).characterName)).size,
+    3,
+    "one clip per character",
+  );
 
   console.log("agent-generated-videos regression passed");
 } finally {

@@ -924,6 +924,7 @@ import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
   loadVideoRunInterval,
+  MAX_CHARACTER_VIDEOS_PER_REPLY,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
 import {
@@ -14632,16 +14633,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             return members;
           };
           try {
-            // At most one automatic video per reply, and only once the Video Run Interval has passed.
-            let videoCommandAllowed =
-              collectedCommands.some(({ command }) => command.type === "video") &&
-              automaticVideoAllowed(
-                await chats.listMessages(input.chatId),
-                chatMeta,
-                await loadVideoRunInterval(agentsStore, chatMeta),
-                false,
-                input.regenerateMessageId,
-              );
+            // Up to MAX_CHARACTER_VIDEOS_PER_REPLY videos per reply, one per character, once the Video Run Interval
+            // has passed.
+            const automaticVideoAllowedNow = automaticVideoAllowed(
+              await chats.listMessages(input.chatId),
+              chatMeta,
+              await loadVideoRunInterval(agentsStore, chatMeta),
+              false,
+              input.regenerateMessageId,
+            );
+            let videosLeft = automaticVideoAllowedNow ? MAX_CHARACTER_VIDEOS_PER_REPLY : 0;
+            const videoCharacterIds = new Set<string>();
             for (const { command, characterId, messageId, swipeIndex } of collectedCommands) {
               if (
                 !roomConversationCommandAllowed(command.type) ||
@@ -14709,7 +14711,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 });
 
                 // A clip takes minutes; it finishes after "done" while the stream stays open for media.
-                const videoMessage = !videoCommandAllowed
+                const videoAllowed = videosLeft > 0 && !(characterId && videoCharacterIds.has(characterId));
+                if (command.type === "video" && !videoAllowed) {
+                  logger.info(
+                    "[commands] Skipped a video from %s: %s",
+                    charInfo.find((character) => character.id === characterId)?.name ?? "a character",
+                    !automaticVideoAllowedNow
+                      ? "the Video Run Interval has not passed"
+                      : videosLeft > 0
+                        ? "one video per character per reply"
+                        : "the reply's video limit was reached",
+                  );
+                }
+                const videoMessage = !videoAllowed
                   ? null
                   : startConversationVideoCommand({
                       command,
@@ -14741,7 +14755,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       },
                     });
                 if (videoMessage) {
-                  videoCommandAllowed = false;
+                  videosLeft -= 1;
+                  if (characterId) videoCharacterIds.add(characterId);
                   pendingRoleplayMedia.push(videoMessage);
                 }
 

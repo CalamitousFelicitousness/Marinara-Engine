@@ -127,8 +127,9 @@ try {
     });
   }));
 
-  const db = await getDB();
+  // Registered first: closeDB also cleans up after a failed getDB().
   closeDatabase = closeDB;
+  const db = await getDB();
   const app = Fastify();
   appHandle = app;
   app.decorate("db", db);

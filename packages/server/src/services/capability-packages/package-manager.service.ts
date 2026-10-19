@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A zone that lets nobody teleport out of it unsaved (1.550): Forcecage. */
+function carriesTeleportSave550(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTeleportSave550(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.forbids)?.teleport)) return true;
+  return featureValues(record).some((one) => carriesTeleportSave550(one, depth + 1));
+}
+
 /** A wall laid only as a ring, or a zone that blocks spells (1.549): Forcecage. */
 function carriesCage549(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7538,6 +7548,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone that lets nobody teleport out of it unsaved, 1.550.
+  if (
+    !declaresApi(550) &&
+    (carriesTeleportSave550(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportSave550(document)))
+  ) {
+    return "A ruleset with a zone that lets nobody teleport out of it without a save (forbids.teleport save) requires schemaVersion 2 and capabilityApi 1.550 or newer";
+  }
   // A wall laid only as a ring, or a zone that blocks spells, 1.549.
   if (
     !declaresApi(549) &&

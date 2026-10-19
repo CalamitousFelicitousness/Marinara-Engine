@@ -3570,6 +3570,8 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       label: string;
       by?: string;
+      /** Kept where they were by the zone so named, its save failed (1.550): Forcecage. */
+      heldIn?: string;
     }
   /** A held attack's roll, checked again once the one it hit had answered: against what their
    *  defense then was, and whether it still lands. */
@@ -4098,7 +4100,8 @@ export interface RulesetCombatZoneRule {
     save?: { save: string; ignoresUntilLeaves: true; onCast?: true };
   };
   /** Components nothing used from inside it may need (1.179). */
-  forbids?: { components?: string[]; teleport?: true; casts?: string[] };
+  /** `teleport` an object (1.550): out of it only past that save. */
+  forbids?: { components?: string[]; teleport?: true | { save: string; difficulty: "caster" }; casts?: string[] };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: { catalogs: string[]; maxLevel: number; by?: "base" | "paid"; maxLevelPerCostStep?: number };
   /** What does nothing inside it (1.468): conditions off these catalogs, items with these tags. */
@@ -4167,6 +4170,8 @@ export interface RulesetCombatZone {
   triggers: RulesetCombatZoneRule["triggers"];
   /** Where it was centred, for a zone held at a point. */
   at?: RulesetCombatCell;
+  /** A wall laid as a ring (1.550), so what it rings is inside it too. */
+  ringed?: true;
   /** The middles of its further copies (1.301), which move with it. */
   also?: RulesetCombatCell[];
   /** Whoever carries it (1.301): it is centred on them wherever they go. */

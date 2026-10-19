@@ -379,7 +379,8 @@ function teleportBarred(definition: RulesetDefinition, state: RulesetEncounterSt
   const barred = new Set<string>();
   for (const { caster, zone, action } of rulesetStandingZones(state)) {
     const rule = action.zone;
-    if (!rule?.forbids?.teleport || zone.shrugged?.includes(actor.id)) continue;
+    // One passed with a save (1.550) bars no cell.
+    if (rule?.forbids?.teleport !== true || zone.shrugged?.includes(actor.id)) continue;
     const is = zone.insideIs ?? rule.inside?.is;
     if (is && !rulesetTargetIs(definition, actor, is)) continue;
     for (const cell of rulesetZoneCells(state, caster, zone)) barred.add(`${cell.x},${cell.y}`);

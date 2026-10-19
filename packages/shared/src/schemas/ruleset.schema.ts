@@ -2949,15 +2949,29 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
   });
 export interface RulesetForbids {
   components?: string[];
-  teleport?: true;
+  teleport?: true | RulesetForbidsTeleport;
   casts?: string[];
+}
+/** Teleporting out only past a save (Capability API 1.550): 5e's Forcecage. */
+export interface RulesetForbidsTeleport {
+  save: string;
+  difficulty: "caster";
 }
 const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z
   .object({
     components: uniqueIds(8).optional(),
     /** Nobody it works on inside teleports into it, out of it or within it, nor leaves the fight by
      *  teleporting from inside it (Capability API 1.414): Hallow's Extradimensional Interference. */
-    teleport: z.literal(true).optional(),
+    teleport: z
+      .union([
+        z.literal(true),
+        /** Or (Capability API 1.550) one inside who teleports out first throws this save against its
+         *  caster's difficulty: made, they go; failed, they stay and the use is spent. Teleporting
+         *  into it or within it is not stopped. 5e's Forcecage, `{"save": "cha_save", "difficulty":
+         *  "caster"}`. */
+        z.object({ save: sheetId, difficulty: z.literal("caster") }).strict(),
+      ])
+      .optional(),
     /** Nothing from these catalogs is cast from inside it (Capability API 1.468): 5e's Antimagic
      *  Field, `["spells"]`. */
     casts: uniqueIds(8).optional(),
@@ -18400,6 +18414,10 @@ function zoneInsideIssues(
     add([...at, "inside", "save", "save"], `Unknown save "${insideSave}"`);
   }
   componentIssues(definition, zone.forbids?.components, [...at, "forbids", "components"], add);
+  const teleportSave = typeof zone.forbids?.teleport === "object" ? zone.forbids.teleport.save : undefined;
+  if (teleportSave && !definition.sheet.saves.some((save) => save.id === teleportSave)) {
+    add([...at, "forbids", "teleport", "save"], `Unknown save "${teleportSave}"`);
+  }
   zone.burns?.by.forEach((type, index) => {
     if (types && !types.includes(type.trim().toLowerCase()))
       add([...at, "burns", "by", index], `Unknown damage type "${type}"`);

@@ -800,7 +800,14 @@ export function formatCatalogMechanics(
       );
     }
     // No teleporting into, out of or within it (1.414).
-    if (mechanics.zone.forbids?.teleport) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
+    if (mechanics.zone.forbids?.teleport === true) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
+    // Or out of it only past a save (1.550).
+    else if (mechanics.zone.forbids?.teleport)
+      parts.push(
+        t("game.ruleset.catalog.mechanics.zoneForbidsTeleportSave", {
+          save: labels.saves[mechanics.zone.forbids.teleport.save] ?? mechanics.zone.forbids.teleport.save,
+        }),
+      );
     if (mechanics.zone.wards) {
       parts.push(t("game.ruleset.catalog.mechanics.zoneWards", { level: mechanics.zone.wards.maxLevel }));
     }

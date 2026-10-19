@@ -1030,6 +1030,9 @@ export function rulesetCombatEventLine(
         y: event.to.y,
       });
     case "teleported":
+      // Kept in by a zone, its save failed (1.550).
+      if (event.heldIn)
+        return key("teleportHeld", { actor: names.combatant(event.actorId), label: event.label, zone: event.heldIn });
       return event.by
         ? key("teleportedAlong", {
             actor: names.combatant(event.actorId),

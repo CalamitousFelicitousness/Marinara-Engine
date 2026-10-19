@@ -2373,7 +2373,9 @@ export function rulesetZoneAction(
     out.forbids = {
       ...(zone.forbids.components ? { components: [...zone.forbids.components] } : {}),
       // No teleporting into, out of or within it (1.414).
-      ...(zone.forbids.teleport ? { teleport: true as const } : {}),
+      ...(zone.forbids.teleport === true ? { teleport: true as const } : {}),
+      // Or out of it only past a save (1.550).
+      ...(typeof zone.forbids.teleport === "object" ? { teleport: { ...zone.forbids.teleport } } : {}),
       // No casting from these catalogs inside it (1.468): an antimagic field's spells.
       ...(zone.forbids.casts ? { casts: [...zone.forbids.casts] } : {}),
     };

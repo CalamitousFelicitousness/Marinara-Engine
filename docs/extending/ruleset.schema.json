@@ -44082,8 +44082,32 @@
                               "maxItems": 8
                             },
                             "teleport": {
-                              "type": "boolean",
-                              "const": true
+                              "anyOf": [
+                                {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "save": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "difficulty": {
+                                      "type": "string",
+                                      "const": "caster"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "save",
+                                    "difficulty"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
                             },
                             "casts": {
                               "type": "array",
@@ -67885,8 +67909,32 @@
                                   "maxItems": 8
                                 },
                                 "teleport": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "save": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "difficulty": {
+                                          "type": "string",
+                                          "const": "caster"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "save",
+                                        "difficulty"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "casts": {
                                   "type": "array",
@@ -80162,8 +80210,32 @@
                                     "maxItems": 8
                                   },
                                   "teleport": {
-                                    "type": "boolean",
-                                    "const": true
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "save": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "difficulty": {
+                                            "type": "string",
+                                            "const": "caster"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "save",
+                                          "difficulty"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
                                   },
                                   "casts": {
                                     "type": "array",
@@ -104179,8 +104251,32 @@
                                   "maxItems": 8
                                 },
                                 "teleport": {
-                                  "type": "boolean",
-                                  "const": true
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "save": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "difficulty": {
+                                          "type": "string",
+                                          "const": "caster"
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "save",
+                                        "difficulty"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
                                 },
                                 "casts": {
                                   "type": "array",
@@ -124209,8 +124305,32 @@
                                         "maxItems": 8
                                       },
                                       "teleport": {
-                                        "type": "boolean",
-                                        "const": true
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "save": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "difficulty": {
+                                                "type": "string",
+                                                "const": "caster"
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "save",
+                                              "difficulty"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
                                       },
                                       "casts": {
                                         "type": "array",
@@ -144245,8 +144365,32 @@
                                         "maxItems": 8
                                       },
                                       "teleport": {
-                                        "type": "boolean",
-                                        "const": true
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "save": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "difficulty": {
+                                                "type": "string",
+                                                "const": "caster"
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "save",
+                                              "difficulty"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        ]
                                       },
                                       "casts": {
                                         "type": "array",

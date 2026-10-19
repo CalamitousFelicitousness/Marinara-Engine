@@ -339,6 +339,7 @@ import {
   rulesetZoneCatches,
   rulesetZoneCells,
   rulesetZoneMiddles,
+  rulesetZoneHold,
   rulesetZoneHolds,
   rulesetZoneHoldsOne,
   rulesetZoneDriftCell,
@@ -5219,6 +5220,8 @@ function placeZone(
     // Until its maker's next lair count (1.324).
     ...(rule.untilLair ? { untilLair: true as const } : {}),
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
+    // Laid as a ring (1.550), so what it rings is inside it.
+    ...(wall && action.area?.ring && (resume.ring === true || action.area.ringOnly) ? { ringed: true as const } : {}),
     ...(also.length ? { also } : {}),
     ...(holder ? { on: holder.id } : {}),
     ...(facing && (facing.dx || facing.dy) ? { facing } : {}),
@@ -12375,10 +12378,17 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
   delete ctx.teleport;
   if (!to) {
     if (!action.teleport?.leaves || !rulesetCombatStanding(actor)) return;
+    // Kept in a zone that lets nobody out unsaved (1.550), the use spent.
+    const from = rulesetPositionOf(actor);
+    if (from && teleportHeld(ctx, actor, action, from, null)) return;
     // Out of the fight (1.279), and whoever goes along with it.
     const along = carries
       .map((id) => rulesetCombatant(ctx.state, id))
-      .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one) && !one.away);
+      .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one) && !one.away)
+      .filter((one) => {
+        const was = rulesetPositionOf(one);
+        return !was || !teleportHeld(ctx, one, action, was, null, actor.id);
+      });
     leaveFight(ctx, actor, action);
     for (const one of along) leaveFight(ctx, one, action, actor.id);
     return;
@@ -12386,6 +12396,8 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
   const grid = ctx.state.board?.grid;
   const from = rulesetPositionOf(actor);
   if (!grid || !from || !rulesetCombatStanding(actor) || !rulesetRoomAt(ctx.state, grid, actor, to)) return;
+  // Kept in a zone that lets nobody out unsaved (1.550), the use spent: nobody goes along.
+  if (teleportHeld(ctx, actor, action, from, to)) return;
   // A cloud where it left and where it lands (1.279), until the end of its next turn.
   if (action.teleport?.smoke) {
     const cells = new Map<string, RulesetCombatCell>();
@@ -12429,6 +12441,8 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
     const one = rulesetCombatant(ctx.state, id);
     const was = rulesetPositionOf(one);
     if (!one || !was || !rulesetCombatStanding(one) || !rulesetCombatStanding(actor)) continue;
+    // Each one carried out of such a zone saves for themselves (1.550).
+    if (teleportHeld(ctx, one, action, was, rulesetPositionOf(actor), actor.id)) continue;
     let spot: RulesetCombatCell | null = null;
     const here = rulesetPositionOf(actor)!;
     for (let reach = 1; reach <= Math.max(grid.width, grid.height) && !spot; reach++) {
@@ -12443,6 +12457,46 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
     }
     if (spot) set(one, spot, was, actor.id);
   }
+}
+
+/**
+ * Whether a zone keeps somebody from teleporting out of it (1.550): one whose `forbids.teleport` is
+ * a save, works on them, and holds where they stand but not all of where they would land (off the
+ * board, when they leave the fight). They throw its save against its caster's difficulty; failed,
+ * they stay where they are, said in the log. 5e's Forcecage.
+ */
+function teleportHeld(
+  ctx: RulesetCombatContext,
+  one: RulesetCombatant,
+  action: RulesetCombatAction,
+  from: RulesetCombatCell,
+  to: RulesetCombatCell | null,
+  by?: string,
+): boolean {
+  for (const { caster, zone, action: made } of rulesetStandingZones(ctx.state)) {
+    const rule = made.zone?.forbids?.teleport;
+    if (typeof rule !== "object" || zone.shrugged?.includes(one.id)) continue;
+    const is = zone.insideIs ?? made.zone?.inside?.is;
+    if (is && !rulesetTargetIs(ctx.definition, one, is)) continue;
+    const hold = rulesetZoneHold(ctx.state, caster, zone, made);
+    const inside = (cells: RulesetCombatCell[]) => cells.map((cell) => hold.has(`${cell.x},${cell.y}`));
+    if (!inside(rulesetFootprintAt(from, rulesetSpanOf(one))).some(Boolean)) continue;
+    if (to && inside(rulesetFootprintAt(to, rulesetSpanOf(one))).every(Boolean)) continue;
+    const difficulty = made.save?.difficulty ?? made.saveDifficulty;
+    // With no difficulty to throw against, there is no save to make.
+    if (difficulty !== undefined && rollSave(ctx, one, rule.save, difficulty, caster.id)) continue;
+    ctx.events.push({
+      type: "teleported",
+      actorId: one.id,
+      from: { ...from },
+      to: to ? { ...to } : { ...from },
+      label: action.label,
+      ...(by ? { by } : {}),
+      heldIn: zone.label,
+    });
+    return true;
+  }
+  return false;
 }
 
 /** Gone from the fight alive, of its own accord (1.279): a teleport that leaves it. Nothing brings

@@ -46,6 +46,26 @@ export function rulesetZoneLights(
   return zone.became ? action.zone?.detonates?.becomes?.lights : action.zone?.lights;
 }
 
+/** A zone's cells, and for a wall laid as a ring (1.550) every cell it rings: Forcecage's cage. */
+export function rulesetZoneHold(
+  state: RulesetEncounterState,
+  caster: RulesetCombatant,
+  zone: RulesetCombatZone,
+  action: RulesetCombatAction,
+): Set<string> {
+  const hold = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+  const ring = action.area?.ring;
+  const grid = state.board?.grid;
+  if (!zone.ringed || !zone.at || !ring || !grid) return hold;
+  const radius = Math.max(1, Math.round(ring / 2));
+  for (let y = Math.max(0, zone.at.y - radius); y <= Math.min(grid.height - 1, zone.at.y + radius); y++) {
+    for (let x = Math.max(0, zone.at.x - radius); x <= Math.min(grid.width - 1, zone.at.x + radius); x++) {
+      if (rulesetCellDistance(zone.at, { x, y }) < radius) hold.add(`${x},${y}`);
+    }
+  }
+  return hold;
+}
+
 /** Whether a cell is one of a zone's. */
 export function rulesetZoneHolds(cells: readonly RulesetCombatCell[], cell: RulesetCombatCell | null): boolean {
   return !!cell && cells.some((one) => one.x === cell.x && one.y === cell.y);

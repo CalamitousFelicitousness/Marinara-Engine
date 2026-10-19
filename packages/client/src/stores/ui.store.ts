@@ -27,6 +27,7 @@ import { deferEditorLeave } from "../lib/editor-leave";
 import { OMNIBAR_ASIDE_DELAY_MS, readLegacyMariConnectionId } from "../lib/omnibar-aside-text";
 import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
 import { UI_PERSISTENCE } from "../lib/ui-persistence";
+import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
 import { withSeasonalYear, type SeasonalThemeId, type SeasonalYears } from "../lib/seasonal-themes";
@@ -974,6 +975,10 @@ interface UIState {
   quoteFormat: QuoteFormat;
   /** When true, common LaTeX symbol commands render as plain Unicode symbols in chat text. */
   convertLatexSymbols: boolean;
+  /** When true, images from other websites in messages load right away instead of waiting for a click. */
+  loadRemoteMessageImages: boolean;
+  /** Images from other websites the user chose to load (absolute URLs, newest first). */
+  approvedRemoteImageUrls: string[];
   /** When true, model responses are trimmed back to the last complete sentence before saving. */
   trimIncompleteModelOutput: boolean;
   /** When true, /continue separates appended text with a blank line. */
@@ -1384,6 +1389,8 @@ interface UIState {
   setDisableInlineNameGradients: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
+  setLoadRemoteMessageImages: (v: boolean) => void;
+  approveRemoteImageUrl: (href: string) => void;
   setTrimIncompleteModelOutput: (v: boolean) => void;
   setContinueAddsNewline: (v: boolean) => void;
   setSpeechToTextEnabled: (v: boolean) => void;
@@ -1647,6 +1654,8 @@ export function pickSyncedSettings(state: UIState) {
     disableInlineNameGradients: state.disableInlineNameGradients,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
+    loadRemoteMessageImages: state.loadRemoteMessageImages,
+    approvedRemoteImageUrls: state.approvedRemoteImageUrls,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
     continueAddsNewline: state.continueAddsNewline,
     speechToTextEnabled: state.speechToTextEnabled,
@@ -1903,6 +1912,8 @@ export function pickPersistedUIState(state: UIState) {
     disableInlineNameGradients: state.disableInlineNameGradients,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
+    loadRemoteMessageImages: state.loadRemoteMessageImages,
+    approvedRemoteImageUrls: state.approvedRemoteImageUrls,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
     continueAddsNewline: state.continueAddsNewline,
     speechToTextEnabled: state.speechToTextEnabled,
@@ -2195,6 +2206,8 @@ export const useUIStore = create<UIState>()(
         disableInlineNameGradients: false,
         quoteFormat: "straight" as QuoteFormat,
         convertLatexSymbols: true,
+        loadRemoteMessageImages: false,
+        approvedRemoteImageUrls: [],
         trimIncompleteModelOutput: false,
         continueAddsNewline: true,
         speechToTextEnabled: false,
@@ -3092,6 +3105,9 @@ export const useUIStore = create<UIState>()(
         setDisableInlineNameGradients: (v) => set({ disableInlineNameGradients: v }),
         setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
         setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
+        setLoadRemoteMessageImages: (v) => set({ loadRemoteMessageImages: v }),
+        approveRemoteImageUrl: (href) =>
+          set((state) => ({ approvedRemoteImageUrls: addApprovedRemoteImageUrl(state.approvedRemoteImageUrls, href) })),
         setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
         setShowHomeBrowserAddressBar: (visible) => set({ showHomeBrowserAddressBar: visible }),
         setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible) =>
@@ -4064,6 +4080,8 @@ export const useUIStore = create<UIState>()(
             ? persisted.mariUnlockedPackIds.filter((id): id is string => typeof id === "string")
             : [],
           mariSeasonOptOut: typeof persisted.mariSeasonOptOut === "string" ? persisted.mariSeasonOptOut : "",
+          loadRemoteMessageImages: persisted.loadRemoteMessageImages === true,
+          approvedRemoteImageUrls: normalizeApprovedRemoteImageUrls(persisted.approvedRemoteImageUrls),
           conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(
             persisted.conversationBackgroundImageOpacity,
           ),

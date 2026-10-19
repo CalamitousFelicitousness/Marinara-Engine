@@ -55,6 +55,13 @@ test("a new roleplay started before the connection list loads opens the setup, n
   page.on("response", async (response) => {
     if (isChatCreate(response.request()) && response.ok()) chatIds.push(((await response.json()) as { id: string }).id);
   });
+  let releaseChat = () => {};
+  const chatReleased = new Promise<void>((resolve) => (releaseChat = resolve));
+  await page.route("**/api/chats", async (route) => {
+    if (!isChatCreate(route.request())) return route.fallback();
+    await chatReleased;
+    await route.continue().catch(() => undefined);
+  });
 
   try {
     const list = await holdConnectionList(page);
@@ -65,7 +72,14 @@ test("a new roleplay started before the connection list loads opens the setup, n
     await roleplay.click();
     // A second tap while it waits must not make a second chat.
     await roleplay.dispatchEvent("click");
+    const creatingChat = page.waitForRequest(isChatCreate);
     list.release();
+    await creatingChat;
+    // Keep the first save pending after the list has loaded: taps must stay ignored until it finishes.
+    const duplicate = page.waitForRequest(isChatCreate, { timeout: 1_000 }).catch(() => null);
+    await roleplay.dispatchEvent("click");
+    expect(await duplicate, "a second tap during chat creation must not send another save").toBeNull();
+    releaseChat();
 
     // The first open also compiles the chat area and the lazy setup wizard on the dev server.
     await expect(page.getByRole("heading", { name: "New Roleplay", exact: true })).toBeVisible({
@@ -74,6 +88,7 @@ test("a new roleplay started before the connection list loads opens the setup, n
     await expect(page.locator("[data-new-chat-connection-gate]")).toHaveCount(0);
     await expect.poll(() => chatIds.length, { message: "one chat is made" }).toBe(1);
   } finally {
+    releaseChat();
     await page.unrouteAll({ behavior: "ignoreErrors" });
     for (const chatId of chatIds) await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
     await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);

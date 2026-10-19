@@ -192,6 +192,12 @@ Upgrades are always safe, but going backwards is not always possible directly. N
 
 If you need an older version anyway, a one-command conversion puts your data back in the old format first. See [Chats show no messages after switching to an older version](TROUBLESHOOTING.md#chats-show-no-messages-after-switching-to-an-older-version) for the steps.
 
+### Going back to 2.5.0
+
+Version 2.5.0 uses the same storage format as the versions after it, so going back to it is not blocked and it opens your chats normally. It does not know the data that newer features added, though: some connection settings, the details used to regenerate chat images, and parts of game checkpoints, ruleset clocks and scene videos. When 2.5.0 saves a chat or a connection, for example when you send a message, play a game turn, make an image or change a connection, it drops that newer data from the whole chat or connection. Updating again does not bring it back.
+
+To be able to return to exactly where you were, make a backup before you update. See [Back up first](#back-up-first) and [Backing Up and Restoring Marinara](data/backup-and-restore.md).
+
 ## If an upgrade fails
 
 Most upgrade problems come from an old Node.js version, a partial download, or a stale browser cache.

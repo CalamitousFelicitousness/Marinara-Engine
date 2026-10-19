@@ -172,7 +172,7 @@ Everything lives on the computer running Marinara, inside the `data` folder in y
 
 ## Will I lose my data when I update?
 
-No. Updating Marinara keeps your characters, chats, and settings in place. It is still smart to make a backup before a big update, just in case. For update steps on each platform, see [Upgrading](UPGRADING.md).
+No. Updating Marinara keeps your characters, chats, and settings in place. It is still smart to make a backup before a big update, just in case. For update steps on each platform, see [Upgrading](UPGRADING.md). Going back to an older version afterwards can lose data that only the newer version stores; see [Downgrading to an older version](UPGRADING.md#downgrading-to-an-older-version).
 
 ## What can Professor Mari do?
 

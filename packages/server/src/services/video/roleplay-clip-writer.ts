@@ -113,7 +113,11 @@ export async function writeRoleplayClipDirection(
     finishReason = result.finishReason;
     // A sentence of the connection's instructions the writer copied word for word is not video-model text.
     prompt = removeCopiedPromptGuidance(
-      resolveRoleplayVideoDirection(result.content, runtime.promptLimits.finalPrompt),
+      resolveRoleplayVideoDirection(
+        result.content,
+        runtime.promptLimits.finalPrompt,
+        videoConn.videoPromptInstructions,
+      ),
       [videoConn.videoPromptInstructions],
     );
   } catch (err) {

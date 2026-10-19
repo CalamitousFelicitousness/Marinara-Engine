@@ -83,6 +83,17 @@ try {
   assert.equal(await latestReplyImages(), 0, "the picture is only the clip's first frame");
   assert.equal(h.lastComfyInputs()?.image, png.toString("base64"));
 
+  // Clips only without a working video connection (here one that is not a video service) makes pictures, as the
+  // agent was told, instead of failing every turn.
+  await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.text.id, sceneVideoFirstFrame: "prompt_only" });
+  const imagesBefore = requests.images;
+  const noVideoBody = await h.generate(roleplay.id, "Show the porch again.");
+  assert.equal(requests.images, imagesBefore + 1, "the picture is drawn");
+  assert.equal(await latestReplyImages(), 1, "and shown in the reply");
+  assert.equal((await h.attachments(roleplay.id, "video")).length, clips, "no clip");
+  assert.doesNotMatch(noVideoBody, /video_error/u, "no video error");
+  await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.video.id });
+
   // ── Pictures and clips: a picture Illustrator animates keeps showing; its clip follows First frame ──
   await h.saveChatSettings(roleplay.id, { illustratorVideoMode: "pictures_and_clips", sceneVideoFirstFrame: "avatar" });
   replies.agent = {

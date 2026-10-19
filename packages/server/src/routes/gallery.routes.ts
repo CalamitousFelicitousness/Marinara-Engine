@@ -814,7 +814,11 @@ export async function galleryRoutes(app: FastifyInstance) {
         });
         // A sentence of the connection's instructions the director copied word for word is not video-model text.
         promptDraft = removeCopiedPromptGuidance(
-          resolveRoleplayVideoDirection(result.content, videoRuntime.promptLimits.finalPrompt),
+          resolveRoleplayVideoDirection(
+            result.content,
+            videoRuntime.promptLimits.finalPrompt,
+            videoConn.videoPromptInstructions,
+          ),
           [videoConn.videoPromptInstructions],
         );
       } catch (err) {

@@ -76,9 +76,15 @@ function unwrapJsonFence(value: string): string {
   return fenced?.[1]?.trim() ?? trimmed;
 }
 
-export function resolveRoleplayVideoDirection(value: unknown, maxLength: number | null): string {
+export function resolveRoleplayVideoDirection(
+  value: unknown,
+  maxLength: number | null,
+  videoPromptInstructions?: unknown,
+): string {
   if (typeof value !== "string") return "";
   const unwrapped = unwrapJsonFence(value);
+  // With video prompting instructions, any JSON shape they ask for is the prompt itself, not a missing narrationBeat.
+  const otherJson = normalizeVideoPromptInstructionsText(videoPromptInstructions) ? unwrapped : "";
   let narrationBeat: string;
   try {
     const parsed = JSON.parse(unwrapped) as unknown;
@@ -86,9 +92,9 @@ export function resolveRoleplayVideoDirection(value: unknown, maxLength: number 
       narrationBeat = parsed;
     } else if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const candidate = (parsed as Record<string, unknown>).narrationBeat;
-      narrationBeat = typeof candidate === "string" ? candidate : "";
+      narrationBeat = typeof candidate === "string" ? candidate : otherJson;
     } else {
-      narrationBeat = "";
+      narrationBeat = Array.isArray(parsed) ? otherJson : "";
     }
   } catch {
     // A JSON answer with a slip (an unescaped quote) is repaired; plain text, such as a format the video

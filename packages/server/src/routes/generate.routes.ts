@@ -13886,12 +13886,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   );
                 }
                 imgConnFull ??= await connections.getDefaultForImageGeneration();
-                // Clips only, starting from the avatar or from no picture: no picture is drawn at all.
-                const clipOnlyFrame =
+                // Clips only needs a working video connection, as the agent was told; without one it makes pictures.
+                const clipsOnlyUsable =
                   requestChatMode === "roleplay" &&
-                  normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only"
-                    ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))
-                    : "picture";
+                  normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only" &&
+                  (await (async () => {
+                    const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
+                    const videoConnection = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
+                    return videoConnection?.provider === "video_generation";
+                  })());
+                // Clips only, starting from the avatar or from no picture: no picture is drawn at all.
+                const clipOnlyFrame = clipsOnlyUsable
+                  ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))
+                  : "picture";
                 if (clipOnlyFrame !== "picture" && messageId) {
                   pendingRoleplayMedia.push(
                     (async () => {
@@ -14188,9 +14195,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       });
 
                       // Clips only: the picture is the clip's first frame, shown only if the clip fails.
-                      const clipsOnly =
-                        chatMode === "roleplay" &&
-                        normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode) === "clips_only";
+                      const clipsOnly = clipsOnlyUsable;
                       let firstGalleryImageId: string | null = null;
                       for (const [variantIndex, imageResult] of imageResults.entries()) {
                         const renderedPrompt = imageResult.effectivePrompt ?? fullPrompt;

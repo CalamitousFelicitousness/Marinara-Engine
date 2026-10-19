@@ -2281,7 +2281,8 @@ export function ChatSettingsDrawer({
     });
   }, [chat.id, updateMeta]);
   const resetIllustratorAvatarReferences = useCallback(() => {
-    updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null });
+    // Both halves of Send Avatar References: images back to the agent's default, videos back to off.
+    updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null, illustratorVideoUseAvatarReferences: null });
   }, [chat.id, updateMeta]);
   const toggleIllustratorAutoBackgrounds = useCallback(() => {
     updateMeta.mutate({
@@ -9187,7 +9188,10 @@ export function ChatSettingsDrawer({
                                 illustratorVideoUseAvatarReferences: videos,
                               })
                             }
-                            overridden={typeof metadata.illustratorUseAvatarReferences === "boolean"}
+                            overridden={
+                              typeof metadata.illustratorUseAvatarReferences === "boolean" ||
+                              metadata.illustratorVideoUseAvatarReferences === true
+                            }
                             onReset={resetIllustratorAvatarReferences}
                           />
                           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">

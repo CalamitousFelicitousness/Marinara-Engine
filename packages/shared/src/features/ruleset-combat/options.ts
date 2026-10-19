@@ -3961,21 +3961,59 @@ export function rulesetStandCost(combatant: RulesetCombatant): number {
   return Math.max(1, Math.ceil((combatant.movement ?? 0) / 2));
 }
 
+/** What a rider weighs (1.588): off their sheet where `combat.mounts.weights.sheet` gives more than 0,
+ *  else by their size. Undefined where neither says. */
+export function rulesetRiderWeight(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  rider: RulesetCombatant,
+): number | undefined {
+  const weights = combat.mounts?.weights;
+  if (!weights) return undefined;
+  if (weights.sheet && rider.sheet) {
+    const read = rulesetHolderValue(definition, rider, weights.sheet);
+    if (read !== undefined && read > 0) return read;
+  }
+  return rider.size === undefined ? undefined : weights.bySize[rider.size];
+}
+
+/** What a mount that carries by weight bears now (1.588): every rider on it. */
+export function rulesetMountLoad(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  mount: RulesetCombatant,
+): number {
+  return state.combatants
+    .filter((one) => one.mountedOn === mount.id)
+    .reduce((total, one) => total + (rulesetRiderWeight(definition, combat, one) ?? 0), 0);
+}
+
 /** Whom this combatant may mount (1.443): a creature of their side beside them, standing, ridden by
- *  nobody and riding nothing, at least `combat.mounts.larger` sizes bigger. */
+ *  nobody and riding nothing, at least `combat.mounts.larger` sizes bigger; or (1.588) one that
+ *  carries by weight, any size, while it bears them too. */
 export function rulesetMountsFor(
+  definition: RulesetDefinition,
   combat: RulesetCombat,
   state: RulesetEncounterState,
   actor: RulesetCombatant,
 ): RulesetCombatant[] {
   const rule = combat.mounts;
-  if (!rule || !rulesetPositionOf(actor) || actor.riddenBy || actor.insideOf) return [];
+  if (!rule || !rulesetPositionOf(actor) || actor.riddenBy || actor.passengers?.length || actor.insideOf) return [];
   const own = rulesetSizeRank(combat, actor);
-  if (own === undefined) return [];
   return state.combatants.filter((one) => {
     if (one.id === actor.id || one.side !== actor.side || one.defeated || one.down) return false;
-    if (!rulesetCombatStanding(one) || one.riddenBy || one.mountedOn || one.insideOf) return false;
+    if (!rulesetCombatStanding(one) || one.mountedOn || one.insideOf) return false;
     if (!rulesetPositionOf(one) || rulesetGap(actor, one) > 1) return false;
+    const carries = one.block?.mountCarries;
+    if (carries) {
+      const weight = rulesetRiderWeight(definition, combat, actor);
+      return (
+        weight !== undefined &&
+        rulesetMountLoad(definition, combat, state, one) + weight <= (carries.slowedUpTo ?? carries.weight)
+      );
+    }
+    if (one.riddenBy || own === undefined) return false;
     const rank = rulesetSizeRank(combat, one);
     return rank !== undefined && rank - own >= rule.larger;
   });
@@ -4088,7 +4126,7 @@ function movementOptions(
   // Mounting a willing creature of their side beside them (1.443), for half their speed.
   const cost = rulesetStandCost(actor);
   if (left >= cost) {
-    for (const mount of rulesetMountsFor(combat, state, actor)) {
+    for (const mount of rulesetMountsFor(definition, combat, state, actor)) {
       options.push({
         id: `${RULESET_MOUNT_OPTION_PREFIX}${mount.id}`,
         kind: "move",

@@ -3560,6 +3560,16 @@ function resolveClimbOut(ctx: RulesetCombatContext, actor: RulesetCombatant, opt
 function mountOn(ctx: RulesetCombatContext, rider: RulesetCombatant, mount: RulesetCombatant, cost: number): void {
   spendRulesetMovement(rider, cost);
   rider.mountedOn = mount.id;
+  // One more on a mount that carries by weight (1.588): carried along, its first rider still steering.
+  if (mount.riddenBy) (mount.passengers ??= []).push(rider.id);
+  else steeredBy(ctx, mount, rider);
+  if (rulesetPositionOf(mount) && rulesetPositionOf(rider)) placeInside(mount, rider);
+  ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount.id });
+}
+
+/** `rider` steers `mount` (1.443): a controlled mount's turn comes straight after theirs from now on;
+ *  one that already had its turn this round waits for the next. */
+function steeredBy(ctx: RulesetCombatContext, mount: RulesetCombatant, rider: RulesetCombatant): void {
   mount.riddenBy = rider.id;
   if (ctx.combat.mounts?.controlled && !mount.sheet && !mount.block?.mountIndependent) {
     mount.mountControlled = true;
@@ -3575,8 +3585,6 @@ function mountOn(ctx: RulesetCombatContext, rider: RulesetCombatant, mount: Rule
       }
     }
   }
-  if (rulesetPositionOf(mount) && rulesetPositionOf(rider)) placeInside(mount, rider);
-  ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount.id });
 }
 
 /** `rider` gets down beside their mount (1.443), or comes off it (`fell`). */
@@ -3584,9 +3592,17 @@ function dismount(ctx: RulesetCombatContext, rider: RulesetCombatant, fell = fal
   const mount = rider.mountedOn ? rulesetCombatant(ctx.state, rider.mountedOn) : undefined;
   delete rider.mountedOn;
   if (mount) {
-    delete mount.riddenBy;
-    delete mount.mountControlled;
-    delete mount.mountWaits;
+    // A passenger gets down alone (1.588); its rider's going hands it to the next one on it.
+    const next = mount.riddenBy === rider.id ? mount.passengers?.[0] : undefined;
+    mount.passengers = mount.passengers?.filter((id) => id !== rider.id && id !== next);
+    if (!mount.passengers?.length) delete mount.passengers;
+    if (mount.riddenBy === rider.id) {
+      delete mount.riddenBy;
+      delete mount.mountControlled;
+      delete mount.mountWaits;
+      const taking = next ? rulesetCombatant(ctx.state, next) : undefined;
+      if (taking) steeredBy(ctx, mount, taking);
+    }
     if (ctx.state.board?.grid && rulesetPositionOf(mount) && rulesetPositionOf(rider)) setDownBeside(ctx, mount, rider);
   }
   ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount?.id ?? "", off: true, ...(fell ? { fell } : {}) });
@@ -3602,7 +3618,7 @@ function syncMounts(ctx: RulesetCombatContext): void {
     const mount = rulesetCombatant(ctx.state, rider.mountedOn);
     const gone = (one: RulesetCombatant | undefined) =>
       !one || one.defeated || one.down || !rulesetCombatStanding(one) || !!one.insideOf;
-    if (gone(mount) || gone(rider) || mount!.riddenBy !== rider.id) {
+    if (gone(mount) || gone(rider) || (mount!.riddenBy !== rider.id && !mount!.passengers?.includes(rider.id))) {
       dismount(ctx, rider);
       continue;
     }

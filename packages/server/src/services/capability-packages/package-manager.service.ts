@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A mount that carries riders by weight, or riders weighed (1.588): a Carpet of Flying. */
+function carriesMountWeights588(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMountWeights588(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.mountCarries !== undefined) return true;
+  if (plainRecord(record.mounts)?.weights !== undefined) return true;
+  return featureValues(record).some((one) => carriesMountWeights588(one, depth + 1));
+}
+
 /** An item's use that casts other entries (1.587): a Ring of Three Wishes. */
 function carriesItemDuplicates587(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -7992,6 +8003,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A mount that carries riders by weight, 1.588.
+  if (
+    !declaresApi(588) &&
+    (carriesMountWeights588(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMountWeights588(document)))
+  )
+    return "A ruleset with a mount that carries riders by weight (mountCarries, mounts.weights) requires schemaVersion 2 and capabilityApi 1.588 or newer";
   // An item's use that casts other entries, 1.587.
   if (
     !declaresApi(587) &&

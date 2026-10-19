@@ -8757,6 +8757,21 @@ const creatureFields = {
   /** Ridden, it acts as it will, never controlled by its rider (Capability API 1.443): an
    *  intelligent mount. */
   mountIndependent: z.literal(true).optional(),
+  /** Ridden by as many as its back bears (Capability API 1.588), weighed as `combat.mounts.weights`
+   *  says: up to `weight` at its full speed and, with `slowedUpTo`, up to that much at half speed. Its
+   *  first rider steers it; the rest are carried along. Any size may ride it. 5e's Carpet of Flying,
+   *  4 by 6 feet: `{ "weight": 400, "slowedUpTo": 800 }`. */
+  mountCarries: z
+    .object({
+      weight: z.number().finite().gt(0).max(1000000),
+      slowedUpTo: z.number().finite().gt(0).max(1000000).optional(),
+    })
+    .strict()
+    .refine((carries) => carries.slowedUpTo === undefined || carries.slowedUpTo > carries.weight, {
+      message: '"slowedUpTo" is more than "weight"',
+      path: ["slowedUpTo"],
+    })
+    .optional(),
   initiativeModifier: z.number().int().min(-50).max(100),
   /** Scores, keyed by the sheet's own ability ids. Shown to the Game Master; a later slice asks a
    *  creature for a check with them. */
@@ -9158,7 +9173,8 @@ const rulesetProposedCreatureBaseSchema = z.preprocess(
           message: `A creature without a sheet needs its ${key}`,
         });
       }
-      if (creature.actions.length === 0 && !creature.spellcasting) {
+      // A mount that carries riders (1.588) is ridden, and needs nothing of its own to do.
+      if (creature.actions.length === 0 && !creature.spellcasting && !creature.mountCarries) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["actions"],
@@ -9211,7 +9227,8 @@ const rulesetCreatureBaseSchema = z
         message: `A creature without a sheet needs its ${key}`,
       });
     }
-    if (creature.actions.length === 0 && !creature.spellcasting) {
+    // A mount that carries riders (1.588) is ridden, and needs nothing of its own to do.
+    if (creature.actions.length === 0 && !creature.spellcasting && !creature.mountCarries) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["actions"],
@@ -13502,12 +13519,23 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
  *  brings them off too. */
 export interface RulesetCombatMounts {
   larger: number;
+  weights?: { bySize: Record<string, number>; sheet?: RulesetValueRef };
   controlled?: { standard: Array<"dash" | "disengage" | "dodge" | "help" | "hide" | "ready" | "search"> };
   fall?: { save: string; difficulty: number; applies?: string; when?: string[]; landsWith?: string };
 }
 const combatMountsSchema: z.ZodType<RulesetCombatMounts, z.ZodTypeDef, unknown> = z
   .object({
     larger: z.number().int().min(1).max(9),
+    /** What a rider weighs, for a mount that carries by weight (Capability API 1.588): read off their
+     *  sheet by `sheet` where it gives more than 0, else by their size. 5e's `{ "bySize": { "small":
+     *  60, "medium": 180, "large": 900 } }`, or a derived value of body and gear. */
+    weights: z
+      .object({
+        bySize: z.record(sheetId, z.number().finite().min(0).max(1000000)),
+        sheet: rulesetValueRefSchema.optional(),
+      })
+      .strict()
+      .optional(),
     controlled: z
       .object({ standard: z.array(combatStandardActionSchema).max(7) })
       .strict()
@@ -17076,6 +17104,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       else if (!list.columns.some((one) => one.id === tongues.column))
         issue(at("languages", "column"), `"${tongues.list}" has no column "${tongues.column}"`);
     }
+    // What riders weigh (1.588) is by the fight's own sizes.
+    for (const size of Object.keys(combat.mounts?.weights?.bySize ?? {})) {
+      if (!combat.sizes?.order.some((one) => one.id === size))
+        issue(at("mounts", "weights", "bySize", size), `Unknown size "${size}"`);
+    }
     // What a rider lands on their feet with (1.451) is a budget of the fight's.
     const landsWith = combat.mounts?.fall?.landsWith;
     if (landsWith !== undefined && !combat.economy.budgets.some((one) => one.id === landsWith))
@@ -19207,6 +19240,9 @@ function creatureIssues(
     });
   });
   if (creature.hover && !creature.speeds?.fly) add([...at, "hover"], "A creature that hovers has a fly speed");
+  // Bearing riders by weight (1.588) needs the fight to weigh them.
+  if (creature.mountCarries && !combat.mounts?.weights)
+    add([...at, "mountCarries"], "A mount that carries by weight needs combat.mounts.weights");
   if (creature.type !== undefined || creature.tags) {
     const kinds = combat.creatureTypes;
     if (!kinds) add([...at, creature.type !== undefined ? "type" : "tags"], "This ruleset declares no creature types");

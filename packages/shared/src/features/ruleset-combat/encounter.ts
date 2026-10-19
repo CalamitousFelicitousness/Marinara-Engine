@@ -102,7 +102,7 @@ import {
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
 import { rulesetActionItemIndex, rulesetDroppedItems } from "./ammo.js";
-import { rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
+import { rulesetMountLoad, rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
 import { rulesetCanSee, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
 import type {
@@ -5279,6 +5279,9 @@ export function rulesetMovementAllowance(
   let speed = base;
   for (const { modifier } of changes) speed += modifier.flat ?? 0;
   for (const { modifier } of changes) speed *= modifier.times ?? 1;
+  // Bearing more than it carries at its full pace (1.588): half speed.
+  const carries = combatant.block?.mountCarries;
+  if (carries && state && rulesetMountLoad(definition, combat, state, combatant) > carries.weight) speed /= 2;
   if (!Number.isFinite(speed) || speed <= 0) return 0;
   return Math.max(1, Math.floor(speed / perCell));
 }

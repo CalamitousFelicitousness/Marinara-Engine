@@ -660,6 +660,8 @@ export interface RulesetStatBlock {
   hover?: true;
   /** Ridden, it acts as it will (1.443): an intelligent mount. */
   mountIndependent?: true;
+  /** Ridden by as many as its back bears, by weight (1.588): a Carpet of Flying. */
+  mountCarries?: { weight: number; slowedUpTo?: number };
   /** Its hands are full, so a `twoHanded` alternative never holds (1.102). */
   shield?: true;
   /** One of `combat.sizes`, by id (1.103). */
@@ -1857,6 +1859,8 @@ export interface RulesetCombatant {
    *  taking only the standard actions the ruleset names, and `mountWaits` the round it was mounted in
    *  after its own turn, so it does not act twice in it. */
   riddenBy?: string;
+  /** Carried along besides its rider (1.588), on a mount that carries by weight. */
+  passengers?: string[];
   mountControlled?: true;
   mountWaits?: number;
   /** What those it holds inside have dealt it this turn (1.352), by who, for `releasedWhen`. */

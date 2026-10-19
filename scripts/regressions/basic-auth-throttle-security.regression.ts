@@ -6,8 +6,10 @@
 // saved wrong password counts once, and loopback, IP_ALLOWLIST and the local
 // proxy rules keep working as before. A browser that signed in before keeps
 // getting in with the correct password while its address is locked, so visitors
-// sharing a local proxy's address cannot lock the owner out.
+// sharing a local proxy's address cannot lock the owner out. Its cookie is keyed
+// by a server-only secret and buys only a few more tries.
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import type { FastifyRequest } from "fastify";
 import {
@@ -28,6 +30,7 @@ const ENV_KEYS = [
   "BASIC_AUTH_USER",
   "BYPASS_AUTH_DOCKER",
   "BYPASS_AUTH_TAILSCALE",
+  "ENCRYPTION_KEY",
   "IP_ALLOWLIST",
   "IP_ALLOWLIST_ENABLED",
   "MARINARA_DOCKER",
@@ -40,6 +43,8 @@ for (const key of ENV_KEYS) delete process.env[key];
 process.env.BASIC_AUTH_USER = "mari";
 process.env.BASIC_AUTH_PASS = "secret";
 process.env.TRUSTED_HOSTS = "chat.example.com";
+const SERVER_KEY = "ab".repeat(32);
+process.env.ENCRYPTION_KEY = SERVER_KEY;
 
 const basic = (password: string) => `Basic ${Buffer.from(`mari:${password}`, "utf8").toString("base64")}`;
 const RIGHT = basic("secret");
@@ -173,8 +178,19 @@ try {
   // ── A browser that signed in before is not locked out by other visitors' guesses ──
   const firstSignIn = await get("/", "203.0.113.60", RIGHT);
   assert.equal(firstSignIn.statusCode, 200);
-  const signedInCookie = String(firstSignIn.headers["set-cookie"] ?? "").split(";")[0];
+  const setCookie = String(firstSignIn.headers["set-cookie"] ?? "");
+  const signedInCookie = setCookie.split(";")[0];
   assert.match(signedInCookie, /^marinara_signed_in=[\w-]+$/, "a correct password sets the signed-in cookie");
+  assert.match(setCookie, /; HttpOnly/);
+  assert.doesNotMatch(setCookie, /; Secure/, "a plain HTTP sign-in cannot keep a Secure cookie");
+  const purposeKey = createHmac("sha256", Buffer.from(SERVER_KEY, "hex"))
+    .update("basic-auth signed-in browser")
+    .digest();
+  assert.equal(
+    signedInCookie,
+    `marinara_signed_in=${createHmac("sha256", purposeKey).update(RIGHT).digest("base64url")}`,
+    "the cookie is keyed by the server's own secret, not by the password alone",
+  );
   assert.equal(
     (await get("/", "203.0.113.60", RIGHT, { ...HOST, cookie: signedInCookie })).headers["set-cookie"],
     undefined,
@@ -186,10 +202,10 @@ try {
   assert.deepEqual((await get("/api/health", "127.0.0.1", RIGHT, owner)).json(), { status: "ok", sidecars: {} });
   assert.equal(
     (await get("/", "127.0.0.1", basic("cookie-guess"), owner)).statusCode,
-    429,
+    401,
     "the cookie does not let wrong passwords through",
   );
-  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 429, "nor stand in for the password");
+  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 401, "nor stand in for the password");
   assert.equal(
     (await get("/", "127.0.0.1", RIGHT, { ...proxied, cookie: "marinara_signed_in=made-up" })).statusCode,
     429,
@@ -203,6 +219,13 @@ try {
 
   // ── One proxied visitor signing in does not clear the others' count ──
   Date.now = () => realNow() + BASIC_AUTH_FAILURE_WINDOW_MS + 1_000;
+  const httpsSignIn = await get("/", "127.0.0.1", RIGHT, { ...proxied, "x-forwarded-proto": "https" });
+  assert.equal(httpsSignIn.statusCode, 200);
+  assert.match(
+    String(httpsSignIn.headers["set-cookie"]),
+    /; Secure/,
+    "HTTPS through a local proxy gets a Secure cookie",
+  );
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
     const response = await get("/", "127.0.0.1", basic(`via-proxy-later-${index}`), proxied);
     assert.equal(response.statusCode, 401);
@@ -224,6 +247,17 @@ try {
     "a cookie from the old password no longer gets through",
   );
   process.env.BASIC_AUTH_PASS = "secret";
+
+  // ── A copied cookie gets only a few tries of its own ──
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const response = await get("/", "127.0.0.1", basic(`copied-cookie-${index}`), owner);
+    assert.equal(response.statusCode, 401, `copied cookie: try ${index + 1} is still answered`);
+  }
+  assert.equal(
+    (await get("/", "127.0.0.1", RIGHT, owner)).statusCode,
+    429,
+    "after its own tries the cookie no longer gets past the lock",
+  );
   Date.now = realNow;
   process.env.IP_ALLOWLIST = "192.168.1.20";
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {

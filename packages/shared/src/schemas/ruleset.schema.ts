@@ -6008,6 +6008,13 @@ export const catalogCallsSchema = z
      *  1.559), as a rolled option's `spendsItem` is when it comes: a Ring of Djinni Summoning, "the
      *  ring becomes nonmagical if the djinni dies". */
     spendsItemOnDeath: z.literal(true).optional(),
+    /** An item's call: the item itself becomes the creature (Capability API 1.560), out of its
+     *  holder's hands, none of its uses or blows offered, while it stands: a Staff of the Python. */
+    becomesItem: z.literal(true).optional(),
+    /** Its user has an action that sends them away again (Capability API 1.560), on the entry's or
+     *  the use's own budget, or with `{ "budget": "<id>" }` on that one: a Staff of the Python's
+     *  bonus action to turn it back into a staff. */
+    dismissible: z.union([z.literal(true), z.object({ budget: sheetId }).strict()]).optional(),
   })
   .strict()
   .superRefine((calls, ctx) => {
@@ -20042,6 +20049,18 @@ function useIssues(
   if (use.budget !== undefined && !combat.economy.budgets.some((budget) => budget.id === use.budget)) {
     add([...at, "budget"], `Unknown budget "${use.budget}"`);
   }
+  // A call's dismissal on a budget of its own (1.560), and the requirement it reads (1.558).
+  const dismissal = use.calls?.dismissible;
+  if (typeof dismissal === "object" && !combat.economy.budgets.some((budget) => budget.id === dismissal.budget)) {
+    add([...at, "calls", "dismissible", "budget"], `Unknown budget "${dismissal.budget}"`);
+  }
+  const unlessRequirement = use.calls?.hostileUnless;
+  if (
+    unlessRequirement &&
+    !rulesetSheetNames(definition.sheet, definition.items).derived.has(unlessRequirement.derived)
+  ) {
+    add([...at, "calls", "hostileUnless", "derived"], `Unknown derived value "${unlessRequirement.derived}"`);
+  }
   // A scroll's spell made again (1.530): Telekinesis, Call Lightning.
   const repeatBudget = use.repeats?.budget;
   if (repeatBudget !== undefined && !combat.economy.budgets.some((budget) => budget.id === repeatBudget)) {
@@ -21814,6 +21833,17 @@ export function rulesetCatalogEntryIssues(
     const unless = (mechanics?.calls as RulesetCatalogCalls | undefined)?.hostileUnless;
     if (unless && !names.derived.has(unless.derived)) {
       add([index, "mechanics", "calls", "hostileUnless", "derived"], `Unknown derived value "${unless.derived}"`);
+    }
+    // What only an item's call does (1.559, 1.560), and the budget a dismissal spends (1.560).
+    const entryCalls = mechanics?.calls as RulesetCatalogCalls | undefined;
+    if (entryCalls?.spendsItemOnDeath || entryCalls?.becomesItem)
+      add(
+        [index, "mechanics", "calls", entryCalls.becomesItem ? "becomesItem" : "spendsItemOnDeath"],
+        '"spendsItemOnDeath" and "becomesItem" are for an item\'s call',
+      );
+    const entryDismissal = entryCalls?.dismissible;
+    if (typeof entryDismissal === "object" && budgets && !budgets.has(entryDismissal.budget)) {
+      add([index, "mechanics", "calls", "dismissible", "budget"], `Unknown budget "${entryDismissal.budget}"`);
     }
     // A strike bought with a budget the fight declares, rows changed by abilities the sheet has (1.242).
     // A hit answered only when a strike from a budget the fight declares made it (1.248).

@@ -2740,6 +2740,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item that becomes the creature it calls, or a catalog entry's or an item's call its user may
+ *  dismiss (1.560): a Staff of the Python. */
+function carriesBecomesItem560(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBecomesItem560(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls?.becomesItem !== undefined) return true;
+  // A creature action's dismissible is 1.396 (its budget 1.557); a catalog entry's or an item's is new.
+  if (calls?.dismissible !== undefined && record.name === undefined) return true;
+  return featureValues(record).some((one) => carriesBecomesItem560(one, depth + 1));
+}
+
 /** An item spent as what it called dies, or a wait from the departure of what it called, or a
  *  fight's round length (1.559): a Ring of Djinni Summoning. */
 function carriesDeparture559(value: unknown, depth = 0): boolean {
@@ -7652,6 +7666,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item that becomes the creature it calls, or a dismissible catalog or item call, 1.560.
+  if (
+    !declaresApi(560) &&
+    (carriesBecomesItem560(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBecomesItem560(document)))
+  ) {
+    return "A ruleset with an item that becomes the creature it calls (calls.becomesItem), or a catalog entry's or an item's call its user may send away (calls.dismissible), requires schemaVersion 2 and capabilityApi 1.560 or newer";
+  }
   // An item spent as what it called dies, or a wait from its departure, 1.559.
   if (
     !declaresApi(559) &&

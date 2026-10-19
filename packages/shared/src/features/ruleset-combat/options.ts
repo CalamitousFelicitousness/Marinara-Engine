@@ -2610,6 +2610,20 @@ export function rulesetActionAvailable(
   if (!rulesetShotsAvailable(actor, action)) return false;
   // Nor once the item is spent for good (1.538): an Efreeti Bottle that lost its magic.
   if (action.itemUse && rulesetItemCallRoll(actor, action.itemUse.item).spent) return false;
+  // Nor while the item is a creature (1.560), its uses and its blows: a Staff of the Python.
+  const itemAt = action.itemUse?.item ?? (/^item:(\d+)$/.exec(action.id) ? Number(action.id.slice(5)) : undefined);
+  if (
+    itemAt !== undefined &&
+    !!state?.combatants.some(
+      (one) =>
+        one.calledBy === actor.id &&
+        one.calledItem?.item === itemAt &&
+        one.calledItem.becomes &&
+        !one.dismissed &&
+        !one.defeated,
+    )
+  )
+    return false;
   // An item's use is not offered where it is suppressed (1.468): a wand in an antimagic field.
   if (
     action.itemUse &&

@@ -5477,6 +5477,7 @@ function fillCatalogCallsAsWritten(
       ...(calls.leash ? { leash: calls.leash } : {}),
       ...(calls.hostileUnless ? { hostileUnless: { ...calls.hostileUnless } } : {}),
       ...(calls.spendsItemOnDeath ? { spendsItemOnDeath: true as const } : {}),
+      ...(calls.becomesItem ? { becomesItem: true as const } : {}),
     };
   };
   if (calls.creature && calls.count) {
@@ -5974,9 +5975,24 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   }
   // Who a catalog entry or an item use calls (1.344), the same way; its options as modes.
   for (const combatant of state.combatants) {
+    const dismissals: RulesetCombatAction[] = [];
     for (const action of combatant.actions) {
-      if (action.callsOf) fillCatalogCalls(definition, action, callable());
+      if (!action.callsOf) continue;
+      const dismissible = action.callsOf.dismissible;
+      fillCatalogCalls(definition, action, callable());
+      // Sent away again (1.560), on its own budget or one it names: a Staff of the Python's bonus action.
+      if (dismissible && (action.calls || action.modes?.some((mode) => mode.call) || action.callsRolled)) {
+        dismissals.push({
+          id: `dismiss-called:${action.id}`,
+          kind: "switch",
+          label: action.label,
+          budget: typeof dismissible === "object" ? dismissible.budget : action.budget,
+          targets: { side: "self", count: 0 },
+          switches: { called: action.id },
+        });
+      }
     }
+    combatant.actions.push(...dismissals);
   }
   // The forms a shape change offers (1.342), found now in the ruleset's catalogs, the fight's bestiary
   // or the user's own: one nobody can find is not offered, nor one its user may not take yet.

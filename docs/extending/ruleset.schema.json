@@ -50664,6 +50664,33 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "becomesItem": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "dismissible": {
+                          "anyOf": [
+                            {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "budget": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "budget"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -110931,6 +110958,33 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "becomesItem": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "dismissible": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "budget": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "budget"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -131046,6 +131100,33 @@
                                   "spendsItemOnDeath": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "becomesItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "dismissible": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "budget": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "budget"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
                                   },
                                   "$comment": {}
                                 },
@@ -151168,6 +151249,33 @@
                                   "spendsItemOnDeath": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "becomesItem": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "dismissible": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "budget": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "budget"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
                                   },
                                   "$comment": {}
                                 },

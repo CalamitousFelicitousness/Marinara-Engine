@@ -1260,6 +1260,8 @@ export interface RulesetCombatAction {
     hostileUnless?: { derived: string; atLeast: number };
     /** An item's call: the item is spent for good once one of them dies (1.559). */
     spendsItemOnDeath?: true;
+    /** An item's call: the item becomes them, out of its holder's hands while they stand (1.560). */
+    becomesItem?: true;
     /** They leave once their caller is farther than this, in the ruleset's distance (1.557). */
     leash?: number;
     /** They leave as soon as their caller is out (1.393). */
@@ -1825,7 +1827,7 @@ export interface RulesetCombatant {
   calledLeash?: number;
   /** The item of their caller's that called them (1.559), by its place on the sheet: spent if they
    *  die (`spends`), its wait held while they stay (`departure`). */
-  calledItem?: { item: number; spends?: true; departure?: true };
+  calledItem?: { item: number; spends?: true; departure?: true; becomes?: true };
   /** Called to take no turns (1.426): an object a spell is cast on. In no order, and no side's
    *  standing for a fight's end. */
   turnless?: true;

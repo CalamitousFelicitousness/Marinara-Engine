@@ -9675,11 +9675,13 @@ function callCreatures(
       !!held &&
       (!!held.charges?.recharge?.after?.fromDeparture ||
         !!held.moreUses?.some((more) => more.uses?.recharge?.after?.fromDeparture));
-    if (item !== undefined && (action.calls.spendsItemOnDeath || departure))
+    if (item !== undefined && (action.calls.spendsItemOnDeath || departure || action.calls.becomesItem))
       called.calledItem = {
         item,
         ...(action.calls.spendsItemOnDeath ? { spends: true as const } : {}),
         ...(departure ? { departure: true as const } : {}),
+        // The item itself, out of its holder's hands while it stands (1.560).
+        ...(action.calls.becomesItem ? { becomes: true as const } : {}),
       };
     // Held within so far of their caller (1.557): a treant's trees.
     if (action.calls.leash)

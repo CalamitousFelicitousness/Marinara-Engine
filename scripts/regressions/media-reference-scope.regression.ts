@@ -16,76 +16,84 @@ process.env.NODE_ENV = "test";
 process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
 
-const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
-const Fastify = requireServer("fastify") as typeof import("fastify").default;
-const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
-const { galleryRoutes } = await import("../../packages/server/src/routes/gallery.routes.js");
-const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
-const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
-const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
-const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+let closeDatabase: (() => Promise<void>) | undefined;
+let app: { close: () => Promise<unknown> } | undefined;
+let provider: import("node:http").Server | undefined;
+try {
+  const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+  const Fastify = requireServer("fastify") as typeof import("fastify").default;
+  const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+  const { galleryRoutes } = await import("../../packages/server/src/routes/gallery.routes.js");
+  const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
+  const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
+  const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
+  const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
+  const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
 
-const png = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
-const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
-const APPEARANCE = /Aster's Appearance: silver hair, green coat/u;
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+  const APPEARANCE = /Aster's Appearance: silver hair, green coat/u;
+  const PERSONA_APPEARANCE = /Jamie's Appearance: short red hair, denim jacket/u;
 
-const comfyPrompts: string[] = [];
-const provider = createServer(async (request, response) => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
-  const url = request.url ?? "";
-  response.setHeader("content-type", "application/json");
-  if (url.endsWith("/prompt")) {
-    comfyPrompts.push(Buffer.concat(chunks).toString());
-    return response.end(JSON.stringify({ prompt_id: "job" }));
-  }
-  if (url.includes("/history/")) {
-    return response.end(
+  const comfyPrompts: string[] = [];
+  provider = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const url = request.url ?? "";
+    response.setHeader("content-type", "application/json");
+    if (url.endsWith("/prompt")) {
+      comfyPrompts.push(Buffer.concat(chunks).toString());
+      return response.end(JSON.stringify({ prompt_id: "job" }));
+    }
+    if (url.includes("/history/")) {
+      return response.end(
+        JSON.stringify({
+          job: {
+            status: { completed: true, status_str: "success" },
+            outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
+          },
+        }),
+      );
+    }
+    if (url.startsWith("/view")) {
+      response.setHeader("content-type", "video/mp4");
+      return response.end(mp4);
+    }
+    // Both writers name Aster: the Conversation writer as plain text, the Roleplay director as JSON.
+    const roleplayDirector = Buffer.concat(chunks).toString().includes("narrationBeat");
+    response.end(
       JSON.stringify({
-        job: {
-          status: { completed: true, status_str: "success" },
-          outputs: { "9": { gifs: [{ filename: "clip.mp4", subfolder: "", type: "output" }] } },
-        },
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: roleplayDirector
+                ? JSON.stringify({ narrationBeat: "Aster turns to Jamie at the window" })
+                : "Aster waves to Jamie",
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { total_tokens: 20 },
       }),
     );
-  }
-  if (url.startsWith("/view")) {
-    response.setHeader("content-type", "video/mp4");
-    return response.end(mp4);
-  }
-  // Both writers name Aster: the Conversation writer as plain text, the Roleplay director as JSON.
-  const roleplayDirector = Buffer.concat(chunks).toString().includes("narrationBeat");
-  response.end(
-    JSON.stringify({
-      choices: [
-        {
-          message: {
-            role: "assistant",
-            content: roleplayDirector
-              ? JSON.stringify({ narrationBeat: "Aster turns to Jamie at the window" })
-              : "Aster waves",
-          },
-          finish_reason: "stop",
-        },
-      ],
-      usage: { total_tokens: 20 },
-    }),
-  );
-});
+  });
 
-const db = await getDB();
-const app = Fastify();
-app.decorate("db", db);
-await app.register(galleryRoutes, { prefix: "/api/gallery" });
-await app.register(chatsRoutes, { prefix: "/api/chats" });
+  const db = await getDB();
+  closeDatabase = closeDB;
+  const server = Fastify();
+  app = server;
+  server.decorate("db", db);
+  await server.register(galleryRoutes, { prefix: "/api/gallery" });
+  await server.register(chatsRoutes, { prefix: "/api/chats" });
 
-try {
-  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  const fakeProvider = provider;
+  await new Promise<void>((resolve) => fakeProvider.listen(0, "127.0.0.1", resolve));
   const address = provider.address();
   assert.ok(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
@@ -121,18 +129,25 @@ try {
 
   // Settings are saved through Chat Settings' own route, and each one must come back as sent.
   const saveChatSettings = async (chatId: string, patch: Record<string, unknown>) => {
-    const response = await app.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
+    const response = await server.inject({ method: "PATCH", url: `/api/chats/${chatId}/metadata`, payload: patch });
     assert.equal(response.statusCode, 200, response.body);
     const raw = (await chats.getById(chatId))?.metadata;
     const saved = (typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>;
     for (const [key, value] of Object.entries(patch)) assert.deepEqual(saved[key], value, key);
   };
 
+  // The user's persona, named by both writers, gets an Appearance line too.
+  const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.", undefined, {
+    appearance: "short red hair, denim jacket",
+  });
+  assert.ok(jamie);
+
   // ── Conversation ──
   const convo = await chats.create({
     name: "Convo",
     mode: "conversation",
     characterIds: [aster.id],
+    personaId: jamie.id,
     connectionId: text.id,
   });
   assert.ok(convo);
@@ -146,7 +161,7 @@ try {
       selfieVideoUseAvatarReferences: false,
       ...meta,
     });
-    const response = await app.inject({
+    const response = await server.inject({
       method: "POST",
       url: `/api/gallery/${convo.id}/video`,
       payload: { characterId: aster.id },
@@ -158,6 +173,7 @@ try {
   // Off: no appearance lines, no picture.
   const off = await sendVideo({});
   assert.doesNotMatch(off.inputs?.text ?? "", APPEARANCE);
+  assert.doesNotMatch(off.inputs?.text ?? "", PERSONA_APPEARANCE);
   assert.equal(off.body.firstFrame, "none");
 
   // Older chats with only the image settings on: videos are unchanged.
@@ -168,15 +184,11 @@ try {
   // Videos: the appearance lines join the prompt, and the prompt-only clip starts from the avatar.
   const videos = await sendVideo({ selfieVideoIncludeCharacterAppearance: true, selfieVideoUseAvatarReferences: true });
   assert.match(videos.inputs?.text ?? "", APPEARANCE);
+  assert.match(videos.inputs?.text ?? "", PERSONA_APPEARANCE);
   assert.equal(videos.body.firstFrame, "avatar");
   assert.equal(videos.inputs?.image, png.toString("base64"));
 
   // ── Roleplay ──
-  // The user's persona, named in the direction, gets an Appearance line too.
-  const jamie = await createCharactersStorage(db).createPersona("Jamie", "The player.", undefined, {
-    appearance: "short red hair, denim jacket",
-  });
-  assert.ok(jamie);
   const roleplay = await chats.create({
     name: "RP",
     mode: "roleplay",
@@ -195,7 +207,7 @@ try {
   assert.ok(picture);
   const preview = async (meta: Record<string, unknown>) => {
     await saveChatSettings(roleplay.id, { sceneVideoConnectionId: video.id, ...meta });
-    const response = await app.inject({
+    const response = await server.inject({
       method: "POST",
       url: "/api/gallery/generate-scene-video/preview",
       payload: { chatId: roleplay.id, galleryImageId: picture.id },
@@ -203,7 +215,6 @@ try {
     assert.equal(response.statusCode, 200, response.body);
     return (response.json() as { prompt: string }).prompt;
   };
-  const PERSONA_APPEARANCE = /Jamie's Appearance: short red hair, denim jacket/u;
   const imageSettingOnly = await preview({ illustratorIncludeCharacterAppearance: true });
   assert.doesNotMatch(imageSettingOnly, APPEARANCE);
   assert.doesNotMatch(imageSettingOnly, PERSONA_APPEARANCE);
@@ -212,8 +223,9 @@ try {
   assert.match(withAppearance, PERSONA_APPEARANCE);
   console.log("media-reference-scope regression passed");
 } finally {
-  await app.close();
-  await new Promise<void>((resolve) => provider.close(() => resolve()));
-  await closeDB();
+  await app?.close();
+  const fakeProvider = provider;
+  if (fakeProvider?.listening) await new Promise<void>((resolve) => fakeProvider.close(() => resolve()));
+  await closeDatabase?.();
   rmSync(fixtureDir, { recursive: true, force: true });
 }

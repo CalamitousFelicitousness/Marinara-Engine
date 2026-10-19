@@ -1264,9 +1264,18 @@ export async function galleryRoutes(app: FastifyInstance) {
         chatMeta: parseChatMetadata(chat.metadata),
         characterId: input.characterId,
         charInfo,
+        // The persona with its Appearance, for a clip that names them; a character played as the user is listed already.
         persona: await (async () => {
-          const persona = chat.personaId ? await characters.getPersona(chat.personaId) : null;
-          return persona ? { id: persona.id, name: persona.name, avatarPath: persona.avatarPath ?? null } : null;
+          const identity = await resolveChatUserIdentity(characters, chat);
+          return identity?.source === "persona"
+            ? {
+                id: identity.id,
+                name: identity.name,
+                avatarPath: identity.avatarPath,
+                appearance: identity.appearance,
+                appearanceOverride: identity.imageAppearanceOverride || null,
+              }
+            : null;
         })(),
         promptConnection: storedPromptConnectionId
           ? await createConnectionsStorage(app.db).getWithKey(storedPromptConnectionId)

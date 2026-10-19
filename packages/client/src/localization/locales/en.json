@@ -7535,6 +7535,7 @@
   "ui.chat.chatsettingsdrawer.videoFirstFrame.picture": "New selfie, then animate it",
   "ui.chat.chatsettingsdrawer.videoFirstFrame.picture_or_avatar": "New selfie, or the avatar if no selfie connection",
   "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only": "Prompt only (no picture)",
+  "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar": "Prompt only (avatar from Send Avatar References)",
   "ui.chat.chatsettingsdrawer.videoGenerationSettings": "Video generation settings",
   "ui.chat.chatsettingsdrawer.videoMessages": "Video messages",
   "ui.chat.chatsettingsdrawer.videoMessagesHelp": "Used by /video and the Gallery's Video button.",

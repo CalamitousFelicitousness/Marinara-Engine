@@ -33,7 +33,7 @@ Close other apps before retrying. Phones with less than about 3 GB of RAM can st
 
 ### Desktop: JavaScript heap out of memory while type-checking the client
 
-If the client build stops with `JavaScript heap out of memory` and then says `The client type-check needs about 2.5 GiB of Node.js heap`, the heap limit set in your `NODE_OPTIONS` is too small. The build keeps a limit you set instead of raising it. Raise `--max-old-space-size` in `NODE_OPTIONS` to 2560 or more, or remove it so the build picks its own limit, then run the launcher again. Your chats and settings are not touched.
+If the client build stops with `JavaScript heap out of memory` and then says `The client type-check needs about 2.5 GiB of Node.js heap`, the heap limit set in your `NODE_OPTIONS` is too small. The build keeps a limit you set instead of raising it. If `NODE_OPTIONS` contains `--max-old-space-size-percentage`, raise that percentage; it overrides `--max-old-space-size`. If using `--max-old-space-size` alone, raise it to 2560 or more. Or remove those options so the build picks its own limit. Then run the launcher again. Your chats and settings are not touched.
 
 ### Termux: missing multiplayer guest asset
 

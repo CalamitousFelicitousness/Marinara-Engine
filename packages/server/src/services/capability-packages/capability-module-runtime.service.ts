@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse as InjectResponse } from "fastify";
@@ -20,7 +20,7 @@ import { logger, logDebugOverride } from "../../lib/logger.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { parseGameJsonish } from "../game/jsonish.js";
 import { createAgentsStorage } from "../storage/agents.storage.js";
-import { capabilityPackageManager } from "./package-manager.service.js";
+import { capabilityPackageManager, normalizeArchivePath } from "./package-manager.service.js";
 import {
   registerCapabilityConversationCommand,
   type CapabilityConversationCommandRegistration,
@@ -168,6 +168,73 @@ export interface CapabilityActivationErrorRecord {
   at: string;
 }
 
+/** Bytes of the regular files under a path. Links are counted as nothing and never followed. */
+async function treeBytes(path: string): Promise<number> {
+  const stats = await lstat(path);
+  if (!stats.isDirectory()) return stats.isFile() ? stats.size : 0;
+  let total = 0;
+  for (const name of await readdir(path)) total += await treeBytes(join(path, name));
+  return total;
+}
+
+/** Runtime copies are written read-only (0400), which Windows refuses to delete. Links are skipped, so nothing
+ *  outside the copy changes. */
+async function makeTreeWritable(path: string): Promise<void> {
+  const stats = await lstat(path);
+  if (stats.isSymbolicLink()) return;
+  if (!stats.isDirectory()) return chmod(path, 0o600);
+  await chmod(path, 0o700);
+  for (const name of await readdir(path)) await makeTreeWritable(join(path, name));
+}
+
+async function removeRuntimeSnapshot(path: string): Promise<void> {
+  try {
+    await rm(path, { recursive: true, force: true });
+  } catch {
+    // EPERM or EACCES on Windows and for read-only folders; some Node versions report the latter as ENOTEMPTY.
+    await makeTreeWritable(path);
+    await rm(path, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Deletes every runtime copy in `snapshotsRoot` except the shared `node_modules` links. A copy lives only as long as
+ * the process that made it, and a crash or a kill skips its cleanup, so at startup none of them can be in use. Only
+ * `start()` calls this, and it runs after storage.open took the writer lease: a second Engine on the same data folder
+ * stops there and never reaches a running Engine's copies. Never throws.
+ */
+export async function sweepCapabilityRuntimeSnapshots(
+  snapshotsRoot: string,
+): Promise<{ removed: number; bytes: number }> {
+  let names: string[];
+  try {
+    names = await readdir(snapshotsRoot);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.warn(error, "Could not read the package runtime copies in %s", snapshotsRoot);
+    }
+    return { removed: 0, bytes: 0 };
+  }
+  let removed = 0;
+  let bytes = 0;
+  for (const name of names) {
+    if (name === "node_modules") continue;
+    const path = join(snapshotsRoot, name);
+    try {
+      const size = await treeBytes(path).catch(() => 0);
+      await removeRuntimeSnapshot(path);
+      removed += 1;
+      bytes += size;
+    } catch (error) {
+      logger.warn(error, "Could not remove the old package runtime copy %s", path);
+    }
+  }
+  if (removed > 0) {
+    logger.info("Removed %d old package runtime copies (%s MB)", removed, (bytes / 1e6).toFixed(1));
+  }
+  return { removed, bytes };
+}
+
 class CapabilityModuleRuntime {
   private cleanups = new Map<string, Cleanup>();
   // Last activation failure per package in this process, cleared by the next
@@ -180,6 +247,7 @@ class CapabilityModuleRuntime {
   }
 
   async start(app: FastifyInstance): Promise<void> {
+    await sweepCapabilityRuntimeSnapshots(join(DATA_DIR, "capability-runtime-snapshots"));
     // Bundled package modules execute before activate(context), so give their
     // shared Engine utilities the host's already-resolved data root up front.
     // Without this, a package can derive DATA_DIR from its nested server.mjs
@@ -189,6 +257,7 @@ class CapabilityModuleRuntime {
     for (const runtimePackage of await capabilityPackageManager.runtimePackages()) {
       await this.activateOne(app, runtimePackage, true, false);
     }
+    await capabilityPackageManager.pruneVersions();
   }
 
   private async ensureModuleResolution(): Promise<void> {
@@ -216,10 +285,16 @@ class CapabilityModuleRuntime {
   ) {
     const snapshotsRoot = join(DATA_DIR, "capability-runtime-snapshots");
     const root = join(snapshotsRoot, `${installed.id}-${installed.version}-${randomUUID()}`);
+    const clientEntrypoint = installed.manifest.entrypoints.client
+      ? normalizeArchivePath(installed.manifest.entrypoints.client)
+      : null;
     await mkdir(snapshotsRoot, { recursive: true, mode: 0o700 });
     await mkdir(root, { mode: 0o700 });
     try {
       for (const [relativePath, data] of verified.files) {
+        // The server never loads the browser bundle, about half of a copy's bytes. Every other file is copied:
+        // a package server may read its own assets (Quartermaster reads icons/ beside server.mjs).
+        if (relativePath === clientEntrypoint && relativePath !== verified.entrypoint) continue;
         const output = join(root, relativePath);
         await mkdir(dirname(output), { recursive: true, mode: 0o700 });
         await writeFile(output, data, { flag: "wx", mode: 0o400 });
@@ -231,10 +306,10 @@ class CapabilityModuleRuntime {
       }
       return {
         entrypoint: join(root, verified.entrypoint),
-        cleanup: () => rm(root, { recursive: true, force: true }),
+        cleanup: () => removeRuntimeSnapshot(root),
       };
     } catch (error) {
-      await rm(root, { recursive: true, force: true });
+      await removeRuntimeSnapshot(root);
       throw error;
     }
   }
@@ -446,6 +521,7 @@ class CapabilityModuleRuntime {
     if (!runtimePackage) throw new Error(`Installed capability package ${packageId} has no server runtime`);
     await this.deactivatePackage(packageId);
     await this.activateOne(app, runtimePackage, true, true);
+    await capabilityPackageManager.pruneVersions(packageId);
     const installed = (await capabilityPackageManager.installed()).find((item) => item.id === packageId);
     if (!installed) throw new Error(`Capability package ${packageId} disappeared during activation`);
     return installed;

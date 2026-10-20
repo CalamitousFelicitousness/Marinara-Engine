@@ -24,6 +24,7 @@ Package lifecycle and storage:
 - **Updates:** Marinara checks already-installed official packages for compatible updates and asks before downloading each new version. Choosing **No** keeps the current version and leaves the manual **Update** action available in Download Agents. A fresh install remains empty until you choose packages.
 - **Platforms:** The same behavior applies to desktop, Docker, and Termux-hosted Android installations. iOS and other browser clients use the packages installed on their Marinara host server.
 - **Persistence:** Packages live under `DATA_DIR/capability-packages`. Docker volumes, custom data directories, backups, and normal upgrades preserve them.
+- **Disk use:** Marinara keeps the current version of each package and the one before it, so a failed update can roll back. It deletes older versions and the temporary copies in `DATA_DIR/capability-runtime-snapshots` on its own. Package data is never deleted.
 - **Offline resilience:** Existing packages continue working at their installed version when outbound GitHub HTTPS is unavailable, an update is declined, or an update fails verification.
 
 ### Custom Agent imports

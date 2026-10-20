@@ -372,6 +372,7 @@
   "avatars.vrm.untitled": "Untitled model",
   "avatars.vrm.version": "VRM {{version}}",
   "avatars.vrm.versionBy": "VRM {{version}} by {{authors}}",
+  "avatars.vrm.vroidProject": "That's a VRoid Studio project. In VRoid Studio, choose Export as VRM, then import the .vrm file.",
   "capabilities.actions.backToAgents": "Back to Agents",
   "capabilities.actions.close": "Close",
   "capabilities.actions.refreshNow": "Refresh now",

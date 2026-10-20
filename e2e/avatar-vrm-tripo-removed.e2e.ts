@@ -8,7 +8,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 // to VRoid Studio and the VRM import, keeps the guide and Copy prompt, and has no Tripo key field or maker; the
 // page never asks the server about Tripo, whose routes are gone. A model the generator made earlier still
 // imports through the real server and shows as body only, with no faces to pick. Connections doesn't offer
-// Tripo either.
+// Tripo either. A VRoid Studio project (.vroid) picked by mistake gets one plain hint and is never uploaded.
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
@@ -118,6 +118,41 @@ test("3D Avatars points to VRoid Studio and Import VRM, with no Tripo maker", as
       data: { owner: { ownerType: "character", ownerId: character.id }, sourceLabel: "full_neutral" },
     });
     expect(run.status()).toBe(404);
+  } finally {
+    await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
+  }
+});
+
+test("Import VRM explains a VRoid Studio project file and never uploads it", async ({ page, request }, info) => {
+  const characterResponse = await request.post("/api/characters", { data: { data: { name: "VRoid project" } } });
+  expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  try {
+    const uploads: string[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "POST" && new URL(sent.url()).pathname.endsWith("/import")) uploads.push(sent.url());
+    });
+    const setup = await openSetup(page, character.id);
+    const importButton = setup.getByRole("button", { name: "Import VRM", exact: true });
+    await expect(importButton).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), importButton.click()]);
+    // A picker filtered to .vrm alone would grey the project out, so the hint could never show.
+    expect(await chooser.element().getAttribute("accept")).toBe(".vrm,.vroid");
+    // VRoid Studio saves projects as ZIP archives.
+    await chooser.setFiles({
+      name: "Maukie.vroid",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from("PK\u0003\u0004VRoid Studio project"),
+    });
+    await expect(
+      page.getByText(
+        "That's a VRoid Studio project. In VRoid Studio, choose Export as VRM, then import the .vrm file.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.screenshot({ path: info.outputPath("vrm-vroid-project-hint.png"), animations: "disabled" });
+    expect(uploads, "the project is never uploaded").toEqual([]);
+    await expect(setup.getByRole("button", { name: "Import VRM", exact: true })).toBeEnabled();
   } finally {
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
   }

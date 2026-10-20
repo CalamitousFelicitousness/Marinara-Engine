@@ -73,6 +73,7 @@ import {
   rulesetBehaviorAnchor,
   rulesetGapFrom,
   rulesetSheetBuildsByName,
+  rulesetCardCreaturesByName,
   readProposedRulesetSheet,
   restrictRulesetSheetEntries,
   RULESET_PROPOSED_SHEET_REPLACES,
@@ -261,10 +262,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   /** Invented opponents written as sheets, and the tier each is held to once it is built. */
   const heldToTier = new Map<string, NonNullable<typeof combat.threat>["tiers"][number]>();
   const builds = rulesetSheetBuildsByName(definition, input.cards, input.playerName);
+  const creatures = rulesetCardCreaturesByName(input.cards);
   const combatants: RulesetCombatantInput[] = [];
   for (const member of input.party) {
     const key = normalizeCharacterLookupName(member.name);
     const build = builds.get(key);
+    // A member who is a bestiary creature (a copy of one, 5e's Simulacrum) fights as that creature.
+    const creature = build ? undefined : creatures.get(key);
+    if (creature) {
+      combatants.push({ id: member.id, name: member.name, side: "party", creature, live: input.live?.[key] ?? {} });
+      continue;
+    }
     if (!build) {
       return { ok: false, error: `${member.name} has no ruleset sheet, so this fight cannot read their numbers.` };
     }
@@ -605,7 +613,23 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
     // The PARTY, and only the party. An opponent may carry a sheet too, but it exists for the fight
     // alone: writing it back would store it as a character's, keyed by the opponent's name, and a
     // character who happened to share that name would have their sheet overwritten.
-    if (combatant.side !== "party" || !combatant.sheet) continue;
+    if (combatant.side !== "party") continue;
+    // A member who is a bestiary creature with no sheet keeps the conditions it came in holding,
+    // while it still holds them, and its health in the health pool's place.
+    if (combatant.cardLive && !combatant.sheet) {
+      const conditions = combatant.cardLive.conditions.filter((condition) =>
+        combatant.tracked.some((entry) => entry.condition === condition),
+      );
+      const pool = combatant.cardLive.pool;
+      live[normalizeCharacterLookupName(combatant.name)] = {
+        ...(conditions.length ? { conditions } : {}),
+        ...(pool !== undefined && combatant.health
+          ? { pools: { [pool]: { value: combatant.defeated ? 0 : Math.max(0, combatant.health.value) } } }
+          : {}),
+      };
+      continue;
+    }
+    if (!combatant.sheet) continue;
     live[normalizeCharacterLookupName(combatant.name)] = combatant.sheet.live as RulesetLiveState;
   }
   return live;

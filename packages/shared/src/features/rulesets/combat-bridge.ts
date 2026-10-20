@@ -92,6 +92,20 @@ export function rulesetSheetBuildsByName(
   return builds;
 }
 
+/** The party cards that are a bestiary creature rather than a sheet (a copy of one, 5e's
+ *  Simulacrum), keyed by normalized name: the creature each fights as. */
+export function rulesetCardCreaturesByName(cards: unknown): Map<string, { catalogId: string; entryId: string }> {
+  const creatures = new Map<string, { catalogId: string; entryId: string }>();
+  for (const card of Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : []) {
+    const name = typeof card?.name === "string" ? card.name.trim() : "";
+    const ref = card?.rulesetCreature as { catalogId?: unknown; entryId?: unknown } | undefined;
+    if (!name || !ref || typeof ref.catalogId !== "string" || typeof ref.entryId !== "string") continue;
+    const key = normalizeCharacterLookupName(name);
+    if (!creatures.has(key)) creatures.set(key, { catalogId: ref.catalogId, entryId: ref.entryId });
+  }
+  return creatures;
+}
+
 function own(row: Record<string, unknown>, key: string): unknown {
   return Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined;
 }

@@ -42,6 +42,8 @@ import {
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
+import { findRulesetCreature, type RulesetCatalogEntriesById } from "@marinara-engine/shared";
+import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
 // ──────────────────────────────────────────────
 // Routes: Game Mode
 // ──────────────────────────────────────────────
@@ -2181,7 +2183,8 @@ const recruitPartyMemberSchema = z.object({
   /** The player's pick when several characters share the name: a library card id, or null for the game's own. */
   characterId: z.string().min(1).max(500).nullable().optional(),
   connectionId: z.string().optional(),
-  /** A copy of this party member joins instead (5e's Simulacrum): their card and sheet, under the new name. */
+  /** A copy of this party member joins instead (5e's Simulacrum): their card and sheet, under the new name;
+   *  or, naming none, a copy of a creature of the ruleset's bestiaries, fighting as that creature. */
   copyOf: z.string().min(1).max(200).optional(),
   /** A condition of the pinned ruleset the copy holds from the start: Simulacrum's halved health. */
   condition: z.string().min(1).max(80).optional(),
@@ -2680,10 +2683,25 @@ async function recruitPartyCopy(args: {
   const { chats, stateStore, chat, meta, setupConfig, chatCharacterIds, currentPartyIds, requestedName } = args;
   const currentCards = (meta.gameCharacterCards as Array<Record<string, unknown>>) ?? [];
   const sourceIndex = findExistingGameCharacterCardIndex(currentCards, args.copyOf);
-  if (sourceIndex < 0) throw new Error(`No party member named "${args.copyOf}" to copy.`);
-  const source = currentCards[sourceIndex]!;
   const pinned = meta.gameRuleset != null ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
   const definition = pinned?.status === "ok" ? pinned.definition : null;
+  // Naming no party member, a creature of the ruleset's bestiaries: a beast or a stranger copied, who
+  // fights as that creature.
+  let creature: { catalogId: string; entryId: string; label: string } | null = null;
+  if (sourceIndex < 0 && definition && pinned?.status === "ok") {
+    const bestiary: RulesetCatalogEntriesById = {};
+    for (const catalog of definition.catalogs ?? []) {
+      if (catalog.holds !== "creatures") continue;
+      const read = await loadRulesetCatalogEntries(pinned.packageId, definition, catalog).catch(() => null);
+      if (read?.ok) bestiary[catalog.id] = read.entries;
+    }
+    const found = findRulesetCreature(bestiary, args.copyOf);
+    if (found) creature = { catalogId: found.catalogId, entryId: found.entry.id, label: found.entry.label };
+  }
+  if (sourceIndex < 0 && !creature) throw new Error(`No party member or creature named "${args.copyOf}" to copy.`);
+  const source: Record<string, unknown> = creature
+    ? { name: creature.label, rulesetCreature: { catalogId: creature.catalogId, entryId: creature.entryId } }
+    : currentCards[sourceIndex]!;
   const condition = args.condition;
   if (condition && !definition?.sheet.live.conditions.some((one) => one.id === condition)) {
     throw new Error(`The game's ruleset has no condition "${condition}".`);
@@ -2730,11 +2748,13 @@ async function recruitPartyCopy(args: {
   });
   if (!updatedSession) throw new Error("Failed to update game session");
   // Fresh, but for what it holds from the start.
-  if (definition && sheet) {
+  if (definition && (sheet || creature)) {
     const key = normalizeCharacterLookupName(npc.name);
-    const held = condition
-      ? applyRulesetSheetOp(definition, sheet.build, {}, { op: "condition", condition, active: true })
-      : null;
+    const held = !condition
+      ? null
+      : sheet
+        ? applyRulesetSheetOp(definition, sheet.build, {}, { op: "condition", condition, active: true })
+        : { ok: true as const, live: { conditions: [condition] } };
     await withChatMetadataPatchQueue(chat.id, async () => {
       const visibleAnchor = resolveVisibleGameStateAnchor(await chats.listMessages(chat.id));
       const row = await stateStore.getForGeneration(chat.id, { preferLatestVisible: true, visibleAnchor });

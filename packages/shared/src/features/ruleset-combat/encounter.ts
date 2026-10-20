@@ -6548,7 +6548,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           initiativeRoll,
           roll,
           build: block.sheet,
-          live: {},
+          // A party member who is this creature reads its own (a copy's, 5e's Simulacrum).
+          live: "creature" in entry && entry.live !== undefined ? readStoredLive(entry.live) : {},
           catalogs: input.bestiary ?? {},
           perCell,
         });
@@ -6579,6 +6580,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         if (block.speeds) combatant.speeds = { ...block.speeds };
         if (block.hover) combatant.hover = true;
         if ("creature" in entry) combatant.creature = creatureRef(definition, entry.creature);
+        if ("creature" in entry && entry.live !== undefined) combatant.cardLive = { conditions: [] };
         // A sheet that gives it no health at all is a creature that could never be hurt or ever
         // stand: left out, and the opening says why, rather than walked in as something unkillable.
         const health = rulesetCombatHealth(definition, combat, combatant);
@@ -6680,6 +6682,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         block,
         health: { value: max, max, temp: 0 },
       });
+      // A party member who is this creature (a copy's, 5e's Simulacrum), as its card left it.
+      if ("creature" in entry && entry.live !== undefined) keepCardLive(combat, state.combatants.at(-1)!, entry.live);
       continue;
     }
     const initiativeRoll = throwInitiativeDice(combat, roll);
@@ -8147,6 +8151,22 @@ function groundOf(
 
 /** The stored live blob as the encounter keeps it. `applyRulesetSheetOp` already reads a stored
  *  blob tolerantly, so an empty object is a member with nothing spent. */
+/** A party member who is a bestiary creature with no sheet: the conditions its card's live state
+ *  holds, on with no clock, and the health it was left with, kept in the health pool's place. */
+function keepCardLive(combat: RulesetCombat, combatant: RulesetCombatant, stored: unknown): void {
+  const live = readStoredLive(stored);
+  const conditions = [...new Set((live.conditions ?? []).filter((one) => typeof one === "string"))];
+  for (const condition of conditions) {
+    if (!combatant.tracked.some((entry) => entry.condition === condition))
+      combatant.tracked.push({ condition, rounds: null });
+  }
+  const pool = "pool" in combat.health ? combat.health.pool : undefined;
+  const value = pool !== undefined ? live.pools?.[pool]?.value : undefined;
+  if (combatant.health && typeof value === "number" && Number.isFinite(value))
+    combatant.health.value = Math.max(0, Math.min(combatant.health.max, Math.round(value)));
+  combatant.cardLive = { conditions, ...(pool !== undefined ? { pool } : {}) };
+}
+
 function readStoredLive(stored: unknown): RulesetLiveState {
   return stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as RulesetLiveState) : {};
 }

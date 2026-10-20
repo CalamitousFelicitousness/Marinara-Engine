@@ -4,6 +4,9 @@
  *   - The tag parser reads `copy_of` and `condition` on an add.
  *   - /party/recruit with `copyOf`: a game character of the new name joins, with the member's card and
  *     build, fresh but for the ruleset condition it holds from the start; nothing is generated.
+ *   - Naming no member, a creature of the ruleset's bestiary is copied instead: its card names the
+ *     creature, and in a fight it is that creature on the party's side, its conditions and health read
+ *     from its live state and written back.
  *   - A member nobody has, or a condition the ruleset lacks, is refused.
  */
 import assert from "node:assert/strict";
@@ -12,7 +15,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseGmTags } from "../../packages/shared/src/index.js";
+import { parseGmTags, parseRulesetDefinition } from "../../packages/shared/src/index.js";
 
 // ── The tag ──
 {
@@ -80,6 +83,8 @@ const { default: Fastify } = await import("../../packages/server/node_modules/fa
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createRulesetFight, rulesetFightLiveStates } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 const { createGameStateStorage, parseStoredRulesetLive } =
   await import("../../packages/server/src/services/storage/game-state.storage.js");
 const db = await getDB();
@@ -161,12 +166,61 @@ try {
   );
   assert.deepEqual(live.lia?.conditions, ["prone"], "the member's own state is untouched");
 
+  // ── A creature of the bestiary, copied ──
+  const hound = await recruit({ characterName: "Hound Copy", copyOf: "Cinder Hound", condition: "poisoned" });
+  assert.equal(hound.statusCode, 200, hound.body);
+  const houndMeta = JSON.parse((await chats.getById(chatId))!.metadata as string);
+  const houndCard = (houndMeta.gameCharacterCards as Array<Record<string, any>>).find(
+    (one) => one.name === "Hound Copy",
+  )!;
+  assert.deepEqual(houndCard.rulesetCreature, { catalogId: "creatures", entryId: "cinder-hound" });
+  assert.equal(houndCard.rulesetSheet, undefined);
+  const houndLive = parseStoredRulesetLive((await states.getLatest(chatId))!.rulesetLive)!;
+  assert.deepEqual(houndLive["hound copy"]?.conditions, ["poisoned"]);
+
+  // ── In a fight, it is that creature on the party's side, as its live state left it ──
+  {
+    const parsed = parseRulesetDefinition(JSON.parse(exampleBytes.toString("utf8")));
+    assert.ok(parsed.ok);
+    const definition = parsed.definition;
+    const bestiary = Object.fromEntries(
+      (definition.catalogs ?? []).flatMap((catalog) =>
+        catalog.holds === "creatures" && catalog.entries ? [[catalog.id, catalog.entries]] : [],
+      ),
+    );
+    const built = createRulesetFight({
+      definition,
+      seed: 3,
+      party: [{ id: "p-hound", name: "Hound Copy" }],
+      enemies: [{ id: "e-lurker", name: "Thorn Lurker", creature: "creatures/thorn-lurker" }],
+      cards: houndMeta.gameCharacterCards,
+      playerName: null,
+      live: { "hound copy": { conditions: ["poisoned"], pools: { hp: { value: 5 } } } },
+      partyCatalogs: {},
+      bestiary,
+    } as never);
+    assert.ok(built.ok, built.ok ? "" : built.error);
+    const copy = built.fight.encounter.combatants.find((one) => one.id === "p-hound")!;
+    assert.equal(copy.side, "party");
+    assert.deepEqual(copy.creature && { catalogId: copy.creature.catalogId, entryId: copy.creature.entryId }, {
+      catalogId: "creatures",
+      entryId: "cinder-hound",
+    });
+    assert.equal(copy.health?.value, 5);
+    assert.ok(copy.tracked.some((entry) => entry.condition === "poisoned"));
+    copy.health!.value = 3;
+    assert.deepEqual(rulesetFightLiveStates(built.fight)["hound copy"], {
+      conditions: ["poisoned"],
+      pools: { hp: { value: 3 } },
+    });
+  }
+
   // ── Refused: nobody to copy, or a condition the ruleset lacks ──
   assert.notEqual((await recruit({ characterName: "Echo", copyOf: "Nobody" })).statusCode, 200);
   assert.notEqual((await recruit({ characterName: "Echo", copyOf: "Lia", condition: "sparkly" })).statusCode, 200);
 
   console.log(
-    "Simulacrum: a copy of a party member joins with their card and build, holding the condition; refusals hold.",
+    "Simulacrum: a copy of a party member joins with their card and build, holding the condition; a bestiary creature copied fights as that creature on the party's side, its live state read and written back; refusals hold.",
   );
 } finally {
   await app.close();

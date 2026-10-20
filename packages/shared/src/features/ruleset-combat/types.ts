@@ -909,6 +909,10 @@ export type RulesetCombatantInput =
       creature: { catalogId: string; entryId: string };
       /** Where its live tracks stand as the fight begins (1.115), as a bestiary creature has none. */
       tracks?: Record<string, number>;
+      /** A party member who IS this creature (a copy of one, 5e's Simulacrum): its card's stored live
+       *  state, read as it begins (its conditions held, its health where it was left) and written
+       *  back as it goes, as a sheet's is. */
+      live?: unknown;
       /** What is stored in it as the fight starts, for a creature that `stores` (1.471). */
       stored?: RulesetStoredEntry[];
     };
@@ -2026,6 +2030,9 @@ export interface RulesetCombatant {
    *  (design-game-creature-art.md). Never read by the fight's rules. Out of a borrowed catalog (1.220),
    *  `from` names the lender's ruleset and catalog. */
   creature?: { catalogId: string; entryId: string; from?: { ruleset: string; catalog: string } };
+  /** A party member who is a bestiary creature, its live state kept on its card: the conditions it
+   *  came in holding, and the health pool its health is kept in. */
+  cardLive?: { conditions: string[]; pool?: string };
   /** Creatures a worn item's `ignoredBy` left them alone by (1.566) that they have since attacked,
    *  harmed or forced to save: those aim at them again. */
   provoked?: string[];

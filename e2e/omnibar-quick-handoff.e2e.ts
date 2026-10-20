@@ -115,6 +115,10 @@ async function prepareClient(page: Page, connectionId: string) {
 
 test.beforeEach(async ({ request }) => {
   await acquireMariThreadLock();
+  // The fixture provider answers Professor Mari in the Classic JSON-frame protocol.
+  expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
+    true,
+  );
   const existing = (await (await request.get("/api/chats/internal/professor-mari/chats")).json()) as Array<{
     id: string;
   }>;

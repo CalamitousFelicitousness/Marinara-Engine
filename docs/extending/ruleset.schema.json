@@ -200048,6 +200048,38 @@
                 "minItems": 1,
                 "maxItems": 12
               },
+              "coverIgnored": {
+                "type": "object",
+                "properties": {
+                  "upTo": {
+                    "type": "string",
+                    "enum": [
+                      "half",
+                      "three-quarters"
+                    ]
+                  },
+                  "attacks": {
+                    "type": "string",
+                    "enum": [
+                      "weapon",
+                      "spell",
+                      "any"
+                    ]
+                  },
+                  "blow": {
+                    "type": "string",
+                    "enum": [
+                      "melee",
+                      "ranged"
+                    ]
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "upTo"
+                ],
+                "additionalProperties": false
+              },
               "walksOnLiquid": {
                 "type": "boolean",
                 "const": true

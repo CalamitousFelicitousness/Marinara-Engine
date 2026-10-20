@@ -13659,6 +13659,19 @@ const combatConditionSchema = z
      *  nothing on them, and what one of them puts on them does not go on. 5e's Web Walker, `["Web"]`:
      *  "ignores movement restrictions caused by webbing", the spell's and a giant spider's. */
     unhinderedBy: z.array(promptSafeText(60)).min(1).max(12).optional(),
+    /** Its holder's attacks ignore cover up to `upTo` (Capability API 1.652): only their `attacks` of
+     *  that kind (`"weapon"` or `"spell"`) and `blow` (`"melee"` or `"ranged"`) where said. Cover past
+     *  it counts in full, and total cover always does. 5e's Wand of the War Mage, kept on with
+     *  `keepsOn`: `{"upTo": "half", "attacks": "spell"}`; Sharpshooter's ranged weapon attacks and
+     *  Spell Sniper's spell attacks, `"three-quarters"`. */
+    coverIgnored: z
+      .object({
+        upTo: z.enum(["half", "three-quarters"]),
+        attacks: z.enum(["weapon", "spell", "any"]).optional(),
+        blow: z.enum(["melee", "ranged"]).optional(),
+      })
+      .strict()
+      .optional(),
     /** Its holder stands on water and walks across it as if it were solid ground (Capability API
      *  1.476), stopping there if they like, and is never under it: 5e's Water Walk, a Ring of Water
      *  Walking kept on with `keepsOn`. Unlike `runsAcross`, no wall is climbed. */

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Attacks that ignore some cover (1.652): a Wand of the War Mage. */
+function carriesCoverIgnored652(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCoverIgnored652(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.coverIgnored !== undefined) return true;
+  return featureValues(record).some((one) => carriesCoverIgnored652(one, depth + 1));
+}
+
 /** Actions that never hinder a condition's holder (1.651): Web Walker. */
 function carriesUnhinderedBy651(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8694,6 +8704,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Attacks that ignore some cover, 1.652.
+  if (
+    !declaresApi(652) &&
+    (carriesCoverIgnored652(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCoverIgnored652(document)))
+  )
+    return "A ruleset with a condition whose holder's attacks ignore some cover (coverIgnored) requires schemaVersion 2 and capabilityApi 1.652 or newer";
   // Actions that never hinder a condition's holder, 1.651.
   if (
     !declaresApi(651) &&

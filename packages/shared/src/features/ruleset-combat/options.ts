@@ -1253,6 +1253,8 @@ export function rulesetCoverBonus(
   attackerId?: string,
   /** Whose effect a save is against, for the cover a condition of theirs gives (1.535). */
   effectFrom?: string,
+  /** Cover up to this the attack ignores (1.652): a Wand of the War Mage's half. */
+  ignoresUpTo?: "half" | "three-quarters",
 ): number {
   const cover = combat.cover;
   if (!cover) return 0;
@@ -1309,6 +1311,8 @@ export function rulesetCoverBonus(
     ground = rulesetCellCover(grid, at) > 0;
   }
   if (held && order.indexOf(held) > order.indexOf(tier)) tier = held;
+  // Ignored up to what the attack ignores (1.652), the ground's own half with it; never total.
+  if (ignoresUpTo && tier !== "total" && order.indexOf(tier) <= order.indexOf(ignoresUpTo)) return 0;
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
   return tier === "half" || (against === "attack" && ground) ? cover.bonus : 0;
 }
@@ -1428,10 +1432,42 @@ export function rulesetDefenseAgainst(
   const ignored = rulesetAgainstHere(definition, action, target, attacker).some((entry) => entry.ignoresCover);
   const cover = ignored
     ? 0
-    : rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker), "attack", attacker?.id);
+    : rulesetCoverBonus(
+        combat,
+        state,
+        target,
+        rulesetPositionOf(attacker),
+        "attack",
+        attacker?.id,
+        undefined,
+        rulesetCoverIgnoredBy(definition, combat, state, attacker, target, action),
+      );
   const highGround = combat.elevation?.highGround;
   const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
   return { defense: defense + cover - above, cover, guards };
+}
+
+/** The most cover an attacker's conditions let this attack ignore (1.652): a Wand of the War Mage's
+ *  half on a spell attack, Sharpshooter's three-quarters on a ranged weapon attack. */
+function rulesetCoverIgnoredBy(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  attacker: RulesetCombatant | undefined,
+  target: RulesetCombatant,
+  action: RulesetCombatAction | undefined,
+): "half" | "three-quarters" | undefined {
+  if (!attacker || !action || !combat.conditions?.some((entry) => entry.coverIgnored)) return undefined;
+  let most: "half" | "three-quarters" | undefined;
+  for (const entry of rulesetActiveConditions(definition, combat, attacker, state)) {
+    const rule = entry.coverIgnored;
+    if (!rule) continue;
+    if (rule.attacks && rule.attacks !== "any" && rule.attacks !== (rulesetWeaponBlow(action) ? "weapon" : "spell"))
+      continue;
+    if (rule.blow && rulesetBlowKind(state, attacker, target, action) !== rule.blow) continue;
+    if (rule.upTo === "three-quarters" || !most) most = rule.upTo;
+  }
+  return most;
 }
 
 /** A floor under defense (1.353): its number, or what it reads off the holder's sheet; a creature

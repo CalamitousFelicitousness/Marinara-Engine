@@ -597,7 +597,7 @@ export function PersonaStatsMiniature({ bars }: { bars: CharacterStat[] }) {
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${pct}%`,
-                backgroundColor: bar.color || "var(--marinara-chat-chrome-accent)",
+                backgroundColor: bar.color || "#a1a1aa",
               }}
             />
           </div>
@@ -698,7 +698,7 @@ interface WorldTrackerValues {
 export function getWorldTrackerDisplay(world: WorldTrackerValues, trackerTemperatureUnit: TrackerTemperatureUnit) {
   const { location, date, time, weather, temperature, worldCustomFields } = world;
   const weatherFamily = classifyWorldWeather(weather);
-  const weatherEmoji = HUD_WEATHER_EMOJI[weatherFamily];
+  const weatherStyle = HUD_WEATHER_STYLES[weatherFamily];
   const dateDisplay = getWorldDateDisplay(date);
   const timeDisplay = getWorldTimeDisplay(time);
   const temperatureDisplay = getTemperatureGaugeDisplay(temperature, trackerTemperatureUnit);
@@ -707,18 +707,13 @@ export function getWorldTrackerDisplay(world: WorldTrackerValues, trackerTempera
     worldCustomFields.some((field) => field.name.trim().length > 0 || field.value.trim().length > 0);
   return {
     hasWorldState,
-    weatherEmoji,
-    weatherColor:
-      weatherFamily === "atmosphere" && !weather
-        ? "text-[var(--muted-foreground)]/70"
-        : "text-[var(--marinara-chat-chrome-panel-text)]",
+    weatherEmoji: weatherStyle.emoji,
+    weatherColor: weatherFamily === "atmosphere" && !weather ? "text-[var(--muted-foreground)]/70" : weatherStyle.color,
     pinColor: getLocationPinColor(location),
     dateDisplay,
     timeDisplay,
     timeColor:
-      timeDisplay.kind === "empty"
-        ? "text-[var(--muted-foreground)]/70"
-        : "text-[var(--marinara-chat-chrome-panel-text)]",
+      timeDisplay.kind === "empty" ? "text-[var(--muted-foreground)]/70" : HUD_TIME_COLORS[timeDisplay.timeOfDay],
     temperatureDisplay,
     tempColor: temperatureDisplay.color,
   };
@@ -873,23 +868,31 @@ export function WorldStateMiniature({ display }: { display: WorldTrackerDisplay 
 // Helpers
 // ═══════════════════════════════════════════════
 
-const HUD_WEATHER_EMOJI: Record<WorldWeatherFamily, string> = {
-  thunder: "⛈️",
-  blizzard: "🌨️",
-  "heavy-rain": "🌧️",
-  rain: "🌦️",
-  hail: "🧊",
-  snow: "❄️",
-  fog: "🌫️",
-  sand: "🏜️",
-  ash: "🌋",
-  fire: "🔥",
-  wind: "💨",
-  blossom: "🌸",
-  aurora: "🌌",
-  cloud: "☁️",
-  clear: "☀️",
-  heat: "🥵",
-  cold: "🥶",
-  atmosphere: "🌤️",
+const HUD_WEATHER_STYLES: Record<WorldWeatherFamily, { emoji: string; color: string }> = {
+  thunder: { emoji: "⛈️", color: "text-violet-300" },
+  blizzard: { emoji: "🌨️", color: "text-sky-300" },
+  "heavy-rain": { emoji: "🌧️", color: "text-blue-300" },
+  rain: { emoji: "🌦️", color: "text-cyan-300" },
+  hail: { emoji: "🧊", color: "text-sky-200" },
+  snow: { emoji: "❄️", color: "text-sky-300" },
+  fog: { emoji: "🌫️", color: "text-zinc-300" },
+  sand: { emoji: "🏜️", color: "text-amber-300" },
+  ash: { emoji: "🌋", color: "text-stone-300" },
+  fire: { emoji: "🔥", color: "text-red-400" },
+  wind: { emoji: "💨", color: "text-teal-300" },
+  blossom: { emoji: "🌸", color: "text-[var(--marinara-chat-chrome-panel-text)]" },
+  aurora: { emoji: "🌌", color: "text-[var(--marinara-chat-chrome-panel-text)]" },
+  cloud: { emoji: "☁️", color: "text-zinc-300" },
+  clear: { emoji: "☀️", color: "text-yellow-300" },
+  heat: { emoji: "🥵", color: "text-red-400" },
+  cold: { emoji: "🥶", color: "text-sky-300" },
+  atmosphere: { emoji: "🌤️", color: "text-sky-300" },
+};
+
+const HUD_TIME_COLORS: Record<ReturnType<typeof getWorldTimeDisplay>["timeOfDay"], string> = {
+  dawn: "text-amber-300",
+  day: "text-yellow-300",
+  dusk: "text-orange-400",
+  night: "text-indigo-300",
+  unknown: "text-amber-300",
 };

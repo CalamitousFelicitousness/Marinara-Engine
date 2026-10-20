@@ -46,7 +46,7 @@ export function ImageDownloadButton({ url, filename }: { url: string; filename: 
       }}
       disabled={useIosShare && !currentPreparedImage}
       aria-label={t("ui.chat.chatgallery.downloadImage")}
-      className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90 disabled:opacity-50"
+      className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
     >
       <Download size="0.875rem" />
     </button>

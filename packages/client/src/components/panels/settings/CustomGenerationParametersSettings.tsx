@@ -264,7 +264,7 @@ export function CustomGenerationParametersSettings() {
               className="w-full resize-y rounded-lg bg-[var(--secondary)] px-2.5 py-2 text-xs outline-none ring-1 ring-[var(--border)] focus:ring-[var(--ring)]"
             />
           </label>
-          {validationKey && <p className="text-[0.625rem] text-[var(--warning)]">{t(validationKey)}</p>}
+          {validationKey && <p className="text-[0.625rem] text-amber-500">{t(validationKey)}</p>}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" onClick={resetForm} className={SETTINGS_BUTTON_CLASS}>
               <X size="0.75rem" />

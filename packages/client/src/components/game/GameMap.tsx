@@ -40,10 +40,10 @@ function getMobileMapLayout(bounds: WindowBounds): WindowLayout {
 }
 
 const STATE_CONFIG: Record<GameActiveState, { icon: typeof Compass; label: string; color: string }> = {
-  exploration: { icon: Compass, label: "Exploration", color: "text-[var(--primary)]" },
-  dialogue: { icon: MessageCircle, label: "Dialogue", color: "text-[var(--primary)]" },
-  combat: { icon: Swords, label: "Combat", color: "text-[var(--destructive)]" },
-  travel_rest: { icon: Moon, label: "Travel & Rest", color: "text-[var(--warning)]" },
+  exploration: { icon: Compass, label: "Exploration", color: "text-emerald-300" },
+  dialogue: { icon: MessageCircle, label: "Dialogue", color: "text-sky-300" },
+  combat: { icon: Swords, label: "Combat", color: "text-red-300" },
+  travel_rest: { icon: Moon, label: "Travel & Rest", color: "text-amber-300" },
 };
 
 const MAP_ZOOM_MIN = 0.75;
@@ -51,7 +51,7 @@ const MAP_ZOOM_MAX = 1.8;
 const MAP_ZOOM_STEP = 0.25;
 // The panel shares the narration box's colors, so it reuses that box's chat style owner.
 const GAME_MAP_PANEL_CLASS =
-  "mari-chat-style-surface mari-game-narration-surface rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md";
+  "mari-chat-style-surface mari-game-narration-surface rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md dark:border-white/15 dark:bg-black/50";
 const GAME_MAP_DIVIDER_CLASS = "border-[var(--border)]";
 const GAME_MAP_FIELD_CLASS =
   "rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50";
@@ -193,7 +193,7 @@ function TimeOfDayIndicator({ timeOfDay, size = "desktop", className }: TimeOfDa
     return (
       <span
         className={cn(
-          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--card)]/90 text-[0.625rem] font-bold leading-none text-[var(--foreground)]/75 shadow-[var(--marinara-editor-shadow)]",
+          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/55 text-[0.625rem] font-bold leading-none text-white/75 shadow-[0_2px_8px_rgba(0,0,0,0.24)]",
           size === "mobile" ? "h-3.5 w-6" : "h-4 w-7",
           className,
         )}
@@ -211,7 +211,7 @@ function TimeOfDayIndicator({ timeOfDay, size = "desktop", className }: TimeOfDa
   return (
     <span
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-full border border-[var(--border)] shadow-[var(--marinara-editor-shadow)]",
+        "relative shrink-0 overflow-hidden rounded-full border border-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.24)]",
         size === "mobile" ? "h-3.5 w-6" : "h-4 w-7",
         getSkyClasses(phase),
         className,
@@ -281,7 +281,7 @@ function DayTimeIndicator({
   const editableTimeValue = selectedPhase && selectedPhase !== "noon" ? selectedPhase : "";
   const timeLabel = getTimeOfDayStatusLabel(timeOfDay);
   const rootClassName = cn(
-    "inline-flex shrink-0 items-stretch overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-[var(--marinara-chat-chrome-button-text-hover)] shadow-[var(--marinara-editor-shadow)]",
+    "inline-flex shrink-0 items-stretch overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-[var(--marinara-chat-chrome-button-text-hover)] shadow-[0_2px_8px_rgba(0,0,0,0.2)]",
     size === "mobile" ? "h-7 text-[0.6875rem]" : "h-5 text-[0.625rem]",
     className,
   );
@@ -469,7 +469,7 @@ function MapZoomControls({ zoom, onZoomOut, onZoomIn }: MapZoomControlsProps) {
 
   return (
     <div
-      className="absolute right-1.5 top-1.5 z-20 flex h-6 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] shadow-lg shadow-[var(--background)]/35 backdrop-blur-md"
+      className="absolute right-1.5 top-1.5 z-20 flex h-6 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] shadow-lg shadow-black/35 backdrop-blur-md"
       onPointerDown={stopPointer}
       title={localizeUi("ui.game.mapzoomcontrols.mapZoomValue1", { value1: Math.round(zoom * 100) })}
     >
@@ -598,7 +598,7 @@ function MapGenerateButton({ onGenerateMap, disabled, onAfterGenerate }: MapGene
         compact: true,
         sizeClassName: "h-6 w-6",
         className:
-          "absolute left-1.5 top-1.5 z-20 shadow-lg shadow-[var(--background)]/35 disabled:cursor-not-allowed disabled:opacity-45",
+          "absolute left-1.5 top-1.5 z-20 shadow-lg shadow-black/35 disabled:cursor-not-allowed disabled:opacity-45",
       })}
       title={localizeUi("ui.game.mapgeneratebutton.generateAnotherMap")}
       aria-label={localizeUi("ui.game.mapgeneratebutton.generateAnotherMap")}
@@ -1204,7 +1204,7 @@ export function MobileMapButton({
               </button>
             )}
             {selectedNode === currentNode?.id && (
-              <span className="shrink-0 text-[0.625rem] text-[var(--success)]/70">
+              <span className="shrink-0 text-[0.625rem] text-emerald-400/70">
                 {localizeUi("ui.game.mobilemapbutton.youAreHere")}
               </span>
             )}

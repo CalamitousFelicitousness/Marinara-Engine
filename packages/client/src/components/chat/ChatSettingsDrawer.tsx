@@ -5516,8 +5516,8 @@ export function ChatSettingsDrawer({
                   className={cn(
                     "shrink-0 flex items-center justify-center rounded-md p-1.5 transition-colors disabled:cursor-not-allowed",
                     selectedChatPreset?.isActive
-                      ? "text-[var(--primary)] disabled:opacity-100"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--primary)] disabled:opacity-40",
+                      ? "text-yellow-400 disabled:opacity-100"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-yellow-400 disabled:opacity-40",
                   )}
                 >
                   <Star
@@ -6714,7 +6714,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       cardCssMode === "disabled"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6725,7 +6725,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                       cardCssMode === "exclusive"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6736,7 +6736,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       cardCssMode === "chat"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6789,7 +6789,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       scopedRegexMode === "disabled"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6801,7 +6801,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                       scopedRegexMode === "exclusive"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6813,7 +6813,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       scopedRegexMode === "chat"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6909,7 +6909,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       groupChatMode === "merged"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6939,7 +6939,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       groupChatMode === "individual"
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6982,7 +6982,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                         (metadata.groupResponseOrder ?? "sequential") === "sequential"
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                          ? "bg-[var(--primary)] text-white"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -6993,7 +6993,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                         metadata.groupResponseOrder === "smart"
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                          ? "bg-[var(--primary)] text-white"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -7004,7 +7004,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                         metadata.groupResponseOrder === "manual"
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                          ? "bg-[var(--primary)] text-white"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -8557,7 +8557,7 @@ export function ChatSettingsDrawer({
                                 />
                               )}
                               {spotifyPlaylistsQuery.isError && (
-                                <span className="text-[0.5625rem] text-[var(--warning)]/90">
+                                <span className="text-[0.5625rem] text-amber-400/90">
                                   {localizeUi("ui.chat.musicdjsetupfields.connectSpotifyInTheMusicDjAgentToLoad")}
                                 </span>
                               )}
@@ -9196,7 +9196,7 @@ export function ChatSettingsDrawer({
                                 </select>
                               </label>
                               {videoConnectionsList.length === 0 && (
-                                <p className="text-[0.625rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
+                                <p className="text-[0.625rem] text-amber-700 dark:text-amber-400/80">
                                   {localizeUi(
                                     "ui.chat.chatsettingsdrawer.noVideoGenerationConnectionsFoundAddOneInSettings",
                                   )}
@@ -9327,7 +9327,7 @@ export function ChatSettingsDrawer({
                                     />
                                   )}
                                   {spotifyPlaylistsQuery.isError && (
-                                    <span className="text-[0.5625rem] text-[var(--warning)]/90">
+                                    <span className="text-[0.5625rem] text-amber-400/90">
                                       {localizeUi("ui.chat.musicdjsetupfields.connectSpotifyInTheMusicDjAgentToLoad")}
                                     </span>
                                   )}
@@ -9627,7 +9627,7 @@ export function ChatSettingsDrawer({
                             </select>
                           </label>
                           {videoConnectionsList.length === 0 && (
-                            <p className="text-[0.625rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
+                            <p className="text-[0.625rem] text-amber-700 dark:text-amber-400/80">
                               {localizeUi(
                                 "ui.chat.chatsettingsdrawer.noVideoGenerationConnectionsFoundAddOneInSettings",
                               )}
@@ -10278,9 +10278,9 @@ export function ChatSettingsDrawer({
                       Object.keys(metadata.daySummaries as Record<string, unknown>).length > 0) ||
                       ((metadata.weekSummaries as Record<string, unknown> | undefined) &&
                         Object.keys(metadata.weekSummaries as Record<string, unknown>).length > 0)) && (
-                      <div className="flex items-start gap-1.5 rounded-md bg-[var(--warning)]/10 px-2 py-1.5 ring-1 ring-[var(--warning)]/20">
-                        <AlertTriangle size="0.75rem" className="mt-[0.125rem] shrink-0 text-[var(--warning)]/80" />
-                        <p className="text-[0.625rem] text-[var(--warning)]/80 leading-snug">
+                      <div className="flex items-start gap-1.5 rounded-md bg-amber-400/10 px-2 py-1.5 ring-1 ring-amber-400/20">
+                        <AlertTriangle size="0.75rem" className="mt-[0.125rem] shrink-0 text-amber-400/80" />
+                        <p className="text-[0.625rem] text-amber-400/80 leading-snug">
                           {localizeUi("ui.chat.chatsettingsdrawer.existingSummariesWereBuiltWithThePreviousSettingFor")}{" "}
                           <span className="font-medium">{localizeUi("ui.chat.chatsettingsdrawer.editSummaries")}</span>{" "}
                           {localizeUi("ui.chat.chatsettingsdrawer.above")}
@@ -10851,7 +10851,7 @@ export function ChatSettingsDrawer({
           aria-modal="true"
           aria-labelledby="chat-settings-greeting-title"
           aria-describedby="chat-settings-greeting-description"
-          className="fixed inset-0 z-[95] flex items-center justify-center bg-[var(--background)]/60 max-md:pt-[env(safe-area-inset-top)]"
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 max-md:pt-[env(safe-area-inset-top)]"
           onClick={(event) => {
             if (event.target === event.currentTarget) setFirstMesConfirm(null);
           }}
@@ -11346,10 +11346,10 @@ function KnowledgeAgentSettingsCard({
                   className={cn(
                     "h-1.5 w-1.5 rounded-full",
                     descriptionCoverage.ratio >= 0.75
-                      ? "bg-[var(--primary)]"
+                      ? "bg-emerald-400"
                       : descriptionCoverage.ratio >= 0.25
-                        ? "bg-[var(--warning)]"
-                        : "bg-[var(--destructive)]",
+                        ? "bg-amber-400"
+                        : "bg-red-400",
                   )}
                 />
                 {Math.round(descriptionCoverage.ratio * 100)}

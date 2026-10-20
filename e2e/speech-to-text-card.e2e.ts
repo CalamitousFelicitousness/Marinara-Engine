@@ -75,6 +75,7 @@ test("Speech to Text keeps an edit made just before leaving Connections", async 
   };
 
   await openCard();
+  await expect(card.locator("div.bg-gradient-to-br").first()).toHaveClass(/from-sky-400 to-blue-500/);
   const ttsCard = page.locator('[data-component="TTSConfigCard"]');
   const expandTts = ttsCard.getByTitle("Expand", { exact: true });
   if (await expandTts.count()) await expandTts.click();
@@ -98,7 +99,7 @@ test("Speech to Text keeps an edit made just before leaving Connections", async 
           const textToSpeech = await surfaceStyle(ttsCard);
           return JSON.stringify(speechToText) === JSON.stringify(textToSpeech) ? null : { speechToText, textToSpeech };
         },
-        { message: "Speech to Text uses the same Connections theme as Text to Speech" },
+        { message: "Speech to Text uses the original Connections blue, matching Text to Speech" },
       )
       .toBeNull();
   for (const theme of ["light", "dark"] as const) {
@@ -116,30 +117,6 @@ test("Speech to Text keeps an edit made just before leaving Connections", async 
       path: testInfo.outputPath(`speech-to-text-connections-${theme}.png`),
       animations: "disabled",
     });
-    const original = await surfaceStyle(card);
-    const override = await page.addStyleTag({
-      content: `
-      .mari-panel-gradient--connections {
-        --mari-panel-gradient-start: rgb(180 80 200);
-        --mari-panel-gradient-end: rgb(20 130 120);
-        --mari-panel-gradient-text: rgb(245 235 180);
-      }
-    `,
-    });
-    for (const key of Object.keys(original) as Array<keyof typeof original>) {
-      await expect
-        .poll(async () => (await surfaceStyle(card))[key], { message: `${key} follows a Connections theme override` })
-        .not.toBe(original[key]);
-    }
-    await expectMatchingSurfaces();
-    await card.screenshot({
-      path: testInfo.outputPath(`speech-to-text-custom-connections-${theme}.png`),
-      animations: "disabled",
-    });
-    await override.evaluate((element) => {
-      element.parentNode?.removeChild(element);
-    });
-    await expectMatchingSurfaces();
   }
   await serverUrl.fill("http://localhost:9000/v1");
   // Leave before the autosave delay runs out.

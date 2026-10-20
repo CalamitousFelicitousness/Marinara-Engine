@@ -350,17 +350,17 @@ export function ToolEditor() {
         />
         <div className="mari-editor-actions flex max-md:w-full max-md:justify-end max-md:border-t max-md:border-[var(--marinara-editor-divider)] max-md:pt-2">
           {saveError && (
-            <span className="mari-editor-status mr-2 text-[var(--destructive)]">
+            <span className="mari-editor-status mr-2 text-red-400">
               <AlertCircle size="0.6875rem" /> {localizeUi("ui.agents.tooleditor.error")}
             </span>
           )}
           {savedFlash && !dirty && (
-            <span className="mari-editor-status mr-2 text-[var(--primary)]">
+            <span className="mari-editor-status mr-2 text-emerald-400">
               <Check size="0.6875rem" /> {localizeUi("chat.settings.inlineEditor.saved")}
             </span>
           )}
           {dirty && !saveError && (
-            <span className="mari-editor-status mr-2 text-[var(--warning)]">
+            <span className="mari-editor-status mr-2 text-amber-400">
               {localizeUi("ui.agents.agenteditor.unsaved")}
             </span>
           )}
@@ -398,7 +398,7 @@ export function ToolEditor() {
 
       {/* Unsaved warning */}
       {showUnsavedWarning && (
-        <div className="flex items-center justify-between bg-[var(--warning)]/10 px-4 py-2 text-xs text-[var(--warning)]">
+        <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
           <span>{localizeUi("ui.agents.agenteditor.youHaveUnsavedChanges")}</span>
           <div className="flex gap-2">
             <button
@@ -417,7 +417,7 @@ export function ToolEditor() {
               onClick={async () => {
                 if (await handleSave()) closeToolDetail();
               }}
-              className="rounded-lg bg-[var(--warning)]/20 px-3 py-1 hover:bg-[var(--warning)]/30"
+              className="rounded-lg bg-[var(--marinara-app-accent-static)]/20 px-3 py-1 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/30"
             >
               {localizeUi("ui.agents.agenteditor.saveClose")}
             </button>
@@ -427,12 +427,12 @@ export function ToolEditor() {
 
       {/* Save error banner */}
       {saveError && (
-        <div className="flex items-center gap-2 bg-[var(--destructive)]/10 px-4 py-2 text-xs text-[var(--destructive)]">
+        <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">{saveError}</span>
           <button
             onClick={() => setSaveError(null)}
-            className="rounded-lg px-2 py-0.5 hover:bg-[var(--destructive)]/20"
+            className="rounded-lg px-2 py-0.5 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/20"
           >
             <X size="0.75rem" />
           </button>
@@ -594,17 +594,16 @@ export function ToolEditor() {
               })}
             </div>
             {!scriptToolsEnabled && (
-              <div className="mt-3 flex gap-2 rounded-xl border border-[var(--warning)]/25 bg-[var(--warning)]/10 p-3 text-xs text-[var(--warning)]">
+              <div className="mt-3 flex gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-200">
                 <AlertCircle size="0.875rem" className="mt-0.5 shrink-0" />
                 <div>
                   <div className="font-medium">
                     {localizeUi("ui.agents.tooleditor.scriptToolsAreDisabledOnThisServer")}
                   </div>
-                  <div className="mt-1 text-[var(--warning)]/80">
+                  <div className="mt-1 text-amber-100/80">
                     {localizeUi("ui.agents.tooleditor.set")}{" "}
-                    <code className="rounded bg-[var(--secondary)]/20 px-1">{"CUSTOM_TOOL_SCRIPT_ENABLED=true"}</code>{" "}
-                    {localizeUi("ui.agents.tooleditor.in")}{" "}
-                    <code className="rounded bg-[var(--secondary)]/20 px-1">{".env"}</code>{" "}
+                    <code className="rounded bg-black/20 px-1">{"CUSTOM_TOOL_SCRIPT_ENABLED=true"}</code>{" "}
+                    {localizeUi("ui.agents.tooleditor.in")} <code className="rounded bg-black/20 px-1">{".env"}</code>{" "}
                     {localizeUi("ui.agents.tooleditor.andRestartMarinaraOnlyForTrustedInProcessScript")}
                   </div>
                 </div>

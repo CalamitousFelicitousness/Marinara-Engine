@@ -34,42 +34,30 @@ export function formatNarration(content: string, boldDialogue = true): string {
   let html = escapeStandaloneGameNarrationAngleLines(stripClockCommandTags(stripSheetCommandTags(content)))
     .replace(/\[combat_result]\s*([\s\S]*?)\s*\[\/combat_result]/gi, (_match, recap: string) => {
       const cleaned = recap.trim();
-      return `${commandBadge("bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]", "⚔ Combat Result")}${
+      return `${commandBadge("bg-red-500/15 text-red-200 ring-1 ring-red-400/20", "⚔ Combat Result")}${
         cleaned ? `\n${cleaned}` : ""
       }`;
     })
     // What the Engine did when the player used an item, which the Game Master narrates.
     .replace(/\[item_used]\s*([\s\S]*?)\s*\[\/item_used]/gi, (_match, report: string) => {
       const cleaned = report.trim();
-      return `${commandBadge("bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]", translate("game.narration.itemUsed"))}${
+      return `${commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", translate("game.narration.itemUsed"))}${
         cleaned ? `\n${cleaned}` : ""
       }`;
     })
     .replace(
       /\[dice:\s*((?:\d+)?d\d+(?:[+-]\d+)?)\s*=\s*(-?\d+)(?:\s*\([^\]]+\))?\]/gi,
       (_match, notation: string, total: string) =>
-        commandBadge(
-          "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-muted)] font-mono",
-          "🎲",
-          `${notation} → ${total}`,
-        ),
+        commandBadge("bg-white/10 text-white/60 font-mono", "🎲", `${notation} → ${total}`),
     )
     .replace(/\[qte_bonus:\s*(-?\d+)\]/gi, (_match, bonus: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "⏱ QTE Bonus",
-        formatSignedNumber(bonus),
-      ),
+      commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", "⏱ QTE Bonus", formatSignedNumber(bonus)),
     )
     .replace(/\[qte_result:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       const status = attrs.status === "fail" ? "Fail" : attrs.status === "success" ? "Success" : "Result";
       const modifier = attrs.modifier ? formatSignedNumber(attrs.modifier) : "";
-      return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        `⏱ QTE ${status}`,
-        modifier,
-      );
+      return commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", `⏱ QTE ${status}`, modifier);
     })
     .replace(/\[skill_check:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
@@ -79,7 +67,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
       const total = attrs.total ? `total ${attrs.total}` : "";
       const result = attrs.result ? attrs.result.replace(/_/g, " ") : "";
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20",
         "🎯 Skill Check",
         [skill, dc, total, result].filter(Boolean).join(" · "),
       );
@@ -87,7 +75,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[combat:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-red-500/15 text-red-200 ring-1 ring-red-400/20",
         "⚔ Combat",
         attrs.enemies || rawAttrs.trim(),
       );
@@ -107,29 +95,21 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[element_attack:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/20",
         "✦ Element",
         [attrs.element, attrs.target ? `on ${attrs.target}` : ""].filter(Boolean).join(" · ") || rawAttrs.trim(),
       );
     })
     .replace(/\[qte:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "⏱ QTE",
-        body.trim(),
-      ),
+      commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", "⏱ QTE", body.trim()),
     )
     .replace(/\[choices:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "☑ Choices",
-        body.trim(),
-      ),
+      commandBadge("bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-400/20", "☑ Choices", body.trim()),
     )
     .replace(/\[inventory:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-lime-500/15 text-lime-200 ring-1 ring-lime-400/20",
         "🎒 Inventory",
         [attrs.action, attrs.item].filter(Boolean).join(": "),
       );
@@ -137,7 +117,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[loot:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-lime-500/15 text-lime-200 ring-1 ring-lime-400/20",
         translate("game.narration.loot"),
         attrs.table || rawAttrs.trim(),
       );
@@ -155,7 +135,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[map_update:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/20",
         "🗺 Map",
         attrs.new_location || rawAttrs.trim(),
       );
@@ -171,7 +151,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[party_change:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/20",
         "👥 Party",
         [attrs.change, attrs.character].filter(Boolean).join(": "),
       );
@@ -179,54 +159,34 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[party_add:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/20",
         "👥 Party",
         attrs.character || rawAttrs.trim(),
       );
     })
     .replace(/\[session_end:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "🏁 Session End",
-        attrs.reason,
-      );
+      return commandBadge("bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/20", "🏁 Session End", attrs.reason);
     })
     .replace(/\[(music|sfx|bg|ambient):\s*([^\]]+)\]/gi, (_match, kind: string, body: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        kind.toUpperCase(),
-        body.trim(),
-      ),
+      commandBadge("bg-slate-500/15 text-slate-200 ring-1 ring-slate-400/20", kind.toUpperCase(), body.trim()),
     )
     .replace(/\[direction:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "Direction",
-        body.trim(),
-      ),
+      commandBadge("bg-zinc-500/15 text-zinc-200 ring-1 ring-zinc-400/20", "Direction", body.trim()),
     )
     .replace(/\[widget:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "Widget",
-        body.trim(),
-      ),
+      commandBadge("bg-teal-500/15 text-teal-200 ring-1 ring-teal-400/20", "Widget", body.trim()),
     )
     .replace(/\[dialogue:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
+        "bg-blue-500/15 text-blue-200 ring-1 ring-blue-400/20",
         "Dialogue",
         attrs.npc || rawAttrs.trim(),
       );
     })
     .replace(/\[state:\s*(\w+)\]/gi, (_match, state: string) =>
-      commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
-        "⚡ State",
-        state,
-      ),
+      commandBadge("bg-sky-500/20 text-sky-300", "⚡ State", state),
     )
     .replace(/(^|\n)[ \t]*-#(?:[ \t]+([^\n]*))?(?=\n|$)/g, '$1<small class="mari-md-subtext">$2</small>')
     .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")

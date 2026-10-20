@@ -281,7 +281,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
               height: imgRect?.h ?? MAX_DISPLAY_H,
             }}
           >
-            <div className="absolute inset-0 overflow-hidden rounded-lg bg-[var(--background)]/40">
+            <div className="absolute inset-0 overflow-hidden rounded-lg bg-black/40">
               {/* key={src} forces remount when the source changes (e.g. switching
                   between personas/characters in the editor). Without this, only the
                   `src` attribute updates on the existing element, and if the new
@@ -306,7 +306,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
                     top: cropPx.y,
                     width: cropPx.size,
                     height: cropPx.size,
-                    boxShadow: "0 0 0 9999px color-mix(in srgb, var(--background) 55%, transparent)",
+                    boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
                   }}
                 />
               )}
@@ -320,7 +320,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
                   top: cropPx.y,
                   width: cropPx.size,
                   height: cropPx.size,
-                  outline: "2px solid var(--marinara-app-accent-static)",
+                  outline: "2px solid white",
                   cursor: "move",
                 }}
                 onPointerDown={(e) => onPointerDown(e, "pan")}
@@ -362,7 +362,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
           <span className="text-[0.625rem] text-[var(--muted-foreground)]">
             {localizeUi("settings.notifications.customSound.actions.preview")}
           </span>
-          <div className="relative h-24 w-24 overflow-hidden rounded-full bg-[var(--background)]/20 ring-2 ring-[var(--border)]">
+          <div className="relative h-24 w-24 overflow-hidden rounded-full bg-black/20 ring-2 ring-[var(--border)]">
             <img src={src} alt={alt} className="h-full w-full object-cover" style={getAvatarCropStyle(previewCrop)} />
           </div>
         </div>
@@ -370,13 +370,13 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
 
       {showFullView && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/80"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
           onClick={() => setShowFullView(false)}
         >
           <img src={src} alt={alt} className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl" />
           <button
             onClick={() => setShowFullView(false)}
-            className="absolute right-3 top-3 rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80"
+            className="absolute right-3 top-3 rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
           >
             <X size="1rem" />
           </button>
@@ -446,8 +446,8 @@ function CornerHandle({
           position: "absolute",
           width: HANDLE_VISUAL_PX,
           height: HANDLE_VISUAL_PX,
-          background: "var(--foreground)",
-          border: "1px solid var(--background)",
+          background: "white",
+          border: "1px solid black",
           borderRadius: 2,
           ...squareByPos[pos],
         }}

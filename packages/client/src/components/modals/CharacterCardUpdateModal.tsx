@@ -334,7 +334,7 @@ export function CharacterCardUpdateModal({ open, onClose }: Props) {
                     onChange={(event) => updateDraftNewText(idx, event.target.value)}
                     disabled={busyAction !== null}
                     rows={Math.max(3, Math.min(8, u.newText.split(/\r?\n/).length + 1))}
-                    className="w-full resize-y rounded-md border border-[var(--success)]/10 bg-[var(--success)]/5 p-2 text-xs leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/55 focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)] disabled:opacity-70"
+                    className="w-full resize-y rounded-md border border-emerald-500/10 bg-emerald-500/5 p-2 text-xs leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/55 focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)] disabled:opacity-70"
                   />
                 </div>
               </div>

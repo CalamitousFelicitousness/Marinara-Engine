@@ -116,7 +116,7 @@ export function AgentUpdateDialog({
             type="button"
             onClick={onUpdateAll}
             disabled={busy}
-            className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary)]/85 disabled:opacity-60"
+            className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--primary)]/85 disabled:opacity-60"
           >
             {localizeUi("ui.agents.agentupdatedialog.updateAll")}
           </button>

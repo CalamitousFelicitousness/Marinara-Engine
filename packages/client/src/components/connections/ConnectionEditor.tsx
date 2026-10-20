@@ -1636,19 +1636,19 @@ export function ConnectionEditor() {
         />
         <div className="mari-editor-actions flex shrink-0">
           {saveError && (
-            <span className="mari-editor-status mr-2 text-[var(--destructive)]">
+            <span className="mari-editor-status mr-2 text-red-400">
               <AlertCircle size="0.6875rem" />{" "}
               <span className="max-md:hidden">{localizeUi("ui.connections.connectioneditor.saveFailed")}</span>
             </span>
           )}
           {savedFlash && !dirty && (
-            <span className="mari-editor-status mr-2 text-[var(--primary)]">
+            <span className="mari-editor-status mr-2 text-emerald-400">
               <Check size="0.6875rem" />{" "}
               <span className="max-md:hidden">{localizeUi("chat.settings.inlineEditor.saved")}</span>
             </span>
           )}
           {dirty && !saveError && (
-            <span className="mari-editor-status mr-2 text-[var(--warning)] max-md:hidden">
+            <span className="mari-editor-status mr-2 text-amber-400 max-md:hidden">
               {localizeUi("ui.connections.connectioneditor.unsaved")}
             </span>
           )}
@@ -1681,7 +1681,7 @@ export function ConnectionEditor() {
 
       {/* Unsaved warning */}
       {showUnsavedWarning && (
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--warning)]/10 px-4 py-2 text-xs text-[var(--warning)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
           <span>{localizeUi("ui.connections.connectioneditor.youHaveUnsavedChanges")}</span>
           <div className="flex gap-2">
             <button
@@ -1715,12 +1715,12 @@ export function ConnectionEditor() {
 
       {/* Save error banner */}
       {saveError && (
-        <div className="flex items-center gap-2 bg-[var(--destructive)]/10 px-4 py-2 text-xs text-[var(--destructive)]">
+        <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">{saveError}</span>
           <button
             onClick={() => setSaveError(null)}
-            className="rounded-lg px-2 py-0.5 hover:bg-[var(--destructive)]/20"
+            className="rounded-lg px-2 py-0.5 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/20"
           >
             <X size="0.75rem" />
           </button>
@@ -1733,7 +1733,7 @@ export function ConnectionEditor() {
           {/* ── Connection Name ── */}
           <FieldGroup
             label={localizeUi("ui.connections.connectioneditor.connectionName_669ca65")}
-            icon={<Tag size="0.875rem" className="text-[var(--primary)]" />}
+            icon={<Tag size="0.875rem" className="text-sky-400" />}
             help={localizeUi("ui.connections.connectioneditor.aFriendlyNameToIdentifyThisConnectionUseSomething")}
           >
             <input
@@ -1750,7 +1750,7 @@ export function ConnectionEditor() {
           {/* ── Provider ── */}
           <FieldGroup
             label={localizeUi("ui.connections.connectioneditor.provider")}
-            icon={<Globe size="0.875rem" className="text-[var(--primary)]" />}
+            icon={<Globe size="0.875rem" className="text-sky-400" />}
             help={localizeUi("ui.connections.connectioneditor.theAiServiceYouWantToConnectToEach")}
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
@@ -1812,7 +1812,7 @@ export function ConnectionEditor() {
                   className={cn(
                     "truncate rounded-md px-3 py-2.5 text-xs font-medium transition-all",
                     localProvider === key
-                      ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
+                      ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
                       : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                   )}
                 >
@@ -1824,8 +1824,8 @@ export function ConnectionEditor() {
 
           {/* ── Claude (Subscription) — prerequisites notice ── */}
           {isClaudeSubscriptionProvider && (
-            <div className="rounded-xl bg-[var(--primary)]/5 px-3 py-2.5 ring-1 ring-[var(--primary)]/30">
-              <p className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--primary)]">
+            <div className="rounded-xl bg-sky-400/5 px-3 py-2.5 ring-1 ring-sky-400/30">
+              <p className="flex items-start gap-1.5 text-[0.6875rem] text-sky-300">
                 <AlertCircle size="0.75rem" className="mt-px shrink-0" />
                 <span>
                   {localizeUi("ui.connections.connectioneditor.routesChatThroughYourLocal")}{" "}
@@ -1857,8 +1857,8 @@ export function ConnectionEditor() {
 
           {/* ── OpenAI (ChatGPT) — prerequisites notice ── */}
           {isOpenAIChatGPTProvider && (
-            <div className="rounded-xl bg-[var(--primary)]/5 px-3 py-2.5 ring-1 ring-[var(--primary)]/30">
-              <p className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--primary)]">
+            <div className="rounded-xl bg-sky-400/5 px-3 py-2.5 ring-1 ring-sky-400/30">
+              <p className="flex items-start gap-1.5 text-[0.6875rem] text-sky-300">
                 <AlertCircle size="0.75rem" className="mt-px shrink-0" />
                 <span>
                   {localizeUi("ui.connections.connectioneditor.routesChatThroughYourLocal")}{" "}
@@ -1888,8 +1888,8 @@ export function ConnectionEditor() {
 
           {/* ── Grok CLI (Subscription) — prerequisites notice ── */}
           {isGrokSubscriptionProvider && (
-            <div className="rounded-xl bg-[var(--primary)]/5 px-3 py-2.5 ring-1 ring-[var(--primary)]/30">
-              <p className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--primary)]">
+            <div className="rounded-xl bg-sky-400/5 px-3 py-2.5 ring-1 ring-sky-400/30">
+              <p className="flex items-start gap-1.5 text-[0.6875rem] text-sky-300">
                 <AlertCircle size="0.75rem" className="mt-px shrink-0" />
                 <span>
                   {localizeUi("ui.connections.connectioneditor.routesChatThroughYourLocal")}{" "}
@@ -1923,8 +1923,8 @@ export function ConnectionEditor() {
           )}
 
           {localProvider === "google_vertex" && (
-            <div className="rounded-xl bg-[var(--primary)]/5 px-3 py-2.5 ring-1 ring-[var(--primary)]/30">
-              <p className="flex items-start gap-1.5 text-[0.6875rem] text-[var(--primary)]">
+            <div className="rounded-xl bg-sky-400/5 px-3 py-2.5 ring-1 ring-sky-400/30">
+              <p className="flex items-start gap-1.5 text-[0.6875rem] text-sky-300">
                 <AlertCircle size="0.75rem" className="mt-px shrink-0" />
                 <span>{localizeUi("ui.connections.connectioneditor.usesVertexAiSGeminiEndpointSetBaseUrl")}</span>
               </p>
@@ -1941,7 +1941,7 @@ export function ConnectionEditor() {
           {localProvider === "openrouter" && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.preferredProvider")}
-              icon={<Server size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Server size="0.875rem" className="text-sky-400" />}
               help={localizeUi(
                 "ui.connections.connectioneditor.chooseWhichBackendProviderOpenrouterShouldRouteYourRequests",
               )}
@@ -1961,7 +1961,7 @@ export function ConnectionEditor() {
                   href="https://openrouter.ai/models"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--primary)] hover:underline"
+                  className="text-sky-400 hover:underline"
                 >
                   {localizeUi("ui.connections.connectioneditor.openrouterAiModels")}
                 </a>
@@ -2148,7 +2148,7 @@ export function ConnectionEditor() {
               {/* ── API Key ── */}
               <FieldGroup
                 label={localizeUi("ui.connections.connectioneditor.apiKey")}
-                icon={<Key size="0.875rem" className="text-[var(--primary)]" />}
+                icon={<Key size="0.875rem" className="text-sky-400" />}
                 help={localizeUi("ui.connections.connectioneditor.yourAuthenticationKeyFromTheAiProviderYouCan")}
               >
                 <input
@@ -2170,7 +2170,7 @@ export function ConnectionEditor() {
                     href={apiKeyLink.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-[var(--primary)] transition-colors hover:text-[var(--primary)]"
+                    className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-sky-400 transition-colors hover:text-sky-300"
                   >
                     <ExternalLink size="0.625rem" />
                     {apiKeyLink.label}
@@ -2190,7 +2190,7 @@ export function ConnectionEditor() {
                 <div className="space-y-6">
                   <FieldGroup
                     label={localizeUi("ui.connections.connectioneditor.managementToken")}
-                    icon={<Key size="0.875rem" className="text-[var(--primary)]" />}
+                    icon={<Key size="0.875rem" className="text-sky-400" />}
                     help={localizeUi("ui.connections.connectioneditor.managementTokenHelp")}
                   >
                     <input
@@ -2223,7 +2223,7 @@ export function ConnectionEditor() {
                       href="https://nano-gpt.com/settings#management-api-tokens"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-[var(--primary)] transition-colors hover:text-[var(--primary)]"
+                      className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-sky-400 transition-colors hover:text-sky-300"
                     >
                       <ExternalLink size="0.625rem" />
                       {localizeUi("ui.connections.connectioneditor.createAManagementToken")}
@@ -2237,7 +2237,7 @@ export function ConnectionEditor() {
               {/* ── Base URL ── */}
               <FieldGroup
                 label={localizeUi("ui.connections.connectioneditor.baseUrl")}
-                icon={<Globe size="0.875rem" className="text-[var(--primary)]" />}
+                icon={<Globe size="0.875rem" className="text-sky-400" />}
                 help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
               >
                 <input
@@ -2276,14 +2276,14 @@ export function ConnectionEditor() {
                     <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:5001/v1"}</code>
                   </p>
                 )}
-                <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-[var(--warning)]/80">
+                <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/80">
                   <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                   <span>
                     {localizeUi("ui.connections.connectioneditor.onlyUseUrlsFromProvidersYouTrustAMalicious")}
                   </span>
                 </p>
                 {localProvider === "custom" && (
-                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-[var(--primary)]/80">
+                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-sky-400/80">
                     <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                     <span>
                       <strong>{localizeUi("ui.connections.connectioneditor.windowsUsers")}</strong>{" "}
@@ -2305,7 +2305,7 @@ export function ConnectionEditor() {
           {localProvider === "image_generation" && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.service")}
-              icon={<Globe size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Globe size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl")}
             >
               <div className="grid grid-cols-2 gap-1.5">
@@ -2373,7 +2373,7 @@ export function ConnectionEditor() {
                       className={cn(
                         "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
                         isActive
-                          ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
+                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
                           : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                       )}
                     >
@@ -2392,7 +2392,7 @@ export function ConnectionEditor() {
                   : localizeUi("ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl_cfb1337")}
               </p>
               {selectedImageService === "runpod_comfyui" && (
-                <div className="mt-2 rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/5 px-3 py-2 text-[0.625rem] text-[var(--warning)]/80">
+                <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[0.625rem] text-amber-300/80">
                   <strong>{localizeUi("ui.connections.connectioneditor.runpodConfiguration")}</strong>{" "}
                   {localizeUi("ui.connections.connectioneditor.yourEndpointIdGoesInThe")}{" "}
                   <strong>{localizeUi("ui.connections.connectioneditor.endpointId")}</strong>{" "}
@@ -2414,7 +2414,7 @@ export function ConnectionEditor() {
           {localProvider === "video_generation" && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.videoService")}
-              icon={<Film size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Film size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.pickTheVideoBackendGameModeUsesThisService")}
             >
               <div className="grid grid-cols-2 gap-1.5">
@@ -2462,7 +2462,7 @@ export function ConnectionEditor() {
                       className={cn(
                         "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
                         isActive
-                          ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
+                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
                           : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                       )}
                     >
@@ -2490,7 +2490,7 @@ export function ConnectionEditor() {
           {isAudioProvider && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.audioSource")}
-              icon={<Music size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Music size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.pickTheSpeechBackendBaseUrlModelAndVoice")}
             >
               <div className="grid grid-cols-2 gap-1.5">
@@ -2519,7 +2519,7 @@ export function ConnectionEditor() {
                       className={cn(
                         "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
                         isActive
-                          ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
+                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
                           : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                       )}
                     >
@@ -2617,7 +2617,7 @@ export function ConnectionEditor() {
           {/* ── Model Selection ── */}
           <FieldGroup
             label={localizeUi("ui.connections.connectioneditor.model")}
-            icon={<Server size="0.875rem" className="text-[var(--primary)]" />}
+            icon={<Server size="0.875rem" className="text-sky-400" />}
             help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
           >
             {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
@@ -2626,7 +2626,7 @@ export function ConnectionEditor() {
                 onClick={() => setShowModelDropdown(!showModelDropdown)}
                 className={cn(
                   "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
-                  showModelDropdown && "z-50 ring-[var(--primary)]/50",
+                  showModelDropdown && "z-50 ring-sky-400/50",
                 )}
               >
                 <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
@@ -2674,7 +2674,7 @@ export function ConnectionEditor() {
                           handleFetchModels();
                         }}
                         disabled={fetchModels.isPending}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-3 py-2 text-xs font-medium text-[var(--primary)] transition-all hover:bg-[var(--primary)]/20 active:scale-[0.98] disabled:opacity-50"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
                       >
                         {fetchModels.isPending ? (
                           <Loader2 size="0.75rem" className="animate-spin" />
@@ -2689,7 +2689,7 @@ export function ConnectionEditor() {
                         <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
                       )}
                       {remoteModels.length > 0 && !fetchError && (
-                        <p className="mt-1 text-[0.625rem] text-[var(--primary)]">
+                        <p className="mt-1 text-[0.625rem] text-emerald-400">
                           {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
                           {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
                           {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
@@ -2705,7 +2705,7 @@ export function ConnectionEditor() {
                       <input
                         value={localModel}
                         onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                        className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                         placeholder={localizeUi("ui.connections.connectioneditor.modelNameOrPath")}
                       />
                       {/* Show fetched models for custom provider */}
@@ -2723,17 +2723,17 @@ export function ConnectionEditor() {
                                 onClick={() => selectModel({ ...m, isRemote: true })}
                                 className={cn(
                                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]",
-                                  localModel === m.id && "bg-[var(--primary)]/5",
+                                  localModel === m.id && "bg-sky-400/5",
                                 )}
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium">{m.name}</span>
-                                    {localModel === m.id && <Check size="0.75rem" className="text-[var(--primary)]" />}
+                                    {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
                                   </div>
                                   <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
                                 </div>
-                                <span className="shrink-0 rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--primary)]">
+                                <span className="shrink-0 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
                                   {modelFetchSourceLabel}
                                 </span>
                               </button>
@@ -2745,7 +2745,7 @@ export function ConnectionEditor() {
                           setShowModelDropdown(false);
                           setModelSearch("");
                         }}
-                        className="mt-2 w-full rounded-lg bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] hover:bg-[var(--primary)]/20"
+                        className="mt-2 w-full rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-400/20"
                       >
                         {localizeUi("lorebook.editor.batch.done")}
                       </button>
@@ -2756,7 +2756,7 @@ export function ConnectionEditor() {
                       <input
                         value={localModel}
                         onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                        className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                         placeholder={localizeUi("ui.connections.connectioneditor.customModelId")}
                       />
                     </div>
@@ -2767,27 +2767,25 @@ export function ConnectionEditor() {
                         onClick={() => selectModel(m)}
                         className={cn(
                           "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)]",
-                          localModel === m.id && "bg-[var(--primary)]/5",
+                          localModel === m.id && "bg-sky-400/5",
                         )}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{m.name}</span>
                             {m.isRemote && (
-                              <span className="rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--primary)]">
+                              <span className="rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
                                 {modelFetchSourceLabel}
                               </span>
                             )}
                             {localShowUsageWidget && <SubscriptionCostPill model={m} />}
-                            {localModel === m.id && <Check size="0.75rem" className="text-[var(--primary)]" />}
+                            {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
                           </div>
                           <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
                         </div>
                         <div className="shrink-0 text-right">
                           {m.context > 0 && (
-                            <div className="text-[0.625rem] font-medium text-[var(--primary)]">
-                              {formatContext(m.context)}
-                            </div>
+                            <div className="text-[0.625rem] font-medium text-sky-400">{formatContext(m.context)}</div>
                           )}
                           {m.maxOutput > 0 && (
                             <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
@@ -2822,14 +2820,14 @@ export function ConnectionEditor() {
 
             {/* Context display */}
             {selectedModelInfo && (
-              <div className="mt-2 flex items-center gap-4 rounded-lg bg-[var(--primary)]/5 px-3 py-2 text-[0.6875rem]">
+              <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
                 <span className="text-[var(--muted-foreground)]">
                   {localizeUi("ui.connections.connectioneditor.context")}{" "}
-                  <strong className="text-[var(--primary)]">{formatContext(selectedModelInfo.context)}</strong>
+                  <strong className="text-sky-400">{formatContext(selectedModelInfo.context)}</strong>
                 </span>
                 <span className="text-[var(--muted-foreground)]">
                   {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
-                  <strong className="text-[var(--primary)]">{formatContext(selectedModelInfo.maxOutput)}</strong>
+                  <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
                 </span>
               </div>
             )}
@@ -2839,7 +2837,7 @@ export function ConnectionEditor() {
           {localProvider === "image_generation" && selectedImageService === "runpod_comfyui" && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.runpodEndpointId")}
-              icon={<Server size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Server size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.yourRunpodServerlessEndpointIdEGAbc123def456This")}
             >
               <input
@@ -2850,7 +2848,7 @@ export function ConnectionEditor() {
                   markDirty();
                 }}
                 placeholder={localizeUi("ui.connections.connectioneditor.abc123def456")}
-                className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-[var(--primary)]/50"
+                className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50"
               />
             </FieldGroup>
           )}
@@ -2864,7 +2862,7 @@ export function ConnectionEditor() {
                     ? localizeUi("ui.agents.tooleditor.required")
                     : localizeUi("ui.connections.connectioneditor.optional"),
               })}
-              icon={<Zap size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Zap size="0.875rem" className="text-sky-400" />}
               help={
                 localProvider === "video_generation"
                   ? selectedVideoProvider === "swarmui"
@@ -2890,23 +2888,23 @@ export function ConnectionEditor() {
                 className={cn(
                   "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-xs font-mono outline-none ring-1 transition-shadow placeholder:text-[var(--muted-foreground)]/50 min-h-[120px] max-h-[300px] resize-y",
                   comfyWorkflowValidation?.parseError || swarmUiWorkflowError
-                    ? "ring-[var(--destructive)]/60 focus:ring-[var(--destructive)]"
-                    : "ring-[var(--border)] focus:ring-[var(--primary)]/50",
+                    ? "ring-red-400/60 focus:ring-red-400"
+                    : "ring-[var(--border)] focus:ring-sky-400/50",
                 )}
               />
               {swarmUiWorkflowError && (
-                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-[var(--destructive)]">
+                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
                   <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                   {swarmUiWorkflowError}
                 </p>
               )}
               {comfyWorkflowValidation?.parseError && (
-                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-[var(--destructive)]">
+                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
                   <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                   {comfyWorkflowValidation.charPos !== null ? (
                     <button
                       onClick={handleJumpToJsonError}
-                      className="underline decoration-dotted cursor-pointer text-left hover:text-[var(--destructive)]"
+                      className="underline decoration-dotted cursor-pointer text-left text-[var(--marinara-app-accent-static)] hover:text-[var(--marinara-app-accent-static)]/80"
                     >
                       {comfyWorkflowValidation.label}
                     </button>
@@ -2918,7 +2916,7 @@ export function ConnectionEditor() {
               {comfyWorkflowValidation &&
                 !comfyWorkflowValidation.parseError &&
                 comfyWorkflowValidation.missing.length > 0 && (
-                  <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-[var(--warning)]">
+                  <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-amber-400">
                     <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                     <span>
                       {comfyWorkflowValidation.missing.some((m) => m.critical) && (
@@ -2968,7 +2966,7 @@ export function ConnectionEditor() {
           {localProvider === "image_generation" && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.imagePromptingInstructions")}
-              icon={<Sparkles size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Sparkles size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.imagePromptingInstructionsHelp")}
             >
               <textarea
@@ -2979,7 +2977,7 @@ export function ConnectionEditor() {
                   markDirty();
                 }}
                 placeholder={localizeUi("ui.connections.connectioneditor.imagePromptingInstructionsPlaceholder")}
-                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-[var(--primary)]/50"
+                className="w-full min-h-[96px] resize-y rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50"
               />
             </FieldGroup>
           )}
@@ -3006,7 +3004,7 @@ export function ConnectionEditor() {
           {supportsGptImageQuality && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.gptImageQuality")}
-              icon={<Sparkles size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Sparkles size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.gptImageQualityHelp")}
             >
               <select
@@ -3015,7 +3013,7 @@ export function ConnectionEditor() {
                   setLocalImageGenerationQuality(event.target.value as ImageGenerationQuality);
                   markDirty();
                 }}
-                className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/50"
+                className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-sky-400/50"
               >
                 <option value="auto">{localizeUi("ui.connections.connectioneditor.imageQualityAuto")}</option>
                 <option value="low">{localizeUi("ui.connections.connectioneditor.imageQualityLow")}</option>
@@ -3097,7 +3095,7 @@ export function ConnectionEditor() {
           {!isMediaGenerationProvider && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.maxContextWindow")}
-              icon={<Zap size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Zap size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.theMaximumNumberOfTokensThisModelCanProcess")}
             >
               <div className="flex items-center gap-3">
@@ -3451,7 +3449,7 @@ export function ConnectionEditor() {
           {isVideoGenerationProvider && selectedVideoDefaultsService === "seedance" && localVideoDefaults && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.seedanceReferences")}
-              icon={<Sparkles size="0.875rem" className="text-[var(--primary)]" />}
+              icon={<Sparkles size="0.875rem" className="text-sky-400" />}
               help={localizeUi(
                 "ui.connections.connectioneditor.controlsTemporaryReferenceFrameUploadsForSeedanceVideoGenerations",
               )}
@@ -3499,7 +3497,7 @@ export function ConnectionEditor() {
                         );
                         markDirty();
                       }}
-                      className="h-8 rounded-md bg-[var(--background)] px-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                      className="h-8 rounded-md bg-[var(--background)] px-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                     >
                       {VIDEO_REFERENCE_UPLOAD_EXPIRY_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -3537,7 +3535,7 @@ export function ConnectionEditor() {
           {isClaudeSubscriptionProvider && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.fastMode")}
-              icon={<Zap size="0.875rem" className="text-[var(--warning)]" />}
+              icon={<Zap size="0.875rem" className="text-amber-400" />}
               help={localizeUi("ui.connections.connectioneditor.whenEnabledAsksTheClaudeAgentSdkToUse")}
             >
               <SettingsSwitch
@@ -3549,15 +3547,15 @@ export function ConnectionEditor() {
                 description={
                   <>
                     <span className="mt-0.5 block text-[var(--muted-foreground)]">
-                      <strong className="text-[var(--warning)]">
+                      <strong className="text-amber-400">
                         {localizeUi("ui.connections.connectioneditor.mostUsersShouldLeaveThisOff")}
                       </strong>{" "}
                       {localizeUi("ui.connections.connectioneditor.fastModeIsEffectivelyADeadFeatureTodayClaude")}
                     </span>
                     <span className="mt-1.5 flex items-start gap-1 text-[var(--muted-foreground)]">
-                      <AlertCircle size="0.625rem" className="mt-px shrink-0 text-[var(--warning)]" />
+                      <AlertCircle size="0.625rem" className="mt-px shrink-0 text-amber-400" />
                       <span>
-                        <strong className="text-[var(--warning)]">
+                        <strong className="text-amber-400">
                           {localizeUi("ui.connections.connectioneditor.doesnTWorkOnClaudeOpus47Yet")}
                         </strong>{" "}
                         {localizeUi("ui.connections.connectioneditor.thereIsNoFasterOpus47VariantFor")}
@@ -3702,7 +3700,7 @@ export function ConnectionEditor() {
               <button
                 onClick={handleTestConnection}
                 disabled={testConnection.isPending}
-                className="flex items-center gap-1.5 rounded-xl bg-[var(--primary)]/10 px-4 py-2.5 text-xs font-medium text-[var(--primary)] ring-1 ring-[var(--primary)]/20 transition-all hover:bg-[var(--primary)]/20 active:scale-[0.98] disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-xl bg-sky-400/10 px-4 py-2.5 text-xs font-medium text-sky-400 ring-1 ring-sky-400/20 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
               >
                 {testConnection.isPending ? (
                   <Loader2 size="0.8125rem" className="animate-spin" />
@@ -3715,7 +3713,7 @@ export function ConnectionEditor() {
                 <button
                   onClick={handleTestMessage}
                   disabled={testMessage.isPending || !canSendTestMessage}
-                  className="flex items-center gap-1.5 rounded-xl bg-[var(--primary)]/10 px-4 py-2.5 text-xs font-medium text-[var(--primary)] ring-1 ring-[var(--primary)]/20 transition-all hover:bg-[var(--primary)]/20 active:scale-[0.98] disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-400/10 px-4 py-2.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-400/20 transition-all hover:bg-emerald-400/20 active:scale-[0.98] disabled:opacity-50"
                 >
                   {testMessage.isPending ? (
                     <Loader2 size="0.8125rem" className="animate-spin" />
@@ -3763,7 +3761,7 @@ export function ConnectionEditor() {
                 <button
                   onClick={handleDiagnoseClaudeSubscription}
                   disabled={diagnoseClaudeSubscription.isPending || !localModel}
-                  className="flex items-center gap-1.5 rounded-xl bg-[var(--warning)]/10 px-4 py-2.5 text-xs font-medium text-[var(--warning)] ring-1 ring-[var(--warning)]/20 transition-all hover:bg-[var(--warning)]/20 active:scale-[0.98] disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-[var(--marinara-app-accent-static)]/10 px-4 py-2.5 text-xs font-medium text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/20 transition-all hover:bg-[var(--marinara-app-accent-static)]/20 active:scale-[0.98] disabled:opacity-50"
                   title={localizeUi(
                     "ui.connections.connectioneditor.verifyWhichModelTheSdkActuallyBillsAgainstCatches",
                   )}
@@ -3922,7 +3920,7 @@ export function ConnectionEditor() {
                           <span className="flex flex-col gap-1.5">
                             {primary.length > 0 && (
                               <span className="flex flex-col gap-0.5">
-                                <span className="text-[0.5625rem] font-sans uppercase tracking-wide text-[var(--primary)]/80">
+                                <span className="text-[0.5625rem] font-sans uppercase tracking-wide text-emerald-400/80">
                                   {localizeUi("ui.connections.connectioneditor.roleplayGeneration")}
                                 </span>
                                 {primary.map((u) => (
@@ -3960,7 +3958,7 @@ export function ConnectionEditor() {
                       className={cn(
                         "font-mono",
                         claudeDiagResult.fastModeState && claudeDiagResult.fastModeState !== "off"
-                          ? "text-[var(--warning)]"
+                          ? "text-amber-400"
                           : undefined,
                       )}
                     >
@@ -4060,18 +4058,16 @@ function TestResultCard({
     <div
       className={cn(
         "rounded-lg border p-3",
-        success
-          ? "border-[var(--primary)]/20 bg-[var(--primary)]/5"
-          : "border-[var(--destructive)]/20 bg-[var(--destructive)]/5",
+        success ? "border-emerald-400/20 bg-emerald-400/5" : "border-[var(--destructive)]/20 bg-[var(--destructive)]/5",
       )}
     >
       <div className="flex items-center gap-2 text-xs font-medium">
         {success ? (
-          <Check size="0.8125rem" className="text-[var(--primary)]" />
+          <Check size="0.8125rem" className="text-emerald-400" />
         ) : (
           <AlertCircle size="0.8125rem" className="text-[var(--destructive)]" />
         )}
-        <span className={success ? "text-[var(--primary)]" : "text-[var(--destructive)]"}>
+        <span className={success ? "text-emerald-400" : "text-[var(--destructive)]"}>
           {label}:{" "}
           {success
             ? localizeUi("ui.connections.testresultcard.success")
@@ -4194,7 +4190,7 @@ function ImageGenerationDefaultsPanel({
   return (
     <FieldGroup
       label={localizeUi("ui.connections.imagegenerationdefaultspanel.localImageDefaults")}
-      icon={<SlidersHorizontal size="0.875rem" className="text-[var(--primary)]" />}
+      icon={<SlidersHorizontal size="0.875rem" className="text-sky-400" />}
       help={localizeUi(
         "ui.connections.imagegenerationdefaultspanel.connectionScopedDefaultsForLocalStableDiffusionBackendsThese",
       )}
@@ -4622,7 +4618,7 @@ function TextSetting({
         onChange={(event) => onChange(event.target.value)}
         rows={2}
         placeholder={placeholder}
-        className="mt-1 w-full resize-y rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/60 focus:outline-none focus:ring-[var(--primary)]/50"
+        className="mt-1 w-full resize-y rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/60 focus:outline-none focus:ring-sky-400/50"
       />
     </label>
   );
@@ -4746,7 +4742,7 @@ function VideoGenerationDefaultsPanel({
   return (
     <FieldGroup
       label={localizeUi("ui.connections.videogenerationdefaultspanel.videoDefaults")}
-      icon={<SlidersHorizontal size="0.875rem" className="text-[var(--primary)]" />}
+      icon={<SlidersHorizontal size="0.875rem" className="text-sky-400" />}
       help={
         service === "xai"
           ? localizeUi("ui.connections.videogenerationdefaultspanel.connectionScopedDefaultsForXaiSceneVideoGeneration")
@@ -4884,7 +4880,7 @@ function VideoGenerationDefaultsPanel({
                         else if (service === "comfyui") updateComfyUi({ aspectRatio });
                         else updateOpenRouter({ aspectRatio });
                       }}
-                      className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                      className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                     >
                       <option value="16:9">16:9</option>
                       <option value="9:16">9:16</option>
@@ -4917,7 +4913,7 @@ function VideoGenerationDefaultsPanel({
                         else if (service === "comfyui") updateComfyUi({ resolution });
                         else updateOpenRouter({ resolution });
                       }}
-                      className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                      className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                     >
                       {VIDEO_RESOLUTION_OPTIONS.filter(
                         (option) =>
@@ -4992,7 +4988,7 @@ function VideoGenerationDefaultsPanel({
                     onChange={(event) =>
                       updateGeminiOmni({ aspectRatio: event.target.value === "9:16" ? "9:16" : "16:9" })
                     }
-                    className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+                    className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
                   >
                     <option value="16:9">16:9</option>
                     <option value="9:16">9:16</option>
@@ -5056,7 +5052,7 @@ function ComfyUiLoraSettings({
               value={slot.model}
               onChange={(event) => updateSlot(index, { model: event.target.value })}
               placeholder={localizeUi("ui.connections.comfyuilorasettings.selectOrEnterLora")}
-              className="mt-1 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+              className="mt-1 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
             />
           </label>
           <NumberSetting
@@ -5096,7 +5092,7 @@ function ChoiceSetting({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/60 focus:outline-none focus:ring-[var(--primary)]/50"
+        className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/60 focus:outline-none focus:ring-sky-400/50"
         placeholder={localizeUi("ui.connections.choicesetting.backendDefault")}
       />
       <datalist id={listId}>
@@ -5158,7 +5154,7 @@ function NumberSetting({
             event.currentTarget.blur();
           }
         }}
-        className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--primary)]/50"
+        className="mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
       />
     </label>
   );

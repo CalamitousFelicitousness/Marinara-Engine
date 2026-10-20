@@ -91,8 +91,8 @@
   --muted-foreground: #8888a0;
   --accent: #1e1e2e;
   --accent-foreground: #cccccc;
-  --destructive: var(--marinara-app-accent-static);
-  --destructive-foreground: var(--primary-foreground);
+  --destructive: #c44040;
+  --destructive-foreground: #ffffff;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.08);
   --ring: #4a72b0;
@@ -187,8 +187,8 @@
   --muted-foreground: #606078;
   --accent: #d4d4de;
   --accent-foreground: #1a1a24;
-  --destructive: var(--marinara-app-accent-static);
-  --destructive-foreground: var(--primary-foreground);
+  --destructive: #a83248;
+  --destructive-foreground: #ffffff;
   --border: rgba(0, 0, 0, 0.1);
   --input: rgba(0, 0, 0, 0.1);
   --ring: #3a609a;
@@ -415,13 +415,13 @@
 }
 
 [data-visual-theme="sillytavern"] .os-window-btn.close {
-  background: var(--destructive);
+  background: #c44040;
 }
 [data-visual-theme="sillytavern"] .os-window-btn.minimize {
-  background: var(--warning);
+  background: #b09430;
 }
 [data-visual-theme="sillytavern"] .os-window-btn.maximize {
-  background: var(--success);
+  background: #409040;
 }
 
 [data-visual-theme="sillytavern"] .os-window-btn:hover {

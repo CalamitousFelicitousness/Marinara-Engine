@@ -75,7 +75,7 @@ export function NameAliasesSection({ aliases, onChange, nameColor }: NameAliases
           className={cn(
             "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.5rem] font-semibold ring-1",
             colorInlineNames
-              ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/20"
+              ? "bg-emerald-400/15 text-emerald-500 ring-emerald-400/20"
               : "bg-[var(--muted)] text-[var(--muted-foreground)] ring-[var(--border)]",
           )}
           title={
@@ -87,7 +87,7 @@ export function NameAliasesSection({ aliases, onChange, nameColor }: NameAliases
           <span
             className={cn(
               "inline-block h-1.5 w-1.5 rounded-full",
-              colorInlineNames ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]",
+              colorInlineNames ? "bg-emerald-400" : "bg-[var(--muted-foreground)]",
             )}
           />
           {colorInlineNames

@@ -20,7 +20,7 @@ const SEVERITIES: LorebookLintSeverity[] = ["error", "warning", "info"];
 
 const SEVERITY_DOT: Record<LorebookLintSeverity, string> = {
   error: "bg-[var(--destructive)]",
-  warning: "bg-[var(--warning)]",
+  warning: "bg-amber-400",
   info: "bg-[var(--muted-foreground)]",
 };
 

@@ -777,7 +777,7 @@ function ThinkingTagsInput({
         }
       />
       {error ? (
-        <p className="mt-1 text-[0.5625rem] text-[var(--warning)]">{error}</p>
+        <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>
       ) : (
         <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">
           {localizeUi("ui.ui.thinkingtagsinput.oneWrapperPerLine")} {THINKING_TAG_CONTENT_PLACEHOLDER}{" "}
@@ -917,7 +917,7 @@ export function CustomParametersInput({
         }
       />
       {error ? (
-        <p className="mt-1 text-[0.5625rem] text-[var(--warning)]">{error}</p>
+        <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>
       ) : (
         <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">
           {help ??
@@ -1013,7 +1013,7 @@ function ParamInput({
         step={step}
         className="mari-chrome-field mari-chrome-field--compact mt-0.5 w-full !rounded-md px-2.5 py-1.5 text-xs"
       />
-      {error && <p className="mt-1 text-[0.5625rem] text-[var(--warning)]">{error}</p>}
+      {error && <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>}
     </div>
   );
 }

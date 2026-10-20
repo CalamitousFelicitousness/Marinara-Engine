@@ -23,10 +23,10 @@ interface ImageRegeneratePanelProps {
 }
 
 const PANEL_CLASS =
-  "flex flex-col gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)]/95 px-3 py-2.5 text-left shadow-2xl";
+  "flex flex-col gap-2.5 rounded-lg border border-white/10 bg-black/95 px-3 py-2.5 text-left shadow-2xl";
 const FIELD_CLASS =
-  "w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)]/40 px-2.5 py-2 font-mono text-[0.75rem] leading-relaxed text-[var(--foreground)]/85 outline-none transition-colors placeholder:text-[var(--foreground)]/30 focus:border-[var(--border)] disabled:opacity-60";
-const LABEL_CLASS = "text-[0.6875rem] font-semibold text-[var(--foreground)]/55";
+  "w-full resize-y rounded-md border border-white/10 bg-black/40 px-2.5 py-2 font-mono text-[0.75rem] leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/30 focus:border-white/30 disabled:opacity-60";
+const LABEL_CLASS = "text-[0.6875rem] font-semibold text-white/55";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -48,7 +48,7 @@ export function ImageRegeneratePanel(props: ImageRegeneratePanelProps) {
   if (needsGalleryRow && isLoading) {
     return (
       <div className={cn(PANEL_CLASS, "items-center py-4", className)}>
-        <Loader2 size="1rem" className="animate-spin text-[var(--foreground)]/55" />
+        <Loader2 size="1rem" className="animate-spin text-white/55" />
       </div>
     );
   }
@@ -151,7 +151,7 @@ function ImageRegenerateForm({
           <span className={LABEL_CLASS}>{localizeUi("ui.chat.imageregeneratepanel.characterPrompts")}</span>
           {characterPrompts.map((character, index) => (
             <label key={`${character.name}-${index}`} className="flex flex-col gap-1">
-              <span className="text-[0.6875rem] font-medium text-[var(--foreground)]/75">{character.name}</span>
+              <span className="text-[0.6875rem] font-medium text-white/75">{character.name}</span>
               <textarea
                 value={character.prompt}
                 onChange={(event) =>
@@ -177,7 +177,7 @@ function ImageRegenerateForm({
           value={connectionId}
           onChange={(event) => setConnectionId(event.target.value)}
           disabled={busy}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)]/40 px-2.5 py-2 text-[0.75rem] text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--border)] disabled:opacity-60"
+          className="w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-2 text-[0.75rem] text-white/85 outline-none transition-colors focus:border-white/30 disabled:opacity-60"
         >
           <option value="">{localizeUi("ui.chat.imageregeneratepanel.chatConnection")}</option>
           {selectedConnectionMissing ? (
@@ -202,7 +202,7 @@ function ImageRegenerateForm({
       </label>
 
       {(!record || hasReferences) && (
-        <p className="text-[0.6875rem] leading-relaxed text-[var(--foreground)]/45">
+        <p className="text-[0.6875rem] leading-relaxed text-white/45">
           {!record
             ? localizeUi("ui.chat.imageregeneratepanel.noRecordNotice")
             : localizeUi("ui.chat.imageregeneratepanel.referencesNotice")}
@@ -214,7 +214,7 @@ function ImageRegenerateForm({
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-[var(--foreground)]/10 px-3 py-1.5 text-[0.75rem] font-medium text-[var(--foreground)]/75 transition-colors hover:bg-[var(--foreground)]/20 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-[0.75rem] font-medium text-white/75 transition-colors hover:bg-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           <X size="0.875rem" />
           {localizeUi("chat.delete.dialog.cancel")}
@@ -226,7 +226,7 @@ function ImageRegenerateForm({
           className={cn(
             "inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.75rem] font-semibold ring-1 transition-colors",
             busy || promptMissing
-              ? "cursor-not-allowed bg-[var(--foreground)]/5 text-[var(--foreground)]/40 ring-[var(--border)]"
+              ? "cursor-not-allowed bg-white/5 text-white/40 ring-white/10"
               : "bg-[var(--primary)]/20 text-[var(--primary)] ring-[var(--primary)]/40 hover:bg-[var(--primary)]/30",
           )}
         >

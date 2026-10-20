@@ -50,7 +50,7 @@ function promptOverrideStatus(entry: PromptOverrideSummary | undefined) {
   if (entry.enabled) {
     return { label: "Custom active", className: "bg-[var(--primary)]/15 text-[var(--primary)]" };
   }
-  return { label: "Custom paused", className: "bg-[var(--warning)]/15 text-[var(--warning)]" };
+  return { label: "Custom paused", className: "bg-amber-500/15 text-amber-300" };
 }
 
 function getPromptOverrideErrorMessage(error: unknown) {
@@ -422,7 +422,7 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
             : renderedPreview.rendered || localizeUi("ui.panels.promptoverrideseditorbody.nothingToPreview")}
         </pre>
         {renderedPreview.unknownVariables.length > 0 && (
-          <p className="mt-1.5 text-[0.5625rem] text-[var(--warning)]">
+          <p className="mt-1.5 text-[0.5625rem] text-amber-500">
             {localizeUi("ui.panels.promptoverrideseditorbody.unknownVariables")}{" "}
             {renderedPreview.unknownVariables.join(", ")}
           </p>
@@ -476,7 +476,7 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
 
       {detail?.override && !isDirty && (
         <div className="flex items-center gap-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
-          <Check size="0.6875rem" className="text-[var(--success)]" />
+          <Check size="0.6875rem" className="text-green-500" />
           {localizeUi("chat.settings.inlineEditor.saved")} {new Date(detail.override.updatedAt).toLocaleString()}
         </div>
       )}

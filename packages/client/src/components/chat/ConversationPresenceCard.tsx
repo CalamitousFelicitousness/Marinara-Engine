@@ -80,12 +80,12 @@ const STATUS_OPTIONS: Array<{ status: ConversationPresenceStatus; label: string 
 
 function statusDotClass(status?: string) {
   return status === "offline"
-    ? "bg-[var(--muted-foreground)]"
+    ? "bg-gray-400"
     : status === "dnd"
-      ? "bg-[var(--destructive)]"
+      ? "bg-red-500"
       : status === "idle"
-        ? "bg-[var(--warning)]"
-        : "bg-[var(--primary)]";
+        ? "bg-yellow-500"
+        : "bg-green-500";
 }
 
 function statusLabel(status?: string) {

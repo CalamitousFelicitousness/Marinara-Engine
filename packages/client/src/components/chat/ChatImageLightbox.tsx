@@ -89,7 +89,7 @@ export function ChatImageLightbox({
   return createPortal(
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
@@ -132,7 +132,7 @@ export function ChatImageLightbox({
                   setEditing(true);
                 }}
                 aria-label={localizeUi("ui.chat.chatimagelightbox.regenerateImage")}
-                className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
                 title={localizeUi("ui.chat.chatimagelightbox.regenerateImage")}
               >
                 <RefreshCw size="0.875rem" />
@@ -150,7 +150,7 @@ export function ChatImageLightbox({
                   onClose();
                 }}
                 aria-label={localizeUi("ui.chat.chatgallery.pinImageToChat")}
-                className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
                 title={localizeUi("ui.chat.chatgallery.pinToChat")}
               >
                 <Pin size="0.875rem" />
@@ -162,7 +162,7 @@ export function ChatImageLightbox({
               ref={closeButtonRef}
               onClick={onClose}
               aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
-              className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+              className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
             >
               <X size="0.875rem" />
             </button>
@@ -220,7 +220,7 @@ export function ChatVideoLightbox({
   return createPortal(
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.chat.chatvideolightbox.videoPreview")}
@@ -263,7 +263,7 @@ export function ChatVideoLightbox({
                   onClose();
                 }}
                 aria-label={localizeUi("ui.chat.chatgallery.pinVideoToChat")}
-                className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
                 title={localizeUi("ui.chat.chatgallery.pinToChat")}
               >
                 <Pin size="0.875rem" />
@@ -274,7 +274,7 @@ export function ChatVideoLightbox({
                 href={video.url}
                 download={getSceneVideoDownloadName(video)}
                 aria-label={localizeUi("ui.chat.chatgallery.downloadVideo")}
-                className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
               >
                 <Download size="0.875rem" />
               </a>
@@ -284,7 +284,7 @@ export function ChatVideoLightbox({
               ref={closeButtonRef}
               onClick={onClose}
               aria-label={localizeUi("ui.chat.chatvideolightbox.closeVideo")}
-              className="rounded-lg bg-[var(--card)]/90 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--card)]/90"
+              className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
             >
               <X size="0.875rem" />
             </button>

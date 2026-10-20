@@ -16,7 +16,7 @@ function DiffSegments({ segments, text }: { segments: DiffSegment[] | undefined;
         ) : (
           <span
             key={i}
-            className={cn("rounded", seg.type === "added" ? "bg-[var(--success)]/35" : "bg-[var(--destructive)]/35")}
+            className={cn("rounded", seg.type === "added" ? "bg-emerald-500/35" : "bg-[var(--destructive)]/35")}
           >
             {seg.value}
           </span>
@@ -51,7 +51,7 @@ export function UnifiedLineDiff({ before, after, className }: { before: string; 
               key={i}
               className={cn(
                 "flex gap-1.5 whitespace-pre-wrap break-words px-1.5",
-                line.type === "added" && "bg-[var(--success)]/15",
+                line.type === "added" && "bg-emerald-500/15",
                 line.type === "removed" && "bg-[var(--destructive)]/15",
               )}
             >
@@ -65,7 +65,7 @@ export function UnifiedLineDiff({ before, after, className }: { before: string; 
                 className={cn(
                   "select-none",
                   line.type === "added"
-                    ? "text-[var(--success)]"
+                    ? "text-emerald-500"
                     : line.type === "removed"
                       ? "text-[var(--destructive)]"
                       : "text-[var(--muted-foreground)]/50",

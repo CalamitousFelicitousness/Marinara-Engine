@@ -103,7 +103,7 @@ export function GameJsonRepairModal({ request, onClose, onApplied }: GameJsonRep
           className={cn(
             "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
             validation.valid
-              ? "border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)]"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : "border-[var(--destructive)]/30 bg-[var(--destructive)]/10 text-[var(--destructive)]",
           )}
         >

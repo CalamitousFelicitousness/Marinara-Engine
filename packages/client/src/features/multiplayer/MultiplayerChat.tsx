@@ -25,7 +25,6 @@ import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { showAlertDialog, showConfirmDialog } from "../../lib/app-dialogs";
-import { getCssColorFallback, MARINARA_GRADIENT_PRESET } from "../../lib/css-colors";
 import { MultiplayerGuestFrame } from "./MultiplayerGuestFrame";
 import { MultiplayerGuestView } from "./MultiplayerGuestView";
 import {
@@ -74,28 +73,6 @@ function useGuestLabels(): MultiplayerGuestLabels {
       }) as MultiplayerGuestLabels,
     [t],
   );
-}
-
-function getMultiplayerGuestAccent(accent: string): string {
-  const selected = getCssColorFallback(accent, "").trim();
-  const isHex = (color: string) => /^#[0-9a-f]{6}$/iu.test(color);
-  if (isHex(selected)) return selected;
-  const fallback = getCssColorFallback(MARINARA_GRADIENT_PRESET, "");
-  if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return fallback;
-  const held = getComputedStyle(document.documentElement).getPropertyValue("--marinara-app-accent-static").trim();
-  if (!selected && isHex(held)) return held;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 1;
-  const context = canvas.getContext("2d");
-  if (!context) return isHex(held) ? held : fallback;
-  context.fillStyle = fallback;
-  context.fillStyle = held;
-  context.fillStyle = selected || held;
-  context.fillRect(0, 0, 1, 1);
-  return `#${Array.from(context.getImageData(0, 0, 1, 1).data)
-    .slice(0, 3)
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("")}`;
 }
 
 function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
@@ -195,13 +172,7 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
           state={state}
           labels={labels}
           title={t("multiplayer.title")}
-          theme={{
-            mode,
-            // The channel reads the held theme when sending, after the iframe is ready.
-            get accent() {
-              return getMultiplayerGuestAccent(accent);
-            },
-          }}
+          theme={{ mode, accent: /^#[0-9a-f]{6}$/iu.test(accent) ? accent : "#ec4b97" }}
           onAction={onAction}
           onProtocolError={() => {
             void disconnect.mutateAsync().catch(() => undefined);

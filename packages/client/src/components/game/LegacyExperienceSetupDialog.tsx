@@ -129,7 +129,7 @@ export function LegacyExperienceSetupDialog({
   return (
     <>
       <div
-        className="fixed inset-0 z-[10000] bg-[var(--background)]/45 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[10000] bg-black/45 backdrop-blur-[2px]"
         onClick={launching ? undefined : onCancelSetup}
       />
       <div className="fixed inset-0 z-[10001] flex items-center justify-center p-3 pointer-events-none max-md:pt-[max(0.75rem,env(safe-area-inset-top))] max-md:pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] sm:p-4">

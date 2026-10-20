@@ -456,7 +456,7 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             <div
               className={`flex items-center gap-2 rounded-lg p-3 text-xs ${
                 results.some((result) => result.success)
-                  ? "bg-[var(--success)]/10 text-[var(--success)]"
+                  ? "bg-emerald-500/10 text-emerald-400"
                   : "bg-[var(--destructive)]/10 text-[var(--destructive)]"
               }`}
             >
@@ -473,7 +473,7 @@ export function ImportCharacterModal({ open, onClose }: Props) {
                   className="flex items-start gap-2 border-b border-[var(--border)] px-3 py-2 text-xs last:border-b-0"
                 >
                   {result.success ? (
-                    <CheckCircle size="0.8125rem" className="mt-0.5 shrink-0 text-[var(--success)]" />
+                    <CheckCircle size="0.8125rem" className="mt-0.5 shrink-0 text-emerald-400" />
                   ) : (
                     <XCircle size="0.8125rem" className="mt-0.5 shrink-0 text-[var(--destructive)]" />
                   )}

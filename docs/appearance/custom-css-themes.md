@@ -108,7 +108,6 @@ The theme editor has a collapsible **CSS Variable Reference**. Click it to see t
 | `--secondary` | Cards and inputs |
 | `--card` | Card background |
 | `--border` | Borders |
-| `--marinara-shadow-color` | Shadows under controls and windows |
 | `--muted-foreground` | Dimmed text |
 | `--sidebar` | Sidebar background |
 | `--sidebar-border` | Sidebar border |
@@ -118,10 +117,6 @@ The theme editor has a collapsible **CSS Variable Reference**. Click it to see t
 | `--accent` | Hover highlights |
 
 You are not limited to this list. A theme can set any CSS variable Marinara uses, and it can add other custom styles too.
-
-Delete and error controls use `--destructive`, warnings use `--warning`, and success states use `--success`. These colors follow the selected accent by default and stay steady while Accent Pulse runs. A custom theme can set these variables to its own colors.
-
-Resource sections also expose theme colors. For example, `--mari-panel-connections-gradient-start`, `--mari-panel-connections-gradient-end`, and `--mari-panel-connections-gradient-text` control the Connections palette, including both speech cards. Replace `connections` with `characters`, `lorebooks`, `presets`, `agents`, `personas`, `settings`, `backgrounds`, or `browser` to change another section.
 
 Some visual effects have their own variables. For example, a theme can request the accent pulse animation by setting `--marinara-theme-accent-pulse: enabled`.
 

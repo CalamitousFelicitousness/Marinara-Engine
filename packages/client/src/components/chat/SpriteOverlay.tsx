@@ -341,7 +341,7 @@ export function SpriteOverlay({
       ))}
 
       {editing && (
-        <div className="pointer-events-none absolute bottom-4 left-1/2 z-[30] -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--card)]/90 px-3 py-1 text-[0.625rem] font-medium text-[var(--foreground)]/80 shadow-lg backdrop-blur-md">
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-[30] -translate-x-1/2 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[0.625rem] font-medium text-white/80 shadow-lg backdrop-blur-md">
           {localizeUi("ui.chat.spriteoverlay.dragSpritesToRepositionThemUseTheCheckAbove")}
         </div>
       )}
@@ -560,7 +560,7 @@ function CharacterSprite({
           >
             <Check size="0.75rem" strokeWidth={2.4} />
           </button>
-          <div className="pointer-events-none rounded-full border border-[var(--border)] bg-[var(--card)]/90 px-2 py-1 text-[0.5625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/75 shadow-md">
+          <div className="pointer-events-none rounded-full border border-white/10 bg-black/65 px-2 py-1 text-[0.5625rem] font-semibold uppercase tracking-wide text-white/75 shadow-md">
             {isDragging
               ? localizeUi("ui.chat.charactersprite.releaseToSave")
               : localizeUi("ui.chat.charactersprite.dragToMove")}

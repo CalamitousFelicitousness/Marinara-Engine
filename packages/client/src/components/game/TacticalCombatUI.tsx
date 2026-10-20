@@ -1190,9 +1190,9 @@ export function TacticalCombatUI({
     return (
       <div
         data-component="TacticalCombatUI"
-        className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--card)]/60 text-[var(--foreground)]/80 backdrop-blur-sm"
+        className="flex h-full flex-col items-center justify-center gap-3 bg-slate-950/60 text-white/80 backdrop-blur-sm"
       >
-        <Sword className="h-8 w-8 animate-pulse text-[var(--primary)]" />
+        <Sword className="h-8 w-8 animate-pulse text-amber-300" />
         <p className="text-sm">{localizeUi("ui.game.tacticalcombatui.deployingTheTacticalBattlefield")}</p>
       </div>
     );
@@ -1202,9 +1202,9 @@ export function TacticalCombatUI({
     return (
       <div
         data-component="TacticalCombatUI"
-        className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--card)]/70 p-6 text-center text-[var(--foreground)]/80 backdrop-blur-sm"
+        className="flex h-full flex-col items-center justify-center gap-3 bg-slate-950/70 p-6 text-center text-white/80 backdrop-blur-sm"
       >
-        <SkullIcon className="h-8 w-8 text-[var(--destructive)]" />
+        <SkullIcon className="h-8 w-8 text-red-400" />
         <p className="text-sm">{startError ?? "The battlefield failed to load."}</p>
         {terrainFallbackAvailable && (
           <button
@@ -1212,7 +1212,7 @@ export function TacticalCombatUI({
             onClick={() => {
               launchBattle({ omitBattlefield: true });
             }}
-            className="rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/15 px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/25"
+            className="rounded-lg border border-[var(--marinara-app-accent-static)]/40 bg-[var(--marinara-app-accent-static)]/15 px-4 py-2 text-sm font-semibold text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/25"
           >
             {localizeUi("ui.game.tacticalcombatui.useGeneratedTerrain")}
           </button>
@@ -1225,7 +1225,7 @@ export function TacticalCombatUI({
             persistSnapshot(null);
             onCombatEnd("flee", { outcome: "flee", rounds: 0, party: [], enemies: [] });
           }}
-          className="rounded-lg border border-[var(--border)] bg-[var(--foreground)]/10 px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--foreground)]/20"
+          className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20"
         >
           {localizeUi("ui.game.tacticalcombatui.retreatToStory")}
         </button>
@@ -1246,7 +1246,7 @@ export function TacticalCombatUI({
     <div
       ref={rootRef}
       data-component="TacticalCombatUI"
-      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--card)]/60 text-[var(--foreground)] select-none"
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-950/60 text-white select-none"
     >
       {/* One-off keyframes for shimmer / range pulse / ready glow (self-contained).
           Ready glow uses the app's --primary accent (theme-aware) via color-mix. */}
@@ -1262,9 +1262,7 @@ export function TacticalCombatUI({
       />
 
       {/* Crit flash overlay */}
-      {critFlash && (
-        <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-[var(--foreground)]/25" />
-      )}
+      {critFlash && <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/25" />}
 
       {/* The bar and the turn order, measured so the game's own floating controls (the map, the party,
           the menu) sit below them rather than over the order. */}
@@ -1275,7 +1273,7 @@ export function TacticalCombatUI({
         className={cn(GAME_SECTION_CLASS, "z-20 flex shrink-0 flex-col")}
       >
         {/* Top bar: round/phase + controls */}
-        <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--card)]/40 px-3 py-2 backdrop-blur">
+        <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-black/40 px-3 py-2 backdrop-blur">
           <div className="flex items-center gap-2">
             <span
               className={cn(
@@ -1291,22 +1289,22 @@ export function TacticalCombatUI({
                   ? localizeUi("ui.game.tacticalcombatui.playerPhase")
                   : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
             </span>
-            <span className="text-xs font-semibold text-[var(--foreground)]/60">
+            <span className="text-xs font-semibold text-white/60">
               {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
             </span>
-            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)] sm:inline">
+            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-white/40 sm:inline">
               {liveState.difficulty}
             </span>
             <span
               aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
                 value1: battlefieldSummary,
               })}
-              className="hidden text-[0.65rem] font-medium text-[var(--muted-foreground)] md:inline"
+              className="hidden text-[0.65rem] font-medium text-white/45 md:inline"
             >
               {battlefieldSummary}
             </span>
             {animating && (
-              <span className="flex items-center gap-1.5 rounded-md bg-[var(--foreground)]/10 px-2 py-1 text-[0.65rem] font-semibold text-[var(--foreground)]/70">
+              <span className="flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[0.65rem] font-semibold text-white/70">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--warning)] shadow-[0_0_6px_1px_color-mix(in_srgb,var(--warning)_70%,transparent)]" />
                 {localizeUi("ui.game.tacticalcombatui.resolving")}
               </span>
@@ -1319,8 +1317,8 @@ export function TacticalCombatUI({
               className={cn(
                 "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
                 showThreat
-                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--foreground)]"
-                  : "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)] hover:bg-[var(--foreground)]/10",
+                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
+                  : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
               )}
               title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
             >
@@ -1330,7 +1328,7 @@ export function TacticalCombatUI({
             <button
               type="button"
               onClick={() => setLogOpen((v) => !v)}
-              className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10"
+              className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
               title={localizeUi("ui.game.tacticalcombatui.combatLog")}
             >
               <ScrollText size={13} />
@@ -1342,8 +1340,8 @@ export function TacticalCombatUI({
                 onClick={() => setRestartConfirm(true)}
                 disabled={animating}
                 className={cn(
-                  "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10",
-                  animating && "cursor-not-allowed opacity-40 hover:bg-[var(--foreground)]/5",
+                  "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10",
+                  animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
                 )}
                 title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
               >
@@ -1358,7 +1356,7 @@ export function TacticalCombatUI({
                   onClick={endTurn}
                   disabled={animating}
                   className={cn(
-                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--primary)]/30",
+                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
                     animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
                   )}
                 >
@@ -1369,8 +1367,8 @@ export function TacticalCombatUI({
                   onClick={() => setFleeConfirm(true)}
                   disabled={animating}
                   className={cn(
-                    "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10",
-                    animating && "cursor-not-allowed opacity-40 hover:bg-[var(--foreground)]/5",
+                    "flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-white/60 transition-colors hover:bg-white/10",
+                    animating && "cursor-not-allowed opacity-40 hover:bg-white/5",
                   )}
                   title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}
                 >
@@ -1386,7 +1384,7 @@ export function TacticalCombatUI({
         {liveState.initiative && (
           <ol
             aria-label={localizeUi("ui.game.tacticalcombatui.turnOrder")}
-            className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--card)]/30 px-3 py-1.5"
+            className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-black/30 px-3 py-1.5"
           >
             {liveState.initiative.order.map((id) => {
               const unit = liveState.units.find((u) => u.id === id);
@@ -1460,7 +1458,7 @@ export function TacticalCombatUI({
                     onClick={() => onTileClick(x, y)}
                     className={cn(
                       "group relative overflow-hidden rounded-[3px] transition-all duration-150",
-                      isInspected && "ring-1 ring-[var(--ring)]",
+                      isInspected && "ring-1 ring-white/70",
                     )}
                     style={{ backgroundColor: palette[terrain] + TILE_ALPHA, boxShadow: tileShadow(terrain) }}
                     title={tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
@@ -1517,7 +1515,7 @@ export function TacticalCombatUI({
                     {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
                     {height > 0 && (
                       <span className="pointer-events-none absolute inset-0" style={heightWash(height)}>
-                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-[var(--foreground)]/75">
+                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
                           {"▲".repeat(Math.min(height, 3))}
                         </span>
                       </span>
@@ -1638,12 +1636,12 @@ export function TacticalCombatUI({
                   exit={{ opacity: 0, y: -38 }}
                   transition={{ duration: 0.5 }}
                   className={cn(
-                    "pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black [text-shadow:0_1px_2px_var(--background)]",
-                    p.tone === "damage" && "text-[var(--destructive)]",
-                    p.tone === "crit" && "text-[var(--warning)]",
-                    p.tone === "heal" && "text-[var(--success)]",
-                    p.tone === "miss" && "text-[var(--foreground)]/70 italic",
-                    p.tone === "status" && "text-[var(--primary)] text-xs",
+                    "pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
+                    p.tone === "damage" && "text-red-300",
+                    p.tone === "crit" && "text-amber-300",
+                    p.tone === "heal" && "text-emerald-300",
+                    p.tone === "miss" && "text-white/70 italic",
+                    p.tone === "status" && "text-violet-300 text-xs",
                   )}
                   style={{ left: `${left}%`, top: `${top}%` }}
                 >
@@ -1664,10 +1662,10 @@ export function TacticalCombatUI({
               exit={{ x: "100%", opacity: 0 }}
               transition={{ duration: 0.45 }}
               className={cn(
-                "pointer-events-none absolute left-0 right-0 top-1/2 z-30 -translate-y-1/2 py-4 text-center text-2xl font-black uppercase tracking-widest drop-shadow-lg",
+                "pointer-events-none absolute left-0 right-0 top-1/2 z-30 -translate-y-1/2 py-4 text-center text-2xl font-black uppercase tracking-widest text-white drop-shadow-lg",
                 banner.tone === "enemy"
-                  ? "bg-gradient-to-r from-[var(--destructive)]/0 via-[var(--destructive)]/70 to-[var(--destructive)]/0 text-[var(--destructive-foreground)]"
-                  : "bg-gradient-to-r from-[var(--primary)]/0 via-[var(--primary)]/70 to-[var(--primary)]/0 text-[var(--primary-foreground)]",
+                  ? "bg-gradient-to-r from-[var(--destructive)]/0 via-[var(--destructive)]/70 to-[var(--destructive)]/0"
+                  : "bg-gradient-to-r from-[var(--primary)]/0 via-[var(--primary)]/70 to-[var(--primary)]/0",
               )}
             >
               {banner.text}
@@ -1716,20 +1714,16 @@ export function TacticalCombatUI({
             data-game-section="tactical-actions"
             className={cn(
               GAME_SECTION_CLASS,
-              "pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)]/85 p-3 shadow-2xl backdrop-blur-md sm:w-72",
+              "pointer-events-auto w-full max-w-md rounded-2xl border border-[var(--border)] bg-slate-900/85 p-3 shadow-2xl backdrop-blur-md sm:w-72",
             )}
           >
             <div className="mb-2 flex cursor-grab items-center justify-between active:cursor-grabbing">
-              <span className="flex min-w-0 items-center text-sm font-bold text-[var(--foreground)]">
-                <GripVertical className="mr-1 h-3 w-3 shrink-0 text-[var(--foreground)]/40" />
-                {selectedUnit.isPlayer && <Crown className="mr-1 inline h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />}
+              <span className="flex min-w-0 items-center text-sm font-bold text-white">
+                <GripVertical className="mr-1 h-3 w-3 shrink-0 text-white/40" />
+                {selectedUnit.isPlayer && <Crown className="mr-1 inline h-3.5 w-3.5 shrink-0 text-amber-300" />}
                 <span className="truncate">{selectedUnit.name}</span>
               </span>
-              <button
-                type="button"
-                onClick={resetSelection}
-                className="text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
-              >
+              <button type="button" onClick={resetSelection} className="text-white/50 hover:text-white">
                 <X size={16} />
               </button>
             </div>
@@ -1738,7 +1732,7 @@ export function TacticalCombatUI({
             {ui.kind === "unit" && (
               <>
                 {selectedUnit.hasMoved && !selectedUnit.hasActed && (
-                  <p className="mb-2 flex items-center gap-1.5 rounded-lg bg-[var(--foreground)]/5 px-2 py-1.5 text-[0.7rem] italic text-[var(--foreground)]/60">
+                  <p className="mb-2 flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1.5 text-[0.7rem] italic text-white/60">
                     <Footprints className="h-3.5 w-3.5 text-[var(--primary)]" />
                     {localizeUi("ui.game.tacticalcombatui.alreadyMovedChooseAnAction")}
                   </p>
@@ -1774,21 +1768,21 @@ export function TacticalCombatUI({
                   <ActionButton
                     icon={Backpack}
                     label={localizeUi("ui.game.tacticalcombatui.item")}
-                    color="text-[var(--success)]"
+                    color="text-emerald-300"
                     onClick={() => chooseAction("item")}
                     disabled={animating || (directed && directed.items.length === 0)}
                   />
                   <ActionButton
                     icon={Shield}
                     label={localizeUi("ui.game.tacticalcombatui.defend")}
-                    color="text-[var(--warning)]"
+                    color="text-amber-300"
                     onClick={() => chooseAction("defend")}
                     disabled={animating}
                   />
                   <ActionButton
                     icon={Hourglass}
                     label={localizeUi("ui.game.tacticalcombatui.wait")}
-                    color="text-[var(--foreground)]/70"
+                    color="text-white/70"
                     onClick={() => chooseAction("wait")}
                     disabled={animating}
                   />
@@ -1796,7 +1790,7 @@ export function TacticalCombatUI({
                     <ActionButton
                       icon={Wind}
                       label={localizeUi("ui.game.tacticalcombatui.resetMove")}
-                      color="text-[var(--foreground)]/60"
+                      color="text-white/60"
                       onClick={() => setStagedMove(null)}
                       disabled={animating}
                     />
@@ -1810,7 +1804,7 @@ export function TacticalCombatUI({
                 {directed.items.map((item) => (
                   <button
                     key={item.name}
-                    className="min-h-11 rounded-lg border border-[var(--border)] px-3 text-left text-sm text-[var(--foreground)]"
+                    className="min-h-11 rounded-lg border border-white/20 px-3 text-left text-sm text-white"
                     onClick={() =>
                       setUi({
                         kind: "target",
@@ -1825,7 +1819,7 @@ export function TacticalCombatUI({
                   </button>
                 ))}
                 <button
-                  className="min-h-11 text-sm text-[var(--foreground)]/70"
+                  className="min-h-11 text-sm text-white/70"
                   onClick={() => setUi({ kind: "unit", unitId: selectedUnit.id })}
                 >
                   {localizeUi("ui.game.tacticalcombatui.back")}
@@ -1854,22 +1848,22 @@ export function TacticalCombatUI({
                         className={cn(
                           "flex items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-colors",
                           ready
-                            ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)] hover:bg-[var(--primary)]/20"
-                            : "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/40",
+                            ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-white hover:bg-[var(--primary)]/20"
+                            : "border-white/10 bg-white/5 text-white/40",
                         )}
                       >
                         <span className="font-semibold">{skill.name}</span>
-                        <span className="flex items-center gap-1.5 text-[0.65rem] text-[var(--foreground)]/60">
+                        <span className="flex items-center gap-1.5 text-[0.65rem] text-white/60">
                           <span className="uppercase">{skill.type}</span>
                           {(skill.slotLevel || skill.mpCost > 0) && (
-                            <span className="text-[var(--primary)]">
+                            <span className="text-sky-300">
                               {skill.slotLevel
                                 ? localizeUi("game.combat.director.slotCost", { level: skill.slotLevel })
                                 : localizeUi("game.combat.director.mpCost", { amount: skill.mpCost })}
                             </span>
                           )}
                           {cd > 0 && (
-                            <span className="text-[var(--warning)]">
+                            <span className="text-amber-300">
                               {localizeUi("ui.game.tacticalcombatui.cd")} {cd}
                             </span>
                           )}
@@ -1880,7 +1874,7 @@ export function TacticalCombatUI({
                 <button
                   type="button"
                   onClick={() => setUi({ kind: "unit", unitId: selectedUnit.id })}
-                  className="mt-1 text-center text-xs text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
+                  className="mt-1 text-center text-xs text-white/50 hover:text-white"
                 >
                   {localizeUi("ui.game.tacticalcombatui.back")}
                 </button>
@@ -1890,7 +1884,7 @@ export function TacticalCombatUI({
             {/* Target / forecast */}
             {ui.kind === "target" && (
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-semibold text-[var(--foreground)]/70">
+                <p className="text-xs font-semibold text-white/70">
                   {ui.action === "attack"
                     ? localizeUi("ui.game.tacticalcombatui.selectATarget")
                     : ui.action === "item"
@@ -1908,7 +1902,7 @@ export function TacticalCombatUI({
                           : localizeUi("ui.game.tacticalcombatui.selectAnAlly")}
                 </p>
                 {targetIds.size === 0 && (
-                  <p className="text-xs italic text-[var(--foreground)]/50">
+                  <p className="text-xs italic text-white/50">
                     {(() => {
                       if (ui.action === "item") {
                         if (itemScope === "enemy") return localizeUi("game.combat.target.noEnemies");
@@ -1948,7 +1942,7 @@ export function TacticalCombatUI({
                       onClick={confirmTarget}
                       disabled={animating}
                       className={cn(
-                        "flex-1 rounded-lg border border-[var(--destructive)]/50 bg-[var(--destructive)]/80 px-3 py-2 text-sm font-bold text-[var(--destructive-foreground)] transition-colors hover:bg-[var(--destructive)]",
+                        "flex-1 rounded-lg border border-[var(--destructive)]/50 bg-[var(--destructive)]/80 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[var(--destructive)]",
                         animating && "cursor-not-allowed opacity-40 hover:bg-[var(--destructive)]/80",
                       )}
                     >
@@ -1961,7 +1955,7 @@ export function TacticalCombatUI({
                       setForecastTargetId(null);
                       setUi({ kind: "unit", unitId: selectedUnit.id });
                     }}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-3 py-2 text-sm font-semibold text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/10"
+                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white/70 hover:bg-white/10"
                   >
                     {localizeUi("ui.noodle.noodlerframe.back")}
                   </button>
@@ -1979,17 +1973,13 @@ export function TacticalCombatUI({
             data-game-section="tactical-log"
             className={cn(
               GAME_SECTION_CLASS,
-              "ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-[var(--card)]/95 backdrop-blur",
+              "ml-auto h-full w-full max-w-sm border-l border-[var(--border)] bg-slate-950/95 backdrop-blur",
             )}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
               <span className="text-sm font-bold">{localizeUi("ui.game.gamecombatui.combatLog")}</span>
-              <button
-                type="button"
-                onClick={() => setLogOpen(false)}
-                className="text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
-              >
+              <button type="button" onClick={() => setLogOpen(false)} className="text-white/50 hover:text-white">
                 <X size={18} />
               </button>
             </div>
@@ -1998,12 +1988,12 @@ export function TacticalCombatUI({
                 <p
                   key={i}
                   className={cn(
-                    "border-b border-[var(--border)] py-1",
-                    ev.kind === "phase" && "font-bold text-[var(--warning)]",
-                    ev.kind === "crit" && "font-semibold text-[var(--warning)]",
-                    ev.kind === "defeat" && "text-[var(--destructive)]",
-                    ev.kind === "heal" && "text-[var(--success)]",
-                    ev.kind === "miss" && "italic text-[var(--foreground)]/50",
+                    "border-b border-white/5 py-1",
+                    ev.kind === "phase" && "font-bold text-amber-200",
+                    ev.kind === "crit" && "font-semibold text-amber-300",
+                    ev.kind === "defeat" && "text-red-300",
+                    ev.kind === "heal" && "text-emerald-300",
+                    ev.kind === "miss" && "italic text-white/50",
                   )}
                 >
                   {ev.message ? localizeUi(ev.message.key, { ...ev.message.params, defaultValue: ev.text }) : ev.text}
@@ -2017,16 +2007,16 @@ export function TacticalCombatUI({
 
       {/* Flee confirm */}
       {fleeConfirm && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--card)]/70 p-4">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div
             data-game-section="tactical-confirm"
             className={cn(
               GAME_SECTION_CLASS,
-              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 text-center",
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
             )}
           >
-            <Flag className="mx-auto mb-2 h-6 w-6 text-[var(--primary)]" />
-            <p className="mb-4 text-sm text-[var(--foreground)]/90">
+            <Flag className="mx-auto mb-2 h-6 w-6 text-amber-300" />
+            <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.retreatFromThisBattleTheGmWillNarrateYour")}
             </p>
             <div className="flex gap-2">
@@ -2040,7 +2030,7 @@ export function TacticalCombatUI({
               <button
                 type="button"
                 onClick={() => setFleeConfirm(false)}
-                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-3 py-2 text-sm font-semibold text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/10"
+                className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white/70 hover:bg-white/10"
               >
                 {localizeUi("ui.game.tacticalcombatui.stay")}
               </button>
@@ -2051,16 +2041,16 @@ export function TacticalCombatUI({
 
       {/* Restart confirm (patterned after the flee confirm) */}
       {restartConfirm && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--card)]/70 p-4">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div
             data-game-section="tactical-confirm"
             className={cn(
               GAME_SECTION_CLASS,
-              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 text-center",
+              "w-full max-w-xs rounded-2xl border border-[var(--border)] bg-slate-900 p-5 text-center",
             )}
           >
             <RotateCcw className="mx-auto mb-2 h-6 w-6 text-[var(--primary)]" />
-            <p className="mb-4 text-sm text-[var(--foreground)]/90">
+            <p className="mb-4 text-sm text-white/90">
               {localizeUi("ui.game.tacticalcombatui.restartCurrentBattlefield")}
             </p>
             <div className="flex gap-2">
@@ -2077,7 +2067,7 @@ export function TacticalCombatUI({
               <button
                 type="button"
                 onClick={() => setRestartConfirm(false)}
-                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-3 py-2 text-sm font-semibold text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/10"
+                className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white/70 hover:bg-white/10"
               >
                 {localizeUi("ui.game.tacticalcombatui.keepFighting")}
               </button>
@@ -2088,14 +2078,14 @@ export function TacticalCombatUI({
 
       {/* Outcome screen */}
       {outcome && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[var(--card)]/80 p-6 text-center backdrop-blur">
-          {outcome === "victory" && <Trophy className="h-14 w-14 text-[var(--success)]" />}
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/80 p-6 text-center backdrop-blur">
+          {outcome === "victory" && <Trophy className="h-14 w-14 text-amber-300" />}
           {outcome === "defeat" && <SkullIcon className="h-14 w-14 text-[var(--destructive)]" />}
           {outcome === "fled" && <Wind className="h-14 w-14 text-[var(--primary)]" />}
           <h2
             className={cn(
               "text-3xl font-black uppercase tracking-widest",
-              outcome === "victory" && "text-[var(--success)]",
+              outcome === "victory" && "text-amber-300",
               outcome === "defeat" && "text-[var(--destructive)]",
               outcome === "fled" && "text-[var(--primary)]",
             )}
@@ -2125,7 +2115,7 @@ export function TacticalCombatUI({
                   persistSnapshot(null);
                   onCombatEnd(summary.outcome, summary);
                 }}
-                className="rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-4 py-2 text-sm font-semibold text-[var(--foreground)]/80 transition-colors hover:bg-[var(--foreground)]/10"
+                className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10"
               >
                 {localizeUi("ui.noodle.wizardfooter.continue")}
               </button>
@@ -2138,9 +2128,7 @@ export function TacticalCombatUI({
               {localizeUi("game.combat.director.finish")}
             </button>
           ) : (
-            <p className="text-sm text-[var(--foreground)]/60">
-              {localizeUi("ui.game.tacticalcombatui.returningToTheStory")}
-            </p>
+            <p className="text-sm text-white/60">{localizeUi("ui.game.tacticalcombatui.returningToTheStory")}</p>
           )}
         </div>
       )}
@@ -2192,7 +2180,7 @@ function UnitToken({
   const ring = ringColorFor(unit.id, unit.side);
   const ClassIcon = CLASS_ICONS[unitClassOf(unit)];
   const hpPct = unit.maxHp > 0 ? Math.max(0, (hp / unit.maxHp) * 100) : 0;
-  const hpColor = hpPct > 60 ? "bg-[var(--success)]" : hpPct > 25 ? "bg-[var(--warning)]" : "bg-[var(--destructive)]";
+  const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 25 ? "bg-amber-500" : "bg-red-500";
   const mpPct = unit.maxMp > 0 ? Math.max(0, (unit.mp / unit.maxMp) * 100) : 0;
 
   const style: CSSProperties = {
@@ -2226,15 +2214,15 @@ function UnitToken({
     >
       <div
         className={cn(
-          "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-[var(--marinara-editor-shadow)]",
-          selected && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--background)]",
+          "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
+          selected && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
           targetable && "ring-2 ring-[var(--destructive)] animate-pulse",
-          forecastTarget && "ring-2 ring-[var(--destructive)] ring-offset-1 ring-offset-[var(--background)]",
+          forecastTarget && "ring-2 ring-[var(--destructive)] ring-offset-1 ring-offset-slate-900",
           preview && "outline-dashed outline-2 outline-offset-2 outline-[var(--primary)]",
         )}
         style={{
           borderColor: ring,
-          backgroundColor: "var(--card)",
+          backgroundColor: unit.side === "party" ? "rgba(30,58,90,0.9)" : "rgba(90,30,40,0.9)",
           animation: ready ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
         }}
       >
@@ -2246,10 +2234,10 @@ function UnitToken({
         ) : sprite.kind === "emoji" ? (
           <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
         ) : (
-          <span className="text-[min(3vw,0.9rem)] font-black text-[var(--foreground)]/90">{initialsOf(unit.name)}</span>
+          <span className="text-[min(3vw,0.9rem)] font-black text-white/90">{initialsOf(unit.name)}</span>
         )}
         {unit.isPlayer && (
-          <Crown className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--warning)] drop-shadow" />
+          <Crown className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-300 drop-shadow" />
         )}
         {unit.isBoss && (
           <Skull className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
@@ -2258,20 +2246,20 @@ function UnitToken({
         <span
           className="absolute -bottom-0.5 -right-0.5 flex h-[13px] w-[13px] items-center justify-center rounded-full border shadow-sm"
           style={{
-            backgroundColor: "var(--card)",
+            backgroundColor: unit.side === "party" ? "rgba(30,58,90,0.95)" : "rgba(90,30,40,0.95)",
             borderColor: ring,
           }}
         >
-          <ClassIcon className="h-2 w-2 text-[var(--foreground)]/90" />
+          <ClassIcon className="h-2 w-2 text-white/90" />
         </span>
       </div>
       {/* HP bar */}
-      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-black/60">
         <div className={cn("h-full transition-all duration-300", hpColor)} style={{ width: `${hpPct}%` }} />
       </div>
       {unit.maxMp > 0 && (
-        <div className="mt-[1px] h-[2px] w-full overflow-hidden rounded-full bg-[var(--muted)]">
-          <div className="h-full bg-[var(--primary)] transition-all duration-300" style={{ width: `${mpPct}%` }} />
+        <div className="mt-[1px] h-[2px] w-full overflow-hidden rounded-full bg-black/60">
+          <div className="h-full bg-sky-400 transition-all duration-300" style={{ width: `${mpPct}%` }} />
         </div>
       )}
     </motion.button>
@@ -2297,8 +2285,8 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex flex-col items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--foreground)]/5 px-1 py-2.5 text-[0.68rem] font-semibold text-[var(--foreground)]/85 transition-colors hover:bg-[var(--foreground)]/15 active:scale-95",
-        disabled && "cursor-not-allowed opacity-40 hover:bg-[var(--foreground)]/5 active:scale-100",
+        "flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-1 py-2.5 text-[0.68rem] font-semibold text-white/85 transition-colors hover:bg-white/15 active:scale-95",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-white/5 active:scale-100",
       )}
     >
       <Icon className={cn("h-5 w-5", color)} />
@@ -2321,7 +2309,7 @@ function ForecastPanel({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="grid grid-cols-2 gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/40 p-2 text-xs"
+      className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/40 p-2 text-xs"
     >
       <ForecastSide
         unit={attacker}
@@ -2342,7 +2330,7 @@ function ForecastPanel({
           crit={forecast.counter.critChance}
         />
       ) : (
-        <div className="flex flex-col items-center justify-center gap-1 rounded-lg bg-[var(--foreground)]/5 text-center text-[0.65rem] text-[var(--foreground)]/40">
+        <div className="flex flex-col items-center justify-center gap-1 rounded-lg bg-white/5 text-center text-[0.65rem] text-white/40">
           <span className="font-semibold">{defender?.name ?? "Target"}</span>
           {defender && <ClassChip unit={defender} muted />}
           <span>{localizeUi("ui.game.forecastpanel.noCounter")}</span>
@@ -2371,24 +2359,24 @@ function ForecastSide({
 }) {
   const { t: localizeUi } = useUiTranslation();
   return (
-    <div className="overflow-hidden rounded-lg bg-[var(--foreground)]/5">
+    <div className="overflow-hidden rounded-lg bg-white/5">
       <div className={cn("truncate px-1.5 py-1 text-[0.65rem] font-bold", headerBg, tone)}>
         {unit.name}
-        {label && <span className="font-normal text-[var(--foreground)]/50"> {label}</span>}
+        {label && <span className="font-normal text-white/50"> {label}</span>}
       </div>
       <div className="px-1.5 pb-1.5 pt-1">
         <div className="mb-1">
           <ClassChip unit={unit} />
         </div>
         <div className="flex items-baseline gap-1">
-          <Sword className="h-3 w-3 text-[var(--foreground)]/50" />
-          <span className="text-base font-black text-[var(--foreground)]">{damage}</span>
+          <Sword className="h-3 w-3 text-white/50" />
+          <span className="text-base font-black text-white">{damage}</span>
         </div>
-        <div className="flex justify-between text-[0.6rem] text-[var(--foreground)]/60">
+        <div className="flex justify-between text-[0.6rem] text-white/60">
           <span>
             {localizeUi("ui.game.forecastside.hit")} {Math.round(hit)}%
           </span>
-          <span className="text-[var(--warning)]/80">
+          <span className="text-amber-300/80">
             {localizeUi("ui.game.forecastside.crit")} {Math.round(crit)}%
           </span>
         </div>
@@ -2405,13 +2393,13 @@ function ClassChip({ unit, muted }: { unit: TacticalUnit; muted?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded bg-[var(--foreground)]/10 px-1.5 py-0.5 text-[0.6rem] font-semibold",
-        muted ? "text-[var(--foreground)]/50" : "text-[var(--foreground)]/80",
+        "inline-flex items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[0.6rem] font-semibold",
+        muted ? "text-white/50" : "text-white/80",
       )}
     >
-      <Icon className={cn("h-3 w-3", muted ? "text-[var(--foreground)]/50" : "text-[var(--primary)]")} />
+      <Icon className={cn("h-3 w-3", muted ? "text-white/50" : "text-[var(--primary)]")} />
       <span>{profile.label}</span>
-      <span className="text-[var(--foreground)]/45">· {rangeText(unit.attackRange)}</span>
+      <span className="text-white/45">· {rangeText(unit.attackRange)}</span>
     </span>
   );
 }
@@ -2447,26 +2435,24 @@ function TileInspect({
       data-game-section="tactical-inspect"
       className={cn(
         GAME_SECTION_CLASS,
-        "pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-[var(--card)]/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16",
+        "pointer-events-auto absolute left-2 top-24 z-20 w-44 rounded-xl border border-[var(--border)] bg-slate-900/95 p-2.5 text-xs shadow-xl backdrop-blur sm:left-4 sm:top-16",
       )}
     >
       <div className="mb-1 flex cursor-grab items-center justify-between active:cursor-grabbing">
-        <span className="flex items-center gap-1 font-bold text-[var(--foreground)]">
-          <GripVertical className="h-3 w-3 text-[var(--foreground)]/40" />
+        <span className="flex items-center gap-1 font-bold text-white">
+          <GripVertical className="h-3 w-3 text-white/40" />
           {tileWords?.[terrain] ?? info.label}
         </span>
-        <button type="button" onClick={onClose} className="text-[var(--foreground)]/40 hover:text-[var(--foreground)]">
+        <button type="button" onClick={onClose} className="text-white/40 hover:text-white">
           <X size={13} />
         </button>
       </div>
-      <div className="flex gap-2 text-[0.65rem] text-[var(--foreground)]/60">
+      <div className="flex gap-2 text-[0.65rem] text-white/60">
         {elevationAt(state.grid, tile.x, tile.y) > 0 && (
           <span>{localizeUi("ui.game.tileinspect.height", { height: elevationAt(state.grid, tile.x, tile.y) })}</span>
         )}
         {info.impassable ? (
-          <span className="font-semibold text-[var(--destructive)]/80">
-            {localizeUi("ui.game.tileinspect.blocksWalking")}
-          </span>
+          <span className="font-semibold text-red-300/80">{localizeUi("ui.game.tileinspect.blocksWalking")}</span>
         ) : (
           <>
             <span>
@@ -2481,32 +2467,32 @@ function TileInspect({
         )}
       </div>
       {unit && (
-        <div className="mt-2 border-t border-[var(--border)] pt-2">
-          <div className="flex items-center gap-1 font-semibold text-[var(--foreground)]">
-            {unit.isPlayer && <Crown className="h-3 w-3 text-[var(--warning)]" />}
+        <div className="mt-2 border-t border-white/10 pt-2">
+          <div className="flex items-center gap-1 font-semibold text-white">
+            {unit.isPlayer && <Crown className="h-3 w-3 text-amber-300" />}
             {unit.isBoss && <Skull className="h-3 w-3 text-[var(--destructive)]" />}
             <span className="truncate">{unit.name}</span>
-            <span className="ml-auto text-[0.6rem] text-[var(--foreground)]/40">
+            <span className="ml-auto text-[0.6rem] text-white/40">
               {localizeUi("ui.game.tileinspect.lv")} {unit.level}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1">
             <ClassChip unit={unit} />
-            <span className="rounded bg-[var(--foreground)]/10 px-1.5 py-0.5 text-[0.6rem] font-semibold text-[var(--foreground)]/70">
+            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[0.6rem] font-semibold text-white/70">
               {localizeUi(movementLabelKey(unit.movementMode))}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-1 text-[0.65rem] text-[var(--foreground)]/70">
-            <Heart className="h-3 w-3 text-[var(--destructive)]" />
+          <div className="mt-1 flex items-center gap-1 text-[0.65rem] text-white/70">
+            <Heart className="h-3 w-3 text-red-400" />
             {unit.hp}/{unit.maxHp}
             {unit.maxMp > 0 && (
               <>
-                <Droplets className="ml-1 h-3 w-3 text-[var(--primary)]" />
+                <Droplets className="ml-1 h-3 w-3 text-sky-400" />
                 {unit.mp}/{unit.maxMp}
               </>
             )}
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-2 text-[0.6rem] text-[var(--foreground)]/50">
+          <div className="mt-1 flex flex-wrap gap-x-2 text-[0.6rem] text-white/50">
             <span>
               {localizeUi("ui.game.tileinspect.atk")} {unit.attack}
             </span>
@@ -2523,7 +2509,7 @@ function TileInspect({
           {unit.statusEffects.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {unit.statusEffects.map((e, i) => (
-                <span key={i} className="rounded bg-[var(--primary)]/20 px-1 text-[0.55rem] text-[var(--primary)]">
+                <span key={i} className="rounded bg-violet-500/20 px-1 text-[0.55rem] text-violet-200">
                   {e.name} ({e.turnsLeft})
                 </span>
               ))}

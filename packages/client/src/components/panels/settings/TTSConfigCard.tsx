@@ -698,7 +698,7 @@ function TtsSearchableSelect({
         createPortal(
           <div
             ref={panelRef}
-            className="fixed z-[10001] flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-[var(--glass-strong-shadow)]"
+            className="fixed z-[10001] flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-2xl shadow-black/40"
             style={{
               left: position?.left ?? -9999,
               top: position?.top ?? -9999,
@@ -987,7 +987,7 @@ function NpcDefaultVoicePool({
           {options.map((option) => (
             <label
               key={option.id}
-              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg bg-[var(--muted)]/30 px-2 py-1.5 text-xs transition-colors hover:bg-[var(--muted)]/50"
+              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg bg-black/10 px-2 py-1.5 text-xs transition-colors hover:bg-black/20"
             >
               <input
                 type="checkbox"
@@ -1680,13 +1680,13 @@ export function TTSConfigCard() {
     <div
       data-component="TTSConfigCard"
       className={cn(
-        "mari-panel-gradient--connections rounded-xl border border-[var(--mari-panel-gradient-start)]/20 bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/5 to-[var(--mari-panel-gradient-end)]/5 p-3 transition-all",
-        expanded && "border-[var(--mari-panel-gradient-start)]/30",
+        "rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 transition-all",
+        expanded && "border-sky-400/30",
       )}
     >
       {/* ── Header ── */}
       <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
           <Volume2 size="1rem" />
         </div>
 
@@ -1743,7 +1743,7 @@ export function TTSConfigCard() {
 
       {/* ── Expanded body ── */}
       {expanded && (
-        <div className="mt-3 space-y-4 border-t border-[var(--mari-panel-gradient-start)]/10 pt-3">
+        <div className="mt-3 space-y-4 border-t border-sky-400/10 pt-3">
           {/* Source */}
           <FieldRow
             label={localizeUi("ui.panels.ttsconfigcard.source")}
@@ -1806,10 +1806,7 @@ export function TTSConfigCard() {
                 }
               >
                 <div className="relative">
-                  <Globe
-                    size="0.875rem"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mari-panel-gradient-start)]"
-                  />
+                  <Globe size="0.875rem" className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-400" />
                   <input
                     value={baseUrl}
                     onChange={(e) => {
@@ -1828,10 +1825,7 @@ export function TTSConfigCard() {
                 help={localizeUi("ui.panels.ttsconfigcard.yourApiKeyForTheTtsProviderEncryptedAt")}
               >
                 <div className="relative">
-                  <Key
-                    size="0.875rem"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mari-panel-gradient-start)]"
-                  />
+                  <Key size="0.875rem" className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-400" />
                   <input
                     value={apiKey}
                     onChange={(e) => {
@@ -2061,7 +2055,7 @@ export function TTSConfigCard() {
               label={localizeUi("ui.panels.ttsconfigcard.characterVoices")}
               help={localizeUi("ui.panels.ttsconfigcard.assignVoicesToSpecificCharactersFromYourCharactersTab")}
             >
-              <div className="space-y-2 rounded-xl border border-[var(--mari-panel-gradient-start)]/15 bg-[var(--mari-panel-gradient-start)]/5 p-2">
+              <div className="space-y-2 rounded-xl border border-sky-400/15 bg-sky-400/5 p-2">
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -2161,7 +2155,7 @@ export function TTSConfigCard() {
             label={localizeUi("ui.panels.ttsconfigcard.narratorVoice")}
             help={localizeUi("ui.panels.ttsconfigcard.useASeparateVoiceForNarratorMessagesGameNarration")}
           >
-            <div className="space-y-2 rounded-xl border border-[var(--mari-panel-gradient-start)]/15 bg-[var(--mari-panel-gradient-start)]/5 p-2">
+            <div className="space-y-2 rounded-xl border border-sky-400/15 bg-sky-400/5 p-2">
               <ToggleRow
                 label={localizeUi("ui.panels.ttsconfigcard.useSeparateNarratorVoice")}
                 checked={narratorVoiceEnabled}
@@ -2209,7 +2203,7 @@ export function TTSConfigCard() {
                 </div>
               )}
               {narratorVoiceEnabled && source === "elevenlabs" && !narratorVoice && (
-                <p className="text-[0.625rem] leading-relaxed text-[var(--marinara-app-accent-static)]/80">
+                <p className="text-[0.625rem] leading-relaxed text-amber-300/80">
                   {localizeUi("ui.panels.ttsconfigcard.selectANarratorVoiceOrNarrationWillFallBack")}
                 </p>
               )}
@@ -2241,7 +2235,7 @@ export function TTSConfigCard() {
             label={localizeUi("ui.panels.ttsconfigcard.randomNpcVoices")}
             help={localizeUi("ui.panels.ttsconfigcard.whenEnabledTrackedGameNpcsWithoutACharacterSpecific")}
           >
-            <div className="space-y-2 rounded-xl border border-[var(--mari-panel-gradient-start)]/15 bg-[var(--mari-panel-gradient-start)]/5 p-2">
+            <div className="space-y-2 rounded-xl border border-sky-400/15 bg-sky-400/5 p-2">
               <ToggleRow
                 label={localizeUi("ui.panels.ttsconfigcard.useDefaultVoicesForRandomNpcs")}
                 checked={npcDefaultVoicesEnabled}
@@ -2267,7 +2261,7 @@ export function TTSConfigCard() {
                     {localizeUi("ui.panels.ttsconfigcard.npcsWithUnclearGenderUseAStablePickFrom")}
                   </p>
                   {!voicesFromProvider && (
-                    <p className="text-[0.625rem] leading-relaxed text-[var(--marinara-app-accent-static)]/80">
+                    <p className="text-[0.625rem] leading-relaxed text-amber-300/80">
                       {localizeUi("ui.panels.ttsconfigcard.saveAndEnableThisTtsProviderThenRefreshVoices")}
                     </p>
                   )}
@@ -2552,7 +2546,7 @@ export function TTSConfigCard() {
             />
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--mari-panel-gradient-start)]/15 bg-[var(--mari-panel-gradient-start)]/5 px-2.5 py-2">
+          <div className="flex items-center gap-2 rounded-xl border border-sky-400/15 bg-sky-400/5 px-2.5 py-2">
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium">{localizeUi("ui.panels.ttsconfigcard.cachedClips")}</div>
               <div className="truncate text-[0.625rem] text-[var(--muted-foreground)]">
@@ -2581,8 +2575,8 @@ export function TTSConfigCard() {
               className={cn(
                 "flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs ring-1 transition-all",
                 ttsState === "playing" || ttsState === "blocked"
-                  ? "bg-[var(--mari-panel-gradient-start)]/10 text-[var(--mari-panel-gradient-start)] ring-[var(--mari-panel-gradient-start)]/30 hover:bg-[var(--mari-panel-gradient-start)]/20"
-                  : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:text-[var(--foreground)] hover:ring-[var(--mari-panel-gradient-start)]/60",
+                  ? "bg-sky-500/10 text-sky-400 ring-sky-400/30 hover:bg-sky-500/20"
+                  : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:text-[var(--foreground)] hover:ring-sky-400/60",
                 previewDisabled && "cursor-not-allowed opacity-50",
               )}
               title={previewTitle}
@@ -2611,7 +2605,7 @@ export function TTSConfigCard() {
               </span>
             )}
             {saveStatus === "saved" && (
-              <span className="flex items-center gap-1 text-[0.6875rem] text-[var(--primary)]">
+              <span className="flex items-center gap-1 text-[0.6875rem] text-emerald-400">
                 <Check size="0.625rem" />
                 {localizeUi("chat.settings.inlineEditor.saved")}
               </span>

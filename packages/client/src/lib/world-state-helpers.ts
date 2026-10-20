@@ -197,7 +197,13 @@ export function getTemperatureGaugeDisplay(
   const color =
     value === null
       ? "color-mix(in srgb, var(--foreground) 42%, var(--muted-foreground) 28%)"
-      : "var(--marinara-chat-chrome-accent)";
+      : value < 0
+        ? "rgb(96 165 250)"
+        : value < 15
+          ? "rgb(56 189 248)"
+          : value < 30
+            ? "rgb(132 204 22)"
+            : "rgb(248 113 113)";
   return {
     color,
     isPure: pureParsed !== null,
@@ -213,7 +219,32 @@ export function getTemperatureGaugeDisplay(
 }
 
 export function getLocationPinColor(location: string | null | undefined) {
-  return location?.trim() ? "text-[var(--marinara-chat-chrome-panel-text)]" : "text-[var(--muted-foreground)]/70";
+  const text = (location ?? "").toLowerCase();
+  if (
+    /\b(sea|ocean|lake|river|pond|creek|bay|shore|beach|harbor|harbour|port|coast|marsh|swamp|waterfall|spring|well|dock|canal|dam|reef|lagoon|estuary|fjord|cove)\b/.test(
+      text,
+    )
+  )
+    return "text-blue-400";
+  if (
+    /\b(mountain|hill|cliff|peak|ridge|canyon|gorge|cave|cavern|mine|quarry|summit|bluff|crag|volcano|crater|mesa|plateau|ravine|boulder)\b/.test(
+      text,
+    )
+  )
+    return "text-amber-700";
+  if (
+    /\b(city|town|village|castle|palace|fortress|market|shop|inn|tavern|bar|pub|guild|district|quarter|bazaar|temple|church|cathedral|shrine|tower|gate|square|plaza|street|alley|arena|throne|court|capitol|capital|metro|subway)\b/.test(
+      text,
+    )
+  )
+    return "text-sky-400";
+  if (
+    /\b(room|hall|chamber|dungeon|cellar|basement|attic|library|study|bedroom|kitchen|office|lab|laboratory|vault|corridor|passage|cabin|hut|tent|interior|house|home|building|apartment|manor|lodge|dormitor|warehouse|prison|cell|jail)\b/.test(
+      text,
+    )
+  )
+    return "text-amber-300";
+  return "text-emerald-400";
 }
 
 function parseWorldDate(date: string | null | undefined): { day: string | null; monthIndex: number | null } {
@@ -254,7 +285,17 @@ function parseWorldDate(date: string | null | undefined): { day: string | null; 
 
 export function getWorldDateDisplay(date: string | null | undefined) {
   const text = (date ?? "").trim();
-  const { day } = parseWorldDate(text);
-  const iconColor = text ? "text-[var(--marinara-chat-chrome-panel-text)]" : "text-[var(--muted-foreground)]/70";
+  const normalized = text.toLowerCase();
+  const { day, monthIndex } = parseWorldDate(text);
+  let iconColor = "text-zinc-200";
+  if (!text) iconColor = "text-[var(--muted-foreground)]/70";
+  else if (/\b(winter|snow|frost|yuletide|christmas|yule|solstice)\b/.test(normalized)) iconColor = "text-sky-300";
+  else if (/\b(spring|blossom|bloom|equinox)\b/.test(normalized)) iconColor = "text-emerald-300";
+  else if (/\b(summer|midsummer|sunny|heatwave)\b/.test(normalized)) iconColor = "text-yellow-300";
+  else if (/\b(autumn|fall|harvest|leaf|leaves)\b/.test(normalized)) iconColor = "text-orange-400";
+  else if (monthIndex === 11 || monthIndex === 0 || monthIndex === 1) iconColor = "text-sky-300";
+  else if (monthIndex !== null && monthIndex >= 2 && monthIndex <= 4) iconColor = "text-emerald-300";
+  else if (monthIndex !== null && monthIndex >= 5 && monthIndex <= 7) iconColor = "text-yellow-300";
+  else if (monthIndex !== null && monthIndex >= 8 && monthIndex <= 10) iconColor = "text-orange-400";
   return { day, iconColor };
 }

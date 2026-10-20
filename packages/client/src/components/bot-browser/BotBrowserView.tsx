@@ -2386,7 +2386,7 @@ export function BotBrowserView() {
             )}
           {/* Auth indicator for login providers */}
           {sourceId === "pygmalion" && pygLoggedIn && (
-            <span className="flex items-center gap-1 text-[0.65rem] text-[var(--primary)]">
+            <span className="flex items-center gap-1 text-[0.65rem] text-emerald-400">
               <CheckCircle size="0.625rem" /> {localizeUi("ui.botBrowser.botbrowserview.loggedIn")}
             </span>
           )}
@@ -2439,7 +2439,7 @@ export function BotBrowserView() {
                   <span
                     key={`inc-${tag}`}
                     onClick={() => toggleIncludeTag(tag)}
-                    className="cursor-pointer rounded-full bg-[var(--primary)]/20 px-2 py-0.5 text-[0.6rem] font-medium text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
+                    className="cursor-pointer rounded-full bg-emerald-500/20 px-2 py-0.5 text-[0.6rem] font-medium text-emerald-400 ring-1 ring-emerald-500/30 transition-colors hover:bg-emerald-500/30"
                   >
                     + {tag}
                   </span>
@@ -2448,7 +2448,7 @@ export function BotBrowserView() {
                   <span
                     key={`exc-${tag}`}
                     onClick={() => toggleExcludeTag(tag)}
-                    className="cursor-pointer rounded-full bg-[var(--destructive)]/20 px-2 py-0.5 text-[0.6rem] font-medium text-[var(--destructive)] ring-1 ring-[var(--destructive)]/30 transition-colors hover:bg-[var(--destructive)]/30"
+                    className="cursor-pointer rounded-full bg-red-500/20 px-2 py-0.5 text-[0.6rem] font-medium text-red-400 ring-1 ring-red-500/30 transition-colors hover:bg-red-500/30"
                   >
                     − {tag}
                   </span>
@@ -2460,7 +2460,7 @@ export function BotBrowserView() {
                 <div className="mx-1 mb-1 flex flex-col gap-1">
                   <button
                     onClick={addCustomTag}
-                    className="flex w-full items-center gap-1.5 rounded-md bg-[var(--primary)]/10 px-2 py-1.5 text-xs font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/20"
+                    className="flex w-full items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
                   >
                     {localizeUi("ui.characters.dialoguetab.add")} <strong>{tagSearch.trim().toLowerCase()}</strong>{" "}
                     {localizeUi("ui.botBrowser.botbrowserview.asFilter")}
@@ -2475,7 +2475,7 @@ export function BotBrowserView() {
                         setPage(1);
                       }
                     }}
-                    className="flex w-full items-center gap-1.5 rounded-md bg-[var(--destructive)]/10 px-2 py-1.5 text-xs font-medium text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/20"
+                    className="flex w-full items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
                   >
                     {localizeUi("ui.botBrowser.botbrowserview.block")} <strong>{tagSearch.trim().toLowerCase()}</strong>{" "}
                     {localizeUi("ui.botBrowser.botbrowserview.fromResults")}
@@ -2502,8 +2502,8 @@ export function BotBrowserView() {
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[0.5rem] transition-all",
                           isIncluded
-                            ? "border-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)]"
-                            : "border-[var(--border)] hover:border-[var(--primary)]/50",
+                            ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                            : "border-[var(--border)] hover:border-emerald-500/50",
                         )}
                       >
                         {isIncluded && "✓"}
@@ -2514,8 +2514,8 @@ export function BotBrowserView() {
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[0.5rem] transition-all",
                           isExcluded
-                            ? "border-[var(--destructive)] bg-[var(--destructive)]/20 text-[var(--destructive)]"
-                            : "border-[var(--destructive)]/30 text-[var(--destructive)]/40 hover:border-[var(--destructive)]/60 hover:text-[var(--destructive)] hover:bg-[var(--destructive)]/10",
+                            ? "border-red-500 bg-red-500/20 text-red-400"
+                            : "border-red-500/30 text-red-400/40 hover:border-red-500/60 hover:text-red-400 hover:bg-red-500/10",
                         )}
                       >
                         −
@@ -2704,7 +2704,7 @@ export function BotBrowserView() {
                 {provider.nsfwMode === "login" &&
                   (sourceId === "pygmalion" && pygLoggedIn ? (
                     <div className="flex items-center gap-1.5">
-                      <span className="flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-3 py-2 text-[0.65rem] text-[var(--primary)]">
+                      <span className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[0.65rem] text-emerald-400">
                         <CheckCircle size="0.625rem" />{" "}
                         {localizeUi("ui.botBrowser.botbrowserview.nsfwDependsOnYourAccountSettings")}
                       </span>
@@ -2727,7 +2727,7 @@ export function BotBrowserView() {
                     </button>
                   ))}
                 {sourceId === "wyvern" && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/5 px-3 py-2 text-[0.65rem] text-[var(--warning)]">
+                  <span className="flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[0.65rem] text-amber-400">
                     {localizeUi("ui.botBrowser.botbrowserview.usePopularNsfwSortForNsfwContent")}
                   </span>
                 )}
@@ -3004,9 +3004,9 @@ export function BotBrowserView() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <div className="rounded-xl border border-[var(--warning)]/25 bg-[var(--warning)]/10 p-4">
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4">
                   <div className="flex items-start gap-3">
-                    <BookOpen size="1.125rem" className="mt-0.5 shrink-0 text-[var(--warning)]" />
+                    <BookOpen size="1.125rem" className="mt-0.5 shrink-0 text-amber-400" />
                     <div>
                       <p className="text-sm font-semibold text-[var(--marinara-chat-chrome-panel-title)]">
                         {localizeUi("ui.modals.importcharactermodal.embeddedLorebookFound")}
@@ -3076,14 +3076,14 @@ export function BotBrowserView() {
             if (e.target === e.currentTarget) setPendingDatacatSwitch(false);
           }}
         >
-          <div className="absolute inset-0 bg-[var(--background)]/60" onClick={() => setPendingDatacatSwitch(false)} />
+          <div className="absolute inset-0 bg-black/60" onClick={() => setPendingDatacatSwitch(false)} />
           <div
             className="mari-chrome-selection-bar relative w-full max-w-md shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--marinara-chat-chrome-panel-divider)] px-5 py-3">
               <h3 className="mari-chrome-text-strong flex items-center gap-2 text-sm font-bold">
-                <span className="text-[var(--warning)]">⚠️</span>{" "}
+                <span className="text-amber-400">⚠️</span>{" "}
                 {localizeUi("ui.botBrowser.botbrowserview.datacatIsNsfwOnly")}
               </h3>
               <button
@@ -3156,7 +3156,7 @@ function LoginModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="absolute inset-0 bg-[var(--background)]/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div
         className="mari-chrome-selection-bar relative w-full max-w-md shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -3166,7 +3166,7 @@ function LoginModal({
           <h3 className="mari-chrome-text-strong flex items-center gap-2 text-sm font-bold">
             {isPyg && (
               <>
-                <KeyRound size="1rem" className="text-[var(--warning)]" />{" "}
+                <KeyRound size="1rem" className="text-amber-400" />{" "}
                 {localizeUi("ui.botBrowser.loginmodal.pygmalionAuthentication")}
               </>
             )}
@@ -3178,13 +3178,13 @@ function LoginModal({
 
         <div className="flex flex-col gap-4 p-5">
           {/* Info boxes */}
-          <div className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-3 py-2 text-xs text-[var(--foreground)]">
-            <span className="mr-1.5 text-[var(--primary)]">✅</span>
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-[var(--foreground)]">
+            <span className="mr-1.5 text-emerald-400">✅</span>
             <strong>
               {localizeUi("ui.botBrowser.loginmodal.browsingAndDownloadingPublicCharactersWorksWithoutLoggingIn")}
             </strong>
           </div>
-          <div className="rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/5 px-3 py-2 text-xs text-[var(--foreground)]">
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-[var(--foreground)]">
             <span className="mr-1.5">🔑</span>
             <strong>{localizeUi("ui.botBrowser.loginmodal.optional")}</strong>{" "}
             {isPyg && localizeUi("ui.botBrowser.loginmodal.pasteYourAuthTokenToEnableNsfwContentAnd")}
@@ -3220,7 +3220,7 @@ function LoginModal({
                 </p>
               </div>
               <details open={showPygHelp} onToggle={(e) => setShowPygHelp((e.target as HTMLDetailsElement).open)}>
-                <summary className="cursor-pointer text-xs font-medium text-[var(--primary)] hover:underline">
+                <summary className="cursor-pointer text-xs font-medium text-blue-400 hover:underline">
                   {localizeUi("ui.botBrowser.loginmodal.howToGetYourAuthToken")}
                 </summary>
                 <div className="mt-2 flex flex-col gap-1.5 rounded-lg bg-[var(--secondary)] p-3 text-[0.7rem] leading-relaxed text-[var(--muted-foreground)]">
@@ -3230,7 +3230,7 @@ function LoginModal({
                       href="https://pygmalion.chat"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[var(--primary)] underline"
+                      className="text-blue-400 underline"
                     >
                       {localizeUi("ui.botBrowser.loginmodal.pygmalionChat")}
                     </a>{" "}
@@ -3254,7 +3254,7 @@ function LoginModal({
                 </div>
               </details>
               {isLoggedIn && (
-                <div className="flex items-center gap-1.5 text-xs text-[var(--primary)]">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400">
                   <CheckCircle size="0.75rem" /> {localizeUi("ui.botBrowser.loginmodal.tokenActiveNsfwContentEnabled")}
                 </div>
               )}
@@ -3263,7 +3263,7 @@ function LoginModal({
                   <button
                     onClick={() => onPygSetToken(pygTokenInput)}
                     disabled={loginLoading || !pygTokenInput.trim()}
-                    className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary)] disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
                   >
                     {loginLoading ? <Loader2 size="0.75rem" className="animate-spin" /> : <KeyRound size="0.75rem" />}{" "}
                     {localizeUi("ui.botBrowser.loginmodal.saveConnect")}
@@ -3367,7 +3367,7 @@ function CardTile({ card, onClick }: { card: BrowseCard; onClick: () => void }) 
           />
         )}
         {card.nsfw && (
-          <span className="absolute left-1.5 top-1.5 rounded bg-[var(--warning)]/80 px-1.5 py-0.5 text-[0.55rem] font-bold text-[var(--primary-foreground)]">
+          <span className="absolute left-1.5 top-1.5 rounded bg-red-500/80 px-1.5 py-0.5 text-[0.55rem] font-bold text-white">
             {localizeUi("ui.botBrowser.botbrowserview.nsfw")}
           </span>
         )}
@@ -3715,7 +3715,7 @@ function DetailView({
                   />
                 )}
                 {displayDetail.hasLorebook && (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
+                  <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
                     <CheckCircle size="0.75rem" /> {localizeUi("ui.botBrowser.detailview.hasEmbeddedLorebook")}
                   </div>
                 )}
@@ -3776,7 +3776,7 @@ function AvatarZoomOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.botBrowser.detailview.imagePreview")}
-      className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-[var(--background)]/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <img

@@ -309,7 +309,7 @@ export function CyoaChoices({ messages }: Props) {
               "inline-flex items-center rounded-md border px-2 py-1 text-[0.5625rem] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40",
               impersonateCyoaChoices
                 ? "mari-chrome-accent-surface mari-accent-animated border-[var(--marinara-chat-chrome-button-border-active)]"
-                : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/60 hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-[var(--border)] dark:bg-[var(--background)]/35 dark:text-[var(--foreground)]/50 dark:hover:bg-[var(--foreground)]/10 dark:hover:text-[var(--foreground)]/80",
+                : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/60 hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-black/35 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/80",
             )}
             title={localizeUi(
               impersonateCyoaChoices
@@ -326,7 +326,7 @@ export function CyoaChoices({ messages }: Props) {
           type="button"
           onClick={isEditing ? handleCancelEdit : handleStartEdit}
           disabled={controlsBusy}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/20 px-2 py-1 text-[0.5625rem] text-[var(--foreground)]/60 transition-all hover:border-[var(--border)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--border)] dark:bg-[var(--background)]/35 dark:text-[var(--foreground)]/50 dark:hover:bg-[var(--foreground)]/10 dark:hover:text-[var(--foreground)]/80"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/20 px-2 py-1 text-[0.5625rem] text-[var(--foreground)]/60 transition-all hover:border-[var(--border)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-black/35 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/80"
           title={
             isEditing
               ? localizeUi("ui.chat.cyoachoices.cancelEditingChoices")
@@ -344,7 +344,7 @@ export function CyoaChoices({ messages }: Props) {
             void handleReroll();
           }}
           disabled={controlsBusy || isEditing}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/20 px-2 py-1 text-[0.5625rem] text-[var(--foreground)]/60 transition-all hover:border-[var(--border)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--border)] dark:bg-[var(--background)]/35 dark:text-[var(--foreground)]/50 dark:hover:bg-[var(--foreground)]/10 dark:hover:text-[var(--foreground)]/80"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--muted)]/20 px-2 py-1 text-[0.5625rem] text-[var(--foreground)]/60 transition-all hover:border-[var(--border)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-black/35 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/80"
           title={localizeUi("ui.chat.cyoachoices.reRollCyoaChoicesUsingTheLatestChatContext")}
         >
           {isRerolling ? <Loader2 size="0.625rem" className="animate-spin" /> : <Dices size="0.625rem" />}
@@ -355,27 +355,27 @@ export function CyoaChoices({ messages }: Props) {
       </div>
       {isEditing ? (
         <div
-          className="w-full space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 backdrop-blur-md dark:border-[var(--border)] dark:bg-[var(--background)]/45"
+          className="w-full space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 backdrop-blur-md dark:border-white/10 dark:bg-black/45"
           style={{ maxWidth: TRACKER_SAFE_MAX_WIDTH }}
         >
           {draftChoices.map((choice, index) => (
             <div
               key={index}
-              className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3 dark:border-[var(--border)] dark:bg-[var(--background)]/30"
+              className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3 dark:border-white/8 dark:bg-black/30"
             >
               <input
                 type="text"
                 value={choice.label}
                 onChange={(e) => updateDraftChoice(index, "label", e.target.value)}
                 placeholder={localizeUi("ui.chat.cyoachoices.choiceValue1", { value1: index + 1 })}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2 text-[0.6875rem] font-semibold text-[var(--marinara-chat-chrome-panel-title)] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)] dark:border-[var(--border)] dark:bg-[var(--background)]/35"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2 text-[0.6875rem] font-semibold text-[var(--marinara-chat-chrome-panel-title)] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)] dark:border-white/10 dark:bg-black/35"
               />
               <textarea
                 value={choice.text}
                 onChange={(e) => updateDraftChoice(index, "text", e.target.value)}
                 rows={Math.min(Math.max(choice.text.split("\n").length, 2), 6)}
                 placeholder={localizeUi("ui.chat.cyoachoices.describeTheActionOrDialogueSentWhenThisChoice")}
-                className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2 text-[0.6875rem] leading-relaxed text-[var(--foreground)]/80 outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)] dark:border-[var(--border)] dark:bg-[var(--background)]/35 dark:text-[var(--foreground)]/75"
+                className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2 text-[0.6875rem] leading-relaxed text-[var(--foreground)]/80 outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)] dark:border-white/10 dark:bg-black/35 dark:text-white/75"
               />
             </div>
           ))}
@@ -384,7 +384,7 @@ export function CyoaChoices({ messages }: Props) {
               type="button"
               onClick={handleCancelEdit}
               disabled={updateMessageExtra.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-1.5 text-[0.625rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--border)] dark:bg-[var(--background)]/35 dark:text-[var(--foreground)]/60"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-1.5 text-[0.625rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-black/35 dark:text-white/60"
             >
               <X size="0.75rem" />
               <span>{localizeUi("chat.delete.dialog.cancel")}</span>
@@ -395,7 +395,7 @@ export function CyoaChoices({ messages }: Props) {
                 void handleSaveChoices();
               }}
               disabled={updateMessageExtra.isPending || normalizeChoices(draftChoices).length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-1.5 text-[0.625rem] text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-[0.625rem] text-emerald-200 transition-colors hover:bg-emerald-500/15 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {updateMessageExtra.isPending ? (
                 <Loader2 size="0.75rem" className="animate-spin" />
@@ -418,12 +418,12 @@ export function CyoaChoices({ messages }: Props) {
               type="button"
               onClick={() => handleChoice(choice.text)}
               disabled={isStreaming || isRerolling}
-              className="group relative rounded-xl border border-[var(--border)] bg-[var(--card)]/80 px-4 py-2.5 text-left backdrop-blur-md transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:shadow-lg active:scale-[0.98] disabled:opacity-50 dark:border-[var(--border)] dark:bg-[var(--background)]/50"
+              className="group relative rounded-xl border border-[var(--border)] bg-[var(--card)]/80 px-4 py-2.5 text-left backdrop-blur-md transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:shadow-lg active:scale-[0.98] disabled:opacity-50 dark:border-white/10 dark:bg-black/50"
             >
               <span className="mari-chrome-accent-text mari-accent-animated block text-[0.6875rem] font-semibold group-hover:text-[var(--marinara-chat-chrome-button-text-hover)]">
                 {choice.label}
               </span>
-              <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--foreground)]/60 group-hover:text-[var(--foreground)]/80 dark:text-[var(--foreground)]/50 dark:group-hover:text-[var(--foreground)]/70">
+              <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--foreground)]/60 group-hover:text-[var(--foreground)]/80 dark:text-white/50 dark:group-hover:text-white/70">
                 {choice.text}
               </span>
             </button>

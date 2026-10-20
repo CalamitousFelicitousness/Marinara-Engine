@@ -2196,7 +2196,7 @@ export function SpriteGenerationModal({
                         alt={localizeUi("ui.ui.avatargenerationmodal.currentAvatarReference")}
                         className="h-20 w-20 rounded-lg object-cover ring-2 ring-[var(--primary)]/40"
                       />
-                      <span className="absolute bottom-1 left-1 rounded bg-[var(--card)]/90 px-1.5 py-0.5 text-[0.5625rem] text-[var(--foreground)]">
+                      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[0.5625rem] text-white">
                         {localizeUi("editor.avatar.label")}
                       </span>
                     </div>
@@ -2210,7 +2210,7 @@ export function SpriteGenerationModal({
                       />
                       <button
                         onClick={() => removeReferenceImage(idx)}
-                        className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--destructive)] p-0.5 text-[var(--destructive-foreground)] opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--destructive)] p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={10} />
                       </button>
@@ -2518,7 +2518,7 @@ export function SpriteGenerationModal({
                   !appearance.trim()
                 }
                 title={generationUnavailable ? generationUnavailableReason : undefined}
-                className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
               >
                 <Sparkles size={14} />
                 {animatedExpressionMode
@@ -2618,7 +2618,7 @@ export function SpriteGenerationModal({
               <button
                 type="button"
                 onClick={handleAcceptNeutralFullBody}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90"
               >
                 <Check size={14} />
                 {localizeUi("ui.spriteGeneration.neutral.useAndContinue")}
@@ -2665,7 +2665,7 @@ export function SpriteGenerationModal({
                     type="button"
                     onClick={handleRetryFailedBatch}
                     disabled={spriteGenerationUnavailable || !effectiveConnectionId}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                   >
                     <RotateCcw size={13} />
                     {faceBatchMode
@@ -2724,7 +2724,7 @@ export function SpriteGenerationModal({
                       type="button"
                       onClick={handleApplySliceAdjustments}
                       disabled={sliceApplying}
-                      className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                      className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                     >
                       {sliceApplying
                         ? localizeUi("ui.ui.spritegenerationmodal.applying")
@@ -2871,7 +2871,7 @@ export function SpriteGenerationModal({
                         <button
                           onClick={handleApplyCleanup}
                           disabled={cleanupApplying || cells.length === 0}
-                          className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                          className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                           title={localizeUi("ui.ui.spritegenerationmodal.rerunAutomaticMatteCleanup")}
                         >
                           {cleanupApplying
@@ -2957,7 +2957,7 @@ export function SpriteGenerationModal({
                           type="button"
                           onClick={handleApplyCellFrame}
                           disabled={frameApplying}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[0.6875rem] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                         >
                           {frameApplying ? <Loader2 size={12} className="animate-spin" /> : <Crop size={12} />}
                           {localizeUi("ui.ui.spriteframeeditor.applyFrame")}
@@ -3013,9 +3013,7 @@ export function SpriteGenerationModal({
                       <div
                         className={cn(
                           "absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full transition-colors",
-                          cell.selected
-                            ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                            : "bg-[var(--card)]/80 text-[var(--muted-foreground)]",
+                          cell.selected ? "bg-[var(--primary)] text-white" : "bg-black/40 text-white/60",
                         )}
                       >
                         {cell.selected ? <Check size={12} /> : <X size={12} />}
@@ -3054,7 +3052,7 @@ export function SpriteGenerationModal({
                               className={cn(
                                 "inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                                 activeFrameIndex === i &&
-                                  "bg-[var(--primary)] text-[var(--primary-foreground)] ring-[var(--primary)] hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)]",
+                                  "bg-[var(--primary)] text-white ring-[var(--primary)] hover:bg-[var(--primary)] hover:text-white",
                               )}
                               aria-label={localizeUi("ui.ui.spritegenerationmodal.frameValue1", {
                                 value1: cell.expression,
@@ -3084,7 +3082,7 @@ export function SpriteGenerationModal({
               <button
                 onClick={handleSave}
                 disabled={saving || selectedCount === 0}
-                className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
               >
                 {saving ? (
                   <>

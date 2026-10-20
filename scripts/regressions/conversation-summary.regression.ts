@@ -182,8 +182,8 @@ assert.match(
 );
 assert.match(
   summaryPopoverSource,
-  /onClick=\{handleClearCompletedRanges\}[^>]*?text-\[var\(--primary\)\][^>]*?batchClearCompleted/u,
-  "Completed controls should follow the selected accent",
+  /text-emerald-600[\s\S]*?batchClearCompleted/u,
+  "Completed controls should be green",
 );
 assert.match(
   summaryPopoverSource,

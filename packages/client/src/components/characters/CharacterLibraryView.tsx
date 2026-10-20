@@ -237,7 +237,7 @@ function CardLibraryDetailCard({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/70 shadow-[var(--marinara-editor-shadow)] sm:rounded-[2rem]">
+      <div className="overflow-hidden rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/70 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.95)] sm:rounded-[2rem]">
         <div className={cn("mari-avatar-placeholder relative aspect-square overflow-hidden", placeholderClass)}>
           {card.avatarPath ? (
             <AvatarImage

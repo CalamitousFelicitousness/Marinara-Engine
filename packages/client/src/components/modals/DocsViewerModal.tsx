@@ -611,7 +611,7 @@ export function DocsViewerModal({
   const sidebarHeaderTracked = groups.every((group) => TRACKING_SAFE_LABEL_RE.test(dirLabel(group.dir, docsLanguage)));
   const englishBadge = (
     <span
-      className="shrink-0 rounded-full border border-[var(--border)]/60 bg-[var(--background)]/5 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--muted-foreground)]/80 dark:bg-[var(--foreground)]/6"
+      className="shrink-0 rounded-full border border-[var(--border)]/60 bg-black/5 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--muted-foreground)]/80 dark:bg-white/6"
       title={localizeUi("ui.modals.docsviewermodal.notYetTranslatedShowingEnglish")}
     >
       {localizeUi("ui.modals.docsviewermodal.englishBadge")}
@@ -693,7 +693,7 @@ export function DocsViewerModal({
                           {highlightTermNodes(result.title, highlightTerm)}
                         </span>
                         {docsLanguage !== "en" && result.language === "en" ? englishBadge : null}
-                        <span className="shrink-0 rounded-full border border-[var(--border)]/60 bg-[var(--background)]/5 px-1.5 py-0.5 text-[0.5625rem] text-[var(--muted-foreground)]/80 dark:bg-[var(--foreground)]/6">
+                        <span className="shrink-0 rounded-full border border-[var(--border)]/60 bg-black/5 px-1.5 py-0.5 text-[0.5625rem] text-[var(--muted-foreground)]/80 dark:bg-white/6">
                           {result.matches}
                         </span>
                       </span>

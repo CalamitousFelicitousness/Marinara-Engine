@@ -75,24 +75,9 @@ export function PartyOverlayBox({
   translation?: ReactNode;
 }) {
   const styleByType: Record<string, { border: string; bg: string; icon: string; labelColor: string }> = {
-    side: {
-      border: "border-[var(--border)]",
-      bg: "bg-[var(--card)]/95",
-      icon: "💬",
-      labelColor: "text-[var(--foreground)]/85",
-    },
-    extra: {
-      border: "border-[var(--border)]",
-      bg: "bg-[var(--card)]/95",
-      icon: "💬",
-      labelColor: "text-[var(--foreground)]/85",
-    },
-    thought: {
-      border: "border-[var(--primary)]/20",
-      bg: "bg-[var(--primary)]/8",
-      icon: "💭",
-      labelColor: "text-[var(--primary)]/80",
-    },
+    side: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
+    extra: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
+    thought: { border: "border-purple-400/20", bg: "bg-purple-950/70", icon: "💭", labelColor: "text-purple-200/80" },
     whisper: {
       border: "border-[var(--marinara-chat-chrome-button-border)]",
       bg: "bg-[var(--marinara-chat-chrome-panel-bg)]",
@@ -107,7 +92,7 @@ export function PartyOverlayBox({
       className={cn(
         "experience-side-line isolate flex w-fit min-w-0 max-w-full transform-gpu items-start gap-2 rounded-xl border bg-clip-padding px-3 py-2 sm:max-w-[75%]",
         (line.type === "side" || line.type === "extra") &&
-          "mari-chat-style-surface mari-game-side-line shadow-[var(--marinara-editor-shadow)]",
+          "mari-chat-style-surface mari-game-side-line shadow-[0_16px_38px_rgba(0,0,0,0.45)]",
         style.border,
         style.bg,
       )}
@@ -118,13 +103,13 @@ export function PartyOverlayBox({
           src={avatar.url}
           alt={line.character}
           crop={avatar.crop}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[var(--border)]"
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15"
         />
       ) : (
         <img
           src="/npc-silhouette.svg"
           alt={line.character}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[var(--border)] object-cover"
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15 object-cover"
         />
       )}
       <div className="min-w-0 flex-1">
@@ -141,14 +126,14 @@ export function PartyOverlayBox({
             {line.character}
           </span>
           {line.type === "whisper" && line.target && (
-            <span className="min-w-0 truncate text-[0.5625rem] text-[var(--foreground)]/40">→ {line.target}</span>
+            <span className="min-w-0 truncate text-[0.5625rem] text-white/40">→ {line.target}</span>
           )}
           {voiceControl}
         </div>
         <div className="mt-0.5 min-w-0">
           <p
             className={cn(
-              "text-xs leading-relaxed text-[var(--foreground)]/75 whitespace-normal break-words [overflow-wrap:anywhere]",
+              "text-xs leading-relaxed text-white/75 whitespace-normal break-words [overflow-wrap:anywhere]",
               line.type === "thought" && "italic opacity-80",
               line.type === "whisper" && "italic",
               (line.type === "side" || line.type === "extra") && colorClassName,
@@ -167,35 +152,35 @@ type ExpressionReactionEffect =
   "pop" | "anger" | "sparkle" | "heart" | "tear" | "stress" | "thought" | "focus" | "sleep";
 
 const EXPRESSION_REACTIONS: Record<string, { symbol: string; color: string; effect: ExpressionReactionEffect }> = {
-  angry: { symbol: "❗", color: "text-[var(--primary)]", effect: "anger" },
-  furious: { symbol: "‼️", color: "text-[var(--primary)]", effect: "anger" },
-  annoyed: { symbol: "💢", color: "text-[var(--primary)]", effect: "anger" },
-  irritated: { symbol: "💢", color: "text-[var(--primary)]", effect: "anger" },
-  confused: { symbol: "❓", color: "text-[var(--primary)]", effect: "pop" },
-  surprised: { symbol: "❗", color: "text-[var(--primary)]", effect: "pop" },
-  shocked: { symbol: "‼️", color: "text-[var(--primary)]", effect: "pop" },
-  happy: { symbol: "✨", color: "text-[var(--primary)]", effect: "sparkle" },
-  amused: { symbol: "✨", color: "text-[var(--primary)]", effect: "sparkle" },
-  delighted: { symbol: "✨", color: "text-[var(--primary)]", effect: "sparkle" },
-  mischievous: { symbol: "😈", color: "text-[var(--primary)]", effect: "pop" },
+  angry: { symbol: "❗", color: "text-red-400", effect: "anger" },
+  furious: { symbol: "‼️", color: "text-red-500", effect: "anger" },
+  annoyed: { symbol: "💢", color: "text-red-400", effect: "anger" },
+  irritated: { symbol: "💢", color: "text-orange-400", effect: "anger" },
+  confused: { symbol: "❓", color: "text-yellow-300", effect: "pop" },
+  surprised: { symbol: "❗", color: "text-yellow-300", effect: "pop" },
+  shocked: { symbol: "‼️", color: "text-yellow-400", effect: "pop" },
+  happy: { symbol: "✨", color: "text-amber-300", effect: "sparkle" },
+  amused: { symbol: "✨", color: "text-amber-300", effect: "sparkle" },
+  delighted: { symbol: "✨", color: "text-yellow-300", effect: "sparkle" },
+  mischievous: { symbol: "😈", color: "text-purple-300", effect: "pop" },
   flirty: { symbol: "💗", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
   tender: { symbol: "💕", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
   loving: { symbol: "💕", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
-  sad: { symbol: "💧", color: "text-[var(--primary)]", effect: "tear" },
-  crying: { symbol: "💧", color: "text-[var(--primary)]", effect: "tear" },
-  scared: { symbol: "💦", color: "text-[var(--primary)]", effect: "stress" },
-  worried: { symbol: "💦", color: "text-[var(--primary)]", effect: "stress" },
-  nervous: { symbol: "💦", color: "text-[var(--primary)]", effect: "stress" },
-  thinking: { symbol: "💭", color: "text-[var(--foreground)]/70", effect: "thought" },
-  smirk: { symbol: "✧", color: "text-[var(--primary)]", effect: "sparkle" },
-  smug: { symbol: "✧", color: "text-[var(--primary)]", effect: "sparkle" },
-  determined: { symbol: "🔥", color: "text-[var(--primary)]", effect: "focus" },
-  battle_stance: { symbol: "⚔️", color: "text-[var(--primary)]", effect: "focus" },
-  cold: { symbol: "❄️", color: "text-[var(--primary)]", effect: "sparkle" },
-  disgusted: { symbol: "💢", color: "text-[var(--primary)]", effect: "anger" },
-  deadpan: { symbol: "…", color: "text-[var(--foreground)]/40", effect: "pop" },
-  eye_roll: { symbol: "…", color: "text-[var(--foreground)]/40", effect: "pop" },
-  bored: { symbol: "💤", color: "text-[var(--foreground)]/40", effect: "sleep" },
+  sad: { symbol: "💧", color: "text-blue-300", effect: "tear" },
+  crying: { symbol: "💧", color: "text-blue-400", effect: "tear" },
+  scared: { symbol: "💦", color: "text-sky-300", effect: "stress" },
+  worried: { symbol: "💦", color: "text-sky-300", effect: "stress" },
+  nervous: { symbol: "💦", color: "text-sky-300", effect: "stress" },
+  thinking: { symbol: "💭", color: "text-white/70", effect: "thought" },
+  smirk: { symbol: "✧", color: "text-amber-300", effect: "sparkle" },
+  smug: { symbol: "✧", color: "text-amber-400", effect: "sparkle" },
+  determined: { symbol: "🔥", color: "text-orange-400", effect: "focus" },
+  battle_stance: { symbol: "⚔️", color: "text-orange-300", effect: "focus" },
+  cold: { symbol: "❄️", color: "text-sky-300", effect: "sparkle" },
+  disgusted: { symbol: "💢", color: "text-green-400", effect: "anger" },
+  deadpan: { symbol: "…", color: "text-white/40", effect: "pop" },
+  eye_roll: { symbol: "…", color: "text-white/40", effect: "pop" },
+  bored: { symbol: "💤", color: "text-white/40", effect: "sleep" },
 };
 
 export function ExpressionReaction({ expression }: { expression?: string }) {

@@ -571,7 +571,7 @@ export function PersonasPanel() {
   }, [deletePersona, exitSelectionMode, selectedPersonaIds, localizeUi]);
 
   return (
-    <div className="mari-panel-gradient--personas flex min-h-full flex-col gap-2 p-3">
+    <div className="flex min-h-full flex-col gap-2 p-3">
       <div
         className="mari-chrome-segmented mari-chrome-segmented--two"
         data-component="PersonaLibraryActions"
@@ -842,7 +842,7 @@ export function PersonasPanel() {
                       }}
                       onClick={(e) => e.stopPropagation()}
                       onBlur={() => handleRenameGroup(group.id)}
-                      className="w-full rounded bg-transparent px-1 py-0.5 text-xs font-medium outline-none ring-1 ring-[var(--mari-panel-gradient-start)]/30"
+                      className="w-full rounded bg-transparent px-1 py-0.5 text-xs font-medium outline-none ring-1 ring-emerald-400/30"
                     />
                   ) : (
                     <>
@@ -1073,8 +1073,8 @@ export function PersonasPanel() {
 
       {!isLoading && list.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-8 text-center">
-          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/20 to-[var(--mari-panel-gradient-end)]/20">
-            <VenetianMask size="1.25rem" className="text-[var(--mari-panel-gradient-start)]" />
+          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/20 to-teal-500/20">
+            <VenetianMask size="1.25rem" className="text-emerald-400" />
           </div>
           <p className="mari-chrome-text-muted text-xs">
             {localizeUi("ui.panels.personaspanel.noPersonasYetCreateOne")}
@@ -1094,7 +1094,7 @@ export function PersonasPanel() {
             const payload = event.dataTransfer.getData("application/x-marinara-persona-ids");
             handlePersonaDrop(null, parseDroppedPersonaIds(payload));
           }}
-          className="rounded-xl border border-dashed border-[var(--mari-panel-gradient-start)]/35 bg-[var(--mari-panel-gradient-start)]/5 px-3 py-2 text-[0.625rem] text-[var(--mari-panel-gradient-start)]"
+          className="rounded-xl border border-dashed border-emerald-400/35 bg-emerald-400/5 px-3 py-2 text-[0.625rem] text-emerald-300"
         >
           {localizeUi("ui.panels.agentspanel.dropHereToMoveOutOfFolder")}
         </div>
@@ -1225,8 +1225,8 @@ export function PersonasPanel() {
                     <User size="1rem" />
                   )}
                 </div>
-                <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-[var(--card)]/90 opacity-0 transition-opacity group-hover/avatar:opacity-100">
-                  <Camera size="0.75rem" className="text-[var(--foreground)]" />
+                <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover/avatar:opacity-100">
+                  <Camera size="0.75rem" className="text-white" />
                 </div>
               </button>
 

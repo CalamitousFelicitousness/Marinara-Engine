@@ -31,7 +31,7 @@
   --mari-pull-rim-end: var(--mari-pull-rim-color);
   --mari-pull-edge: color-mix(in srgb, var(--foreground) 12%, transparent);
   --mari-pull-ring: color-mix(in srgb, var(--foreground) 22%, transparent);
-  --mari-pull-shadow: color-mix(in srgb, var(--marinara-shadow-color) 40%, transparent);
+  --mari-pull-shadow: rgb(0 0 0 / 0.4);
   position: fixed;
   inset: 0;
   /* Above the omnibar it opens into, so the circle can pop open over the dialog. */
@@ -46,7 +46,7 @@
 }
 
 [data-theme="light"] .mari-pull-overlay {
-  --mari-pull-shadow: color-mix(in srgb, var(--marinara-shadow-color) 16%, transparent);
+  --mari-pull-shadow: rgb(40 20 80 / 0.16);
 }
 
 /* R8: no text selection while a mouse pulls the bar (set and lifted by the pull hook). */
@@ -102,7 +102,7 @@ html.mari-pull-no-select * {
 
 .mari-pull-icon {
   color: var(--foreground);
-  filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--marinara-shadow-color) 35%, transparent));
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.35));
 }
 
 .mari-pull-icon svg {
@@ -196,7 +196,7 @@ html.mari-pull-no-select * {
   font-weight: 600;
   white-space: nowrap;
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--foreground) 22%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
     inset 0 0 0 1px var(--mari-pull-edge),
     0 6px 16px var(--mari-pull-shadow);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
@@ -343,17 +343,17 @@ html[data-mari-pull-landing] [data-mari-pull-target] * {
   background: linear-gradient(90deg, color-mix(in srgb, var(--omnibar-now-tone) 9%, transparent), transparent 70%);
 }
 .omnibar-now-row--review {
-  --omnibar-now-tone: var(--warning);
+  --omnibar-now-tone: rgb(245 158 11);
 }
 .omnibar-now-row--fix {
-  --omnibar-now-tone: var(--destructive);
+  --omnibar-now-tone: rgb(244 63 94);
 }
 .omnibar-now-row--check,
 .omnibar-now-row--setup {
-  --omnibar-now-tone: var(--marinara-app-accent-static);
+  --omnibar-now-tone: rgb(14 165 233);
 }
 .omnibar-now-row--finished {
-  --omnibar-now-tone: var(--marinara-app-accent-static);
+  --omnibar-now-tone: rgb(16 185 129);
 }
 .omnibar-now-action {
   display: inline-flex;

@@ -1072,7 +1072,7 @@ export const ConversationMessage = memo(function ConversationMessage({
       const iconClass =
         status === "ended" || status === "declined" || status === "missed"
           ? "text-[var(--muted-foreground)]"
-          : "text-[var(--success)]";
+          : "text-emerald-400";
 
       return (
         <div

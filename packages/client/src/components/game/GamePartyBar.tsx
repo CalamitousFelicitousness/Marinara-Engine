@@ -62,7 +62,7 @@ function PartyAvatar({ visual, className }: { visual: PartyMemberVisual; classNa
     return (
       <span
         className={cn(
-          "relative block h-8 w-8 overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] shadow-lg shadow-[color:var(--marinara-shadow-color)]/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
+          "relative block h-8 w-8 overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] shadow-lg shadow-black/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
           className,
         )}
       >
@@ -83,13 +83,13 @@ function PartyAvatar({ visual, className }: { visual: PartyMemberVisual; classNa
       ids={[artPortraitFor(member.name)]}
       label={member.name}
       className={cn(
-        "block h-8 w-8 overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] shadow-lg shadow-[color:var(--marinara-shadow-color)]/25",
+        "block h-8 w-8 overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] shadow-lg shadow-black/25",
         className,
       )}
       fallback={
         <span
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-xs font-bold text-[var(--marinara-chat-chrome-button-text-hover)] shadow-lg shadow-[color:var(--marinara-shadow-color)]/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
+            "flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-xs font-bold text-[var(--marinara-chat-chrome-button-text-hover)] shadow-lg shadow-black/25 transition-colors group-hover:border-[var(--marinara-chat-chrome-button-border-hover)]",
             className,
           )}
           style={member.nameColor ? { color: member.nameColor } : undefined}

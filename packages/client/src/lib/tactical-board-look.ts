@@ -242,6 +242,6 @@ export function initialsOf(name: string): string {
 export function ringColorFor(id: string, side: "party" | "enemy"): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  const accent = side === "party" ? "--primary" : "--destructive";
-  return `color-mix(in srgb, var(${accent}) ${65 + (hash % 26)}%, var(--foreground))`;
+  const hue = side === "party" ? 200 + (hash % 60) : 350 + (hash % 40);
+  return `hsl(${hue % 360} 70% 55%)`;
 }

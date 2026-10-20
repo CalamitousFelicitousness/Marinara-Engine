@@ -30,7 +30,7 @@
 
 /* No ring around the composer: while Mari works, her colors rise across the whole bottom of the window
    behind the bar as one low, wide glow that wavers, like Gemini and Apple Intelligence. At rest it is
-   off. When she finishes it turns the steady accent and sinks slowly out of view; when something fails it holds the accent
+   off. When she finishes it turns green and sinks slowly out of view; when something fails it turns red
    and stays, quieter and smaller, until you act. */
 @property --mari-glow-a {
   syntax: "<color>";
@@ -54,9 +54,9 @@
    the transcript's always-on fade shows it through instead of a hard-edged box. It tracks the dock's
    live height so it still sits low and sinks out of view as the dock shrinks. */
 .mari-workspace-glow-band {
-  --mari-glow-a: var(--primary);
-  --mari-glow-b: var(--primary);
-  --mari-glow-c: var(--primary);
+  --mari-glow-a: var(--mari-logo-pink);
+  --mari-glow-b: var(--mari-logo-orange);
+  --mari-glow-c: var(--mari-logo-cyan);
   position: absolute;
   z-index: 0;
   inset-inline: 0;
@@ -72,33 +72,33 @@
 
 /* Her state, in color. */
 .mari-workspace-glow-band[data-glow="thinking"] {
-  --mari-glow-a: var(--primary);
-  --mari-glow-b: var(--primary);
-  --mari-glow-c: var(--primary);
+  --mari-glow-a: var(--mari-logo-cyan);
+  --mari-glow-b: oklch(0.68 0.16 280);
+  --mari-glow-c: var(--mari-logo-pink);
 }
 
 .mari-workspace-glow-band[data-glow="writing"] {
-  --mari-glow-a: var(--primary);
-  --mari-glow-b: var(--primary);
-  --mari-glow-c: var(--primary);
+  --mari-glow-a: var(--mari-logo-pink);
+  --mari-glow-b: var(--mari-logo-orange);
+  --mari-glow-c: var(--mari-workspace-gold, oklch(0.82 0.11 79));
 }
 
 .mari-workspace-glow-band[data-glow="waiting-approval"] {
-  --mari-glow-a: var(--warning);
-  --mari-glow-b: var(--warning);
-  --mari-glow-c: var(--warning);
+  --mari-glow-a: var(--mari-workspace-gold, oklch(0.82 0.11 79));
+  --mari-glow-b: var(--mari-logo-orange);
+  --mari-glow-c: var(--mari-workspace-gold, oklch(0.82 0.11 79));
 }
 
 .mari-workspace-glow-band[data-glow="broken"] {
   --mari-glow-a: var(--destructive);
-  --mari-glow-b: var(--destructive);
+  --mari-glow-b: oklch(0.6 0.2 25);
   --mari-glow-c: var(--destructive);
 }
 
 .mari-workspace-glow-band[data-working="ending"] {
-  --mari-glow-a: var(--marinara-app-accent-static);
-  --mari-glow-b: var(--marinara-app-accent-static);
-  --mari-glow-c: var(--marinara-app-accent-static);
+  --mari-glow-a: oklch(0.78 0.08 158);
+  --mari-glow-b: oklch(0.82 0.07 172);
+  --mari-glow-c: oklch(0.78 0.08 158);
 }
 
 /* A wide, low band (an ellipse, so the middle stands higher than the ends) spanning the whole window;
@@ -153,18 +153,18 @@
   animation: mari-glow-drift 5.5s ease-in-out infinite alternate;
 }
 
-/* Done: a small, low, faint accent band that sinks and fades within a few seconds; no bright spots. */
+/* Done: a small, low, faint green band that sinks and fades within a few seconds; no bright spots. */
 .mari-workspace-glow-band[data-working="ending"]::before {
   animation: mari-glow-settle 3.5s cubic-bezier(0.45, 0, 0.55, 1) forwards;
 }
 
-/* Failed (R14): steady accent, smaller and quieter, and it stays - low and faint - until the failure is answered
+/* Failed (R14): red, smaller and quieter, and it stays - low and faint - until the failure is answered
    (Retry, another model, a new message, Dismiss). No fade-out timer. */
 .mari-workspace-glow-band[data-glow="broken"]:not([data-working])::before {
   animation: mari-glow-alert 1.6s cubic-bezier(0.45, 0, 0.55, 1) forwards;
 }
 
-/* Waiting for your approval: a small, quiet warning band that stays until you answer. */
+/* Waiting for your approval: a small, quiet gold band that stays until you answer. */
 .mari-workspace-glow-band[data-glow="waiting-approval"]:not([data-working])::before {
   opacity: 0.35;
   scale: 1 0.55;
@@ -250,25 +250,26 @@ html[data-marinara-effects-paused="true"] .mari-workspace-glow-band::after {
 /* R8: one state colour for the edge line and the pull drop's rim (the TopBar hands the same state to both). */
 .mari-topbar-edge-glow,
 .mari-pull-overlay[data-mari-edge] {
-  --mari-edge: var(--primary);
+  --mari-edge: oklch(0.72 0.14 155);
 }
 
 .mari-topbar-edge-glow[data-state="working"],
 .mari-pull-overlay[data-mari-edge="working"] {
-  --mari-edge: var(--primary);
-  --mari-edge-mid: var(--primary);
-  --mari-edge-end: var(--primary);
+  --mari-edge: var(--mari-logo-pink);
+  --mari-edge-mid: var(--mari-logo-orange);
+  --mari-edge-end: var(--mari-logo-cyan);
 }
 
 .mari-topbar-edge-glow[data-state="approval"],
 .mari-pull-overlay[data-mari-edge="approval"] {
-  --mari-edge: var(--warning);
+  --mari-edge: oklch(0.82 0.11 79);
 }
 
-/* Failures default to the steady accent and respect a custom theme failure colour. */
+/* An explicit red, not --destructive - that token is pink in dark mode, too close
+   to the working state's pink/orange gradient to read as a distinct failure. */
 .mari-topbar-edge-glow[data-state="error"],
 .mari-pull-overlay[data-mari-edge="error"] {
-  --mari-edge: var(--destructive);
+  --mari-edge: oklch(0.58 0.2 25);
 }
 
 .mari-topbar-edge-glow {
@@ -300,12 +301,12 @@ html[data-marinara-effects-paused="true"] .mari-workspace-glow-band::after {
 }
 
 /* Slice 73: her state as a small pill while her window is closed, with her pull-drop head. It glows in
-   the theme's state colours (live accent working, warning needs you, steady accent done, failure colour): low, faint and
+   the composer glow's colours (cyan thinking, gold needs you, green done, red failed): low, faint and
    slowly wavering, static with reduced motion. It sits at the end of the left group, so the bar never
    shifts when it comes and goes. */
 .mari-topbar-status {
-  --mari-pill-a: var(--marinara-app-accent-static);
-  --mari-pill-b: var(--marinara-app-accent-static);
+  --mari-pill-a: oklch(0.78 0.08 158);
+  --mari-pill-b: oklch(0.82 0.07 172);
   position: relative;
   isolation: isolate;
   display: inline-flex;
@@ -325,19 +326,19 @@ html[data-marinara-effects-paused="true"] .mari-workspace-glow-band::after {
 }
 
 .mari-topbar-status[data-state="working"] {
-  --mari-pill-a: var(--primary);
-  --mari-pill-b: var(--primary);
+  --mari-pill-a: var(--mari-logo-cyan);
+  --mari-pill-b: oklch(0.68 0.16 280);
 }
 
 .mari-topbar-status[data-state="approval"] {
-  --mari-pill-a: var(--warning);
-  --mari-pill-b: var(--warning);
+  --mari-pill-a: var(--mari-workspace-gold, oklch(0.82 0.11 79));
+  --mari-pill-b: var(--mari-logo-orange);
 }
 
-/* The error pill shares the edge line's theme failure colour. */
+/* An explicit red, like the edge line: --destructive is pink in dark mode. */
 .mari-topbar-status[data-state="error"] {
-  --mari-pill-a: var(--destructive);
-  --mari-pill-b: var(--destructive);
+  --mari-pill-a: oklch(0.58 0.2 25);
+  --mari-pill-b: oklch(0.62 0.18 35);
 }
 
 .mari-topbar-status::before {
@@ -712,12 +713,12 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 .mari-row__slot [data-command-center-media][data-media-kind="avatar"]:has(img) {
   border-radius: 999px;
   background: none;
-  outline: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  outline: 1px solid oklch(1 0 0 / 0.1);
   outline-offset: -1px;
 }
 
 [data-theme="light"] .mari-row__slot [data-command-center-media][data-media-kind="avatar"]:has(img) {
-  outline-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  outline-color: oklch(0 0 0 / 0.1);
 }
 
 .mari-row__slot [data-command-center-media] > svg {
@@ -789,7 +790,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 /* A gold ✦: picking the row asks Mari. The plain › opens the thing now. */
 .mari-row__trail > .mari-row__spark {
-  color: color-mix(in srgb, var(--mari-workspace-gold, var(--marinara-app-accent-static)) 62%, var(--foreground));
+  color: color-mix(in srgb, var(--mari-workspace-gold, oklch(0.82 0.11 79)) 62%, var(--foreground));
 }
 
 .mari-row__disclose {
@@ -1073,10 +1074,10 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 /* The omnibar is Mari's canonical workspace: velvet-dark, warm, and still one canvas. */
 .mari-workspace-shell {
-  --mari-workspace-gold: var(--marinara-app-accent-static);
-  --mari-workspace-hoodie: var(--secondary);
-  --mari-workspace-blush: var(--primary);
-  background: color-mix(in srgb, var(--background) 94%, var(--secondary));
+  --mari-workspace-gold: oklch(0.82 0.11 79);
+  --mari-workspace-hoodie: oklch(0.62 0.1 252);
+  --mari-workspace-blush: oklch(0.76 0.14 344);
+  background: color-mix(in srgb, var(--background) 94%, oklch(0.22 0.035 326));
   border-color: color-mix(in srgb, var(--mari-workspace-blush) 24%, var(--border));
 }
 
@@ -1190,11 +1191,11 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 }
 
 .mari-workspace-portrait[data-state="success"] {
-  filter: drop-shadow(0 0 0.7rem color-mix(in srgb, var(--marinara-app-accent-static) 24%, transparent));
+  filter: drop-shadow(0 0 0.7rem color-mix(in srgb, oklch(0.74 0.15 154) 24%, transparent));
 }
 
 .mari-workspace-portrait[data-state="warning"] {
-  filter: drop-shadow(0 0 0.7rem color-mix(in srgb, var(--warning) 24%, transparent));
+  filter: drop-shadow(0 0 0.7rem color-mix(in srgb, oklch(0.72 0.18 38) 24%, transparent));
 }
 
 .mari-workspace-portrait[data-state="shrug"] img {
@@ -1237,8 +1238,8 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
   --mari-divider: color-mix(in srgb, var(--foreground) 8%, transparent);
   --mari-hover: color-mix(in srgb, var(--foreground) 6%, transparent);
   --mari-group-bg: color-mix(in srgb, var(--foreground) 3.5%, var(--background));
-  --mari-ins-line: var(--marinara-app-accent-static);
-  --mari-ok: var(--marinara-app-accent-static);
+  --mari-ins-line: oklch(0.72 0.15 162);
+  --mari-ok: oklch(0.8 0.12 165);
   /* R10 (cards v5): one card anatomy. The light theme derives them from the tokens above. */
   --mari-card-radius: 0.875rem;
   --mari-card-pad-block: 0.5rem;
@@ -1270,8 +1271,8 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 [data-theme="light"] {
   --mari-group-bg: color-mix(in srgb, var(--foreground) 1.5%, var(--background));
-  --mari-ins-line: var(--marinara-app-accent-static);
-  --mari-ok: var(--marinara-app-accent-static);
+  --mari-ins-line: oklch(0.55 0.13 162);
+  --mari-ok: oklch(0.5 0.12 165);
 }
 
 /* Small buttons: one hairline or solid primary, and a quiet text secondary. On touch the hit area
@@ -1308,8 +1309,8 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 .mari-btn--danger {
   border-color: transparent;
-  background: var(--destructive);
-  color: var(--destructive-foreground);
+  background: var(--marinara-app-accent-static);
+  color: var(--primary-foreground);
 }
 
 .mari-link {
@@ -1371,8 +1372,8 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 }
 
 .mari-card[data-variant="danger"] .mari-card__media {
-  background: color-mix(in srgb, var(--destructive) 16%, var(--background));
-  color: var(--destructive);
+  background: color-mix(in srgb, var(--marinara-app-accent-static) 16%, var(--background));
+  color: var(--marinara-app-accent-static);
 }
 
 .mari-card__title {
@@ -1405,7 +1406,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 }
 
 /* Slice 71 (N1-N2, N5, N8): a card where nothing happens until you choose. One accent edge and a
-   "Needs you" kicker, the same for every kind (danger stays on the slot tint and the accent button), then
+   "Needs you" kicker, the same for every kind (danger stays on the slot tint and the delete button), then
    one line that says what each button does beside them. Theme tokens only, so user themes recolour it. */
 .mari-card[data-needs-you="true"] {
   gap: 0.55rem;
@@ -1718,14 +1719,14 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 .mari-new-badge {
   flex: none;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--mari-workspace-gold, var(--marinara-app-accent-static)) 15%, transparent);
+  background: color-mix(in srgb, var(--mari-workspace-gold, oklch(0.82 0.11 79)) 15%, transparent);
   padding: 0.0625rem 0.375rem;
-  color: color-mix(in srgb, var(--mari-workspace-gold, var(--marinara-app-accent-static)) 70%, var(--foreground));
+  color: color-mix(in srgb, var(--mari-workspace-gold, oklch(0.82 0.11 79)) 70%, var(--foreground));
   font-size: 0.625rem;
   font-weight: 600;
 }
 
-/* A failed send: one accent line under your message, then Retry. */
+/* A failed send: one red line under your message, then Retry. */
 .mari-send-failed {
   display: flex;
   width: fit-content;
@@ -1733,7 +1734,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
   align-items: center;
   gap: 0.35rem;
   margin-inline-start: auto;
-  color: color-mix(in srgb, var(--destructive) 80%, var(--foreground));
+  color: color-mix(in srgb, oklch(0.72 0.17 25) 80%, var(--foreground));
   font-size: 0.75rem;
   line-height: 1.4;
 }
@@ -1771,7 +1772,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
   color: var(--marinara-chat-chrome-text);
 }
 
-/* R14: the newest unresolved failure. No box: an accent label, the provider's words muted, then the actions. */
+/* R14: the newest unresolved failure. No box: a red label, the provider's words muted, then the actions. */
 .mari-run-error {
   display: grid;
   gap: 0.25rem;
@@ -1795,7 +1796,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 .mari-run-error__text > svg {
   flex: none;
   margin-top: 0.2rem;
-  /* Keep the failure icon on the selected accent while Accent Pulse runs. */
+  /* F14: the v5 destructive token, not a one-off hard-coded red. */
   color: color-mix(in srgb, var(--destructive) 80%, var(--foreground));
 }
 
@@ -1918,7 +1919,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 }
 
 .mari-workspace-canvas {
-  background: color-mix(in srgb, var(--background) 97%, var(--secondary));
+  background: color-mix(in srgb, var(--background) 97%, oklch(0.2 0.025 315));
 }
 
 /* M6: Chats, Skills, Memories and Aware of share one surface - the canvas, one hairline on the
@@ -2268,9 +2269,9 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
   }
 }
 
-/* R14: her header line says a failure is waiting for an answer, in the steady accent. */
+/* R14: her header line says a failure is waiting for an answer, in a quiet red. */
 .mari-status-shimmer[data-state="error"] {
-  color: color-mix(in srgb, var(--destructive) 80%, var(--foreground));
+  color: color-mix(in srgb, oklch(0.72 0.17 25) 80%, var(--foreground));
 }
 
 html[data-marinara-effects-paused="true"] .mari-status-shimmer[data-active="true"] {
@@ -2487,7 +2488,7 @@ html[data-marinara-effects-paused="true"] .mari-status-shimmer[data-active="true
   border-radius: 0.6rem;
   background: var(--card);
   padding: 0.25rem;
-  box-shadow: 0 1rem 2rem color-mix(in srgb, var(--marinara-shadow-color) 24%, transparent);
+  box-shadow: 0 1rem 2rem color-mix(in srgb, black 24%, transparent);
 }
 
 .mari-omnibar-header-menu__popover button {
@@ -2726,7 +2727,7 @@ html[data-mari-pull-landing] .mari-arrival-content * {
   height: 0.3rem;
   border-radius: 50%;
   content: "";
-  background: color-mix(in srgb, var(--background) 40%, transparent);
+  background: oklch(0 0 0 / 0.4);
   filter: blur(2px);
 }
 
@@ -2750,12 +2751,8 @@ html[data-mari-pull-landing] .mari-arrival-content * {
   inset: -25%;
   content: "";
   pointer-events: none;
-  background: radial-gradient(
-      circle,
-      var(--mari-workspace-gold, var(--marinara-app-accent-static)) 0 1.5px,
-      transparent 2px
-    )
-    50% 50% / 34% 34%;
+  background: radial-gradient(circle, var(--mari-workspace-gold, oklch(0.82 0.11 79)) 0 1.5px, transparent 2px) 50%
+    50% / 34% 34%;
   mask-image: radial-gradient(circle, transparent 28%, #000 30%, #000 60%, transparent 62%);
   opacity: 0;
   animation: mari-sprite-puff 0.7s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2803,7 +2800,7 @@ html[data-mari-pull-landing] .mari-arrival-content * {
   margin-inline-start: 0.2rem;
   border-radius: 50%;
   vertical-align: middle;
-  background: radial-gradient(circle, var(--mari-workspace-gold, var(--marinara-app-accent-static)), transparent 70%);
+  background: radial-gradient(circle, var(--mari-workspace-gold, oklch(0.82 0.11 79)), transparent 70%);
   box-shadow: 0 0 0.6rem var(--mari-logo-orange);
   animation: mari-caret-pulse 0.9s ease-in-out infinite;
 }
@@ -2816,7 +2813,7 @@ html[data-mari-pull-landing] .mari-arrival-content * {
 }
 
 .mari-reasoning-panel__star {
-  color: var(--mari-workspace-gold, var(--marinara-app-accent-static));
+  color: var(--mari-workspace-gold, oklch(0.82 0.11 79));
 }
 
 .mari-reasoning-panel__star--live {
@@ -2929,7 +2926,7 @@ html[data-mari-pull-landing] .mari-arrival-content * {
   transform: rotate(90deg);
 }
 
-/* A read she could not do and worked around keeps its label in the steady accent. */
+/* A read she could not do and worked around: amber, never the run's red. */
 .mari-run__missed,
 .mari-phase__missed {
   color: var(--warning);
@@ -3176,7 +3173,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 .mari-work-timeline__subject-text {
-  color: var(--mari-workspace-gold, var(--marinara-app-accent-static));
+  color: var(--mari-workspace-gold, oklch(0.82 0.11 79));
 }
 
 .mari-work-timeline__timer {
@@ -3195,7 +3192,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   height: 0.95rem;
   flex: 0 0 auto;
   fill: none;
-  stroke: var(--marinara-app-accent-static);
+  stroke: oklch(0.74 0.15 154);
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
@@ -3321,7 +3318,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   font-size: 0.8125rem;
 }
 
-/* Slice 72: each row leads with its state icon and a hairline rail
+/* Slice 72: each row leads with its state - the green check, an amber or red warning - and a hairline rail
    joins the rows of a phase. */
 .mari-step__glyph {
   width: 0.85rem;
@@ -3380,7 +3377,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 .mari-face[data-initial] {
-  background: color-mix(in srgb, var(--marinara-app-accent-static) 34%, var(--muted));
+  background: color-mix(in oklch, oklch(0.72 0.11 calc(var(--mari-face-hue) * 1deg)) 34%, var(--muted));
   color: var(--foreground);
 }
 
@@ -3606,7 +3603,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   margin-top: 0.3rem;
 }
 
-/* Old words struck on a faint accent; new words underlined on a faint green: two marks, not colour only. */
+/* Old words struck and muted on a faint red; new words underlined on a faint green: two marks, not colour only. */
 .mari-receipt del {
   border-radius: 2px;
   background: color-mix(in srgb, var(--destructive) 12%, transparent);
@@ -4181,29 +4178,29 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   border-radius: var(--mari-composer-radius);
   background: var(--mari-composer-fill);
   box-shadow:
-    0 1px 2px color-mix(in srgb, var(--marinara-shadow-color) 12%, transparent),
-    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent);
+    0 1px 2px rgb(0 0 0 / 0.12),
+    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.5);
   color: var(--foreground);
 }
 
 [data-theme="light"] .mari-workspace-composer {
-  --mari-composer-fill: color-mix(in srgb, var(--card) 80%, var(--background));
+  --mari-composer-fill: color-mix(in srgb, #fff 80%, var(--background));
   box-shadow:
-    0 1px 2px color-mix(in srgb, var(--marinara-shadow-color) 5%, transparent),
-    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent);
+    0 1px 2px rgb(0 0 0 / 0.05),
+    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.18);
 }
 
 .mari-workspace-composer:focus-within {
   border-color: color-mix(in srgb, var(--primary) 50%, var(--mari-hairline));
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent),
-    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent);
+    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.5);
 }
 
 [data-theme="light"] .mari-workspace-composer:focus-within {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent),
-    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent);
+    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.18);
 }
 
 /* Attachments first, then "Aware of" and its facets: one wrapping row inside the top edge. */
@@ -4270,12 +4267,12 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   flex: none;
   border-radius: 999px;
   object-fit: cover;
-  outline: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  outline: 1px solid oklch(1 0 0 / 0.1);
   outline-offset: -1px;
 }
 
 [data-theme="light"] .mari-composer-chip__thumb {
-  outline-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  outline-color: oklch(0 0 0 / 0.1);
 }
 
 /* A facet whose content is already in the message (the reply-check Fix) keeps the primary tint; one that
@@ -4432,7 +4429,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   color: var(--destructive);
 }
 
-/* No connection: a small steady accent dot on the trigger, so it asks for you. */
+/* No connection: a small red dot on the trigger, so it asks for you. */
 .mari-workspace-composer__connection--missing::before {
   position: absolute;
   top: 0.2rem;
@@ -4493,12 +4490,12 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
     )
     var(--background);
   text-align: start;
-  box-shadow: 0 1rem 2rem -0.5rem color-mix(in srgb, var(--marinara-shadow-color) 45%, transparent);
+  box-shadow: 0 1rem 2rem -0.5rem rgb(0 0 0 / 0.45);
 }
 
 [data-theme="light"] .mari-composer-menu__popover {
-  background: var(--background);
-  box-shadow: 0 1rem 2rem -0.75rem color-mix(in srgb, var(--marinara-shadow-color) 25%, transparent);
+  background: #fff;
+  box-shadow: 0 1rem 2rem -0.75rem rgb(0 0 0 / 0.25);
 }
 
 .mari-composer-menu__head {
@@ -4769,7 +4766,7 @@ html[data-marinara-accent-animation] .mari-message-action {
 }
 
 [data-theme="light"] .mari-workspace-shell {
-  background: color-mix(in srgb, var(--background) 96%, var(--secondary));
+  background: color-mix(in srgb, var(--background) 96%, oklch(0.93 0.025 73));
 }
 
 [data-component="GlobalOmnibar"]:not([data-pane="mari"]) .mari-workspace-portrait img,

@@ -151,11 +151,9 @@ export function GameGridMap({
                       className={cn(
                         "relative flex aspect-square items-center justify-center rounded text-base transition-all",
                         cell.discovered ? terrainBg : "bg-zinc-950/75 game-map-fog",
-                        isParty && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--background)]",
-                        isSelected &&
-                          !isParty &&
-                          "ring-2 ring-[var(--primary)]/70 ring-offset-1 ring-offset-[var(--background)]",
-                        isMovable && "hover:brightness-125 cursor-pointer ring-1 ring-[var(--primary)]/30",
+                        isParty && "ring-2 ring-amber-400 ring-offset-1 ring-offset-zinc-950",
+                        isSelected && !isParty && "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-zinc-950",
+                        isMovable && "hover:brightness-125 cursor-pointer ring-1 ring-amber-400/30",
                         !isMovable && "cursor-default opacity-80",
                       )}
                     >

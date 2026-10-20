@@ -1260,7 +1260,7 @@ export function CharacterEditor() {
                 />
               ) : (
                 <span className="flex h-full w-full items-center justify-center">
-                  <User size="1.375rem" className="text-[var(--foreground)]" />
+                  <User size="1.375rem" className="text-white" />
                 </span>
               )}
             </button>
@@ -3887,7 +3887,7 @@ function CharacterSheetSection({
             <button
               type="button"
               onClick={clearSelection}
-              className="mari-editor-action inline-flex w-full justify-center text-[var(--destructive)]"
+              className="mari-editor-action inline-flex w-full justify-center text-[var(--marinara-app-accent-static)]"
             >
               <X size="0.875rem" />
               {localizeUi("ui.characters.charactersheet.remove")}
@@ -4208,7 +4208,7 @@ function CharacterGalleryTab({
                         "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
                         selectedImageIds.has(image.id)
                           ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                          : "border-[var(--border)]/65 bg-[var(--background)]/55 text-transparent hover:bg-[var(--background)]/75",
+                          : "border-white/65 bg-black/55 text-transparent hover:bg-black/75",
                       )}
                     >
                       <Check size="0.9rem" />
@@ -4229,13 +4229,13 @@ function CharacterGalleryTab({
                   </button>
                   <div
                     className={cn(
-                      "absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-[var(--background)]/75 via-[var(--background)]/25 to-transparent p-2 transition-opacity",
+                      "absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/75 via-black/25 to-transparent p-2 transition-opacity",
                       selectingImages && !selectedImageIds.has(image.id)
                         ? "pointer-events-none opacity-0"
                         : "opacity-0 group-hover:opacity-100 group-[&:focus-within]:opacity-100 max-md:opacity-100",
                     )}
                   >
-                    <span className="max-w-[8rem] truncate text-[0.6875rem] font-medium text-[var(--foreground)]/85 max-md:hidden">
+                    <span className="max-w-[8rem] truncate text-[0.6875rem] font-medium text-white/85 max-md:hidden">
                       {new Date(image.createdAt).toLocaleDateString()}
                     </span>
                     <div className="ml-auto flex gap-1">
@@ -4244,7 +4244,7 @@ function CharacterGalleryTab({
                           <button
                             type="button"
                             onClick={() => void handleCopyReference(image)}
-                            className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                            className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                             title={localizeUi("ui.characters.charactergallerytab.copyImageReference")}
                           >
                             <Link2 size="0.75rem" />
@@ -4253,7 +4253,7 @@ function CharacterGalleryTab({
                             type="button"
                             onClick={() => void handleSetAvatar(image)}
                             disabled={setAvatar.isPending}
-                            className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25 disabled:opacity-50"
+                            className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
                             title={localizeUi("ui.characters.charactergallerytab.setAsAvatar")}
                           >
                             {setAvatar.isPending ? (
@@ -4268,7 +4268,7 @@ function CharacterGalleryTab({
                         <button
                           type="button"
                           onClick={() => void handleBatchDownload()}
-                          className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.gallery.batch.download")}
                         >
                           <Download size="0.75rem" />
@@ -4276,7 +4276,7 @@ function CharacterGalleryTab({
                       ) : (
                         <button
                           type="button"
-                          className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.characters.charactergallerytab.download")}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -4290,7 +4290,7 @@ function CharacterGalleryTab({
                         type="button"
                         onClick={() => void (selectingImages ? handleBatchDelete() : handleDelete(image))}
                         disabled={remove.isPending}
-                        className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                        className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                         title={localizeUi(selectingImages ? "ui.gallery.batch.delete" : "lorebook.editor.batch.delete")}
                       >
                         <Trash2 size="0.75rem" />
@@ -4322,7 +4322,7 @@ function CharacterGalleryTab({
 
       {lightbox && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
           ref={lightboxRef}
           tabIndex={-1}
           onKeyDown={(event) => {
@@ -4347,7 +4347,7 @@ function CharacterGalleryTab({
                 type="button"
                 onClick={() => void handleSetAvatar(lightbox)}
                 disabled={setAvatar.isPending}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80 disabled:opacity-50"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
                 title={localizeUi("ui.characters.charactergallerytab.setAsAvatar")}
               >
                 {setAvatar.isPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <User size="0.875rem" />}
@@ -4359,7 +4359,7 @@ function CharacterGalleryTab({
               <button
                 type="button"
                 onClick={() => void handleDelete(lightbox)}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
                 title={localizeUi("lorebook.editor.batch.delete")}
                 aria-label={localizeUi("lorebook.editor.batch.delete")}
               >
@@ -4370,7 +4370,7 @@ function CharacterGalleryTab({
                 ref={lightboxCloseRef}
                 onClick={() => setLightbox(null)}
                 aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
               >
                 <X size="0.875rem" />
               </button>
@@ -5109,11 +5109,11 @@ function CharacterClipCard({
             ) : null}
           </div>
         )}
-        <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-[var(--background)]/65 px-2 py-1 text-[0.65rem] font-semibold text-[var(--foreground)]">
+        <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/65 px-2 py-1 text-[0.65rem] font-semibold text-white">
           {sourceLabel}
         </div>
         {trimLabel ? (
-          <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-[var(--background)]/65 px-2 py-1 text-[0.65rem] font-semibold text-[var(--foreground)]">
+          <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[0.65rem] font-semibold text-white">
             {trimLabel}
           </div>
         ) : null}
@@ -6479,7 +6479,7 @@ function ColorsTab({
       </button>
 
       {/* Preview card */}
-      <div className="space-y-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]/30 p-4">
+      <div className="space-y-3 overflow-hidden rounded-xl border border-[var(--border)] bg-black/30 p-4">
         <p className="text-[0.625rem] font-medium uppercase tracking-widest text-[var(--muted-foreground)]">
           {localizeUi("settings.notifications.customSound.actions.preview")}
         </p>
@@ -6495,7 +6495,7 @@ function ColorsTab({
                 style={getAvatarCropStyle(normalizeAvatarCrop(formData.extensions.avatarCrop))}
               />
             ) : (
-              <User size="1rem" className="text-[var(--foreground)]" />
+              <User size="1rem" className="text-white" />
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">
@@ -6515,23 +6515,19 @@ function ColorsTab({
                         display: "inline-block",
                       }
                     : { color: nameColor }
-                  : { color: "var(--primary)" }
+                  : { color: "rgb(192, 132, 252)" }
               }
             >
               {formData.name || "Character"}
             </span>
             <div
-              className="rounded-2xl rounded-tl-sm px-4 py-3 text-[0.8125rem] leading-[1.8] backdrop-blur-md ring-1 ring-[var(--border)]/8"
-              style={
-                boxColor
-                  ? { backgroundColor: boxColor }
-                  : { backgroundColor: "color-mix(in srgb, var(--foreground) 8%, transparent)" }
-              }
+              className="rounded-2xl rounded-tl-sm px-4 py-3 text-[0.8125rem] leading-[1.8] backdrop-blur-md ring-1 ring-white/8"
+              style={boxColor ? { backgroundColor: boxColor } : { backgroundColor: "rgba(255,255,255,0.08)" }}
             >
-              <span className="text-[var(--foreground)]/90">
+              <span className="text-white/90">
                 {localizeUi("ui.characters.colorstab.theyJumpDownLandingBehindYouAndStraightenUp")}{" "}
               </span>
-              <strong style={dialogueColor ? { color: dialogueColor } : { color: "var(--foreground)" }}>
+              <strong style={dialogueColor ? { color: dialogueColor } : { color: "rgb(255, 255, 255)" }}>
                 {localizeUi("ui.characters.colorstab.ldquoHelloThereRdquo")}
               </strong>
             </div>
@@ -6856,7 +6852,7 @@ function LorebookTab({
                   className={cn(
                     "shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] font-medium",
                     entry.enabled
-                      ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                      ? "bg-emerald-500/15 text-emerald-500"
                       : "bg-[var(--muted-foreground)]/15 text-[var(--muted-foreground)]",
                   )}
                 >

@@ -183,7 +183,7 @@ export function RulesetCombatMenu({
 
   if (!view.options) {
     return (
-      <p className="px-3 py-2 text-xs text-[var(--foreground)]/55" role="status">
+      <p className="px-3 py-2 text-xs text-white/55" role="status">
         {actorName
           ? t("game.combat.ruleset.menu.waiting", { name: actorName })
           : t("game.combat.ruleset.menu.waitingAnybody")}
@@ -336,7 +336,7 @@ export function RulesetCombatMenu({
     const option = step.option;
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60" id="ruleset-style-prompt">
+        <p className="text-xs text-white/60" id="ruleset-style-prompt">
           {t("game.combat.ruleset.style.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-style-prompt">
@@ -349,13 +349,10 @@ export function RulesetCombatMenu({
                 type="button"
                 disabled={busy}
                 onClick={() => afterStyle(option, style.id)}
-                className={cn(
-                  buttonClass,
-                  "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-                )}
+                className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
               >
-                <span className="block font-semibold text-[var(--foreground)]/90">{style.label}</span>
-                {forecast && <span className="block text-[0.65rem] text-[var(--foreground)]/45">{forecast}</span>}
+                <span className="block font-semibold text-white/90">{style.label}</span>
+                {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
               </button>
             );
           })}
@@ -372,7 +369,7 @@ export function RulesetCombatMenu({
     const plain = rulesetOptionForecastText(option, t);
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60" id="ruleset-mode-prompt">
+        <p className="text-xs text-white/60" id="ruleset-mode-prompt">
           {t("game.combat.ruleset.mode.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-mode-prompt">
@@ -381,15 +378,10 @@ export function RulesetCombatMenu({
             type="button"
             disabled={busy}
             onClick={() => afterMode(option, step.style)}
-            className={cn(
-              buttonClass,
-              "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-            )}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
           >
-            <span className="block font-semibold text-[var(--foreground)]/90">
-              {t("game.combat.ruleset.mode.plain")}
-            </span>
-            {plain && <span className="block text-[0.65rem] text-[var(--foreground)]/45">{plain}</span>}
+            <span className="block font-semibold text-white/90">{t("game.combat.ruleset.mode.plain")}</span>
+            {plain && <span className="block text-[0.65rem] text-white/45">{plain}</span>}
           </button>
           {modes.map((mode) => {
             const forecast = rulesetModeText(option, mode, t);
@@ -399,13 +391,10 @@ export function RulesetCombatMenu({
                 type="button"
                 disabled={busy}
                 onClick={() => afterMode(option, step.style, mode.id)}
-                className={cn(
-                  buttonClass,
-                  "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-                )}
+                className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
               >
-                <span className="block font-semibold text-[var(--foreground)]/90">{mode.label}</span>
-                {forecast && <span className="block text-[0.65rem] text-[var(--foreground)]/45">{forecast}</span>}
+                <span className="block font-semibold text-white/90">{mode.label}</span>
+                {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
               </button>
             );
           })}
@@ -436,7 +425,7 @@ export function RulesetCombatMenu({
     };
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60" id="ruleset-alter-prompt">
+        <p className="text-xs text-white/60" id="ruleset-alter-prompt">
           {t("game.combat.ruleset.alter.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-alter-prompt">
@@ -453,12 +442,12 @@ export function RulesetCombatMenu({
                 className={cn(
                   buttonClass,
                   picked
-                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-[var(--foreground)]"
-                    : "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:bg-white/10",
                 )}
               >
                 <span className="block font-semibold">{offer.label}</span>
-                <span className="block text-[0.65rem] text-[var(--foreground)]/55">
+                <span className="block text-[0.65rem] text-white/55">
                   {t(offer.perLevel ? "game.combat.ruleset.alter.costPerLevel" : "game.combat.ruleset.alter.cost", {
                     count: offer.cost,
                   })}
@@ -474,10 +463,7 @@ export function RulesetCombatMenu({
             onClick={() =>
               afterMode(option, step.style, step.mode, undefined, altersPicked.length ? altersPicked : null)
             }
-            className={cn(
-              buttonClass,
-              "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-            )}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
           >
             {altersPicked.length
               ? t("game.combat.ruleset.alter.use", { count: altersPicked.length })
@@ -502,7 +488,7 @@ export function RulesetCombatMenu({
       );
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60" id="ruleset-spare-prompt">
+        <p className="text-xs text-white/60" id="ruleset-spare-prompt">
           {t("game.combat.ruleset.spare.prompt", { label: rulesetOptionLabel(step.option, t), count: most })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-spare-prompt">
@@ -520,8 +506,8 @@ export function RulesetCombatMenu({
                 className={cn(
                   buttonClass,
                   picked
-                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-[var(--foreground)]"
-                    : "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)]/85 hover:bg-[var(--primary)]/20",
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
                 )}
               >
                 <span className="block font-semibold">{combatant?.name ?? id}</span>
@@ -537,7 +523,7 @@ export function RulesetCombatMenu({
               const picked = { ...step, spared: sparesPicked };
               if (!picksFirst(picked)) sendPicked(picked);
             }}
-            className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-[var(--foreground)]")}
+            className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white")}
           >
             {sparesPicked.length
               ? t("game.combat.ruleset.spare.confirm", { count: sparesPicked.length })
@@ -553,7 +539,7 @@ export function RulesetCombatMenu({
   if (step?.stage === "heighten" && step.heighten) {
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60" id="ruleset-heighten-prompt">
+        <p className="text-xs text-white/60" id="ruleset-heighten-prompt">
           {t("game.combat.ruleset.heighten.prompt", { label: rulesetOptionLabel(step.option, t) })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-heighten-prompt">
@@ -569,8 +555,8 @@ export function RulesetCombatMenu({
                 className={cn(
                   buttonClass,
                   combatant?.side === "enemy"
-                    ? "border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--foreground)]/85 hover:bg-[var(--warning)]/20"
-                    : "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)]/85 hover:bg-[var(--primary)]/20",
+                    ? "border-amber-400/30 bg-amber-500/10 text-white/85 hover:bg-amber-500/20"
+                    : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
                 )}
               >
                 <span className="block font-semibold">{combatant?.name ?? id}</span>
@@ -594,7 +580,7 @@ export function RulesetCombatMenu({
     };
     return (
       <div className="flex flex-col gap-2 p-3">
-        <label className="text-xs text-[var(--foreground)]/60" htmlFor="ruleset-amount-input">
+        <label className="text-xs text-white/60" htmlFor="ruleset-amount-input">
           {t("game.combat.ruleset.amount.prompt", { label: rulesetOptionLabel(option, t), max })}
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -611,17 +597,14 @@ export function RulesetCombatMenu({
             onKeyDown={(event) => {
               if (event.key === "Enter" && valid) chooseAmount(typed);
             }}
-            className="min-h-11 w-20 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 text-base tabular-nums text-[var(--foreground)]/90 sm:text-xs"
+            className="min-h-11 w-20 rounded-lg border border-white/15 bg-white/5 px-2 text-base tabular-nums text-white/90 sm:text-xs"
           />
           <button
             ref={first}
             type="button"
             disabled={busy || !valid}
             onClick={() => chooseAmount(typed)}
-            className={cn(
-              buttonClass,
-              "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-            )}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
           >
             {t("game.combat.ruleset.amount.spend", { count: valid ? typed : 0 })}
           </button>
@@ -629,10 +612,7 @@ export function RulesetCombatMenu({
             type="button"
             disabled={busy}
             onClick={() => chooseAmount(null)}
-            className={cn(
-              buttonClass,
-              "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-            )}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
           >
             {t("game.combat.ruleset.amount.fill")}
           </button>
@@ -648,7 +628,7 @@ export function RulesetCombatMenu({
     const option = step.option;
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--foreground)]/60">
+        <p className="text-xs text-white/60">
           {t("game.combat.ruleset.upcast.prompt", { label: rulesetOptionLabel(option, t) })}
         </p>
         <div className="flex flex-wrap gap-2">
@@ -659,10 +639,7 @@ export function RulesetCombatMenu({
               type="button"
               disabled={busy}
               onClick={() => paid(undefined)}
-              className={cn(
-                buttonClass,
-                "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/85 hover:bg-[var(--foreground)]/10",
-              )}
+              className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
             >
               {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
             </button>
@@ -674,10 +651,7 @@ export function RulesetCombatMenu({
               type="button"
               disabled={busy}
               onClick={() => paid(pool)}
-              className={cn(
-                buttonClass,
-                "border-[var(--primary)]/25 bg-[var(--primary)]/10 text-[var(--foreground)]/85 hover:bg-[var(--primary)]/20",
-              )}
+              className={cn(buttonClass, "border-blue-400/25 bg-blue-500/10 text-white/85 hover:bg-blue-500/20")}
             >
               {/* More of the item's own charges (1.269). */}
               {pool.startsWith(RULESET_CHARGE_STEP_PREFIX)
@@ -732,7 +706,7 @@ export function RulesetCombatMenu({
                   : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--warning)]">
+        <p className="text-xs text-amber-200">
           {t(prompt, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
         </p>
         {/* How a wall is laid (1.177) and how many copies are down (1.178): the board takes the cells. */}
@@ -848,7 +822,7 @@ export function RulesetCombatMenu({
     );
     return (
       <div className="flex flex-col gap-2 p-3">
-        <p className="text-xs text-[var(--warning)]" id="ruleset-target-prompt">
+        <p className="text-xs text-amber-200" id="ruleset-target-prompt">
           {many
             ? t(
                 option.targets.repeat
@@ -877,21 +851,21 @@ export function RulesetCombatMenu({
                 className={cn(
                   buttonClass,
                   picked
-                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-[var(--foreground)]"
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
                     : combatant.side === "enemy"
-                      ? "border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--foreground)]/85 hover:bg-[var(--warning)]/20"
-                      : "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)]/85 hover:bg-[var(--primary)]/20",
+                      ? "border-amber-400/30 bg-amber-500/10 text-white/85 hover:bg-amber-500/20"
+                      : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/20",
                 )}
               >
                 <span className="block font-semibold">{combatant.name}</span>
-                <span className="mt-0.5 block text-[0.65rem] tabular-nums text-[var(--foreground)]/55">
+                <span className="mt-0.5 block text-[0.65rem] tabular-nums text-white/55">
                   {t("game.combat.ruleset.status.health", {
                     value: combatant.health.value,
                     max: combatant.health.max,
                   })}
                 </span>
                 {times > 1 && (
-                  <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-[var(--foreground)]/80">
+                  <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-white/80">
                     {t("game.combat.ruleset.target.times", { count: times })}
                   </span>
                 )}
@@ -917,15 +891,12 @@ export function RulesetCombatMenu({
                   step.alters,
                 );
               }}
-              className={cn(
-                buttonClass,
-                "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--foreground)]/85 hover:bg-[var(--primary)]/20",
-              )}
+              className={cn(buttonClass, "border-sky-300/30 bg-sky-500/10 text-white/85 hover:bg-sky-500/20")}
             >
               <span className="block font-semibold">
                 {t("game.combat.ruleset.target.wall", { wall: section.wall })}
               </span>
-              <span className="mt-0.5 block text-[0.65rem] tabular-nums text-[var(--foreground)]/55">
+              <span className="mt-0.5 block text-[0.65rem] tabular-nums text-white/55">
                 {t("game.combat.ruleset.status.health", { value: section.health, max: section.max })}
               </span>
             </button>
@@ -937,7 +908,7 @@ export function RulesetCombatMenu({
               type="button"
               disabled={busy || step.targets.length === 0}
               onClick={() => send(option, step.targets, step.payWith, step.style, step.mode)}
-              className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-[var(--foreground)]")}
+              className={cn(buttonClass, "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white")}
             >
               {t("game.combat.ruleset.target.confirm", { count: step.targets.length })}
             </button>
@@ -983,7 +954,7 @@ export function RulesetCombatMenu({
           )}
         </p>
       ) : (
-        <p className="hidden text-[0.65rem] uppercase tracking-wide text-[var(--foreground)]/45 sm:block">
+        <p className="hidden text-[0.65rem] uppercase tracking-wide text-white/45 sm:block">
           {t("game.combat.ruleset.menu.title", { name: actorName })}
         </p>
       )}
@@ -994,7 +965,7 @@ export function RulesetCombatMenu({
             aria-label={t(group.labelKey)}
             className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1.5"
           >
-            <h4 className="hidden text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/40 sm:block">
+            <h4 className="hidden text-[0.6rem] font-semibold uppercase tracking-wide text-white/40 sm:block">
               {t(group.labelKey)}
             </h4>
             <div className="contents sm:flex sm:flex-wrap sm:gap-2">
@@ -1009,23 +980,23 @@ export function RulesetCombatMenu({
                     onClick={() => take(option)}
                     className={cn(
                       buttonClass,
-                      "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/80 hover:border-[var(--border)] hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]",
+                      "border-white/10 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
                     )}
                   >
-                    <span className="flex items-center gap-1.5 font-semibold text-[var(--foreground)]/90">
+                    <span className="flex items-center gap-1.5 font-semibold text-white/90">
                       <ArtIcon ids={option.icons ?? []} className="h-5 w-5" />
                       {rulesetOptionLabel(option, t)}
                     </span>
                     {option.cancelSave && (
-                      <span className="block text-[0.65rem] text-[var(--foreground)]/55">
+                      <span className="block text-[0.65rem] text-white/55">
                         {t("game.combat.ruleset.menu.cancelSave", {
                           save: option.cancelSave.label,
                           dc: option.cancelSave.dc,
                         })}
                       </span>
                     )}
-                    {cost && <span className="mt-0.5 block text-[0.65rem] text-[var(--foreground)]/45">{cost}</span>}
-                    {forecast && <span className="block text-[0.65rem] text-[var(--foreground)]/45">{forecast}</span>}
+                    {cost && <span className="mt-0.5 block text-[0.65rem] text-white/45">{cost}</span>}
+                    {forecast && <span className="block text-[0.65rem] text-white/45">{forecast}</span>}
                   </button>
                 );
               })}
@@ -1043,7 +1014,7 @@ export function RulesetCombatMenu({
               }}
               className={cn(
                 buttonClass,
-                "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/80 hover:border-[var(--border)] hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]",
+                "border-white/10 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",
               )}
             >
               {t("game.combat.ruleset.menu.pass")}
@@ -1053,10 +1024,7 @@ export function RulesetCombatMenu({
             type="button"
             disabled={busy}
             onClick={onFlee}
-            className={cn(
-              buttonClass,
-              "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/60 hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]",
-            )}
+            className={cn(buttonClass, "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white")}
           >
             {t("game.combat.ruleset.menu.flee")}
           </button>
@@ -1071,7 +1039,7 @@ function BackButton({ onClick, label }: { onClick: () => void; label: string }) 
     <button
       type="button"
       onClick={onClick}
-      className="min-h-11 rounded border border-[var(--border)] px-3 text-xs text-[var(--foreground)]/60 hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      className="min-h-11 rounded border border-white/15 px-3 text-xs text-white/60 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
     >
       {label}
     </button>

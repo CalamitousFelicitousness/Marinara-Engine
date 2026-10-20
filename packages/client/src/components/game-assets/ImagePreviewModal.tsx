@@ -35,7 +35,7 @@ export function ImagePreviewModal({ node, onClose }: { node: TreeNode; onClose: 
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.gameAssets.imagepreviewmodal.imagePreviewValue1", { value1: node.name })}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--background)]/80 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div className="relative flex max-h-[90vh] max-w-[90vw] supports-[height:100dvh]:max-h-[90dvh]">
@@ -60,7 +60,7 @@ export function ImagePreviewModal({ node, onClose }: { node: TreeNode; onClose: 
               e.stopPropagation();
               setShowInfo(!showInfo);
             }}
-            className="absolute right-2 top-2 rounded-full bg-[var(--card)]/90 p-1.5 text-[var(--foreground)]/80 backdrop-blur-sm transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)]"
+            className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white"
             title={localizeUi("ui.gameAssets.imagepreviewmodal.fileInfo")}
           >
             <Info size="0.875rem" />
@@ -110,7 +110,7 @@ export function ImagePreviewModal({ node, onClose }: { node: TreeNode; onClose: 
           </div>
         )}
       </div>
-      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-[var(--foreground)]/80">{node.name}</p>
+      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-white/80">{node.name}</p>
     </div>
   );
 }

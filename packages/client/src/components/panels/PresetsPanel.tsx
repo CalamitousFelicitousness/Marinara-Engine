@@ -1027,7 +1027,7 @@ export function PresetsPanel() {
               >
                 <span className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl">
                   {imageContent}
-                  <span className="absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover/preset-picture:opacity-100 group-focus-visible/preset-picture:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover/preset-picture:opacity-100 group-focus-visible/preset-picture:opacity-100 [@media(pointer:coarse)]:opacity-100">
                     <Camera size="0.875rem" />
                   </span>
                 </span>
@@ -1114,8 +1114,8 @@ export function PresetsPanel() {
                 className={cn(
                   "rounded-lg p-1.5 transition-all active:scale-90",
                   isDefault
-                    ? "text-[var(--primary)]"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)]",
+                    ? "text-yellow-500"
+                    : "text-[var(--muted-foreground)] hover:bg-yellow-500/10 hover:text-yellow-500",
                 )}
                 title={
                   isDefault
@@ -1128,7 +1128,7 @@ export function PresetsPanel() {
                     : localizeUi("ui.panels.presetspanel.setAsDefaultPreset")
                 }
               >
-                <Star size="0.75rem" className={isDefault ? "fill-[var(--primary)]" : ""} />
+                <Star size="0.75rem" className={isDefault ? "fill-yellow-500" : ""} />
               </button>
               <button
                 type="button"
@@ -1754,8 +1754,8 @@ function RegexSection({
           {regexImportError}
         </div>
       )}
-      {regexImportWarning && <div className="mb-1 px-1 text-xs text-[var(--warning)]">{regexImportWarning}</div>}
-      {regexImportSuccess && <div className="mb-1 px-1 text-xs text-[var(--success)]">{regexImportSuccess}</div>}
+      {regexImportWarning && <div className="mb-1 px-1 text-xs text-amber-500">{regexImportWarning}</div>}
+      {regexImportSuccess && <div className="mb-1 px-1 text-xs text-green-500">{regexImportSuccess}</div>}
       {selectionMode && (
         <label className="mb-2 flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs">
           <input
@@ -2062,7 +2062,7 @@ function FunctionsSection({
           {functionImportError}
         </div>
       )}
-      {functionImportSuccess && <div className="mb-1 px-1 text-xs text-[var(--success)]">{functionImportSuccess}</div>}
+      {functionImportSuccess && <div className="mb-1 px-1 text-xs text-green-500">{functionImportSuccess}</div>}
       {functionImportReviews.length > 0 && (
         <section
           aria-live="polite"
@@ -2219,7 +2219,7 @@ function FunctionsSection({
                       {parameterCount === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}
                     </span>
                     {scriptUnavailable && (
-                      <span className="shrink-0 rounded bg-[var(--warning)]/10 px-1 py-0.5 text-[0.5rem] text-[var(--warning)]">
+                      <span className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[0.5rem] text-amber-400">
                         {localizeUi("ui.panels.functionssection.scriptDisabled")}
                       </span>
                     )}

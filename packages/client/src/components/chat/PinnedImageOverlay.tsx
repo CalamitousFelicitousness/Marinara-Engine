@@ -302,7 +302,7 @@ function PinnedMediaViewer({
           <>
             <div
               className={cn(
-                "absolute left-2 top-2 z-10 flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-md bg-[var(--card)]/90 px-2 py-1 text-[0.625rem] font-medium text-[var(--foreground)] shadow-lg backdrop-blur-sm",
+                "absolute left-2 top-2 z-10 flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-md bg-black/65 px-2 py-1 text-[0.625rem] font-medium text-white shadow-lg backdrop-blur-sm",
                 !locked && "cursor-grab active:cursor-grabbing",
                 controlsVisibilityClass,
               )}

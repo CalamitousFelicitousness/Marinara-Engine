@@ -443,7 +443,7 @@ function DataBlock({
       )}
 
       {(error ?? jsonError) && (
-        <div role="alert" className="mt-1.5 text-[0.5625rem] text-[var(--warning)]">
+        <div role="alert" className="mt-1.5 text-[0.5625rem] text-[var(--marinara-app-accent-static)]">
           {error ?? jsonError}
         </div>
       )}
@@ -952,7 +952,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                 </div>
 
                 {isAgentProcessing && (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--warning)]/10 px-2.5 py-2 text-[0.625rem] text-[var(--warning)]/90 ring-1 ring-[var(--warning)]/30">
+                  <div className="flex items-center gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-2 text-[0.625rem] text-amber-400/90 ring-1 ring-amber-400/30">
                     <AlertTriangle size="0.75rem" className="shrink-0" />
                     {localizeUi("ui.chat.agentsuitemodal.agentsAreCurrentlyRunningForThisChatSavingIs")}
                   </div>

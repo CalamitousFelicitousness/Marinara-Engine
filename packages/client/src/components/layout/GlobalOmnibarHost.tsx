@@ -67,7 +67,7 @@ function OmnibarErrorPanel({ error, onClose }: { error: unknown; onClose: () => 
     <div
       role="alertdialog"
       aria-label={t("commandCenter.error.title", "Search could not open")}
-      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-[var(--background)]/55 p-4 backdrop-blur-sm sm:pt-[10vh]"
+      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-black/55 p-4 backdrop-blur-sm sm:pt-[10vh]"
     >
       <div className="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-[var(--foreground)] shadow-2xl">
         <h2 className="text-base font-semibold">{t("commandCenter.error.title", "Search could not open")}</h2>

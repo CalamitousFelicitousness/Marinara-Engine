@@ -174,22 +174,6 @@ async function resolveColor(page: Page, color: string) {
   }, color);
 }
 
-/** Sample the selected palette after finite CSS transitions, rather than during a theme cross-fade. */
-async function finishColorTransitions(page: Page) {
-  await page.evaluate(async () => {
-    document.documentElement.getBoundingClientRect();
-    await Promise.all(
-      document
-        .getAnimations()
-        .filter(
-          (animation) =>
-            animation instanceof CSSTransition && Number.isFinite(animation.effect?.getComputedTiming().endTime),
-        )
-        .map((animation) => animation.finished.catch(() => undefined)),
-    );
-  });
-}
-
 async function application(page: Page, enabled: Axis[]) {
   await page.evaluate(async (axes) => {
     const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -301,71 +285,43 @@ for (const [preset, theme] of [
       ];
       const isSection = (name: string) => sections.some(([section]) => section === name);
       const inventoryButton = narration.locator("button:has(> svg.lucide-package)").filter({ visible: true }).first();
-      // Mari's 2026-10-20 decision makes all UI chrome semantic. Select visible inventory
-      // content by its accessible name and text, rather than the removed white/amber classes.
+      // What the Inventory paints inside: the quantity badge's white text, the item letter's amber,
+      // and black tints, which follow the background inside the section but not on its own shadow.
       const inventoryTints = async () => {
         await inventoryButton.click();
         await expect(inventory).toBeVisible();
         await page.mouse.move(1, 1);
-        const slot = inventory.getByRole("button", { name: /^Lantern x3(?:,|$)/u });
-        const badge = slot.getByText("x3", { exact: true });
-        const letter = slot.getByText("L", { exact: true });
-        await expect(badge).toBeVisible();
-        await expect(letter).toBeVisible();
-        const tints = {
-          ...(await badge.evaluate((element) => {
-            const style = getComputedStyle(element);
-            return { badge: style.webkitTextFillColor, badgeBackground: style.backgroundColor };
-          })),
-          letter: await letter.evaluate((element) => getComputedStyle(element).webkitTextFillColor),
-          shadow: await inventory.evaluate((section) => getComputedStyle(section).boxShadow),
-        };
+        const tints = await inventory.evaluate((section) => {
+          const badge = Array.from(section.querySelectorAll<HTMLElement>('span[class~="text-white"]')).find((element) =>
+            element.textContent?.trim().endsWith("3"),
+          )!;
+          const letter = section.querySelector<HTMLElement>('div[class~="text-amber-400/80"]')!;
+          return {
+            badge: getComputedStyle(badge).color,
+            letter: getComputedStyle(letter).color,
+            ownBlack: getComputedStyle(section).getPropertyValue("--color-black"),
+            innerBlack: getComputedStyle(section.firstElementChild!).getPropertyValue("--color-black"),
+            rootBlack: getComputedStyle(document.documentElement).getPropertyValue("--color-black"),
+            background: getComputedStyle(section).getPropertyValue("--mari-game-bg"),
+          };
+        });
         await inventory.getByRole("button", { name: "Close", exact: true }).click();
         await expect(inventory).toBeHidden();
         return tints;
       };
-      // Game content in a window uses its theme text; the selected Timeline tab keeps its 85% tint.
-      const journalText = async () => {
+      // Game content in a window follows the window's style: its white tint becomes the window text.
+      const journalWhite = async () => {
         const session = await openChatTool(page, "control:session");
         await session.getByRole("button", { name: "Journal", exact: true }).click();
         const journal = session.locator('[data-game-section="journal"]');
-        const timeline = journal.getByRole("button", { name: "Timeline", exact: true });
-        await expect(timeline).toBeVisible();
-        const colors = await timeline.evaluate((element) => {
-          const probe = document.createElement("span");
-          probe.style.color = "var(--mari-game-text, var(--foreground))";
-          element.append(probe);
-          const basis = getComputedStyle(probe).color;
-          probe.remove();
-          return {
-            text: getComputedStyle(element).webkitTextFillColor,
-            basis,
-            window: getComputedStyle(element.closest(".mari-window")!).color,
-          };
-        });
+        await expect(journal).toBeVisible();
+        const colors = await journal.evaluate((element) => [
+          getComputedStyle(element).getPropertyValue("--color-white"),
+          getComputedStyle(element.closest(".mari-window")!).color,
+        ]);
         await session.locator('[data-window-control="close"]').click();
         await expect(session).toBeHidden();
-        return colors;
-      };
-
-      const expectJournalPalette = async (
-        colors: Awaited<ReturnType<typeof journalText>>,
-        palette: string,
-        label: string,
-      ) => {
-        const [basis, reference] = (await pixels(page, [colors.basis, palette])).map((color) =>
-          color.split(",").map(Number),
-        );
-        // The window can already mute the palette's opacity. Its RGB still follows the palette;
-        // the tab's own 85% tint is applied to that resolved basis, including the inherited alpha.
-        for (let channel = 0; channel < 3; channel += 1)
-          expect(
-            Math.abs(basis![channel]! - reference![channel]!),
-            `${label} supplies the Journal's color`,
-          ).toBeLessThanOrEqual(1);
-        expect(await pixels(page, [colors.text]), `${label} supplies the selected Timeline text`).toEqual(
-          await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${colors.basis} 85%, transparent)`)]),
-        );
+        return pixels(page, colors);
       };
 
       const surfaces = (): [Surface, Locator][] => [
@@ -392,11 +348,8 @@ for (const [preset, theme] of [
         return result;
       };
 
-      // With every switch off, the default look follows the app theme (Mari's all-chrome decision).
-      const inventoryBaseline = await inventoryTints();
-      const journalBaseline = await journalText();
-      const appText = await resolveColor(page, "var(--foreground)");
-      await expectJournalPalette(journalBaseline, appText, "The app theme");
+      // Default with every switch off is the staging look.
+      expect((await journalWhite())[0], "the Journal keeps its white text").toBe("255,255,255,255");
       const baseline = await measure();
       await shoot("default-sheet");
       await closeSheet();
@@ -417,8 +370,8 @@ for (const [preset, theme] of [
       await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", preset);
       await expectBaseline(await measure());
       await closeSheet();
-      const journalColors = await journalText();
-      await expectJournalPalette(journalColors, journalColors.window, "The window theme");
+      const [journalText, windowText] = await journalWhite();
+      expect(journalText, "the Journal uses the window text").toBe(windowText);
 
       await application(page, ["font"]);
       const lettering = await measure();
@@ -479,16 +432,15 @@ for (const [preset, theme] of [
       await closeSheet();
       const control = await inventoryButton.evaluate((button) => getComputedStyle(button).color);
       const tints = await inventoryTints();
-      expect(await pixels(page, [tints.badge]), "Inventory quantity text uses the widget text color").toEqual(
+      expect(await pixels(page, [tints.badge]), "Inventory white text uses the widget text color").toEqual(
         await pixels(page, [palette.textFill]),
       );
-      expect(await pixels(page, [tints.letter]), "Inventory item letter uses the control color").toEqual(
+      expect(await pixels(page, [tints.letter]), "Inventory amber uses the control color").toEqual(
         await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${control} 80%, transparent)`)]),
       );
-      expect(tints.shadow, "the Inventory keeps its theme shadow").toBe(inventoryBaseline.shadow);
-      expect(await pixels(page, [tints.badgeBackground]), "the quantity badge tint follows the widget text").toEqual(
-        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${palette.textFill} 15%, transparent)`)]),
-      );
+      expect(tints.ownBlack, "the Inventory's own shadow stays dark").toBe(tints.rootBlack);
+      expect(tints.innerBlack, "black tints inside follow the background").toBe(tints.background);
+      expect(tints.innerBlack).not.toBe(tints.rootBlack);
 
       await application(page, ["font", "shape", "colors"]);
       const styled = await measure();
@@ -545,13 +497,14 @@ for (const [preset, theme] of [
       await closeSheet();
       await setStore(page, { setAppAccentColor: "" });
 
-      // Default supplies no preset palette; the semantic item letter follows the themed control.
+      // Default supplies no palette: Game amber marks warnings, so it takes the app accent held steady.
       await setStore(page, { setChatWidgetPreset: "default" });
       await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
-      await finishColorTransitions(page);
-      const defaultControl = await inventoryButton.evaluate((button) => getComputedStyle(button).color);
-      expect(await pixels(page, [(await inventoryTints()).letter]), "Default uses the themed control color").toEqual(
-        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${defaultControl} 80%, transparent)`)]),
+      const steady = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--marinara-app-accent-static").trim(),
+      );
+      expect(await pixels(page, [(await inventoryTints()).letter]), "Default amber uses the steady accent").toEqual(
+        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${steady} 80%, transparent)`)]),
       );
 
       await application(page, []);
@@ -559,9 +512,7 @@ for (const [preset, theme] of [
       await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
       await expectBaseline(await measure());
       await closeSheet();
-      expect(await pixels(page, [(await journalText()).text]), "the Journal returns to its app theme text").toEqual(
-        await pixels(page, [journalBaseline.text]),
-      );
+      expect((await journalWhite())[0]).toBe("255,255,255,255");
     } catch (error) {
       await shoot("failure").catch(() => undefined);
       throw error;
@@ -753,14 +704,14 @@ for (const mode of ["classic", "tactical"] as const) {
         setChatWidgetTextColor: "",
       });
 
-      // Mari's all-chrome theme decision replaces the old pale color classes. Check actual
-      // visible text, including inherited semantic labels and numbers, against its painted fill.
+      // Pale party, enemy and element colors made for the dark scene stay readable on a light style.
       await setStore(page, { setTheme: "light", setChatWidgetPreset: "mari" });
       await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", "mari");
       await page.mouse.move(1, 1);
-      await finishColorTransitions(page);
       const measureContrast = () =>
         page.evaluate((names) => {
+          const pale =
+            /(?:^|\s)text-(?:red|orange|yellow|green|emerald|cyan|sky|blue|violet|purple|fuchsia|rose)-(?:50|100|200|300|400)(?:\/\d+)?(?=\s|$)/u;
           const canvas = document.createElement("canvas");
           canvas.width = canvas.height = 1;
           const context = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -774,44 +725,14 @@ for (const mode of ["classic", "tactical"] as const) {
               (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
             return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
           };
-          const results: Array<{
-            label: string;
-            ratio: number;
-            classes: string;
-            inlineStyle: string | null;
-            color: string;
-            textFill: string;
-            foregroundPixel: number[];
-            backgroundPixel: number[];
-            layers: Array<{ tag: string; classes: string; background: string; image: string; opacity: string }>;
-          }> = [];
+          const results: [string, number][] = [];
           for (const name of names) {
             for (const section of document.querySelectorAll<HTMLElement>(`[data-game-section="${name}"]`)) {
               if (!section.getClientRects().length) continue;
-              const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
-              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-                const text = node.textContent?.trim();
-                const element = node.parentElement;
-                // Explicit character colours are authored content; semantic inline styles still count.
-                if (
-                  !text ||
-                  !element ||
-                  element.closest("svg, button:disabled, [aria-disabled='true'], .mari-character-color")
-                )
-                  continue;
-                if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
-                const range = document.createRange();
-                range.selectNodeContents(node);
-                const bounds = range.getBoundingClientRect();
-                if (
-                  !bounds.width ||
-                  !bounds.height ||
-                  bounds.bottom <= 0 ||
-                  bounds.top >= innerHeight ||
-                  bounds.right <= 0 ||
-                  bounds.left >= innerWidth
-                )
-                  continue;
+              for (const element of section.querySelectorAll<HTMLElement>("*")) {
+                const text = element.textContent?.trim();
+                if (element instanceof SVGElement || !text || !element.getClientRects().length) continue;
+                if (!pale.test(element.getAttribute("class") ?? "")) continue;
                 // The scene, then every fill from the section down to the element, then its text.
                 const chain: HTMLElement[] = [];
                 for (
@@ -821,32 +742,11 @@ for (const mode of ["classic", "tactical"] as const) {
                 ) {
                   chain.unshift(node);
                 }
-                const layers = chain.map((node) => {
-                  const style = getComputedStyle(node);
-                  return {
-                    tag: node.tagName,
-                    classes: node.className,
-                    background: style.backgroundColor,
-                    image: style.backgroundImage,
-                    opacity: style.opacity,
-                  };
-                });
                 let background = paint("#000");
-                for (const layer of layers) background = paint(layer.background);
-                const style = getComputedStyle(element);
-                const foreground = paint(style.webkitTextFillColor);
+                for (const node of chain) background = paint(getComputedStyle(node).backgroundColor);
+                const foreground = paint(getComputedStyle(element).color);
                 const [light, dark] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
-                results.push({
-                  label: `${name} "${text.slice(0, 20)}"`,
-                  ratio: (light! + 0.05) / (dark! + 0.05),
-                  classes: element.className,
-                  inlineStyle: element.getAttribute("style"),
-                  color: style.color,
-                  textFill: style.webkitTextFillColor,
-                  foregroundPixel: foreground,
-                  backgroundPixel: background,
-                  layers,
-                });
+                results.push([`${name} "${text.slice(0, 20)}"`, (light! + 0.05) / (dark! + 0.05)]);
               }
             }
           }
@@ -855,31 +755,11 @@ for (const mode of ["classic", "tactical"] as const) {
       // Phones show the active party member once the battle intro ends.
       if (mode === "classic") {
         await expect
-          .poll(async () => (await measureContrast()).some(({ label }) => /"(?:Hero|Companion)"/u.test(label)), {
-            message: "the active party member's visible text is checked",
-          })
-          .toBe(true);
+          .poll(async () => (await measureContrast()).length, { message: "the active party member's color is checked" })
+          .toBeGreaterThan(0);
       }
       const contrast = await measureContrast();
-      const contrastPath = info.outputPath("combat-contrast.json");
-      writeFileSync(
-        contrastPath,
-        JSON.stringify({ mode, theme: "light", preset: "mari", minimum: 3, samples: contrast }, null, 2),
-      );
-      await info.attach("combat contrast", { path: contrastPath, contentType: "application/json" });
-      for (const name of expected)
-        expect(
-          contrast.some(({ label }) => label.startsWith(`${name} `)),
-          `${name} has visible text checked`,
-        ).toBe(true);
-      expect(
-        contrast.some(({ label }) => /\d/u.test(label)),
-        "visible combat numbers are checked",
-      ).toBe(true);
-      const unreadable = contrast
-        .filter(({ ratio }) => !Number.isFinite(ratio) || ratio < 3)
-        .map(({ label, ratio }) => `${label}: ${ratio.toFixed(3)}`);
-      expect(unreadable, "Every visible Engine label and number has at least 3:1 contrast").toEqual([]);
+      for (const [label, ratio] of contrast) expect(ratio, `${label} is readable`).toBeGreaterThanOrEqual(3);
       await setStore(page, { setTheme: "dark" });
 
       await application(page, []);

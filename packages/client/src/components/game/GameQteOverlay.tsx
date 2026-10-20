@@ -78,8 +78,8 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
       <div
         className={cn(
           "absolute inset-0 backdrop-blur-[2px] transition-colors duration-300",
-          isUrgent ? "bg-[var(--destructive)]/75" : "bg-[var(--card)]/75",
-          flash && "bg-[var(--foreground)]/30",
+          isUrgent ? "bg-red-950/75" : "bg-black/75",
+          flash && "bg-white/30",
         )}
       />
 
@@ -87,7 +87,7 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
       <div
         className={cn(
           "pointer-events-none absolute inset-0 border-4 transition-all duration-200",
-          isUrgent ? "animate-pulse border-[var(--destructive)]/60" : "border-[var(--warning)]/30",
+          isUrgent ? "animate-pulse border-red-500/60" : "border-amber-400/30",
         )}
       />
 
@@ -95,14 +95,14 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
         data-game-section="qte"
         className={cn(
           GAME_SECTION_CLASS,
-          "relative z-10 w-full max-w-lg rounded-lg border border-[var(--border)] bg-[var(--card)]/80 px-5 py-5 shadow-2xl shadow-[var(--background)]/60 ring-1 ring-[var(--warning)]/30 backdrop-blur-md",
+          "relative z-10 w-full max-w-lg rounded-lg border border-white/20 bg-black/80 px-5 py-5 shadow-2xl shadow-black/60 ring-1 ring-amber-300/30 backdrop-blur-md",
         )}
       >
         {onDismiss && (
           <button
             type="button"
             onClick={handleDismiss}
-            className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--foreground)]/55 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]"
+            className="absolute right-3 top-3 rounded-lg p-1.5 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
             title={localizeUi("ui.game.gameqteoverlay.closeQuickTimeEvent")}
             aria-label={localizeUi("ui.game.gameqteoverlay.closeQuickTimeEvent")}
           >
@@ -111,12 +111,9 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
         )}
 
         {/* Timer bar */}
-        <div className="mb-4 overflow-hidden rounded-full bg-[var(--foreground)]/20 ring-1 ring-[var(--ring)]">
+        <div className="mb-4 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/15">
           <div
-            className={cn(
-              "h-2 rounded-full transition-all duration-100",
-              isUrgent ? "bg-[var(--destructive)]" : "bg-[var(--warning)]",
-            )}
+            className={cn("h-2 rounded-full transition-all duration-100", isUrgent ? "bg-red-500" : "bg-amber-400")}
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -126,13 +123,13 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
           <span
             className={cn(
               "font-mono text-2xl font-bold tabular-nums",
-              isUrgent ? "text-[var(--destructive)] animate-pulse" : "text-[var(--warning)]",
+              isUrgent ? "text-red-400 animate-pulse" : "text-amber-300",
             )}
           >
             {timeLeft.toFixed(1)}
             {localizeUi("ui.noodle.stageprofileview.s")}
           </span>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-[var(--foreground)]/60">
+          <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-white/60">
             {localizeUi("ui.game.gameqteoverlay.reactQuickly")}
           </p>
         </div>
@@ -147,16 +144,16 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
               className={cn(
                 "relative overflow-hidden rounded-xl border-2 px-6 py-3 text-sm font-bold uppercase tracking-wide transition-all duration-150",
                 selected === i
-                  ? "scale-110 border-[var(--primary)] bg-[var(--primary)]/30 text-[var(--foreground)] ring-4 ring-[var(--primary)]/40"
+                  ? "scale-110 border-[var(--primary)] bg-[var(--primary)]/30 text-white ring-4 ring-[var(--primary)]/40"
                   : selected !== null
-                    ? "scale-90 border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/20 opacity-30"
-                    : "border-[var(--warning)]/50 bg-[var(--foreground)]/15 text-[var(--foreground)] shadow-lg shadow-[var(--background)]/30 hover:scale-105 hover:border-[var(--warning)] hover:bg-[var(--warning)]/25 active:scale-95",
+                    ? "scale-90 border-white/5 bg-white/5 text-white/20 opacity-30"
+                    : "border-amber-300/50 bg-white/15 text-white shadow-lg shadow-black/30 hover:scale-105 hover:border-amber-300 hover:bg-amber-400/25 active:scale-95",
               )}
             >
               {action.label}
 
               {/* Key hint */}
-              <span className="ml-2 rounded bg-[var(--foreground)]/10 px-1.5 py-0.5 text-[0.5rem] font-mono text-[var(--foreground)]/50">
+              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[0.5rem] font-mono text-white/50">
                 {i + 1}
               </span>
             </button>
@@ -166,7 +163,7 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
         {/* Bonus indicator */}
         {selected !== null && timeLeft > 0 && (
           <div className="mt-3 text-center">
-            <span className="text-xs font-semibold text-[var(--success)]">
+            <span className="text-xs font-semibold text-emerald-400">
               {localizeUi("ui.game.gameqteoverlay.quickReflexes")}
               {Math.ceil(timeLeft)} {localizeUi("ui.game.gameqteoverlay.bonus")}
             </span>

@@ -152,7 +152,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
       data-component="TownInterior"
     >
       {isError && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--foreground)]/60">
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-white/60">
           {t("game.town.insideFailed")}
         </div>
       )}
@@ -164,7 +164,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
             type="button"
             onClick={() => setSelected(selected === person.id ? null : person.id)}
             className={cn(
-              "absolute rounded-sm outline-none hover:ring-2 hover:ring-[var(--ring)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
+              "absolute rounded-sm outline-none hover:ring-2 hover:ring-white/50 focus-visible:ring-2 focus-visible:ring-white",
               selected === person.id && "ring-2 ring-[var(--primary)]",
             )}
             style={{ left: origin.x + at.x * cell, top: origin.y + at.y * cell, width: cell, height: cell }}
@@ -175,7 +175,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
       {chosen && interior && (
         <div
           className={cn(
-            "absolute z-10 w-56 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-3 text-xs text-[var(--foreground)]/85 shadow-xl backdrop-blur-md",
+            "absolute z-10 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
             // Above the person, or below them when they stand near the top.
             origin.y + chosen.at.y * cell > 220 && "-translate-y-full",
           )}
@@ -189,26 +189,24 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
           data-component="TownInterior.Card"
         >
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
+            <div className="min-w-0 truncate text-sm font-semibold text-white">
               {chosen.person.named ? chosen.person.name : chosen.person.role}
             </div>
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="rounded p-0.5 text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
+              className="rounded p-0.5 text-white/50 hover:text-white"
               aria-label={t("game.overworld.close")}
             >
               <X size={12} />
             </button>
           </div>
-          {chosen.person.named && <div className="mt-1 text-[var(--foreground)]/60">{chosen.person.role}</div>}
-          <div className="mt-1 text-[var(--foreground)]/50">
-            {chosen.asleep ? t("game.town.asleep") : t("game.town.awake")}
-          </div>
+          {chosen.person.named && <div className="mt-1 text-white/60">{chosen.person.role}</div>}
+          <div className="mt-1 text-white/50">{chosen.asleep ? t("game.town.asleep") : t("game.town.awake")}</div>
         </div>
       )}
       {interior && people.length === 0 && (
-        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-[var(--card)]/70 px-3 py-1 text-xs text-[var(--foreground)]/70">
+        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs text-white/70">
           {t("game.town.nobody")}
         </div>
       )}

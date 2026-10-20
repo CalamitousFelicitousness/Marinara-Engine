@@ -296,7 +296,7 @@ export function SummariesEditorModal({ chat, open, onClose }: SummariesEditorMod
   return (
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/50 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       {...backdropDismiss}
     >
       <div
@@ -434,7 +434,7 @@ export function SummariesEditorModal({ chat, open, onClose }: SummariesEditorMod
                       "shrink-0 rounded-full px-1.5 py-0.5 text-[0.5625rem] font-medium uppercase tracking-wider max-md:hidden",
                       entry.kind === "week"
                         ? "mari-chrome-accent-surface mari-accent-animated"
-                        : "bg-[var(--primary)]/20 text-[var(--primary)]",
+                        : "bg-blue-500/20 text-blue-400",
                     )}
                   >
                     {entry.kind}

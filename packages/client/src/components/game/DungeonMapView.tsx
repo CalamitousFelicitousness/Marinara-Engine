@@ -368,13 +368,13 @@ export function DungeonMapView({
           onClick={onCanvasClick}
           onKeyDown={onKeyDown}
           tabIndex={0}
-          className="absolute inset-0 h-full w-full cursor-pointer [image-rendering:pixelated] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+          className="absolute inset-0 h-full w-full cursor-pointer [image-rendering:pixelated] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
           aria-label={t("game.dungeon.canvas", { name: kept.name })}
         />
       </div>
       {/* Above the narration, as the town's chrome is, so the way out is never under it. */}
       <div className="pointer-events-none absolute inset-x-0 top-16 z-[25] flex flex-col items-center gap-2 px-3">
-        <p className="rounded-lg bg-[var(--card)]/60 px-3 py-1 text-xs text-[var(--foreground)]/85" role="status">
+        <p className="rounded-lg bg-black/60 px-3 py-1 text-xs text-white/85" role="status">
           {kept.name}
           {/* A map made by hand has no areas: its name alone. */}
           {kept.rooms.length > 0 && <> · {area ? t("game.dungeon.area", { area }) : t("game.dungeon.passage")}</>}
@@ -385,7 +385,7 @@ export function DungeonMapView({
             type="button"
             onClick={() => void leave()}
             disabled={!canWalk || walking || leaveMutation.isPending}
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card)]/85 disabled:opacity-50"
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/70 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/85 disabled:opacity-50"
           >
             <DoorOpen size={13} aria-hidden="true" />
             {t("game.dungeon.leave", { way: t(`game.dungeon.wayOut.${dungeonWayOutId(set)}`) })}

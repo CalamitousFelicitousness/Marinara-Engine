@@ -43,7 +43,7 @@ export function AppDialogRenderer() {
   const confirmToneClass =
     dialog.tone === "destructive" || dialog.tone === "accent"
       ? "mari-chrome-control mari-chrome-control--primary"
-      : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/85";
+      : "bg-[var(--primary)] text-white hover:bg-[var(--primary)]/85";
   const chatControlClass = dialog.chatStyle ? "mari-chat-style-control" : "";
 
   return (
@@ -187,7 +187,7 @@ export function AppDialogRenderer() {
                       choice.tone === "destructive" || choice.tone === "accent"
                         ? "mari-chrome-control mari-chrome-control--primary"
                         : i === 0
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/85"
+                          ? "bg-[var(--primary)] text-white hover:bg-[var(--primary)]/85"
                           : "ring-1 ring-[var(--border)] text-[var(--foreground)] hover:bg-[var(--accent)]"
                     }`}
                   >

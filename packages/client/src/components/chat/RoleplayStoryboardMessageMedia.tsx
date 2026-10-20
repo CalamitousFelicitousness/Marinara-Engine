@@ -54,19 +54,19 @@ export function RoleplayStoryboardMessageMedia({
 
   return (
     <section
-      className="mt-1.5 w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg shadow-[var(--background)]/20"
+      className="mt-1.5 w-full overflow-hidden rounded-xl border border-white/12 bg-black/45 text-white shadow-lg shadow-black/20"
       aria-label={localizeUi("ui.game.gamesurfacecomponent.storyboard")}
       aria-live="polite"
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
-      <div className="flex h-8 items-center justify-between gap-2 border-b border-[var(--border)] px-2.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/65">
+      <div className="flex h-8 items-center justify-between gap-2 border-b border-white/10 px-2.5">
+        <span className="flex min-w-0 items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-white/65">
           <PanelsTopLeft size={12} className="shrink-0 text-[var(--primary)]" />
           <span className="truncate">{localizeUi("ui.game.gamesurfacecomponent.storyboard")}</span>
         </span>
         {frames.length > 1 ? (
-          <span className="shrink-0 text-[0.5625rem] tabular-nums text-[var(--foreground)]/40">
+          <span className="shrink-0 text-[0.5625rem] tabular-nums text-white/40">
             {activeIndex + 1}/{frames.length}
           </span>
         ) : null}
@@ -74,15 +74,15 @@ export function RoleplayStoryboardMessageMedia({
 
       {storyboard?.error ? (
         <div
-          className="flex items-start gap-2 border-b border-[var(--warning)]/20 bg-[var(--warning)]/12 px-3 py-2 text-[var(--warning)]"
+          className="flex items-start gap-2 border-b border-amber-200/20 bg-amber-300/12 px-3 py-2 text-amber-50"
           role="status"
         >
-          <TriangleAlert size={14} className="mt-0.5 shrink-0 text-[var(--warning)]" />
+          <TriangleAlert size={14} className="mt-0.5 shrink-0 text-amber-200" />
           <div className="min-w-0">
             <p className="text-[0.6875rem] font-semibold">
               {localizeUi("ui.game.gamesurfacecomponent.storyboardDegradedResult")}
             </p>
-            <p className="line-clamp-3 text-[0.625rem] leading-4 text-[var(--warning)]/75">{storyboard.error}</p>
+            <p className="line-clamp-3 text-[0.625rem] leading-4 text-amber-50/75">{storyboard.error}</p>
           </div>
         </div>
       ) : null}
@@ -118,7 +118,7 @@ export function RoleplayStoryboardMessageMedia({
           />
         </button>
       ) : (
-        <div className="flex min-h-20 items-center justify-center gap-2 px-4 py-5 text-xs text-[var(--foreground)]/55">
+        <div className="flex min-h-20 items-center justify-center gap-2 px-4 py-5 text-xs text-white/55">
           {rendering ? <Loader2 size={14} className="animate-spin" /> : null}
           <span className="line-clamp-2 text-center">
             {rendering
@@ -129,8 +129,8 @@ export function RoleplayStoryboardMessageMedia({
       )}
 
       {activeFrame || frames.length > 1 ? (
-        <div className="flex min-h-9 items-center gap-2 border-t border-[var(--border)] px-2 py-1.5">
-          <p className="min-w-0 flex-1 truncate text-[0.6875rem] text-[var(--foreground)]/65">
+        <div className="flex min-h-9 items-center gap-2 border-t border-white/10 px-2 py-1.5">
+          <p className="min-w-0 flex-1 truncate text-[0.6875rem] text-white/65">
             {activeFrame?.title || storyboard?.title || localizeUi("ui.game.gamesurfacecomponent.storyboardTurn")}
           </p>
           {frames.length > 1 ? (
@@ -139,8 +139,8 @@ export function RoleplayStoryboardMessageMedia({
                 type="button"
                 onClick={() => selectRelativeFrame(-1)}
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--foreground)]/8 text-[var(--foreground)]/60",
-                  "transition-colors hover:bg-[var(--foreground)]/15 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
+                  "flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/8 text-white/60",
+                  "transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
                 )}
                 aria-label={localizeUi("ui.agents.storyboard.previousFrame")}
                 title={localizeUi("ui.agents.storyboard.previousFrame")}
@@ -151,8 +151,8 @@ export function RoleplayStoryboardMessageMedia({
                 type="button"
                 onClick={() => selectRelativeFrame(1)}
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--foreground)]/8 text-[var(--foreground)]/60",
-                  "transition-colors hover:bg-[var(--foreground)]/15 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
+                  "flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/8 text-white/60",
+                  "transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
                 )}
                 aria-label={localizeUi("ui.agents.storyboard.nextFrame")}
                 title={localizeUi("ui.agents.storyboard.nextFrame")}

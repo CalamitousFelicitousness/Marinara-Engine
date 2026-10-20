@@ -396,9 +396,9 @@ export function CharacterRegexSection({
         </p>
       ) : (
         <>
-          {importError && <div className="text-xs text-[var(--destructive)]">{importError}</div>}
-          {importWarning && <div className="text-xs text-[var(--warning)]">{importWarning}</div>}
-          {importSuccess && <div className="text-xs text-[var(--primary)]">{importSuccess}</div>}
+          {importError && <div className="text-xs text-red-500">{importError}</div>}
+          {importWarning && <div className="text-xs text-amber-500">{importWarning}</div>}
+          {importSuccess && <div className="text-xs text-green-500">{importSuccess}</div>}
           {scopedScripts.length === 0 ? (
             <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.characterregexsection.noRegexScriptsForThisCharacterYet")}

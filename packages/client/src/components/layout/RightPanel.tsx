@@ -53,7 +53,7 @@ const PANEL_CONFIG: Record<string, PanelConfig> = {
   "bot-browser": {
     title: "Browser",
     icon: <Bot size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--browser",
+    gradient: "from-lime-400 via-green-500 to-cyan-500",
   },
   characters: {
     title: "Characters",
@@ -64,7 +64,7 @@ const PANEL_CONFIG: Record<string, PanelConfig> = {
   lorebooks: {
     title: "Lorebooks",
     icon: <BookOpen size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--lorebooks",
+    gradient: "from-amber-400 to-orange-500",
     helpKey: "navigation.sidebarHelp.lorebooks",
   },
   presets: {
@@ -76,25 +76,25 @@ const PANEL_CONFIG: Record<string, PanelConfig> = {
   connections: {
     title: "Connections",
     icon: <Link size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--connections",
+    gradient: "from-sky-400 to-blue-500",
     helpKey: "navigation.sidebarHelp.connections",
   },
   agents: {
     title: "Agents",
     icon: <Sparkles size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--agents",
+    gradient: "from-violet-400 to-purple-500",
     helpKey: "navigation.sidebarHelp.agents",
   },
   personas: {
     title: "Personas",
     icon: <VenetianMask size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--personas",
+    gradient: "from-emerald-400 to-teal-500",
     helpKey: "navigation.sidebarHelp.personas",
   },
   settings: {
     title: "Settings",
     icon: <Settings size="0.875rem" />,
-    gradientClass: "mari-panel-gradient-surface mari-panel-gradient--settings",
+    gradient: "from-gray-400 to-gray-500",
     helpKey: "navigation.sidebarHelp.settings",
   },
   extensions: { title: "Extensions", icon: <Puzzle size="0.875rem" /> },
@@ -162,7 +162,7 @@ export function RightPanel() {
           title: activeExtensionPanel.label,
           icon: <PersonalExtensionContributionIcon icon={activeExtensionPanel.icon} />,
         }
-      : (PANEL_CONFIG[panel] ?? { title: "Panel", icon: null, gradientClass: "mari-panel-gradient-surface" });
+      : (PANEL_CONFIG[panel] ?? { title: "Panel", icon: null, gradient: "from-slate-400 to-slate-500" });
 
   return (
     <section
@@ -181,7 +181,8 @@ export function RightPanel() {
             data-component="RightPanelHeaderIcon"
             className={cn(
               "flex h-6 w-6 items-center justify-center rounded-md shadow-sm",
-              config.gradientClass ?? "mari-panel-gradient-surface",
+              config.gradientClass ??
+                `bg-gradient-to-br ${config.gradient ?? "from-slate-400 to-slate-500"} text-white`,
             )}
           >
             {config.icon}

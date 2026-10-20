@@ -66,8 +66,7 @@ test("fal.ai selection saves its endpoint and exposes a free configuration check
     expect(models.models.map((model: { id: string }) => model.id)).toEqual(["fal-ai/flux/schnell", "fal-ai/flux/dev"]);
     await page.reload();
     await open();
-    // Mari chose theme colors for every UI control; a selected service follows the primary theme token.
-    await expect(fal).toHaveClass(/bg-\[var\(--primary\)\]\/15/);
+    await expect(fal).toHaveClass(/bg-sky-400/);
     await expect(editor.getByRole("textbox", { name: "Custom Parameters", exact: true })).toBeVisible();
     await fal.scrollIntoViewIfNeeded();
     const screenshot = testInfo.outputPath("saved-fal-selection.png");

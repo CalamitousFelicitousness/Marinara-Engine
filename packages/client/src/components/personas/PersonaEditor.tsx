@@ -677,7 +677,7 @@ function PersonaGalleryTab({
                         "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
                         selectedImageIds.has(image.id)
                           ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                          : "border-[var(--border)]/65 bg-[var(--background)]/55 text-transparent hover:bg-[var(--background)]/75",
+                          : "border-white/65 bg-black/55 text-transparent hover:bg-black/75",
                       )}
                     >
                       <Check size="0.9rem" />
@@ -698,13 +698,13 @@ function PersonaGalleryTab({
                   </button>
                   <div
                     className={cn(
-                      "absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-[var(--background)]/75 via-[var(--background)]/25 to-transparent p-2 transition-opacity",
+                      "absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/75 via-black/25 to-transparent p-2 transition-opacity",
                       selectingImages && !selectedImageIds.has(image.id)
                         ? "pointer-events-none opacity-0"
                         : "opacity-0 group-hover:opacity-100 group-[&:focus-within]:opacity-100 max-md:opacity-100",
                     )}
                   >
-                    <span className="max-w-[8rem] truncate text-[0.6875rem] font-medium text-[var(--foreground)]/85 max-md:hidden">
+                    <span className="max-w-[8rem] truncate text-[0.6875rem] font-medium text-white/85 max-md:hidden">
                       {new Date(image.createdAt).toLocaleDateString()}
                     </span>
                     <div className="ml-auto flex gap-1">
@@ -713,7 +713,7 @@ function PersonaGalleryTab({
                           type="button"
                           onClick={() => onSetAvatar(image)}
                           disabled={editorBusy}
-                          className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25 disabled:opacity-50"
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
                           title={localizeUi("ui.personas.personagallerytab.setAsAvatar")}
                         >
                           {galleryAvatarPending ? (
@@ -727,7 +727,7 @@ function PersonaGalleryTab({
                         <button
                           type="button"
                           onClick={() => void handleBatchDownload()}
-                          className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.gallery.batch.download")}
                         >
                           <Download size="0.75rem" />
@@ -735,7 +735,7 @@ function PersonaGalleryTab({
                       ) : (
                         <button
                           type="button"
-                          className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25"
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.personas.personagallerytab.download")}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -749,7 +749,7 @@ function PersonaGalleryTab({
                         type="button"
                         onClick={() => void (selectingImages ? handleBatchDelete() : handleDelete(image))}
                         disabled={remove.isPending}
-                        className="rounded-lg bg-[var(--foreground)]/15 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/25 disabled:opacity-50"
+                        className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
                         title={localizeUi(selectingImages ? "ui.gallery.batch.delete" : "lorebook.editor.batch.delete")}
                       >
                         <Trash2 size="0.75rem" />
@@ -780,7 +780,7 @@ function PersonaGalleryTab({
 
       {lightbox && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
           ref={lightboxRef}
           tabIndex={-1}
           onKeyDown={(event) => {
@@ -805,7 +805,7 @@ function PersonaGalleryTab({
                 type="button"
                 onClick={() => onSetAvatar(lightbox)}
                 disabled={editorBusy}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80 disabled:opacity-50"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
                 title={localizeUi("ui.personas.personagallerytab.setAsAvatar")}
               >
                 {galleryAvatarPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <User size="0.875rem" />}
@@ -817,7 +817,7 @@ function PersonaGalleryTab({
               <button
                 type="button"
                 onClick={() => void handleDelete(lightbox)}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
                 title={localizeUi("lorebook.editor.batch.delete")}
                 aria-label={localizeUi("lorebook.editor.batch.delete")}
               >
@@ -828,7 +828,7 @@ function PersonaGalleryTab({
                 ref={lightboxCloseRef}
                 onClick={() => setLightbox(null)}
                 aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
-                className="rounded-lg bg-[var(--background)]/60 p-2 text-[var(--foreground)] transition-colors hover:bg-[var(--background)]/80"
+                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
               >
                 <X size="0.875rem" />
               </button>
@@ -1202,7 +1202,7 @@ function PersonaClipCard({
             </span>
           </div>
         )}
-        <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-[var(--background)]/65 px-2 py-1 text-[0.65rem] font-semibold text-[var(--foreground)]">
+        <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/65 px-2 py-1 text-[0.65rem] font-semibold text-white">
           {sourceLabel}
         </div>
       </div>
@@ -2052,7 +2052,7 @@ export function PersonaEditor() {
                 style={getAvatarCropStyle(formData.avatarCrop)}
               />
             ) : (
-              <User size="1.375rem" className="text-[var(--foreground)]" />
+              <User size="1.375rem" className="text-white" />
             )}
             <EditorAvatarTileActions
               generationAvailable={imageGenerationAvailable}
@@ -3081,12 +3081,12 @@ function PersonaColorsTab({
             : localizeUi("ui.personas.personacolorstab.uploadAnAvatarFirst")}
       </button>
 
-      <div className="space-y-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]/30 p-4">
+      <div className="space-y-3 overflow-hidden rounded-xl border border-[var(--border)] bg-black/30 p-4">
         <p className="text-[0.625rem] font-medium uppercase tracking-widest text-[var(--muted-foreground)]">
           {localizeUi("settings.notifications.customSound.actions.preview")}
         </p>
         <div className="flex gap-3 flex-row-reverse">
-          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)] ring-2 ring-[var(--border)]/15">
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-500 to-neutral-600 ring-2 ring-white/15">
             {avatarUrl ? (
               <img
                 src={avatarUrl}
@@ -3097,7 +3097,7 @@ function PersonaColorsTab({
                 style={getAvatarCropStyle(formData.avatarCrop)}
               />
             ) : (
-              <User size="1rem" className="text-[var(--foreground)]" />
+              <User size="1rem" className="text-white" />
             )}
           </div>
           <div className="flex min-w-0 flex-1 flex-col items-end space-y-1">
@@ -3117,24 +3117,24 @@ function PersonaColorsTab({
                         display: "inline-block",
                       }
                     : { color: formData.nameColor }
-                  : { color: "var(--foreground)" }
+                  : { color: "rgb(212, 212, 212)" }
               }
             >
               {formData.name || "You"}
             </span>
             <div
-              className="rounded-2xl rounded-tr-sm px-4 py-3 text-[0.8125rem] leading-[1.8] backdrop-blur-md ring-1 ring-[var(--border)]/10"
+              className="rounded-2xl rounded-tr-sm px-4 py-3 text-[0.8125rem] leading-[1.8] backdrop-blur-md ring-1 ring-white/10"
               style={
                 formData.boxColor
                   ? { backgroundColor: formData.boxColor }
-                  : { backgroundColor: "color-mix(in srgb, var(--foreground) 12%, transparent)" }
+                  : { backgroundColor: "rgba(255, 255, 255, 0.12)" }
               }
             >
-              <span className="text-[var(--foreground)]">
+              <span className="text-neutral-100">
                 {localizeUi("ui.personas.personacolorstab.iTurnAroundAndRaiseMyHand")}{" "}
               </span>
               <strong
-                style={formData.dialogueColor ? { color: formData.dialogueColor } : { color: "var(--foreground)" }}
+                style={formData.dialogueColor ? { color: formData.dialogueColor } : { color: "rgb(255, 255, 255)" }}
               >
                 {localizeUi("ui.personas.personacolorstab.ldquoGeneralKenobiRdquo")}
               </strong>
@@ -3944,7 +3944,7 @@ function PersonaCharacterSheetSection({
             <button
               type="button"
               onClick={clearSelection}
-              className="mari-editor-action inline-flex w-full justify-center text-[var(--destructive)]"
+              className="mari-editor-action inline-flex w-full justify-center text-[var(--marinara-app-accent-static)]"
             >
               <X size="0.875rem" />
               {localizeUi("ui.characters.charactersheet.remove")}
@@ -4551,7 +4551,7 @@ function DescriptionTab({
         rows={12}
         title={localizeUi("chat.settings.inlineEditor.fields.description")}
         showMarkdownPreview
-        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/20"
       />
       <p className="mt-1.5 text-right text-[0.625rem] text-[var(--muted-foreground)]">
         {formatEstimatedTokens(estimateTextTokens(formData.description), localizeUi)}
@@ -4610,7 +4610,7 @@ function TextareaTab({
         rows={rows}
         title={title}
         showMarkdownPreview
-        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/20"
       />
       <p className="mt-1.5 text-right text-[0.625rem] text-[var(--muted-foreground)]">
         {formatEstimatedTokens(estimateTextTokens(value), localizeUi)}

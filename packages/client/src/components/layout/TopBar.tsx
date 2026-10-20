@@ -567,21 +567,19 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           aria-pressed={rightPanelOpen && rightPanel === "settings"}
           className={cn(
             TOPBAR_PANEL_BUTTON_CLASS,
-            "mari-panel-gradient--settings",
             PHONE_OVERFLOW_HIDDEN_CLASS,
             rightPanelOpen && rightPanel === "settings"
-              ? cn(TOPBAR_ACTIVE_BUTTON_CLASS, "text-[var(--mari-panel-gradient-start)]")
+              ? cn(TOPBAR_ACTIVE_BUTTON_CLASS, "text-gray-300")
               : cn(
-                  "text-[var(--muted-foreground)] hover:text-[var(--mari-panel-gradient-start)]",
-                  isTopbarHovered("settings") &&
-                    cn(TOPBAR_FORCE_HOVER_CLASS, "text-[var(--mari-panel-gradient-start)]"),
+                  "text-[var(--muted-foreground)] hover:text-gray-300",
+                  isTopbarHovered("settings") && cn(TOPBAR_FORCE_HOVER_CLASS, "text-gray-300"),
                 ),
           )}
           title={localize("Settings")}
         >
           <Settings size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
           {rightPanelOpen && rightPanel === "settings" && (
-            <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full mari-panel-gradient-surface mari-panel-gradient--settings" />
+            <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-gradient-to-r from-gray-400 to-gray-500" />
           )}
         </button>
 

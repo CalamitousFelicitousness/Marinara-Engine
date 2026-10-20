@@ -298,7 +298,7 @@ export function RulesetCombatBoard({
   const hint = readingHint ?? (rulesetNothingInReach(view) ? t("game.combat.ruleset.board.nothingInReach") : "");
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-[var(--foreground)]">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-white">
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
       {/* Radial vignette so the grid reads against the scene art without an opaque fill. */}
       <div
@@ -313,10 +313,10 @@ export function RulesetCombatBoard({
         data-game-section="ruleset-status"
         className={cn(
           GAME_SECTION_CLASS,
-          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-[var(--card)]/90 px-3 py-1.5 text-xs backdrop-blur",
+          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-black/40 px-3 py-1.5 text-xs backdrop-blur",
         )}
       >
-        <span className="font-semibold text-[var(--foreground)]/80">
+        <span className="font-semibold text-white/80">
           {actor
             ? t("game.combat.ruleset.board.turnOf", { name: actor.name })
             : t("game.combat.ruleset.menu.waitingAnybody")}
@@ -394,7 +394,7 @@ export function RulesetCombatBoard({
                     setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current))
                   }
                   className={cn(
-                    "group relative overflow-hidden rounded-[3px] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]",
+                    "group relative overflow-hidden rounded-[3px] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
                     cell.solid && "cursor-not-allowed",
                   )}
                   style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
@@ -450,7 +450,7 @@ export function RulesetCombatBoard({
                   )}
                   {cell.height > 0 && !art?.rim && (
                     <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
-                      <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-[var(--foreground)]/75">
+                      <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
                         {"▲".repeat(Math.min(cell.height, 3))}
                       </span>
                     </span>
@@ -480,7 +480,7 @@ export function RulesetCombatBoard({
                       className={cn(
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
                         provokes
-                          ? "bg-[var(--warning)]/35 ring-[var(--warning)]/70"
+                          ? "bg-amber-400/35 ring-amber-300/70"
                           : cn(!art?.reach && "bg-[var(--primary)]/40", "ring-[var(--primary)]/60"),
                       )}
                       style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
@@ -489,17 +489,17 @@ export function RulesetCombatBoard({
                   {/* The walk itself, over the highlight: every cell it passes through, drawn as it
                       is hovered or focused so the way round a wall is visible before it is taken. */}
                   {onPath && (
-                    <span className="pointer-events-none absolute inset-0 bg-[var(--primary)]/30 ring-2 ring-inset ring-[var(--primary)]/70" />
+                    <span className="pointer-events-none absolute inset-0 bg-white/30 ring-2 ring-inset ring-white/70" />
                   )}
                   {/* Somebody would swing at this walk on the way. The cell is amber above; this is
                       the mark that says why, and the strip under the board names them. */}
                   {provokes && (
-                    <span className="pointer-events-none absolute left-0 top-0 bg-[var(--warning)]/90 px-[2px] text-[0.5rem] font-black leading-tight text-[var(--primary-foreground)]">
+                    <span className="pointer-events-none absolute left-0 top-0 bg-amber-300/90 px-[2px] text-[0.5rem] font-black leading-tight text-black">
                       !
                     </span>
                   )}
                   {cell.reach && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-[var(--card)]/90 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-[var(--foreground)]/90">
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white/90">
                       {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
                     </span>
                   )}
@@ -548,7 +548,7 @@ export function RulesetCombatBoard({
                     ))}
                   {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 left-0 bg-[var(--card)]/90 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-[var(--foreground)]">
+                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.section.health}
                     </span>
                   )}
@@ -591,7 +591,7 @@ export function RulesetCombatBoard({
                     />
                   )}
                   {cell.prop && cell.prop.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-[var(--card)]/90 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-[var(--foreground)]">
+                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
                       {cell.prop.health}
                     </span>
                   )}
@@ -603,8 +603,8 @@ export function RulesetCombatBoard({
                       className={cn(
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
                         isAimed || cell.laid
-                          ? "bg-[var(--warning)]/55 ring-2 ring-[var(--warning)]"
-                          : cn(!art?.aim && "bg-[var(--warning)]/20", "ring-[var(--warning)]/40"),
+                          ? "bg-amber-400/55 ring-2 ring-amber-200"
+                          : cn(!art?.aim && "bg-amber-400/20", "ring-amber-300/40"),
                       )}
                       style={art?.aim && !isAimed && !cell.laid ? boardSliceStyle(art.aim) : undefined}
                     />
@@ -638,8 +638,7 @@ export function RulesetCombatBoard({
                   })
                 : null;
             const percent = rulesetHealthPercent(combatant.health);
-            const bar =
-              percent > 60 ? "bg-[var(--success)]" : percent > 25 ? "bg-[var(--warning)]" : "bg-[var(--destructive)]";
+            const bar = percent > 60 ? "bg-emerald-500" : percent > 25 ? "bg-amber-500" : "bg-red-500";
             return (
               <div
                 key={combatant.id}
@@ -659,14 +658,14 @@ export function RulesetCombatBoard({
               >
                 <div
                   className={cn(
-                    "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-[var(--marinara-editor-shadow)]",
-                    onTurn && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--background)]",
+                    "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
+                    onTurn && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
                     cell.targetable && "ring-2 ring-[var(--destructive)]",
-                    caught.has(combatant.id) && "ring-2 ring-[var(--warning)]",
+                    caught.has(combatant.id) && "ring-2 ring-amber-200",
                   )}
                   style={{
                     borderColor: ring,
-                    backgroundColor: "var(--card)",
+                    backgroundColor: combatant.side === "party" ? "rgba(30,58,90,0.9)" : "rgba(90,30,40,0.9)",
                     animation: onTurn ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
                   }}
                 >
@@ -686,7 +685,7 @@ export function RulesetCombatBoard({
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
                   ) : (
-                    <span className="text-[min(3vw,0.9rem)] font-black text-[var(--foreground)]/90">
+                    <span className="text-[min(3vw,0.9rem)] font-black text-white/90">
                       {initialsOf(combatant.name)}
                     </span>
                   )}
@@ -700,7 +699,7 @@ export function RulesetCombatBoard({
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the
                       combatant in the next row. */}
-                  <div className="absolute -bottom-1 left-0 right-0 h-1 overflow-hidden rounded-full bg-[var(--muted)] ring-1 ring-[var(--border)]">
+                  <div className="absolute -bottom-1 left-0 right-0 h-1 overflow-hidden rounded-full bg-black/70 ring-1 ring-black/50">
                     <div className={cn("h-full transition-all duration-300", bar)} style={{ width: `${percent}%` }} />
                   </div>
                 </div>
@@ -718,7 +717,7 @@ export function RulesetCombatBoard({
         data-game-section="ruleset-hint"
         className={cn(
           GAME_SECTION_CLASS,
-          "z-10 min-h-[1.5rem] shrink-0 border-t border-[var(--border)] bg-[var(--card)]/90 px-3 py-1 text-[0.65rem] leading-snug text-[var(--foreground)]/70 backdrop-blur",
+          "z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur",
         )}
       >
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
@@ -726,10 +725,7 @@ export function RulesetCombatBoard({
 
       <div
         data-game-section="ruleset-actions"
-        className={cn(
-          GAME_SECTION_CLASS,
-          "z-10 shrink-0 border-t border-[var(--border)] bg-[var(--card)]/90 backdrop-blur",
-        )}
+        className={cn(GAME_SECTION_CLASS, "z-10 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur")}
       >
         <RulesetCombatMenu
           view={view}

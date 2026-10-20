@@ -72,7 +72,7 @@ export function GameMakeWorld({
   };
 
   return (
-    <div className="flex max-h-full w-full max-w-2xl flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-2xl">
+    <div className="flex max-h-full w-full max-w-2xl flex-col gap-3 rounded-xl border border-white/15 bg-[var(--background)] p-4 shadow-2xl">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-[var(--foreground)]">{localizeUi("ui.game.makeworld.title")}</h3>
         <button

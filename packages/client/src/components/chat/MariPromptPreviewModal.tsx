@@ -89,7 +89,7 @@ export function MariPromptPreviewModal({
   // (otherwise the bookmarks bar clips the top of the modal).
   return createPortal(
     <div
-      className="fixed inset-0 z-[calc(var(--mari-layer-omnibar)+1)] flex items-center justify-center bg-[var(--background)]/50 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[calc(var(--mari-layer-omnibar)+1)] flex items-center justify-center bg-black/50 max-md:pt-[env(safe-area-inset-top)]"
       {...backdropDismiss}
     >
       <div

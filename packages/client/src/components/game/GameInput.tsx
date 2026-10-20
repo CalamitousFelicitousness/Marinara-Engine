@@ -405,11 +405,10 @@ export function GameInput({
   const forceInterrupt = interruptMode === "force";
   const forceInterruptStyle = forceInterrupt
     ? {
-        boxShadow: "0 0 18px -6px color-mix(in srgb, var(--marinara-app-accent-static) 60%, transparent)",
-        backgroundColor:
-          "var(--mari-chat-surface-paint, color-mix(in srgb, var(--marinara-app-accent-static) 4%, transparent))",
-        ["--mari-chat-existing-bg" as never]: "color-mix(in srgb, var(--marinara-app-accent-static) 4%, transparent)",
-        ["--tw-ring-color" as never]: "color-mix(in srgb, var(--marinara-app-accent-static) 45%, transparent)",
+        boxShadow: "0 0 18px -6px rgba(32, 194, 14, 0.6)",
+        backgroundColor: "var(--mari-chat-surface-paint, rgba(32, 194, 14, 0.04))",
+        ["--mari-chat-existing-bg" as never]: "rgba(32, 194, 14, 0.04)",
+        ["--tw-ring-color" as never]: "rgba(32, 194, 14, 0.45)",
       }
     : undefined;
 
@@ -545,7 +544,7 @@ export function GameInput({
         className={getChatInputShellClass({
           className: cn(
             riskyInterrupt &&
-              "[--mari-chat-owner-bg:color-mix(in_oklab,var(--warning)_5%,transparent)] ring-1 ring-[var(--warning)]/40 bg-[var(--warning)]/5 shadow-[0_0_18px_-6px_color-mix(in_srgb,var(--warning)_55%,transparent)]",
+              "[--mari-chat-owner-bg:color-mix(in_oklab,var(--color-red-500)_5%,transparent)] ring-1 ring-red-500/40 bg-red-500/5 shadow-[0_0_18px_-6px_rgba(248,113,113,0.55)]",
             forceInterrupt && "ring-1",
           ),
           hasContent:
@@ -715,12 +714,15 @@ export function GameInput({
 
         {/* Right: Dice, Emoji (desktop), Send */}
         {riskyInterrupt && !queuedDice && (
-          <span className="hidden text-[0.625rem] font-medium uppercase tracking-wide text-[var(--warning)]/80 sm:inline">
+          <span className="hidden text-[0.625rem] font-medium uppercase tracking-wide text-red-300/80 sm:inline">
             {localizeUi("ui.game.gameinput.usingDiceRecommended")}
           </span>
         )}
         {forceInterrupt && (
-          <span className="hidden text-[0.625rem] font-medium uppercase tracking-wide text-[var(--marinara-app-accent-static)]/90 sm:inline">
+          <span
+            className="hidden text-[0.625rem] font-medium uppercase tracking-wide sm:inline"
+            style={{ color: "#20C20E", opacity: 0.9 }}
+          >
             {localizeUi("ui.game.gameinput.forceInterrupting")}
           </span>
         )}
@@ -734,7 +736,7 @@ export function GameInput({
               : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
             riskyInterrupt &&
               !queuedDice &&
-              "animate-pulse text-[var(--warning)] ring-1 ring-[var(--warning)]/60 shadow-[0_0_12px_-2px_color-mix(in_srgb,var(--warning)_85%,transparent)] hover:text-[var(--warning)]",
+              "animate-pulse text-red-300 ring-1 ring-red-400/60 shadow-[0_0_12px_-2px_rgba(248,113,113,0.85)] hover:text-red-200",
           )}
           title={
             riskyInterrupt && !queuedDice

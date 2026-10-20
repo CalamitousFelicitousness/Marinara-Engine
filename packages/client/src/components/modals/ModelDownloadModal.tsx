@@ -559,13 +559,13 @@ export function ModelDownloadModal({ open, onClose }: Props) {
         </div>
 
         {hasModel && (
-          <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3">
+          <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/15">
-                <Check size="1rem" className="text-[var(--primary)]" />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-500/15">
+                <Check size="1rem" className="text-green-400" />
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium text-[var(--primary)]">{activeModelName ?? "Model Installed"}</div>
+                <div className="text-sm font-medium text-green-300">{activeModelName ?? "Model Installed"}</div>
                 <div className="text-xs text-[var(--muted-foreground)]/70">
                   {config.externalModelPath
                     ? localizeUi("ui.modals.modeldownloadmodal.localGgufPath")
@@ -622,7 +622,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                     : localizeUi("ui.modals.modeldownloadmodal.installAndConfigureTheRuntimeHereThenChooseA")}
               </div>
               {status === "server_error" && (
-                <div className="mt-2 text-xs text-[var(--warning)]">
+                <div className="mt-2 text-xs text-amber-200">
                   {localizeUi("ui.modals.modeldownloadmodal.runtimeStartupFailedOpenRuntimeSettingsForDetails")}
                 </div>
               )}
@@ -681,7 +681,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                   void sendTestMessage();
                 }}
                 disabled={!hasModel || !runtime.installed || testMessagePending}
-                className="flex items-center justify-center gap-2 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-4 py-2 text-sm font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {testMessagePending ? (
                   <Loader2 size="0.875rem" className="animate-spin" />
@@ -788,7 +788,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                         {localizeUi("ui.modals.modeldownloadmodal.pickTheGpuFamilyYouActuallyWantMarinaraTo")}
                       </div>
                       {platform === "linux" && config.runtimePreference === "nvidia" && (
-                        <div className="rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/10 px-3 py-2 text-xs leading-relaxed text-[var(--warning)]">
+                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
                           {localizeUi("ui.modals.modeldownloadmodal.linuxCudaBinariesAreNotCurrentlyPublishedByLlama")}
                         </div>
                       )}
@@ -877,11 +877,11 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                     >
                       <span
                         className={`relative h-4 w-7 rounded-full transition-colors ${
-                          config.enableNativeToolCalls ? "bg-[var(--primary)]/70" : "bg-[var(--border)]"
+                          config.enableNativeToolCalls ? "bg-emerald-400/70" : "bg-[var(--border)]"
                         }`}
                       >
                         <span
-                          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-[var(--foreground)] shadow-sm transition-transform ${
+                          className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${
                             config.enableNativeToolCalls ? "translate-x-3" : ""
                           }`}
                         />
@@ -893,7 +893,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                   )}
                 </div>
                 {!config.enableNativeToolCalls && activeBackend !== "mlx" && (
-                  <div className="mt-3 rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/10 px-3 py-2 text-xs leading-relaxed text-[var(--warning)]">
+                  <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
                     {localizeUi("ui.modals.modeldownloadmodal.professorMariAndCustomAgentsNeedThisEnabledBefore")}
                   </div>
                 )}
@@ -1083,8 +1083,8 @@ export function ModelDownloadModal({ open, onClose }: Props) {
               )}
 
               {status === "server_error" && (
-                <div className="rounded-xl border border-[var(--warning)]/25 bg-[var(--warning)]/5 p-4">
-                  <div className="text-sm font-medium text-[var(--warning)]">
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <div className="text-sm font-medium text-amber-200">
                     {localizeUi("ui.modals.modeldownloadmodal.localRuntimeFailedToStart")}
                   </div>
                   <div className="mt-1 text-xs text-[var(--muted-foreground)]/85">
@@ -1110,7 +1110,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                   <div className="mt-3 flex gap-2 max-sm:flex-col">
                     <button
                       onClick={() => void restartRuntime()}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[var(--warning)]/15 px-4 py-2.5 text-sm font-medium text-[var(--warning)] transition-colors hover:bg-[var(--warning)]/25"
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[var(--marinara-app-accent-static)]/15 px-4 py-2.5 text-sm font-medium text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/25"
                     >
                       <Loader2 size="0.875rem" />
                       {localizeUi("ui.modals.modeldownloadmodal.retryStartup")}
@@ -1118,7 +1118,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                     {canReinstallRuntime && (
                       <button
                         onClick={() => void reinstallRuntime()}
-                        className="flex items-center justify-center gap-2 rounded-xl border border-[var(--warning)]/20 px-4 py-2.5 text-sm text-[var(--warning)] transition-colors hover:bg-[var(--warning)]/10"
+                        className="flex items-center justify-center gap-2 rounded-xl border border-[var(--marinara-app-accent-static)]/20 px-4 py-2.5 text-sm text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/10"
                       >
                         <Download size="0.875rem" />
                         {localizeUi("ui.modals.modeldownloadmodal.reinstallRuntime")}
@@ -1138,12 +1138,12 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                 <div
                   className={`rounded-xl border p-4 ${
                     testMessageResult.success
-                      ? "border-[var(--primary)]/25 bg-[var(--primary)]/5"
-                      : "border-[var(--destructive)]/25 bg-[var(--destructive)]/5"
+                      ? "border-emerald-500/25 bg-emerald-500/5"
+                      : "border-red-500/25 bg-red-500/5"
                   }`}
                 >
                   <div
-                    className={`text-sm font-medium ${testMessageResult.success ? "text-[var(--primary)]" : "text-[var(--destructive)]"}`}
+                    className={`text-sm font-medium ${testMessageResult.success ? "text-emerald-300" : "text-red-300"}`}
                   >
                     {localizeUi("ui.modals.modeldownloadmodal.localTestMessage")}{" "}
                     {testMessageResult.success
@@ -1209,7 +1209,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                       )}
                     </div>
                   ) : (
-                    <div className="mt-3 flex flex-col gap-1 text-xs text-[var(--destructive)]/90">
+                    <div className="mt-3 flex flex-col gap-1 text-xs text-red-200/90">
                       <span>{testMessageResult.error || "No response received from the local runtime."}</span>
                       {testMessageResult.failedRuntimeVariant && (
                         <span>
@@ -1342,7 +1342,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                   >
                     {selectedQuant === model.quantization && (
                       <div className="flex h-full items-center justify-center">
-                        <div className="h-1.5 w-1.5 rounded-full bg-[var(--foreground)]" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-white" />
                       </div>
                     )}
                   </div>
@@ -1444,14 +1444,14 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                 </div>
 
                 {customModelsError && (
-                  <div className="rounded-lg border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-3 text-sm text-[var(--destructive)]">
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
                     {customModelsError}
                   </div>
                 )}
 
                 {isAppleSilicon && selectedCustomEntry && (
-                  <div className="rounded-xl border border-[var(--primary)]/25 bg-[var(--primary)]/5 p-3">
-                    <div className="text-sm font-medium text-[var(--primary)]">{selectedCustomEntry.filename}</div>
+                  <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+                    <div className="text-sm font-medium text-emerald-300">{selectedCustomEntry.filename}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--muted-foreground)]/75">
                       {selectedCustomEntry.quantizationLabel && <span>{selectedCustomEntry.quantizationLabel}</span>}
                       {selectedCustomEntry.sizeBytes && <span>{formatBytes(selectedCustomEntry.sizeBytes)}</span>}
@@ -1486,7 +1486,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                     <button
                       onClick={handleCustomDownload}
                       disabled={!selectedCustomPath}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-4 py-2.5 text-sm font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/25 disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 rounded-xl bg-sky-500/15 px-4 py-2.5 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/25 disabled:opacity-50"
                     >
                       <Download size="0.875rem" />
                       {hasModel
@@ -1500,7 +1500,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
                   <button
                     onClick={handleCustomDownload}
                     disabled={!repoInput.trim() || customModelsLoading || !isCustomRepoValidated}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-4 py-2.5 text-sm font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/25 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-sky-500/15 px-4 py-2.5 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/25 disabled:opacity-50"
                   >
                     <Download size="0.875rem" />
                     {hasModel
@@ -1514,7 +1514,7 @@ export function ModelDownloadModal({ open, onClose }: Props) {
         )}
 
         {progress?.status === "error" && (
-          <div className="rounded-lg border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-3 text-sm text-[var(--destructive)]">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
             {progress.error || "Download failed. Please try again."}
           </div>
         )}

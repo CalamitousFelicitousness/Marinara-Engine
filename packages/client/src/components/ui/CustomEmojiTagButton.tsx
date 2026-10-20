@@ -127,7 +127,7 @@ export function CustomEmojiTagButton({
   return (
     <>
       {flashing && (
-        <div className="pointer-events-none absolute inset-0 z-20 animate-pulse rounded-xl bg-[var(--destructive)]/20 ring-2 ring-[var(--destructive)]" />
+        <div className="pointer-events-none absolute inset-0 z-20 animate-pulse rounded-xl bg-red-500/20 ring-2 ring-red-500" />
       )}
       <button
         type="button"
@@ -146,10 +146,10 @@ export function CustomEmojiTagButton({
             : localizeUi("ui.ui.customemojitagbutton.tagAsEmojiOrSticker")
         }
         className={cn(
-          "absolute left-1 top-1 z-10 flex max-w-[calc(100%-0.5rem)] items-center gap-1 rounded-lg px-1.5 py-1 text-[var(--foreground)] transition-opacity",
+          "absolute left-1 top-1 z-10 flex max-w-[calc(100%-0.5rem)] items-center gap-1 rounded-lg px-1.5 py-1 text-white transition-opacity",
           tagged
             ? "bg-[var(--primary)]/80 opacity-100"
-            : "bg-[var(--background)]/50 opacity-0 group-hover:opacity-100 max-md:opacity-100",
+            : "bg-black/50 opacity-0 group-hover:opacity-100 max-md:opacity-100",
         )}
       >
         {tagged ? (

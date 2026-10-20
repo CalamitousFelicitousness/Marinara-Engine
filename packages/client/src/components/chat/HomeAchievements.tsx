@@ -48,9 +48,13 @@ const CATEGORY_LABELS: Record<AchievementDefinition["category"], string> = {
 };
 
 function achievementTone(achievement: AchievementDefinition) {
-  if (achievement.rank === "bronze") return "color-mix(in srgb, var(--primary) 65%, var(--foreground))";
-  if (achievement.rank === "silver") return "var(--muted-foreground)";
-  return "var(--primary)";
+  if (achievement.rank === "bronze") return "oklch(0.65 0.15 55)";
+  if (achievement.rank === "silver") return "oklch(0.66 0.055 245)";
+  if (achievement.rank === "gold") return "oklch(0.72 0.17 82)";
+  if (achievement.category === "collection") return "oklch(0.7 0.16 205)";
+  if (achievement.category === "community") return "oklch(0.68 0.2 345)";
+  if (achievement.category === "creation") return "oklch(0.7 0.18 52)";
+  return "oklch(0.64 0.19 295)";
 }
 
 function AchievementBadge({ achievement, locked }: { achievement: AchievementDefinition; locked: boolean }) {
@@ -83,7 +87,7 @@ function AchievementBadge({ achievement, locked }: { achievement: AchievementDef
         <Icon className="relative z-10 h-5 w-5 sm:h-[1.65rem] sm:w-[1.65rem]" />
       )}
       {!locked && achievement.rankLabel && (
-        <span className="absolute bottom-1.5 right-1.5 rounded bg-[var(--card)]/90 px-1 text-[0.55rem] font-bold text-[var(--foreground)]">
+        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/35 px-1 text-[0.55rem] font-bold text-white">
           {achievement.rankLabel}
         </span>
       )}
@@ -141,7 +145,11 @@ function CompactAchievementHighlight({
   const { t } = useTranslation();
   const Icon = achievement ? (ICONS[achievement.icon] ?? Trophy) : Trophy;
   const target = progress?.target ?? null;
-  const tone = achievement ? achievementTone(achievement) : "var(--primary)";
+  const tone = achievement
+    ? achievementTone(achievement)
+    : kind === "latest"
+      ? "oklch(0.76 0.19 52)"
+      : "oklch(0.79 0.16 205)";
 
   return (
     <span data-achievement-highlight={kind} className="flex min-w-0 items-center gap-1.5 py-0 sm:gap-2 sm:py-0.5">
@@ -314,7 +322,7 @@ export function HomeAchievements({
             "group text-left",
             compact
               ? "w-full max-w-full rounded-xl px-1.5 py-0 transition-colors hover:bg-[color-mix(in_srgb,var(--home-module-accent)_10%,var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)] sm:px-2"
-              : "mari-chrome-control flex w-full max-w-5xl items-center justify-start gap-2 px-3 py-2.5 shadow-lg shadow-[var(--background)]/10 sm:gap-3 sm:px-4 sm:py-3",
+              : "mari-chrome-control flex w-full max-w-5xl items-center justify-start gap-2 px-3 py-2.5 shadow-lg shadow-black/10 sm:gap-3 sm:px-4 sm:py-3",
             attached ? "-mt-px !rounded-b-xl !rounded-t-none !border-t-0" : "!rounded-xl",
             className,
           )}

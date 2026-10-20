@@ -272,7 +272,7 @@ export function RulesetCombatStatus({
         {view.zones && view.zones.length > 0 && (
           <ul aria-label={t("game.combat.ruleset.status.zones")} className="space-y-0.5 text-xs">
             {view.zones.map((zone) => (
-              <li key={`${zone.casterId}:${zone.label}`} className="text-[var(--marinara-app-accent-static)]/90">
+              <li key={`${zone.casterId}:${zone.label}`} className="text-fuchsia-200/90">
                 {zoneLine(zone, view, t)}
               </li>
             ))}

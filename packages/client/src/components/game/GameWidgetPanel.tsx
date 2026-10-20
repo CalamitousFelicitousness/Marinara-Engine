@@ -53,7 +53,7 @@ interface WidgetEditorDraft {
 const MAX_WIDGETS = 4;
 
 const GAME_WIDGET_SHELL_CLASS =
-  "mari-chat-style-surface mari-game-panel-surface marinara-chat-popover overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-text)] shadow-[var(--glass-strong-shadow)] backdrop-blur-md transition-colors";
+  "mari-chat-style-surface mari-game-panel-surface marinara-chat-popover overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-text)] shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-md transition-colors";
 const GAME_WIDGET_HEADER_CLASS =
   "flex w-full cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)]";
 const GAME_WIDGET_TITLE_CLASS =
@@ -1014,7 +1014,7 @@ function ProgressBarWidget({ widget }: { widget: HudWidget }) {
   const { max = 100, dangerBelow } = widget.config;
   const value = getNumericWidgetValue(widget);
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#a78bfa";
   const isDanger = dangerBelow != null && value < dangerBelow;
 
   return (
@@ -1025,12 +1025,12 @@ function ProgressBarWidget({ widget }: { widget: HudWidget }) {
       </div>
       <div className={cn("h-2 overflow-hidden rounded-full", GAME_WIDGET_TRACK_CLASS)}>
         <div
-          className="h-full rounded-full transition-all duration-700"
+          className={cn("h-full rounded-full transition-all duration-700", isDanger && "animate-pulse")}
           style={{
             width: `${pct}%`,
             background: isDanger
-              ? "var(--destructive)"
-              : `linear-gradient(90deg, color-mix(in srgb, ${accent} 80%, transparent), ${accent})`,
+              ? "linear-gradient(90deg, #ef4444, #f87171)"
+              : `linear-gradient(90deg, ${accent}cc, ${accent})`,
           }}
         />
       </div>
@@ -1042,7 +1042,7 @@ function GaugeWidget({ widget }: { widget: HudWidget }) {
   const { max = 100, dangerBelow } = widget.config;
   const value = getNumericWidgetValue(widget);
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#22c55e";
   const isDanger = dangerBelow != null && value < dangerBelow;
 
   // Semicircle gauge
@@ -1054,22 +1054,22 @@ function GaugeWidget({ widget }: { widget: HudWidget }) {
         {/* Track */}
         <div
           className="absolute inset-0 rounded-t-full border-4 border-b-0 border-[var(--marinara-chat-chrome-panel-divider)]"
-          style={{ borderTopColor: `color-mix(in srgb, ${accent} 12.5%, transparent)` }}
+          style={{ borderTopColor: `${accent}20` }}
         />
         {/* Fill */}
         <div
           className="absolute bottom-0 left-1/2 h-full w-1 origin-bottom -translate-x-1/2 transition-transform duration-700"
           style={{
             transform: `translateX(-50%) rotate(${angle - 90}deg)`,
-            background: isDanger ? "var(--destructive)" : accent,
-            boxShadow: `0 0 6px color-mix(in srgb, ${isDanger ? "var(--destructive)" : accent} 40%, transparent)`,
+            background: isDanger ? "#ef4444" : accent,
+            boxShadow: `0 0 6px ${isDanger ? "#ef444480" : accent + "60"}`,
           }}
         />
       </div>
       <span
         className={cn(
           "mt-0.5 text-sm font-bold",
-          isDanger ? "text-[var(--destructive)]" : "text-[var(--marinara-chat-chrome-panel-title)]",
+          isDanger ? "text-red-400" : "text-[var(--marinara-chat-chrome-panel-title)]",
         )}
       >
         {value}
@@ -1123,7 +1123,7 @@ function RelationshipMeterWidget({ widget }: { widget: HudWidget }) {
 
 function CounterWidget({ widget }: { widget: HudWidget }) {
   const { count = 0 } = widget.config;
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#f59e0b";
 
   return (
     <div className="flex items-center justify-center py-1">
@@ -1137,7 +1137,7 @@ function CounterWidget({ widget }: { widget: HudWidget }) {
 function StatBlockWidget({ widget }: { widget: HudWidget }) {
   const rawStats = widget.config.stats;
   const stats = Array.isArray(rawStats) ? rawStats : [];
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#6366f1";
 
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -1181,7 +1181,7 @@ function InventoryGridWidget({ widget }: { widget: HudWidget }) {
   const { slots = 8 } = widget.config;
   const categories = Array.isArray(widget.config.categories) ? widget.config.categories : [];
   const contents = Array.isArray(widget.config.contents) ? widget.config.contents : [];
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#a78bfa";
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const filtered = activeCategory ? contents.filter((c) => c.slot === activeCategory) : contents;
@@ -1255,7 +1255,7 @@ function InventoryGridWidget({ widget }: { widget: HudWidget }) {
 
 function TimerWidget({ widget }: { widget: HudWidget }) {
   const { seconds = 0, running = false } = widget.config;
-  const accent = widget.accent ?? "var(--marinara-chat-chrome-accent)";
+  const accent = widget.accent ?? "#ef4444";
   const [displaySeconds, setDisplaySeconds] = useState(seconds);
   const prevSecondsRef = useRef(seconds);
   const completionPersistedRef = useRef(false);

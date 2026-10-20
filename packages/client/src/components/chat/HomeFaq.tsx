@@ -548,14 +548,14 @@ export const HOME_FAQ_ITEMS: HomeFaqItem[] = [
 
 const CATEGORY_STYLES: Record<string, string> = {
   "Top Issue": "border-[var(--destructive)]/30 bg-[var(--destructive)]/12 text-[var(--destructive)]",
-  Setup: "border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)] dark:text-[var(--warning)]",
-  Connections: "border-[var(--primary)]/30 bg-[var(--primary)]/12 text-[var(--primary)] dark:text-[var(--primary)]",
-  Core: "border-[var(--primary)]/30 bg-[var(--primary)]/12 text-[var(--primary)] dark:text-[var(--primary)]",
+  Setup: "border-amber-400/30 bg-amber-500/12 text-amber-700 dark:text-amber-200",
+  Connections: "border-cyan-400/30 bg-cyan-500/12 text-cyan-700 dark:text-cyan-200",
+  Core: "border-emerald-400/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200",
   Agents:
     "border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
   Images:
     "border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
-  "Game Mode": "border-[var(--primary)]/30 bg-[var(--primary)]/12 text-[var(--primary)] dark:text-[var(--primary)]",
+  "Game Mode": "border-orange-400/30 bg-orange-500/12 text-orange-700 dark:text-orange-200",
   Misc: "border-[var(--border)] bg-[var(--muted)]/30 text-[var(--muted-foreground)]",
 };
 
@@ -674,7 +674,7 @@ export function HomeFaq({
   if (compact) {
     const compactHeaderContent = (
       <>
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--primary)]/25 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_18%,transparent),color-mix(in_srgb,var(--primary)_14%,transparent))] text-[var(--primary)]">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--primary)]/25 bg-[linear-gradient(135deg,rgba(235,137,81,0.18),rgba(77,229,221,0.14))] text-[var(--primary)]">
           <HelpCircle size="0.875rem" />
         </div>
         <div className="min-w-0 flex-1">
@@ -682,7 +682,7 @@ export function HomeFaq({
             <p className="truncate text-xs font-semibold text-[var(--foreground)]">
               {localizeUi("ui.chat.homefaq.faq")}
             </p>
-            <span className="rounded-full border border-[var(--border)]/60 bg-[var(--foreground)]/5 px-1.5 py-0.5 text-[0.5rem] uppercase tracking-[0.12em] text-[var(--muted-foreground)]/80 dark:bg-[var(--foreground)]/6">
+            <span className="rounded-full border border-[var(--border)]/60 bg-black/5 px-1.5 py-0.5 text-[0.5rem] uppercase tracking-[0.12em] text-[var(--muted-foreground)]/80 dark:bg-white/6">
               {HOME_FAQ_ITEMS.length}
             </span>
           </div>
@@ -708,7 +708,7 @@ export function HomeFaq({
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--foreground)]/5 dark:hover:bg-[var(--foreground)]/5"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5"
               aria-expanded={expanded}
             >
               {compactHeaderContent}
@@ -765,7 +765,7 @@ export function HomeFaq({
                       <button
                         type="button"
                         onClick={() => setOpenItemId(openItemId === item.id ? null : item.id)}
-                        className="flex w-full items-start gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[var(--foreground)]/5 dark:hover:bg-[var(--foreground)]/5"
+                        className="flex w-full items-start gap-2 px-2.5 py-2 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                         aria-expanded={isOpen}
                       >
                         <div className="min-w-0 flex-1">
@@ -791,7 +791,7 @@ export function HomeFaq({
                       </button>
 
                       {isOpen && (
-                        <div className="border-t border-[var(--border)]/55 bg-[var(--muted)]/30 px-2.5 py-2 dark:bg-[var(--foreground)]/10">
+                        <div className="border-t border-[var(--border)]/55 bg-[var(--muted)]/30 px-2.5 py-2 dark:bg-black/10">
                           <p className="text-[0.6875rem] leading-relaxed text-[var(--foreground)]/92">
                             {localize(item.answer)}
                           </p>
@@ -833,10 +833,10 @@ export function HomeFaq({
           <button
             type="button"
             onClick={() => setMobileModalOpen(true)}
-            className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)]/60 bg-[var(--card)]/70 px-3 py-2 text-left transition-colors hover:bg-[var(--foreground)]/5 dark:hover:bg-[var(--foreground)]/5"
+            className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)]/60 bg-[var(--card)]/70 px-3 py-2 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5"
             aria-label={localize("Open Professor Mari's FAQ")}
           >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--primary)]/25 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_18%,transparent),color-mix(in_srgb,var(--primary)_14%,transparent))] text-[var(--primary)]">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--primary)]/25 bg-[linear-gradient(135deg,rgba(235,137,81,0.18),rgba(77,229,221,0.14))] text-[var(--primary)]">
               <HelpCircle size="0.875rem" />
             </div>
             <div className="min-w-0 flex-1">
@@ -844,7 +844,7 @@ export function HomeFaq({
                 <p className="truncate text-xs font-semibold text-[var(--foreground)]">
                   {localizeUi("ui.chat.homefaq.faq")}
                 </p>
-                <span className="rounded-full border border-[var(--border)]/60 bg-[var(--foreground)]/5 px-1.5 py-0.5 text-[0.5rem] uppercase tracking-[0.12em] text-[var(--muted-foreground)]/80 dark:bg-[var(--foreground)]/6">
+                <span className="rounded-full border border-[var(--border)]/60 bg-black/5 px-1.5 py-0.5 text-[0.5rem] uppercase tracking-[0.12em] text-[var(--muted-foreground)]/80 dark:bg-white/6">
                   {HOME_FAQ_ITEMS.length}
                 </span>
               </div>
@@ -877,17 +877,17 @@ export function HomeFaq({
       <div
         className={cn(
           !headerless &&
-            "overflow-hidden rounded-[1rem] border border-[var(--border)]/60 bg-[var(--card)] shadow-[var(--marinara-editor-shadow)] backdrop-blur-xl dark:bg-[var(--card)]/95",
+            "overflow-hidden rounded-[1rem] border border-[var(--border)]/60 bg-[var(--card)] shadow-[0_14px_38px_rgba(0,0,0,0.24)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(18,14,23,0.92),rgba(11,10,16,0.86))]",
         )}
       >
         {!headerless && (
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--foreground)]/5 dark:hover:bg-[var(--foreground)]/5 sm:items-center sm:gap-3 sm:px-4"
+            className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 sm:items-center sm:gap-3 sm:px-4"
             aria-expanded={expanded}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--primary)]/25 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_18%,transparent),color-mix(in_srgb,var(--primary)_14%,transparent))] text-[var(--primary)] shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_10%,transparent)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--primary)]/25 bg-[linear-gradient(135deg,rgba(235,137,81,0.18),rgba(77,229,221,0.14))] text-[var(--primary)] shadow-[0_0_20px_rgba(235,137,81,0.1)]">
               <HelpCircle size="1rem" />
             </div>
             <div className="min-w-0 flex-1">
@@ -895,7 +895,7 @@ export function HomeFaq({
                 <p className="text-sm font-semibold tracking-tight text-[var(--foreground)]">
                   {localize("Professor Mari's FAQ")}
                 </p>
-                <span className="rounded-full border border-[var(--border)]/60 bg-[var(--foreground)]/5 px-2 py-0.5 text-[0.5625rem] uppercase tracking-[0.16em] text-[var(--muted-foreground)]/80 dark:bg-[var(--foreground)]/6">
+                <span className="rounded-full border border-[var(--border)]/60 bg-black/5 px-2 py-0.5 text-[0.5625rem] uppercase tracking-[0.16em] text-[var(--muted-foreground)]/80 dark:bg-white/6">
                   {HOME_FAQ_ITEMS.length} {localize("answers")}
                 </span>
               </div>
@@ -917,9 +917,9 @@ export function HomeFaq({
           <div className={cn(!headerless && "border-t border-[var(--border)]/60 px-4 pb-4 pt-3")}>
             {!faqOnly && (
               <>
-                <div className="rounded-[1.1rem] border border-[var(--primary)]/20 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_12%,transparent),color-mix(in_srgb,var(--primary)_8%,transparent))] p-3.5 shadow-[var(--marinara-editor-shadow)] sm:p-4">
+                <div className="rounded-[1.1rem] border border-[var(--primary)]/20 bg-[linear-gradient(135deg,rgba(235,137,81,0.12),rgba(77,229,221,0.08))] p-3.5 shadow-[0_10px_26px_rgba(0,0,0,0.18)] sm:p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                    <div className="mx-auto flex h-28 w-20 shrink-0 items-start justify-center overflow-hidden rounded-[1.25rem] border border-[var(--border)] bg-[var(--card)]/80 shadow-[var(--marinara-editor-shadow)] sm:mx-0 sm:h-32 sm:w-24">
+                    <div className="mx-auto flex h-28 w-20 shrink-0 items-start justify-center overflow-hidden rounded-[1.25rem] border border-[var(--border)] bg-[var(--card)]/80 shadow-[0_10px_24px_rgba(0,0,0,0.22)] sm:mx-0 sm:h-32 sm:w-24">
                       <img
                         src={poses.explaining}
                         {...mariImgLoading(MARI_ASSET_TIER.poses.explaining)}
@@ -928,7 +928,7 @@ export function HomeFaq({
                       />
                     </div>
                     <div className="min-w-0 text-center sm:text-left">
-                      <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2.5 py-1 text-[0.5625rem] uppercase tracking-[0.18em] text-[var(--muted-foreground)]/85 dark:border-[var(--border)] dark:bg-[var(--foreground)]/20">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2.5 py-1 text-[0.5625rem] uppercase tracking-[0.18em] text-[var(--muted-foreground)]/85 dark:border-white/10 dark:bg-black/20">
                         <Sparkles size="0.6875rem" />
                         {localizeUi("ui.chat.homefaq.professorMari")}
                       </div>
@@ -942,15 +942,15 @@ export function HomeFaq({
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-[1.1rem] border border-[var(--warning)]/20 bg-[var(--warning)]/8 p-3">
-                  <div className="flex items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-[var(--warning)] dark:text-[var(--warning)]/90">
+                <div className="mt-3 rounded-[1.1rem] border border-amber-400/20 bg-amber-500/8 p-3">
+                  <div className="flex items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200/90">
                     <TriangleAlert size="0.875rem" />
                     {localize("Before You Post A Bug")}
                   </div>
                   <ul className="mt-2 space-y-1.5 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]/88">
                     {QUICK_FIXES.map((fix) => (
                       <li key={fix} className="flex gap-2">
-                        <span className="mt-[0.18rem] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--warning)]/75 dark:bg-[var(--warning)]/75" />
+                        <span className="mt-[0.18rem] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/75 dark:bg-amber-300/75" />
                         <span>{localize(fix)}</span>
                       </li>
                     ))}
@@ -1000,14 +1000,13 @@ export function HomeFaq({
                       data-faq-item={item.id}
                       className={cn(
                         "overflow-hidden rounded-[1rem] border border-[var(--border)]/55 bg-[var(--card)]/45 transition-colors",
-                        isOpen &&
-                          "border-[var(--primary)]/30 bg-[var(--card)]/70 shadow-[var(--marinara-editor-shadow)]",
+                        isOpen && "border-[var(--primary)]/30 bg-[var(--card)]/70 shadow-[0_8px_24px_rgba(0,0,0,0.18)]",
                       )}
                     >
                       <button
                         type="button"
                         onClick={() => setOpenItemId(openItemId === item.id ? null : item.id)}
-                        className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--foreground)]/5 dark:hover:bg-[var(--foreground)]/5"
+                        className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                         aria-expanded={isOpen}
                       >
                         <div className="min-w-0 flex-1">
@@ -1033,7 +1032,7 @@ export function HomeFaq({
                       </button>
 
                       {isOpen && (
-                        <div className="border-t border-[var(--border)]/55 bg-[var(--muted)]/30 px-3 py-3 dark:bg-[var(--foreground)]/10">
+                        <div className="border-t border-[var(--border)]/55 bg-[var(--muted)]/30 px-3 py-3 dark:bg-black/10">
                           <p className="text-[0.72rem] leading-relaxed text-[var(--foreground)]/92">
                             {localize(item.answer)}
                           </p>

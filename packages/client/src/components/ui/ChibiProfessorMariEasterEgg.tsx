@@ -93,7 +93,7 @@ function showChibiProfessorMariToast() {
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
         <p
-          className={`px-8 text-center text-base font-bold ${shiny ? "bg-gradient-to-r from-[var(--foreground)] via-[var(--marinara-app-accent-static)] to-[var(--foreground)] bg-clip-text text-transparent" : ""}`}
+          className={`px-8 text-center text-base font-bold ${shiny ? "bg-gradient-to-r from-slate-300 via-white to-sky-300 bg-clip-text text-transparent" : ""}`}
         >
           {translate(variant.title)}
         </p>
@@ -110,22 +110,18 @@ function showChibiProfessorMariToast() {
             {shiny && (
               <>
                 <Sparkles
-                  className="absolute -right-1 top-0 h-4 w-4 text-[var(--marinara-app-accent-static)] motion-safe:animate-pulse"
+                  className="absolute -right-1 top-0 h-4 w-4 text-sky-200 motion-safe:animate-pulse"
                   aria-hidden="true"
                 />
                 <Sparkles
-                  className="absolute -left-1 bottom-6 h-3 w-3 text-[var(--marinara-app-accent-static)] motion-safe:animate-pulse"
+                  className="absolute -left-1 bottom-6 h-3 w-3 text-amber-200 motion-safe:animate-pulse"
                   aria-hidden="true"
                 />
               </>
             )}
           </div>
           <div className="min-w-[10rem] flex-1 space-y-2 text-sm leading-relaxed">
-            {shiny && (
-              <p className="font-bold text-[var(--marinara-app-accent-static)]">
-                {translate("ui.chibiProfessorMari.shiny")}
-              </p>
-            )}
+            {shiny && <p className="font-bold text-sky-200">{translate("ui.chibiProfessorMari.shiny")}</p>}
             <p>{translate("ui.chibiProfessorMari.visit")}</p>
             <p>{translate("ui.chibiProfessorMari.fortune")}</p>
             <p>{translate("ui.chibiProfessorMari.loved")}</p>

@@ -23,8 +23,8 @@ const QUEST_CARD_TOP_RULE_CLASS = "pointer-events-none absolute inset-x-0 top-0 
 const QUEST_HEADER_CLASS = "relative grid min-h-5 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-1 px-1 py-0.5";
 const QUEST_HEADER_DELETE_CLASS = "grid-cols-[1rem_minmax(0,1fr)_auto_1rem]";
 const QUEST_TOGGLE_BUTTON_CLASS =
-  "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[var(--success)]/65 transition-colors hover:bg-[var(--success)]/10 hover:text-[var(--success)]";
-const QUEST_STATIC_ICON_CLASS = "flex h-4 w-4 shrink-0 items-center justify-center text-[var(--success)]/65";
+  "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-emerald-400/65 transition-colors hover:bg-emerald-400/10 hover:text-emerald-300";
+const QUEST_STATIC_ICON_CLASS = "flex h-4 w-4 shrink-0 items-center justify-center text-emerald-400/65";
 const QUEST_TITLE_EDIT_CLASS =
   "w-full min-w-0 overflow-hidden px-0.5 py-0 text-[0.75rem] font-semibold text-[var(--foreground)]/92 hover:bg-[var(--accent)]/20";
 const QUEST_TITLE_EDIT_WRAPPED_CLASS = "min-h-5 py-0.5 leading-[1.12]";
@@ -125,8 +125,8 @@ export function QuestRow({
             }
             className={cn(
               QUEST_TOGGLE_BUTTON_CLASS,
-              quest.completed && !lockMode && "text-[var(--success)]",
-              questCompletedLocked && "ring-1 ring-[var(--success)]/35",
+              quest.completed && !lockMode && "text-emerald-300",
+              questCompletedLocked && "ring-1 ring-emerald-300/35",
             )}
             title={
               lockMode
@@ -213,10 +213,7 @@ export function QuestRow({
 
       <div className={QUEST_PROGRESS_TRACK_CLASS}>
         <div
-          className={cn(
-            QUEST_PROGRESS_FILL_CLASS,
-            quest.completed ? "bg-[var(--success)]/85" : "bg-[var(--success)]/70",
-          )}
+          className={cn(QUEST_PROGRESS_FILL_CLASS, quest.completed ? "bg-emerald-300/85" : "bg-emerald-400/70")}
           style={{ width: `${completionPercent}%` }}
         />
       </div>

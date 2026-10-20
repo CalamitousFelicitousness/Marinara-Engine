@@ -612,7 +612,7 @@ export function ConversationMessageAttachments({
                 onRemove(i);
               }}
               title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
-              className="absolute top-1.5 right-1.5 rounded-full bg-[var(--card)]/90 p-1 text-[var(--foreground)]/80 transition-opacity hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] sm:opacity-0 sm:group-hover/att:opacity-100"
+              className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white sm:opacity-0 sm:group-hover/att:opacity-100"
             >
               <X size="0.875rem" />
             </button>
@@ -707,7 +707,7 @@ export function ConversationMessageLightbox({
   const backdropDismiss = useBackdropDismiss(onClose);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/80 p-4 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       {...backdropDismiss}
     >
       <div
@@ -727,7 +727,7 @@ export function ConversationMessageLightbox({
       </div>
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 rounded-full bg-[var(--card)]/90 p-2 text-[var(--foreground)]/80 transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)]"
+        className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
         aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
       >
         <X size="1.125rem" />

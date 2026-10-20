@@ -13,6 +13,15 @@ interface AnimatedSkillCheckResultProps {
   className?: string;
 }
 
+type Tone = "critical-success" | "success" | "failure" | "critical-failure";
+
+const TONE_ACCENT: Record<Tone, string> = {
+  "critical-success": "oklch(0.82 0.15 86)",
+  success: "oklch(0.72 0.16 158)",
+  failure: "oklch(0.68 0.18 20)",
+  "critical-failure": "oklch(0.60 0.22 20)",
+};
+
 function resultLabel(result: SkillCheckResult, localizeUi: (key: string) => string): string {
   // The ruleset's own band, in its own words (1.135); the tone below still says success or failure.
   if (result.outcome) return result.outcome.toUpperCase();
@@ -49,7 +58,7 @@ export function AnimatedSkillCheckResult({
           ? "success"
           : "failure";
   const rollMode = result.rollMode !== "normal" ? ` · ${result.rollMode}` : "";
-  const resolvedAccent = accentColor ?? "var(--marinara-app-accent-static)";
+  const resolvedAccent = accentColor ?? TONE_ACCENT[tone];
   const style = resolvedAccent ? ({ "--dice-accent": resolvedAccent } as CSSProperties) : undefined;
 
   return (

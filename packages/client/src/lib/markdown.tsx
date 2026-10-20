@@ -118,7 +118,7 @@ export function applyInlineMarkdown(text: string, keyPrefix: string, _depth = 0)
             href={resolvedUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[var(--primary)] underline hover:text-[var(--primary)]/80"
+            className="text-blue-400 underline hover:text-blue-300"
           >
             {decodeChatTextHtmlEntities(match[3])}
           </a>,

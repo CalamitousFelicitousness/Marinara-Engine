@@ -769,7 +769,7 @@ export function GameSessionHistory({
                                   className="inline-flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-1 text-[0.6875rem] font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)]"
                                 >
                                   {lorebookRun.status === "success" ? (
-                                    <CheckCircle2 size={11} className="text-[var(--success)]" />
+                                    <CheckCircle2 size={11} className="text-emerald-500" />
                                   ) : (
                                     <RefreshCw size={11} className="animate-spin" />
                                   )}
@@ -1087,8 +1087,8 @@ export function GameSessionHistory({
                       )}
 
                       {session.nextSessionRequest && (
-                        <div className="mb-3 rounded-lg border border-[var(--warning)]/25 bg-[var(--warning)]/10 px-3 py-2">
-                          <div className="mb-1 text-xs font-medium text-[var(--warning)]">
+                        <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
+                          <div className="mb-1 text-xs font-medium text-amber-500">
                             {localizeUi("ui.game.gamesessionhistory.nextSessionRequest")}
                           </div>
                           <div className="text-xs leading-relaxed text-[var(--foreground)]">

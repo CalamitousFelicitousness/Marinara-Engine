@@ -128,7 +128,7 @@ function sizeSandboxPanel(iframe: HTMLIFrameElement, width?: number, height?: nu
     maxHeight: "70vh",
     border: "1px solid var(--border)",
     borderRadius: "12px",
-    boxShadow: "var(--marinara-editor-shadow)",
+    boxShadow: "0 16px 48px rgba(0,0,0,0.4)",
     background: "transparent",
     overflow: "hidden",
     zIndex: "2147483000",
@@ -140,19 +140,18 @@ function sizeSandboxPanel(iframe: HTMLIFrameElement, width?: number, height?: nu
 // matches the current theme. Only color strings cross the boundary.
 function postSandboxTheme(iframe: HTMLIFrameElement) {
   const styles = getComputedStyle(document.documentElement);
-  const bodyStyles = getComputedStyle(document.body);
   const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
   iframe.contentWindow?.postMessage(
     {
       channel: "marinara-personal-extension",
       type: "ui-theme",
       theme: {
-        accent: read("--primary", styles.color),
-        accentText: read("--primary-foreground", bodyStyles.backgroundColor),
-        surface: read("--card", bodyStyles.backgroundColor),
-        text: read("--foreground", styles.color),
-        border: read("--border", bodyStyles.borderColor),
-        muted: read("--secondary", bodyStyles.backgroundColor),
+        accent: read("--primary", "#a855f7"),
+        accentText: read("--primary-foreground", "#ffffff"),
+        surface: read("--card", "#18181b"),
+        text: read("--foreground", "#f4f4f5"),
+        border: read("--border", "rgba(127,127,127,0.35)"),
+        muted: read("--secondary", "rgba(127,127,127,0.15)"),
       },
     },
     "*",

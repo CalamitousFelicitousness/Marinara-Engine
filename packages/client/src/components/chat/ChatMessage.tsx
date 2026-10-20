@@ -945,7 +945,7 @@ const EditTextarea = memo(function EditTextarea({
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-[var(--card)]/30 px-3 py-2 text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--primary)]/50 max-md:max-h-[min(60dvh,32rem,var(--mari-message-editor-fit-height,100dvh))]"
+        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50 max-md:max-h-[min(60dvh,32rem,var(--mari-message-editor-fit-height,100dvh))]"
         style={{ fontSize, lineHeight: 1.5 }}
       />
       <div className="pointer-events-auto relative z-30 flex items-center justify-end gap-1.5">
@@ -954,7 +954,7 @@ const EditTextarea = memo(function EditTextarea({
           onClick={onCancel}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.cancelEdit")}
-          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[var(--foreground)]/40 hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]/70 disabled:pointer-events-none disabled:opacity-50"
+          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.cancelEsc")}
         >
           <X size="0.8125rem" />
@@ -964,7 +964,7 @@ const EditTextarea = memo(function EditTextarea({
           onClick={handleSave}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.saveEdit")}
-          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[var(--success)]/70 hover:bg-[var(--success)]/10 hover:text-[var(--success)] disabled:pointer-events-none disabled:opacity-50"
+          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.saveCmdEnter")}
         >
           <Check size="0.8125rem" />
@@ -1269,7 +1269,7 @@ function highlightDialogue(
       <DialogueTag
         key={`d${key++}`}
         style={dialogueColor ? { color: dialogueColor } : undefined}
-        className={!dialogueColor ? "text-[var(--foreground)]" : ownDialogueColor ? CHARACTER_COLOR_CLASS : undefined}
+        className={!dialogueColor ? "text-black dark:text-white" : ownDialogueColor ? CHARACTER_COLOR_CLASS : undefined}
       >
         {openQuote}
         {innerNodes}
@@ -2893,10 +2893,10 @@ export const ChatMessage = memo(function ChatMessage({
     const fallbackPalette = [
       "var(--marinara-chat-chrome-text)",
       "var(--marinara-chat-chrome-accent)",
-      "color-mix(in srgb, var(--primary) 75%, var(--foreground))",
-      "var(--success)",
-      "var(--mari-panel-connections-gradient-start, var(--primary))",
-      "var(--warning)",
+      "#fb923c",
+      "#4ade80",
+      "#60a5fa",
+      "#facc15",
     ];
     return mergedCharacterIds
       .map((id, index) => {
@@ -3137,7 +3137,7 @@ export const ChatMessage = memo(function ChatMessage({
             aria-label={localizeUi("ui.chat.chatmessage.removeImageFromMessage")}
             title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
             // Touch screens have no hover, so the remove button stays shown there with a larger target.
-            className="absolute top-1.5 right-1.5 rounded-full bg-[var(--card)]/60 p-1 text-[var(--foreground)]/80 transition-opacity hover:bg-[var(--card)]/80 hover:text-[var(--foreground)]/100 pointer-coarse:p-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/att:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+            className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white/100 pointer-coarse:p-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/att:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
           >
             <X size="0.875rem" />
           </button>
@@ -3521,10 +3521,10 @@ export const ChatMessage = memo(function ChatMessage({
           streamingContent ? (
           <>
             {streamingContent(renderStreamingText)}
-            <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-[var(--primary)]" />
+            <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
           </>
         ) : isStreaming && !message.content ? (
-          <PendingTypingDots className="mari-message-typing py-0.5" dotClassName="bg-[var(--primary)]/60" />
+          <PendingTypingDots className="mari-message-typing py-0.5" dotClassName="bg-blue-400/60" />
         ) : (
           <>
             {diceRollResult ? (
@@ -3532,18 +3532,16 @@ export const ChatMessage = memo(function ChatMessage({
             ) : null}
             {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
             {isStreaming && (
-              <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-[var(--primary)]" />
+              <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
             )}
           </>
         )}
       </div>
       {roleplayCommandResults}
       {(translatedText || isTranslating) && !showTranslationOnly && (
-        <div className="mt-2 border-t border-[var(--border)] pt-2">
+        <div className="mt-2 border-t border-white/10 pt-2">
           {isTranslating ? (
-            <span className="text-[0.75rem] italic text-[var(--foreground)]/40">
-              {localizeUi("ui.chat.chatmessage.translating")}
-            </span>
+            <span className="text-[0.75rem] italic text-white/40">{localizeUi("ui.chat.chatmessage.translating")}</span>
           ) : (
             <div className="translation-text whitespace-pre-wrap">{renderedTranslation}</div>
           )}
@@ -3771,7 +3769,7 @@ export const ChatMessage = memo(function ChatMessage({
               }}
               aria-label={localizeUi("chat.delete.dialog.title")}
               className={cn(
-                "absolute -right-1 -top-1 rounded-md p-1 text-[var(--foreground)]/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
+                "absolute -right-1 -top-1 rounded-md p-1 text-white/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
                 showActions && "opacity-100",
               )}
               title={localizeUi("lorebook.editor.batch.delete")}
@@ -3830,7 +3828,7 @@ export const ChatMessage = memo(function ChatMessage({
                   </button>
                 </div>
               )}
-              <div className="mari-message-bubble mari-chat-style-surface relative flex-1 rounded-xl border border-[var(--primary)]/10 bg-[var(--card)]/40 px-5 py-4">
+              <div className="mari-message-bubble mari-chat-style-surface relative flex-1 rounded-xl border border-amber-500/10 bg-black/40 px-5 py-4">
                 {/* Delete button */}
                 {!multiSelectMode && onDelete && (
                   <button
@@ -3838,7 +3836,7 @@ export const ChatMessage = memo(function ChatMessage({
                     onClick={() => onDelete(message.id)}
                     aria-label={localizeUi("chat.delete.dialog.title")}
                     className={cn(
-                      "absolute right-2 top-2 rounded-md p-1 text-[var(--foreground)]/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
+                      "absolute right-2 top-2 rounded-md p-1 text-white/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
                       showActions && "opacity-100",
                     )}
                     title={localizeUi("lorebook.editor.batch.delete")}
@@ -3846,11 +3844,11 @@ export const ChatMessage = memo(function ChatMessage({
                     <Trash2 size="0.75rem" />
                   </button>
                 )}
-                <div className="mb-1 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-widest text-[var(--primary)]/70">
-                  <span className="h-px flex-1 bg-[var(--primary)]/20" />
+                <div className="mb-1 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-widest text-amber-400/70">
+                  <span className="h-px flex-1 bg-amber-400/20" />
                   {hiddenFromAIHeader}
                   {localizeUi("ui.chat.chatmessage.narrator")}
-                  <span className="h-px flex-1 bg-[var(--primary)]/20" />
+                  <span className="h-px flex-1 bg-amber-400/20" />
                 </div>
                 {isHiddenCollapsed ? (
                   <HiddenFromAIMessageSummary
@@ -3948,7 +3946,7 @@ export const ChatMessage = memo(function ChatMessage({
                 <button
                   type="button"
                   className={cn(
-                    "rpg-avatar-glow relative cursor-pointer overflow-hidden ring-2 ring-[var(--border)]",
+                    "rpg-avatar-glow relative cursor-pointer overflow-hidden ring-2 ring-white/10",
                     compactAvatarFrameClass,
                     !cycleMergedNarratorAvatars && "flex",
                   )}
@@ -3984,7 +3982,7 @@ export const ChatMessage = memo(function ChatMessage({
                   <button
                     type="button"
                     className={cn(
-                      "relative cursor-pointer overflow-hidden ring-2 ring-[var(--border)]",
+                      "relative cursor-pointer overflow-hidden ring-2 ring-white/10",
                       compactAvatarFrameClass,
                     )}
                     onClick={() => openImageLightbox(displayAvatarUrl)}
@@ -4006,12 +4004,12 @@ export const ChatMessage = memo(function ChatMessage({
                     "flex items-center justify-center ring-2 shadow-lg",
                     compactAvatarFrameClass,
                     isUser
-                      ? "bg-gradient-to-br from-[var(--muted-foreground)] to-[var(--muted-foreground)] ring-[var(--border)]"
+                      ? "bg-gradient-to-br from-neutral-500 to-neutral-600 ring-white/15"
                       : "mari-chrome-accent-tile mari-accent-animated ring-[var(--marinara-chat-chrome-button-border-active)]",
                   )}
                 >
                   {isUser ? (
-                    <User size={compactAvatarIconSize} className="text-[var(--foreground)]" />
+                    <User size={compactAvatarIconSize} className="text-white" />
                   ) : (
                     <Bot size={compactAvatarIconSize} className="text-current" />
                   )}
@@ -4045,7 +4043,7 @@ export const ChatMessage = memo(function ChatMessage({
                 <span
                   className={cn(
                     "mari-message-name text-[0.75rem] font-bold tracking-tight",
-                    !msgNameColor && !isMergedGroup && (isUser ? "text-[var(--muted-foreground)]" : "rpg-char-name"),
+                    !msgNameColor && !isMergedGroup && (isUser ? "text-neutral-300" : "rpg-char-name"),
                   )}
                   style={!isMergedGroup ? solidNameColorStyle(msgNameColor) : undefined}
                 >
@@ -4055,12 +4053,9 @@ export const ChatMessage = memo(function ChatMessage({
                     <NameColorText color={msgNameColor}>{displayName}</NameColorText>
                   )}
                 </span>
-                <span className="text-[0.625rem] text-[var(--foreground)]/30">{formatTime(message.createdAt)}</span>
+                <span className="text-[0.625rem] text-white/30">{formatTime(message.createdAt)}</span>
                 {genLabel && (
-                  <span
-                    className="text-[0.5625rem] text-[var(--foreground)]/25 italic truncate max-w-[15.625rem]"
-                    title={genLabel}
-                  >
+                  <span className="text-[0.5625rem] text-white/25 italic truncate max-w-[15.625rem]" title={genLabel}>
                     {genLabel}
                   </span>
                 )}
@@ -4087,11 +4082,11 @@ export const ChatMessage = memo(function ChatMessage({
             <div
               data-roleplay-bubble-transparent={roleplayBubbleBg === "transparent" ? "true" : undefined}
               className={cn(
-                "mari-message-bubble mari-rp-bubble mari-chat-style-surface relative overflow-hidden rounded-2xl shadow-lg shadow-[var(--background)]/20",
+                "mari-message-bubble mari-rp-bubble mari-chat-style-surface relative overflow-hidden rounded-2xl shadow-lg shadow-black/20",
                 roleplayAvatarsScrollable && showRoleplayAvatarPanel && "mari-rp-bubble--scrollable-avatar-panel",
                 isUser
-                  ? "rounded-tr-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)]"
-                  : "rounded-tl-sm text-[var(--foreground)]/90 ring-1 ring-[var(--border)]",
+                  ? "rounded-tr-sm text-neutral-100 ring-1 ring-white/10"
+                  : "rounded-tl-sm text-white/90 ring-1 ring-white/8",
                 isGrouped && (isUser ? "rounded-tr-2xl" : "rounded-tl-2xl"),
                 isStreaming && "rpg-streaming",
                 (isConversationStart || conversationStartForCharacterIds.length > 0) && MESSAGE_CHROME_RING_CLASS,
@@ -4113,9 +4108,9 @@ export const ChatMessage = memo(function ChatMessage({
                   <div
                     className={cn(
                       "mari-roleplay-avatar-panel-rail relative flex w-[calc(5.5rem*var(--roleplay-avatar-scale))] shrink-0 items-start self-stretch overflow-hidden md:w-[calc(6rem*var(--roleplay-avatar-scale))]",
-                      isUser ? "border-l border-[var(--border)]" : "border-r border-[var(--border)]",
+                      isUser ? "border-l border-white/8" : "border-r border-white/8",
                       isUser
-                        ? "bg-gradient-to-b from-[var(--muted-foreground)]/18 via-[var(--muted-foreground)]/10 to-transparent"
+                        ? "bg-gradient-to-b from-neutral-500/18 via-neutral-600/10 to-transparent"
                         : "mari-chrome-accent-rail mari-accent-animated",
                     )}
                   >
@@ -4183,12 +4178,12 @@ export const ChatMessage = memo(function ChatMessage({
                           className={cn(
                             "flex h-full w-full items-start justify-center pt-4",
                             isUser
-                              ? "bg-gradient-to-b from-[var(--muted-foreground)]/90 via-[var(--muted-foreground)]/65 to-transparent"
+                              ? "bg-gradient-to-b from-neutral-500/90 via-neutral-600/65 to-transparent"
                               : "mari-chrome-accent-rail-strong mari-accent-animated",
                           )}
                         >
                           {isUser ? (
-                            <User size="1.25rem" className="text-[var(--foreground)]" />
+                            <User size="1.25rem" className="text-white" />
                           ) : (
                             <Bot size="1.25rem" className="text-[var(--primary-foreground)]" />
                           )}
@@ -4571,7 +4566,7 @@ export const ChatMessage = memo(function ChatMessage({
                   {isStreaming && streamingContent ? (
                     <>
                       {streamingContent(renderStreamingText)}
-                      <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-[var(--foreground)]/70" />
+                      <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-white/70" />
                     </>
                   ) : isStreaming && !message.content ? (
                     <PendingTypingDots
@@ -4585,7 +4580,7 @@ export const ChatMessage = memo(function ChatMessage({
                       ) : null}
                       {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
                       {isStreaming && (
-                        <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-[var(--foreground)]/70" />
+                        <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-white/70" />
                       )}
                     </>
                   )}
@@ -4641,7 +4636,7 @@ export const ChatMessage = memo(function ChatMessage({
                       onClick={() => handleRemoveAttachment(i)}
                       aria-label={localizeUi("ui.chat.chatmessage.removeImageFromMessage")}
                       title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
-                      className="absolute top-1.5 right-1.5 rounded-full bg-[var(--card)]/60 p-1 text-[var(--foreground)]/80 transition-opacity hover:bg-[var(--card)]/80 hover:text-[var(--foreground)] sm:opacity-0 sm:group-hover/att:opacity-100"
+                      className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white sm:opacity-0 sm:group-hover/att:opacity-100"
                     >
                       <X size="0.875rem" />
                     </button>
@@ -4978,8 +4973,8 @@ function MessageAudioMenu({
             className={cn(
               "marinara-chat-popover mari-chat-style-surface mari-chat-action-panel fixed z-[9999] flex max-w-[calc(100vw-1.5rem)] flex-row flex-wrap items-center gap-1 rounded-lg border p-1.5 shadow-xl",
               dark
-                ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-title)] shadow-[var(--background)]/30"
-                : "border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-[var(--background)]/20",
+                ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-title)] shadow-black/30"
+                : "border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-black/20",
             )}
           >
             {children}

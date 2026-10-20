@@ -37,7 +37,7 @@ export function ChatVideoAttachment({
           }}
           aria-label={localizeUi("ui.chat.chatvideoattachment.removeVideoFromMessage")}
           title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
-          className="absolute top-1.5 right-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--card)]/90 text-[var(--foreground)]/80 transition-opacity hover:bg-[var(--card)]/90 hover:text-[var(--foreground)]/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:fine)]:h-6 [@media(pointer:fine)]:w-6 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/att:opacity-100 [@media(pointer:fine)]:group-focus-within/att:opacity-100"
+          className="absolute top-1.5 right-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white/80 transition-opacity hover:bg-black/80 hover:text-white/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:fine)]:h-6 [@media(pointer:fine)]:w-6 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/att:opacity-100 [@media(pointer:fine)]:group-focus-within/att:opacity-100"
         >
           <X size="0.875rem" />
         </button>

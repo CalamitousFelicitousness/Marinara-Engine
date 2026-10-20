@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Combat Encounter Modal — Full turn-based combat UI
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, Component, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
@@ -44,18 +44,18 @@ function HPBar({ current, max, isParty }: { current: number; max: number; isPart
         className={cn(
           "absolute inset-y-0 left-0 rounded-full",
           isDead
-            ? "bg-[var(--card)]"
+            ? "bg-gray-600"
             : isParty
               ? pct > 50
-                ? "bg-[var(--success)]"
+                ? "bg-emerald-500"
                 : pct > 25
-                  ? "bg-[var(--warning)]"
-                  : "bg-[var(--destructive)]"
+                  ? "bg-yellow-500"
+                  : "bg-red-500"
               : pct > 50
-                ? "bg-[var(--destructive)]"
+                ? "bg-red-500"
                 : pct > 25
-                  ? "bg-[var(--warning)]"
-                  : "bg-[var(--destructive)]",
+                  ? "bg-orange-500"
+                  : "bg-red-300",
         )}
         initial={false}
         animate={{ width: `${pct}%` }}
@@ -94,7 +94,7 @@ function EnemyCard({ enemy, index: _index, isDead }: { enemy: CombatEnemy; index
         "relative flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all",
         isDead
           ? "border-foreground/5 bg-foreground/5 opacity-40 grayscale"
-          : "border-[var(--destructive)]/20 bg-[var(--destructive)]/5 hover:border-[var(--destructive)]/40",
+          : "border-red-500/20 bg-red-500/5 hover:border-red-500/40",
       )}
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: isDead ? 0.4 : 1, y: 0 }}
@@ -109,8 +109,8 @@ function EnemyCard({ enemy, index: _index, isDead }: { enemy: CombatEnemy; index
         <p className="mt-1 text-[0.625rem] leading-tight text-foreground/40">{enemy.description}</p>
       )}
       {isDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-[var(--background)]/40">
-          <Skull size="1.25rem" className="text-[var(--destructive)]/60" />
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
+          <Skull size="1.25rem" className="text-red-400/60" />
         </div>
       )}
     </motion.div>
@@ -128,8 +128,8 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
         isDead
           ? "border-foreground/5 bg-foreground/5 opacity-40 grayscale"
           : member.isPlayer
-            ? "border-[var(--primary)]/20 bg-[var(--primary)]/5"
-            : "border-[var(--success)]/20 bg-[var(--success)]/5",
+            ? "border-blue-500/20 bg-blue-500/5"
+            : "border-emerald-500/20 bg-emerald-500/5",
       )}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: isDead ? 0.4 : 1, y: 0 }}
@@ -137,9 +137,7 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
       <div
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-          member.isPlayer
-            ? "bg-[var(--primary)]/20 text-[var(--primary)]"
-            : "bg-[var(--success)]/20 text-[var(--success)]",
+          member.isPlayer ? "bg-blue-500/20 text-blue-300" : "bg-emerald-500/20 text-emerald-300",
         )}
       >
         {member.name[0]}
@@ -147,14 +145,14 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
       <div className="min-w-0 flex-1">
         <h4 className="truncate text-xs font-bold text-foreground/90">
           {member.name}{" "}
-          {member.isPlayer && <span className="text-[var(--primary)]">{localizeUi("ui.chat.partycard.you")}</span>}
+          {member.isPlayer && <span className="text-blue-400">{localizeUi("ui.chat.partycard.you")}</span>}
         </h4>
         <HPBar current={member.hp} max={member.maxHp} isParty />
         <StatusBadges statuses={member.statuses} />
       </div>
       {isDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-[var(--background)]/40">
-          <Skull size="1rem" className="text-[var(--destructive)]/60" />
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
+          <Skull size="1rem" className="text-red-400/60" />
         </div>
       )}
     </motion.div>
@@ -190,7 +188,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
   const backdropDismiss = useBackdropDismiss(onCancel);
   return (
     <motion.div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-[var(--background)]/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -212,7 +210,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
           id="encounter-target-title"
           className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--foreground)]"
         >
-          <Crosshair size="1rem" className="text-[var(--primary)]" />
+          <Crosshair size="1rem" className="text-red-400" />
           {localizeUi("ui.chat.targetselection.selectTarget")}
         </h3>
 
@@ -221,7 +219,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
           {(attackType === "AoE" || attackType === "both") && (
             <button
               onClick={() => onSelect("all-enemies")}
-              className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/10 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20"
+              className="flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-left transition-all hover:border-orange-500/40 hover:bg-orange-500/20"
             >
               <span className="text-lg">💥</span>
               <div>
@@ -249,7 +247,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
                 <button
                   key={i}
                   onClick={() => onSelect(enemy.name)}
-                  className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
+                  className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-left transition-all hover:border-red-500/40 hover:bg-red-500/15"
                 >
                   <span className="text-lg">{enemy.sprite || "👹"}</span>
                   <div className="flex-1">
@@ -269,7 +267,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
                 <button
                   key={`party-${i}`}
                   onClick={() => onSelect(member.name)}
-                  className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
+                  className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-left transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15"
                 >
                   <span className="text-lg">✨</span>
                   <div className="flex-1">
@@ -376,7 +374,7 @@ function EncounterConfig() {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -398,7 +396,7 @@ function EncounterConfig() {
           id="encounter-config-title"
           className="mb-5 flex items-center gap-2 text-base font-bold text-[var(--foreground)]"
         >
-          <Swords size="1.125rem" className="text-[var(--primary)]" />
+          <Swords size="1.125rem" className="text-red-400" />
           {localizeUi("ui.chat.encounterconfig.configureCombatNarrative")}
         </h2>
 
@@ -418,7 +416,7 @@ function EncounterConfig() {
           {/* Spellbook selection */}
           <div className="space-y-2">
             <h4 className="flex items-center gap-1.5 text-xs font-bold text-[var(--muted-foreground)]">
-              <Wand2 size="0.75rem" className="text-[var(--primary)]" />
+              <Wand2 size="0.75rem" className="text-indigo-400" />
               {localizeUi("ui.chat.encounterconfig.spellbook")}
             </h4>
             <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]/70">
@@ -448,7 +446,7 @@ function EncounterConfig() {
           </button>
           <button
             onClick={() => initEncounter(settings)}
-            className="flex-1 rounded-xl bg-[var(--primary)] py-2.5 text-xs font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:shadow-xl hover:shadow-[var(--primary)]/30 active:scale-95"
+            className="flex-1 rounded-xl bg-gradient-to-r from-red-600 to-orange-500 py-2.5 text-xs font-bold text-foreground shadow-lg shadow-red-500/20 transition-all hover:shadow-xl hover:shadow-red-500/30 active:scale-95"
           >
             <Swords size="0.875rem" className="mr-1.5 inline" />
             {localizeUi("ui.chat.encounterconfig.beginCombat")}
@@ -498,7 +496,7 @@ function CombatLog() {
   return (
     <div
       ref={logRef}
-      className="scrollbar-thin max-h-40 overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/30 p-3"
+      className="scrollbar-thin max-h-40 overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-black/30 p-3"
     >
       <AnimatePresence>
         {entries.map(
@@ -511,9 +509,9 @@ function CombatLog() {
                 className={cn(
                   "mb-1 whitespace-pre-wrap text-xs leading-relaxed",
                   e.type === "system" && "italic text-foreground/30",
-                  e.type === "player-action" && "font-semibold text-[var(--primary)]",
-                  e.type === "enemy-action" && "text-[var(--destructive)]",
-                  e.type === "party-action" && "text-[var(--success)]",
+                  e.type === "player-action" && "font-semibold text-blue-300",
+                  e.type === "enemy-action" && "text-red-300",
+                  e.type === "party-action" && "text-emerald-300",
                   e.type === "narrative" && "text-foreground/70",
                 )}
               >
@@ -544,9 +542,9 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
 
   if (!Array.isArray(party) || party.length === 0) {
     return (
-      <div className="rounded-xl border border-[var(--warning)]/20 bg-[var(--warning)]/5 p-4 text-center">
-        <AlertTriangle size="1.5rem" className="mx-auto mb-2 text-[var(--warning)]" />
-        <p className="text-xs text-[var(--warning)]">{localizeUi("ui.chat.playercontrols.waitingForCombatData")}</p>
+      <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-center">
+        <AlertTriangle size="1.5rem" className="mx-auto mb-2 text-yellow-400" />
+        <p className="text-xs text-yellow-300">{localizeUi("ui.chat.playercontrols.waitingForCombatData")}</p>
       </div>
     );
   }
@@ -554,9 +552,9 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
   const player = party.find((m) => m.isPlayer);
   if (!player || player.hp <= 0) {
     return (
-      <div className="rounded-xl border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-4 text-center">
-        <Skull size="1.5rem" className="mx-auto mb-2 text-[var(--destructive)]" />
-        <p className="text-xs text-[var(--destructive)]">{localizeUi("ui.chat.playercontrols.youHaveBeenDefeated")}</p>
+      <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-center">
+        <Skull size="1.5rem" className="mx-auto mb-2 text-red-400" />
+        <p className="text-xs text-red-300">{localizeUi("ui.chat.playercontrols.youHaveBeenDefeated")}</p>
       </div>
     );
   }
@@ -601,7 +599,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
     <>
       <div className="space-y-3 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-foreground/5 p-4">
         <h3 className="flex items-center gap-2 text-xs font-bold text-foreground/70">
-          <Zap size="0.875rem" className="text-[var(--primary)]" />
+          <Zap size="0.875rem" className="text-yellow-400" />
           {localizeUi("ui.chat.playercontrols.yourActions")}
         </h3>
 
@@ -617,7 +615,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
                   key={i}
                   disabled={isProcessing}
                   onClick={() => handleAttack(atk)}
-                  className="flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20 disabled:opacity-30"
+                  className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-all hover:border-red-500/40 hover:bg-red-500/20 disabled:opacity-30"
                 >
                   <Swords size="0.75rem" />
                   {atk.name}
@@ -640,7 +638,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
                   key={i}
                   disabled={isProcessing}
                   onClick={() => handleItem(item)}
-                  className="flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20 disabled:opacity-30"
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/20 disabled:opacity-30"
                 >
                   <FlaskConical size="0.75rem" />
                   {item}
@@ -667,7 +665,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
             <button
               onClick={handleCustomSubmit}
               disabled={isProcessing || !customInput.trim()}
-              className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-all hover:bg-[var(--primary)] disabled:opacity-30"
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-foreground transition-all hover:bg-blue-500 disabled:opacity-30"
             >
               <Send size="0.875rem" />
             </button>
@@ -702,10 +700,10 @@ function CombatEndScreen() {
   const { closeEncounter } = useEncounter();
 
   const config: Record<string, { icon: typeof Trophy; color: string; label: string }> = {
-    victory: { icon: Trophy, color: "text-[var(--success)]", label: "VICTORY" },
-    defeat: { icon: Skull, color: "text-[var(--destructive)]", label: "DEFEAT" },
-    fled: { icon: PersonStanding, color: "text-[var(--warning)]", label: "FLED" },
-    interrupted: { icon: Flag, color: "text-[var(--muted-foreground)]", label: "INTERRUPTED" },
+    victory: { icon: Trophy, color: "text-emerald-400", label: "VICTORY" },
+    defeat: { icon: Skull, color: "text-red-400", label: "DEFEAT" },
+    fled: { icon: PersonStanding, color: "text-orange-400", label: "FLED" },
+    interrupted: { icon: Flag, color: "text-gray-400", label: "INTERRUPTED" },
   };
 
   const c = config[combatResult ?? "interrupted"];
@@ -743,9 +741,7 @@ function CombatEndScreen() {
 
       {summaryStatus === "error" && (
         <>
-          <p className="mt-2 text-sm text-[var(--destructive)]">
-            {localizeUi("ui.chat.combatendscreen.failedToGenerateSummary")}
-          </p>
+          <p className="mt-2 text-sm text-red-400">{localizeUi("ui.chat.combatendscreen.failedToGenerateSummary")}</p>
           <button
             onClick={closeEncounter}
             className="mt-6 rounded-xl bg-foreground/10 px-6 py-3 text-sm font-bold text-foreground/80 transition-all hover:bg-foreground/20"
@@ -773,6 +769,7 @@ function EncounterModalInner() {
   const party = useEncounterStore((s) => s.party);
   const enemies = useEncounterStore((s) => s.enemies);
   const environment = useEncounterStore((s) => s.environment);
+  const styleNotes = useEncounterStore((s) => s.styleNotes);
   const combatResult = useEncounterStore((s) => s.combatResult);
   const { sendAction, concludeEncounter, closeEncounter, initEncounter } = useEncounter();
   const settings = useEncounterStore((s) => s.settings);
@@ -826,6 +823,30 @@ function EncounterModalInner() {
     [sendAction],
   );
 
+  // Environment-based gradient
+  const envGradient = useMemo(() => {
+    const t = styleNotes?.environmentType?.toLowerCase() ?? "default";
+    const grads: Record<string, string> = {
+      forest: "from-green-950/80 to-emerald-900/60",
+      dungeon: "from-gray-950/80 to-purple-950/60",
+      desert: "from-amber-950/80 to-orange-900/60",
+      cave: "from-slate-950/80 to-gray-900/60",
+      city: "from-zinc-950/80 to-slate-900/60",
+      ruins: "from-stone-950/80 to-amber-950/60",
+      snow: "from-blue-950/80 to-cyan-900/60",
+      water: "from-blue-950/80 to-teal-900/60",
+      castle: "from-purple-950/80 to-indigo-900/60",
+      wasteland: "from-amber-950/80 to-red-950/60",
+      plains: "from-lime-950/80 to-green-900/60",
+      mountains: "from-slate-950/80 to-blue-950/60",
+      swamp: "from-green-950/80 to-yellow-950/60",
+      volcanic: "from-red-950/80 to-orange-950/60",
+      spaceship: "from-indigo-950/80 to-violet-900/60",
+      mansion: "from-rose-950/80 to-pink-900/60",
+    };
+    return grads[t] ?? "from-slate-950/80 to-indigo-950/60";
+  }, [styleNotes]);
+
   return (
     <AnimatePresence>
       {/* Config Modal */}
@@ -840,7 +861,7 @@ function EncounterModalInner() {
           exit={{ opacity: 0 }}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-[var(--background)]/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
           {/* Modal */}
           <motion.div
@@ -848,16 +869,19 @@ function EncounterModalInner() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="encounter-title"
-            className="relative flex h-[85dvh] w-[37.5rem] max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] shadow-2xl"
+            className={cn(
+              "relative flex h-[85dvh] w-[37.5rem] max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-[var(--marinara-chat-chrome-panel-border)] bg-gradient-to-b shadow-2xl",
+              envGradient,
+            )}
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: "spring", bounce: 0.2 }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-[var(--marinara-chat-chrome-panel-divider)] bg-[var(--background)]/30 px-5 py-3">
+            <div className="flex items-center justify-between border-b border-[var(--marinara-chat-chrome-panel-divider)] bg-black/30 px-5 py-3">
               <h2 id="encounter-title" className="flex items-center gap-2 text-sm font-bold text-foreground/90">
-                <Swords size="1rem" className="text-[var(--destructive)]" />
+                <Swords size="1rem" className="text-red-400" />
                 {localizeUi("ui.chat.encountermodalinner.combatEncounter")}
               </h2>
               <div className="flex items-center gap-2">
@@ -895,7 +919,7 @@ function EncounterModalInner() {
               {/* Loading state */}
               {isLoading && !initialized && (
                 <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <Loader2 size="2rem" className="animate-spin text-[var(--primary)]" />
+                  <Loader2 size="2rem" className="animate-spin text-red-400" />
                   <p className="text-sm text-foreground/50">
                     {localizeUi("ui.chat.encountermodalinner.initializingCombatEncounter")}
                   </p>
@@ -905,12 +929,12 @@ function EncounterModalInner() {
               {/* Error state */}
               {error && !initialized && (
                 <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <AlertTriangle size="2rem" className="text-[var(--destructive)]" />
-                  <p className="max-w-sm text-center text-sm text-[var(--destructive)]">{error}</p>
+                  <AlertTriangle size="2rem" className="text-red-400" />
+                  <p className="max-w-sm text-center text-sm text-red-300">{error}</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => initEncounter(settings)}
-                      className="flex items-center gap-1.5 rounded-xl bg-[var(--destructive)] px-4 py-2 text-xs font-medium text-[var(--destructive-foreground)]"
+                      className="flex items-center gap-1.5 rounded-xl bg-[var(--marinara-app-accent-static)] px-4 py-2 text-xs font-medium text-[var(--primary-foreground)]"
                     >
                       <RefreshCw size="0.75rem" />
                       {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -938,7 +962,7 @@ function EncounterModalInner() {
 
                   {/* Enemies */}
                   <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-[var(--destructive)]">
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-red-400">
                       <Skull size="0.875rem" />
                       {localizeUi("ui.chat.encountermodalinner.enemies")}
                     </h3>
@@ -950,7 +974,7 @@ function EncounterModalInner() {
 
                   {/* Party */}
                   <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-[var(--primary)]">
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-blue-400">
                       <Shield size="0.875rem" />
                       {localizeUi("ui.chat.chatsettingsdrawer.party")}
                     </h3>
@@ -981,7 +1005,7 @@ function EncounterModalInner() {
 
                   {/* Error during combat */}
                   {error && initialized && (
-                    <div className="rounded-xl border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-3 text-center text-xs text-[var(--destructive)]">
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-center text-xs text-red-300">
                       {error}
                     </div>
                   )}
@@ -1009,9 +1033,9 @@ class EncounterErrorBoundary extends Component<{ children: ReactNode; onReset: (
         <Translation>
           {(t) => (
             <div className="fixed inset-0 z-[100] flex items-center justify-center max-md:pt-[env(safe-area-inset-top)]">
-              <div className="absolute inset-0 bg-[var(--background)]/70 backdrop-blur-sm" />
-              <div className="relative flex max-w-md flex-col items-center gap-4 rounded-2xl border border-[var(--destructive)]/20 bg-[var(--card)] p-8 shadow-2xl">
-                <AlertTriangle size="2.5rem" className="text-[var(--destructive)]" />
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+              <div className="relative flex max-w-md flex-col items-center gap-4 rounded-2xl border border-red-500/20 bg-gray-950 p-8 shadow-2xl">
+                <AlertTriangle size="2.5rem" className="text-red-400" />
                 <h3 className="text-sm font-bold text-foreground/90">{t("ui.chat.encountererrorboundary.title")}</h3>
                 <p className="text-center text-xs text-foreground/50">
                   {t("ui.chat.encountererrorboundary.description")}
@@ -1021,7 +1045,7 @@ class EncounterErrorBoundary extends Component<{ children: ReactNode; onReset: (
                     this.setState({ hasError: false });
                     this.props.onReset();
                   }}
-                  className="rounded-xl bg-[var(--destructive)] px-6 py-2.5 text-xs font-medium text-[var(--destructive-foreground)] transition-all hover:bg-[var(--destructive)]/85"
+                  className="rounded-xl bg-[var(--marinara-app-accent-static)] px-6 py-2.5 text-xs font-medium text-[var(--primary-foreground)] transition-all hover:bg-[var(--marinara-app-accent-static)]"
                 >
                   {t("ui.chat.encountererrorboundary.close")}
                 </button>

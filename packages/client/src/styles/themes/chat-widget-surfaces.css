@@ -172,33 +172,6 @@
     --mari-window-control-color,
     var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-app-accent-static)))
   );
-  background: var(--mari-game-bg);
-  color: var(--mari-game-text);
-}
-
-/* Resolve the window palette on the section before forwarding semantic tokens to
-   its children, so the default palette cannot refer back to its own remapping. */
-:root:is([data-chat-widget-preset], [data-chat-widget-colors])
-  .mari-window
-  .mari-game-section:not(.mari-chat-style-surface)
-  > * {
-  --foreground: var(--mari-game-text);
-  --muted-foreground: var(--mari-game-text);
-  --background: var(--mari-game-bg);
-  --card: var(--mari-game-bg);
-  --card-foreground: var(--mari-game-text);
-  --popover: var(--mari-game-bg);
-  --popover-foreground: var(--mari-game-text);
-  --secondary: color-mix(in srgb, var(--mari-game-text) 8%, var(--mari-game-bg));
-  --secondary-foreground: var(--mari-game-text);
-  --muted: var(--secondary);
-  --accent: var(--secondary);
-  --accent-foreground: var(--mari-game-text);
-  --primary: var(--mari-game-accent);
-  --primary-foreground: var(--mari-game-bg);
-  --border: var(--mari-widget-custom-border-solid, var(--mari-game-accent));
-  --input: var(--border);
-  --ring: var(--mari-game-accent);
 }
 
 /* ponytail: only the hues Game sections draw are moved; a section that adds another
@@ -515,28 +488,36 @@
   --mari-chat-existing-border: var(--tw-ring-color);
 }
 .mari-message-narrator .mari-chat-style-surface {
-  --mari-chat-existing-bg: color-mix(in srgb, var(--background) 40%, transparent);
-  --mari-chat-existing-border: color-mix(in oklab, var(--marinara-app-accent-static) 10%, transparent);
+  --mari-chat-existing-bg: rgb(0 0 0 / 0.4);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
 }
 .mari-game-narration-surface {
   --mari-chat-existing-bg: color-mix(in oklab, var(--card) 90%, transparent);
 }
+[data-theme="dark"] .mari-game-narration-surface {
+  --mari-chat-existing-bg: rgb(0 0 0 / 0.5);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
+}
 
 .mari-game-stacked-log {
   --mari-chat-existing-bg: color-mix(in oklab, var(--card) 70%, transparent);
+}
+[data-theme="dark"] .mari-game-stacked-log {
+  --mari-chat-existing-bg: rgb(0 0 0 / 0.4);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 10%, transparent);
 }
 /* Game HUD widgets and character sheets draw the chat chrome panel. */
 .mari-game-panel-surface {
   --mari-chat-existing-border: var(--marinara-chat-chrome-panel-border);
 }
 .mari-game-side-line {
-  --mari-chat-existing-bg: color-mix(in oklab, var(--card) 95%, transparent);
-  --mari-chat-existing-border: var(--border);
+  --mari-chat-existing-bg: color-mix(in oklab, var(--color-black) 75%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
 }
 /* Game sections keep their own fills under cut corners (below); the frame outline keeps
    each section's own outline color under Shape alone. */
 .mari-game-section {
-  --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 10%, transparent);
 }
 .mari-game-section:is(
   [data-game-section="logs"],
@@ -547,10 +528,10 @@
   [data-game-section="town-card"],
   [data-game-section="world-card"]
 ) {
-  --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
 }
 .mari-game-section[data-game-section="qte"] {
-  --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 20%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-white) 20%, transparent);
 }
 .mari-game-section:is(
   [data-game-section^="tactical-"],
@@ -562,7 +543,7 @@
   --mari-chat-existing-border: var(--border);
 }
 .mari-game-section[data-game-section="scene-alert"] {
-  --mari-chat-existing-border: color-mix(in oklab, var(--marinara-app-accent-static) 20%, transparent);
+  --mari-chat-existing-border: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
 }
 .mari-game-section:is([data-game-section="element-reaction"], [data-game-section="scene-retry"]) {
   --mari-chat-existing-border: transparent;
@@ -572,11 +553,11 @@
 }
 /* Buttons over the Game scene, such as the combat Logs button. */
 .mari-game-scene-control {
-  --mari-chat-control-existing-bg: color-mix(in oklab, var(--background) 65%, transparent);
-  --mari-chat-control-existing-border: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-black) 65%, transparent);
+  --mari-chat-control-existing-border: color-mix(in oklab, var(--color-white) 15%, transparent);
 }
 .mari-game-scene-control:hover {
-  --mari-chat-control-existing-bg: color-mix(in oklab, var(--background) 80%, transparent);
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-black) 80%, transparent);
 }
 .mari-game-scene-control--amber {
   --mari-chat-control-existing-bg: color-mix(in oklab, var(--marinara-app-accent-static) 20%, transparent);
@@ -693,28 +674,28 @@
   --mari-chat-control-existing-bg: color-mix(in oklab, var(--card) 90%, transparent);
 }
 [data-theme="dark"] .mari-game-action {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --mari-chat-control-existing-bg: rgb(255 255 255 / 0.1);
 }
 [data-theme="dark"] .mari-game-action:hover {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --mari-chat-control-existing-bg: rgb(255 255 255 / 0.2);
 }
 [data-theme="dark"] :is(.mari-game-meta, .mari-game-nav) {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --mari-chat-control-existing-bg: rgb(255 255 255 / 0.05);
 }
 [data-theme="dark"] :is(.mari-game-meta, .mari-game-nav, .mari-game-active-action, .mari-game-log-action):hover {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --mari-chat-control-existing-bg: rgb(255 255 255 / 0.1);
 }
 [data-theme="dark"] .mari-game-collapsed-handle {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--background) 40%, transparent);
+  --mari-chat-control-existing-bg: rgb(0 0 0 / 0.4);
 }
 [data-theme="dark"] .mari-game-collapsed-handle:hover {
-  --mari-chat-control-existing-bg: color-mix(in srgb, var(--background) 60%, transparent);
+  --mari-chat-control-existing-bg: rgb(0 0 0 / 0.6);
 }
 .mari-game-amber-control {
-  --mari-chat-control-existing-bg: color-mix(in oklab, var(--marinara-app-accent-static) 15%, transparent);
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-amber-400) 15%, transparent);
 }
 .mari-game-amber-control:hover {
-  --mari-chat-control-existing-bg: color-mix(in oklab, var(--marinara-app-accent-static) 25%, transparent);
+  --mari-chat-control-existing-bg: color-mix(in oklab, var(--color-amber-400) 25%, transparent);
 }
 :root .mari-game-autoplay-control[aria-pressed="true"] {
   --mari-chat-control-existing-bg: color-mix(in oklab, var(--primary) 20%, transparent);

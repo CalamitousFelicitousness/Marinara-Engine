@@ -378,7 +378,31 @@ assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.6 }, true
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.02 }, true), { mode: "hold", vowel: "n" });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: null, mouthOpen: 1.4 }, true), { mode: "voice", level: 1 });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "aa", mouthOpen: 1 }, false), { mode: "off" });
-assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1 }), {}, "nothing to override");
+// A text viseme keeps its vowel, but the director sets how far that vowel opens.
+for (const [viseme, mouthOpen, vowel] of [
+  ["aa", 0.2, "a"],
+  ["oh", 0.6, "o"],
+] as const) {
+  assert.deepEqual(face.meshAvatarMouth({}, { viseme, mouthOpen }, true), { mode: "hold", vowel });
+  assert.deepEqual(
+    face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen }),
+    { mouthOpen },
+    `${viseme} keeps the director's ${mouthOpen} opening`,
+  );
+}
+for (const [mouthOpen, expected] of [
+  [-0.2, 0],
+  [1.4, 1],
+] as const) {
+  assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen }), {
+    mouthOpen: expected,
+  });
+}
+assert.deepEqual(
+  face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1 }),
+  {},
+  "voice and idle frames leave the runtime's own mouth opening alone",
+);
 assert.deepEqual(
   face.meshAvatarOverrides({ blink: 0.75, lookAt: { x: 2, y: -0.5 } }, { still: false, blink: true, eyeOpen: 1 }),
   { eyeLOpen: 0.25, eyeROpen: 0.25, gazeX: 1, gazeY: -0.5 },
@@ -409,6 +433,63 @@ assert.deepEqual(face.meshAvatarOverrides({ blink: 0.5 }, { still: false, blink:
   eyeLOpen: 0.4,
   eyeROpen: 0.4,
 });
+
+// Evaluate the installed, pinned runtime's real composition step, including its lip-sync precedence.
+// The identity overlay isolates parameter composition; WebGL and image loading are not needed here.
+const meshRuntime = readFileSync(
+  new URL("../../packages/client/node_modules/mesh-avatar/dist/index.js", import.meta.url),
+  "utf8",
+);
+const composeBody = meshRuntime.match(/  function w\(M\) \{\n([\s\S]*?)\n  \}\n  function T\(M\)/u)?.[1];
+assert.ok(composeBody, "the pinned runtime's parameter composition exists");
+const compose = new Function("j", "P", "W", "J", "e", `let q; return function(M) {${composeBody}}`);
+function runtimeParameters(
+  overrides: Record<string, number>,
+  open: number,
+  held: number | null = open,
+  preserve = false,
+) {
+  return compose(
+    { update: () => ({ mouthOpen: open, mouthForm: -0.2 }), lipOpen: held, P: { mouthOpen: open, mouthForm: 0.4 } },
+    overrides,
+    1,
+    { apply: (value: Record<string, number>) => value },
+    { preserveMouthForm: preserve },
+  )(1 / 60) as Record<string, number>;
+}
+for (const [viseme, mouthOpen, runtimeOpen] of [
+  ["aa", 0.2, 0.9],
+  ["oh", 0.6, 0.75],
+  ["aa", -0.2, 0.9],
+  ["oh", 1.4, 0.75],
+] as const) {
+  const overrides = face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen });
+  assert.deepEqual(
+    runtimeParameters(overrides, runtimeOpen),
+    { mouthOpen: Math.max(0, Math.min(1, mouthOpen)), mouthForm: 0.4 },
+    `${viseme} uses clock openness and retains the held vowel form`,
+  );
+}
+assert.deepEqual(
+  runtimeParameters({}, 0.58),
+  { mouthOpen: 0.58, mouthForm: 0.4 },
+  "voice without an override is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({}, 0.06, null),
+  { mouthOpen: 0.06, mouthForm: -0.2 },
+  "idle without lip sync is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({ mouthForm: -0.7 }, 0.58),
+  { mouthOpen: 0.58, mouthForm: 0.4 },
+  "default held form precedence is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({ mouthForm: -0.7 }, 0.58, 0.58, true),
+  { mouthOpen: 0.58, mouthForm: -0.7 },
+  "preserved held form precedence is unchanged",
+);
 
 // Every mesh avatar draws at the shared canvas's size and is scaled onto its own canvas as if drawn there:
 // mesh-avatar fits the picture plus margins, centred and standing on the bottom edge.
@@ -444,6 +525,11 @@ const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 const english = JSON.parse(readFileSync(join(root, "packages/client/src/localization/locales/en.json"), "utf8"));
 const known = new Set(Object.keys(english).map((key) => key.replace(/_(?:one|other)$/u, "")));
 const rendererRoot = join(root, "packages/client/src/features/avatars/renderers");
+assert.match(
+  readFileSync(join(rendererRoot, "mesh-avatar/mesh-avatar-renderer.ts"), "utf8"),
+  /meshAvatarOverrides\(frame,\s*\{[^}]*mouthOpen: mouth\.mode === "hold" \? frame\.mouthOpen : undefined/u,
+  "only held text visemes supply the runtime openness override",
+);
 for (const folder of ["pngtuber", "mesh-avatar"]) {
   for (const file of readdirSync(join(rendererRoot, folder))) {
     const source = readFileSync(join(rendererRoot, folder, file), "utf8");

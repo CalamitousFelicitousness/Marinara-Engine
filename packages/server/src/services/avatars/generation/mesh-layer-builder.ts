@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 import { getSharp } from "../../image/sharp-runtime.js";
-import type { MeshRig } from "./mesh-rig-layout.js";
+import type { MeshRig, MeshRigLayout } from "./mesh-rig-layout.js";
 
 type Point = [number, number];
 type Mask = Uint8Array;
@@ -180,6 +180,73 @@ function percentile(values: number[], p: number): number {
   const low = Math.floor(position);
   const high = Math.ceil(position);
   return sorted[low]! + (sorted[high]! - sorted[low]!) * (position - low);
+}
+
+/** Refines a closed drawn lip line, allowing short highlights; absent or open ink keeps the fallback. */
+export async function fitDrawnMouth(
+  source: MeshLayerSource,
+  mouth: MeshRigLayout["mouth"],
+  signal?: AbortSignal,
+): Promise<MeshRigLayout["mouth"]> {
+  signal?.throwIfAborted();
+  const image = await decodeRgba(source.png);
+  const span = mouth.right[0] - mouth.left[0];
+  const margin = Math.max(4, Math.ceil(span * 0.15));
+  const area = workArea(
+    image,
+    [
+      [Math.min(mouth.left[0], mouth.box[0]) - margin, Math.min(mouth.left[1], mouth.right[1], mouth.box[1])],
+      [Math.max(mouth.right[0], mouth.box[2]) + margin, Math.max(mouth.left[1], mouth.right[1], mouth.box[3])],
+    ],
+    4,
+  );
+  const lumas: number[] = [];
+  for (let i = 0; i < area.width * area.height; i += 1)
+    if (area.data[i * 4 + 3]! > 200) lumas.push(luma(area.data, i * 4));
+  const skin = percentile(lumas, 50);
+  const points: Point[] = [];
+  const thicknesses: number[] = [];
+  for (let x = 0; x < area.width; x += 1) {
+    let weight = 0;
+    let weightedY = 0;
+    let first = -1;
+    let last = -1;
+    for (let y = 0; y < area.height; y += 1) {
+      const at = (y * area.width + x) * 4;
+      const darkness = skin - luma(area.data, at);
+      if (area.data[at + 3]! <= 200 || darkness < 35) continue;
+      if (first < 0) first = y;
+      last = y;
+      weight += darkness;
+      weightedY += (area.y + y + 0.5) * darkness;
+    }
+    if (weight) {
+      points.push([area.x + x + 0.5, weightedY / weight]);
+      thicknesses.push(last - first + 1);
+    }
+  }
+  await pause(signal);
+  if (
+    points.length < Math.max(8, span * 0.55) ||
+    percentile(thicknesses, 75) > Math.max(3, span * 0.12) ||
+    points.some((p, i) => i > 0 && p[0] - points[i - 1]![0] > Math.max(2, span * 0.15))
+  )
+    return mouth;
+  const left = points[0]!;
+  const right = points.at(-1)!;
+  const length = Math.hypot(right[0] - left[0], right[1] - left[1]);
+  if (length < span * 0.55 || length > span + 2 * margin) return mouth;
+  const cosine = (right[0] - left[0]) / length;
+  const sine = (right[1] - left[1]) / length;
+  const samples = points.map(([x, y]) => {
+    const along = (x - left[0]) * cosine + (y - left[1]) * sine;
+    return { curve: 4 * (along / length) * (1 - along / length), depth: (y - left[1]) * cosine - (x - left[0]) * sine };
+  });
+  const bow =
+    samples.reduce((sum, p) => sum + p.curve * p.depth, 0) / samples.reduce((sum, p) => sum + p.curve ** 2, 0);
+  const error = Math.sqrt(samples.reduce((sum, p) => sum + (p.depth - bow * p.curve) ** 2, 0) / samples.length);
+  if (Math.abs(bow) > length * 0.3 || error > Math.max(1.5, percentile(thicknesses, 50) * 0.6)) return mouth;
+  return { ...mouth, left, right, bow };
 }
 
 /** Per-channel median colour of the selected pixels. */

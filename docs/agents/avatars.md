@@ -201,7 +201,7 @@ Some connections can't edit pictures, such as Pollinations, Together AI, Horde, 
 3. Select **Make mesh avatar**. The chat model finds the face, and Marinara Engine builds the avatar from your sprite as it is. **Cancel** stops it.
 4. Check the preview: the outlines should sit on the eyes, brows and mouth. Select **Save as mesh avatar**, or **Discard** and try another sprite or model.
 
-A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
+A generated mesh avatar moves its head, eyes, brows and mouth, and blinks and talks with its own eyelids and mouth. Its hair moves with the head; hands, single hair strands and hanging accessories are not rigged. Small sprites are built from a bigger copy so the mouth fits the face. When the face fills most of a large sprite, the avatar is built from a smaller copy so making it stays quick.
 
 Your sprite is sent to the image connection for blink and talk pictures (and to that connection's fallback image connection if it fails, one is set, and it accepts a reference picture), and to the chat connection for a mesh avatar. A connection that can't edit pictures gets only the prompt, which includes the appearance. The prompts come with the 2D Avatars agent. With **Expose media prompts before sending** on, you can read and change each picture's prompt before it is sent. With debug mode on, every prompt is written to the server log.
 

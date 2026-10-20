@@ -104,6 +104,8 @@ To load Grok models, use the **Fetch Models from Grok CLI** button in the **Mode
 
 In the Claude connection editor, **Prompt Caching → Extended token caching (1 hour)** requests a one-hour cache for longer pauses between messages. It requires Claude Code **2.1.242 or later**. Marinara passes the setting for that request without changing your saved Claude settings.
 
+With the setting on, Marinara also adds a cache marker inside the chat history so the next message can reuse the cached history instead of writing it again. With it off, only the system prompt is reused between messages, because Claude's own cache length then depends on your account and Marinara can't safely add the marker.
+
 Off leaves Claude's default for main conversations and Agent SDK requests in place: currently one hour for subscription usage within plan limits and five minutes for extra usage, credits, or API billing. Claude Code's own subagents use five minutes unless configured separately; selected server-controlled helper requests may use one hour. Existing CLI environment overrides still take precedence. See [Claude Code prompt caching](https://code.claude.com/docs/en/prompt-caching).
 
 Debug logs separate five-minute and one-hour cache writes using the SDK's reported usage. The cost equivalents use standard API token multipliers, not your subscription bill; when the SDK omits the write-duration breakdown, the estimate is left unknown.

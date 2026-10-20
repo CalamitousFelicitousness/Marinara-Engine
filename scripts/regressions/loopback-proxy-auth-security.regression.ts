@@ -108,7 +108,16 @@ try {
     401,
     "a loopback socket announcing a LAN address was relayed",
   );
-  for (const host of ["localhost:7860", "[::1]:7860", "0.0.0.0:7860", "marinara.localhost", "LOCALHOST.:7860", "127.0.1.1:7860", "[::ffff:127.0.0.1]:7860", "[::]:7860", `${os.hostname()}:7860`]) {
+  for (const host of [
+    "localhost:7860",
+    "[::1]:7860",
+    "0.0.0.0:7860",
+    "marinara.localhost",
+    "LOCALHOST.:7860",
+    "127.0.1.1:7860",
+    "[::ffff:127.0.0.1]:7860",
+    "[::]:7860",
+  ]) {
     assert.equal((await inject("GET", "/api/chats", { host })).statusCode, 200, `${host} stays local`);
   }
 
@@ -249,11 +258,16 @@ try {
   assert.equal(isLoopbackRequest(fakeRequest({ "x-forwarded-for": "   " })), true, "empty headers carry no client");
   assert.equal(isLoopbackRequest(fakeRequest({}, "192.168.1.20")), false);
   assert.equal(isLoopbackRequest(fakeRequest({ host: "chat.example.com" })), false, "a relayed Host is not local");
-assert.equal(
-  isLoopbackRequest(fakeRequest({ ":authority": "chat.example.com" })),
-  false,
-  "a relayed :authority is not local",
-);
+  assert.equal(
+    isLoopbackRequest(fakeRequest({ host: `${os.hostname()}:7860` })),
+    true,
+    "the machine's own hostname stays local",
+  );
+  assert.equal(
+    isLoopbackRequest(fakeRequest({ ":authority": "chat.example.com" })),
+    false,
+    "a relayed :authority is not local",
+  );
 
   // ── The server's own prompt-preview hop stays a trusted local call ──
   process.env.BASIC_AUTH_USER = "mari";

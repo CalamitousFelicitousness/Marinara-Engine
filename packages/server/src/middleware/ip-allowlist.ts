@@ -521,7 +521,7 @@ function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
   if (hostname === "0.0.0.0" || hostname === "::") return false;
   // The machine's own name (Debian maps it to 127.0.1.1) is local too.
   const own = os.hostname().toLowerCase();
-  if (hostname === own || hostname === `${own}.local` || hostname === `${own}.localdomain`) return false;
+  if (hostname === own || hostname === `${own}.local`) return false;
   return !isLoopbackIp(hostname);
 }
 
@@ -531,7 +531,11 @@ function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
  * headers. Such requests get the checks of a remote client, not loopback trust.
  */
 export function isForwardedLoopbackRequest(request: Pick<FastifyRequest, "headers" | "ip">): boolean {
-  return isLoopbackIp(request.ip) && (hasProxyForwardingHeaders(request) || hasRelayedHost(request)) && isLoopbackProxyAuthRequired();
+  return (
+    isLoopbackIp(request.ip) &&
+    (hasProxyForwardingHeaders(request) || hasRelayedHost(request)) &&
+    isLoopbackProxyAuthRequired()
+  );
 }
 
 /** True when the request comes from this machine itself rather than through a local proxy. */

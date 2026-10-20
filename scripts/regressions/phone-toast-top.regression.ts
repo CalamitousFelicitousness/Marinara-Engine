@@ -25,6 +25,8 @@ const topBar = header(0, 48);
 const windowHeader = header(100, 150);
 const bubbleRow = header(56, 96);
 let rows: Header[] = [windowHeader, bubbleRow];
+const tacticalToolbar = header(48, 144);
+let topObstacles: Header[] = [];
 let hasTopBar = true;
 let showing = false;
 const body = {};
@@ -85,7 +87,11 @@ Object.defineProperties(globalThis, {
     value: {
       body,
       querySelector: () => (hasTopBar ? topBar : null),
-      querySelectorAll: (selector: string) => (selector.includes("TopBar") && hasTopBar ? [topBar, ...rows] : rows),
+      querySelectorAll: (selector: string) => [
+        ...(selector.includes("TopBar") && hasTopBar ? [topBar] : []),
+        ...rows,
+        ...(selector.includes("[data-chat-window-top-obstacle]") ? topObstacles : []),
+      ],
     },
   },
   window: {
@@ -123,6 +129,12 @@ assert.equal(phoneToastTop(), 158, "hidden and offscreen headers cannot push a t
 rows = [windowHeader, bubbleRow, header(300, 340)];
 assert.equal(phoneToastTop(), 158, "a bubble moved away from the top does not extend the header stack");
 rows = [];
+topObstacles = [tacticalToolbar];
+assert.equal(phoneToastTop(), 152, "a measured tactical toolbar extends the top header stack");
+tacticalToolbar.rect.bottom = 184;
+tacticalToolbar.rect.height = 136;
+assert.equal(phoneToastTop(), 192, "wrapped toolbar rows keep top toasts below their controls");
+topObstacles = [];
 assert.equal(phoneToastTop(), 56, "an empty shell clears the top bar");
 hasTopBar = false;
 assert.equal(phoneToastTop(), 8, "missing shell elements are safe during a view transition");

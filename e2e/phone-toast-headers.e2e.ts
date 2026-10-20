@@ -21,6 +21,7 @@ const HEADERS = [
   ".mari-right-panel-header",
   ".mari-sidebar-header",
   ".mari-editor-header",
+  "[data-chat-window-top-obstacle]",
 ].join(",");
 
 async function showToast(page: Page, label: string) {
@@ -203,6 +204,36 @@ test.describe("phone toasts", () => {
         '[data-window="chat-settings"] [data-window-control="close"]',
       ]);
     } finally {
+      await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+    }
+  });
+
+  test("clear a top toolbar that mounts and wraps while the chat is open", async ({ page, request }) => {
+    const chatId = await createChat(request, "conversation", []);
+    try {
+      await prepare(page, chatId);
+      await page.goto("/");
+      await expect(page.locator("[data-chat-settings-button]")).toBeVisible({ timeout: 60_000 });
+      // Exercise the shared top-obstacle contract independently of a particular Game fixture.
+      // The initiative suite verifies that the real tactical toolbar publishes this marker.
+      await page.evaluate(() => {
+        const toolbar = document.createElement("div");
+        toolbar.dataset.chatWindowTopObstacle = "true";
+        toolbar.style.cssText = `position:fixed;left:0;right:0;top:${document.querySelector('[data-component="TopBar"]')!.getBoundingClientRect().bottom}px;height:96px;z-index:1000;display:grid;place-items:center`;
+        const button = document.createElement("button");
+        button.textContent = "Toolbar action";
+        toolbar.append(button);
+        document.body.append(toolbar);
+      });
+      await expectToastClearsHeaders(page, "Mounted toolbar", ["[data-chat-window-top-obstacle] button"]);
+      await page.locator("[data-chat-window-top-obstacle]").evaluate((toolbar) => {
+        toolbar.style.height = "132px";
+      });
+      await expectToastClearsHeaders(page, "Wrapped toolbar", ["[data-chat-window-top-obstacle] button"]);
+    } finally {
+      await page
+        .evaluate(() => document.querySelector("[data-chat-window-top-obstacle]")?.remove())
+        .catch(() => undefined);
       await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
     }
   });

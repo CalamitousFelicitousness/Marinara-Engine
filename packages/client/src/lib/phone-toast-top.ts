@@ -15,6 +15,7 @@ const PHONE_HEADER_ROWS = [
   ".mari-right-panel-header",
   ".mari-sidebar-header",
   ".mari-editor-header",
+  "[data-chat-window-top-obstacle]",
 ].join(",");
 // A row starting this close below the rows above it belongs to the same stack (the chat's buttons sit
 // 8px under the top bar); anything further down, such as a chat button moved lower, does not.

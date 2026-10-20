@@ -38,11 +38,40 @@ async function showToast(page: Page, label: string) {
 }
 
 async function dismissToast(page: Page) {
+  const exit = sampleHeaderHits(page);
   await page.evaluate(async (id) => {
     const { toast } = await import(window.__viteFixtureDependencyUrl("sonner"));
     toast.dismiss(id);
   }, TOAST_ID);
+  expect(await exit, "a departing toast must not intercept header controls").toEqual([]);
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+}
+
+/** Hit-testing includes Sonner's invisible hover bridges and the whole entry/exit animation. */
+function sampleHeaderHits(page: Page) {
+  return page.evaluate(async (selector) => {
+    const blocked = new Set<string>();
+    const until = performance.now() + 500;
+    do {
+      for (const header of document.querySelectorAll<HTMLElement>(selector)) {
+        if (getComputedStyle(header).visibility !== "visible") continue;
+        const controls = header.matches("button") ? [header] : header.querySelectorAll<HTMLElement>("button");
+        for (const control of controls) {
+          const rect = control.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          for (const x of [rect.left + 1, rect.left + rect.width / 2, rect.right - 1]) {
+            for (const y of [rect.top + 1, rect.top + rect.height / 2, rect.bottom - 1]) {
+              if (document.elementFromPoint(x, y)?.closest("[data-sonner-toast]")) {
+                blocked.add(control.getAttribute("aria-label") || control.textContent?.trim() || control.className);
+              }
+            }
+          }
+        }
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    } while (performance.now() < until);
+    return [...blocked];
+  }, HEADERS);
 }
 
 /** Once the toast settles: every visible header (or extra control) it overlaps, and where it sits. */
@@ -76,7 +105,9 @@ function headerOverlaps(toast: Locator, extraControls: string[] = []) {
 }
 
 async function expectToastClearsHeaders(page: Page, label: string, extraControls: string[] = []) {
+  const entry = sampleHeaderHits(page);
   const { overlaps, bottom, viewport } = await headerOverlaps(await showToast(page, label), extraControls);
+  expect(await entry, `${label}: an arriving toast intercepts header controls`).toEqual([]);
   expect(overlaps, `${label}: the toast covers header controls`).toEqual([]);
   expect(bottom, `${label}: the toast stays on screen`).toBeLessThan(viewport);
   for (const selector of extraControls) {

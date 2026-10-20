@@ -1283,6 +1283,14 @@ export function App() {
       <CsrfOriginWarningBanner />
       <div
         ref={toasterHostRef}
+        // Sonner slides top toasts upward and extends their hover area above the visible box.
+        // Clip both at the header edge so they cannot intercept its controls, even during motion.
+        className={
+          phoneToastsAtTop
+            ? "pointer-events-none fixed inset-0 z-[999999999] [&_[data-sonner-toast]]:pointer-events-auto"
+            : undefined
+        }
+        style={phoneToastsAtTop ? { clipPath: `inset(max(0px, calc(${phoneToastOffsetTop} - 8px)) 0 0 0)` } : undefined}
         // Interacting with a toast (including its close button) must not count
         // as an outside click for chat floating panels — otherwise dismissing
         // a toast closes the settings/gallery drawer (and any modal inside it).

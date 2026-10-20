@@ -1011,6 +1011,13 @@ export function rulesetThreateningEnemies(
 ): Array<{ combatant: RulesetCombatant; at: RulesetCombatCell; reach: number; span?: number; moverSpan?: number }> {
   const opportunity = combat.opportunity;
   if (!opportunity || mover.flags.disengaged) return [];
+  // Flying out of reach (1.626): an owl's Flyby, with a flying speed to fly by on.
+  if (
+    (mover.speeds?.fly ?? 0) > 0 &&
+    combat.conditions?.some((rule) => rule.flyby) &&
+    rulesetActiveConditions(definition, combat, mover, state).some((entry) => entry.flyby)
+  )
+    return [];
   const threats: Array<{
     combatant: RulesetCombatant;
     at: RulesetCombatCell;

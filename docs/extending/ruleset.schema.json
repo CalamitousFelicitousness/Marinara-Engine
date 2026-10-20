@@ -194614,6 +194614,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "flyby": {
+                "type": "boolean",
+                "const": true
+              },
               "walksOnLiquid": {
                 "type": "boolean",
                 "const": true

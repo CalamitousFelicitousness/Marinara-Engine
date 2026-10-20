@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** Flying out of reach without drawing a strike (1.626): an owl's Flyby. */
+function carriesFlyby626(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFlyby626(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.flyby !== undefined) return true;
+  return featureValues(record).some((one) => carriesFlyby626(one, depth + 1));
+}
+
 /** A creature's slaying held to the low, or a failed save that drops to no health (1.625): a solar's
  *  Slaying Longbow, a sea hag's Death Glare. */
 function carriesCreatureSlaying625(value: unknown, depth = 0, creature = false): boolean {
@@ -8395,6 +8405,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Flying out of reach without drawing a strike, 1.626.
+  if (
+    !declaresApi(626) &&
+    (carriesFlyby626(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesFlyby626(document)))
+  )
+    return "A ruleset with a condition whose holder flies out of reach without drawing a strike (flyby) requires schemaVersion 2 and capabilityApi 1.626 or newer";
   // A creature's slaying held to the low, or its failed save dropping to no health, 1.625.
   if (
     !declaresApi(625) &&

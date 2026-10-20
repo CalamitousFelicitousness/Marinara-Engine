@@ -45,6 +45,9 @@ const TERM_KEYS: ReadonlyMap<string, string> = new Map([
   ["unnecessary", "avatars.vrm.terms.creditUnnecessary"],
 ]);
 
+/** `.vroid` is listed only so file pickers let a VRoid Studio project be chosen and explain how to export it. */
+const MODEL_ACCEPT = ".vrm,.vroid";
+
 const LINK_CLASS =
   "inline-flex min-h-11 items-center gap-1 text-[0.6875rem] font-medium text-[var(--primary)] underline-offset-2 hover:underline";
 
@@ -307,7 +310,14 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
   const stored = config?.kinds.vrm ?? null;
   const data = pending && pending.base === stored ? pending.data : stored;
 
-  const importVrmFile = (file: File) => importFile.mutate({ kind: "vrm", file });
+  const importVrmFile = (file: File) => {
+    // VRoid Studio saves its projects as .vroid; only the .vrm it exports can be imported.
+    if (/\.vroid$/iu.test(file.name)) {
+      toast.error(t("avatars.vrm.vroidProject"));
+      return;
+    }
+    importFile.mutate({ kind: "vrm", file });
+  };
 
   const busy = importFile.isPending || saveData.isPending || removeModel.isPending;
   const save = (next: VrmAvatarData) => {
@@ -349,7 +359,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
         <Section title={t("avatars.vrm.title")} description={t("avatars.vrm.description")}>
           <div className="flex flex-wrap gap-2">
             <FileButton
-              accept=".vrm"
+              accept={MODEL_ACCEPT}
               label={t("avatars.vrm.import")}
               busy={importFile.isPending}
               disabled={busy}
@@ -381,7 +391,7 @@ export function VrmSetupPanel({ owner, config, onChanged }: AvatarKindSetupPanel
         {meta ? <ModelTerms meta={meta} /> : null}
         <div className="flex flex-wrap gap-2">
           <FileButton
-            accept=".vrm"
+            accept={MODEL_ACCEPT}
             label={t("avatars.vrm.replace")}
             busy={importFile.isPending}
             disabled={busy}

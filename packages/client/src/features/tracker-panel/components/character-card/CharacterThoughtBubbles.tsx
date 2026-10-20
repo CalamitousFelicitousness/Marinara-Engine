@@ -464,7 +464,7 @@ export function ExternalThoughtBubble({
       ref={bubbleRef}
       data-component="ExternalThoughtBubble"
       {...getFloatingThoughtBubbleMotion({ outsideSide: position.outsideSide, reducedMotion })}
-      className="pointer-events-auto fixed z-[60] drop-shadow-[0_8px_14px_rgba(0,0,0,0.24)] will-change-transform"
+      className="pointer-events-auto fixed z-[60] drop-shadow-[0_8px_14px_color-mix(in_srgb,var(--marinara-shadow-color)_24%,transparent)] will-change-transform"
       style={{
         left: position.left,
         top: position.top,

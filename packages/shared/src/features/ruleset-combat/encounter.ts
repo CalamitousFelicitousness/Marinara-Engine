@@ -6242,6 +6242,7 @@ function fillCatalogCallsAsWritten(
           }
         : {}),
       ...(calls.commandedWith ? { commandedWith: calls.commandedWith } : {}),
+      ...(calls.commandedBy ? { commandedBy: calls.commandedBy } : {}),
       ...(calls.illusion ? { illusion: true as const } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: calls.endsWithCaller } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
@@ -6730,11 +6731,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           options: structuredClone(source.calls.options),
           ...(source.calls.initiative ? { initiative: source.calls.initiative } : {}),
           ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
-          ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+          ...(source.calls.endsWithCaller ? { endsWithCaller: source.calls.endsWithCaller } : {}),
           ...(source.calls.cantCall ? { cantCall: true as const } : {}),
           ...(source.calls.leash ? { leash: source.calls.leash } : {}),
           ...(source.calls.within ? { within: { ...source.calls.within } } : {}),
           ...(source.calls.commandedWith ? { commandedWith: source.calls.commandedWith } : {}),
+          ...(source.calls.commandedBy ? { commandedBy: source.calls.commandedBy.action } : {}),
           ...(source.calls.fromCaller ? { callerAction: source.calls.fromCaller.action } : {}),
         };
         // They arrive after their caller's turns (1.561), whichever option comes.
@@ -6756,7 +6758,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.initiative === "after" ? { after: true as const } : {}),
         ...(source.calls.initiative === "none" ? { turnless: true as const } : {}),
         ...(source.calls.rounds ? { rounds: source.calls.rounds } : {}),
-        ...(source.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+        ...(source.calls.endsWithCaller ? { endsWithCaller: source.calls.endsWithCaller } : {}),
         ...(source.calls.cantCall ? { cantCall: true as const } : {}),
         ...(source.calls.atCorpse ? { atCorpse: structuredClone(source.calls.atCorpse) } : {}),
         ...(source.calls.atMost ? { atMost: source.calls.atMost } : {}),
@@ -6766,6 +6768,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.arrivesIn ? { arrivesIn: { ...source.calls.arrivesIn } } : {}),
         // Commanded, with their caller's own attack (1.654): a solar's Flying Sword.
         ...(source.calls.commandedWith ? { commandedWith: source.calls.commandedWith } : {}),
+        ...(source.calls.commandedBy ? { commandedBy: source.calls.commandedBy.action } : {}),
         ...(source.calls.fromCaller ? { fromCaller: { action: source.calls.fromCaller.action } } : {}),
       };
       // Aimed at the corpse it rises from (1.501).

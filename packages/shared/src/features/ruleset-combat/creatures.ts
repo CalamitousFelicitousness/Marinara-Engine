@@ -333,7 +333,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.options ? { options: structuredClone(action.calls.options) } : {}),
             ...(action.calls.initiative ? { initiative: action.calls.initiative } : {}),
             ...(action.calls.rounds ? { rounds: action.calls.rounds } : {}),
-            ...(action.calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+            ...(action.calls.endsWithCaller ? { endsWithCaller: action.calls.endsWithCaller } : {}),
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
             ...(action.calls.dismissible ? { dismissible: structuredClone(action.calls.dismissible) } : {}),
             ...(action.calls.leash ? { leash: action.calls.leash } : {}),
@@ -347,6 +347,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.atMost ? { atMost: action.calls.atMost } : {}),
             // Commanded, with their caller's own attack (1.654): a solar's Flying Sword.
             ...(action.calls.commandedWith ? { commandedWith: action.calls.commandedWith } : {}),
+            ...(action.calls.commandedBy ? { commandedBy: { action: action.calls.commandedBy.action } } : {}),
             ...(action.calls.fromCaller ? { fromCaller: { action: action.calls.fromCaller.action } } : {}),
           },
         }

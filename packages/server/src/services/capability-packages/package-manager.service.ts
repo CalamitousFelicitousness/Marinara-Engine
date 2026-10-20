@@ -2741,6 +2741,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's call commanded through one of its caller's actions, or ending as its caller is
+ *  incapacitated (1.683): a chain devil's chains. */
+function carriesCommandedBy683(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCommandedBy683(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.commandedBy !== undefined) return true;
+  const actions = plainRecord(record.creature)?.actions;
+  if (
+    Array.isArray(actions) &&
+    actions.some((one) => plainRecord(plainRecord(one)?.calls)?.endsWithCaller === "incapacitated")
+  )
+    return true;
+  return featureValues(record).some((one) => carriesCommandedBy683(one, depth + 1));
+}
+
 /** An aura that spreads only while its holder is ridden (1.682): a goat of terror. */
 function carriesAuraWhileRidden682(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8997,6 +9014,14 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's call commanded through one of its caller's actions, or ending as it is
+  // incapacitated, 1.683.
+  if (
+    !declaresApi(683) &&
+    (carriesCommandedBy683(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCommandedBy683(document)))
+  )
+    return "A ruleset with a creature's call commanded through one of its caller's actions or ending as its caller is incapacitated (calls.commandedBy, or calls.endsWithCaller \"incapacitated\" on a creature) requires schemaVersion 2 and capabilityApi 1.683 or newer";
   // An aura that spreads only while its holder is ridden, 1.682.
   if (
     !declaresApi(682) &&

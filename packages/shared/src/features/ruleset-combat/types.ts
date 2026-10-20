@@ -601,6 +601,8 @@ export interface RulesetStatBlockAction {
     atMost?: number;
     /** Commanded on this budget (1.654): a solar's Flying Sword. */
     commandedWith?: string;
+    /** Commanded through this one of their caller's actions (1.683): a chain devil's Multiattack. */
+    commandedBy?: { action: string };
     /** Their attacks made as this of their caller's own actions is (1.654). */
     fromCaller?: { action: string };
   };
@@ -1099,7 +1101,7 @@ export interface RulesetCombatAction {
   formsOf?: RulesetShapeForms;
   /** Who it calls as written (1.344), until the fight finds them in the bestiary; picked from its
    *  `modes` when it names options. */
-  callsOf?: RulesetCatalogCalls & { cantCall?: true; callerAction?: string };
+  callsOf?: RulesetCatalogCalls & { cantCall?: true; callerAction?: string; commandedBy?: string };
   callChoice?: true;
   /** Whichever of its options comes arrives after this many of its caller's turns (1.561). */
   callsArriveIn?: RulesetCombatAmount;
@@ -1460,6 +1462,8 @@ export interface RulesetCombatAction {
     fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef; action?: string };
     /** Acting only as their caller pays this budget for it (1.505). */
     commandedWith?: string;
+    /** Acting only once their caller has made this action (1.683). */
+    commandedBy?: string;
     /** Images, not creatures (1.515): Mislead's double. */
     illusion?: true;
     /** They come against their caller unless its derived value is at least this (1.558). */
@@ -2102,7 +2106,8 @@ export interface RulesetCombatant {
   calledHostileOnBreak?: true;
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
    *  (1.505): 5e's Arcane Hand. */
-  calledCommand?: { budget: string; free?: true };
+  /** Paid on `budget` (1.505), or given by their caller making `action` (1.683). */
+  calledCommand?: { budget?: string; free?: true; action?: string; given?: true };
   /** Under nobody's control (1.562): each turn only walking toward its caller, unless it holds
    *  `tamedWhile`; it keeps no side standing. Pipes of the Sewers' swarms. */
   calledWild?: { tamedWhile?: string };

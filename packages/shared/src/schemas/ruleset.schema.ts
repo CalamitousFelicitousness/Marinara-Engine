@@ -8965,7 +8965,9 @@ const creatureActionFullSchema = z
         options: calledOptionsSchema.optional(),
         initiative: z.enum(["roll", "after"]).optional(),
         rounds: z.number().int().min(1).max(14400).optional(),
-        endsWithCaller: z.literal(true).optional(),
+        /** `"incapacitated"` (Capability API 1.683), as a catalog entry's (1.680): they also leave
+         *  as soon as their caller is down or cannot act. A chain devil's chains. */
+        endsWithCaller: z.union([z.literal(true), z.literal("incapacitated")]).optional(),
         cantCall: z.literal(true).optional(),
         /** `{ "budget": "<id>" }` (Capability API 1.557): sent away on that budget instead of the
          *  action's own, a treant's bonus action to turn its tree back. */
@@ -8998,6 +9000,11 @@ const creatureActionFullSchema = z
          *  each of their turns but the first, their caller pays 1 of this budget, or the turn passes.
          *  A solar's Flying Sword, a bonus action. */
         commandedWith: sheetId.optional(),
+        /** They act only once their caller has made this one of its own actions, by id, since their
+         *  last turn (Capability API 1.683); otherwise their turn passes. A chain devil's chains, "when
+         *  the devil uses Multiattack on its turn, it can use each animated chain to make one
+         *  additional chain attack": `{"action": "multiattack"}`. Not with `commandedWith`. */
+        commandedBy: z.object({ action: sheetId }).strict().optional(),
         /** Their attacks are made with their caller's own `action`'s bonus to hit and damage
          *  (Capability API 1.654), one of the caller's actions by id: a solar's Flying Sword, "using
          *  the solar's own greatsword attack". */
@@ -20920,6 +20927,14 @@ function creatureIssues(
     // Commanded on a budget, with the caller's own attack (1.654): a solar's Flying Sword.
     if (action.calls?.commandedWith !== undefined && !budgets.has(action.calls.commandedWith)) {
       add([...path, "calls", "commandedWith"], `Unknown budget "${action.calls.commandedWith}"`);
+    }
+    // Or through one of the caller's own actions (1.683): a chain devil's Multiattack.
+    const commandedBy = action.calls?.commandedBy?.action;
+    if (commandedBy !== undefined) {
+      if (!creature.actions.some((one) => one.id === commandedBy))
+        add([...path, "calls", "commandedBy", "action"], `No action "${commandedBy}" of this creature's`);
+      if (action.calls?.commandedWith !== undefined)
+        add([...path, "calls", "commandedBy"], "Commanded through an action or on a budget, not both");
     }
     const struckWith = action.calls?.fromCaller?.action;
     if (struckWith !== undefined) {

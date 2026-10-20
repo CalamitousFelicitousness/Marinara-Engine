@@ -8193,6 +8193,10 @@ function applyChoice(
   }
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
   if (action.makesItems) makeItems(ctx, working, action);
+  // Those it commands through this action act at their next turn (1.683): a chain devil's chains.
+  for (const one of ctx.state.combatants) {
+    if (one.calledBy === working.id && one.calledCommand?.action === action.id) one.calledCommand.given = true;
+  }
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
       id: action.followUp,
@@ -10897,6 +10901,8 @@ function callCreatures(
       );
     // Commanded by their caller (1.505), the turn they come on free.
     if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
+    // Or only once their caller has made one of its own actions (1.683): a chain devil's chains.
+    if (action.calls.commandedBy) called.calledCommand = { action: action.calls.commandedBy };
     // An image, not a creature (1.515).
     if (action.calls.illusion) called.illusion = { seenBy: [] };
   }
@@ -17396,8 +17402,17 @@ function beginNextTurn(
     const command = actor.calledCommand;
     if (command && !actor.defeated && !actor.calledTurned && !actor.calledOnOwn) {
       const caller = actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
-      if (command.free) delete command.free;
-      else if (caller && rulesetCombatStanding(caller) && (caller.budgets[command.budget] ?? 0) >= 1) {
+      // Through one of its caller's actions (1.683): only once the caller has made it.
+      const given = command.action !== undefined ? command.given === true : undefined;
+      if (command.action !== undefined) delete command.given;
+      if (given === true || (given === undefined && command.free)) delete command.free;
+      else if (
+        given === undefined &&
+        command.budget !== undefined &&
+        caller &&
+        rulesetCombatStanding(caller) &&
+        (caller.budgets[command.budget] ?? 0) >= 1
+      ) {
         caller.budgets[command.budget] = (caller.budgets[command.budget] ?? 0) - 1;
       } else {
         tickConditions(ctx, actor, "turn-end");

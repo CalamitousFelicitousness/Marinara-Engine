@@ -82167,8 +82167,14 @@
                               "maximum": 14400
                             },
                             "endsWithCaller": {
-                              "type": "boolean",
-                              "const": true
+                              "type": [
+                                "boolean",
+                                "string"
+                              ],
+                              "enum": [
+                                true,
+                                "incapacitated"
+                              ]
                             },
                             "cantCall": {
                               "type": "boolean",
@@ -82507,6 +82513,21 @@
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "commandedBy": {
+                              "type": "object",
+                              "properties": {
+                                "action": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "action"
+                              ],
+                              "additionalProperties": false
                             },
                             "fromCaller": {
                               "type": "object",
@@ -101438,8 +101459,14 @@
                                 "maximum": 14400
                               },
                               "endsWithCaller": {
-                                "type": "boolean",
-                                "const": true
+                                "type": [
+                                  "boolean",
+                                  "string"
+                                ],
+                                "enum": [
+                                  true,
+                                  "incapacitated"
+                                ]
                               },
                               "cantCall": {
                                 "type": "boolean",
@@ -101778,6 +101805,21 @@
                                 "type": "string",
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "commandedBy": {
+                                "type": "object",
+                                "properties": {
+                                  "action": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "action"
+                                ],
+                                "additionalProperties": false
                               },
                               "fromCaller": {
                                 "type": "object",

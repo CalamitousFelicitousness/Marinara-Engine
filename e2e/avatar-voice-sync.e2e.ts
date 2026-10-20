@@ -12,9 +12,15 @@ import { paintPng, solid } from "../scripts/regressions/fixtures/avatar-2d-fixtu
 import { expressiveVrm } from "../scripts/regressions/fixtures/avatar-3d-fixtures.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
-// Text-to-speech starts after the reply, with no click in between: Chromium must allow it.
+// Text-to-speech starts without another click. WebKit must not receive Chromium's launch flags.
 test.use({
-  launchOptions: { args: ["--disable-audio-output", "--mute-audio", "--autoplay-policy=no-user-gesture-required"] },
+  launchOptions: async ({ browserName }, use) => {
+    await use(
+      browserName === "chromium"
+        ? { args: ["--disable-audio-output", "--mute-audio", "--autoplay-policy=no-user-gesture-required"] }
+        : {},
+    );
+  },
 });
 
 const version = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string })

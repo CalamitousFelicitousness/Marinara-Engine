@@ -8175,6 +8175,8 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
   page,
   request,
 }, testInfo) => {
+  // Five full reload/paint paths (added in 711c461e09) share this budget; each assertion keeps its 10s limit.
+  test.setTimeout(120_000);
   let characterId = "";
   let chatId = "";
   try {
@@ -13719,7 +13721,7 @@ test("Mobile Roleplay quick picker matches the character selector surface", asyn
       expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
       await page.getByTitle("Trigger character response", { exact: true }).click();
       await page.getByTitle("Quick Switcher", { exact: true }).click();
-      const picker = page.locator(".fixed[data-chat-floating-panel]");
+      const picker = page.locator("[data-quick-switcher-mobile-menu]");
       await expect(picker).toBeVisible();
       for (const tab of ["Connections", "Personas"]) {
         await picker.getByRole("button", { name: tab, exact: true }).click();

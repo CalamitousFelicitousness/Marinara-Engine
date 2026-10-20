@@ -97,7 +97,7 @@ try {
   assert.equal(immune(null), true, "off a board, an ally standing");
 
   // ── Refusals ──
-  refused(fiveE({}), /"heldOnlyIn" names a light, an ally seen within a distance, or both/);
+  refused(fiveE({}), /"heldOnlyIn" names a light, an ally seen within a distance, ground, or more than one/);
 
   // ── The install gate ──
   {

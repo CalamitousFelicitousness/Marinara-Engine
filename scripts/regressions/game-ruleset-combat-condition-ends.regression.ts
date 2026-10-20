@@ -657,7 +657,9 @@ try {
     assert.equal(condition.endsWhen.minItems, 1);
     assert.equal(condition.endsWhen.maxItems, 6);
     assert.equal(condition.endsWhen.uniqueItems, true);
-    assert.equal(condition.saveWhenDamaged.const, true);
+    // True, or the lean the save is rolled with as it is damaged (1.659).
+    assert.equal(condition.saveWhenDamaged.anyOf[0].const, true);
+    assert.deepEqual(condition.saveWhenDamaged.anyOf[1].required, ["lean"]);
     assert.deepEqual(condition.shakeOff.required, ["budget"]);
     assert.equal(condition.shakeOff.additionalProperties, false);
     assert.equal(condition.shakeOff.properties.reach.exclusiveMinimum, 0);

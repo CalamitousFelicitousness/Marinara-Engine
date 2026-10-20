@@ -13951,6 +13951,7 @@
   "ui.rulesets.sheet.skills": "Skills",
   "ui.rulesets.sheet.spellAttack": "Spell attack {{value}}",
   "ui.rulesets.sheet.spellSave": "Save DC {{value}}",
+  "ui.rulesets.sheet.totalOver": "{{label}} adds up to {{total}}, more than the {{max}} allowed.",
   "ui.rulesets.sheet.trainingFor": "Training for {{name}}",
   "ui.rulesets.sheet.untrainedRefused": "Cannot be attempted untrained",
   "ui.rulesets.sheet.untrainedRefusedFor": "{{name}} cannot be attempted untrained",

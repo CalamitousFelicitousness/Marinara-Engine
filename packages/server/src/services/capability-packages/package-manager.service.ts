@@ -8328,6 +8328,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Number fields held to a combined most, 1.619.
+  if (!declaresApi(619) && plainRecord(plainRecord(ruleset)?.sheet)?.totals !== undefined)
+    return "A ruleset whose sheet holds fields to a combined most (sheet.totals) requires schemaVersion 2 and capabilityApi 1.619 or newer";
   // A climb kept off some ground, and slippery ground, 1.618.
   if (
     !declaresApi(618) &&

@@ -8,6 +8,8 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheetLive,
+  rulesetFieldMax,
+  rulesetSheetTotalsOver,
   isRulesetItemHidden,
   migrateRulesetSheetBuild,
   recomputeScaledRows,
@@ -636,6 +638,13 @@ export function RulesetSheetEditor({
           />
         )}
 
+        {/* Fields held to a combined most and over it (1.619): an imported sheet, or one from before. */}
+        {rulesetSheetTotalsOver(definition, build).map((over) => (
+          <p key={over.label} role="alert" className="text-xs text-[var(--destructive)]">
+            {t("ui.rulesets.sheet.totalOver", over)}
+          </p>
+        ))}
+
         {itemAccess.length > 0 && (
           <p className="text-xs text-[var(--muted-foreground)]">
             {t("ui.rulesets.sheet.itemAccess", { items: itemAccess.join(", ") })}
@@ -654,7 +663,11 @@ export function RulesetSheetEditor({
                   >
                     <span className={labelClass}>{field.label}</span>
                     <TypedInput
-                      spec={field}
+                      spec={
+                        field.type === "number" && definition.sheet.totals?.some((one) => one.fields.includes(field.id))
+                          ? { ...field, max: rulesetFieldMax(definition, build, field.id) }
+                          : field
+                      }
                       value={build.fields[field.id]}
                       onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
                       ariaLabel={field.label}

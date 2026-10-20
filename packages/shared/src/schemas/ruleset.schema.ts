@@ -2181,6 +2181,20 @@ const advancementSchema = z
     message: "Advancement must allow at least one field, abilities, skills or saves",
   });
 
+/** Number fields held to a combined most (1.619). */
+export interface RulesetSheetTotal {
+  fields: string[];
+  max: number;
+  label?: string;
+}
+const sheetTotalSchema: z.ZodType<RulesetSheetTotal, z.ZodTypeDef, unknown> = z
+  .object({
+    fields: z.array(sheetId).min(2).max(24),
+    max: z.number().int().min(1).max(100000),
+    label: promptSafeText(80).optional(),
+  })
+  .strict();
+
 export const rulesetSheetSchema = z
   .object({
     /** Bumped by the author when the sheet's shape changes. Stored sheets record it as `v`. */
@@ -2222,6 +2236,10 @@ export const rulesetSheetSchema = z
     builder: sheetBuilderSchema.optional(),
     /** Permanent changes the Game Master may make (Capability API 1.142). */
     advancement: advancementSchema.optional(),
+    /** Number fields held to a combined most wherever the sheet is edited (Capability API 1.619):
+     *  the full form lowers each one's most by what the others hold, the Game Master's advancement
+     *  refuses a value past it, and a sheet already over it says so. 5e's class levels, 20 in all. */
+    totals: z.array(sheetTotalSchema).min(1).max(8).optional(),
   })
   .strict();
 
@@ -15274,6 +15292,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         field ? `Advancement field "${id}" must be number or text` : `Unknown advancement field "${id}"`,
       );
     }
+  }
+  // Fields held to a combined most (1.619): number fields, each named once.
+  for (const [index, total] of (sheet.totals ?? []).entries()) {
+    total.fields.forEach((id, fieldIndex) => {
+      const field = sheet.fields.find((entry) => entry.id === id);
+      if (!field || field.type !== "number") {
+        issue(
+          ["sheet", "totals", index, "fields", fieldIndex],
+          field ? `Total field "${id}" must be a number` : `Unknown total field "${id}"`,
+        );
+      }
+      if (total.fields.indexOf(id) !== fieldIndex)
+        issue(["sheet", "totals", index, "fields", fieldIndex], `"${id}" is named twice`);
+    });
   }
   const derivedIds = unique(sheet.derived, ["sheet", "derived"], "derived value");
   const lists = unique(sheet.lists, ["sheet", "lists"], "list");

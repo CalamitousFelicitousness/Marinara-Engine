@@ -40,6 +40,7 @@ import {
   roundRulesetNumber,
   rulesetCheckModifier,
   rulesetSheetMigrationSteps,
+  rulesetFieldMax,
   type RulesetSheetItem,
   type EvaluatedRulesetSheet,
 } from "./sheet-math.js";
@@ -1288,8 +1289,12 @@ function advanceBuild(
         typeof storedValue === "number" && Number.isFinite(storedValue) ? storedValue : defaults[group][entry.id];
       const value = op.by === undefined ? number(op.to) : number(previous) + op.by;
       const integer = !("type" in entry) || entry.integer;
-      if (!Number.isFinite(value) || value < entry.min || value > entry.max || (integer && !Number.isInteger(value))) {
-        return { ok: false, reason: `bad-amount: ${integer ? "integer " : ""}${entry.min} to ${entry.max}` };
+      // Held with the others it is totalled with (1.619): 5e's class levels.
+      const most = field
+        ? Math.max(Math.min(entry.max, rulesetFieldMax(definition, build, entry.id)), entry.min)
+        : entry.max;
+      if (!Number.isFinite(value) || value < entry.min || value > most || (integer && !Number.isInteger(value))) {
+        return { ok: false, reason: `bad-amount: ${integer ? "integer " : ""}${entry.min} to ${most}` };
       }
       next[group][entry.id] = value;
       now = String(value);

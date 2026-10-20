@@ -580,6 +580,45 @@ export function rulesetChangedAbilityScores(
   return out;
 }
 
+/** A number field's value as the sheet reads it: its own, its default, or its floor. */
+function rulesetFieldNumber(definition: RulesetDefinition, build: RulesetSheetBuild, id: string): number {
+  const field = definition.sheet.fields.find((entry) => entry.id === id);
+  if (!field || field.type !== "number") return 0;
+  return finite(build.fields?.[id]) ?? field.default ?? Math.min(Math.max(0, field.min), field.max);
+}
+
+/** A number field's most (1.619): its own, lowered by every sheet total it is in by what the others
+ *  there hold, never below its own least. */
+export function rulesetFieldMax(definition: RulesetDefinition, build: RulesetSheetBuild, id: string): number {
+  const field = definition.sheet.fields.find((entry) => entry.id === id);
+  if (!field || field.type !== "number") return 0;
+  let most = field.max;
+  for (const total of definition.sheet.totals ?? []) {
+    if (!total.fields.includes(id)) continue;
+    const others = total.fields.reduce(
+      (sum, other) => (other === id ? sum : sum + rulesetFieldNumber(definition, build, other)),
+      0,
+    );
+    most = Math.min(most, total.max - others);
+  }
+  return Math.max(field.min, most);
+}
+
+/** The sheet totals a build holds more than (1.619), each with what it holds and its most. */
+export function rulesetSheetTotalsOver(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+): Array<{ label: string; total: number; max: number }> {
+  return (definition.sheet.totals ?? []).flatMap((total) => {
+    const sum = total.fields.reduce((acc, id) => acc + rulesetFieldNumber(definition, build, id), 0);
+    if (sum <= total.max) return [];
+    const label =
+      total.label ??
+      total.fields.map((id) => definition.sheet.fields.find((entry) => entry.id === id)?.label ?? id).join(", ");
+    return [{ label, total: sum, max: total.max }];
+  });
+}
+
 export function evaluateRulesetSheet(
   definition: RulesetDefinition,
   stored: RulesetSheetBuild,

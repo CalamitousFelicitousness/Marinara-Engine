@@ -248,6 +248,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.byUse ? { byUse: [...action.byUse] } : {}),
     // A Harpoon's contest (1.642).
     ...(action.contest ? { contest: structuredClone(action.contest) } : {}),
+    // Only on a target small enough (1.645).
+    ...(action.ridersIs ? { ridersIs: structuredClone(action.ridersIs) } : {}),
     // Etherealness (1.632).
     ...(action.dismisses ? { dismisses: structuredClone(action.dismisses) } : {}),
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.

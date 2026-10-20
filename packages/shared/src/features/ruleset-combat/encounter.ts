@@ -4711,6 +4711,8 @@ function blockActions(
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
     // What each use does, in turn (1.634): an androsphinx's Roar.
     ...(action.byUse ? { byUse: action.byUse.filter((id) => indexById.has(id)) } : {}),
+    // What goes on after the blow only on a target that is this (1.645): a merrow's Harpoon.
+    ...(action.ridersIs ? { ridersIs: structuredClone(action.ridersIs) } : {}),
     // What it puts on waits on a contest it wins (1.642): a merrow's Harpoon.
     ...(action.contest
       ? {

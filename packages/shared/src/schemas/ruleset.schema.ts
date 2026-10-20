@@ -8824,6 +8824,11 @@ const creatureActionFullSchema = z
       })
       .strict()
       .optional(),
+    /** What it puts on (`applies`), pushes, pulls or sends away (`dismisses`), and its `contest`,
+     *  go only on a target that is this (Capability API 1.645); its damage lands on anybody. A
+     *  merrow's Harpoon, "If the target is Huge or smaller, it must succeed on a Strength contest
+     *  ... or be pulled", `{"upToSize": "huge"}`. */
+    ridersIs: targetIsSchema.optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -8999,6 +9004,21 @@ const creatureActionFullSchema = z
         code: z.ZodIssueCode.custom,
         path: ["pull"],
         message: "An action pushes or pulls whoever it lands on, not both",
+      });
+    }
+    // Something after the blow for a target test to narrow (1.645).
+    if (
+      action.ridersIs &&
+      !action.applies?.length &&
+      action.push === undefined &&
+      action.pull === undefined &&
+      !action.contest &&
+      !action.dismisses
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ridersIs"],
+        message: '"ridersIs" narrows what goes on after the blow, so the action applies, pushes, pulls or dismisses',
       });
     }
     // A contest stands in for the save on what it puts on (1.642).
@@ -20647,6 +20667,8 @@ function creatureIssues(
           add([...path, "charge", "then", "targetHolds", index], `Unknown condition "${condition}"`);
       });
     }
+    // Whom its riders go on is the fight's own kinds and sizes (1.645).
+    targetIsIssues(definition, action.ridersIs, [...path, "ridersIs"], add);
     // Each side of its contest throws one of the fight's checks (1.642).
     (["attacker", "defender"] as const).forEach((side) => {
       action.contest?.[side].forEach((check, checkIndex) => {

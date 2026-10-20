@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's action whose riders go only on a target that is something (1.645): a merrow's
+ *  Harpoon on a Huge or smaller target. */
+function carriesRidersIs645(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRidersIs645(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.ridersIs !== undefined) return true;
+  return featureValues(record).some((one) => carriesRidersIs645(one, depth + 1));
+}
+
 /** A zone keeping out more than 8 conditions from whoever is inside (1.644): Magic Circle and
  *  Hallow's "charmed, frightened, or possessed" beside the rest. */
 function carriesKeepsOutTwelve644(value: unknown, depth = 0): boolean {
@@ -8619,6 +8630,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action whose riders go only on a target that is something, 1.645.
+  if (
+    !declaresApi(645) &&
+    (carriesRidersIs645(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRidersIs645(document)))
+  )
+    return "A ruleset with a creature's action whose riders go only on a target that is something (ridersIs) requires schemaVersion 2 and capabilityApi 1.645 or newer";
   // A zone keeping out more than 8 conditions, 1.644.
   if (
     !declaresApi(644) &&

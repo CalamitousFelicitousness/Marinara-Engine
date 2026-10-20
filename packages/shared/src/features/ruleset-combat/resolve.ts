@@ -15742,7 +15742,10 @@ function resolveActionBodyIn(
     }
     // What goes on after the blow, won by a contest (1.642): lost, it is as a save made that does
     // nothing to the damage. A merrow's Harpoon.
-    if (action.contested?.riders && !saved && !wonContest(ctx, actor, action, target)) saved = true;
+    // Only on a target that is what it names (1.645): no contest with one too big for the Harpoon,
+    // and nothing put on, pushed, pulled or sent away; its damage lands all the same.
+    const riderless = !!action.ridersIs && !rulesetTargetIs(ctx.definition, target, action.ridersIs);
+    if (action.contested?.riders && !saved && !riderless && !wonContest(ctx, actor, action, target)) saved = true;
     // A save its holder evades with (1.250): nothing on a success, half on a failure.
     const evades =
       action.save?.onSuccess === "half" &&
@@ -16425,7 +16428,7 @@ function resolveActionBodyIn(
           (failedBy.resultAtMost !== undefined && missed.total <= failedBy.resultAtMost));
       const putting = worse ? failedBy.applies : (action.applies ?? []);
       // Not on whoever it catches where it goes on what it calls (1.426).
-      for (const applies of slain || warded || action.appliesToCalled ? [] : putting) {
+      for (const applies of slain || warded || riderless || action.appliesToCalled ? [] : putting) {
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
@@ -16481,11 +16484,11 @@ function resolveActionBodyIn(
       // each charge more spent on it (1.271): a Ring of the Ram's.
       const pushedMore = (ctx.moreCharges ?? 0) * (action.itemUse?.charges?.step?.push ?? 0);
       const pushBy = action.push !== undefined || pushedMore > 0 ? (action.push ?? 0) + pushedMore : undefined;
-      if (pushBy !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
+      if (pushBy !== undefined && !riderless && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, pushBy);
       }
       // Pulled toward its maker (1.622), stopping beside them: a balor's whip, Thorn Whip.
-      if (action.pull !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
+      if (action.pull !== undefined && !riderless && target.id !== actor.id && rulesetCombatStanding(target)) {
         const pulled = pushTarget(ctx, actor, target, 0, rulesetPullPath(ctx.state, actor.id, target.id, action.pull));
         if (pulled) pulled.pulled = true;
       }
@@ -16501,6 +16504,7 @@ function resolveActionBodyIn(
         action.dismisses &&
         (target.id !== actor.id || (typeof action.dismisses === "object" && !!action.dismisses.turns)) &&
         !slain &&
+        !riderless &&
         rulesetTargetIs(ctx.definition, target, action.dismissesIs)
       )
         dismiss(ctx, actor, action, target);

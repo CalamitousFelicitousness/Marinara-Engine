@@ -521,6 +521,8 @@ export interface RulesetStatBlockAction {
   byUse?: string[];
   /** A contest the creature wins for what it puts on to go on (1.642): a merrow's Harpoon. */
   contest?: { attacker: string[]; defender: string[]; ties?: "attacker" | "defender" };
+  /** What it puts on, pushes, pulls or sends away goes only on a target that is this (1.645). */
+  ridersIs?: RulesetTargetIs;
   /** Whoever it lands on leaves the fight (1.632), its own creature too, still taking its turns away;
    *  `carries.within` in the ruleset's own distance. */
   dismisses?:
@@ -988,6 +990,9 @@ export interface RulesetCombatAction {
   killsAtMost?: number;
   /** `dismisses` sends away only those that are this (1.397). */
   dismissesIs?: RulesetTargetIs;
+  /** What goes on after the blow, its contest too, goes only on a target that is this (1.645): a
+   *  merrow's Harpoon on a Huge or smaller target. Its damage lands either way. */
+  ridersIs?: RulesetTargetIs;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   /** `overMax` (1.252): it may go past the pool's maximum, as Font of Magic's slots do. */
   restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };

@@ -3954,6 +3954,7 @@ function mechanicsAction(
     };
   }
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
+  if (mechanics.pull !== undefined) action.pull = rulesetInCells(mechanics.pull, perCell ?? 1);
   if (mechanics.pushesOutSaved) action.pushesOutSaved = true;
   // Measured on a board (1.276): a fight without one has nowhere to go, but out of it (1.279).
   if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves)) {
@@ -4514,6 +4515,7 @@ export function rulesetMovesOnly(action: {
   save?: unknown;
   ends?: unknown;
   push?: unknown;
+  pull?: unknown;
   toHit?: unknown;
   autoHit?: unknown;
 }): boolean {
@@ -4528,6 +4530,7 @@ export function rulesetMovesOnly(action: {
       action.save,
       action.ends,
       action.push,
+      action.pull,
       action.toHit,
       action.autoHit,
     ].every((one) => one === undefined || one === false)
@@ -4731,6 +4734,7 @@ function blockActions(
       : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
+    ...(perCell !== undefined && action.pull !== undefined ? { pull: rulesetInCells(action.pull, perCell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)
       ? { teleport: rulesetTeleportInCells(action.teleport, perCell ?? 1) }
       : {}),

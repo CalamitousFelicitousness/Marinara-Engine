@@ -171,6 +171,7 @@ import {
   rulesetGapFrom,
   rulesetPositionOf,
   rulesetPathCells,
+  rulesetPullPath,
   rulesetPushPath,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
@@ -16111,6 +16112,11 @@ function resolveActionBodyIn(
       const pushBy = action.push !== undefined || pushedMore > 0 ? (action.push ?? 0) + pushedMore : undefined;
       if (pushBy !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, pushBy);
+      }
+      // Pulled toward its maker (1.622), stopping beside them: a balor's whip, Thorn Whip.
+      if (action.pull !== undefined && target.id !== actor.id && rulesetCombatStanding(target)) {
+        const pulled = pushTarget(ctx, actor, target, 0, rulesetPullPath(ctx.state, actor.id, target.id, action.pull));
+        if (pulled) pulled.pulled = true;
       }
       // Drawn toward its maker on their own budget (1.326): Whisper a Name.
       if (action.draws && target.id !== actor.id && rulesetCombatStanding(target)) {

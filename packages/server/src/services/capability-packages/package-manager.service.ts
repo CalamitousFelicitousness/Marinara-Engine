@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** Somebody pulled straight toward whoever pulls them (1.622): a balor's whip, Thorn Whip. */
+function carriesPull622(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPull622(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.pull === "number") return true;
+  return featureValues(record).some((one) => carriesPull622(one, depth + 1));
+}
+
 function carriesCreatureOncePerTarget621(value: unknown, depth = 0, creature = false): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreatureOncePerTarget621(one, depth + 1, creature));
@@ -8352,6 +8362,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Somebody pulled toward whoever pulls them, 1.622.
+  if (
+    !declaresApi(622) &&
+    (carriesPull622(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesPull622(document)))
+  )
+    return "A ruleset that pulls somebody toward whoever pulls them (pull) requires schemaVersion 2 and capabilityApi 1.622 or newer";
   // A creature's action never used on the same creature again, 1.621.
   if (
     !declaresApi(621) &&

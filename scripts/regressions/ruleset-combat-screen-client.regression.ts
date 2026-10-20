@@ -1501,6 +1501,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
+  // Pulled in rather than pushed (1.622): a balor's whip.
+  assert.equal(
+    say({
+      type: "pushed",
+      actorId: "brenna",
+      targetId: "lurker",
+      from: { x: 6, y: 2 },
+      to: { x: 4, y: 2 },
+      path: [
+        { x: 5, y: 2 },
+        { x: 4, y: 2 },
+      ],
+      pulled: true,
+    }),
+    "Brenna pulls Thorn Lurker in 2, to 4, 2.",
+  );
   assert.equal(printed.get("teleported"), "Brenna teleports with Misty Step, to 6, 1.");
   // Carried along (1.276).
   assert.equal(

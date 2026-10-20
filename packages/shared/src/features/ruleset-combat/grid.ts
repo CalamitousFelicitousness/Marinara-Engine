@@ -1294,6 +1294,73 @@ export function rulesetReachableCells(
  * or a corner too tight to squeeze through, exactly as a walk would. Empty when there is nowhere to
  * go. A push is not a walk: it spends nothing and nobody strikes at it on the way.
  */
+/** The way somebody is pulled straight toward whoever pulls them (1.622), a cell at a time from
+ *  their nearest cells to each other, stopping once beside them. Walls, filled cells and steep
+ *  rises stop it as they stop a push: a balor's whip, a roper's Reel. */
+export function rulesetPullPath(
+  state: RulesetEncounterState,
+  pullerId: string,
+  targetId: string,
+  cells: number,
+): RulesetCombatCell[] {
+  const grid = state.board?.grid;
+  const puller = rulesetCombatant(state, pullerId);
+  const pulled = rulesetCombatant(state, targetId);
+  const start = rulesetPositionOf(pulled);
+  if (!grid || !start || !rulesetPositionOf(puller)) return [];
+  const span = rulesetSpanOf(pulled);
+  const anchors = rulesetFootprint(puller);
+  const occupied = new Set(
+    state.combatants.flatMap((combatant) =>
+      combatant.id === targetId || !rulesetCombatStanding(combatant)
+        ? []
+        : rulesetFootprint(combatant).map((at) => `${at.x},${at.y}`),
+    ),
+  );
+  /** Their nearest cell and the puller's nearest to it, and how far apart those are. */
+  const closest = (at: RulesetCombatCell) => {
+    let best = { own: at, to: at, gap: Infinity };
+    for (const own of rulesetFootprintAt(at, span)) {
+      for (const to of anchors) {
+        const gap = Math.max(Math.abs(to.x - own.x), Math.abs(to.y - own.y));
+        if (gap < best.gap) best = { own, to, gap };
+      }
+    }
+    return best;
+  };
+  const path: RulesetCombatCell[] = [];
+  let at = start;
+  for (let step = 0; step < Math.min(cells, MOVEMENT_CEILING); step++) {
+    const near = closest(at);
+    if (near.gap <= 1) break;
+    const dx = Math.sign(near.to.x - near.own.x);
+    const dy = Math.sign(near.to.y - near.own.y);
+    const x = at.x + dx;
+    const y = at.y + dy;
+    if (
+      rulesetFootprintAt({ x, y }, span).some(
+        (cell) => rulesetCellBlocked(grid, cell.x, cell.y) || occupied.has(`${cell.x},${cell.y}`),
+      )
+    ) {
+      break;
+    }
+    if (
+      dx !== 0 &&
+      dy !== 0 &&
+      rulesetCellBlocked(grid, at.x + dx, at.y) &&
+      rulesetCellBlocked(grid, at.x, at.y + dy)
+    ) {
+      break;
+    }
+    const rise = elevationAt(grid, x, y) - elevationAt(grid, at.x, at.y);
+    if (rise > 1) break;
+    at = { x, y };
+    path.push(at);
+    if (rise < -1) break;
+  }
+  return path;
+}
+
 export function rulesetPushPath(
   state: RulesetEncounterState,
   pusherId: string,

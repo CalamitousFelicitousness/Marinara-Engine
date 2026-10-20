@@ -2202,6 +2202,7 @@
   "game.combat.ruleset.event.propAreaBroken": "{{actor}}'s {{label}} catches {{prop}} for {{dealt}} and breaks it.",
   "game.combat.ruleset.event.propBroken": "{{actor}}'s {{label}} strikes {{prop}} for {{dealt}} and breaks it.",
   "game.combat.ruleset.event.propMiss": "{{actor}}'s {{label}} misses {{prop}}.",
+  "game.combat.ruleset.event.pulled": "{{actor}} pulls {{target}} in {{distance}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.pushed": "{{actor}} pushes {{target}} back {{distance}}, to {{x}}, {{y}}.",
   "game.combat.ruleset.event.pushedFollowed": "{{actor}} pushes {{target}} back {{distance}}, to {{x}}, {{y}}, and moves with them.",
   "game.combat.ruleset.event.raisedMax": "{{target}}'s health maximum rises by {{amount}} while {{condition}} holds.",

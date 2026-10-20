@@ -209,6 +209,7 @@ export {
   rulesetJumpCells,
   rulesetJumpReach,
   rulesetHardLanding,
+  rulesetPullPath,
   rulesetPushPath,
   rulesetSees,
   rulesetWalkingDistances,

@@ -1071,7 +1071,8 @@ export function rulesetCombatEventLine(
       );
     case "pushed":
       // And moved with them (1.545): the Forceful Hand.
-      return key(event.followed ? "pushedFollowed" : "pushed", {
+      // Or pulled in (1.622): a balor's whip.
+      return key(event.pulled ? "pulled" : event.followed ? "pushedFollowed" : "pushed", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
         distance: names.distance(event.path.length),

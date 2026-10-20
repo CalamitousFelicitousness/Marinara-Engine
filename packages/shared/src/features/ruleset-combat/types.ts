@@ -504,6 +504,9 @@ export interface RulesetStatBlockAction {
   /** Pushed this far straight away from the creature, in the ruleset's own distance, on a failed save
    *  when it has one (1.184). */
   push?: number;
+  /** Pulled this far straight toward the creature, stopping beside it, in the ruleset's own distance,
+   *  on a failed save when it has one (1.622). */
+  pull?: number;
   /** The creature teleports, in the ruleset's own distance (1.276). */
   teleport?: RulesetTeleport;
   /** A move bought with points (1.283): `share` of its speed or `distance` in the ruleset's own unit. */
@@ -1301,6 +1304,8 @@ export interface RulesetCombatAction {
   /** Cells whoever it lands on and does not save against is pushed straight away from its maker
    *  (1.182): 5e's Gust of Wind. */
   push?: number;
+  /** Cells they are pulled straight toward its maker instead, stopping beside them (1.622). */
+  pull?: number;
   /** Whoever its area catches and saves is pushed away from where it was aimed until out of it
    *  (1.578): a Bead of Force. */
   pushesOutSaved?: true;
@@ -3807,6 +3812,8 @@ export type RulesetCombatEvent =
       path: RulesetCombatCell[];
       /** Where the pusher moved with them (1.545). */
       followed?: { from: RulesetCombatCell; to: RulesetCombatCell };
+      /** Pulled toward the actor rather than pushed away (1.622). */
+      pulled?: true;
     }
   /** Teleported (1.276): the user, or one they carried (`by` names the user then). */
   | {

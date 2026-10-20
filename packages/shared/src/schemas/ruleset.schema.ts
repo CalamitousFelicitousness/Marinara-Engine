@@ -6757,6 +6757,10 @@ const catalogMechanicsObject = z
      *  in the catalog's unit (Capability API 1.182): 5e's Gust of Wind, 15 feet. A zone pushes
      *  whoever it catches the same way. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** Whoever it lands on and does not save against is pulled this far straight toward its maker,
+     *  stopping beside them, in the catalog's unit (Capability API 1.622): 5e's Thorn Whip and
+     *  Lightning Lure, 10 feet. */
+    pull: z.number().finite().gt(0).max(10000).optional(),
     /** Whoever its area catches and makes their save is pushed straight away from where it was aimed
      *  until no cell they fill is inside it (Capability API 1.578), as far as the way allows: 5e's
      *  Bead of Force, "creatures that succeeded on the save ... are pushed away from the center of the
@@ -7481,6 +7485,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["sustains"],
       message: '"sustains" starts again the rounds of what it puts on, so it applies a condition lasting some rounds',
+    });
+  }
+  if (mechanics.push !== undefined && mechanics.pull !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pull"],
+      message: "An entry pushes or pulls whoever it lands on, not both",
     });
   }
   if (mechanics.oncePerTarget?.whenSaved && !mechanics.save) {
@@ -8335,6 +8346,10 @@ const creatureActionFullSchema = z
      *  distance (Capability API 1.184); with a save, only on a failed one: a bronze dragon's
      *  Repulsion Breath, a dragon turtle's Tail. */
     push: z.number().finite().gt(0).max(10000).optional(),
+    /** Whoever it lands on is pulled this far straight toward the creature, stopping beside it, in the
+     *  ruleset's own distance (Capability API 1.622); with a save, only on a failed one: a balor's
+     *  whip, 25 feet; a roper's Reel, every creature it grapples, with `targetHolds.fromSelf`. */
+    pull: z.number().finite().gt(0).max(10000).optional(),
     /** The creature teleports (Capability API 1.276), in the ruleset's own distance, as a catalog
      *  entry's `teleport` does: a blink dog's Teleport, 40 feet to a place it can see. */
     teleport: teleportSchema.optional(),
@@ -8765,6 +8780,13 @@ const creatureActionFullSchema = z
           message: `A creature action's "${key}" is where its "area" is aimed, so it has one`,
         });
       }
+    }
+    if (action.push !== undefined && action.pull !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pull"],
+        message: "An action pushes or pulls whoever it lands on, not both",
+      });
     }
     if (action.oncePerTarget?.whenSaved && !action.save) {
       ctx.addIssue({

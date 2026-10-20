@@ -47108,6 +47108,11 @@
                       "exclusiveMinimum": 0,
                       "maximum": 10000
                     },
+                    "pull": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 10000
+                    },
                     "pushesOutSaved": {
                       "type": "boolean",
                       "const": true
@@ -66375,6 +66380,11 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "pull": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "teleport": {
                           "type": "object",
                           "properties": {
@@ -81517,6 +81527,11 @@
                             "additionalProperties": false
                           },
                           "push": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 10000
+                          },
+                          "pull": {
                             "type": "number",
                             "exclusiveMinimum": 0,
                             "maximum": 10000
@@ -116835,6 +116850,11 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "pull": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 10000
+                        },
                         "pushesOutSaved": {
                           "type": "boolean",
                           "const": true
@@ -138834,6 +138854,11 @@
                                 "additionalProperties": false
                               },
                               "push": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              "pull": {
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000
@@ -160843,6 +160868,11 @@
                                 "additionalProperties": false
                               },
                               "push": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              "pull": {
                                 "type": "number",
                                 "exclusiveMinimum": 0,
                                 "maximum": 10000

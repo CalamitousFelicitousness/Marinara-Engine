@@ -10536,7 +10536,20 @@ function applySignature(
   ctx.events.push({ type: "signature", actorId: working.id, optionId: action.id, label: action.label, cost, left });
   const workingAction = working.actions.find((entry) => entry.id === action.id)!;
   spendAvailability(ctx, working, workingAction);
-  if (!only) resolveAction(ctx, working, workingAction, workingTargets);
+  // What stays, as on its maker's own turn: a zone that does nothing as it appears catches nobody
+  // now. A kraken's Ink Cloud.
+  const zone = !only ? workingAction.zone : undefined;
+  if (!only) resolveAction(ctx, working, workingAction, zone && !zone.atCast ? [] : workingTargets);
+  if (zone && rulesetCombatStanding(working)) {
+    const at = workingAction.around ? rulesetPositionOf(working) : rulesetPositionOf(workingTargets[0]);
+    placeZone(ctx, working, workingAction, {
+      kind: "action",
+      actorId: working.id,
+      optionId: workingAction.id,
+      targetIds: workingTargets.map((one) => one.id),
+      ...(at ? { at: { x: at.x, y: at.y } } : {}),
+    });
+  }
   // Then the move (1.285), where it may still go: what it did may have changed the board.
   const path =
     workingAction.move && destination

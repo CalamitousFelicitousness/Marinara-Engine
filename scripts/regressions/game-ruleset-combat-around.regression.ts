@@ -198,6 +198,19 @@ try {
     assert.equal(who(step.state, "mummy").signature!.points, 1, "two points spent");
   }
 
+  // ── Bought between turns, what stays is laid: a kraken's Ink Cloud, doing nothing as it appears ──
+  {
+    const step = channelled(
+      fight({ action: channel({ zone: { rounds: 1, triggers: ["turn-end"], atCast: false, anchor: "caster" } }) }),
+    );
+    assert.ok(!holds(step.state, "near"), "nobody caught as it appears");
+    assert.deepEqual(
+      (who(step.state, "mummy").zones ?? []).map((one) => one.actionId),
+      ["channel"],
+      "the zone is laid",
+    );
+  }
+
   // ── Without throughWalls, the wall keeps the hero behind it out ──
   {
     const step = channelled(fight({ action: channel({ area: { shape: "burst", size: 60, around: true } }) }));

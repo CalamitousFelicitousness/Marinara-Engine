@@ -124,11 +124,28 @@ const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
  * what it shows. Only Conversation video messages name a sender; Roleplay scene clips stay hidden
  * like Illustrator images.
  */
+function videoPromptWords(prompt: string): string {
+  let text = prompt;
+  try {
+    const parsed = JSON.parse(prompt) as unknown;
+    if (parsed && typeof parsed === "object") {
+      text = Object.values(parsed)
+        .filter((value): value is string => typeof value === "string")
+        .join(" ");
+    }
+  } catch {
+    // Not JSON: plain text, perhaps with field labels.
+  }
+  return text.replace(/\[\s*shot\s*\d+\s*\]/giu, " ").replace(/\b[a-z]+(?:_[a-z]+)+\s*:/giu, " ");
+}
+
 export function formatSentVideoNotes(attachments: PromptAttachment[] | undefined): string {
   return (attachments ?? [])
     .filter((attachment) => attachment.type === "video" && !!attachment.characterName?.trim())
     .map((attachment) => {
-      const description = (attachment.prompt ?? "")
+      // The video model's prompt may follow a technical format (JSON, "overall_soundscape: …", "[Shot 1] …"); the
+      // note keeps only its words, so characters don't copy that format into their own [video] tags.
+      const description = videoPromptWords(attachment.prompt ?? "")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
@@ -155,4 +172,25 @@ export function formatSentSelfieNotes(attachments: PromptAttachment[] | undefine
       return `\n[${sender ? `${sender} sent` : "Sent"} a selfie${description ? `: ${description}` : ""}]`;
     })
     .join("");
+}
+
+/**
+ * An assistant message's history text with notes for the media it sent: a photo the user uploaded under it, the
+ * character's selfies (`selfieAttachments` may carry fresh captions) and video messages. Generation and Peek Prompt
+ * both use it, so the preview shows what the model reads.
+ */
+export function appendSentMediaNotes(
+  content: string,
+  attachments: PromptAttachment[] | undefined,
+  selfieAttachments: PromptAttachment[] | undefined = attachments,
+): string {
+  const userUploadedImages = attachments?.filter((attachment) => attachment.type?.startsWith("image/"));
+  if (userUploadedImages?.length) {
+    const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
+    content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
+  }
+  content += formatSentSelfieNotes(selfieAttachments);
+  const videoNotes = formatSentVideoNotes(attachments);
+  // A video-only message has no text of its own; its note then starts the turn without a blank line.
+  return videoNotes ? (content.trim() ? content + videoNotes : videoNotes.trimStart()) : content;
 }

@@ -634,8 +634,7 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
-  formatSentSelfieNotes,
-  formatSentVideoNotes,
+  appendSentMediaNotes,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -2380,17 +2379,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           extra.replyTo,
           m.role === "user" && m.id === latestUserMessageId,
         );
-        const userUploadedImages = attachments?.filter((a) => a.type?.startsWith("image/"));
-        if (m.role === "assistant" && userUploadedImages?.length) {
-          const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
-          content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
-        }
-        if (m.role === "assistant") {
-          content += formatSentSelfieNotes(updatedAttachments ?? attachments);
-          const videoNotes = formatSentVideoNotes(attachments);
-          // A video-only message has no text of its own; its note then starts the turn without a blank line.
-          if (videoNotes) content = content.trim() ? content + videoNotes : videoNotes.trimStart();
-        }
+        if (m.role === "assistant")
+          content = appendSentMediaNotes(content, attachments, updatedAttachments ?? attachments);
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 

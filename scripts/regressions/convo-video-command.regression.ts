@@ -28,7 +28,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
 const { formatRecentVideoContext } = await import("../../packages/server/src/services/video/prompt-context.js");
-const { formatSentVideoNotes } =
+const { appendSentMediaNotes, formatSentVideoNotes } =
   await import("../../packages/server/src/routes/generate/conversation-prompt-formatting.js");
 const { characterDataSchema, LOCAL_SIDECAR_CONNECTION_ID } = await import("../../packages/shared/dist/index.js");
 const sharp = requireServer("sharp") as typeof import("sharp").default;
@@ -453,6 +453,32 @@ try {
     `\n[Aster sent a video message: ${VIDEO_PROMPT}]`,
   );
   assert.equal(formatSentVideoNotes([{ type: "video", prompt: "scene" }]), "");
+  // A prompt in a technical format reaches the history as its words only, so characters don't copy the format.
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: '{"integrated_multimodal_description": "[Shot 1] Ana waves.", "overall_soundscape": "Birdsong."}',
+      },
+    ]),
+    "\n[Ana sent a video message: Ana waves. Birdsong.]",
+  );
+  assert.equal(
+    formatSentVideoNotes([
+      { type: "video", characterName: "Ana", prompt: "integrated_multimodal_description: [Shot 1] Ana waves." },
+    ]),
+    "\n[Ana sent a video message: Ana waves.]",
+  );
+  // Generation and Peek Prompt add the same notes to an assistant message, so the preview shows what the model reads.
+  assert.equal(
+    appendSentMediaNotes("", [{ type: "video", characterName: "Aster", prompt: VIDEO_PROMPT }]),
+    `[Aster sent a video message: ${VIDEO_PROMPT}]`,
+  );
+  assert.equal(
+    appendSentMediaNotes("Look!", [{ type: "image", filename: "selfie_aster_1.png", prompt: "Aster grins" }]),
+    "Look!\n[Sent a selfie: Aster grins]",
+  );
 
   // Attaching reports whether the clip landed: a message deleted meanwhile gets nothing and reports false.
   const { attachVideoToMessage, buildChatVideoAttachment } =

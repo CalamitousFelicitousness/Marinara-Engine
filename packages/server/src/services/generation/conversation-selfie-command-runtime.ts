@@ -68,7 +68,7 @@ type PersonaReference = {
 } | null;
 
 const GROUP_SELFIE_REQUEST_RE =
-  /\bgroup\s+(?:selfie|photo|picture)\b|\b(?:selfie|photo|picture)\b[^\n.!?]{0,80}\b(?:together|everyone|everybody|all (?:of us|participants|characters))\b/iu;
+  /\bgroup\s+(?:selfie|photo|picture|video|clip)\b|\b(?:selfie|photo|picture|video|clip)\b[^\n.!?]{0,80}\b(?:together|everyone|everybody|all (?:of us|participants|characters))\b/iu;
 
 export function resolveConversationSelfieRequestedNames(args: {
   speakerName: string;

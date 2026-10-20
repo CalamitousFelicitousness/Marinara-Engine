@@ -181,6 +181,7 @@ import {
 } from "../generate/generate-route-utils.js";
 import { buildGenerationPromptPresetCandidates, type PromptPresetCandidateSource } from "./prompt-preset-selection.js";
 import {
+  appendSentMediaNotes,
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
 } from "./conversation-prompt-formatting.js";
@@ -840,17 +841,18 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
       const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
       const providerMetadata = pastReasoning.get(m.id);
+      const content = withLatestMessageReply(
+        appendReadableAttachmentsToContent(
+          chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
+          attachments,
+        ),
+        extra.replyTo,
+        m.role === "user" && m.id === latestReplyUserMessageId,
+      );
       return {
         id: typeof m.id === "string" ? m.id : null,
         role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
-        content: withLatestMessageReply(
-          appendReadableAttachmentsToContent(
-            chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
-            attachments,
-          ),
-          extra.replyTo,
-          m.role === "user" && m.id === latestReplyUserMessageId,
-        ),
+        content: m.role === "assistant" ? appendSentMediaNotes(content, attachments) : content,
         contextKind: "history" as const,
         characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
         ...(personaSnapshotName ? { personaSnapshotName } : {}),

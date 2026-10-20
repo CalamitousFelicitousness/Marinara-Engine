@@ -39,8 +39,29 @@ test("character editor shows the whole name when it fits beside the byline", asy
 
     if (testInfo.project.name.includes("mobile")) {
       await expectFullName();
+      // The Onboarding section (#7308) and Ask Professor Mari (#7312) pushed the actions onto a row of their own.
+      const header = page.locator(".mari-editor-shell .mari-editor-header");
+      await expect(header.getByRole("button", { name: "Editor sections", exact: true })).toBeVisible();
+      const rowCenters = await header.evaluate((element) =>
+        [
+          element.querySelector(".mari-editor-navigation-compact button"),
+          ...element.querySelectorAll(".mari-editor-actions > *"),
+        ]
+          .filter((item): item is HTMLElement => item instanceof HTMLElement && item.getBoundingClientRect().width > 0)
+          .map((item) => item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2),
+      );
+      expect(rowCenters.length).toBeGreaterThan(1);
+      expect(
+        Math.max(...rowCenters) - Math.min(...rowCenters),
+        "the section menu and every action share one row",
+      ).toBeLessThanOrEqual(1);
       return;
     }
+    // At 1600px beside the panel the byline steps aside, but the name keeps its full width.
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await expect
+      .poll(() => nameInput.evaluate((input) => input.scrollWidth - input.clientWidth))
+      .toBeLessThanOrEqual(2);
     // Just past the 80rem breakpoint (beside the 320px panel) the header is crowded; wider screens have room to spare.
     const rootFontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
     for (const width of [80 * rootFontSize + 321, 1920, 2560]) {

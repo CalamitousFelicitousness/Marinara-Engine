@@ -993,13 +993,36 @@ export function rulesetCreatureKind(
   const kinds = definition.combat?.creatureTypes;
   if (!kinds) return { tags: [] };
   const block = combatant.block;
-  if (block?.type !== undefined || block?.tags) {
-    return { ...(block.type !== undefined ? { type: block.type } : {}), tags: [...(block.tags ?? [])] };
+  if (block?.type !== undefined || block?.tags || block?.alignment !== undefined) {
+    const named = rulesetTagsNamed(definition, block.alignment);
+    return {
+      ...(block.type !== undefined ? { type: block.type } : {}),
+      tags: [...new Set([...(block.tags ?? []), ...named])],
+    };
   }
   if (!combatant.sheet) return { tags: [] };
   const read = kinds.field ? combatant.sheet.build.fields?.[kinds.field] : undefined;
   const type = typeof read === "string" && kinds.types.some((one) => one.id === read) ? read : kinds.default;
-  return { ...(type !== undefined ? { type } : {}), tags: [] };
+  // Its tags in the words of a field (1.646): "Lawful Good".
+  const words = kinds.tagsFrom ? combatant.sheet.build.fields?.[kinds.tagsFrom] : undefined;
+  return { ...(type !== undefined ? { type } : {}), tags: rulesetTagsNamed(definition, words) };
+}
+
+/** The creature tags some words name (1.646), by label or id as whole words ignoring case, never one
+ *  named after "non-" or "not": "lawful evil" names `lawful` and `evil`, "any non-good alignment"
+ *  names nothing. */
+export function rulesetTagsNamed(definition: RulesetDefinition, words: unknown): string[] {
+  if (typeof words !== "string" || !words.trim()) return [];
+  const names = (phrase: string) => {
+    const escaped = phrase
+      .trim()
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/[\s_]+/g, "[\\s_]+");
+    return new RegExp(`(?<!non[-\\s]?|not\\s+)(?<![\\p{L}])${escaped}(?![\\p{L}])`, "iu").test(words);
+  };
+  return (definition.combat?.creatureTypes?.tags ?? [])
+    .filter((tag) => names(tag.label) || names(tag.id))
+    .map((tag) => tag.id);
 }
 
 /** The words these text or enum fields of a holder's sheet hold (1.376), comma-separated, trimmed and

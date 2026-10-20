@@ -546,6 +546,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.size !== undefined ? { size: creature.size } : {}),
     ...(creature.type !== undefined ? { type: creature.type } : {}),
     ...(creature.tags ? { tags: [...creature.tags] } : {}),
+    ...(creature.alignment !== undefined ? { alignment: creature.alignment } : {}),
     ...(creature.soak
       ? {
           soak: {

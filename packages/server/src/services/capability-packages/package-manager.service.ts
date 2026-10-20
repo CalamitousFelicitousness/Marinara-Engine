@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Tags read off an alignment in words (1.646): a creature's `alignment`, a character's
+ *  `creatureTypes.tagsFrom`. */
+function carriesAlignmentTags646(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAlignmentTags646(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.creature)?.alignment !== undefined) return true;
+  if (plainRecord(record.creatureTypes)?.tagsFrom !== undefined) return true;
+  return featureValues(record).some((one) => carriesAlignmentTags646(one, depth + 1));
+}
+
 /** A creature's action whose riders go only on a target that is something (1.645): a merrow's
  *  Harpoon on a Huge or smaller target. */
 function carriesRidersIs645(value: unknown, depth = 0): boolean {
@@ -8630,6 +8642,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Tags read off an alignment in words, 1.646.
+  if (
+    !declaresApi(646) &&
+    (carriesAlignmentTags646(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAlignmentTags646(document)))
+  )
+    return "A ruleset with tags read off an alignment in words (a creature's alignment, creatureTypes.tagsFrom) requires schemaVersion 2 and capabilityApi 1.646 or newer";
   // A creature's action whose riders go only on a target that is something, 1.645.
   if (
     !declaresApi(645) &&

@@ -157,6 +157,7 @@ export {
   rulesetSyncAuras,
   rulesetSyncSizes,
   rulesetCreatureKind,
+  rulesetTagsNamed,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
   rulesetLanguages,

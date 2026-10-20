@@ -746,6 +746,8 @@ export interface RulesetStatBlock {
   /** One of `combat.creatureTypes.types`, and its tags (1.168): what a target test reads. */
   type?: string;
   tags?: string[];
+  /** Its alignment in words (1.646): the tags it names are its tags too. */
+  alignment?: string;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */

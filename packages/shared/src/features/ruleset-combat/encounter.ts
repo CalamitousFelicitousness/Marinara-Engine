@@ -3036,6 +3036,30 @@ function itemFormActions(items: readonly RulesetSheetItem[] | undefined): Rulese
   });
 }
 
+/** Some of a weapon's bonus to its wielder's defense (1.684), each amount its own choice, for nothing
+ *  before their first attack with it on a turn: a Defender's. */
+function bonusShiftActions(
+  combat: RulesetCombat,
+  items: readonly RulesetSheetItem[] | undefined,
+): RulesetCombatAction[] {
+  const first = combat.economy.budgets[0]?.id;
+  if (!first) return [];
+  return (items ?? []).flatMap((held, index) => {
+    const shift = held.item.attack?.bonusToDefense;
+    if (!shift || !held.worn) return [];
+    const label = shift.label ?? held.name ?? "Weapon";
+    return Array.from({ length: shift.upTo }, (_, n) => ({
+      id: `shift:${index}:${n + 1}`,
+      kind: "switch" as const,
+      label: `${label}: ${n + 1} to defense`,
+      budget: first,
+      free: true as const,
+      targets: { side: "self" as const, count: 0 },
+      switches: { shift: { item: index, amount: n + 1 } },
+    }));
+  });
+}
+
 /** Pulling one's blows, or no longer (1.667), for nothing once a turn: `combat.dying.knockOut`. */
 function knockOutSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
   const rule = combat.dying?.knockOut;
@@ -5246,6 +5270,7 @@ function sheetCombatant(
     ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
     ...itemSwitchActions(input.items),
     ...itemFormActions(input.items),
+    ...bonusShiftActions(combat, input.items),
     ...carriedSwitchActions(combat),
     ...knockOutSwitchActions(combat),
     ...itemUseActions(definition, combat, heldItems, build, evaluated, perCell),

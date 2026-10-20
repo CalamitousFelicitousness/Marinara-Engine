@@ -11005,6 +11005,14 @@ export const rulesetItemAttackSchema = z
      *  at that moment: more damage, more for each charge more, and conditions with their saves. The
      *  item holds charges. */
     spends: z.array(itemAttackSpendSchema).min(1).max(4).optional(),
+    /** Up to this much of its bonus to hit and damage may go to its wielder's defense instead
+     *  (Capability API 1.684), chosen for nothing before their first attack with it on a turn: the
+     *  weapon's attacks that turn lose it, and their defense keeps it until the start of their next
+     *  turn. A Defender's +3. `label` names the choice ("Defender" by default, the item's name). */
+    bonusToDefense: z
+      .object({ upTo: z.number().int().min(1).max(10), label: promptSafeText(40).optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;

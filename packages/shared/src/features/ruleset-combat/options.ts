@@ -1411,6 +1411,8 @@ export function rulesetDefenseAgainst(
   }
   lost += rulesetDroppedHeldDefense(target);
   let defense = target.defense - lost + guards.reduce((total, guard) => total + guard.value, 0);
+  // What a weapon's bonus lends it (1.684): a Defender's.
+  defense += target.bonusShift?.amount ?? 0;
   // Never below a floor (1.353), said as what it raised it by: Barkskin's 16, Mage Armor's 13 + Dex.
   let floor: { value: number; from: (typeof modifiers)[number] } | undefined;
   for (const one of modifiers) {
@@ -2837,6 +2839,13 @@ export function rulesetActionAvailable(
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
   }
+  // A weapon's bonus to defense (1.684): once, before their first attack with it this turn.
+  if (
+    action.switches &&
+    "shift" in action.switches &&
+    (actor.bonusShift !== undefined || actor.flags.attackedWith?.includes(action.switches.shift.item))
+  )
+    return false;
   // Pulling one's blows, switched once a turn (1.667).
   if (action.switches && "knockOut" in action.switches && actor.flags.knockOutSwitched) return false;
   // Giving its own user back a pool they do not have is nothing (1.252): a 4th-level slot made by a
@@ -3626,7 +3635,14 @@ function optionFrom(
     ...(action.switches && ("conjured" in action.switches || "called" in action.switches)
       ? { dismiss: true as const }
       : action.switches
-        ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
+        ? {
+            on:
+              "item" in action.switches
+                ? rulesetItemOn(actor, action.switches.item)
+                : "shift" in action.switches
+                  ? false
+                  : !actor.doused,
+          }
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),

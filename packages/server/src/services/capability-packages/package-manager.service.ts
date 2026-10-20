@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A weapon whose bonus may go to its wielder's defense (1.684): a Defender. */
+function carriesBonusToDefense684(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBonusToDefense684(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.attack)?.bonusToDefense !== undefined) return true;
+  return featureValues(record).some((one) => carriesBonusToDefense684(one, depth + 1));
+}
+
 /** A creature's call commanded through one of its caller's actions, or ending as its caller is
  *  incapacitated (1.683): a chain devil's chains. */
 function carriesCommandedBy683(value: unknown, depth = 0): boolean {
@@ -9014,6 +9024,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A weapon whose bonus may go to its wielder's defense, 1.684.
+  if (
+    !declaresApi(684) &&
+    (carriesBonusToDefense684(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBonusToDefense684(document)))
+  )
+    return "A ruleset with a weapon whose bonus may go to its wielder's defense (attack.bonusToDefense) requires schemaVersion 2 and capabilityApi 1.684 or newer";
   // A creature's call commanded through one of its caller's actions, or ending as it is
   // incapacitated, 1.683.
   if (

@@ -1539,7 +1539,9 @@ export interface RulesetCombatAction {
     /** Pulling one's blows, or no longer (1.667): `combat.dying.knockOut`. */
     | { knockOut: true }
     /** Into another of an item's forms (1.522), 0 as it was made. */
-    | { form: { item: number; to: number } };
+    | { form: { item: number; to: number } }
+    /** Some of a weapon's bonus to its wielder's defense (1.684): a Defender's. */
+    | { shift: { item: number; amount: number } };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -2193,6 +2195,8 @@ export interface RulesetCombatant {
     offHand?: number;
     /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
     attacks?: number;
+    /** The items (their places in `sheet.items`) attacked with this turn (1.684). */
+    attackedWith?: number[];
     /** What the attack action was taken with this turn, by name (1.242). */
     attackAction?: string[];
     /** Summons made this turn do not spend a round at its end. */
@@ -2402,6 +2406,9 @@ export interface RulesetCombatant {
   doused?: true;
   /** They pull their blows (1.667): one of their melee attacks that drops somebody knocks them out. */
   knocksOut?: true;
+  /** Some of a weapon's bonus moved to their defense (1.684), its place in `sheet.items` and how
+   *  much, until the start of their next turn: a Defender's. */
+  bonusShift?: { item: number; amount: number };
   /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
    *  it out (1.296). */
   shedding?: RulesetLightRadius | "out";

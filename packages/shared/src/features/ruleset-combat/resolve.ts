@@ -4291,9 +4291,27 @@ function spendBudget(ctx: RulesetCombatContext, combatant: RulesetCombatant, bud
 
 /** An attack made on the attacker's own turn, which is the only place a cap on attacks a turn (as
  *  Slow's "during its turn") counts it. A reaction on somebody else's turn is not counted. */
-function countAttack(ctx: RulesetCombatContext, combatant: RulesetCombatant): void {
+function countAttack(
+  ctx: RulesetCombatContext,
+  combatant: RulesetCombatant,
+  /** What it was made with, an item's remembered (1.684). */
+  action?: Pick<RulesetCombatAction, "id">,
+): void {
   if (!rulesetOnOwnTurn(ctx.state, combatant)) return;
   combatant.flags.attacks = (combatant.flags.attacks ?? 0) + 1;
+  const item = action ? rulesetActionItemIndex(action) : undefined;
+  if (item !== undefined && !combatant.flags.attackedWith?.includes(item))
+    (combatant.flags.attackedWith ??= []).push(item);
+}
+
+/** A weapon's attacks given back, or less, so much of their bonus to hit and damage (1.684): a
+ *  Defender's lent to its wielder's defense. */
+function shiftWeaponBonus(combatant: RulesetCombatant, item: number, by: number): void {
+  for (const one of combatant.actions) {
+    if (one.kind !== "attack" || rulesetActionItemIndex(one) !== item) continue;
+    if (one.toHit !== undefined) one.toHit += by;
+    if (one.damage) one.damage = { ...one.damage, flat: one.damage.flat + by };
+  }
 }
 
 /** Whether a condition's cap on attacks a turn has been reached (combat C6d). */
@@ -7921,7 +7939,7 @@ function applyChoice(
     const summon = working.summons!.find((entry) => `summon:${entry.actionId}` === option.id)!;
     const action = working.actions.find((entry) => entry.id === summon.actionId)!;
     summon.at = summonCell(ctx.state, workingTargets[0], summon.at);
-    if (rulesetIsAttack(action)) countAttack(ctx, working);
+    if (rulesetIsAttack(action)) countAttack(ctx, working, action);
     reopenAction(ctx, working, action, {
       kind: "action",
       actorId: working.id,
@@ -7981,6 +7999,18 @@ function applyChoice(
       else working.doused = true;
       if (switching.free) working.flags.lightSwitched = true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    } else if (switching?.switches && "shift" in switching.switches) {
+      // Some of a weapon's bonus to their defense (1.684), until the start of their next turn.
+      const { item, amount } = switching.switches.shift;
+      shiftWeaponBonus(working, item, -amount);
+      working.bonusShift = { item, amount };
+      ctx.events.push({
+        type: "switch",
+        actorId: working.id,
+        optionId: switching.id,
+        label: switching.label,
+        on: true,
+      });
     } else if (switching?.switches && "knockOut" in switching.switches) {
       // Pulling their blows, or no longer (1.667).
       const on = !working.knocksOut;
@@ -8043,7 +8073,7 @@ function applyChoice(
   // A spend that buys ONE strike is the spend every fight has always made, so it puts nothing in
   // hand and says nothing: a ruleset whose list declares one strike a spend reads as it always did.
   // An attack a condition's grant paid for is one strike (combat C6d), and puts none in hand.
-  if (striking && !striking.sequence && rulesetIsAttack(striking)) countAttack(ctx, working);
+  if (striking && !striking.sequence && rulesetIsAttack(striking)) countAttack(ctx, working, striking);
   // The attack action, taken with a weapon's own budget or a strike it already bought (1.242): what
   // a grant or an entry that comes only after it reads.
   if (
@@ -8526,7 +8556,7 @@ function strikeCut(
   const holder = rulesetCombatant(ctx.state, offered.holderId)!;
   const action = working.actions.find((entry) => entry.id === option.id)!;
   if (option.budget) spendBudget(ctx, working, option.budget);
-  countAttack(ctx, working);
+  countAttack(ctx, working, action);
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
@@ -8618,7 +8648,7 @@ function strikeSection(
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const action = working.actions.find((entry) => entry.id === option.id)!;
   if (option.budget) spendBudget(ctx, working, option.budget);
-  countAttack(ctx, working);
+  countAttack(ctx, working, action);
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
@@ -13520,7 +13550,7 @@ function resolveSequence(
         break;
       }
       spendAvailability(ctx, actor, part);
-      if (part.toHit !== undefined) countAttack(ctx, actor);
+      if (part.toHit !== undefined) countAttack(ctx, actor, part);
     }
     const from = ctx.events.length;
     const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
@@ -17339,6 +17369,11 @@ function beginNextTurn(
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped ? { helped: true } : {};
+    // A weapon's bonus lent to their defense comes back to it (1.684).
+    if (actor.bonusShift) {
+      shiftWeaponBonus(actor, actor.bonusShift.item, actor.bonusShift.amount);
+      delete actor.bonusShift;
+    }
     // What it readied waits no longer (1.288): a spell held for it is spent all the same.
     const readied = actor.readied;
     if (readied) {

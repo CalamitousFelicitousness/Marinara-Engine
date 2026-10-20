@@ -2741,6 +2741,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A creature's action whose riders wait on a contest (1.642): a merrow's Harpoon. Only a creature's
+ *  actions, which a catalog's `actions` and a block's hold; a catalog entry's own `contest` is 1.512. */
+function carriesCreatureContest642(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureContest642(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const actions = Array.isArray(record.actions) ? record.actions : [];
+  if (actions.some((action) => plainRecord(action)?.contest !== undefined)) return true;
+  return featureValues(record).some((one) => carriesCreatureContest642(one, depth + 1));
+}
+
 /** A zone anybody near may move on a check (1.641): a Sphere of Annihilation. */
 function carriesZoneCheck641(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8580,6 +8592,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action whose riders wait on a contest, 1.642.
+  if (
+    !declaresApi(642) &&
+    (carriesCreatureContest642(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureContest642(document)))
+  )
+    return "A ruleset with a creature's action whose riders wait on a contest (actions[].contest) requires schemaVersion 2 and capabilityApi 1.642 or newer";
   // A zone anybody near may move on a check, 1.641.
   if (
     !declaresApi(641) &&

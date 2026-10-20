@@ -15561,7 +15561,7 @@ function resolveActionBodyIn(
 
     // Won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. Nothing
     // else it does lands on a target it loses to.
-    if (action.contested && !wonContest(ctx, actor, action, target)) {
+    if (action.contested && !action.contested.riders && !wonContest(ctx, actor, action, target)) {
       // What it leaves on a target it lost to (1.565): a swarm the Pipes of the Sewers can't sway
       // for 24 hours.
       for (const one of action.contested.onLose?.applies ?? []) {
@@ -15706,6 +15706,9 @@ function resolveActionBodyIn(
         continue;
       }
     }
+    // What goes on after the blow, won by a contest (1.642): lost, it is as a save made that does
+    // nothing to the damage. A merrow's Harpoon.
+    if (action.contested?.riders && !saved && !wonContest(ctx, actor, action, target)) saved = true;
     // A save its holder evades with (1.250): nothing on a success, half on a failure.
     const evades =
       action.save?.onSuccess === "half" &&

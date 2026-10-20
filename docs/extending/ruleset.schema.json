@@ -77681,6 +77681,44 @@
                           "minItems": 2,
                           "maxItems": 6
                         },
+                        "contest": {
+                          "type": "object",
+                          "properties": {
+                            "attacker": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "defender": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "ties": {
+                              "type": "string",
+                              "enum": [
+                                "attacker",
+                                "defender"
+                              ]
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "attacker",
+                            "defender"
+                          ],
+                          "additionalProperties": false
+                        },
                         "reaps": {
                           "type": "boolean",
                           "const": true
@@ -94757,6 +94795,44 @@
                             },
                             "minItems": 2,
                             "maxItems": 6
+                          },
+                          "contest": {
+                            "type": "object",
+                            "properties": {
+                              "attacker": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
+                              "defender": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
+                              "ties": {
+                                "type": "string",
+                                "enum": [
+                                  "attacker",
+                                  "defender"
+                                ]
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "attacker",
+                              "defender"
+                            ],
+                            "additionalProperties": false
                           },
                           "reaps": {
                             "type": "boolean",

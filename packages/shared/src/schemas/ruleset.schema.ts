@@ -8799,6 +8799,19 @@ const creatureActionFullSchema = z
      *  its `uses` (which it has). Each is made at whom this one was aimed, never on a menu itself.
      *  An androsphinx's Roar, louder each time before it rests: `["roar_1", "roar_2", "roar_3"]`. */
     byUse: z.array(sheetId).min(2).max(6).optional(),
+    /** What it puts on, pushes or pulls goes on a target it lands on only if the creature wins a
+     *  contest of checks against them (Capability API 1.642): its own best of `attacker` against
+     *  their best of `defender` (ids of `combat.checks`), a tie theirs unless `ties` says otherwise.
+     *  Its damage lands either way. A merrow's Harpoon, "a Strength contest against the merrow or be
+     *  pulled up to 20 feet toward the merrow". Never beside a `save`. */
+    contest: z
+      .object({
+        attacker: z.array(sheetId).min(1).max(4),
+        defender: z.array(sheetId).min(1).max(4),
+        ties: z.enum(["attacker", "defender"]).optional(),
+      })
+      .strict()
+      .optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -8974,6 +8987,14 @@ const creatureActionFullSchema = z
         code: z.ZodIssueCode.custom,
         path: ["pull"],
         message: "An action pushes or pulls whoever it lands on, not both",
+      });
+    }
+    // A contest stands in for the save on what it puts on (1.642).
+    if (action.contest && action.save) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contest"],
+        message: 'A "contest" decides what goes on after the blow, so it has no "save" beside it',
       });
     }
     // What each use does is in the actions it names (1.634), counted by its uses.
@@ -20607,6 +20628,13 @@ function creatureIssues(
           add([...path, "charge", "then", "targetHolds", index], `Unknown condition "${condition}"`);
       });
     }
+    // Each side of its contest throws one of the fight's checks (1.642).
+    (["attacker", "defender"] as const).forEach((side) => {
+      action.contest?.[side].forEach((check, checkIndex) => {
+        if (!combat.checks?.some((one) => one.id === check))
+          add([...path, "contest", side, checkIndex], `Unknown check "${check}"`);
+      });
+    });
     // Each use's own action (1.634): another plain action of this block.
     action.byUse?.forEach((id, idIndex) => {
       const where: (string | number)[] = [...path, "byUse", idIndex];

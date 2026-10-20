@@ -519,6 +519,8 @@ export interface RulesetStatBlockAction {
   onFell?: RulesetCombatOnFell;
   /** What each use does, in turn (1.634): other actions of this block. */
   byUse?: string[];
+  /** A contest the creature wins for what it puts on to go on (1.642): a merrow's Harpoon. */
+  contest?: { attacker: string[]; defender: string[]; ties?: "attacker" | "defender" };
   /** Whoever it lands on leaves the fight (1.632), its own creature too, still taking its turns away;
    *  `carries.within` in the ruleset's own distance. */
   dismisses?:
@@ -967,6 +969,9 @@ export interface RulesetCombatAction {
     onLose?: { applies: Array<{ condition: string; rounds: number }> };
     /** What it takes from a target it wins against (1.615): Telekinesis on what they hold. */
     takes?: { slots?: string[]; tags?: string[] };
+    /** Only what goes on after the blow waits on it (1.642), its damage landing either way, as a
+     *  save that does nothing on a success: a merrow's Harpoon. */
+    riders?: true;
   };
   /** Each target it lands on moved to a cell its user picks (1.512), up to `cells` from where it
    *  stood, and with `up` lifted as many levels as the choice's `rises`: Telekinesis. */

@@ -4711,6 +4711,17 @@ function blockActions(
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
     // What each use does, in turn (1.634): an androsphinx's Roar.
     ...(action.byUse ? { byUse: action.byUse.filter((id) => indexById.has(id)) } : {}),
+    // What it puts on waits on a contest it wins (1.642): a merrow's Harpoon.
+    ...(action.contest
+      ? {
+          contested: {
+            attacker: [...action.contest.attacker],
+            defender: [...action.contest.defender],
+            ties: action.contest.ties ?? "defender",
+            riders: true as const,
+          },
+        }
+      : {}),
     // Out of the fight, its own creature too (1.632): a ghost's Etherealness.
     ...(action.dismisses
       ? {

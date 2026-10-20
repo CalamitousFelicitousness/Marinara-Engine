@@ -212344,7 +212344,7 @@
             ],
             "additionalProperties": false
           },
-          "maxItems": 12
+          "maxItems": 16
         },
         "readying": {
           "type": "object",

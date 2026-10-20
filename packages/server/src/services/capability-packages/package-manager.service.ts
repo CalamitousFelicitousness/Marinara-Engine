@@ -2741,6 +2741,12 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** More than 12 combat checks (1.633): 5e's thieves' tools beside its skills. */
+function carriesChecks16633(ruleset: unknown): boolean {
+  const checks = plainRecord(plainRecord(ruleset)?.combat)?.checks;
+  return Array.isArray(checks) && checks.length > 12;
+}
+
 /** A creature's action that sends somebody, or itself, out of the fight (1.632): Etherealness. */
 function carriesCreatureDismisses632(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8478,6 +8484,10 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // More than 12 combat checks, 1.633.
+  if (!declaresApi(633) && carriesChecks16633(ruleset)) {
+    return "A ruleset with more than 12 combat checks requires schemaVersion 2 and capabilityApi 1.633 or newer";
+  }
   // A creature's action that sends somebody out of the fight, 1.632.
   if (
     !declaresApi(632) &&

@@ -14813,8 +14813,9 @@ const combatObjectSchema = z
       )
       .max(8)
       .optional(),
-    /** The numbers a contest reads, and the contests a combatant may take. */
-    checks: z.array(combatCheckSchema).max(12).optional(),
+    /** The numbers a contest reads, and the contests a combatant may take. Up to 16 (Capability API
+     *  1.633; 12 before): 5e's thieves' tools check beside its skills. */
+    checks: z.array(combatCheckSchema).max(16).optional(),
     /**
      * Readying for real (Capability API 1.288). The `ready` standard action then readies one of its
      * user's other options taken with the same budget, or a move, to be taken with `budget` (5e's

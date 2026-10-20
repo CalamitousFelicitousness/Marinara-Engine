@@ -342,6 +342,58 @@ assert.equal(zip.getEntry("built/base.png")!.read(64 * 1024 * 1024).length > 0, 
   );
   assert.ok(Math.abs(highlightedMouth.bow ?? NaN) <= 1, "a short highlight in the lip still fits its line");
   assert.ok(Math.abs((highlightedMouth.left[0] + highlightedMouth.right[0]) / 2 - 257 * (1254 / 484)) <= 2);
+  // A lip line with a dark centre that fades toward its ends, lighter than the ink threshold for its last
+  // few pixels; the vision corners sit inside the line.
+  const fade = (darkness: number) => `rgb(${SKIN.map((c) => Math.round(c * (1 - darkness / 209.7)))})`;
+  const taperedPng = await sharp(
+    Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="484">
+    <defs><linearGradient id="lip" gradientUnits="userSpaceOnUse" x1="236" y1="0" x2="278" y2="0">
+      <stop offset="0" stop-color="${fade(18)}"/><stop offset="0.12" stop-color="${fade(32)}"/>
+      <stop offset="0.4" stop-color="#704238"/><stop offset="0.6" stop-color="#704238"/>
+      <stop offset="0.88" stop-color="${fade(32)}"/><stop offset="1" stop-color="${fade(18)}"/>
+    </linearGradient></defs>
+    <g transform="scale(${512 / 600} ${484 / 720})">${bustSvg({ mouth: "none" }).toString()}</g>
+    <path d="M236 293 H278" stroke="url(#lip)" stroke-width="2" fill="none"/></svg>`),
+  )
+    .resize(1327, 1254)
+    .png()
+    .toBuffer();
+  const tapered = await fitDrawnMouth(
+    { png: taperedPng, width: 1327, height: 1254 },
+    scaleMeshRigLayout(
+      checkMeshRigLayout(
+        { ...smallLayout, mouth: { left: [242, 294], right: [272, 294], box: [244, 291, 270, 297] } },
+        512,
+        484,
+      ).layout!,
+      1254 / 484,
+    ).mouth,
+  );
+  const kx = 1327 / 512;
+  assert.ok(
+    Math.abs(tapered.left[0] - 236 * kx) <= 2 && Math.abs(tapered.right[0] - 278 * kx) <= 2,
+    `the faded ends of a tapered line are part of the mouth (${tapered.left[0]}, ${tapered.right[0]})`,
+  );
+  assert.ok(Math.abs(tapered.bow ?? NaN) <= 1, `the tapered flat line stays flat (${tapered.bow})`);
+  // A tilted line (3:4) whose faded tail runs flat: the corner is the point on the line nearest the tail's
+  // end (7.2 px from it), not where the tail's horizontal reach would land along the tilt (9 px).
+  const tilted = Buffer.alloc(160 * 140 * 4);
+  const paint = (x: number, y: number, rgb: number[]) => tilted.set([...rgb, 255], (y * 160 + x) * 4);
+  for (let y = 0; y < 140; y += 1) for (let x = 0; x < 160; x += 1) paint(x, y, SKIN);
+  for (let x = 60; x <= 100; x += 1)
+    for (let y = Math.floor(60 + (x - 60) * 0.75); y <= Math.floor(60 + (x - 59) * 0.75); y += 1)
+      paint(x, y, [112, 66, 56]);
+  const tail = SKIN.map((c) => c - 25);
+  for (let x = 101; x <= 112; x += 1) paint(x, 90, tail);
+  const tiltedPng = await sharp(tilted, { raw: { width: 160, height: 140, channels: 4 } })
+    .png()
+    .toBuffer();
+  const tiltedMouth = await fitDrawnMouth(
+    { png: tiltedPng, width: 160, height: 140 },
+    { left: [60, 60], right: [100, 90], box: [60, 58, 100, 92] },
+  );
+  const tailMiss = Math.hypot(tiltedMouth.right[0] - 112.5, tiltedMouth.right[1] - 90.5);
+  assert.ok(tailMiss < 8, `a tilted line's flat tail ends its mouth nearest the tail (${tiltedMouth.right})`);
   let visionRequests = 0;
   const provider = createServer(async (request, response) => {
     let body = "";

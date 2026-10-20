@@ -174,6 +174,22 @@ async function resolveColor(page: Page, color: string) {
   }, color);
 }
 
+/** Sample the selected palette after finite CSS transitions, rather than during a theme cross-fade. */
+async function finishColorTransitions(page: Page) {
+  await page.evaluate(async () => {
+    document.documentElement.getBoundingClientRect();
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation instanceof CSSTransition && Number.isFinite(animation.effect?.getComputedTiming().endTime),
+        )
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+}
+
 async function application(page: Page, enabled: Axis[]) {
   await page.evaluate(async (axes) => {
     const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -532,6 +548,7 @@ for (const [preset, theme] of [
       // Default supplies no preset palette; the semantic item letter follows the themed control.
       await setStore(page, { setChatWidgetPreset: "default" });
       await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
+      await finishColorTransitions(page);
       const defaultControl = await inventoryButton.evaluate((button) => getComputedStyle(button).color);
       expect(await pixels(page, [(await inventoryTints()).letter]), "Default uses the themed control color").toEqual(
         await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${defaultControl} 80%, transparent)`)]),
@@ -741,6 +758,7 @@ for (const mode of ["classic", "tactical"] as const) {
       await setStore(page, { setTheme: "light", setChatWidgetPreset: "mari" });
       await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", "mari");
       await page.mouse.move(1, 1);
+      await finishColorTransitions(page);
       const measureContrast = () =>
         page.evaluate((names) => {
           const canvas = document.createElement("canvas");

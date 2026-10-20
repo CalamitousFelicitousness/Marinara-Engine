@@ -14,13 +14,6 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Make a backup before you update. Going back to 2.5.0 later can lose data: 2.5.0 opens your chats, but when it saves a chat or a connection it drops what newer features added there, such as some connection settings, the details used to regenerate chat images and parts of game checkpoints, and updating again doesn't bring it back. **Upgrading → Going back to 2.5.0** has the details (#7838).
 
-### TODO before merge
-
-Final pass: this work had not merged when the release PR was opened. Replace each line with entries in the right section once it merges (or delete the line if it doesn't), then delete this whole block.
-
-- TODO: #7882 (Professor Mari's Pi runtime: verified change claims, **Switch to Classic** after failed runs, Pi as the default).
-- TODO: the Marinara-Agents PR for the Marinara-Agents#1496 follow-ups to the shared-code rebuild (Noodle pickers, Slurp automatic posts, Calls volume and Local Model, Calls `[schedule_update]` reaching the character card through the host member from #7886, Long-Term Memory guide pictures).
-
 ### Works differently now
 
 - Images from other websites in messages, greetings and card previews now wait behind a **Load image** button that names the site, so a message can't make Marinara contact a site you didn't choose. Click it once and that image shows from then on, on all your devices. Images stored in Marinara, such as avatars, sprites and gallery pictures, always show, and GIFs you send in Conversation show without asking, though GIFs in older messages ask once. To show every image straight away as before, turn on **Load images from other websites in messages** in **Settings → General → Text Rules** (#7829).
@@ -69,7 +62,7 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - In **2D Avatars**, **Make an avatar from a sprite** → **Mesh avatar** picks the full-body neutral sprite for you, or the neutral portrait when there is no full-body one. You can still choose another sprite, and picking one never starts making the avatar (#7617).
 
-- A mesh avatar's mouth fits its drawing. On a small sprite it sits on the painted lip line instead of opening as a second, oversized mouth below it, and when the avatar talks from the text, its mouth closes between words instead of holding each vowel open (#7880).
+- A mesh avatar's mouth fits its drawing. On a small sprite it sits on the painted lip line instead of opening as a second, oversized mouth below it, and its corners reach the ends of the drawn line, even where the lips fade out. When the avatar talks, its mouth opens across the whole drawn mouth instead of only the middle, and when it talks from the text, the mouth closes between words instead of holding each vowel open. Mesh avatars made earlier open across the whole mouth and close between words right away. To give one the right size and place too, make it again with **Make an avatar from a sprite** → **Mesh avatar** and save it (#7880, #7889).
 
 - **Cancel** in **Make an avatar from a sprite** stops the work on the server as well, even when you reach Marinara through a proxy or tunnel, and the panel goes straight back to idle. Pictures already made are kept, and you can start again right away. This covers mesh avatars too (#7623).
 
@@ -413,6 +406,10 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - On phones, the **Chat Settings** bubble no longer covers **Close call chat** during a call in **Calls**. The call chat now behaves like the app's other dialogs: floating windows hide while it is open, keyboard focus moves into it, and focus returns to **Open call chat** when you close it (Marinara-Agents#1355).
 
+- Opening a call in **Calls** no longer changes the volume of, or mutes, a reply Marinara is reading aloud in another chat. The call's volume and mute apply only to the call's own voices. A call in a chat on the **Local Model** now answers through Marinara's Local Model, as the chat does, instead of staying silent with no error (Marinara-Agents#1497).
+
+- When a character changes their status during a call, such as going to study for an hour, the change now goes on their character card, as it does after a Conversation reply, so it shows in every chat with them and lasts for the time they gave. Before, the call changed only this chat's copy of their schedule, and the change was soon lost (Marinara-Agents#1499).
+
 ### Install, updates and security
 
 - On Windows, Marinara starts again after a crash or power cut instead of refusing to start because another copy seemed to be using your data, which used to mean deleting `data/storage/.writer-lease` by hand. This covers data on the computer's own drive. Data on a network drive or shared folder stays locked, so two computers never write to it at once (#7804, #7812).
@@ -525,6 +522,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - Profile exports (**Export Profile**) keep each agent's **Max Output Tokens** again. The export took any agent setting with "token" in its name for a password and blanked it, so restoring the profile on a new install quietly put every agent back on the default output limit. Other token counts, such as context and summary budgets, are kept too. API keys, passwords and connected-account tokens are still left out (#7727).
 
+- Importing a full profile on an install with agents such as **Slurp** no longer stops with "Profile table slurp2_account_subscriptions is not supported." A profile doesn't carry agent data, so the import now skips those tables, as the export already does (#7892).
+
 - Safari and other WebKit browsers no longer drop into **Marinara hit a recoverable UI error.** when they refuse to read the page color from a canvas, which can happen when the device is low on memory. The page backing and browser bar then keep the theme's background color (#7242).
 
 - The rare Chibi Professor Mari toast keeps her painted chibi, and she now turns up in other looks too: mirrored, upside down, Dottore, Gold, and a rarer shiny silver chibi with sparkles (#7450, #7451).
@@ -579,6 +578,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - In Game Mode, when the Game Master adds an NPC to your party, Marinara no longer attaches a character card from your library, or brings in a different NPC, just because the name is similar, such as a **Samantha** card for an NPC named Sam. When the NPC and one of your cards, or several cards, have exactly the same name, a window shows each card's name, title and avatar so you can pick one, or keep the game's own character. Closing the window keeps the game's own character. A single card with that name and no NPC of that name still joins as before (#7335).
 
+- In a Game Mode game with money, the Game Master is now told when a purse is empty, and sees the player's bag even when it holds nothing. Before, an empty purse was left out of its prompt, so it could narrate a purchase as made and the game then refused it (#7466).
+
 - Game Mode now follows **Settings → Advanced → Request timeouts → Text generation** (`CHAT_GENERATION_TIMEOUT_MS`) when starting a new game and for its other Game Master requests, instead of a fixed 5 minutes. As in chats, it is the longest wait for the model's first output and between outputs, and a reasoning model's thinking counts as output, so a slow local model that thinks for a long time no longer fails new-game setup at exactly 300 seconds (#7180).
 
 - In Game Mode, the turns you send are saved with their macros filled in, so the **Session Logs** show the same `{{random}}` pick, persona name and variable values the Game Master read. Before, the log could show one `{{random}}` result while the model read another. A turn that changes a chat variable, such as `{{setvar}}`, is still saved as typed (#7619).
@@ -591,7 +592,7 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 ### Agents and packages
 
-- Twelve agents now use Marinara's own code instead of carrying their own copies of it: the six board and card games, Calls, Noodle, Slurp, World Maps, Long-Term Memory and Memory Nag. Loading them no longer resets settings saved only in this browser, and Calls, Noodle and Slurp share Marinara's Local Model, connection queue and ChatGPT login instead of running their own, so they can no longer start a second local model server or reply in the background while your chat is replying. The games lock their board while the character replies, and Calls' connection switcher and sticker settings change the chat you have open instead of the one that was open when the page loaded. Their downloads shrink from 23 MB to 9 MB in total, and they take much less disk space. These versions need this version of Marinara: an older Marinara doesn't install them and keeps the versions you have. Noodle and Slurp no longer show the chat emoji settings in their sticker and emoji pickers (Marinara-Agents#1494).
+- Twelve agents now use Marinara's own code instead of carrying their own copies of it: the six board and card games, Calls, Noodle, Slurp, World Maps, Long-Term Memory and Memory Nag. Loading them no longer resets settings saved only in this browser, and Calls, Noodle and Slurp share Marinara's Local Model, connection queue and ChatGPT login instead of running their own, so they can no longer start a second local model server or reply in the background while your chat is replying. The games lock their board while the character replies, and Calls' connection switcher and sticker settings change the chat you have open instead of the one that was open when the page loaded. Their downloads shrink from 23 MB to 9 MB in total, and they take much less disk space. These versions need this version of Marinara: an older Marinara doesn't install them and keeps the versions you have. Slurp no longer shows the chat emoji settings in its sticker and emoji pickers (Marinara-Agents#1494).
 
 - Agents that run code on the server, such as Calls, Noodle and Slurp, load again after your data folder moves to a new install path, for example after reinstalling Marinara in another folder or reinstalling Termux. Before, they failed to load on every start (#7868).
 
@@ -616,6 +617,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 - **Character Tracker** no longer throws away a turn's mood, outfit and thought changes when the model sends them without the `presentCharacters` wrapper. Those turns counted as successful while the tracker kept the old values, and the next turn could undo recent changes. A reply with other data but no character list now logs a server warning (#7222; thanks @bahaynes for the diagnosis).
 
 - **Echo Chamber** reactions to a new reply now show up when they are ready, instead of only after you refresh the page. The Card Evolution Auditor's update window follows the same rule for a new reply (#7599).
+
+- The Game Master now gets at most four rounds of tool calls, such as dice rolls, per Game Mode turn, then narrates with the results it has. Any agent gets at most sixteen (a lorebook backfill, sixty-four). A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. A lower `MAX_TOOL_ROUNDS` still applies. Game Mode's end-of-session, recruit and character-sheet prompts also no longer include each party member's whole ruleset sheet, so they are smaller (#7466).
 
 - On phones, the World Maps map editor and library keep their header and **Save** in view while the keyboard is open, and the form keeps scrolling. On Android the editor used to shrink and push **Save** out of reach, so map changes could not be saved. No World Maps update is needed (#7499).
 
@@ -654,6 +657,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 - The **Debug** tab in **Long-Term Memory**'s Memory Settings is rebuilt as a list of events beside a details pane, with search and **All**, **Problems**, **Recall** and **Extraction** filters. Each event shows its outcome, such as "7 of 12 kept", when it ran and how long it took. A recall lists each candidate with a score bar against the minimum relevance and the reason it was or wasn't added, and an empty recall says why. An extraction shows what was kept or dropped and why, with a link to **Review Queue** for pending drafts. **Open debug log** on a Vault memory opens Debug filtered to that memory, and **Copy JSON** copies the raw records (Marinara-Agents#1257, Marinara-Agents#1262, Marinara-Agents#1263, Marinara-Agents#1274, Marinara-Agents#1276, Marinara-Agents#1326, Marinara-Agents#1327, Marinara-Agents#1456).
 
 - **Long-Term Memory**'s screens now look as designed. They used styles the Engine doesn't provide, so spacing, borders, selected-row highlights, checkbox sizes and focus rings were missing. Screen readers announce the Vault place lists as single choice, and the arrow keys move between places. Failed requests show the package's own message instead of raw text such as "Not Found", the **Review** summary after **Apply** reads as whole sentences, switching screens no longer flashes a "Loading" panel, and a **Maintenance** result shows at the top of its own tab (Marinara-Agents#1384, Marinara-Agents#1385, Marinara-Agents#1400, Marinara-Agents#1401, Marinara-Agents#1455).
+
+- **Long-Term Memory**'s setup guide shows Professor Mari's pictures again. This version of Marinara renamed them, so an older Long-Term Memory shows broken pictures there until you update it (Marinara-Agents#1497).
 
 ### Slurp
 
@@ -717,6 +722,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - Restoring a **Slurp** backup now checks each picture: only image files whose name matches their contents are restored, anything else is skipped and listed in the restore results, and AVIF pictures are no longer dropped. Slurp also serves every stored picture as the type its contents show (Marinara-Agents#1477).
 
+- **Slurp**'s automatic work waits for your own requests on the same connection. While one of your chats is replying, or while you use **Write**, **Improve**, **Draft voice** or another Slurp tool that asks the AI, an automatic post no longer reads a Creator's card or refreshes shared ideas beside it. An automatic post no longer makes your other automatic work, Noodle's included, wait 30 seconds, and a new Creator's first automatic post is no longer refused (Marinara-Agents#1497).
+
 ### Other agents
 
 - **Noodle** no longer puts text meant for the AI that writes its image prompts into the prompt sent to ComfyUI and other image services. The poster's **Personality**, their image habits, your image connection's **Image Prompting Instructions** and the **Auto** style sentence used to land as plain sentences in tag-only prompts. They now only guide the AI that rewrites the prompt, and if it copies one of those sentences word for word, Noodle removes it; tag lists stay. The rewrite now uses Noodle's own text connection when no **Agents** default connection is set, instead of not running at all. **Include descriptions** notes go to the AI as context while **Interpret image prompts** is on and are added as written while it is off, and a style profile's **Style text** is still used when no rewrite runs. The **Noodle Post Image** prompt override (**Settings → Generations → Prompt Overrides**) shows the new default (#7352, #7360, Marinara-Agents#1279, Marinara-Agents#1283).
@@ -724,6 +731,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 - The switch that adds a character's **Image Generation Instructions** to their **Noodle** pictures moved from the character editor's **Convo** tab into Noodle: open the character's Noodle profile, choose **Edit profile** and tick **Use this character's image instructions in Noodle images**. **Edit image instructions** opens the character's **Convo** tab. Update Noodle to 1.5.4 to get it; your current choice carries over. The help text for those instructions now says that Noodle and Slurp can both use them. For package authors: packages can open a character in the editor (capability API 1.67) (#7406, Marinara-Agents#1298).
 
 - Each **Noodle** character can have their own image connection: pick it under **Image connection** in the character's **Edit profile**. **Use Noodle image connection** is the default, and a connection that can't make images falls back to Noodle's. Noodle still needs its own or a default image connection for any pictures to be made (Marinara-Agents#1301).
+
+- **Noodle**'s sticker, emoji, picture and poll pickers keep Noodle's look instead of being see-through, fit on a phone screen, and no longer show the chat emoji settings, which belong to a chat and do nothing in Noodle (Marinara-Agents#1494, Marinara-Agents#1497).
 
 - **Quartermaster** has layered clothing. Torso and legs each have **Inner**, **Mid** and **Outer** slots, so a shirt, waistcoat and jacket, or stockings under shorts, can be worn together, and there are new **Socks** and **Extra Wearable** slots for worn items nothing else fits. On the portrait ring each region's layers sit in one stack: tap a tab or use the arrows to switch, and the outermost worn layer shows first. The tracker knows the layers, so putting something on under a worn layer moves the outer item up instead of replacing it, and **Build Wardrobe** puts a second piece of the same outfit one layer up instead of dropping it. Items and outfits you already have keep their slots; the old torso and legs clothing slots are now the **Inner** ones (Marinara-Agents#1439; thanks @newfiesledneck).
 
@@ -768,10 +777,6 @@ These parts of Game Mode are still being built and may not work fully yet. Overw
 - A game made without a world can be given one later with **Make a world for this game** on the journal's **World** tab, written for the game's own setting. The world starts from the next turn, and earlier turns stay as they are. The button is greyed out while Overworld games are off (#7568).
 
 - A long write in game setup now counts the seconds and says a model can take a few minutes. A market day where the world put the party now lasts across turns and counts what was bought (#7568).
-
-- In a Game Mode game with money, the Game Master is now told when a purse is empty, and sees the player's bag even when it holds nothing. Before, an empty purse was left out of its prompt, so it could narrate a purchase as made and the game then refused it (#7466).
-
-- The Game Master now gets at most four rounds of tool calls, such as dice rolls, per Game Mode turn, then narrates with the results it has. Any agent gets at most sixteen (a lorebook backfill, sixty-four). A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. A lower `MAX_TOOL_ROUNDS` still applies. Game Mode's end-of-session, recruit and character-sheet prompts also no longer include each party member's whole ruleset sheet, so they are smaller (#7466).
 
 - Game Mode ruleset markets can now have market days (capability API 1.69): sellers turn up rare stock, a place keeps only a few of some things each day, and the party can sell back to a seller who deals in that kind of thing. Prices are said in the coin the cost is written in, so a 5e potion costs 50 gold pieces. A ruleset rider such as 5e's Sneak Attack can now name the item tags it fires on (capability API 1.70), so it works with a weapon held from the bag (#7470).
 

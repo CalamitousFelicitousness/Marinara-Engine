@@ -1293,14 +1293,14 @@ export function TacticalCombatUI({
             <span className="text-xs font-semibold text-[var(--foreground)]/60">
               {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
             </span>
-            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-[var(--foreground)]/40 sm:inline">
+            <span className="hidden text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)] sm:inline">
               {liveState.difficulty}
             </span>
             <span
               aria-label={localizeUi("ui.game.tacticalcombatui.battlefieldSummary", {
                 value1: battlefieldSummary,
               })}
-              className="hidden text-[0.65rem] font-medium text-[var(--foreground)]/45 md:inline"
+              className="hidden text-[0.65rem] font-medium text-[var(--muted-foreground)] md:inline"
             >
               {battlefieldSummary}
             </span>
@@ -1318,8 +1318,8 @@ export function TacticalCombatUI({
               className={cn(
                 "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors",
                 showThreat
-                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--destructive)]"
-                  : "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/10",
+                  ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/20 text-[var(--foreground)]"
+                  : "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)] hover:bg-[var(--foreground)]/10",
               )}
               title={localizeUi("ui.game.tacticalcombatui.toggleEnemyThreatRange")}
             >
@@ -1329,7 +1329,7 @@ export function TacticalCombatUI({
             <button
               type="button"
               onClick={() => setLogOpen((v) => !v)}
-              className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/10"
+              className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10"
               title={localizeUi("ui.game.tacticalcombatui.combatLog")}
             >
               <ScrollText size={13} />
@@ -1341,7 +1341,7 @@ export function TacticalCombatUI({
                 onClick={() => setRestartConfirm(true)}
                 disabled={animating}
                 className={cn(
-                  "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/10",
+                  "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10",
                   animating && "cursor-not-allowed opacity-40 hover:bg-[var(--foreground)]/5",
                 )}
                 title={localizeUi("ui.game.tacticalcombatui.restartTheBattle")}
@@ -1357,7 +1357,7 @@ export function TacticalCombatUI({
                   onClick={endTurn}
                   disabled={animating}
                   className={cn(
-                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/30",
+                    "rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/20 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--primary)]/30",
                     animating && "cursor-not-allowed opacity-40 hover:bg-[var(--primary)]/20",
                   )}
                 >
@@ -1368,7 +1368,7 @@ export function TacticalCombatUI({
                   onClick={() => setFleeConfirm(true)}
                   disabled={animating}
                   className={cn(
-                    "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)]/60 transition-colors hover:bg-[var(--foreground)]/10",
+                    "flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--foreground)]/5 px-2 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/10",
                     animating && "cursor-not-allowed opacity-40 hover:bg-[var(--foreground)]/5",
                   )}
                   title={localizeUi("ui.game.tacticalcombatui.fleeTheBattle")}

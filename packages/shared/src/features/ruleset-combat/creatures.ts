@@ -539,6 +539,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.healedBy ? { healedBy: [...creature.healedBy] } : {}),
     ...(creature.doubleToObjects ? { doubleToObjects: true as const } : {}),
     ...(creature.wears ? { wears: [...creature.wears] } : {}),
+    ...(creature.jump ? { jump: { ...creature.jump } } : {}),
     ...(creature.passableBy ? { passableBy: { ...creature.passableBy } } : {}),
     ...(creature.fillsSpace === false ? { fillsSpace: false as const } : {}),
     ...(creature.languages ? { languages: [...creature.languages] } : {}),

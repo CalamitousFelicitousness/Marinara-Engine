@@ -779,6 +779,8 @@ export interface RulesetStatBlock {
   doubleToObjects?: true;
   /** The tags of what it wears (1.658), as a target test's `wears` reads them. */
   wears?: string[];
+  /** Its own jump in the ruleset's distance (1.663), in place of one read off its abilities. */
+  jump?: { long: number; high: number; withoutRunUp?: true };
   /** Only a foe whose `ability` score is above `above` moves through its space, as hard going with
    *  `difficult` (1.547): the Arcane Hand. */
   passableBy?: { ability: string; above: number; difficult?: true };

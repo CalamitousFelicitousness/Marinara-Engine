@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's own jump (1.663): a bulette's Standing Leap. */
+function carriesCreatureJump663(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureJump663(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.creature)?.jump !== undefined) return true;
+  return featureValues(record).some((one) => carriesCreatureJump663(one, depth + 1));
+}
+
 /** An action offered only while its user holds nobody so (1.662): an ankheg's Acid Spray. */
 function carriesUnlessImposing662(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8795,6 +8805,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's own jump, 1.663.
+  if (
+    !declaresApi(663) &&
+    (carriesCreatureJump663(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureJump663(document)))
+  )
+    return "A ruleset with a creature that jumps its own distance (creature.jump) requires schemaVersion 2 and capabilityApi 1.663 or newer";
   // An action offered only while its user holds nobody so, 1.662.
   if (
     !declaresApi(662) &&

@@ -9674,6 +9674,17 @@ const creatureFields = {
   /** The tags of what it wears (Capability API 1.658), which a target test's `wears` reads as it
    *  reads a character's worn items: a knight's plate, `["armor", "metal"]`. */
   wears: z.array(sheetId).min(1).max(8).optional(),
+  /** Its own jump (Capability API 1.663), in the ruleset's distance, in place of what `combat.jumping`
+   *  reads off its abilities: as far with a run-up, and as the ruleset's `standing` says without one
+   *  unless `withoutRunUp`. A bulette's Standing Leap, `{"long": 30, "high": 15, "withoutRunUp": true}`. */
+  jump: z
+    .object({
+      long: z.number().finite().min(0).max(10000),
+      high: z.number().finite().min(0).max(10000),
+      withoutRunUp: z.literal(true).optional(),
+    })
+    .strict()
+    .optional(),
   /** Who may move through its space (Capability API 1.547): only a foe whose `ability` score is above
    *  `above`, and with `difficult` as hard going. 5e's Arcane Hand, "can't move through the hand's
    *  space if its Strength score is less than or equal to the hand's ... that space is difficult

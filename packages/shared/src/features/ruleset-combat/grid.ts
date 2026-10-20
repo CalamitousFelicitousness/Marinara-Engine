@@ -442,8 +442,11 @@ export function rulesetJumpReach(
     entry.jumps ? [entry.jumps] : [],
   );
   const times = keys.reduce((most, one) => Math.max(most, one.times ?? 1), 1);
+  // A creature's own jump (1.663): a bulette's Standing Leap.
+  const own = jumper.block?.jump;
   const span = (which: "long" | "high") => {
-    const base = Math.max(0, read(rule[which].ability, rule[which].of) + (rule[which].plus ?? 0)) * times;
+    const base =
+      (own ? own[which] : Math.max(0, read(rule[which].ability, rule[which].of) + (rule[which].plus ?? 0))) * times;
     const plus = running
       ? keys.reduce(
           (sum, one) =>
@@ -454,7 +457,7 @@ export function rulesetJumpReach(
         )
       : 0;
     const feet = base + plus;
-    return Math.floor((running || rule.standing !== "half" ? feet : feet / 2) / perCell);
+    return Math.floor((running || rule.standing !== "half" || own?.withoutRunUp ? feet : feet / 2) / perCell);
   };
   return { long: span("long"), high: span("high"), running };
 }

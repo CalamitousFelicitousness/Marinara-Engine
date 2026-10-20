@@ -211731,6 +211731,24 @@
                 ],
                 "additionalProperties": false
               },
+              "blocksRests": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  }
+                ]
+              },
               "heldOnlyIn": {
                 "type": "object",
                 "properties": {

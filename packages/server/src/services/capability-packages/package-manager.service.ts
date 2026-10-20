@@ -2740,6 +2740,12 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that bars rests (1.669): a rakshasa's curse. */
+function carriesBlocksRests669(value: unknown): boolean {
+  const conditions = plainRecord(plainRecord(value)?.combat)?.conditions;
+  return Array.isArray(conditions) && conditions.some((entry) => plainRecord(entry)?.blocksRests !== undefined);
+}
+
 /** A cast that makes items (1.668): Goodberry. */
 function carriesMakesItems668(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8848,6 +8854,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that bars rests, 1.669.
+  if (!declaresApi(669) && carriesBlocksRests669(ruleset))
+    return "A ruleset with a condition that bars rests (combat.conditions[].blocksRests) requires schemaVersion 2 and capabilityApi 1.669 or newer";
   // A cast that makes items, 1.668.
   if (
     !declaresApi(668) &&

@@ -1705,6 +1705,19 @@ export function applyRulesetSheetOp(
   if (op.op !== "rest") return { ok: false, reason: "malformed" };
   const rest = definition.rests.find((entry) => sameName(entry.id, op.rest) || sameName(entry.label, op.rest));
   if (!rest) return { ok: false, reason: "unknown-rest" };
+  // No benefit from it while the sheet holds a condition that bars it (1.669): a rakshasa's curse.
+  const heldNow = new Set(next.conditions ?? []);
+  const barred = (definition.combat?.conditions ?? []).find(
+    (entry) =>
+      entry.blocksRests &&
+      heldNow.has(entry.condition) &&
+      (entry.blocksRests === "all" || entry.blocksRests.includes(rest.id)),
+  );
+  if (barred) {
+    const label =
+      definition.sheet.live.conditions.find((one) => one.id === barred.condition)?.label ?? barred.condition;
+    return done(`${rest.label}: no benefit while ${label}`);
+  }
   // Dice spent to heal first (1.335), then the rest itself.
   if (op.dice !== undefined && op.dice !== 0) {
     if (!rest.dice || !isAmount(op.dice)) return { ok: false, reason: "bad-amount" };

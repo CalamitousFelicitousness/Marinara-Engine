@@ -13643,6 +13643,10 @@ const combatConditionSchema = z
       .object({ by: z.number().finite().gt(0).max(10000), budget: sheetId.optional() })
       .strict()
       .optional(),
+    /** Held on the sheet, its holder gains no benefit from these rests (Capability API 1.669), by
+     *  rest id, or from any with `"all"`: the rest does nothing at all, and says so. A rakshasa's
+     *  curse. */
+    blocksRests: z.union([z.literal("all"), uniqueIds(12)]).optional(),
     heldOnlyIn: z
       .object({
         light: z
@@ -19190,6 +19194,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onFirstSeen", "applies", "when"], 'What it gives way to has no sheet to read "when" off');
       }
       if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
+      // Rests it keeps from doing anything (1.669).
+      if (Array.isArray(entry.blocksRests))
+        entry.blocksRests.forEach((rest, restIndex) => {
+          if (!def.rests.some((one) => one.id === rest))
+            issue([...path, "blocksRests", restIndex], `Unknown rest "${rest}"`);
+        });
       // What bracing against being moved costs (1.665).
       if (entry.pushReducedBy?.budget !== undefined)
         checkBudget(entry.pushReducedBy.budget, [...path, "pushReducedBy", "budget"]);

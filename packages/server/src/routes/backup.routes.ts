@@ -1207,6 +1207,7 @@ function previewProfileStorageSnapshotStats(
 ) {
   const tableCounts: Record<string, number> = {};
   for (const tableName of FILE_BACKED_TABLES) {
+    if (!profileTableObjects.has(tableName)) continue;
     const rows = snapshot.tables[tableName];
     tableCounts[tableName] = Array.isArray(rows) ? rows.length : 0;
   }
@@ -1264,6 +1265,7 @@ function previewLegacyProfileImportStats(
 
 function countProfileStorageSnapshotItems(snapshot: ProfileStorageSnapshot) {
   const tableRows = FILE_BACKED_TABLES.reduce((count, tableName) => {
+    if (!profileTableObjects.has(tableName)) return count;
     const rows = snapshot.tables[tableName];
     return count + (Array.isArray(rows) ? rows.length : 0);
   }, 0);

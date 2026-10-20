@@ -5604,6 +5604,43 @@ function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   ctx.events.push({ type: "breath", actorId: actor.id, held: now.held, lasts: now.lasts ?? 0 });
 }
 
+/** Whoever walks into a cell on a tile their `harmedEntering` names takes what it says, with no save
+ *  (1.655): a fire elemental's 1 cold for each 5 feet it moves in water. */
+function harmedEntering(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const rule = actor.harmedEntering;
+  const grid = ctx.state.board?.grid;
+  if (!rule || !grid || !rulesetCombatStanding(actor)) return;
+  const covered = rulesetFootprint(actor);
+  const keys = new Set(covered.map((cell) => `${cell.x},${cell.y}`));
+  const on =
+    covered.some((cell) => {
+      const tile = grid.tiles[cell.y]?.[cell.x];
+      return tile !== undefined && rule.terrain.includes(tile);
+    }) ||
+    (rule.zones.length > 0 &&
+      rulesetStandingZones(ctx.state).some(
+        ({ caster, zone, action }) =>
+          [action.id, action.label].some((name) => rule.zones.includes(name.trim().toLowerCase())) &&
+          rulesetZoneCells(ctx.state, caster, zone).some((cell) => keys.has(`${cell.x},${cell.y}`)),
+      ));
+  if (!on) return;
+  const harm = rule.harm;
+  const thrown = rulesetCombatIsPool(ctx.combat)
+    ? (({ rolls, flat, total, pool }) => ({ rolls, flat, amount: total, pool }))(
+        throwHarm(ctx, actor, harm, harm.damageType, 0),
+      )
+    : (() => {
+        const rolls = rollRulesetDice(ctx.roll, harm.count, harm.sides);
+        return { rolls, flat: harm.flat, amount: sumOf(rolls) + harm.flat };
+      })();
+  const dealt = applyDamage(ctx, actor, {
+    label: "Moving where it is harmed",
+    ...(harm.damageType ? { damageType: harm.damageType } : {}),
+    ...thrown,
+  });
+  afterBlow(ctx, actor, dealt, false);
+}
+
 /** Whoever walks through solid ground and ends a turn of theirs inside it takes what it says, with
  *  no save (1.442): a ghost's 1d10 force. */
 function insideGround(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
@@ -11913,6 +11950,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
+    // Harmed walking into some ground (1.655): a fire elemental into water.
+    harmedEntering(ctx, actor);
     // And whoever they hold inside (1.350), within them still, and whoever rides them (1.443).
     for (const inside of ctx.state.combatants) {
       if (inside.insideOf === actor.id || inside.mountedOn === actor.id) placeInside(actor, inside);

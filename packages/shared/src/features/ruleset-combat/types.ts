@@ -2422,6 +2422,12 @@ export interface RulesetCombatant {
   /** They walk through solid ground as hard going and may stop inside it (1.442), taking `harm` as
    *  a turn of theirs ends there. */
   passesObjects?: { harm?: RulesetCombatAmount & { damageType?: string } };
+  /** Tiles, and actions' lasting areas by id or label in lower case, whose hard going costs them a
+   *  plain step (1.655): 5e's Ice Walk. */
+  easyGround?: string[];
+  /** What they take for each cell they walk into on these tiles or in these actions' lasting areas
+   *  (1.655): Water Susceptibility. */
+  harmedEntering?: { terrain: string[]; zones: string[]; harm: RulesetCombatAmount & { damageType?: string } };
   /** What is left this turn of each way they move, in CELLS (1.113): every cell moved comes off all
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */

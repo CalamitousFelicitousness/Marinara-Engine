@@ -582,7 +582,11 @@ export function rulesetCrowdedStep(
 /** What stepping into this cell costs this mover: a plain step over ground hard going of itself, for
  *  somebody who ignores it (1.379). */
 function enterCostFor(grid: TacticalGrid, cell: RulesetCombatCell, mover?: RulesetCombatant): number {
-  return mover?.ignoresHardGround ? 1 : rulesetCellEnterCost(grid, cell.x, cell.y);
+  if (mover?.ignoresHardGround) return 1;
+  // Easy going on its own tiles (1.655): Ice Walk on ice and snow.
+  const tile = grid.tiles[cell.y]?.[cell.x];
+  if (tile !== undefined && mover?.easyGround?.includes(tile)) return 1;
+  return rulesetCellEnterCost(grid, cell.x, cell.y);
 }
 
 /** Whether a mover's climb takes it into a cell (1.618): not one whose tile its climb is kept off, nor
@@ -1773,7 +1777,14 @@ export function rulesetZoneCatches(
 
 /** Whether an action, by its id or label, never hinders this combatant (1.651): Web Walker. */
 export function rulesetUnhinderedBy(combatant: RulesetCombatant, action: readonly (string | undefined)[]): boolean {
-  const names = combatant.unhinderedBy;
+  return rulesetNamesAction(combatant.unhinderedBy, action);
+}
+
+/** Whether a list of names, in lower case, names an action by its id or label (1.651). */
+export function rulesetNamesAction(
+  names: readonly string[] | undefined,
+  action: readonly (string | undefined)[],
+): boolean {
   if (!names?.length) return false;
   return action.some((name) => !!name && names.includes(name.trim().toLowerCase()));
 }
@@ -1805,6 +1816,8 @@ export function rulesetSlowedCells(
       const slowly = careful && !!rule?.spareSlowWalkers;
       if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed || staged || slowly)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
+      // Its hard going easy for them (1.655): Ice Walk in Sleet Storm.
+      if (rulesetNamesAction(mover.easyGround, [action.id, action.label])) continue;
       const times = rule.costTimes ?? (rule.difficult || staged ? 2 : 1);
       // Hard going only toward its caster (1.182): kept apart, and priced by the step.
       const from = rule.towardCaster ? rulesetPositionOf(caster) : null;

@@ -13678,6 +13678,30 @@ const combatConditionSchema = z
      *  it counts in full, and total cover always does. 5e's Wand of the War Mage, kept on with
      *  `keepsOn`: `{"upTo": "half", "attacks": "spell"}`; Sharpshooter's ranged weapon attacks and
      *  Spell Sniper's spell attacks, `"three-quarters"`. */
+    /** Hard going costs its holder a plain step (Capability API 1.655) on a tile one of these names,
+     *  anywhere on a board whose place one names, and in a lasting area left by an action one names
+     *  by id or label: 5e's Ice Walk, `["snow", "Sleet Storm"]`, "difficult terrain composed of ice
+     *  or snow doesn't cost it extra movement". */
+    easyGround: z.array(promptSafeText(40)).min(1).max(12).optional(),
+    /** What its holder takes, with no save, for each cell it walks into on a tile `terrain` names or
+     *  in a lasting area left by an action `zones` names by id or label (Capability API 1.655): 5e's
+     *  fire elemental's Water Susceptibility, "for every 5 feet the elemental moves in water ... it
+     *  takes 1 cold damage", `{"terrain": ["water"], "zones": ["Wall of Water"], "harm": {"flat": 1,
+     *  "damageType": "cold"}}`. */
+    harmedEntering: z
+      .object({
+        terrain: z.array(promptSafeText(40)).min(1).max(12).optional(),
+        zones: z.array(promptSafeText(60)).min(1).max(12).optional(),
+        harm: z
+          .object({ ...catalogAmountShape, damageType: promptSafeText(40).optional() })
+          .strict()
+          .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+            message: 'Say what it harms with: "dice", "flat" or both',
+          }),
+      })
+      .strict()
+      .refine((rule) => rule.terrain || rule.zones, { message: 'Say where it harms: "terrain", "zones" or both' })
+      .optional(),
     coverIgnored: z
       .object({
         upTo: z.enum(["half", "three-quarters"]),

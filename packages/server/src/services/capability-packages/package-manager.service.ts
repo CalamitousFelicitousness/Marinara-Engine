@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Easy going on some tiles, or harm walking into some (1.655): Ice Walk, Water Susceptibility. */
+function carriesGroundByTile655(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesGroundByTile655(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.easyGround !== undefined || record.harmedEntering !== undefined) return true;
+  return featureValues(record).some((one) => carriesGroundByTile655(one, depth + 1));
+}
+
 /** A creature's call commanded on a budget, or striking with its caller's attack (1.654): a solar's
  *  Flying Sword. */
 function carriesCreatureCallCommanded654(value: unknown, depth = 0, creature = false): boolean {
@@ -8729,6 +8739,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Easy going on some tiles, or harm walking into some, 1.655.
+  if (
+    !declaresApi(655) &&
+    (carriesGroundByTile655(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesGroundByTile655(document)))
+  )
+    return "A ruleset with a condition whose holder goes easily over some tiles or is harmed walking into some (easyGround or harmedEntering) requires schemaVersion 2 and capabilityApi 1.655 or newer";
   // A creature's call commanded on a budget, or striking with its caller's attack, 1.654.
   if (
     !declaresApi(654) &&

@@ -38,6 +38,7 @@ import {
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
 import { elevationAt } from "../tactical-combat/math.js";
+import { TACTICAL_TERRAINS } from "../tactical-combat/environments.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
@@ -7536,7 +7537,9 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         entry.climbNotOn ||
         entry.passesCreatures ||
         entry.passesObjects ||
-        entry.unhinderedBy,
+        entry.unhinderedBy ||
+        entry.easyGround ||
+        entry.harmedEntering,
     );
     // Ways over the ground (1.379): held only while what gives them holds.
     if (grants.some((entry) => entry.ignoresHardGround)) combatant.ignoresHardGround = true;
@@ -7556,6 +7559,28 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     const passes = grants.flatMap((entry) => (entry.passesCreatures ? [entry.passesCreatures] : []));
     if (passes.length) combatant.passesCreatures = passes.includes("any") ? "any" : "larger";
     else delete combatant.passesCreatures;
+    // Easy going on some tiles, and harm walking into some (1.655): Ice Walk, Water Susceptibility.
+    const easyNamed = grants.flatMap((entry) => entry.easyGround ?? []);
+    // Anywhere on a board whose place it names: every tile of a snowy board.
+    const place = state.board?.environment;
+    const easy = [
+      ...new Set([
+        ...easyNamed,
+        ...easyNamed.map((name) => name.trim().toLowerCase()),
+        ...(place && easyNamed.includes(place) ? TACTICAL_TERRAINS : []),
+      ]),
+    ];
+    if (easy.length) combatant.easyGround = easy;
+    else delete combatant.easyGround;
+    const entering = grants.find((entry) => entry.harmedEntering)?.harmedEntering;
+    const enteringHarm = entering ? amountOf(entering.harm) : undefined;
+    if (entering && enteringHarm) {
+      combatant.harmedEntering = {
+        terrain: [...(entering.terrain ?? [])],
+        zones: (entering.zones ?? []).map((name) => name.trim().toLowerCase()),
+        harm: { ...enteringHarm, ...(entering.harm.damageType ? { damageType: entering.harm.damageType } : {}) },
+      };
+    } else delete combatant.harmedEntering;
     const through = grants.find((entry) => entry.passesObjects)?.passesObjects;
     if (through) {
       const harm = amountOf(through.harm);

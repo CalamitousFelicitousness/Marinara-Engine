@@ -56,10 +56,15 @@ try {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.languages = { list: "proficiencies", column: "name", prefix: "Languages: " };
     doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [structuredClone(spell)] });
-    doc.sheet.live.conditions.push({ id: "feebleminded", label: "Feebleminded" }, { id: "tongued", label: "Tongues" });
+    doc.sheet.live.conditions.push(
+      { id: "feebleminded", label: "Feebleminded" },
+      { id: "tongued", label: "Tongues" },
+      { id: "comprehending", label: "Comprehend Languages" },
+    );
     doc.combat.conditions.push(
       { condition: "feebleminded", effects: [], languages: "none" },
       { condition: "tongued", effects: [], languages: "all" },
+      { condition: "comprehending", effects: [], languages: "understands" },
     );
     edit(doc);
     return doc;
@@ -132,6 +137,11 @@ try {
   assert.deepEqual(reached({ orc: ["feebleminded"] }), ["beast"], "Feeblemind: the orc understands nothing");
   assert.deepEqual(reached({ bard: ["feebleminded"] }), [], "nobody understands the bard");
   assert.deepEqual(reached({ bard: ["feebleminded", "tongued"] }), [], "none wins over all");
+  // Comprehend Languages (1.681): the demon understands the bard; the bard understanding all helps
+  // nobody understand her.
+  assert.deepEqual(reached({ demon: ["comprehending"] }), ["beast", "demon", "orc"], "the demon comprehends");
+  assert.deepEqual(reached({ bard: ["comprehending"] }), ["beast", "orc"], "comprehending is not being understood");
+  assert.deepEqual(reached({ demon: ["comprehending", "feebleminded"] }), ["beast", "orc"], "none wins over it");
 
   // ── The install gate ──
   {
@@ -150,8 +160,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, document()), gate);
+    const older = () => document((doc) => (doc.combat.conditions.at(-1).languages = "all"));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, older()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, older()), gate);
+    const understands =
+      "A ruleset with a condition whose holder understands every language (languages understands) requires schemaVersion 2 and capabilityApi 1.681 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(680) as never, document()), understands);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(681) as never, document()), understands);
   }
 
   console.log("Feeblemind and Tongues: a holder understanding nothing or everything; gated at 1.595.");

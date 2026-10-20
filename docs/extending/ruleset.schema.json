@@ -215718,7 +215718,8 @@
                 "type": "string",
                 "enum": [
                   "none",
-                  "all"
+                  "all",
+                  "understands"
                 ]
               },
               "suffocates": {

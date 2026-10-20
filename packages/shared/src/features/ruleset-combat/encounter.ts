@@ -1206,12 +1206,21 @@ export function rulesetTargetTypesAllow(
   // Only one that understands a language its user speaks (1.508): Suggestion. Either one's languages
   // not written down keeps nobody out.
   if (targetTypes.understands && by && by.id !== combatant.id) {
-    // Nothing understood, or everything (1.595): Feeblemind and Tongues, on either side.
+    // Nothing understood, or everything (1.595): Feeblemind and Tongues, on either side. Or every
+    // language understood by the target (1.681): Comprehend Languages, which does nothing for its
+    // holder being understood.
     const held = [rulesetHeldLanguages(definition, combatant), rulesetHeldLanguages(definition, by)];
     if (held.includes("none")) return false;
     const theirs = rulesetLanguages(definition, combatant);
     const ours = rulesetLanguages(definition, by);
-    if (!held.includes("all") && theirs && ours && !theirs.some((one) => ours.includes(one))) return false;
+    if (
+      !held.includes("all") &&
+      held[0] !== "understands" &&
+      theirs &&
+      ours &&
+      !theirs.some((one) => ours.includes(one))
+    )
+      return false;
   }
   if (targetTypes.is && !rulesetTargetIs(definition, combatant, targetTypes.is)) return false;
   if (targetTypes.not && rulesetTargetIs(definition, combatant, targetTypes.not)) return false;
@@ -1239,15 +1248,22 @@ export function rulesetItemCallRoll(combatant: RulesetCombatant, item: number): 
   return combatant.callRolls?.[item] ?? combatant.sheet?.items?.[item]?.callRoll ?? {};
 }
 
-/** What a condition its holder holds says they understand (1.595): `none` over `all`. */
+/** What a condition its holder holds says they understand (1.595): `none` over `all`, and `all` over
+ *  `understands` (1.681). */
 export function rulesetHeldLanguages(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
-): "none" | "all" | undefined {
+): "none" | "all" | "understands" | undefined {
   const combat = definition.combat;
   if (!combat?.conditions?.some((entry) => entry.languages)) return undefined;
   const held = rulesetActiveConditions(definition, combat, combatant).map((one) => one.languages);
-  return held.includes("none") ? "none" : held.includes("all") ? "all" : undefined;
+  return held.includes("none")
+    ? "none"
+    : held.includes("all")
+      ? "all"
+      : held.includes("understands")
+        ? "understands"
+        : undefined;
 }
 
 /** The languages a combatant understands (1.508), lower case: off their sheet's `combat.languages`

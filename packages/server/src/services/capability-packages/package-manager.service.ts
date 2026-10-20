@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition whose holder understands every language without being understood (1.681): Comprehend
+ *  Languages. */
+function carriesLanguagesUnderstands681(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLanguagesUnderstands681(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.languages === "understands") return true;
+  return featureValues(record).some((one) => carriesLanguagesUnderstands681(one, depth + 1));
+}
+
 /** A catalog entry's or an item's call whose creatures leave with their caller (1.680): a Feather
  *  Token's whip. A creature action's calls (1.393) sit on an action with a `name`, never on
  *  `mechanics` or an item's `use`. */
@@ -8975,6 +8986,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition whose holder understands every language, 1.681.
+  if (
+    !declaresApi(681) &&
+    (carriesLanguagesUnderstands681(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLanguagesUnderstands681(document)))
+  )
+    return "A ruleset with a condition whose holder understands every language (languages understands) requires schemaVersion 2 and capabilityApi 1.681 or newer";
   // A catalog entry's or an item's call that ends with its caller, 1.680.
   if (
     !declaresApi(680) &&

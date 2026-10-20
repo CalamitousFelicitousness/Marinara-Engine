@@ -14082,8 +14082,10 @@ const combatConditionSchema = z
     /** What its holder understands while it holds (Capability API 1.595), whatever they speak:
      *  `none`, nothing (5e's Feeblemind: no one understands them either), or `all`, every language
      *  (Tongues: they understand any, and any creature that knows one understands them). `none` wins
-     *  over `all`. Read where an action needs its target to understand its user (`understands`). */
-    languages: z.enum(["none", "all"]).optional(),
+     *  over `all`. Read where an action needs its target to understand its user (`understands`).
+     *  `understands` (Capability API 1.681): every language is understood by its holder, who is
+     *  understood by nobody the more for it: 5e's Comprehend Languages. `all` wins over it. */
+    languages: z.enum(["none", "all", "understands"]).optional(),
     /** Its holder cannot breathe while it holds (Capability API 1.598), wherever they are: they hold
      *  their breath and then choke as `combat.underwater.breath` says, out of the water as in it,
      *  unless that breath's `exempt` spares them. 5e's Dust of Sneezing and Choking. */

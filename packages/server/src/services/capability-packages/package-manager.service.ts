@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A climb kept off some ground, and slippery ground (1.618): Slippers of Spider Climbing, Grease. */
+function carriesClimbNotOn618(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesClimbNotOn618(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.climbNotOn !== undefined || plainRecord(record.terrain)?.slippery !== undefined) return true;
+  return featureValues(record).some((one) => carriesClimbNotOn618(one, depth + 1));
+}
+
 /** A teleport's familiarity table (1.617): 5e's Teleport. */
 function carriesTeleportFamiliarity617(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8318,6 +8328,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A climb kept off some ground, and slippery ground, 1.618.
+  if (
+    !declaresApi(618) &&
+    (carriesClimbNotOn618(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesClimbNotOn618(document)))
+  )
+    return "A ruleset with a climb kept off some ground or slippery ground (climbNotOn or terrain.slippery) requires schemaVersion 2 and capabilityApi 1.618 or newer";
   // A teleport's familiarity table, 1.617.
   if (
     !declaresApi(617) &&

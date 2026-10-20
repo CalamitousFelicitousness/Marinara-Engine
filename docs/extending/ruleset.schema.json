@@ -44131,6 +44131,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "slippery": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "perDistance": {
                               "type": "object",
                               "properties": {
@@ -70379,6 +70383,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "slippery": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "perDistance": {
                                   "type": "object",
                                   "properties": {
@@ -83879,6 +83887,10 @@
                                     "const": true
                                   },
                                   "towardCaster": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "slippery": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -110564,6 +110576,10 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "slippery": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "perDistance": {
                                   "type": "object",
                                   "properties": {
@@ -132556,6 +132572,10 @@
                                         "const": true
                                       },
                                       "towardCaster": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "slippery": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -154557,6 +154577,10 @@
                                         "const": true
                                       },
                                       "towardCaster": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "slippery": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -187836,6 +187860,27 @@
               "onlySpeeds": {
                 "type": "boolean",
                 "const": true
+              },
+              "climbNotOn": {
+                "type": "object",
+                "properties": {
+                  "terrain": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "minItems": 1,
+                    "maxItems": 12
+                  },
+                  "slippery": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "$comment": {}
+                },
+                "additionalProperties": false
               },
               "ignoresHardGround": {
                 "type": "boolean",

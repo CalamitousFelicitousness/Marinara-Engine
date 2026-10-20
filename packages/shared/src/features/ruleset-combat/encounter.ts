@@ -2526,6 +2526,7 @@ export function rulesetZoneAction(
   if (terrain?.difficult) out.difficult = true;
   if (terrain?.costTimes !== undefined) out.costTimes = terrain.costTimes;
   if (terrain?.halvesSpeed) out.halvesSpeed = true;
+  if (terrain?.slippery) out.slippery = true;
   if (zone.breaksConcentration) out.breaksConcentration = true;
   if (zone.damageCap !== undefined) out.damageCap = zone.damageCap;
   if (zone.damageType) out.damageType = zone.damageType;
@@ -7315,6 +7316,7 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         entry.ignoresHardGround ||
         entry.runsAcross ||
         entry.walksOnLiquid ||
+        entry.climbNotOn ||
         entry.passesCreatures ||
         entry.passesObjects,
     );
@@ -7349,7 +7351,10 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         if (!changed.includes(combatant.id)) changed.push(combatant.id);
       }
     }
-    if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) continue;
+    if (!grants.length && !combatant.baseSpeeds && !combatant.levitating) {
+      delete combatant.climbNotOn;
+      continue;
+    }
     const own = combatant.baseSpeeds ?? {
       ...(combatant.speeds ? { speeds: { ...combatant.speeds } } : {}),
       ...(combatant.hover ? { hover: true as const } : {}),
@@ -7359,10 +7364,25 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     const speeds: RulesetMoveSpeeds = only ? {} : { ...(own.speeds ?? {}) };
     let hover = !!own.hover;
     let levitating = false;
+    // A climb kept off some ground (1.618): none on a board whose place it names, and where it is the
+    // only climb they have, what it is kept off.
+    const environment = state.board?.environment;
+    const climbFree = !!speeds.climb;
+    const climbKept: { terrain: string[]; slippery?: true } = { terrain: [] };
+    let climbKeptBy = 0;
     for (const entry of only ? grants.filter((one) => one.onlySpeeds && one.speeds) : grants) {
       for (const mode of RULESET_MOVE_MODES) {
         const given = entry.speeds?.[mode];
+        const notOn = mode === "climb" ? entry.climbNotOn : undefined;
+        if (notOn && environment !== undefined && notOn.terrain?.includes(environment)) continue;
         const speed = given === "walk" ? combatant.speed : given;
+        if (mode === "climb" && speed) {
+          if (notOn) {
+            climbKeptBy++;
+            climbKept.terrain.push(...(notOn.terrain ?? []));
+            if (notOn.slippery) climbKept.slippery = true;
+          } else climbKeptBy = -Infinity;
+        }
         if (speed && speed > (speeds[mode] ?? 0)) speeds[mode] = speed;
       }
       if (entry.hover || entry.levitates || entry.lifts) hover = true;
@@ -7384,6 +7404,12 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     else delete combatant.levitating;
     if (only) combatant.noWalk = true;
     else delete combatant.noWalk;
+    if (!climbFree && climbKeptBy > 0) {
+      combatant.climbNotOn = {
+        terrain: [...new Set(climbKept.terrain)],
+        ...(climbKept.slippery ? { slippery: true as const } : {}),
+      };
+    } else delete combatant.climbNotOn;
     if (grants.length) combatant.baseSpeeds = own;
     else delete combatant.baseSpeeds;
     if (

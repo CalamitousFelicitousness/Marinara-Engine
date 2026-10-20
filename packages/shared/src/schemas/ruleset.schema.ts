@@ -3354,6 +3354,7 @@ export interface RulesetCatalogZone {
     costTimes?: number;
     halvesSpeed?: true;
     towardCaster?: true;
+    slippery?: true;
     perDistance?: { every: number; amount: { dice?: string; flat?: number }; damageType?: string };
   };
   breaksConcentration?: true;
@@ -3765,6 +3766,9 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
         /** Its hard going counts only for a step that brings the mover nearer its caster
          *  (Capability API 1.182): 5e's Gust of Wind, 2 feet for every 1 moving closer. */
         towardCaster: z.literal(true).optional(),
+        /** Slick underfoot (Capability API 1.618): nobody climbs into it by a speed a condition's
+         *  `climbNotOn.slippery` keeps off slippery ground. 5e's Grease. */
+        slippery: z.literal(true).optional(),
         perDistance: z
           .object({
             every: z.number().finite().gt(0),
@@ -3775,9 +3779,13 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
           .optional(),
       })
       .strict()
-      .refine((terrain) => terrain.difficult || terrain.costTimes || terrain.halvesSpeed || terrain.perDistance, {
-        message: '"terrain" says "difficult", "costTimes", "halvesSpeed", "perDistance" or several',
-      })
+      .refine(
+        (terrain) =>
+          terrain.difficult || terrain.costTimes || terrain.halvesSpeed || terrain.perDistance || terrain.slippery,
+        {
+          message: '"terrain" says "difficult", "costTimes", "halvesSpeed", "perDistance", "slippery" or several',
+        },
+      )
       .refine((terrain) => !(terrain.difficult && terrain.costTimes), {
         message: '"costTimes" is its own price for the ground, so it is not also "difficult"',
       })
@@ -13064,6 +13072,16 @@ const combatConditionSchema = z
      *  walk and their own other speeds are 0. 5e's Gaseous Form, "its only method of movement is a
      *  flying speed of 10 feet". */
     onlySpeeds: z.literal(true).optional(),
+    /** The climb its `speeds` give is no good here (Capability API 1.618): on a tile, or a board
+     *  whose place, one of `terrain` names, and with `slippery` into ground a lasting area makes
+     *  slippery. A climb of its holder's own, or another's that says nothing of it, still climbs
+     *  there. 5e's Slippers of Spider Climbing, "can't use this climbing speed on slippery
+     *  surfaces". */
+    climbNotOn: z
+      .object({ terrain: z.array(promptSafeText(40)).min(1).max(12).optional(), slippery: z.literal(true).optional() })
+      .strict()
+      .refine((where) => where.terrain || where.slippery, { message: 'Say where: "terrain", "slippery" or both' })
+      .optional(),
     /** Ground hard going of itself costs its holder a plain step (Capability API 1.379): the board's
      *  terrain and its growth, 5e's Land's Stride over nonmagical difficult terrain and plants. Hard
      *  going a lasting area makes, a spell's, still counts. */

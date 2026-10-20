@@ -183,6 +183,7 @@ import {
   rulesetThroughSolid,
   rulesetLevelOf,
   rulesetSlowedCells,
+  rulesetSlickCells,
   rulesetSlowedStep,
   rulesetOnlyCrosses,
   rulesetWallShape,
@@ -11525,7 +11526,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     else if (grid) {
       const plain = rulesetThroughSolid(grid, cell.x, cell.y, actor)
         ? 2
-        : (rulesetMoveStep(grid, at, cell, actor, spent)?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y));
+        : (rulesetMoveStep(grid, at, cell, actor, spent, rulesetSlickCells(ctx.state, actor))?.cost ??
+          rulesetCellEnterCost(grid, cell.x, cell.y));
       const slowedStep = rulesetSlowedStep(grid, cell, plain, rulesetSlowedCells(ctx.state, actor), at, actor);
       const crowdedStep = rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
       // Dragging somebody they hold (1.444), as the menu priced it.

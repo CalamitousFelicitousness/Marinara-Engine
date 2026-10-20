@@ -552,6 +552,35 @@ function enterCostFor(grid: TacticalGrid, cell: RulesetCombatCell, mover?: Rules
   return mover?.ignoresHardGround ? 1 : rulesetCellEnterCost(grid, cell.x, cell.y);
 }
 
+/** Whether a mover's climb takes it into a cell (1.618): not one whose tile its climb is kept off, nor
+ *  slippery ground where it is kept off that. */
+function rulesetClimbsInto(
+  grid: TacticalGrid,
+  to: RulesetCombatCell,
+  mover: RulesetCombatant,
+  slick?: ReadonlySet<string>,
+): boolean {
+  const kept = mover.climbNotOn;
+  if (!kept) return true;
+  const tile = grid.tiles[to.y]?.[to.x];
+  if (tile !== undefined && kept.terrain.includes(tile)) return false;
+  return !(kept.slippery && slick?.has(`${to.x},${to.y}`));
+}
+
+/** The cells slippery ground covers (1.618), for a mover whose climb is kept off it. */
+export function rulesetSlickCells(state: RulesetEncounterState, mover: RulesetCombatant): Set<string> | undefined {
+  if (!mover.climbNotOn?.slippery) return undefined;
+  const slick = new Set<string>();
+  for (const caster of state.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      if (!action?.zone?.slippery) continue;
+      for (const cell of rulesetZoneCells(state, caster, zone)) slick.add(`${cell.x},${cell.y}`);
+    }
+  }
+  return slick;
+}
+
 /**
  * The cheapest way this mover takes one step, and what it costs (1.113), with `spent` already moved
  * this turn: a way of moving whose own allowance the step would pass is not one it may use. On foot
@@ -568,6 +597,8 @@ export function rulesetMoveStep(
   to: RulesetCombatCell,
   mover: RulesetCombatant,
   spent = 0,
+  /** Cells slippery ground covers (1.618), where a climb kept off it is no good. */
+  slick?: ReadonlySet<string>,
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
   const options: Array<{ mode: RulesetMoveMode; cost: number | null }> = [];
@@ -589,7 +620,7 @@ export function rulesetMoveStep(
     else if (mover.walksOnLiquid) options.push({ mode: "walk", cost: climb === null ? null : 1 + climb });
   } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
     options.push({ mode: "walk", cost: mover.runsAcross ? enter : onFoot });
-    if (speeds.climb) options.push({ mode: "climb", cost: enter });
+    if (speeds.climb && rulesetClimbsInto(grid, to, mover, slick)) options.push({ mode: "climb", cost: enter });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
     if (speeds.burrow) options.push({ mode: "burrow", cost: onFoot });
   }
@@ -1158,6 +1189,7 @@ export function rulesetReachableCells(
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const slowed = rulesetSlowedCells(state, actor);
+  const slick = rulesetSlickCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
   const cells = new Map<string, RulesetReachableCell>();
@@ -1216,7 +1248,7 @@ export function rulesetReachableCells(
       if (dx !== 0 && dy !== 0 && solidFor(at.x + dx, at.y) && solidFor(at.x, at.y + dy)) continue;
       // The cheapest way they move that takes this step on what that way has left (1.113); through
       // solid ground, two steps' worth (1.442).
-      const plain = insideSolid(x, y) ? 2 : rulesetMoveStep(grid, at, { x, y }, actor, cheapest)?.cost;
+      const plain = insideSolid(x, y) ? 2 : rulesetMoveStep(grid, at, { x, y }, actor, cheapest, slick)?.cost;
       if (plain === undefined) continue;
       // Ground a lasting area makes hard going (1.173), and another's space (1.442).
       const slowedStep = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);

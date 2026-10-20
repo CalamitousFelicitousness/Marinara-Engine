@@ -2295,6 +2295,9 @@ export interface RulesetCombatant {
   runsAcross?: true;
   /** They stand on water and walk across it as on solid ground (1.476): 5e's Water Walk. */
   walksOnLiquid?: true;
+  /** Where their climb is no good (1.618): these tiles, and with `slippery` slippery zones. Only
+   *  while every climb they have says so: Slippers of Spider Climbing. */
+  climbNotOn?: { terrain: string[]; slippery?: true };
   /** They walk through other creatures' spaces, larger ones or anybody's (1.442). */
   passesCreatures?: "larger" | "any";
   /** Whose spaces they have entered in which turn (1.451), as `<round>:<turn>`: Fire Form's once a
@@ -4261,6 +4264,8 @@ export interface RulesetCombatZoneRule {
   costTimes?: number;
   /** Speed is halved inside it, on top of any hard going (1.175). */
   halvesSpeed?: boolean;
+  /** Slick underfoot (1.618): no climb kept off slippery ground climbs into it. */
+  slippery?: true;
   /** Its hard going counts only for a step that brings the mover nearer its caster (1.182). */
   towardCaster?: boolean;
   /** What moving inside it deals: `amount` for every `every` cells, no save (1.173). */

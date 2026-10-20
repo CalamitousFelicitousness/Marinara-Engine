@@ -39487,6 +39487,261 @@
                       },
                       "additionalProperties": false
                     },
+                    "against": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "is": {
+                            "type": "object",
+                            "properties": {
+                              "types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 20
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 20
+                              },
+                              "upToSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeastSize": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "flying": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "holding": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 12
+                              },
+                              "wears": {
+                                "type": "object",
+                                "properties": {
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "tags"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "except": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "flying": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "holding": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "wears": {
+                                    "type": "object",
+                                    "properties": {
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "tags"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "anyOf": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "types": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "tags": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 20
+                                    },
+                                    "upToSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "atLeastSize": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "flying": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "holding": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 12
+                                    },
+                                    "wears": {
+                                      "type": "object",
+                                      "properties": {
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "tags"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "minItems": 2,
+                                "maxItems": 4
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "marked": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "toHit": {
+                            "type": "integer",
+                            "minimum": -20,
+                            "maximum": 20
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "advantage",
+                              "disadvantage"
+                            ]
+                          },
+                          "ignoresCover": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "ignoresLongRange": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "$comment": {}
+                        },
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
+                    },
                     "amountAgainst": {
                       "type": "object",
                       "properties": {
@@ -122599,6 +122854,261 @@
                           },
                           "additionalProperties": false
                         },
+                        "against": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "is": {
+                                "type": "object",
+                                "properties": {
+                                  "types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "upToSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "atLeastSize": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "flying": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "holding": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "wears": {
+                                    "type": "object",
+                                    "properties": {
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "tags"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "except": {
+                                    "type": "object",
+                                    "properties": {
+                                      "types": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 20
+                                      },
+                                      "upToSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "atLeastSize": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "flying": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "holding": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "wears": {
+                                        "type": "object",
+                                        "properties": {
+                                          "tags": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 12
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "tags"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "anyOf": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "flying": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "holding": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "wears": {
+                                          "type": "object",
+                                          "properties": {
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 12
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "tags"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 2,
+                                    "maxItems": 4
+                                  },
+                                  "$comment": {}
+                                },
+                                "additionalProperties": false
+                              },
+                              "marked": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "toHit": {
+                                "type": "integer",
+                                "minimum": -20,
+                                "maximum": 20
+                              },
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "advantage",
+                                  "disadvantage"
+                                ]
+                              },
+                              "ignoresCover": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "ignoresLongRange": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
                         "amountAgainst": {
                           "type": "object",
                           "properties": {
@@ -146759,6 +147269,261 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "against": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "is": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "flying": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "holding": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "wears": {
+                                          "type": "object",
+                                          "properties": {
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 12
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "tags"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "except": {
+                                          "type": "object",
+                                          "properties": {
+                                            "types": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "flying": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
+                                            "holding": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 12
+                                            },
+                                            "wears": {
+                                              "type": "object",
+                                              "properties": {
+                                                "tags": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 12
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "required": [
+                                                "tags"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "anyOf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "types": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 20
+                                              },
+                                              "tags": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 20
+                                              },
+                                              "upToSize": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "atLeastSize": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "flying": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "holding": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 12
+                                              },
+                                              "wears": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "tags": {
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                                    },
+                                                    "minItems": 1,
+                                                    "maxItems": 12
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "tags"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          "minItems": 2,
+                                          "maxItems": 4
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "marked": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "toHit": {
+                                      "type": "integer",
+                                      "minimum": -20,
+                                      "maximum": 20
+                                    },
+                                    "mode": {
+                                      "type": "string",
+                                      "enum": [
+                                        "advantage",
+                                        "disadvantage"
+                                      ]
+                                    },
+                                    "ignoresCover": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "ignoresLongRange": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
                               },
                               "amountAgainst": {
                                 "type": "object",
@@ -170926,6 +171691,261 @@
                                   "$comment": {}
                                 },
                                 "additionalProperties": false
+                              },
+                              "against": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "is": {
+                                      "type": "object",
+                                      "properties": {
+                                        "types": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "tags": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 20
+                                        },
+                                        "upToSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "atLeastSize": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "flying": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "holding": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 12
+                                        },
+                                        "wears": {
+                                          "type": "object",
+                                          "properties": {
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 12
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "tags"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "except": {
+                                          "type": "object",
+                                          "properties": {
+                                            "types": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "tags": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 20
+                                            },
+                                            "upToSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "atLeastSize": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "flying": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
+                                            "holding": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 12
+                                            },
+                                            "wears": {
+                                              "type": "object",
+                                              "properties": {
+                                                "tags": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 12
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "required": [
+                                                "tags"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "anyOf": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "types": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 20
+                                              },
+                                              "tags": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 20
+                                              },
+                                              "upToSize": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "atLeastSize": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "flying": {
+                                                "type": "boolean",
+                                                "const": true
+                                              },
+                                              "holding": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                                },
+                                                "minItems": 1,
+                                                "maxItems": 12
+                                              },
+                                              "wears": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "tags": {
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                                    },
+                                                    "minItems": 1,
+                                                    "maxItems": 12
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "tags"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          "minItems": 2,
+                                          "maxItems": 4
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "marked": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "toHit": {
+                                      "type": "integer",
+                                      "minimum": -20,
+                                      "maximum": 20
+                                    },
+                                    "mode": {
+                                      "type": "string",
+                                      "enum": [
+                                        "advantage",
+                                        "disadvantage"
+                                      ]
+                                    },
+                                    "ignoresCover": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "ignoresLongRange": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
                               },
                               "amountAgainst": {
                                 "type": "object",

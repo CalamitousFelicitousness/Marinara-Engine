@@ -12,10 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetActiveConditions,
   rulesetCombatant,
+  rulesetCombatHealth,
   supportedCapabilityApi,
   type RulesetDefinition,
   type RulesetEncounterState,
@@ -79,7 +81,13 @@ try {
     if (environment) state.board!.environment = environment as never;
     if (zone) {
       const druid = rulesetCombatant(state, "druid")!;
-      druid.actions.push({ id: "current", label: zone, budget: "action", targets: { side: "enemy" }, zone: {} } as never);
+      druid.actions.push({
+        id: "current",
+        label: zone,
+        budget: "action",
+        targets: { side: "enemy" },
+        zone: {},
+      } as never);
       druid.zones = [
         {
           actionId: "current",
@@ -121,6 +129,27 @@ try {
   assert.equal(holds(fight(6, { zone: "Running Water" })), false, "outside the area");
   // ── Off a board, held off ──
   assert.equal(holds(fight(null)), false);
+
+  // ── Held off, it harms nobody: a vampire's running water away from water ──
+  {
+    const doc = fiveE();
+    doc.combat.conditions.at(-1).harms = { at: "turn-end", flat: 20, type: "acid" };
+    const harmful = parsed(doc);
+    const harmed = (x: number) => {
+      const state = fight(x);
+      state.order = ["vampire", "druid"];
+      state.turn = 0;
+      const step = applyRulesetCombatChoice(
+        harmful,
+        state,
+        { actorId: "vampire", optionId: "end-turn", targetIds: [] },
+        () => 10,
+      );
+      return 80 - rulesetCombatHealth(harmful, harmful.combat!, rulesetCombatant(step.state, "vampire")!).value;
+    };
+    assert.equal(harmed(1), 20, "in the water");
+    assert.equal(harmed(0), 0, "on dry ground");
+  }
 
   // ── Refusals ──
   refused(fiveE({ ground: [] }), /ground/);

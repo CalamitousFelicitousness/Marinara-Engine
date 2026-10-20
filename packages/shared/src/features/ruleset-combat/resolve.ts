@@ -5024,6 +5024,14 @@ function harmFromCondition(
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
+  // Not while it is held off (1.661): a vampire's running water away from water, sunlight in the dark.
+  if (
+    at !== "defies" &&
+    !rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).some(
+      (one) => one.condition === entry.condition,
+    )
+  )
+    return;
   const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
   // Spared this time by a save (1.350): a shambling mound's engulfed.
   if (harms.save) {

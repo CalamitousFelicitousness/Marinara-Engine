@@ -2741,6 +2741,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A catalog entry's or an item use's `against` (1.685): Shocking Grasp at metal armor. */
+function carriesEntryAgainst685(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEntryAgainst685(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  for (const key of ["mechanics", "use"] as const) {
+    if (plainRecord(record[key])?.against !== undefined) return true;
+  }
+  if (Array.isArray(record.moreUses) && record.moreUses.some((one) => plainRecord(one)?.against !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesEntryAgainst685(one, depth + 1));
+}
+
 /** A weapon whose bonus may go to its wielder's defense (1.684): a Defender. */
 function carriesBonusToDefense684(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9024,6 +9038,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An entry's attack that rolls differently against a target that is something, 1.685.
+  if (
+    !declaresApi(685) &&
+    (carriesEntryAgainst685(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEntryAgainst685(document)))
+  )
+    return "A ruleset with a catalog entry's or an item use's attack that rolls differently against some targets (mechanics.against or use.against) requires schemaVersion 2 and capabilityApi 1.685 or newer";
   // A weapon whose bonus may go to its wielder's defense, 1.684.
   if (
     !declaresApi(684) &&

@@ -1071,7 +1071,8 @@ export function rulesetTagsNamed(definition: RulesetDefinition, words: unknown):
       .trim()
       .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       .replace(/[\s_]+/g, "[\\s_]+");
-    return new RegExp(`(?<!non[-\\s]?|not\\s+)(?<![\\p{L}])${escaped}(?![\\p{L}])`, "iu").test(words);
+    // A word joined to another by a hyphen is another word: a half-elf is not an elf.
+    return new RegExp(`(?<!non[-\\s]?|not\\s+)(?<![\\p{L}-])${escaped}(?![\\p{L}-])`, "iu").test(words);
   };
   return (definition.combat?.creatureTypes?.tags ?? [])
     .filter((tag) => names(tag.label) || names(tag.id))
@@ -4026,6 +4027,8 @@ function mechanicsAction(
   if (mechanics.components) action.components = [...mechanics.components];
   if (mechanics.targetTypes) action.targetTypes = mechanics.targetTypes;
   if (mechanics.maxAgainst) action.maxAgainst = structuredClone(mechanics.maxAgainst);
+  // Its roll against a target that is something (1.685): Shocking Grasp at metal armor.
+  if (mechanics.against) action.against = structuredClone(mechanics.against);
   const against = mechanics.amountAgainst ? amountOf(mechanics.amountAgainst.amount) : null;
   if (mechanics.amountAgainst && against)
     action.amountAgainst = { is: structuredClone(mechanics.amountAgainst.is), amount: against };

@@ -85,11 +85,12 @@ try {
     const tags = (id: string) => rulesetCreatureKind(definition, rulesetCombatant(state, id)!).tags;
     assert.deepEqual(tags("elf"), ["elf", "good", "neutral"]);
     assert.deepEqual(tags("dwarf"), ["dwarf", "neutral"]);
-    assert.deepEqual(tags("half"), ["elf"]);
+    // A half-elf is not an elf: a hyphen joins it into another word.
+    assert.deepEqual(tags("half"), []);
     const notElf = { except: { tags: ["elf"] } };
     assert.deepEqual(
       state.combatants.filter((one) => rulesetTargetIs(definition, one, notElf)).map((one) => one.id),
-      ["dwarf"],
+      ["dwarf", "half"],
     );
   }
 
@@ -129,7 +130,7 @@ try {
   }
 
   console.log(
-    "Tags from fields: a High Elf of Neutral Good alignment carries elf, good and neutral; a ghoul's except-elves passes over the elf and the half-elf; gated at 1.660.",
+    "Tags from fields: a High Elf of Neutral Good alignment carries elf, good and neutral; a ghoul's except-elves passes over the elf but not the half-elf; gated at 1.660.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -6719,6 +6719,34 @@ export const catalogCallsSchema = z
   });
 export type RulesetCatalogCalls = z.infer<typeof catalogCallsSchema>;
 
+/** What an attack does differently against a target that is something (Capability API 1.187), or
+ *  one carrying a condition its maker put on it (1.189): a weapon's `against`, and since 1.685 an
+ *  entry's. */
+const attackAgainstSchema = z
+  .object({
+    is: targetIsSchema.optional(),
+    marked: sheetId.optional(),
+    toHit: z.number().int().min(-20).max(20).optional(),
+    mode: z.enum(["advantage", "disadvantage"]).optional(),
+    ignoresCover: z.literal(true).optional(),
+    ignoresLongRange: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (entry.is === undefined && entry.marked === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'An "against" names who it is against: "is", "marked" or both',
+      });
+    }
+    if (entry.toHit === undefined && entry.mode === undefined && !entry.ignoresCover && !entry.ignoresLongRange) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'An "against" changes something: toHit, mode, ignoresCover or ignoresLongRange',
+      });
+    }
+  });
+
 const catalogMechanicsObject = z
   .object({
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility", "rider"]),
@@ -6751,6 +6779,10 @@ const catalogMechanicsObject = z
     /** It deals its most to a target that is this (Capability API 1.185): every die at its top face.
      *  5e's Blight, against a plant creature. */
     maxAgainst: targetIsSchema.optional(),
+    /** What its attack roll does differently against a target that is something (Capability API
+     *  1.685), as a weapon's `against`: 5e's Shocking Grasp, advantage against a target wearing metal,
+     *  `[{"is": {"wears": {"tags": ["metal"]}}, "mode": "advantage"}]`. */
+    against: z.array(attackAgainstSchema).min(1).max(4).optional(),
     /** Another amount, dealt instead to a target that is this (Capability API 1.576): a Horn of
      *  Blasting's 10d6 thunder to a creature of glass or crystal, 5d6 to anybody else. */
     amountAgainst: z
@@ -10911,41 +10943,7 @@ export const rulesetItemAttackSchema = z
      *  API 1.189 the target may instead be one carrying a condition the wielder put on it
      *  (`marked`), and the attack may roll twice (`mode`), ignore cover short of total
      *  (`ignoresCover`) and long range (`ignoresLongRange`): an oathbow's sworn enemy. */
-    against: z
-      .array(
-        z
-          .object({
-            is: targetIsSchema.optional(),
-            marked: sheetId.optional(),
-            toHit: z.number().int().min(-20).max(20).optional(),
-            mode: z.enum(["advantage", "disadvantage"]).optional(),
-            ignoresCover: z.literal(true).optional(),
-            ignoresLongRange: z.literal(true).optional(),
-          })
-          .strict()
-          .superRefine((entry, ctx) => {
-            if (entry.is === undefined && entry.marked === undefined) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'An "against" names who it is against: "is", "marked" or both',
-              });
-            }
-            if (
-              entry.toHit === undefined &&
-              entry.mode === undefined &&
-              !entry.ignoresCover &&
-              !entry.ignoresLongRange
-            ) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'An "against" changes something: toHit, mode, ignoresCover or ignoresLongRange',
-              });
-            }
-          }),
-      )
-      .min(1)
-      .max(4)
-      .optional(),
+    against: z.array(attackAgainstSchema).min(1).max(4).optional(),
     /** A hit that leaves its target at `healthAtMost` or less kills it outright, on a failed `save`
      *  where it has one (Capability API 1.187): a mace of disruption against fiends and undead, a
      *  mace of smiting's construct, a nine lives stealer (on a `critical`, spending a `charges` of

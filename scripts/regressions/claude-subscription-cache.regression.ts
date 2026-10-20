@@ -109,6 +109,24 @@ try {
     [["roll_dice", { type: "ephemeral", ttl: "1h" }]],
     "a tool-only reply keeps the history marker",
   );
+  const replyWith = (reply: ChatMessage): ChatMessage[] => [...history.slice(0, 4), reply, ...history.slice(5)];
+  assert.deepEqual(
+    await markedBlocks(
+      replyWith({
+        role: "assistant",
+        content: "I'll roll.",
+        tool_calls: [{ id: "call_2", type: "function", function: { name: "roll_dice", arguments: "{}" } }],
+      }),
+      true,
+    ),
+    [["roll_dice", { type: "ephemeral", ttl: "1h" }]],
+    "a text-and-tool reply is marked on its final tool call",
+  );
+  assert.deepEqual(
+    await markedBlocks(replyWith({ role: "assistant", content: "" }), true),
+    [["Reply one", { type: "ephemeral", ttl: "1h" }]],
+    "an empty reply passes the marker to the reply before it",
+  );
 } finally {
   logger.debug = originalDebug;
   __setSdkForTesting(null);

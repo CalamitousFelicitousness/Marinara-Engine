@@ -577,8 +577,9 @@ export function rulesetBuilderOptions(
     return without;
   };
   return entries.filter((entry) => {
+    // A list matches any of its values (1.678).
     for (const [filterId, value] of Object.entries(step.filters ?? {})) {
-      if (!filterHas(entry, filterId, value)) return false;
+      if (![value].flat().some((one) => filterHas(entry, filterId, one))) return false;
     }
     if (step.upTo && limit !== null) {
       const at = entry.filters?.[step.upTo.filter];

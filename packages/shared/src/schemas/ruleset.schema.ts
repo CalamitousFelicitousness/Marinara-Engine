@@ -1791,8 +1791,20 @@ const builderStepSchema = z.discriminatedUnion("kind", [
           message: "A step stamps 1 to 4 columns",
         })
         .optional(),
-      /** Fixed values of the catalog's filters: only entries that match are offered. */
-      filters: z.record(z.union([z.number().finite(), z.string().max(80)])).optional(),
+      /** Fixed values of the catalog's filters: only entries that match are offered. A list (Capability
+       *  API 1.678) matches any of its values: a bard's Magical Secrets, `{"kind": ["spell", "cantrip"]}`. */
+      filters: z
+        .record(
+          z.union([
+            z.number().finite(),
+            z.string().max(80),
+            z
+              .array(z.union([z.number().finite(), z.string().max(80)]))
+              .min(1)
+              .max(12),
+          ]),
+        )
+        .optional(),
       /** Only entries whose `filter` names an entry picked at an earlier step (a subrace by its race). */
       within: z.object({ step: sheetId, filter: sheetId }).strict().optional(),
       /** Only entries whose number `filter` is at most `value`, read off the sheet as it stands (features
@@ -2026,7 +2038,7 @@ export type RulesetBuilderStep =
         max: number;
         field?: string;
         stamp?: Record<string, string | number | boolean | { fromWithin: string }>;
-        filters?: Record<string, string | number>;
+        filters?: Record<string, string | number | (string | number)[]>;
         within?: { step: string; filter: string };
         upTo?: RulesetBuilderUpTo;
         countFrom?: RulesetValueRef;
@@ -17688,7 +17700,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         for (const [filterId, value] of Object.entries(step.filters ?? {})) {
           const filter = filterOf(filterId);
           if (!filter) issue([...path, "filters", filterId], `Unknown filter "${filterId}"`);
-          else if ((filter.type === "number") !== (typeof value === "number")) {
+          else if ([value].flat().some((one) => (filter.type === "number") !== (typeof one === "number"))) {
             issue(
               [...path, "filters", filterId],
               `Filter "${filterId}" takes ${filter.type === "number" ? "a number" : "a word"}`,

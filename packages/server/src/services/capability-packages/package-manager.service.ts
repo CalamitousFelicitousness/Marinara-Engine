@@ -2741,6 +2741,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A guided-builder catalog step's filter that is a list of values, matching any (1.678): a bard's
+ *  Magical Secrets, `{"kind": ["spell", "cantrip"]}`. */
+function carriesStepFilterList678(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStepFilterList678(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const filters = plainRecord(record.filters);
+  if (record.kind === "catalog" && typeof record.catalog === "string" && filters) {
+    if (Object.values(filters).some((one) => Array.isArray(one))) return true;
+  }
+  return featureValues(record).some((one) => carriesStepFilterList678(one, depth + 1));
+}
+
 /** An item's use with the level it casts at, or a utility one that stops what it answers (1.677): a
  *  scroll of Counterspell. */
 function carriesItemLevel677(value: unknown, depth = 0): boolean {
@@ -8935,6 +8949,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A builder step's filter that is a list, 1.678.
+  if (
+    !declaresApi(678) &&
+    (carriesStepFilterList678(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStepFilterList678(document)))
+  )
+    return "A ruleset with a guided-builder step's filter that lists values (steps[].filters) requires schemaVersion 2 and capabilityApi 1.678 or newer";
   // An item's use at its own level, or one that stops what it answers, 1.677.
   if (
     !declaresApi(677) &&

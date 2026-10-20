@@ -14801,6 +14801,22 @@
                             {
                               "type": "string",
                               "maxLength": 80
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "maxLength": 80
+                                  }
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
                             }
                           ]
                         },
@@ -26981,6 +26997,22 @@
                             {
                               "type": "string",
                               "maxLength": 80
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "maxLength": 80
+                                  }
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
                             }
                           ]
                         },

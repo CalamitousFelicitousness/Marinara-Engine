@@ -273,7 +273,9 @@ test("quick answer streaming keeps omnibar updates within the browser frame budg
   }
 });
 
-test.afterEach(() => {
+test.afterEach(async ({ request }) => {
+  // Put back the default runtime, as mari-runtime-recovery does, so later specs on this server get Pi.
+  await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "pi" } }).catch(() => undefined);
   releaseMariThreadLock();
 });
 

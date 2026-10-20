@@ -2740,6 +2740,11 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** The bonus-action spell rule (1.657). */
+function carriesBonusSpellRule657(ruleset: unknown): boolean {
+  return plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.casting)?.afterBonusSpell !== undefined;
+}
+
 /** Massive damage killing outright (1.656). */
 function carriesMassiveDamage656(ruleset: unknown): boolean {
   return plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.dying)?.instantDeath !== undefined;
@@ -8744,6 +8749,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // The bonus-action spell rule, 1.657.
+  if (!declaresApi(657) && carriesBonusSpellRule657(ruleset))
+    return "A ruleset with the bonus-action spell rule (combat.casting.afterBonusSpell) requires schemaVersion 2 and capabilityApi 1.657 or newer";
   // Massive damage killing outright, 1.656.
   if (!declaresApi(656) && carriesMassiveDamage656(ruleset))
     return "A ruleset whose massive damage kills outright (combat.dying.instantDeath) requires schemaVersion 2 and capabilityApi 1.656 or newer";

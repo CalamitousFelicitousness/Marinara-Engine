@@ -15274,6 +15274,23 @@ const combatObjectSchema = z
     /** What using something may need (Capability API 1.179): 5e's verbal, somatic and material. */
     components: combatComponentsSchema.optional(),
     dying: combatDyingSchema.optional(),
+    /** Spells a turn (Capability API 1.657). `afterBonusSpell`: 5e's bonus-action spell rule. On its
+     *  own turn, one who has cast an entry of `catalogs` with `budget` casts nothing more of them that
+     *  turn but what `only` allows, an entry of at most that level cast with that budget; and one who
+     *  has cast any other way first casts none with `budget`. A level is what the entry is paid at,
+     *  0 for a cantrip. Casting from an item that casts from those catalogs counts too. */
+    casting: z
+      .object({
+        afterBonusSpell: z
+          .object({
+            catalogs: z.array(sheetId).min(1).max(12),
+            budget: sheetId,
+            only: z.object({ level: z.number().int().min(0).max(20), budget: sheetId }).strict(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
     /** The damage types this system has. Matched without case, so "Fire" and "fire" are one type. */
     damageTypes: z.array(promptSafeText(40)).max(40).optional(),
     /** Required when `health` names a wound track, and refused when it names a pool. Which of the
@@ -18285,6 +18302,21 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const landsWith = combat.mounts?.fall?.landsWith;
     if (landsWith !== undefined && !combat.economy.budgets.some((one) => one.id === landsWith))
       issue(at("mounts", "fall", "landsWith"), `Unknown budget "${landsWith}"`);
+    // The bonus-action spell rule (1.657): the fight's budgets, and the ruleset's catalogs.
+    const afterBonus = combat.casting?.afterBonusSpell;
+    if (afterBonus) {
+      checkBudget(afterBonus.budget, at("casting", "afterBonusSpell", "budget"));
+      checkBudget(afterBonus.only.budget, at("casting", "afterBonusSpell", "only", "budget"));
+      afterBonus.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId))
+          issue(at("casting", "afterBonusSpell", "catalogs", catalogIndex), `Unknown catalog "${catalogId}"`);
+      });
+      if (afterBonus.budget === afterBonus.only.budget)
+        issue(
+          at("casting", "afterBonusSpell", "only", "budget"),
+          "What the rule still allows is cast with another budget than the one it follows",
+        );
+    }
     // Jumping (1.446): the abilities it reads, and the check and condition of a hard landing.
     if (combat.jumping) {
       for (const key of ["long", "high"] as const) {

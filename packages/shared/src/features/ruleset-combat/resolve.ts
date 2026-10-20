@@ -260,6 +260,7 @@ import {
   rulesetInnateSlot,
   rulesetInnateSlotsLeft,
   rulesetPaidLevel,
+  rulesetBonusSpellKind,
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,
@@ -7664,6 +7665,13 @@ function applyChoice(
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
+  // What the bonus-action spell rule reads for the rest of the turn (1.657).
+  const cast = working.actions.find((entry) => entry.id === option.id);
+  if (cast && budget && rulesetOnOwnTurn(ctx.state, working)) {
+    const kind = rulesetBonusSpellKind(ctx.definition, ctx.combat, working, cast, budget);
+    if (kind === "bonus") working.flags.spellsCast = { ...working.flags.spellsCast, bonus: true };
+    else if (kind === "other") working.flags.spellsCast = { ...working.flags.spellsCast, other: true };
+  }
 
   // What breaks a sphere, aimed at the one inside (1.314), breaks it and does nothing else to them:
   // Disintegrate on a Resilient Sphere.

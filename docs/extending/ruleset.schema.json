@@ -217843,6 +217843,64 @@
             }
           ]
         },
+        "casting": {
+          "type": "object",
+          "properties": {
+            "afterBonusSpell": {
+              "type": "object",
+              "properties": {
+                "catalogs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 12
+                },
+                "budget": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "only": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 20
+                    },
+                    "budget": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "level",
+                    "budget"
+                  ],
+                  "additionalProperties": false
+                },
+                "$comment": {}
+              },
+              "required": [
+                "catalogs",
+                "budget",
+                "only"
+              ],
+              "additionalProperties": false
+            },
+            "$comment": {}
+          },
+          "required": [
+            "afterBonusSpell"
+          ],
+          "additionalProperties": false
+        },
         "damageTypes": {
           "type": "array",
           "items": {

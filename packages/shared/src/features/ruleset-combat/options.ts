@@ -1738,6 +1738,41 @@ export function rulesetPaidLevel(
   return at < 0 ? 0 : at + 1;
 }
 
+/** How a cast counts under the bonus-action spell rule (1.657): with the rule's own budget, as what
+ *  it still allows, or otherwise; undefined for no spell of its catalogs, or with no rule. */
+export function rulesetBonusSpellKind(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  actor: Pick<RulesetCombatant, "sheet">,
+  action: RulesetCombatAction,
+  budget: string,
+): "bonus" | "allowed" | "other" | undefined {
+  const rule = combat.casting?.afterBonusSpell;
+  if (!rule) return undefined;
+  const catalog = action.casts ?? action.catalog;
+  if (catalog === undefined || !rule.catalogs.includes(catalog)) return undefined;
+  if (budget === rule.budget) return "bonus";
+  if (budget === rule.only.budget && rulesetPaidLevel(definition, actor, action) <= rule.only.level) return "allowed";
+  return "other";
+}
+
+/** Whether the bonus-action spell rule bars this cast now (1.657): on its caster's own turn, any
+ *  but what it allows after a spell cast with its budget, and none with its budget after another. */
+export function rulesetBonusSpellBarred(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  budget: string,
+): boolean {
+  const cast = actor.flags.spellsCast;
+  if (!cast || !rulesetOnOwnTurn(state, actor)) return false;
+  const kind = rulesetBonusSpellKind(definition, combat, actor, action, budget);
+  if (kind === undefined) return false;
+  return (!!cast.bonus && kind !== "allowed") || (!!cast.other && kind === "bonus");
+}
+
 /** How many steps up the family a payment is, or 0 when it is not a climb at all. A pool of
  *  another group that pays for this one (`pays`, 1.171) climbs as far as its level is above the
  *  action's, read off the payer's sheet. */
@@ -3491,6 +3526,8 @@ function optionFrom(
   // attack roll of its stat block at one target: its bite as much as a fighter's sword. Only on the
   // holder's own turn: the extra action is one of its turn, never a reaction's.
   let budget = following?.budget ?? action.budget;
+  // After a bonus action's spell, only a cantrip with an action; and the other way about (1.657).
+  if (rulesetBonusSpellBarred(definition, combat, state, actor, action, budget)) return null;
   let oneStrike = false;
   let inReach = false;
   if (!free && (actor.budgets[budget] ?? 0) < 1) {

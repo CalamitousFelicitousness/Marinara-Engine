@@ -2158,6 +2158,9 @@ export interface RulesetCombatant {
     walkedAfter?: true;
     /** Something dropped was picked up this turn for nothing (1.266). */
     pickedUp?: boolean;
+    /** Spells cast this turn as the bonus-action spell rule counts them (1.657): one with its budget,
+     *  and one cast any way but what it still allows. */
+    spellsCast?: { bonus?: true; other?: true };
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
      *  its uses and recharge were spent with what came first. */
     followUps?: Array<{ id: string; paid?: true; budget?: string; targetId?: string; uncharged?: true }>;

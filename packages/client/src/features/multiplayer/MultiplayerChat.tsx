@@ -76,6 +76,28 @@ function useGuestLabels(): MultiplayerGuestLabels {
   );
 }
 
+function getMultiplayerGuestAccent(accent: string): string {
+  const selected = getCssColorFallback(accent, "").trim();
+  const isHex = (color: string) => /^#[0-9a-f]{6}$/iu.test(color);
+  if (isHex(selected)) return selected;
+  const fallback = getCssColorFallback(MARINARA_GRADIENT_PRESET, "");
+  if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return fallback;
+  const held = getComputedStyle(document.documentElement).getPropertyValue("--marinara-app-accent-static").trim();
+  if (!selected && isHex(held)) return held;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d");
+  if (!context) return isHex(held) ? held : fallback;
+  context.fillStyle = fallback;
+  context.fillStyle = held;
+  context.fillStyle = selected || held;
+  context.fillRect(0, 0, 1, 1);
+  return `#${Array.from(context.getImageData(0, 0, 1, 1).data)
+    .slice(0, 3)
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
   const { t } = useTranslation();
   const labels = useGuestLabels();
@@ -175,7 +197,10 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
           title={t("multiplayer.title")}
           theme={{
             mode,
-            accent: /^#[0-9a-f]{6}$/iu.test(accent) ? accent : getCssColorFallback(MARINARA_GRADIENT_PRESET, ""),
+            // The channel reads the held theme when sending, after the iframe is ready.
+            get accent() {
+              return getMultiplayerGuestAccent(accent);
+            },
           }}
           onAction={onAction}
           onProtocolError={() => {

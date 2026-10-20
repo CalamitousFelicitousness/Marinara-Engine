@@ -402,6 +402,9 @@ try {
       if (key === "lacks" && properties.holderLacks) continue;
       // Not a sense either (1.614): what an item asks of whoever binds it, read off their sheet.
       if (key === "needs" && properties.needsWorn) continue;
+      // Nor (1.647, 1.648): what an item's wearer is, for its statsIf and touchHarms lines.
+      const wearer = ["$comment", "needs", "needsAny", "add", "dice", "flat", "type"];
+      if (key === "needs" && Object.keys(properties).every((one) => wearer.includes(one))) continue;
       found[key]++;
       assert.equal(shape.minItems, 1);
       assert.equal(shape.maxItems, 4);

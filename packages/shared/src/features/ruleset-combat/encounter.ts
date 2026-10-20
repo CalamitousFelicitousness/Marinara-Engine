@@ -3883,6 +3883,7 @@ function mechanicsAction(
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));
   // What it puts on its own user (1.307): Sunbeam's mote.
   if (mechanics.appliesSelf?.length) action.appliesSelf = mechanics.appliesSelf.map((entry2) => ({ ...entry2 }));
+  if (mechanics.appliesSelfSaves && mechanics.appliesSelf?.length) action.appliesSelfSaves = true;
   // The standard actions taken with it (1.313): Expeditious Retreat's Dash.
   if ("takes" in mechanics && mechanics.takes?.length) action.takes = [...mechanics.takes];
   if (mechanics.concentration) action.concentration = true;

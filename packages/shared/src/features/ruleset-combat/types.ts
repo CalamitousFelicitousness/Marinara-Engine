@@ -1218,6 +1218,8 @@ export interface RulesetCombatAction {
   applies?: RulesetCombatApplies[];
   /** What it puts on its own user as it is made (1.307): Sunbeam's mote. */
   appliesSelf?: RulesetCombatApplies[];
+  /** Its user saves against `appliesSelf` with its own `save` (1.640): Dust of Sneezing. */
+  appliesSelfSaves?: true;
   /** Standard actions its user takes with it (1.313): Expeditious Retreat's Dash. */
   takes?: Array<"dash" | "disengage" | "dodge">;
   /** The same made again while its user concentrates on this one (1.310): Vampiric Touch. This is

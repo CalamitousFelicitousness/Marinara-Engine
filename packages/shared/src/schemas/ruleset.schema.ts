@@ -7176,6 +7176,9 @@ const catalogMechanicsObject = z
      *  its targets, held by its concentration when it has one: Sunbeam's mote of radiance, which
      *  sheds light and gives the later beams as an action. */
     appliesSelf: z.array(catalogAppliesSchema).min(1).max(4).superRefine(linkedApplies).optional(),
+    /** Its user rolls its `save` too, against the same difficulty, and `appliesSelf` goes on only if
+     *  they fail (Capability API 1.640): 5e's Dust of Sneezing and Choking, its thrower in the cloud. */
+    appliesSelfSaves: z.literal(true).optional(),
     /** Standard actions its user takes as part of it, for nothing more (Capability API 1.313): 5e's
      *  Expeditious Retreat, which Dashes as it is cast; its later bonus-action Dashes are what the
      *  condition it puts on its caster `grants`. */
@@ -8046,6 +8049,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["perCostStepsEvery"],
       message: '"perCostStepsEvery" spaces out what "perCostStep" adds, so it has one',
+    });
+  }
+  // Its user's own save against what it puts on them (1.640) is its save.
+  if (mechanics.appliesSelfSaves && (!mechanics.appliesSelf?.length || !mechanics.save)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["appliesSelfSaves"],
+      message: '"appliesSelfSaves" rolls its "save" against its "appliesSelf", so it needs both',
     });
   }
   // A contest stands in for the roll to hit and the save (1.512).

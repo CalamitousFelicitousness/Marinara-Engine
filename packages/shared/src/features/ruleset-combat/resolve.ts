@@ -1627,6 +1627,21 @@ function applySelf(
   payWith: string | undefined,
   steps: number,
 ): void {
+  // Saved against, with its own save at its own difficulty (1.640): Dust of Sneezing's thrower.
+  if (action.appliesSelfSaves && action.save && action.appliesSelf?.length) {
+    const save = action.save;
+    const against: RulesetSaveAgainst = {
+      conditions: [...action.appliesSelf.map((one) => one.condition), ...(save.against?.conditions ?? [])],
+      magic: magicalAction(action),
+      ...(save.against?.qualities ? { qualities: save.against.qualities } : {}),
+      action: [action.id, action.label],
+    };
+    if (
+      savesOutright(ctx, actor, save) ||
+      rollSave(ctx, actor, save.save, save.difficulty, undefined, null, against, saveLean(ctx, actor, save.modes))
+    )
+      return;
+  }
   for (const applies of action.appliesSelf ?? []) {
     if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
     const value = applies.value ? rulesetSheetValue(ctx.definition, actor, applies.value) : undefined;

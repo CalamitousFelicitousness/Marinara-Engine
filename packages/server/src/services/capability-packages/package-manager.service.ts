@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A use whose user saves against what it puts on them (1.640): Dust of Sneezing and Choking. */
+function carriesSelfSave640(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSelfSave640(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.appliesSelfSaves !== undefined) return true;
+  return featureValues(record).some((one) => carriesSelfSave640(one, depth + 1));
+}
+
 /** A contest's `takes` picked as a mode of its own (1.639): Telekinesis on an object or a creature. */
 function carriesTakesMode639(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8559,6 +8569,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A use whose user saves against what it puts on them, 1.640.
+  if (
+    !declaresApi(640) &&
+    (carriesSelfSave640(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSelfSave640(document)))
+  )
+    return "A ruleset with a use whose user saves against what it puts on them (appliesSelfSaves) requires schemaVersion 2 and capabilityApi 1.640 or newer";
   // A contest's takes picked as a mode of its own, 1.639.
   if (
     !declaresApi(639) &&

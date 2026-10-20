@@ -15,7 +15,6 @@ reviews:
     auto_pause_after_reviewed_commits: 0
     base_branches:
       - "staging"
-      - "main"
   path_instructions:
     - path: "packages/client/src/**"
       instructions: |

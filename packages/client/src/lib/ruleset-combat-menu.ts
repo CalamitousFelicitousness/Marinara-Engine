@@ -11,6 +11,7 @@ import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   RULESET_MOVE_OPTION,
+  RULESET_CAREFUL_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_STAND_OPTION,
@@ -49,8 +50,10 @@ export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 /** The Engine's own word for each of the two moves a board adds, keyed by the resolver's own id.
  *  A key segment is built from the WORD and never from the id, which may carry punctuation a
  *  localization key may not. */
-const MOVE_OPTION_WORDS: Record<string, "walk" | "stand" | "climbOut" | "flyUp" | "flyDown"> = {
+const MOVE_OPTION_WORDS: Record<string, "walk" | "walkCarefully" | "stand" | "climbOut" | "flyUp" | "flyDown"> = {
   [RULESET_MOVE_OPTION]: "walk",
+  // A careful walk over caltrops (1.636).
+  [RULESET_CAREFUL_OPTION]: "walkCarefully",
   [RULESET_STAND_OPTION]: "stand",
   [RULESET_CLIMB_OUT_OPTION]: "climbOut",
   [RULESET_FLY_UP_OPTION]: "flyUp",

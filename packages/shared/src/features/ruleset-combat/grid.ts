@@ -1119,6 +1119,8 @@ export function rulesetReachableCells(
   actorId: string,
   /** Whoever it may walk into and through (1.350): those an engulf takes in. */
   passes?: (combatant: RulesetCombatant) => boolean,
+  /** Walking carefully (1.636), at half speed on ground that spares slow walkers. */
+  careful = false,
 ): RulesetReachableCell[] {
   const combat = definition.combat;
   const grid = state.board?.grid;
@@ -1248,7 +1250,7 @@ export function rulesetReachableCells(
   }
 
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
-  const slowed = rulesetSlowedCells(state, actor);
+  const slowed = rulesetSlowedCells(state, actor, careful);
   const slick = rulesetSlickCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
@@ -1780,6 +1782,8 @@ export interface RulesetSlowedCell {
 export function rulesetSlowedCells(
   state: RulesetEncounterState,
   mover: RulesetCombatant,
+  /** Walking carefully (1.636): ground that spares slow walkers costs double for them. */
+  careful = false,
 ): Map<string, RulesetSlowedCell> {
   const slowed = new Map<string, RulesetSlowedCell>();
   for (const caster of state.combatants) {
@@ -1788,7 +1792,8 @@ export function rulesetSlowedCells(
       const rule = action?.zone;
       // Hard going in the stage it is at (1.504).
       const staged = zone.stage !== undefined && !!rule?.stages?.[zone.stage]?.difficult;
-      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed || staged)) continue;
+      const slowly = careful && !!rule?.spareSlowWalkers;
+      if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed || staged || slowly)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
       const times = rule.costTimes ?? (rule.difficult || staged ? 2 : 1);
       // Hard going only toward its caster (1.182): kept apart, and priced by the step.
@@ -1799,7 +1804,7 @@ export function rulesetSlowedCells(
         const was = slowed.get(key);
         slowed.set(key, {
           times: Math.max(was?.times ?? 1, from ? 1 : times),
-          halves: (was?.halves ?? false) || !!rule.halvesSpeed,
+          halves: (was?.halves ?? false) || !!rule.halvesSpeed || slowly,
           ...(from || was?.toward
             ? { toward: [...(was?.toward ?? []), ...(from ? [{ at: { x: from.x, y: from.y }, times }] : [])] }
             : {}),

@@ -2804,6 +2804,9 @@ export interface RulesetWalkResume {
   engulf?: { actionId: string; entered: string[] };
   /** A jump (1.446): a cell of movement a cell, touching the ground only where it lands. */
   jump?: true;
+  /** Walked carefully (1.636): every step into ground that spares slow walkers costs double, and
+   *  that ground's `enter` lets them by. */
+  careful?: true;
 }
 
 /** The board, as the fight keeps it: the tactical engine's own grid and where it came from. The
@@ -4334,6 +4337,10 @@ export interface RulesetCombatZoneRule {
   halvesSpeed?: boolean;
   /** Slick underfoot (1.618): no climb kept off slippery ground climbs into it. */
   slippery?: true;
+  /** A careful walk into it, at double the cost, is not caught by `enter` (1.636): caltrops. */
+  spareSlowWalkers?: true;
+  /** Caught by `enter` and not saving, the walker stops there for the turn (1.636). */
+  endsWalk?: true;
   /** Its hard going counts only for a step that brings the mover nearer its caster (1.182). */
   towardCaster?: boolean;
   /** What moving inside it deals: `amount` for every `every` cells, no save (1.173). */

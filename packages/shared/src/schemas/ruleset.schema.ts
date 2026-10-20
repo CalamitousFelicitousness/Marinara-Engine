@@ -3377,6 +3377,8 @@ export interface RulesetCatalogZone {
     halvesSpeed?: true;
     towardCaster?: true;
     slippery?: true;
+    spareSlowWalkers?: true;
+    endsWalk?: true;
     perDistance?: { every: number; amount: { dice?: string; flat?: number }; damageType?: string };
   };
   breaksConcentration?: true;
@@ -3791,6 +3793,15 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
         /** Slick underfoot (Capability API 1.618): nobody climbs into it by a speed a condition's
          *  `climbNotOn.slippery` keeps off slippery ground. 5e's Grease. */
         slippery: z.literal(true).optional(),
+        /** Whoever walks into it carefully, at half speed there (every step into it costing double),
+         *  is not caught by its `enter` trigger (Capability API 1.636): ball bearings and caltrops,
+         *  "a creature moving through the area at half speed doesn't need to make the save". A walk
+         *  taken that way is the "Move carefully" option, offered while such ground is near. */
+        spareSlowWalkers: z.literal(true).optional(),
+        /** Caught by its `enter` trigger and failing its save (or with no save at all), the walker
+         *  stops there with no movement left this turn (Capability API 1.636): caltrops' "stop
+         *  moving this turn". */
+        endsWalk: z.literal(true).optional(),
         perDistance: z
           .object({
             every: z.number().finite().gt(0),
@@ -3803,9 +3814,16 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .strict()
       .refine(
         (terrain) =>
-          terrain.difficult || terrain.costTimes || terrain.halvesSpeed || terrain.perDistance || terrain.slippery,
+          terrain.difficult ||
+          terrain.costTimes ||
+          terrain.halvesSpeed ||
+          terrain.perDistance ||
+          terrain.slippery ||
+          terrain.spareSlowWalkers ||
+          terrain.endsWalk,
         {
-          message: '"terrain" says "difficult", "costTimes", "halvesSpeed", "perDistance", "slippery" or several',
+          message:
+            '"terrain" says "difficult", "costTimes", "halvesSpeed", "perDistance", "slippery", "spareSlowWalkers", "endsWalk" or several',
         },
       )
       .refine((terrain) => !(terrain.difficult && terrain.costTimes), {

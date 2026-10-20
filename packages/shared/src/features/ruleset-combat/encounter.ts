@@ -2567,6 +2567,8 @@ export function rulesetZoneAction(
   if (terrain?.costTimes !== undefined) out.costTimes = terrain.costTimes;
   if (terrain?.halvesSpeed) out.halvesSpeed = true;
   if (terrain?.slippery) out.slippery = true;
+  if (terrain?.spareSlowWalkers) out.spareSlowWalkers = true;
+  if (terrain?.endsWalk) out.endsWalk = true;
   if (zone.breaksConcentration) out.breaksConcentration = true;
   if (zone.damageCap !== undefined) out.damageCap = zone.damageCap;
   if (zone.damageType) out.damageType = zone.damageType;

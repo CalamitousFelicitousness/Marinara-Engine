@@ -306,6 +306,7 @@ export {
   rulesetWindowMoment,
   rulesetWindowOptions,
   RULESET_MOVE_OPTION,
+  RULESET_CAREFUL_OPTION,
   RULESET_READY_OPTION_PREFIX,
   RULESET_READIED_OPTION,
   rulesetReadiedOption,

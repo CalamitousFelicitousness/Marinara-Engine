@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** Ground a careful walker crosses safely, or that stops a walk (1.636): caltrops. */
+function carriesCaltrops636(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCaltrops636(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const terrain = plainRecord(record.terrain);
+  if (terrain && (terrain.spareSlowWalkers !== undefined || terrain.endsWalk !== undefined)) return true;
+  return featureValues(record).some((one) => carriesCaltrops636(one, depth + 1));
+}
+
 /** A condition that stabilizes its dying holder, or rest dice that heal more (1.635): a Periapt of
  *  Wound Closure. */
 function carriesWoundClosure635(value: unknown, depth = 0): boolean {
@@ -8511,6 +8522,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Ground a careful walker crosses safely, or that stops a walk, 1.636.
+  if (
+    !declaresApi(636) &&
+    (carriesCaltrops636(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCaltrops636(document)))
+  )
+    return "A ruleset with ground a careful walker crosses safely, or that stops a walk (terrain spareSlowWalkers, endsWalk) requires schemaVersion 2 and capabilityApi 1.636 or newer";
   // A condition that stabilizes its dying holder, or rest dice that heal more, 1.635.
   if (
     !declaresApi(635) &&

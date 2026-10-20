@@ -1981,6 +1981,7 @@
   "game.combat.ruleset.board.title": "Battlefield",
   "game.combat.ruleset.board.turnOf": "{{name}} is up",
   "game.combat.ruleset.board.walk": "Move",
+  "game.combat.ruleset.board.walkCarefully": "Move carefully",
   "game.combat.ruleset.board.who": "{{name}} stands here, health {{value}} of {{max}}.",
   "game.combat.ruleset.board.zones": "In {{zones}}.",
   "game.combat.ruleset.event.absorbed": "{{target}}'s {{by}} takes in {{label}}, which does nothing.",

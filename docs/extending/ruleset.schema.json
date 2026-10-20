@@ -44537,6 +44537,14 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "spareSlowWalkers": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "endsWalk": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "perDistance": {
                               "type": "object",
                               "properties": {
@@ -72445,6 +72453,14 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "spareSlowWalkers": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "endsWalk": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "perDistance": {
                                   "type": "object",
                                   "properties": {
@@ -89453,6 +89469,14 @@
                                     "const": true
                                   },
                                   "slippery": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "spareSlowWalkers": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "endsWalk": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -118027,6 +118051,14 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "spareSlowWalkers": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
+                                "endsWalk": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "perDistance": {
                                   "type": "object",
                                   "properties": {
@@ -140048,6 +140080,14 @@
                                         "const": true
                                       },
                                       "slippery": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "spareSlowWalkers": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "endsWalk": {
                                         "type": "boolean",
                                         "const": true
                                       },
@@ -162078,6 +162118,14 @@
                                         "const": true
                                       },
                                       "slippery": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "spareSlowWalkers": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
+                                      "endsWalk": {
                                         "type": "boolean",
                                         "const": true
                                       },

@@ -224,6 +224,7 @@ import {
   RULESET_MOUNT_OPTION_PREFIX,
   RULESET_DISMOUNT_OPTION,
   RULESET_JUMP_OPTION,
+  RULESET_CAREFUL_OPTION,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   rulesetRelightCells,
@@ -420,6 +421,8 @@ interface RulesetCombatContext {
   falling?: RulesetFallResume[];
   /** A standing zone is striking on its own, not its caster acting (1.180). */
   byZone?: true;
+  /** Whoever a zone's `endsWalk` just stopped (1.636): their walk ends where they stand. */
+  walkHalted?: string;
   /** A summons striking by itself as its summoner's turn starts (1.486): never held for an answer. */
   summonStriking?: true;
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
@@ -5845,6 +5848,13 @@ function zoneStrike(
       resolveAction(ctx, caster, derived, [target], zone.payWith);
     }
   } else resolveAction(ctx, caster, again, [target], zone.payWith);
+  // Stopped where it caught them walking in, unless they saved (1.636): caltrops.
+  if (action.zone?.endsWalk && trigger === "enter") {
+    const saved = ctx.events
+      .slice(from)
+      .some((event) => event.type === "save" && event.actorId === target.id && event.success);
+    if (!saved) ctx.walkHalted = target.id;
+  }
   if (byZone) ctx.byZone = byZone;
   else delete ctx.byZone;
   if (aimed) ctx.aimedAt = aimed;
@@ -7129,12 +7139,13 @@ function applyChoice(
 
   // Walking, and getting back up: a positioned fight's own two options. Neither spends a budget.
   if (option.kind === "move") {
-    const walks = option.id === RULESET_MOVE_OPTION || option.id === RULESET_JUMP_OPTION;
+    const walks =
+      option.id === RULESET_MOVE_OPTION || option.id === RULESET_JUMP_OPTION || option.id === RULESET_CAREFUL_OPTION;
     const cell = walks ? destinationOf(option, choice.to) : null;
     if (walks && !cell) return refusal(state, choice.actorId, "unreachable", option.id);
     const { ctx, finish } = begin(definition, combat, state, roller);
     const walking = rulesetCombatant(ctx.state, actor.id)!;
-    if (cell) resolveMove(ctx, walking, cell, option.id === RULESET_JUMP_OPTION);
+    if (cell) resolveMove(ctx, walking, cell, option.id === RULESET_JUMP_OPTION, option.id === RULESET_CAREFUL_OPTION);
     else if (option.id === RULESET_FLY_UP_OPTION || option.id === RULESET_FLY_DOWN_OPTION) {
       resolveFly(ctx, walking, option);
     } else if (option.id === RULESET_CLIMB_OUT_OPTION) resolveClimbOut(ctx, walking, option);
@@ -11480,6 +11491,8 @@ function zonesEntered(
   ctx: RulesetCombatContext,
   mover: RulesetCombatant,
   before: Map<RulesetCombatZone, ZoneOccupancy>,
+  /** Walking carefully (1.636): ground that spares slow walkers lets them by. */
+  careful = false,
 ): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
@@ -11555,6 +11568,8 @@ function zonesEntered(
       if (was.zone.has(id)) continue;
       // Only the mover walks in, and only the mover's own zone moves onto anybody.
       if (id !== mover.id && caster.id !== mover.id) continue;
+      // At half speed over caltrops (1.636), let by.
+      if (careful && id === mover.id && action.zone?.spareSlowWalkers) continue;
       const target = rulesetCombatant(ctx.state, id);
       if (target) zoneStrike(ctx, caster, zone, target, "enter");
     }
@@ -11571,6 +11586,8 @@ function resolveMove(
   destination: { path: RulesetCombatCell[] },
   /** A jump (1.446): a cell of movement a cell, touching nothing on the way but where it lands. */
   jump = false,
+  /** Walked carefully (1.636). */
+  careful = false,
 ) {
   walkOn(ctx, actor, {
     kind: "walk",
@@ -11581,6 +11598,7 @@ function resolveMove(
     asked: [],
     spent: 0,
     ...(jump ? { jump: true as const } : {}),
+    ...(careful ? { careful: true as const } : {}),
   });
 }
 
@@ -11612,6 +11630,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     !!ctx.combat.readying && ctx.state.combatants.some((one) => one.readied?.on === "comes" && one.side !== actor.side);
   let spent = resume.spent;
   let stopped = false;
+  let halted = false;
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
   const rest = [...resume.path];
   const legendary = resume.legendary;
@@ -11673,6 +11692,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
             ...(resume.jump ? { jump: true as const } : {}),
+            ...(resume.careful ? { careful: true as const } : {}),
           },
         });
         return;
@@ -11693,7 +11713,14 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         ? 2
         : (rulesetMoveStep(grid, at, cell, actor, spent, rulesetSlickCells(ctx.state, actor))?.cost ??
           rulesetCellEnterCost(grid, cell.x, cell.y));
-      const slowedStep = rulesetSlowedStep(grid, cell, plain, rulesetSlowedCells(ctx.state, actor), at, actor);
+      const slowedStep = rulesetSlowedStep(
+        grid,
+        cell,
+        plain,
+        rulesetSlowedCells(ctx.state, actor, !!resume.careful),
+        at,
+        actor,
+      );
       const crowdedStep = rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
       // Squeezed between walls (1.628), as the menu priced it.
       const squeeze = rulesetSqueezeAt(ctx.definition, ctx.state, actor, cell);
@@ -11773,6 +11800,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
             ...(resume.jump ? { jump: true as const } : {}),
+            ...(resume.careful ? { careful: true as const } : {}),
           },
         });
         return;
@@ -11785,12 +11813,22 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // Nothing harms one that nothing can (1.283).
     // A jump touches the ground only where it lands (1.446).
     if (!legendary?.untouchable && (!resume.jump || rest.length === 0)) {
-      zonesEntered(ctx, actor, before);
+      zonesEntered(ctx, actor, before, !!resume.careful);
       zoneGround(ctx, actor, cell);
+    }
+    // Stopped by what they walked into (1.636): caltrops.
+    if (ctx.walkHalted === actor.id) {
+      halted = true;
+      stopped = true;
+      break;
     }
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
+  if (halted) {
+    delete ctx.walkHalted;
+    actor.movementLeft = 0;
+  }
   settleSqueeze(ctx, actor);
   // Stopped on water they could only run across (1.379): it does not hold them up, and they come out
   // on the nearest open ground.

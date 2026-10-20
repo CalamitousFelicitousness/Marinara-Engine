@@ -565,6 +565,8 @@ export const RULESET_MOUNT_OPTION_PREFIX = "move:mount:";
 export const RULESET_DISMOUNT_OPTION = "move:dismount";
 /** A long jump in a straight line (1.446), to one of its `cells`. */
 export const RULESET_JUMP_OPTION = "move:jump";
+/** A careful walk (1.636): at half speed over ground that spares slow walkers, uncaught by it. */
+export const RULESET_CAREFUL_OPTION = "move:careful";
 /** A flier going up a level, or down one, where it stands (1.114). */
 export const RULESET_FLY_UP_OPTION = "move:fly-up";
 /** Lighting a prop again (1.332), followed by its id. */
@@ -4335,6 +4337,20 @@ function movementOptions(
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });
   }
+  // A careful walk (1.636), while ground that spares a slow walker is down: caltrops.
+  const spared = state.combatants.some((caster) =>
+    (caster.zones ?? []).some((zone) => caster.actions.find((one) => one.id === zone.actionId)?.zone?.spareSlowWalkers),
+  );
+  const carefully = spared ? rulesetReachableCells(definition, state, actor.id, undefined, true) : [];
+  if (carefully.length > 0) {
+    options.push({
+      id: RULESET_CAREFUL_OPTION,
+      kind: "move",
+      label: "Move carefully",
+      targets: { side: "self", count: 0 },
+      cells: carefully,
+    });
+  }
   // A jump (1.446), where there is anywhere to land.
   const jumps = rulesetJumpCells(definition, state, actor.id);
   if (jumps.length > 0) {
@@ -4464,6 +4480,7 @@ function commandedOptions(
         option.kind === "end-turn" ||
         option.id === RULESET_MOVE_OPTION ||
         option.id === RULESET_JUMP_OPTION ||
+        option.id === RULESET_CAREFUL_OPTION ||
         (option.kind === "standard" &&
           option.id.startsWith("standard:") &&
           named.includes(rulesetStandardName(option.id) as never)),

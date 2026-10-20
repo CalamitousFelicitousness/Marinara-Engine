@@ -5702,6 +5702,7 @@ export interface RulesetCatalogArea {
   sizePerCostStep?: number;
   around?: true;
   throughWalls?: true;
+  oneCell?: true;
 }
 const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = z
   .object({
@@ -5730,6 +5731,10 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
     /** Walls and corners do not stop it (Capability API 1.282): "including ones behind barriers and
      *  around corners". Only with `around`. */
     throughWalls: z.literal(true).optional(),
+    /** Smaller than a cell (Capability API 1.649): it covers only the cell it is at, however small
+     *  its `size`, where a burst otherwise covers at least the cells around it. 5e's Sphere of
+     *  Annihilation, a 2-foot sphere. Only a single burst held at a point. */
+    oneCell: z.literal(true).optional(),
   })
   .strict()
   .refine((area) => !area.around || (area.shape === "burst" && area.copies === undefined), {
@@ -5763,7 +5768,13 @@ const catalogAreaSchema: z.ZodType<RulesetCatalogArea, z.ZodTypeDef, unknown> = 
   .refine((area) => area.copiesWithin === undefined || area.copies !== undefined, {
     message: '"copiesWithin" spaces out its copies, so it has "copies"',
     path: ["copiesWithin"],
-  });
+  })
+  .refine(
+    (area) =>
+      !area.oneCell ||
+      (area.shape === "burst" && !area.around && area.copies === undefined && area.sizePerCostStep === undefined),
+    { message: "Only a single burst held at a point is one cell", path: ["oneCell"] },
+  );
 
 /** What an entry DOES. The Engine does not act on it in this slice: it validates it and the client
  *  shows one compact line. A later combat bridge turns it into the Engine's own `CombatSkill`, so

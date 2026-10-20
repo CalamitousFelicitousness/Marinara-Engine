@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An area of only the cell it is at (1.649): a Sphere of Annihilation. */
+function carriesOneCell649(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOneCell649(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.area)?.oneCell !== undefined) return true;
+  return featureValues(record).some((one) => carriesOneCell649(one, depth + 1));
+}
+
 /** An item that harms whoever it comes into the hands of (1.648): a Talisman of Pure Good. */
 function carriesTouchHarms648(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8663,6 +8673,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An area of only the cell it is at, 1.649.
+  if (
+    !declaresApi(649) &&
+    (carriesOneCell649(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOneCell649(document)))
+  )
+    return "A ruleset with an area of only the cell it is at (area.oneCell) requires schemaVersion 2 and capabilityApi 1.649 or newer";
   // An item that harms whoever it comes into the hands of, 1.648.
   if (
     !declaresApi(648) &&

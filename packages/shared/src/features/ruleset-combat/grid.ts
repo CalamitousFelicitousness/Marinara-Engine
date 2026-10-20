@@ -687,7 +687,8 @@ export function rulesetAreaCells(
   width = 1,
 ): RulesetCombatCell[] {
   const reach = Math.max(1, Math.round(size));
-  if (shape === "burst") return burstCells(reach, toward, grid);
+  // A burst of no size is only its own cell (1.649): a Sphere of Annihilation.
+  if (shape === "burst") return burstCells(size === 0 ? 0 : reach, toward, grid);
   if (shape === "box") return boxCells(reach, origin, toward, grid);
   // A wall is shown run across the line from its maker; how it was really laid is the cast's.
   if (shape === "wall") return rulesetWallShape(grid, { size, width }, toward, origin).cells;

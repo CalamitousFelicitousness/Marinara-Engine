@@ -4105,7 +4105,8 @@ function mechanicsAction(
     if (mechanics.area && !mechanics.area.around) {
       action.area = {
         shape: mechanics.area.shape,
-        size: rulesetInCells(mechanics.area.size, perCell),
+        // Only its own cell (1.649): a Sphere of Annihilation's 2 feet.
+        size: mechanics.area.oneCell ? 0 : rulesetInCells(mechanics.area.size, perCell),
         ...(mechanics.area.width !== undefined ? { width: rulesetInCells(mechanics.area.width, perCell) } : {}),
         ...(mechanics.area.ring !== undefined ? { ring: rulesetInCells(mechanics.area.ring, perCell) } : {}),
         ...(mechanics.area.ringOnly ? { ringOnly: true as const } : {}),

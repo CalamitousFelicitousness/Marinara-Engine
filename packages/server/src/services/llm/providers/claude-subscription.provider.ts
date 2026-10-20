@@ -346,11 +346,15 @@ function buildResumeSelection(messages: ChatMessage[], model: string, extendedCa
     // fails ("maximum of 4 blocks with cache_control"). Upgrade path: mirror Claude Code's TTL.
     extendedCacheTtl ? { type: "ephemeral", ttl: "1h" } : undefined,
   );
+  const markedEntry = entries.findIndex(
+    (entry) => entry.type === "assistant" && entry.message.content.some((block) => "cache_control" in block),
+  );
   logger.debug(
-    "[claude-subscription] resume path: shape=%s sessionId=%s historyLen=%d",
+    "[claude-subscription] resume path: shape=%s sessionId=%s historyLen=%d historyCacheMarker=%s",
     split.shape,
     sessionId,
     split.history.length,
+    markedEntry >= 0 ? `entry ${markedEntry} of ${entries.length}` : "none",
   );
   return {
     promptArg: singleMessageIterable(currentToSdkUserMessage(split.current)),

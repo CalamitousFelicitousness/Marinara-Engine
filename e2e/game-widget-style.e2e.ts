@@ -315,13 +315,41 @@ for (const [preset, theme] of [
         const journal = session.locator('[data-game-section="journal"]');
         const timeline = journal.getByRole("button", { name: "Timeline", exact: true });
         await expect(timeline).toBeVisible();
-        const colors = await timeline.evaluate((element) => ({
-          text: getComputedStyle(element).webkitTextFillColor,
-          window: getComputedStyle(element.closest(".mari-window")!).color,
-        }));
+        const colors = await timeline.evaluate((element) => {
+          const probe = document.createElement("span");
+          probe.style.color = "var(--mari-game-text, var(--foreground))";
+          element.append(probe);
+          const basis = getComputedStyle(probe).color;
+          probe.remove();
+          return {
+            text: getComputedStyle(element).webkitTextFillColor,
+            basis,
+            window: getComputedStyle(element.closest(".mari-window")!).color,
+          };
+        });
         await session.locator('[data-window-control="close"]').click();
         await expect(session).toBeHidden();
         return colors;
+      };
+
+      const expectJournalPalette = async (
+        colors: Awaited<ReturnType<typeof journalText>>,
+        palette: string,
+        label: string,
+      ) => {
+        const [basis, reference] = (await pixels(page, [colors.basis, palette])).map((color) =>
+          color.split(",").map(Number),
+        );
+        // The window can already mute the palette's opacity. Its RGB still follows the palette;
+        // the tab's own 85% tint is applied to that resolved basis, including the inherited alpha.
+        for (let channel = 0; channel < 3; channel += 1)
+          expect(
+            Math.abs(basis![channel]! - reference![channel]!),
+            `${label} supplies the Journal's color`,
+          ).toBeLessThanOrEqual(1);
+        expect(await pixels(page, [colors.text]), `${label} supplies the selected Timeline text`).toEqual(
+          await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${colors.basis} 85%, transparent)`)]),
+        );
       };
 
       const surfaces = (): [Surface, Locator][] => [
@@ -352,9 +380,7 @@ for (const [preset, theme] of [
       const inventoryBaseline = await inventoryTints();
       const journalBaseline = await journalText();
       const appText = await resolveColor(page, "var(--foreground)");
-      expect(await pixels(page, [journalBaseline.text]), "the Journal uses the app theme text").toEqual(
-        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${appText} 85%, transparent)`)]),
-      );
+      await expectJournalPalette(journalBaseline, appText, "The app theme");
       const baseline = await measure();
       await shoot("default-sheet");
       await closeSheet();
@@ -376,9 +402,7 @@ for (const [preset, theme] of [
       await expectBaseline(await measure());
       await closeSheet();
       const journalColors = await journalText();
-      expect(await pixels(page, [journalColors.text]), "the Journal uses the window text").toEqual(
-        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${journalColors.window} 85%, transparent)`)]),
-      );
+      await expectJournalPalette(journalColors, journalColors.window, "The window theme");
 
       await application(page, ["font"]);
       const lettering = await measure();
@@ -732,7 +756,17 @@ for (const mode of ["classic", "tactical"] as const) {
               (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
             return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
           };
-          const results: [string, number][] = [];
+          const results: Array<{
+            label: string;
+            ratio: number;
+            classes: string;
+            inlineStyle: string | null;
+            color: string;
+            textFill: string;
+            foregroundPixel: number[];
+            backgroundPixel: number[];
+            layers: Array<{ tag: string; classes: string; background: string; image: string; opacity: string }>;
+          }> = [];
           for (const name of names) {
             for (const section of document.querySelectorAll<HTMLElement>(`[data-game-section="${name}"]`)) {
               if (!section.getClientRects().length) continue;
@@ -769,11 +803,32 @@ for (const mode of ["classic", "tactical"] as const) {
                 ) {
                   chain.unshift(node);
                 }
+                const layers = chain.map((node) => {
+                  const style = getComputedStyle(node);
+                  return {
+                    tag: node.tagName,
+                    classes: node.className,
+                    background: style.backgroundColor,
+                    image: style.backgroundImage,
+                    opacity: style.opacity,
+                  };
+                });
                 let background = paint("#000");
-                for (const node of chain) background = paint(getComputedStyle(node).backgroundColor);
-                const foreground = paint(getComputedStyle(element).webkitTextFillColor);
+                for (const layer of layers) background = paint(layer.background);
+                const style = getComputedStyle(element);
+                const foreground = paint(style.webkitTextFillColor);
                 const [light, dark] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
-                results.push([`${name} "${text.slice(0, 20)}"`, (light! + 0.05) / (dark! + 0.05)]);
+                results.push({
+                  label: `${name} "${text.slice(0, 20)}"`,
+                  ratio: (light! + 0.05) / (dark! + 0.05),
+                  classes: element.className,
+                  inlineStyle: element.getAttribute("style"),
+                  color: style.color,
+                  textFill: style.webkitTextFillColor,
+                  foregroundPixel: foreground,
+                  backgroundPixel: background,
+                  layers,
+                });
               }
             }
           }
@@ -782,22 +837,31 @@ for (const mode of ["classic", "tactical"] as const) {
       // Phones show the active party member once the battle intro ends.
       if (mode === "classic") {
         await expect
-          .poll(async () => (await measureContrast()).some(([label]) => /"(?:Hero|Companion)"/u.test(label)), {
+          .poll(async () => (await measureContrast()).some(({ label }) => /"(?:Hero|Companion)"/u.test(label)), {
             message: "the active party member's visible text is checked",
           })
           .toBe(true);
       }
       const contrast = await measureContrast();
+      const contrastPath = info.outputPath("combat-contrast.json");
+      writeFileSync(
+        contrastPath,
+        JSON.stringify({ mode, theme: "light", preset: "mari", minimum: 3, samples: contrast }, null, 2),
+      );
+      await info.attach("combat contrast", { path: contrastPath, contentType: "application/json" });
       for (const name of expected)
         expect(
-          contrast.some(([label]) => label.startsWith(`${name} `)),
+          contrast.some(({ label }) => label.startsWith(`${name} `)),
           `${name} has visible text checked`,
         ).toBe(true);
       expect(
-        contrast.some(([label]) => /\d/u.test(label)),
+        contrast.some(({ label }) => /\d/u.test(label)),
         "visible combat numbers are checked",
       ).toBe(true);
-      for (const [label, ratio] of contrast) expect(ratio, `${label} is readable`).toBeGreaterThanOrEqual(3);
+      const unreadable = contrast
+        .filter(({ ratio }) => !Number.isFinite(ratio) || ratio < 3)
+        .map(({ label, ratio }) => `${label}: ${ratio.toFixed(3)}`);
+      expect(unreadable, "Every visible Engine label and number has at least 3:1 contrast").toEqual([]);
       await setStore(page, { setTheme: "dark" });
 
       await application(page, []);

@@ -1027,9 +1027,11 @@ const skillSchema = z
 const saveSchema = skillSchema;
 
 const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
-/** The most derived values a sheet may have: 400 since Capability API 1.111 (240 since 1.88,
- *  120 since 1.84), which a package exceeding the corresponding older limit declares. */
-export const RULESET_DERIVED_MAX = 400;
+/** The most derived values a sheet may have: 800 since Capability API 1.676, which 5e's armor
+ *  training outgrew (400 since 1.111, 240 since 1.88, 120 since 1.84), which a package exceeding the
+ *  corresponding older limit declares. */
+export const RULESET_DERIVED_MAX = 800;
+export const RULESET_DERIVED_MAX_BEFORE_1676 = 400;
 export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
 export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
 export const RULESET_DERIVED_MAX_BEFORE_179 = 60;

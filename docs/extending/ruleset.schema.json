@@ -10399,7 +10399,7 @@
               }
             ]
           },
-          "maxItems": 400,
+          "maxItems": 800,
           "default": []
         },
         "lists": {

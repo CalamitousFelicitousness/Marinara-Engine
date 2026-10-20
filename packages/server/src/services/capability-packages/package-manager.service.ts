@@ -38,6 +38,7 @@ import {
   RULESET_DERIVED_MAX_BEFORE_179,
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
+  RULESET_DERIVED_MAX_BEFORE_1676,
   RULESET_FIELDS_MAX_BEFORE_1203,
   RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
   RULESET_COMBAT_MODIFIER_TARGETS,
@@ -12382,6 +12383,10 @@ export function getCapabilityPackageInstallIssue(
     });
   if (!declaresApi(110) && biggerOrBounded) {
     return "A ruleset whose builder catalog step asks for or takes more than 20 entries, or bounds manual scores, requires schemaVersion 2 and capabilityApi 1.110 or newer";
+  }
+  // More derived values again, 1.676: an older Engine refused a sheet with more than 400.
+  if (!declaresApi(676) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1676) {
+    return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1676} derived values requires schemaVersion 2 and capabilityApi 1.676 or newer`;
   }
   // More derived values again, 1.111: an older Engine refused a sheet with more than 240.
   if (!declaresApi(111) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {

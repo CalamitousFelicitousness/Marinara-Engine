@@ -221,8 +221,17 @@ try {
   });
   assert.equal(parsed(derivedDoc).sheet.derived.length, 400);
   const tooManyDerived = structuredClone(derivedDoc);
-  tooManyDerived.sheet.derived.push({ id: "one_too_many", label: "Extra", op: "sum", of: [{ const: 1 }] });
-  assert.equal(parseRulesetDefinition(tooManyDerived).ok, false, "401 derived values are refused");
+  tooManyDerived.sheet.derived.push({ id: "one_more", label: "Extra", op: "sum", of: [{ const: 1 }] });
+  assert.equal(parsed(tooManyDerived).sheet.derived.length, 401, "401 derived values since 1.676");
+  while (tooManyDerived.sheet.derived.length < 801) {
+    tooManyDerived.sheet.derived.push({
+      id: `more_${tooManyDerived.sheet.derived.length}`,
+      label: "Extra",
+      op: "sum",
+      of: [{ const: 1 }],
+    });
+  }
+  assert.equal(parseRulesetDefinition(tooManyDerived).ok, false, "801 derived values are refused");
   const moreStepsDoc = variant((doc) => {
     while (doc.sheet.builder.steps.length < 24) {
       doc.sheet.builder.steps.push({
@@ -1595,6 +1604,12 @@ try {
   const oldDerivedLimit = structuredClone(derivedDoc);
   oldDerivedLimit.sheet.derived.length = 240;
   assert.equal(issue(110, oldDerivedLimit), null, "240 derived values need no new minor");
+  // Up to 800 since 1.676, which 5e's armor training outgrew.
+  const mostDerived = structuredClone(derivedDoc);
+  mostDerived.sheet.derived.push({ id: "extra_400", label: "Extra", op: "sum", of: [{ const: 1 }] });
+  assert.match(issue(675, mostDerived) ?? "", /more than 400 derived values.*1\.676/);
+  assert.doesNotMatch(issue(676, mostDerived) ?? "", /derived values/);
+  assert.doesNotMatch(issue(675, derivedDoc) ?? "", /1\.676/, "400 derived values need no new minor");
   assert.match(issue(111, moreStepsDoc) ?? "", /more than 16 builder steps.*1\.112/);
   assert.equal(issue(112, moreStepsDoc), null);
   const oldStepsLimit = structuredClone(moreStepsDoc);

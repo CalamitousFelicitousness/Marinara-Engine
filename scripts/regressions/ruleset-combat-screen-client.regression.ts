@@ -871,6 +871,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["pushBraced", say({ type: "pushBraced", actorId: "brenna", label: "Dwarven Plate", cells: 2 })],
     ["knockedOut", say({ type: "knockedOut", actorId: "lurker", sourceId: "brenna" })],
     ["itemsMade", say({ type: "itemsMade", actorId: "brenna", label: "Goodberry", count: 10 })],
+    [
+      "reflected",
+      say({
+        type: "reflected",
+        targetId: "lurker",
+        sourceId: "brenna",
+        label: "Ray",
+        by: "Carapace",
+        roll: 3,
+        back: false,
+      }),
+    ],
     ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
     ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
     [
@@ -1495,6 +1507,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("pushBraced"), "Brenna braces (Dwarven Plate) and is moved 2 less.");
   assert.equal(printed.get("knockedOut"), "Brenna knocks Thorn Lurker out: unconscious and stable.");
   assert.equal(printed.get("itemsMade"), "Brenna makes 10 Goodberry.");
+  assert.equal(printed.get("reflected"), "Thorn Lurker's Carapace (3): Ray has no effect on it.");
+  assert.equal(
+    say({
+      type: "reflected",
+      targetId: "lurker",
+      sourceId: "brenna",
+      label: "Ray",
+      by: "Carapace",
+      roll: 6,
+      back: true,
+    }),
+    "Thorn Lurker's Carapace (6) turns Ray back at Brenna.",
+  );
   assert.equal(printed.get("pickedUp"), "Brenna picks up Mace.");
   assert.equal(printed.get("takenAway"), "Brenna takes Mace from Thorn Lurker with Telekinesis.");
   assert.equal(printed.get("averted"), "Brenna averts their eyes from Thorn Lurker.");

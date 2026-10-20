@@ -2226,6 +2226,8 @@
   "game.combat.ruleset.event.recheckMiss": "Against {{defense}}, {{actor}}'s {{label}} now misses {{target}}.",
   "game.combat.ruleset.event.recovered": "{{actor}} picks up {{count}} of their {{label}} after the fight.",
   "game.combat.ruleset.event.refilled": "{{actor}}'s {{label}} gives back {{pool}} as initiative is rolled: {{now}}.",
+  "game.combat.ruleset.event.reflected": "{{target}}'s {{by}} ({{roll}}): {{label}} has no effect on it.",
+  "game.combat.ruleset.event.reflectedBack": "{{target}}'s {{by}} ({{roll}}) turns {{label}} back at {{source}}.",
   "game.combat.ruleset.event.reformed": "{{actor}} turns {{label}} into {{form}}.",
   "game.combat.ruleset.event.refused": "{{actor}} could not do that: {{reason}}",
   "game.combat.ruleset.event.regenerates": "{{actor}} regenerates {{amount}}.",

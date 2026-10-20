@@ -13647,6 +13647,39 @@ const combatConditionSchema = z
      *  rest id, or from any with `"all"`: the rest does nothing at all, and says so. A rakshasa's
      *  curse. */
     blocksRests: z.union([z.literal("all"), uniqueIds(12)]).optional(),
+    /** What of its holder's foes' entries it takes on a die (Capability API 1.670): an entry of one of
+     *  `against.catalogs` aimed at its holder that is one of `entries`, has an area of one of `area`'s
+     *  shapes, or (`attackRoll: "ranged"`) makes a ranged attack roll. A die of `sides` is rolled and
+     *  its holder is untouched by it; on `backFrom` or more it is turned back at its maker, who takes
+     *  it instead. A tarrasque's Reflective Carapace: `{"sides": 6, "backFrom": 6, "against":
+     *  {"catalogs": ["spells"], "entries": ["spells/magic-missile"], "area": ["line"], "attackRoll":
+     *  "ranged"}}`. */
+    reflects: z
+      .object({
+        sides: z.number().int().min(2).max(100),
+        backFrom: z.number().int().min(1).max(100),
+        against: z
+          .object({
+            catalogs: uniqueIds(8),
+            entries: z.array(catalogEntryRef).min(1).max(20).optional(),
+            area: z
+              .array(z.enum(["burst", "cone", "line", "box", "wall"]))
+              .min(1)
+              .max(5)
+              .optional(),
+            attackRoll: z.literal("ranged").optional(),
+          })
+          .strict()
+          .refine((against) => !!(against.entries || against.area || against.attackRoll), {
+            message: 'What it takes is named by "entries", "area" or "attackRoll"',
+          }),
+      })
+      .strict()
+      .refine((reflects) => reflects.backFrom <= reflects.sides, {
+        message: '"backFrom" is a face of the die',
+        path: ["backFrom"],
+      })
+      .optional(),
     heldOnlyIn: z
       .object({
         light: z
@@ -19194,6 +19227,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onFirstSeen", "applies", "when"], 'What it gives way to has no sheet to read "when" off');
       }
       if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
+      // The catalogs a carapace takes from (1.670).
+      entry.reflects?.against.catalogs.forEach((catalogId, catalogIndex) => {
+        if (!def.catalogs?.some((catalog) => catalog.id === catalogId))
+          issue([...path, "reflects", "against", "catalogs", catalogIndex], `Unknown catalog "${catalogId}"`);
+      });
       // Rests it keeps from doing anything (1.669).
       if (Array.isArray(entry.blocksRests))
         entry.blocksRests.forEach((rest, restIndex) => {

@@ -15039,6 +15039,45 @@ function turnsAction(
   return false;
 }
 
+/** Whether a foe's entry aimed at `target` is taken by a carapace of theirs (1.670): one of the entries
+ *  it names, of an area shape it names, or a ranged attack roll, of a catalog it takes from. Its die
+ *  rolled and said: `back` when it is turned at its maker, `untouched` otherwise. A tarrasque's
+ *  Reflective Carapace. */
+function reflectsAction(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): "back" | "untouched" | null {
+  const catalog = action.catalog ?? action.casts;
+  if (!catalog || target.side === actor.side || target.id === actor.id) return null;
+  for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
+    const rule = entry.reflects;
+    if (!rule || !rule.against.catalogs.includes(catalog)) continue;
+    const named = !!action.entry && !!rule.against.entries?.includes(action.entry);
+    const shaped = !!action.area && !!rule.against.area?.includes(action.area.shape);
+    const shot =
+      rule.against.attackRoll === "ranged" &&
+      action.toHit !== undefined &&
+      !action.autoHit &&
+      rulesetBlowKind(ctx.state, actor, target, action) === "ranged";
+    if (!named && !shaped && !shot) continue;
+    const roll = ctx.roll(rule.sides);
+    const back = roll >= rule.backFrom;
+    ctx.events.push({
+      type: "reflected",
+      targetId: target.id,
+      sourceId: actor.id,
+      label: action.label,
+      by: ctx.definition.sheet.live.conditions.find((one) => one.id === entry.condition)?.label ?? entry.condition,
+      roll,
+      back,
+    });
+    return back ? "back" : "untouched";
+  }
+  return null;
+}
+
 /** The action as it is resolved, its maker and it known to whatever it sets off (1.492). */
 function resolveActionBody(
   ctx: RulesetCombatContext,
@@ -15516,6 +15555,19 @@ function resolveActionBodyIn(
       if (!target.illusion.seenBy.includes(actor.side)) target.illusion.seenBy.push(actor.side);
       ctx.events.push({ type: "seenThrough", actorId: actor.id, targetId: target.id, label: action.label });
       continue;
+    }
+    // Taken by a carapace (1.670): untouched on its die, and on its top faces turned at its maker.
+    if (!ctx.turning && held?.targetId !== target.id) {
+      const reflected = reflectsAction(ctx, actor, action, target);
+      if (reflected === "back") {
+        ctx.turning = true;
+        try {
+          resolveActionBody(ctx, actor, action, [actor], payWith);
+        } finally {
+          delete ctx.turning;
+        }
+      }
+      if (reflected) continue;
     }
     // Each target an attack rolls for is a hit of its own, its dice not yet rolled.
     hitNow = null;

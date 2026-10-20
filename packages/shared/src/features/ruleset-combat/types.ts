@@ -3788,6 +3788,9 @@ export type RulesetCombatEvent =
   | { type: "pushBraced"; actorId: string; label: string; cells: number }
   /** Knocked out by a pulled melee blow instead of dropped dying or slain (1.667). */
   | { type: "knockedOut"; actorId: string; sourceId: string }
+  /** Taken by a carapace (1.670): `roll` on its die, its holder untouched, and with `back` turned at
+   *  its maker. */
+  | { type: "reflected"; targetId: string; sourceId: string; label: string; by: string; roll: number; back: boolean }
   /** Items made by a cast (1.668): Goodberry's berries, into its caster's hand. */
   | { type: "itemsMade"; actorId: string; label: string; count: number }
   /** Killed outright by massive damage (1.656). */

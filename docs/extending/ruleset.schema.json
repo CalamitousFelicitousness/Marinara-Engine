@@ -211749,6 +211749,77 @@
                   }
                 ]
               },
+              "reflects": {
+                "type": "object",
+                "properties": {
+                  "sides": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 100
+                  },
+                  "backFrom": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "against": {
+                    "type": "object",
+                    "properties": {
+                      "catalogs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
+                      },
+                      "entries": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 121,
+                          "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      "area": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "burst",
+                            "cone",
+                            "line",
+                            "box",
+                            "wall"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 5
+                      },
+                      "attackRoll": {
+                        "type": "string",
+                        "const": "ranged"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "catalogs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "sides",
+                  "backFrom",
+                  "against"
+                ],
+                "additionalProperties": false
+              },
               "heldOnlyIn": {
                 "type": "object",
                 "properties": {

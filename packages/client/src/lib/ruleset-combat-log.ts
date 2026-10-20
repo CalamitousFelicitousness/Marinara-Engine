@@ -1071,6 +1071,15 @@ export function rulesetCombatEventLine(
           health: event.health,
         },
       );
+    // Taken by a carapace (1.670).
+    case "reflected":
+      return key(event.back ? "reflectedBack" : "reflected", {
+        target: names.combatant(event.targetId),
+        source: names.combatant(event.sourceId),
+        label: event.label,
+        by: event.by,
+        roll: event.roll,
+      });
     // Items made by a cast (1.668).
     case "itemsMade":
       return key("itemsMade", { actor: names.combatant(event.actorId), label: event.label, count: event.count });

@@ -17,7 +17,10 @@ export interface CapabilityRuntimeLogger {
 
 /** Capability API 1.341: services other packages registered with `api.registerService`. */
 export interface CapabilityServiceLookupHost {
-  /** Another package's service registered with api.registerService. null while absent or during a shared-room generation. */
+  /**
+   * Another package's service registered with api.registerService. null while absent, during a shared-room
+   * generation, or for an `agent-runtime:` or `mari-actions:` key (only the Engine reads those).
+   */
   get<T = unknown>(key: string): T | null;
 }
 

@@ -24,7 +24,7 @@ const { inArray } = await import("../../packages/server/src/db/file-query.js");
 const { messageSwipes } = await import("../../packages/server/src/db/schema/index.js");
 const { capabilityModuleRuntime } =
   await import("../../packages/server/src/services/capability-packages/capability-module-runtime.service.js");
-const { getCapabilityService } =
+const { getCapabilityService, registerCapabilityService } =
   await import("../../packages/server/src/services/capability-packages/capability-service-registry.service.js");
 const { createCapabilityIntegrationHost } =
   await import("../../packages/server/src/services/capability-packages/capability-integrations.service.js");
@@ -139,6 +139,17 @@ try {
     "another package sees the very object the first one registered",
   );
   assert.equal(reader.services?.get("host-services-missing"), null);
+  // Agent runtime hooks and Mari actions stay host-only: no package reads them, not even the one that owns them.
+  for (const key of ["agent-runtime:host-services-full", "mari-actions:host-services-full"]) {
+    const release = registerCapabilityService(key, { hook: "host only" });
+    try {
+      assert.deepEqual(getCapabilityService(key), { hook: "host only" }, key);
+      assert.equal(reader.services?.get(key), null, key);
+      assert.equal(full.services?.get(key), null, key);
+    } finally {
+      release();
+    }
+  }
 
   // ── commands use the host grammar and every package's registered tags ──
   const reply = 'Sure [probe:{"a":1}] and [unknown:x] done';

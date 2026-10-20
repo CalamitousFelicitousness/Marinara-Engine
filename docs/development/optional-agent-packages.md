@@ -1565,6 +1565,7 @@ servers take a few libraries from the Engine instead of bundling them. Every new
 
 - `runtime.services.get(key)` returns a service a package registered with `api.registerService`, or `null` while it is
   absent or during a shared-room generation. It reads the Engine's own registry, so every package sees it.
+  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those.
 - `runtime.commands.parse(content)`, `strip(content)` and `instructions()` read conversation commands with the
   Engine's grammar and every package's registered tags.
 - `runtime.logger.isLevelEnabled(level)` says whether the Engine logger writes that level now.

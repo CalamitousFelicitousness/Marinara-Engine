@@ -100,6 +100,8 @@ type CapabilityActivationContext = {
   };
 };
 
+const HOST_ONLY_SERVICE_PREFIXES = ["agent-runtime:", "mari-actions:"] as const;
+
 async function createCapabilityRuntimeHost(
   app: FastifyInstance,
   packageId: string,
@@ -143,7 +145,12 @@ async function createCapabilityRuntimeHost(
     decisions: createCapabilityDecisionHost(app.db),
     persistence: createCapabilityPersistenceHost(app.db, permissions),
     resources: createCapabilityResourceHost(app.db),
-    services: Object.freeze({ get: <T>(key: string) => getCapabilityService<T>(key) }),
+    services: Object.freeze({
+      // Agent runtime hooks and Mari actions are read only by the Engine itself, so a package can't call
+      // another package's hooks through this lookup.
+      get: <T>(key: string) =>
+        HOST_ONLY_SERVICE_PREFIXES.some((prefix) => key.startsWith(prefix)) ? null : getCapabilityService<T>(key),
+    }),
     commands: Object.freeze({
       parse: (content: string) => parseCapabilityConversationCommands(content),
       strip: (content: string) => stripCapabilityConversationCommands(content),

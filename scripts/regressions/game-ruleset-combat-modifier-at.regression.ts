@@ -13,7 +13,10 @@ import {
   applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
+  rulesetAttackMode,
+  rulesetCombatant,
   rulesetCombatOptions,
+  rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -112,6 +115,79 @@ try {
   assert.deepEqual(strike("vrock"), { mode: "disadvantage", amount: 8 });
   // ── Against anybody else: as always ──
   assert.deepEqual(strike("bandit"), { mode: "normal", amount: 3 });
+
+  // ── Worn, and the other way round: a Ring of Elemental Command ──
+  // Advantage on its wearer's attacks at the linked elementals, and theirs at its wearer at a
+  // disadvantage: `at` on its own attacks, `from` (1.185) on attacks it is the target of.
+  {
+    const ring = [
+      { to: "attacks", mode: "advantage", at: { tags: ["demon"] } },
+      { to: "attacks-taken", mode: "disadvantage", from: { tags: ["demon"] } },
+    ];
+    const doc = fiveE();
+    doc.items = { categories: [{ id: "gear", label: "Gear" }], slots: [{ id: "finger", label: "Finger", count: 2 }] };
+    const ringed = parsed(doc);
+    const fight = () => {
+      const state = createRulesetEncounter({
+        definition: ringed,
+        seed: 1,
+        roller: () => 10,
+        combatants: [
+          {
+            id: "hero",
+            name: "Hero",
+            side: "party",
+            build: rulesetSheetBuildSchema.parse({
+              abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+              fields: { level: 5, ac: 12, speed: 30, hp_max: 50 },
+            }),
+            live: {},
+            items: [
+              {
+                name: "Ring of Elemental Command",
+                quantity: 1,
+                worn: true,
+                item: { category: "gear", slots: { finger: 1 }, worn: { modifiers: ring } },
+              } as never,
+            ],
+          },
+          {
+            id: "vrock",
+            name: "Vrock",
+            side: "enemy",
+            block: block({
+              type: "fiend",
+              tags: ["demon"],
+              actions: [
+                { id: "beak", name: "Beak", budget: "action", toHit: 4, damage: { count: 0, sides: 0, flat: 3 } },
+              ],
+            }),
+          },
+          {
+            id: "bandit",
+            name: "Bandit",
+            side: "enemy",
+            block: block({
+              actions: [
+                { id: "club", name: "Club", budget: "action", toHit: 4, damage: { count: 0, sides: 0, flat: 3 } },
+              ],
+            }),
+          },
+        ],
+      });
+      return state;
+    };
+    const state = fight();
+    const modeOf = (actorId: string, targetId: string) =>
+      rulesetAttackMode(ringed, ringed.combat!, rulesetCombatant(state, actorId)!, rulesetCombatant(state, targetId)!, {
+        state,
+        optionId: "none",
+      });
+    assert.equal(modeOf("hero", "vrock"), "advantage", "the wearer's at the demon");
+    assert.equal(modeOf("hero", "bandit"), "normal");
+    assert.equal(modeOf("vrock", "hero"), "disadvantage", "the demon's at the wearer");
+    assert.equal(modeOf("bandit", "hero"), "normal");
+  }
 
   // ── Refusals and the install gate ──
   {

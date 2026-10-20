@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition whose holder shares spaces (1.627): a swarm. */
+function carriesSharesSpace627(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSharesSpace627(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sharesSpace !== undefined) return true;
+  return featureValues(record).some((one) => carriesSharesSpace627(one, depth + 1));
+}
+
 /** Flying out of reach without drawing a strike (1.626): an owl's Flyby. */
 function carriesFlyby626(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8405,6 +8415,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition whose holder shares spaces, 1.627.
+  if (
+    !declaresApi(627) &&
+    (carriesSharesSpace627(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSharesSpace627(document)))
+  )
+    return "A ruleset with a condition whose holder shares spaces (sharesSpace) requires schemaVersion 2 and capabilityApi 1.627 or newer";
   // Flying out of reach without drawing a strike, 1.626.
   if (
     !declaresApi(626) &&

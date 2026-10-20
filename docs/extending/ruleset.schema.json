@@ -192440,6 +192440,10 @@
                 "type": "boolean",
                 "const": true
               },
+              "sharesSpace": {
+                "type": "boolean",
+                "const": true
+              },
               "entering": {
                 "type": "object",
                 "properties": {

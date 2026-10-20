@@ -1107,12 +1107,17 @@ export function rulesetReachableCells(
   const hardGoing = new Set<string>();
   // Into a foe's space and stopping there (1.451): Air Form. Only a friend's is somewhere not to stop.
   const stopsInFoes = rulesetActiveConditions(definition, combat, actor, state).some((entry) => entry.stopsInFoes);
+  // Sharing spaces (1.627): a swarm walks into and stops in anybody's, and anybody in its own.
+  const shares = (one: RulesetCombatant) =>
+    !!combat.conditions?.some((rule) => rule.sharesSpace) &&
+    rulesetActiveConditions(definition, combat, one, state).some((entry) => entry.sharesSpace);
+  const sharing = shares(actor);
   const friendly = new Set<string>();
   // Through a foe far enough apart in size, or through larger ones or anybody (1.442).
   const apart = combat.sizes?.passing?.apart;
   const ownRank = rulesetSizeRank(combat, actor);
   const walksThrough = (combatant: RulesetCombatant) => {
-    if (actor.passesCreatures === "any" || stopsInFoes) return true;
+    if (actor.passesCreatures === "any" || stopsInFoes || sharing) return true;
     const rank = rulesetSizeRank(combat, combatant);
     if (rank === undefined || ownRank === undefined) return false;
     if (actor.passesCreatures === "larger" && rank > ownRank) return true;
@@ -1123,6 +1128,8 @@ export function rulesetReachableCells(
     // Inside somebody (1.350), they fill none of their own: whoever holds them fills it. Nor does a
     // rider (1.443): their mount does.
     if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
+    // A swarm's space is anybody's to walk into and stop in (1.627).
+    if (shares(combatant)) continue;
     // Moved through only by a foe strong enough, as hard going (1.547): the Arcane Hand.
     const passable = combatant.side !== actor.side ? combatant.block?.passableBy : undefined;
     const strong = passable ? (rulesetAbilityScore(definition, actor, passable.ability) ?? 0) > passable.above : false;
@@ -1137,7 +1144,7 @@ export function rulesetReachableCells(
       if (passable?.difficult && strong) hardGoing.add(`${at.x},${at.y}`);
     }
   }
-  const taken = stopsInFoes ? friendly : occupied;
+  const taken = sharing ? new Set<string>() : stopsInFoes ? friendly : occupied;
   // Another's space costs as hard going (1.442), and solid ground does to one who walks through it.
   const crowded = combat.sizes?.passing?.crowded;
   // Dragging somebody they hold (1.444): every step costs double, unless all are much smaller.

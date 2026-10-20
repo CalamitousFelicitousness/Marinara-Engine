@@ -13137,6 +13137,10 @@ const combatConditionSchema = z
     /** Its holder walks into a hostile creature's space and may stop there (Capability API 1.451): 5e's
      *  Air, Fire and Water Form. */
     stopsInFoes: z.literal(true).optional(),
+    /** Its holder shares spaces (Capability API 1.627): it walks into and stops in anybody's space, and
+     *  anybody walks into and stops in its own. 5e's swarms, "can occupy another creature's space and
+     *  vice versa", kept on with `keepsOn`. */
+    sharesSpace: z.literal(true).optional(),
     /** What its holder does to a creature whose space it enters, once a turn each (Capability API
      *  1.451): Fire Form. */
     entering: conditionEnteringSchema.optional(),

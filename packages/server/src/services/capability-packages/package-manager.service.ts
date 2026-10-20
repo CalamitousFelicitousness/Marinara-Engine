@@ -39,6 +39,7 @@ import {
   RULESET_DERIVED_MAX_BEFORE_183,
   RULESET_DERIVED_MAX_BEFORE_1106,
   RULESET_DERIVED_MAX_BEFORE_1676,
+  RULESET_COMBAT_SENSES_MAX_BEFORE_1690,
   RULESET_FIELDS_MAX_BEFORE_1203,
   RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
   RULESET_COMBAT_MODIFIER_TARGETS,
@@ -2739,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   const calls = plainRecord(record.calls);
   if (calls && (calls.atCorpse !== undefined || calls.atMost !== undefined)) return true;
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
+}
+
+/** An item use that costs something used again before a rest (1.691): a Ring of X-ray Vision. */
+function carriesAgainBeforeRest691(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAgainBeforeRest691(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.use)?.againBeforeRest !== undefined) return true;
+  return featureValues(record).some((one) => carriesAgainBeforeRest691(one, depth + 1));
 }
 
 /** A call that ends once its creatures' counted actions are spent (1.689): a Dancing Sword. */
@@ -9079,6 +9090,19 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item that costs something used again before a rest, 1.691.
+  if (
+    !declaresApi(691) &&
+    (carriesAgainBeforeRest691(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAgainBeforeRest691(document)))
+  )
+    return "A ruleset with an item that costs something used again before a rest (use.againBeforeRest) requires schemaVersion 2 and capabilityApi 1.691 or newer";
+  // More senses, 1.690: an older Engine refused more than 8.
+  {
+    const senses = plainRecord(plainRecord(ruleset)?.combat)?.senses;
+    if (!declaresApi(690) && Array.isArray(senses) && senses.length > RULESET_COMBAT_SENSES_MAX_BEFORE_1690)
+      return `A ruleset with more than ${RULESET_COMBAT_SENSES_MAX_BEFORE_1690} senses (combat.senses) requires schemaVersion 2 and capabilityApi 1.690 or newer`;
+  }
   // A call that ends once its creatures' counted actions are spent, 1.689.
   if (
     !declaresApi(689) &&

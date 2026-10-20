@@ -51,6 +51,7 @@ import {
   rulesetModedAction,
   rulesetItemChargesLeft,
   rulesetItemOverused,
+  rulesetItemUsedSinceRest,
   rulesetItemUseLeft,
   spendRulesetShots,
   rulesetShotsAvailable,
@@ -6821,6 +6822,8 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
   if (overusing) overuseItem(ctx, actor, action);
+  // Used again before its user rested (1.691): a Ring of X-ray Vision's exhaustion.
+  if (use?.againBeforeRest && !ctx.tore) usedAgainBeforeRest(ctx, actor, action);
   // A chance to backfire as it is used (1.577): a Horn of Blasting.
   if (use?.backfires && !ctx.tore) backfireItem(ctx, actor, action);
   // The last charge spent: an item that may break rolls for it now.
@@ -6859,6 +6862,20 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
       if (other.recharge?.group === group && !actor.spent.includes(other.id)) actor.spent.push(other.id);
     }
   }
+}
+
+/** An item that costs something used again before a rest (1.691) counts the use on its stack, and
+ *  past the first since that rest asks its save of its user: failed, their tracks move and its
+ *  conditions go on them. */
+function usedAgainBeforeRest(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const use = action.itemUse!;
+  const rule = use.againBeforeRest!;
+  const before = rulesetItemUsedSinceRest(actor, use.item);
+  (actor.usesLeft ??= {})[`${use.item}:a`] = Math.min(100, before + 1);
+  if (before < 1 || rollSave(ctx, actor, rule.save.save, rule.save.difficulty)) return;
+  for (const moved of rule.tracks ?? []) moveTrack(ctx, actor, actor, moved.track, moved.by);
+  for (const condition of rule.conditions ?? [])
+    applyConditionId(ctx, actor, condition, { condition, duration: "until-dispelled" }, { sourceId: actor.id });
 }
 
 /** An item used on with no charges left (1.571) counts it, and rolls its d100 against its chance (that

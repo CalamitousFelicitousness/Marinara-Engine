@@ -2537,6 +2537,16 @@ function itemUseActions(
             },
           }
         : {}),
+      // A cost for using it again before a rest (1.691): a Ring of X-ray Vision.
+      ...(use.againBeforeRest
+        ? {
+            againBeforeRest: {
+              save: { ...use.againBeforeRest.save },
+              ...(use.againBeforeRest.tracks ? { tracks: use.againBeforeRest.tracks.map((one) => ({ ...one })) } : {}),
+              ...(use.againBeforeRest.conditions ? { conditions: [...use.againBeforeRest.conditions] } : {}),
+            },
+          }
+        : {}),
       ...(ownUses ? { ownUses } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {

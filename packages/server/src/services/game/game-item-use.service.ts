@@ -363,7 +363,11 @@ export async function restGameRulesetCharacter(
                 roll,
               });
               recharged = outcome.recharged;
-              return { stacks: recharged.length > 0 ? outcome.stacks : stacks, journal: [], value: null };
+              return {
+                stacks: recharged.length > 0 || outcome.reset ? outcome.stacks : stacks,
+                journal: [],
+                value: null,
+              };
             })
           : null;
         const next: RulesetLiveStates = { ...stored };

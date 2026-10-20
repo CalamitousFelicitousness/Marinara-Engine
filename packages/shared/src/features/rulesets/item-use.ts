@@ -47,6 +47,8 @@ import {
 } from "./live-state.js";
 import {
   resolveRulesetValueRef,
+  rulesetCheckAdjust,
+  rulesetCheckModifier,
   rulesetSymbolPoolRatings,
   rollSymbolPoolCheck,
   rollDiceHighestCheck,
@@ -100,6 +102,8 @@ export interface RulesetItemUseSaid {
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
+  /** Used again before its user rested (1.691): the save they rolled, and what failing it did. */
+  again?: { save: string; total: number; difficulty: number; success: boolean; rolls: number[]; harms: string[] };
 }
 
 export type RulesetItemUseOutcome =
@@ -315,6 +319,47 @@ export function useRulesetItemOutsideFight(input: {
     }
   }
 
+  // Used again before its user rested (1.691): past the first such use, its save, failed costing them.
+  const again = use.againBeforeRest;
+  const usedBefore = again ? Math.min(100, stack.usesLeft?.a ?? 0) : 0;
+  let againSaid: RulesetItemUseSaid["again"];
+  if (again && usedBefore >= 1) {
+    const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
+    const evaluated = evaluateRulesetSheetLive(definition, user.build, live, held);
+    const save = definition.sheet.saves.find((one) => one.id === again.save.save);
+    const target = save
+      ? { type: "save" as const, id: save.id, label: save.label, ...(save.ability ? { ability: save.ability } : {}) }
+      : null;
+    const modifier =
+      Math.trunc(rulesetCheckModifier(evaluated, target)) +
+      rulesetCheckAdjust(definition, user.build, evaluated, target);
+    const rolled = rollGateOutsideFight(
+      definition,
+      { build: user.build, live },
+      held,
+      { target, modifier, difficulty: again.save.difficulty },
+      roll,
+    );
+    const harms: string[] = [];
+    if (!rolled.success) {
+      for (const moved of again.tracks ?? []) {
+        const now = write({ op: "track", track: moved.track, by: moved.by });
+        if (now === undefined) continue;
+        const label = definition.sheet.live.tracks.find((one) => one.id === moved.track)?.label ?? moved.track;
+        harms.push(`${label} ${now}`);
+      }
+      for (const condition of again.conditions ?? []) {
+        if (!write({ op: "condition", condition, active: true })) continue;
+        harms.push(definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition);
+      }
+    }
+    againSaid = { save: save?.label ?? again.save.save, ...rolled, harms };
+  }
+  const usesLeftNow = {
+    ...(ownNow !== undefined ? { [String(input.more)]: ownNow - 1 } : {}),
+    ...(again ? { a: Math.min(100, usedBefore + 1) } : {}),
+  };
+
   // Spent the way a fight spends it, on the stack by its id.
   const charges =
     use.charges !== undefined && max !== undefined ? Math.min(max, stack.charges ?? max) - use.charges : undefined;
@@ -338,7 +383,7 @@ export function useRulesetItemOutsideFight(input: {
       name: stack.name,
       taken: use.consumes || broke !== undefined ? 1 : 0,
       ...(after !== undefined ? { charges: after } : {}),
-      ...(ownNow !== undefined ? { usesLeft: { [String(input.more)]: ownNow - 1 } } : {}),
+      ...(Object.keys(usesLeftNow).length > 0 ? { usesLeft: usesLeftNow } : {}),
       ...(broke !== undefined ? { broke: true as const } : {}),
       ...(becomes ? { becomes } : {}),
     },
@@ -362,6 +407,7 @@ export function useRulesetItemOutsideFight(input: {
       ...(recharged ? { recharged } : {}),
       ...(becomes ? { becomes: { name: becomes.name, roll: cracked! } } : {}),
       ...(gate ? { gate } : {}),
+      ...(againSaid ? { again: againSaid } : {}),
       left:
         ownNow !== undefined && own
           ? { uses: ownNow - 1, max: ownMax! }
@@ -526,6 +572,11 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
   const gate = said.gate
     ? `${said.gate.check} check ${said.gate.total} against ${said.gate.difficulty}, ${said.gate.success ? "passed" : "failed"}; `
     : "";
+  const again = said.again
+    ? `used again before a rest, ${said.again.save} save ${said.again.total} against ${said.again.difficulty}, ${
+        said.again.success ? "made" : `failed${said.again.harms.length ? ` (${said.again.harms.join(", ")})` : ""}`
+      }; `
+    : "";
   const does =
     said.gate?.success === false
       ? "it is used up for nothing"
@@ -548,7 +599,7 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
               : said.left.count > 0
                 ? `${said.left.count} left.`
                 : "None left.";
-  return `${said.user} uses ${said.item}: ${gate}${does}. ${left}`;
+  return `${said.user} uses ${said.item}: ${gate}${again}${does}. ${left}`;
 }
 
 /** What a rest gave back to one item. */
@@ -573,9 +624,10 @@ export function rechargeRulesetItems(input: {
   holder: string | undefined;
   rest: string;
   roll: (sides: number) => number;
-}): { stacks: GameInventoryStack[]; recharged: RulesetItemRecharge[] } {
+}): { stacks: GameInventoryStack[]; recharged: RulesetItemRecharge[]; reset: boolean } {
   const bag = gameInventoryBagKey(input.holder);
   const recharged: RulesetItemRecharge[] = [];
+  let reset = false;
   const stacks = input.stacks.map((stack) => {
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return stack;
     const entry = input.itemOf(stack.item);
@@ -620,6 +672,16 @@ export function rechargeRulesetItems(input: {
       const { usesLeft: _usesLeft, ...plain } = next;
       next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
     });
+    // Its count of uses since a rest (1.691), cleared by a rest it names.
+    const again = [item.use, ...(item.moreUses ?? []).map((more) => more.use)].some((one) =>
+      one?.againBeforeRest?.rests.includes(input.rest),
+    );
+    if (again && next.usesLeft?.a !== undefined) {
+      const { a: _a, ...others } = next.usesLeft;
+      const { usesLeft: _usesLeft, ...plain } = next;
+      next = Object.keys(others).length > 0 ? { ...plain, usesLeft: others } : plain;
+      reset = true;
+    }
     const recharge = item.charges?.recharge;
     if (!recharge?.rests.includes(input.rest)) return next;
     const facts = rulesetItemFacts(input.definition, item).use?.charges;
@@ -633,7 +695,7 @@ export function rechargeRulesetItems(input: {
     const { charges: _charges, ...rest } = withoutOveruse(next);
     return now >= max ? rest : { ...rest, charges: now };
   });
-  return { stacks: recharged.length > 0 ? stacks : [...input.stacks], recharged };
+  return { stacks: recharged.length > 0 || reset ? stacks : [...input.stacks], recharged, reset };
 }
 
 /** A stack whose charges came back counts its uses on none from nothing again (1.571). */

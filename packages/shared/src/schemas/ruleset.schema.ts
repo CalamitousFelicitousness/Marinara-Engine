@@ -1032,6 +1032,8 @@ const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen:
  *  corresponding older limit declares. */
 export const RULESET_DERIVED_MAX = 800;
 export const RULESET_DERIVED_MAX_BEFORE_1676 = 400;
+/** An older Engine refused more than 8 senses (`combat.senses`); 1.690 takes 12. */
+export const RULESET_COMBAT_SENSES_MAX_BEFORE_1690 = 8;
 export const RULESET_DERIVED_MAX_BEFORE_1106 = 240;
 export const RULESET_DERIVED_MAX_BEFORE_183 = 120;
 export const RULESET_DERIVED_MAX_BEFORE_179 = 60;
@@ -11153,6 +11155,23 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       .object({ items: z.array(catalogEntryRef).min(1).max(4), takes: sheetId.optional() })
       .strict()
       .optional(),
+    /** Using it again before its user has taken one of `rests` costs them (Capability API 1.691): a
+     *  `save` against its `difficulty`, failed, moves their `tracks` and puts on their `conditions`.
+     *  Counted on its stack, in a fight and out of one, and cleared by such a rest. 5e's Ring of
+     *  X-ray Vision, `{ "rests": ["long"], "save": { "save": "con_save", "difficulty": 15 }, "tracks":
+     *  [{ "track": "exhaustion", "by": 1 }] }`. */
+    againBeforeRest: z
+      .object({
+        rests: z.array(sheetId).min(1).max(4),
+        save: z.object({ save: sheetId, difficulty: z.number().int().min(1).max(100) }).strict(),
+        tracks: catalogTracksSchema.optional(),
+        conditions: z.array(sheetId).min(1).max(4).optional(),
+      })
+      .strict()
+      .refine((rule) => rule.tracks !== undefined || rule.conditions !== undefined, {
+        message: '"againBeforeRest" moves tracks, puts on conditions, or both',
+      })
+      .optional(),
     /** The level it casts at (Capability API 1.677): a scroll's spell's. Whatever reads the level an
      *  entry is paid at reads this, a reaction's `"upTo": "paid"` among them: a scroll of
      *  Counterspell, 3, stops a spell of 3rd level or lower outright. */
@@ -15539,8 +15558,9 @@ const combatObjectSchema = z
     concentration: combatConcentrationSchema.optional(),
     /** Senses that see where eyes cannot (Capability API 1.178): darkvision, blindsight, truesight.
      *  A creature says its range; a character's is read off its sheet by `sheet`, nothing at zero.
-     *  `blind` is one that works without eyes too: blindsight, tremorsense. */
-    senses: z.array(combatSenseSchema).min(1).max(8).optional(),
+     *  `blind` is one that works without eyes too: blindsight, tremorsense. Up to 8 before
+     *  Capability API 1.690, 12 since: 5e's Ring of X-ray Vision is its ninth. */
+    senses: z.array(combatSenseSchema).min(1).max(12).optional(),
     /** Seeing (1.178). `unseenAttacks` gives an attack advantage when its target cannot see the
      *  attacker, and disadvantage when the attacker cannot see its target. `eyes` is the sense (as a
      *  condition's `lacks` names it, 1.127) that is sight: whoever lacks it sees only by a `blind`
@@ -22249,6 +22269,27 @@ function useIssues(
     add([...at, "teleport"], '"teleport" is measured in cells, so the combat block declares "distance" too');
   if (use.temporary && (track?.levels?.length || track?.boxes)) {
     add([...at, "temporary"], `Health is the wound track "${track.id}", which carries no buffer for temporary points`);
+  }
+  // Used again before a rest (1.691): its rests, save, tracks and conditions are the ruleset's.
+  const again = use.againBeforeRest;
+  if (again) {
+    again.rests.forEach((rest, n) => {
+      if (!definition.rests.some((one) => one.id === rest))
+        add([...at, "againBeforeRest", "rests", n], `Unknown rest "${rest}"`);
+    });
+    if (!saves.has(again.save.save))
+      add([...at, "againBeforeRest", "save", "save"], `Unknown save "${again.save.save}"`);
+    if (definition.resolution.kind !== "dice-sum")
+      add([...at, "againBeforeRest", "save"], "A save on using it again is rolled only where checks are a dice sum");
+    again.tracks?.forEach((moved, n) => {
+      const track = definition.sheet.live.tracks.find((one) => one.id === moved.track);
+      if (!track || track.kinds)
+        add([...at, "againBeforeRest", "tracks", n, "track"], `Unknown track "${moved.track}"`);
+    });
+    again.conditions?.forEach((condition, n) => {
+      if (!conditions.has(condition))
+        add([...at, "againBeforeRest", "conditions", n], `Unknown condition "${condition}"`);
+    });
   }
   // Where the ruleset has no fight, the rest is read by nothing.
   const combat = definition.combat;

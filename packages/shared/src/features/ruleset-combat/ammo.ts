@@ -173,6 +173,13 @@ export function rulesetItemOverused(actor: RulesetCombatant, item: number): numb
   return actor.usesLeft?.[`${item}:o`] ?? actor.sheet?.items?.[item]?.usesLeft?.o ?? 0;
 }
 
+/** How many times an item that costs something used again before a rest (1.691) has been used since
+ *  its user last took that rest: as this fight left the count, else as its stack kept it (under
+ *  `usesLeft.a`), else none. */
+export function rulesetItemUsedSinceRest(actor: RulesetCombatant, item: number): number {
+  return actor.usesLeft?.[`${item}:a`] ?? actor.sheet?.items?.[item]?.usesLeft?.a ?? 0;
+}
+
 /** Whether what an action shoots or loads lets it happen now: an attack needs a shot loaded or
  *  carried, a reload a clip with room in it and, where it loads from the bag, something to load. An
  *  item's use needs one of it left, or the charges it spends. */

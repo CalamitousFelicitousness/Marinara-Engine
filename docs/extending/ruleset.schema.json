@@ -144878,6 +144878,84 @@
                           ],
                           "additionalProperties": false
                         },
+                        "againBeforeRest": {
+                          "type": "object",
+                          "properties": {
+                            "rests": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "save": {
+                              "type": "object",
+                              "properties": {
+                                "save": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "difficulty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "save",
+                                "difficulty"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "tracks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "track": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "by": {
+                                    "type": "integer",
+                                    "minimum": -20,
+                                    "maximum": 20
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "track",
+                                  "by"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "conditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "rests",
+                            "save"
+                          ],
+                          "additionalProperties": false
+                        },
                         "level": {
                           "type": "integer",
                           "minimum": 0,
@@ -169364,6 +169442,84 @@
                                 },
                                 "required": [
                                   "items"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "againBeforeRest": {
+                                "type": "object",
+                                "properties": {
+                                  "rests": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "save": {
+                                    "type": "object",
+                                    "properties": {
+                                      "save": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "save",
+                                      "difficulty"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "tracks": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "track": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "by": {
+                                          "type": "integer",
+                                          "minimum": -20,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "track",
+                                        "by"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "rests",
+                                  "save"
                                 ],
                                 "additionalProperties": false
                               },
@@ -193859,6 +194015,84 @@
                                 },
                                 "required": [
                                   "items"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "againBeforeRest": {
+                                "type": "object",
+                                "properties": {
+                                  "rests": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "save": {
+                                    "type": "object",
+                                    "properties": {
+                                      "save": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "save",
+                                      "difficulty"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "tracks": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "track": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "by": {
+                                          "type": "integer",
+                                          "minimum": -20,
+                                          "maximum": 20
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "track",
+                                        "by"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "conditions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "rests",
+                                  "save"
                                 ],
                                 "additionalProperties": false
                               },
@@ -234802,7 +235036,7 @@
             "additionalProperties": false
           },
           "minItems": 1,
-          "maxItems": 8
+          "maxItems": 12
         },
         "sight": {
           "type": "object",

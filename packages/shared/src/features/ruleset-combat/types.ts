@@ -1617,6 +1617,12 @@ export interface RulesetCombatAction {
     /** Its chance in 100 to backfire as it is used (1.577): `amount` to its user, gone for good with
      *  `destroys`, and doing nothing besides with `instead`. */
     backfires?: { chance: number; amount: RulesetCombatAmount; damageType?: string; destroys?: true; instead?: true };
+    /** Used again before its user rests (1.691): the save, and what failing it does to them. */
+    againBeforeRest?: {
+      save: { save: string; difficulty: number };
+      tracks?: Array<{ track: string; by: number }>;
+      conditions?: string[];
+    };
     charges?: {
       cost: number;
       max: number;

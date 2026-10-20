@@ -182,6 +182,38 @@ function percentile(values: number[], p: number): number {
   return sorted[low]! + (sorted[high]! - sorted[low]!) * (position - low);
 }
 
+/** How much darker than the skin just above and below it a faded lip end still counts as line. */
+const FADED_LINE_CONTRAST = 12;
+
+/** The line's columns past `end` in direction `step`, at most `limit` of them, while each column's darkest
+ *  pixel near the line is visibly darker than the skin above and below it. Comparing within the column keeps
+ *  smooth shading from passing as line. */
+function followFadedLine(image: Pixels, end: Point, step: 1 | -1, reach: number, limit: number): Point[] {
+  const found: Point[] = [];
+  let y = end[1];
+  for (let x = Math.floor(end[0]) + step; found.length < limit && x >= 0 && x < image.width; x += step) {
+    let row = -1;
+    let darkest = Infinity;
+    for (let r = Math.floor(y) - reach; r <= Math.floor(y) + reach; r += 1) {
+      const at = (r * image.width + x) * 4;
+      if (r < 0 || r >= image.height || image.data[at + 3]! <= 200 || luma(image.data, at) >= darkest) continue;
+      darkest = luma(image.data, at);
+      row = r;
+    }
+    const above = row - reach - 2;
+    const below = row + reach + 2;
+    if (row < 0 || above < 0 || below >= image.height) break;
+    const skin = Math.min(
+      luma(image.data, (above * image.width + x) * 4),
+      luma(image.data, (below * image.width + x) * 4),
+    );
+    if (skin - darkest < FADED_LINE_CONTRAST) break;
+    y = row + 0.5;
+    found.push([x + 0.5, y]);
+  }
+  return found;
+}
+
 /** Refines a closed drawn lip line, allowing short highlights; absent or open ink keeps the fallback. */
 export async function fitDrawnMouth(
   source: MeshLayerSource,
@@ -246,7 +278,22 @@ export async function fitDrawnMouth(
     samples.reduce((sum, p) => sum + p.curve * p.depth, 0) / samples.reduce((sum, p) => sum + p.curve ** 2, 0);
   const error = Math.sqrt(samples.reduce((sum, p) => sum + (p.depth - bow * p.curve) ** 2, 0) / samples.length);
   if (Math.abs(bow) > length * 0.3 || error > Math.max(1.5, percentile(thicknesses, 50) * 0.6)) return mouth;
-  return { ...mouth, left, right, bow };
+  // Lip lines often taper to ends lighter than the ink threshold, or run past corners the vision model put
+  // too far in. The painted mouth opens across the whole line, so the fitted curve is carried out to where
+  // the line visibly ends; the fit itself stays on the solid ink.
+  const reach = Math.max(2, Math.ceil(percentile(thicknesses, 50)));
+  const limit = Math.ceil(span * 0.3);
+  // Each faded end is projected onto the fitted line in both axes, so a tilted mouth whose tail runs flat
+  // isn't carried past where that tail ends. Fading only ever lengthens the line.
+  const along = ([x, y]: Point) => (x - left[0]) * cosine + (y - left[1]) * sine;
+  const from = Math.min(0, along(followFadedLine(image, left, -1, reach, limit).at(-1) ?? left));
+  const to = Math.max(length, along(followFadedLine(image, right, 1, reach, limit).at(-1) ?? right));
+  const onCurve = (along: number): Point => {
+    const depth = bow * 4 * (along / length) * (1 - along / length);
+    return [left[0] + along * cosine - depth * sine, left[1] + along * sine + depth * cosine];
+  };
+  // A parabola's sag over any chord grows with the chord's length squared.
+  return { ...mouth, left: onCurve(from), right: onCurve(to), bow: bow * ((to - from) / length) ** 2 };
 }
 
 /** Per-channel median colour of the selected pixels. */

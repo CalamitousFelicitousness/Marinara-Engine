@@ -32,7 +32,7 @@ overrides:
 
 patchedDependencies:
   mesh-avatar@0.1.1:
-    hash: 1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5
+    hash: 973d7189b842712b33b39e01a54ecbce49a19370b74a5faa9e6b6849379ad456
     path: patches/mesh-avatar@0.1.1.patch
   onnxruntime-node@1.30.0:
     hash: 14ed7e6afb8fd6dd382042cd3bda0597d7de7a21c2a92dc5715b535ee218cd68
@@ -107,7 +107,7 @@ importers:
         version: 0.513.0(react@19.3.0)
       mesh-avatar:
         specifier: 0.1.1
-        version: 0.1.1(patch_hash=1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5)
+        version: 0.1.1(patch_hash=973d7189b842712b33b39e01a54ecbce49a19370b74a5faa9e6b6849379ad456)
       postcss:
         specifier: 8.5.28
         version: 8.5.28
@@ -7623,7 +7623,7 @@ snapshots:
 
   merge-descriptors@2.0.0: {}
 
-  mesh-avatar@0.1.1(patch_hash=1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5):
+  mesh-avatar@0.1.1(patch_hash=973d7189b842712b33b39e01a54ecbce49a19370b74a5faa9e6b6849379ad456):
     dependencies:
       fflate: 0.8.3
 

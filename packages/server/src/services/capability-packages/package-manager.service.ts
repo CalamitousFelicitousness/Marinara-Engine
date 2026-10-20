@@ -2740,6 +2740,11 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A character's tags read off several fields (1.660): race and alignment. */
+function carriesTagsFromList660(ruleset: unknown): boolean {
+  return Array.isArray(plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.creatureTypes)?.tagsFrom);
+}
+
 /** A save on damage that leans (1.659): Hideous Laughter. */
 function carriesDamagedLean659(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8770,6 +8775,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A character's tags read off several fields, 1.660.
+  if (!declaresApi(660) && carriesTagsFromList660(ruleset))
+    return "A ruleset that reads a character's tags off several fields (creatureTypes.tagsFrom as a list) requires schemaVersion 2 and capabilityApi 1.660 or newer";
   // A save on damage that leans, 1.659.
   if (!declaresApi(659) && carriesDamagedLean659(ruleset))
     return "A ruleset with a condition saved against on damage with a lean (saveWhenDamaged.lean) requires schemaVersion 2 and capabilityApi 1.659 or newer";

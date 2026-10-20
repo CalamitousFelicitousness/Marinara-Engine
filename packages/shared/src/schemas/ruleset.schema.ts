@@ -15272,8 +15272,10 @@ const combatObjectSchema = z
         default: sheetId.optional(),
         /** A character's tags read off this text or choice field (Capability API 1.646): each of
          *  `tags` it names by label or id as whole words, as a creature's `alignment` is read. 5e's
-         *  alignment, "Lawful Good" giving the tags `lawful` and `good`. */
-        tagsFrom: sheetId.optional(),
+         *  alignment, "Lawful Good" giving the tags `lawful` and `good`. From Capability API 1.660 a
+         *  list of fields, read alike and the tags of all of them kept: `["race", "alignment"]`,
+         *  "High Elf" giving `elf` for a ghoul's Claws to pass over. */
+        tagsFrom: z.union([sheetId, uniqueIds(6)]).optional(),
       })
       .strict()
       .optional(),
@@ -18487,13 +18489,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       // A character's tags in the words of a field (1.646).
       if (kinds.tagsFrom !== undefined) {
-        const field = sheet.fields.find((one) => one.id === kinds.tagsFrom);
-        if (!field) issue(at("creatureTypes", "tagsFrom"), `Unknown field "${kinds.tagsFrom}"`);
-        else if (field.type !== "text" && field.type !== "enum")
-          issue(
-            at("creatureTypes", "tagsFrom"),
-            `A character's tags are read off a text or choice field, not "${field.type}"`,
-          );
+        // One field, or a list of them (1.660).
+        const many = Array.isArray(kinds.tagsFrom);
+        for (const [index, id] of (many ? kinds.tagsFrom : [kinds.tagsFrom]).entries()) {
+          const path = many ? at("creatureTypes", "tagsFrom", index) : at("creatureTypes", "tagsFrom");
+          const field = sheet.fields.find((one) => one.id === id);
+          if (!field) issue(path, `Unknown field "${id}"`);
+          else if (field.type !== "text" && field.type !== "enum")
+            issue(path, `A character's tags are read off a text or choice field, not "${field.type}"`);
+        }
         if (!kinds.tags)
           issue(at("creatureTypes", "tagsFrom"), '"tagsFrom" reads the words of "tags", so it declares them');
       }

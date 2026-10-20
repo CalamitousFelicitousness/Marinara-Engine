@@ -1005,9 +1005,10 @@ export function rulesetCreatureKind(
   if (!combatant.sheet) return { tags: [] };
   const read = kinds.field ? combatant.sheet.build.fields?.[kinds.field] : undefined;
   const type = typeof read === "string" && kinds.types.some((one) => one.id === read) ? read : kinds.default;
-  // Its tags in the words of a field (1.646): "Lawful Good".
-  const words = kinds.tagsFrom ? combatant.sheet.build.fields?.[kinds.tagsFrom] : undefined;
-  return { ...(type !== undefined ? { type } : {}), tags: rulesetTagsNamed(definition, words) };
+  // Its tags in the words of a field (1.646): "Lawful Good"; of each of several (1.660): its race too.
+  const fields = kinds.tagsFrom === undefined ? [] : Array.isArray(kinds.tagsFrom) ? kinds.tagsFrom : [kinds.tagsFrom];
+  const tags = fields.flatMap((field) => rulesetTagsNamed(definition, combatant.sheet!.build.fields?.[field]));
+  return { ...(type !== undefined ? { type } : {}), tags: [...new Set(tags)] };
 }
 
 /** The creature tags some words name (1.646), by label or id as whole words ignoring case, never one

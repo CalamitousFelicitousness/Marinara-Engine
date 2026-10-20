@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A target test of what is worn, or a creature's worn tags (1.658): Shocking Grasp, Heat Metal. */
+function carriesWears658(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWears658(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.wears !== undefined && (plainRecord(record.wears) !== undefined || Array.isArray(record.wears)))
+    return true;
+  return featureValues(record).some((one) => carriesWears658(one, depth + 1));
+}
+
 /** The bonus-action spell rule (1.657). */
 function carriesBonusSpellRule657(ruleset: unknown): boolean {
   return plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.casting)?.afterBonusSpell !== undefined;
@@ -8749,6 +8760,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A target test of what is worn, or a creature's worn tags, 1.658.
+  if (
+    !declaresApi(658) &&
+    (carriesWears658(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesWears658(document)))
+  )
+    return "A ruleset that tests what a target wears, or gives a creature worn tags (wears), requires schemaVersion 2 and capabilityApi 1.658 or newer";
   // The bonus-action spell rule, 1.657.
   if (!declaresApi(657) && carriesBonusSpellRule657(ruleset))
     return "A ruleset with the bonus-action spell rule (combat.casting.afterBonusSpell) requires schemaVersion 2 and capabilityApi 1.657 or newer";

@@ -775,6 +775,8 @@ export interface RulesetStatBlock {
   healedBy?: string[];
   /** Double damage to objects (1.507): Siege Monster. */
   doubleToObjects?: true;
+  /** The tags of what it wears (1.658), as a target test's `wears` reads them. */
+  wears?: string[];
   /** Only a foe whose `ability` score is above `above` moves through its space, as hard going with
    *  `difficult` (1.547): the Arcane Hand. */
   passableBy?: { ability: string; above: number; difficult?: true };

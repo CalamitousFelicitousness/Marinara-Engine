@@ -4643,6 +4643,10 @@ export interface RulesetTargetIs {
    *  (`holding`), as well as whatever else it asks. */
   flying?: true;
   holding?: string[];
+  /** Only one wearing something tagged one of these (Capability API 1.658): an item worn on its
+   *  sheet, or what a creature `wears`. 5e's "a creature wearing armor made of metal",
+   *  `{"wears": {"tags": ["metal"]}}`: Shocking Grasp, Heat Metal, a rust monster's Antennae. */
+  wears?: { tags: string[] };
   /** Never one that is this (Capability API 1.477), whatever else it is: a net's "no effect on
    *  creatures that are formless", `{ "except": { "tags": ["formless"] } }`. */
   except?: Omit<RulesetTargetIs, "except" | "anyOf">;
@@ -4658,6 +4662,10 @@ const targetIsShape = {
   atLeastSize: sheetId.optional(),
   flying: z.literal(true).optional(),
   holding: z.array(sheetId).min(1).max(12).optional(),
+  wears: z
+    .object({ tags: z.array(sheetId).min(1).max(12) })
+    .strict()
+    .optional(),
 };
 const namesSomething = (test: Omit<RulesetTargetIs, "except" | "anyOf">) =>
   test.types !== undefined ||
@@ -4665,7 +4673,8 @@ const namesSomething = (test: Omit<RulesetTargetIs, "except" | "anyOf">) =>
   test.upToSize !== undefined ||
   test.atLeastSize !== undefined ||
   test.flying !== undefined ||
-  test.holding !== undefined;
+  test.holding !== undefined ||
+  test.wears !== undefined;
 const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
   .object({
     ...targetIsShape,
@@ -9656,6 +9665,9 @@ const creatureFields = {
   /** It deals double damage to objects (Capability API 1.507): a wall's sections, a layered wall's
    *  layers and a board's props. 5e's Siege Monster. */
   doubleToObjects: z.literal(true).optional(),
+  /** The tags of what it wears (Capability API 1.658), which a target test's `wears` reads as it
+   *  reads a character's worn items: a knight's plate, `["armor", "metal"]`. */
+  wears: z.array(sheetId).min(1).max(8).optional(),
   /** Who may move through its space (Capability API 1.547): only a foe whose `ability` score is above
    *  `above`, and with `difficult` as hard going. 5e's Arcane Hand, "can't move through the hand's
    *  space if its Strength score is less than or equal to the hand's ... that space is difficult

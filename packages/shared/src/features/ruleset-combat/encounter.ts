@@ -1081,6 +1081,14 @@ export function rulesetTargetIs(
   if (test.flying && !combatant.speeds?.fly) return false;
   const holding = test.holding;
   if (holding && !rulesetCombatConditions(definition, combatant).some((id) => holding.includes(id))) return false;
+  // Wearing something of these tags (1.658): an item worn on its sheet, or what a creature wears.
+  const wears = test.wears?.tags;
+  if (
+    wears &&
+    !combatant.sheet?.items?.some((held) => held.worn && held.item.tags?.some((tag) => wears.includes(tag))) &&
+    !combatant.block?.wears?.some((tag) => wears.includes(tag))
+  )
+    return false;
   // Of a size (1.350), as well as whatever else it asks.
   if (
     test.types === undefined &&

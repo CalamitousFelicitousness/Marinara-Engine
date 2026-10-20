@@ -9138,6 +9138,8 @@ function pushTarget(
   path = rulesetPushPath(ctx.state, actor.id, target.id, cells),
 ): Extract<RulesetCombatEvent, { type: "pushed" }> | undefined {
   const from = rulesetPositionOf(target);
+  // Braced against it (1.665): Dwarven Plate, so much less of the way.
+  path = bracedPath(ctx, target, path);
   const to = path[path.length - 1];
   if (!from || !to) return undefined;
   target.x = to.x;
@@ -9166,6 +9168,31 @@ function pushTarget(
     clinger.y = edge.y;
   }
   return event;
+}
+
+/** The way somebody is moved against their will, less what they brace against it (1.665): a
+ *  condition's `pushReducedBy`, paying its budget where it names one. Never while up in the air. */
+function bracedPath(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  path: RulesetCombatCell[],
+): RulesetCombatCell[] {
+  const perCell = ctx.combat.distance?.perCell;
+  if (path.length === 0 || !perCell || rulesetAirborne(ctx.state.board?.grid, target)) return path;
+  const brace = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).find(
+    (entry) =>
+      entry.pushReducedBy &&
+      (entry.pushReducedBy.budget === undefined || (target.budgets[entry.pushReducedBy.budget] ?? 0) >= 1),
+  );
+  const rule = brace?.pushReducedBy;
+  if (!brace || !rule) return path;
+  const cells = Math.min(path.length, rulesetInCells(rule.by, perCell));
+  if (cells < 1) return path;
+  if (rule.budget !== undefined) spendBudget(ctx, target, rule.budget);
+  const label =
+    ctx.definition.sheet.live.conditions.find((one) => one.id === brace.condition)?.label ?? brace.condition;
+  ctx.events.push({ type: "pushBraced", actorId: target.id, label, cells });
+  return path.slice(0, path.length - cells);
 }
 
 /** Where a walk ends (1.628): squeezed into less of themselves between walls, with the ruleset's

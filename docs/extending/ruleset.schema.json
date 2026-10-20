@@ -211690,6 +211690,26 @@
                 },
                 "additionalProperties": false
               },
+              "pushReducedBy": {
+                "type": "object",
+                "properties": {
+                  "by": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "budget": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "by"
+                ],
+                "additionalProperties": false
+              },
               "heldOnlyIn": {
                 "type": "object",
                 "properties": {

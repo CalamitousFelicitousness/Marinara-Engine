@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition braced against forced movement (1.665): Dwarven Plate. */
+function carriesPushReduced665(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPushReduced665(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.pushReducedBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesPushReduced665(one, depth + 1));
+}
+
 /** An item worn by its holder's mount (1.664): Horseshoes of Speed. */
 function carriesWornByMount664(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8815,6 +8825,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition braced against forced movement, 1.665.
+  if (
+    !declaresApi(665) &&
+    (carriesPushReduced665(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPushReduced665(document)))
+  )
+    return "A ruleset with a condition braced against being moved (pushReducedBy) requires schemaVersion 2 and capabilityApi 1.665 or newer";
   // An item worn by its holder's mount, 1.664.
   if (
     !declaresApi(664) &&

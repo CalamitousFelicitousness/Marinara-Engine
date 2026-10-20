@@ -13623,6 +13623,14 @@ const combatConditionSchema = z
      *  they stand as `checkModes.light` is; anywhere else it is held off, not ended. 5e's shadow's
      *  Sunlight Weakness, kept on with disadvantage on its own attacks, checks and saves:
      *  `{ "light": ["sunlight"] }`. */
+    /** Moved against its will along the ground, its holder goes this much less, in the ruleset's
+     *  distance (Capability API 1.665), paying 1 of `budget` for it where one is named and they have
+     *  it: a push, a pull, or being thrust out of an area. 5e's Dwarven Plate, kept on by the armor,
+     *  `{"by": 10, "budget": "reaction"}`. Not while up in the air. */
+    pushReducedBy: z
+      .object({ by: z.number().finite().gt(0).max(10000), budget: sheetId.optional() })
+      .strict()
+      .optional(),
     heldOnlyIn: z
       .object({
         light: z
@@ -19161,6 +19169,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "onFirstSeen", "applies", "when"], 'What it gives way to has no sheet to read "when" off');
       }
       if (entry.shakeOff) checkBudget(entry.shakeOff.budget, [...path, "shakeOff", "budget"]);
+      // What bracing against being moved costs (1.665).
+      if (entry.pushReducedBy?.budget !== undefined)
+        checkBudget(entry.pushReducedBy.budget, [...path, "pushReducedBy", "budget"]);
       if (entry.delays) {
         checkBudget(entry.delays.budget, [...path, "delays", "budget"]);
         entry.delays.catalogs.forEach((catalogId, catalogIndex) => {

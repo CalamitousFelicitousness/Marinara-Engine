@@ -1248,7 +1248,7 @@ const capabilityPackageManifestBaseSchema = z
 // 1.339: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
 //        first message exactly, guided only shapes it; an Experience may lock its own.
 // 1.340: a ruleset of up to 512 KB and catalog files of up to 2 MB (256 KB and 1 MB before).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 664 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 665 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

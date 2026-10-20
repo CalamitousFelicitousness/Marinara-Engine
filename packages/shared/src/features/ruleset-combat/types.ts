@@ -3770,6 +3770,8 @@ export type RulesetCombatEvent =
   | { type: "fell"; targetId: string; levels: number }
   /** Killed outright by a blow that slays (1.187). */
   | { type: "slain"; actorId: string; targetId: string; label: string }
+  /** Braced against being moved, going `cells` less (1.665): Dwarven Plate. */
+  | { type: "pushBraced"; actorId: string; label: string; cells: number }
   /** Killed outright by massive damage (1.656). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */

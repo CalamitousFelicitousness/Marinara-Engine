@@ -1071,6 +1071,12 @@ export function rulesetCombatEventLine(
           health: event.health,
         },
       );
+    case "pushBraced":
+      return key("pushBraced", {
+        actor: names.combatant(event.actorId),
+        label: event.label,
+        distance: names.distance(event.cells),
+      });
     case "pushed":
       // And moved with them (1.545): the Forceful Hand.
       // Or pulled in (1.622): a balor's whip.

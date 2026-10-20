@@ -375,6 +375,25 @@ assert.equal(zip.getEntry("built/base.png")!.read(64 * 1024 * 1024).length > 0, 
     `the faded ends of a tapered line are part of the mouth (${tapered.left[0]}, ${tapered.right[0]})`,
   );
   assert.ok(Math.abs(tapered.bow ?? NaN) <= 1, `the tapered flat line stays flat (${tapered.bow})`);
+  // A tilted line (3:4) whose faded tail runs flat: the corner is the point on the line nearest the tail's
+  // end (7.2 px from it), not where the tail's horizontal reach would land along the tilt (9 px).
+  const tilted = Buffer.alloc(160 * 140 * 4);
+  const paint = (x: number, y: number, rgb: number[]) => tilted.set([...rgb, 255], (y * 160 + x) * 4);
+  for (let y = 0; y < 140; y += 1) for (let x = 0; x < 160; x += 1) paint(x, y, SKIN);
+  for (let x = 60; x <= 100; x += 1)
+    for (let y = Math.floor(60 + (x - 60) * 0.75); y <= Math.floor(60 + (x - 59) * 0.75); y += 1)
+      paint(x, y, [112, 66, 56]);
+  const tail = SKIN.map((c) => c - 25);
+  for (let x = 101; x <= 112; x += 1) paint(x, 90, tail);
+  const tiltedPng = await sharp(tilted, { raw: { width: 160, height: 140, channels: 4 } })
+    .png()
+    .toBuffer();
+  const tiltedMouth = await fitDrawnMouth(
+    { png: tiltedPng, width: 160, height: 140 },
+    { left: [60, 60], right: [100, 90], box: [60, 58, 100, 92] },
+  );
+  const tailMiss = Math.hypot(tiltedMouth.right[0] - 112.5, tiltedMouth.right[1] - 90.5);
+  assert.ok(tailMiss < 8, `a tilted line's flat tail ends its mouth nearest the tail (${tiltedMouth.right})`);
   let visionRequests = 0;
   const provider = createServer(async (request, response) => {
     let body = "";

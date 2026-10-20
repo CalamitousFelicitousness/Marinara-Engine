@@ -283,8 +283,11 @@ export async function fitDrawnMouth(
   // the line visibly ends; the fit itself stays on the solid ink.
   const reach = Math.max(2, Math.ceil(percentile(thicknesses, 50)));
   const limit = Math.ceil(span * 0.3);
-  const from = ((followFadedLine(image, left, -1, reach, limit).at(-1)?.[0] ?? left[0]) - left[0]) / cosine;
-  const to = ((followFadedLine(image, right, 1, reach, limit).at(-1)?.[0] ?? right[0]) - left[0]) / cosine;
+  // Each faded end is projected onto the fitted line in both axes, so a tilted mouth whose tail runs flat
+  // isn't carried past where that tail ends. Fading only ever lengthens the line.
+  const along = ([x, y]: Point) => (x - left[0]) * cosine + (y - left[1]) * sine;
+  const from = Math.min(0, along(followFadedLine(image, left, -1, reach, limit).at(-1) ?? left));
+  const to = Math.max(length, along(followFadedLine(image, right, 1, reach, limit).at(-1) ?? right));
   const onCurve = (along: number): Point => {
     const depth = bow * 4 * (along / length) * (1 - along / length);
     return [left[0] + along * cosine - depth * sine, left[1] + along * sine + depth * cosine];

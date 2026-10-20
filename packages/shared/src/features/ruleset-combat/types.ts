@@ -1511,6 +1511,8 @@ export interface RulesetCombatAction {
     | { carried: true }
     | { conjured: string }
     | { called: string }
+    /** Pulling one's blows, or no longer (1.667): `combat.dying.knockOut`. */
+    | { knockOut: true }
     /** Into another of an item's forms (1.522), 0 as it was made. */
     | { form: { item: number; to: number } };
   /** Other ways to make this attack, chosen with it like an initiative style. */
@@ -2053,6 +2055,8 @@ export interface RulesetCombatant {
   hungOnBy?: Record<string, number>;
   /** Felled on Held Ground (1.323): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
+  /** Knocked out by a melee blow pulled (1.667): out of the fight, unconscious and stable, alive. */
+  knockedOut?: true;
   /** Its corpse rose as something else (1.501), and is gone from the board. */
   corpseRaised?: true;
   reaped?: true;
@@ -2143,6 +2147,8 @@ export interface RulesetCombatant {
   flags: {
     /** The light they carry was put out or lit this turn, for nothing (1.295). */
     lightSwitched?: true;
+    /** They turned to pulling their blows, or back, this turn (1.667). */
+    knockOutSwitched?: true;
     dodging?: boolean;
     dashed?: boolean;
     disengaged?: boolean;
@@ -2361,6 +2367,8 @@ export interface RulesetCombatant {
   on?: Record<string, boolean>;
   /** The light they carry is out (1.295). */
   doused?: true;
+  /** They pull their blows (1.667): one of their melee attacks that drops somebody knocks them out. */
+  knocksOut?: true;
   /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
    *  it out (1.296). */
   shedding?: RulesetLightRadius | "out";
@@ -3772,6 +3780,8 @@ export type RulesetCombatEvent =
   | { type: "slain"; actorId: string; targetId: string; label: string }
   /** Braced against being moved, going `cells` less (1.665): Dwarven Plate. */
   | { type: "pushBraced"; actorId: string; label: string; cells: number }
+  /** Knocked out by a pulled melee blow instead of dropped dying or slain (1.667). */
+  | { type: "knockedOut"; actorId: string; sourceId: string }
   /** Killed outright by massive damage (1.656). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */
@@ -4342,7 +4352,16 @@ export interface RulesetEncounterSummary {
     /** Gone from the fight alive, by a teleport that leaves it (1.279). */
     left?: true;
   }>;
-  enemies: Array<{ id: string; name: string; health: number; maxHealth: number; defeated: boolean; left?: true }>;
+  enemies: Array<{
+    id: string;
+    name: string;
+    health: number;
+    maxHealth: number;
+    defeated: boolean;
+    left?: true;
+    /** Knocked out, not slain (1.667). */
+    knockedOut?: true;
+  }>;
   /** What was broken on the board (1.316), by label, in the order it broke. */
   broken?: string[];
 }

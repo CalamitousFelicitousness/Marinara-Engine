@@ -2322,6 +2322,11 @@ function dropToZero(
     rampage(ctx, target);
   }
   target.down = true;
+  // Knocked out instead (1.667): a melee blow its maker pulled.
+  if (!slain && knocksOutNow(ctx, target)) {
+    knockOut(ctx, target);
+    return;
+  }
   // Held Ground (1.323): felled, out of the fight but never dying, unless the blow reaps.
   const held = ctx.state.heldGround;
   if (held && !target.object) {
@@ -2454,6 +2459,39 @@ function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: Ruleset
   for (const mark of held.marks ?? []) moveTrack(ctx, target, target, mark.track, mark.by);
 }
 
+/** Whether the action being resolved knocks `target` out rather than dropping them (1.667): a melee
+ *  attack by somebody pulling their blows, where the ruleset allows it. */
+function knocksOutNow(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
+  const acting = ctx.acting;
+  if (!ctx.combat.dying?.knockOut || !acting || target.object) return false;
+  const feller = rulesetCombatant(ctx.state, acting.actorId);
+  if (!feller?.knocksOut || feller.id === target.id || !rulesetIsAttack(acting.action)) return false;
+  return rulesetBlowKind(ctx.state, feller, target, acting.action) === "melee";
+}
+
+/** Knocked out (1.667): out of the fight, stable, alive. An opponent is beaten without dying; a
+ *  character lies stable, to be healed up. */
+function knockOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  const dying = ctx.combat.dying!;
+  target.knockedOut = true;
+  target.dying = false;
+  target.stable = true;
+  if (rulesetDiesAtZero(target)) {
+    target.defeated = true;
+    target.diedRound = ctx.state.round;
+    endSummons(ctx, target);
+    endZones(ctx, target);
+    unconjureAll(ctx, target);
+  }
+  endConcentration(ctx, target, "down");
+  endConditionsFromSource(ctx, target);
+  ctx.events.push({ type: "knockedOut", actorId: target.id, sourceId: ctx.acting!.actorId });
+  const down = rulesetDiesAtZero(target) ? undefined : dying.condition;
+  for (const condition of new Set([down, dying.knockOut!.condition])) {
+    if (condition) applyConditionId(ctx, target, condition, { condition, duration: "instant" });
+  }
+}
+
 function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
   if (!combatant.sheet) return 0;
   const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live);
@@ -2484,6 +2522,7 @@ function clearDyingTracks(ctx: RulesetCombatContext, target: RulesetCombatant): 
 function revive(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   target.down = false;
   delete target.felled;
+  delete target.knockedOut;
   target.dying = false;
   target.stable = false;
   const dying = ctx.combat.dying;
@@ -7870,6 +7909,13 @@ function applyChoice(
       if (on) delete working.doused;
       else working.doused = true;
       if (switching.free) working.flags.lightSwitched = true;
+      ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    } else if (switching?.switches && "knockOut" in switching.switches) {
+      // Pulling their blows, or no longer (1.667).
+      const on = !working.knocksOut;
+      if (on) working.knocksOut = true;
+      else delete working.knocksOut;
+      working.flags.knockOutSwitched = true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
     } else if (switching?.switches && "conjured" in switching.switches) {
       // A weapon put in hand, put away for nothing (1.308).
@@ -17631,6 +17677,7 @@ export function rulesetEncounterSummary(
           maxHealth: now.max,
           defeated: combatant.defeated,
           ...(combatant.away?.left ? { left: true as const } : {}),
+          ...(combatant.knockedOut ? { knockedOut: true as const } : {}),
         };
       }),
     ...(state.board?.broken?.length ? { broken: [...state.board.broken] } : {}),

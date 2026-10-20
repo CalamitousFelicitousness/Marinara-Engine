@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 666 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 667 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.666/,
+    /requires capability API 2\.0; this Engine supports 1\.667/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 666 },
+    capabilityApi: { major: 1, minor: 667 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -187,7 +187,7 @@ try {
     [217, "best-rating check effects"],
     [218, "track costs"],
     [219, "advancement lists up to 64 fields"],
-    [665, "the newest minor before this one"],
+    [666, "the newest minor before this one"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -200,11 +200,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 667 },
+    capabilityApi: { major: 1, minor: 668 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.667; this Engine supports 1\.666/,
+    /requires capability API 1\.668; this Engine supports 1\.667/,
   );
   const startupManifest = {
     ...currentMinorManifest,

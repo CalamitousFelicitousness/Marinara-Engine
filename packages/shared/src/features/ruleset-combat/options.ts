@@ -2831,6 +2831,8 @@ export function rulesetActionAvailable(
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
   }
+  // Pulling one's blows, switched once a turn (1.667).
+  if (action.switches && "knockOut" in action.switches && actor.flags.knockOutSwitched) return false;
   // Giving its own user back a pool they do not have is nothing (1.252): a 4th-level slot made by a
   // sorcerer with no 4th-level slots at all.
   if (action.restore && action.targets.side === "self" && actor.sheet && definition) {

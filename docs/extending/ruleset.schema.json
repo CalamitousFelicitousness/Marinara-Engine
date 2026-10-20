@@ -231026,6 +231026,30 @@
                   "type": "string",
                   "const": "overflow-at-least-max"
                 },
+                "knockOut": {
+                  "type": "object",
+                  "properties": {
+                    "blow": {
+                      "type": "string",
+                      "const": "melee"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "condition": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "blow"
+                  ],
+                  "additionalProperties": false
+                },
                 "$comment": {}
               },
               "required": [

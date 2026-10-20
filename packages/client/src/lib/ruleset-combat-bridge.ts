@@ -97,6 +97,11 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   if (gone.length > 0) {
     lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);
   }
+  // Beaten but alive (1.667): knocked out, unconscious and stable, for the story to deal with.
+  const knocked = summary.enemies.filter((enemy) => enemy.knockedOut);
+  if (knocked.length > 0) {
+    lines.push(`Knocked out, alive: ${knocked.map((enemy) => enemy.name).join(", ")}`);
+  }
   // What the fight broke (1.316): the story goes on with it broken.
   if (summary.broken?.length) lines.push(`Broken: ${summary.broken.join("; ")}`);
   lines.push(

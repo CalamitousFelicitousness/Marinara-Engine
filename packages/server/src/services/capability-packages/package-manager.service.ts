@@ -2740,6 +2740,12 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Knocking out with a melee blow (1.667). */
+function carriesKnockOut667(value: unknown): boolean {
+  const dying = plainRecord(plainRecord(plainRecord(value)?.combat)?.dying);
+  return dying?.knockOut !== undefined;
+}
+
 /** A sense that sees through walls (1.666): 5e's X-ray vision. */
 function carriesThroughWalls666(value: unknown): boolean {
   const combat = plainRecord(plainRecord(value)?.combat);
@@ -8832,6 +8838,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Knocking out with a melee blow, 1.667.
+  if (!declaresApi(667) && carriesKnockOut667(ruleset))
+    return "A ruleset with knocking out by a melee blow (combat.dying.knockOut) requires schemaVersion 2 and capabilityApi 1.667 or newer";
   // A sense that sees through walls, 1.666.
   if (
     !declaresApi(666) &&

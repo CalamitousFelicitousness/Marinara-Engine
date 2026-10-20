@@ -3006,6 +3006,24 @@ function itemFormActions(items: readonly RulesetSheetItem[] | undefined): Rulese
   });
 }
 
+/** Pulling one's blows, or no longer (1.667), for nothing once a turn: `combat.dying.knockOut`. */
+function knockOutSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
+  const rule = combat.dying?.knockOut;
+  const first = combat.economy.budgets[0]?.id;
+  if (!rule || !first) return [];
+  return [
+    {
+      id: "knock-out",
+      kind: "switch",
+      label: rule.label ?? "Knock out",
+      budget: first,
+      free: true,
+      targets: { side: "self", count: 0 },
+      switches: { knockOut: true },
+    },
+  ];
+}
+
 /** Putting out and lighting again the light a fighter carries (1.295), on its budget or for nothing.
  *  On the menu only while they carry one. */
 function carriedSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
@@ -5150,6 +5168,7 @@ function sheetCombatant(
     ...itemSwitchActions(input.items),
     ...itemFormActions(input.items),
     ...carriedSwitchActions(combat),
+    ...knockOutSwitchActions(combat),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
     // What the items they hold store (1.471), each cast once.

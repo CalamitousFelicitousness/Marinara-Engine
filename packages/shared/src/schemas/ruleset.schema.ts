@@ -14923,6 +14923,7 @@ export interface RulesetCombatDyingSaves {
   condition?: string;
   asSave?: true;
   instantDeath?: "overflow-at-least-max";
+  knockOut?: { blow: "melee"; label?: string; condition?: string };
 }
 const combatDyingSchema: z.ZodType<RulesetCombatDyingSaves, z.ZodTypeDef, unknown> = z.discriminatedUnion("kind", [
   z
@@ -14952,6 +14953,14 @@ const combatDyingSchema: z.ZodType<RulesetCombatDyingSaves, z.ZodTypeDef, unknow
        *  hit point maximum kills one who would lie dying outright, and so does a blow that much while
        *  they are down. Only a ward against being slain outright (`hangsOn.outright`) holds. */
       instantDeath: z.literal("overflow-at-least-max").optional(),
+      /** Knocking out (Capability API 1.667): a fighter may pull their blows (a free switch on their
+       *  turn, `label`, "Knock out" by default), and a melee attack of theirs that drops somebody to 0
+       *  knocks them out instead: out of the fight, stable and alive, in `condition` where it names
+       *  one (and a character in this rule's own `condition` too). */
+      knockOut: z
+        .object({ blow: z.literal("melee"), label: label.optional(), condition: sheetId.optional() })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
@@ -19357,6 +19366,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       if (dying.condition !== undefined && !conditions.has(dying.condition)) {
         issue(at("dying", "condition"), `Unknown condition "${dying.condition}"`);
+      }
+      const knockedInto = dying.knockOut?.condition;
+      if (knockedInto !== undefined && !conditions.has(knockedInto)) {
+        issue(at("dying", "knockOut", "condition"), `Unknown condition "${knockedInto}"`);
       }
       // The same rule the attack roll has: a natural result is one face of one die.
       if (dying.dice.count !== 1 && (dying.naturals.max !== "none" || dying.naturals.min !== "none")) {

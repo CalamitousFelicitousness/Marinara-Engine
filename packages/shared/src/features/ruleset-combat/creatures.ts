@@ -233,6 +233,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
+    // Never on the same creature again (1.621): Frightful Presence.
+    ...(action.oncePerTarget ? { oncePerTarget: { ...action.oncePerTarget } } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     // Who it fells on Held Ground stays down (1.323).
     ...(action.reaps ? { reaps: true as const } : {}),

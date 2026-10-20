@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A contest's `takes` picked as a mode of its own (1.639): Telekinesis on an object or a creature. */
+function carriesTakesMode639(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTakesMode639(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.contest)?.takesMode !== undefined) return true;
+  return featureValues(record).some((one) => carriesTakesMode639(one, depth + 1));
+}
+
 /** Items asking any one of what they name, or more than 4 things (1.638): attunement by a cleric,
  *  druid, or warlock. */
 function carriesNeedsAny638(value: unknown, depth = 0): boolean {
@@ -8549,6 +8559,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A contest's takes picked as a mode of its own, 1.639.
+  if (
+    !declaresApi(639) &&
+    (carriesTakesMode639(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTakesMode639(document)))
+  )
+    return "A ruleset with a contest whose takes is a mode of its own (contest.takesMode) requires schemaVersion 2 and capabilityApi 1.639 or newer";
   // Items asking any one of what they name, or more than 4 things, 1.638.
   if (
     !declaresApi(638) &&

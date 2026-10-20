@@ -294,6 +294,7 @@ import {
   rulesetPutOnBy,
   rulesetRoomAt,
   rulesetIsSpell,
+  rulesetKeptMode,
   rulesetRepeatsHeld,
   rulesetReadiedOption,
   rulesetUseIsFree,
@@ -7215,7 +7216,13 @@ function applyChoice(
     return refusal(state, choice.actorId, "bad-cell", option.id);
   }
   // A weapon's mode is one the option offers now, and aims at as many as the mode says.
-  const mode = choice.mode === undefined ? undefined : option.modes?.find((entry) => entry.id === choice.mode);
+  // A repeat made with none picked is made in the cast's (1.639).
+  const keptMode = rulesetKeptMode(
+    actor,
+    actor.actions.find((entry) => entry.id === option.id),
+  );
+  const modeId = choice.mode ?? keptMode;
+  const mode = modeId === undefined ? undefined : option.modes?.find((entry) => entry.id === modeId);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
   // A creature type is picked as it is used (1.270): no kind, no Antipathy.
   // And so is the weapon put in hand (1.306).
@@ -14907,6 +14914,10 @@ function resolveActionBodyIn(
     actor.concentrating.steps = steps;
     if (rulesetIsSpell(action)) actor.concentrating.level = rulesetPaidLevel(ctx.definition, actor, action, payWith);
     actor.concentrating.targets = targets.map((one) => one.id);
+    // And in what mode (1.639): the one picked, else the first, as it is made with none picked.
+    const kept = action.inMode ?? action.modes?.[0]?.id;
+    if (kept !== undefined) actor.concentrating.mode = kept;
+    else delete actor.concentrating.mode;
   }
   // Moved on from those who are down (1.551): what the cast put on them goes, and the new target is
   // the one it waits on next. Hunter's Mark.

@@ -3691,7 +3691,10 @@ function optionFrom(
   // and each with what it is expected to do. Not in a window: what is taken at its moment is made
   // as it is.
   if (action.modes?.length && !atItsMoment) {
+    // A repeat only in the mode its cast was made in (1.639): Telekinesis keeps its grip on what it held.
+    const kept = rulesetKeptMode(actor, action);
     const modes = action.modes.flatMap((mode) => {
+      if (kept !== undefined && mode.id !== kept) return [];
       const moded = rulesetModedAction(definition, action, mode.id);
       if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
       // One that spends the item's charges only while it has them (1.190).
@@ -5365,6 +5368,17 @@ function endingOptions(
     }
   }
   return options;
+}
+
+/** The mode a repeat is made in (1.639): the one its cast was made in, while its user concentrates
+ *  on that cast and the repeat has that mode. Undefined for anything else. */
+export function rulesetKeptMode(
+  actor: Pick<RulesetCombatant, "concentrating" | "actions">,
+  action: RulesetCombatAction | undefined,
+): string | undefined {
+  const kept = actor.concentrating?.mode;
+  if (kept === undefined || !action?.again || !rulesetRepeatsHeld(actor, action.again)) return undefined;
+  return action.modes?.some((mode) => mode.id === kept) ? kept : undefined;
 }
 
 /** Whether what its user concentrates on is the cast a repeat makes again (1.310), or one of the

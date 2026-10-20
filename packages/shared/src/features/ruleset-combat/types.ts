@@ -1039,6 +1039,8 @@ export interface RulesetCombatAction {
   cureOneOf?: true;
   /** It puts on one of its `applies`, not all (1.395): the mode picked, else the first. */
   appliesOneOf?: true;
+  /** The mode it is made in (1.639), as `rulesetModedAction` made it: what a repeat keeps. */
+  inMode?: string;
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
   /** A form is picked as it is used (1.342), from its `modes`; `formCap` keeps out the forms above
@@ -1654,6 +1656,9 @@ export interface RulesetCombatMode {
   call?: NonNullable<RulesetCombatAction["calls"]>;
   /** The one of its `applies` it puts on in this mode (1.395), by its place. */
   appliesPick?: number;
+  /** What a contest won takes in this mode (1.639), in place of all else it does: Telekinesis on
+   *  a held object. */
+  takes?: { slots?: string[]; tags?: string[] };
   /** The id of its caster's own action stored in it in this mode (1.401): a spell glyph's spell. */
   stores?: string;
   /** The creature type its zone works on inside in this mode (1.413): Hallow's chosen sort. */
@@ -2071,6 +2076,8 @@ export interface RulesetCombatant {
     /** Whom the cast was aimed at, and who has succeeded on a save against it (1.310). */
     targets?: string[];
     saved?: string[];
+    /** The mode the cast was made in (1.639), the one a repeat is made in. */
+    mode?: string;
   } | null;
   /** Hidden (1.287): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
    *  once it is hidden from nobody. */

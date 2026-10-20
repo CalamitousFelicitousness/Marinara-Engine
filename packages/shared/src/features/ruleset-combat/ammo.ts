@@ -45,6 +45,7 @@ export function rulesetModedAction(
   return {
     ...action,
     label: `${action.label} (${mode.label})`,
+    inMode: mode.id,
     ...(mode.toHit !== undefined && action.toHit !== undefined ? { toHit: action.toHit + mode.toHit } : {}),
     ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
     ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
@@ -90,6 +91,15 @@ export function rulesetModedAction(
       : {}),
     // What a hit sets off around whoever it hit (1.312): a Hammer of Thunderbolts' clap.
     ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
+    // A contest won takes, and does nothing else (1.639): Telekinesis on a held object.
+    ...(mode.takes && action.contested
+      ? {
+          contested: { ...action.contested, takes: structuredClone(mode.takes) },
+          applies: undefined,
+          movesTarget: undefined,
+          damage: undefined,
+        }
+      : {}),
   };
 }
 

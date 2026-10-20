@@ -57188,6 +57188,27 @@
                           },
                           "additionalProperties": false
                         },
+                        "takesMode": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "restLabel": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "label",
+                            "restLabel"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -130594,6 +130615,27 @@
                               },
                               "additionalProperties": false
                             },
+                            "takesMode": {
+                              "type": "object",
+                              "properties": {
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "restLabel": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "label",
+                                "restLabel"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -152624,6 +152666,27 @@
                                       },
                                       "$comment": {}
                                     },
+                                    "additionalProperties": false
+                                  },
+                                  "takesMode": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "restLabel": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "label",
+                                      "restLabel"
+                                    ],
                                     "additionalProperties": false
                                   },
                                   "$comment": {}
@@ -174662,6 +174725,27 @@
                                       },
                                       "$comment": {}
                                     },
+                                    "additionalProperties": false
+                                  },
+                                  "takesMode": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "restLabel": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "label",
+                                      "restLabel"
+                                    ],
                                     "additionalProperties": false
                                   },
                                   "$comment": {}

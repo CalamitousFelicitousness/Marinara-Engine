@@ -3680,8 +3680,21 @@ function mechanicsAction(
       // What it puts on a target it loses to (1.565): the Pipes of the Sewers' 24 hours unswayed.
       ...(mechanics.contest.onLose ? { onLose: structuredClone(mechanics.contest.onLose) } : {}),
       // What it takes from a target it wins against (1.615): Telekinesis on a held object.
-      ...(mechanics.contest.takes ? { takes: structuredClone(mechanics.contest.takes) } : {}),
+      // Unless it is a mode of its own (1.639), the other mode doing all the rest.
+      ...(mechanics.contest.takes && !mechanics.contest.takesMode
+        ? { takes: structuredClone(mechanics.contest.takes) }
+        : {}),
     };
+    if (mechanics.contest.takes && mechanics.contest.takesMode) {
+      action.modes = [
+        { id: "contest-rest", label: mechanics.contest.takesMode.restLabel },
+        {
+          id: "contest-takes",
+          label: mechanics.contest.takesMode.label,
+          takes: structuredClone(mechanics.contest.takes),
+        },
+      ];
+    }
   }
   if (mechanics.movesTarget && from.perCell !== undefined) {
     action.movesTarget = {

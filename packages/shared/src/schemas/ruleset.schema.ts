@@ -4690,6 +4690,7 @@ export interface RulesetCatalogContest {
   ties?: "attacker" | "defender";
   onLose?: { applies: Array<{ condition: string; rounds: number }> };
   takes?: RulesetContestTakes;
+  takesMode?: { label: string; restLabel: string };
 }
 /** What a contest won takes from its target (Capability API 1.615), by slot or tag. */
 export interface RulesetContestTakes {
@@ -7222,8 +7223,20 @@ const catalogMechanicsObject = z
            *  feet for its owner to fetch and pick up. 5e's Telekinesis on "an object worn or carried by
            *  a creature", `{ "slots": ["hand"] }`. */
           takes: contestTakesSchema.optional(),
+          /** `takes` as a mode of its own, picked as it is cast like a weapon's mode (Capability API
+           *  1.639): in mode `label` a win takes and does nothing else, in mode `restLabel` (and when
+           *  none is picked) it does everything else and takes nothing. A repeat keeps the mode the
+           *  cast was made in. 5e's Telekinesis, the object pulled from a creature or the creature moved. */
+          takesMode: z
+            .object({ label: promptSafeText(40), restLabel: promptSafeText(40) })
+            .strict()
+            .optional(),
         })
-        .strict() as z.ZodType<RulesetCatalogContest, z.ZodTypeDef, unknown>
+        .strict()
+        .refine((contest) => !contest.takesMode || contest.takes, {
+          message: '"takesMode" picks "takes" as a mode, so it needs "takes"',
+          path: ["takesMode"],
+        }) as z.ZodType<RulesetCatalogContest, z.ZodTypeDef, unknown>
     ).optional(),
     /** Each target it lands on is moved to a cell its user picks (Capability API 1.512), up to
      *  `distance` from where it stood and within the entry's `range` of its user, set down with no
@@ -7631,6 +7644,23 @@ const catalogMechanicsSchema: z.ZodType<
       path: ["appliesOneOf"],
       message:
         '"appliesOneOf" is picked as a mode, so it goes without "cureOneOf", "kindChoice", "forms", "calls" or "conjures"',
+    });
+  }
+  // Picked as a mode (1.639), so beside nothing else picked as one.
+  if (
+    mechanics.contest?.takesMode &&
+    (mechanics.appliesOneOf ||
+      mechanics.cureOneOf ||
+      mechanics.kindChoice ||
+      mechanics.forms ||
+      mechanics.calls ||
+      mechanics.conjures)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contest", "takesMode"],
+      message:
+        '"takesMode" is picked as a mode, so it goes without "appliesOneOf", "cureOneOf", "kindChoice", "forms", "calls" or "conjures"',
     });
   }
   if (mechanics.cureOneOf && cureParts < 2) {

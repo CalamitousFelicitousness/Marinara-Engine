@@ -45401,6 +45401,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "endsWithCaller": {
+                          "type": "string",
+                          "const": "incapacitated"
+                        },
                         "anchor": {
                           "type": "string",
                           "enum": [
@@ -75800,6 +75804,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "endsWithCaller": {
+                              "type": "string",
+                              "const": "incapacitated"
+                            },
                             "anchor": {
                               "type": "string",
                               "enum": [
@@ -95151,6 +95159,10 @@
                               "outlasts": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "endsWithCaller": {
+                                "type": "string",
+                                "const": "incapacitated"
                               },
                               "anchor": {
                                 "type": "string",
@@ -128787,6 +128799,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "endsWithCaller": {
+                              "type": "string",
+                              "const": "incapacitated"
+                            },
                             "anchor": {
                               "type": "string",
                               "enum": [
@@ -153267,6 +153283,10 @@
                                   "outlasts": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "endsWithCaller": {
+                                    "type": "string",
+                                    "const": "incapacitated"
                                   },
                                   "anchor": {
                                     "type": "string",
@@ -177754,6 +177774,10 @@
                                   "outlasts": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "endsWithCaller": {
+                                    "type": "string",
+                                    "const": "incapacitated"
                                   },
                                   "anchor": {
                                     "type": "string",

@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An area that ends as its maker is incapacitated (1.688): an ice devil's Wall of Ice. */
+function carriesZoneEndsWithCaller688(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneEndsWithCaller688(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.zone)?.endsWithCaller !== undefined) return true;
+  return featureValues(record).some((one) => carriesZoneEndsWithCaller688(one, depth + 1));
+}
+
 /** A condition put on only while its applier holds none of some on anybody (1.687): a chain devil's
  *  grapple. */
 function carriesAppliesUnlessImposing687(value: unknown, depth = 0): boolean {
@@ -9059,6 +9069,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An area that ends as its maker is incapacitated, 1.688.
+  if (
+    !declaresApi(688) &&
+    (carriesZoneEndsWithCaller688(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneEndsWithCaller688(document)))
+  )
+    return "A ruleset with an area that ends as its maker is incapacitated (zone.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.688 or newer";
   // A condition put on only while its applier holds none of some on anybody, 1.687.
   if (
     !declaresApi(687) &&

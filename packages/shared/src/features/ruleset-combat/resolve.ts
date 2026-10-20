@@ -11232,6 +11232,22 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
     )
       dismissCalled(ctx, caller, (one) => one.calledEndsWithCaller === "incapacitated", "caller");
   }
+  // Areas that end as their maker is incapacitated (1.688): an ice devil's Wall of Ice.
+  for (const maker of ctx.state.combatants) {
+    const ending = (maker.zones ?? []).filter(
+      (zone) => maker.actions.find((entry) => entry.id === zone.actionId)?.zone?.endsWithCaller === "incapacitated",
+    );
+    if (
+      !ending.length ||
+      (rulesetCombatStanding(maker) &&
+        !maker.defeated &&
+        !rulesetActiveConditions(ctx.definition, ctx.combat, maker, ctx.state).some((entry) =>
+          entry.effects.includes("cannot-act"),
+        ))
+    )
+      continue;
+    for (const actionId of new Set(ending.map((zone) => zone.actionId))) endZones(ctx, maker, actionId);
+  }
   // And those held within so far of their caller (1.557), once it is farther: a treant's trees.
   for (const caller of ctx.state.combatants) {
     if (caller.defeated || !rulesetPositionOf(caller)) continue;

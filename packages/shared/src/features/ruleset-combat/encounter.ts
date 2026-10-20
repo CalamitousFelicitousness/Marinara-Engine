@@ -2616,6 +2616,7 @@ export function rulesetZoneAction(
     rounds: zone.rounds,
     ...(zone.untilLair ? { untilLair: true as const } : {}),
     ...(zone.outlasts ? { outlasts: true as const } : {}),
+    ...(zone.endsWithCaller ? { endsWithCaller: zone.endsWithCaller } : {}),
     anchor: zone.anchor ?? "point",
     ...(zone.carried ? { carried: zone.carried } : {}),
     triggers: [...zone.triggers],

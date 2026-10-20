@@ -3397,6 +3397,7 @@ export interface RulesetCatalogZone {
   rounds: number;
   untilLair?: true;
   outlasts?: true;
+  endsWithCaller?: "incapacitated";
   anchor?: "point" | "caster";
   carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
@@ -3705,6 +3706,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
      *  lasting until triggered or dispelled. Never one held by concentration, nor one around its
      *  caster. */
     outlasts: z.literal(true).optional(),
+    /** It also ends as soon as its maker is incapacitated, down or holding anything that `cannot-act`
+     *  (Capability API 1.688), as well as when they are out: an ice devil's Wall of Ice, "until the
+     *  devil is incapacitated or dies". Never with `outlasts`. */
+    endsWithCaller: z.literal("incapacitated").optional(),
     anchor: z.enum(["point", "caster"]).optional(),
     /** Cast on a thing somebody holds (Capability API 1.301), it is carried with them: a burst put on
      *  a cell its caster stands on (`own`), or on anybody's (`any`), moves with whoever stands
@@ -7621,6 +7626,7 @@ function zoneIssue(mechanics: {
     return 'A zone held by concentration ends with it, so it never "outlasts" its caster';
   }
   if (zone.outlasts && zone.anchor === "caster") return 'A zone around its caster never "outlasts" them';
+  if (zone.outlasts && zone.endsWithCaller) return 'A zone that ends with its caster never "outlasts" them';
   // Ending as it is carried over somebody it keeps out (1.542).
   if (zone.keepsOut?.endsOnSweep && zone.anchor !== "caster" && !zone.carried) {
     return '"endsOnSweep" ends a zone as whoever it is around moves, so it is around its caster or carried';

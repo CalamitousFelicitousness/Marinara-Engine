@@ -4436,6 +4436,8 @@ export interface RulesetCombatZoneRule {
   untilLair?: true;
   /** It stays when its caster is defeated or leaves (1.403), counting down as each round ends. */
   outlasts?: true;
+  /** It ends as its maker is incapacitated, too (1.688): an ice devil's Wall of Ice. */
+  endsWithCaller?: "incapacitated";
   anchor: "point" | "caster";
   /** Put on a cell somebody stands on, carried with them (1.301): only its caster (`own`), or anybody. */
   carried?: "own" | "any";

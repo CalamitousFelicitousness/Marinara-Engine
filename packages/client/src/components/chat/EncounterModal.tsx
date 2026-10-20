@@ -44,18 +44,18 @@ function HPBar({ current, max, isParty }: { current: number; max: number; isPart
         className={cn(
           "absolute inset-y-0 left-0 rounded-full",
           isDead
-            ? "bg-gray-600"
+            ? "bg-[var(--card)]"
             : isParty
               ? pct > 50
-                ? "bg-emerald-500"
+                ? "bg-[var(--success)]"
                 : pct > 25
-                  ? "bg-yellow-500"
-                  : "bg-red-500"
+                  ? "bg-[var(--warning)]"
+                  : "bg-[var(--destructive)]"
               : pct > 50
-                ? "bg-red-500"
+                ? "bg-[var(--destructive)]"
                 : pct > 25
-                  ? "bg-orange-500"
-                  : "bg-red-300",
+                  ? "bg-[var(--warning)]"
+                  : "bg-[var(--destructive)]",
         )}
         initial={false}
         animate={{ width: `${pct}%` }}
@@ -94,7 +94,7 @@ function EnemyCard({ enemy, index: _index, isDead }: { enemy: CombatEnemy; index
         "relative flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all",
         isDead
           ? "border-foreground/5 bg-foreground/5 opacity-40 grayscale"
-          : "border-red-500/20 bg-red-500/5 hover:border-red-500/40",
+          : "border-[var(--destructive)]/20 bg-[var(--destructive)]/5 hover:border-[var(--destructive)]/40",
       )}
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: isDead ? 0.4 : 1, y: 0 }}
@@ -109,8 +109,8 @@ function EnemyCard({ enemy, index: _index, isDead }: { enemy: CombatEnemy; index
         <p className="mt-1 text-[0.625rem] leading-tight text-foreground/40">{enemy.description}</p>
       )}
       {isDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
-          <Skull size="1.25rem" className="text-red-400/60" />
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-[var(--background)]/40">
+          <Skull size="1.25rem" className="text-[var(--destructive)]/60" />
         </div>
       )}
     </motion.div>
@@ -128,8 +128,8 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
         isDead
           ? "border-foreground/5 bg-foreground/5 opacity-40 grayscale"
           : member.isPlayer
-            ? "border-blue-500/20 bg-blue-500/5"
-            : "border-emerald-500/20 bg-emerald-500/5",
+            ? "border-[var(--primary)]/20 bg-[var(--primary)]/5"
+            : "border-[var(--success)]/20 bg-[var(--success)]/5",
       )}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: isDead ? 0.4 : 1, y: 0 }}
@@ -137,7 +137,9 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
       <div
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-          member.isPlayer ? "bg-blue-500/20 text-blue-300" : "bg-emerald-500/20 text-emerald-300",
+          member.isPlayer
+            ? "bg-[var(--primary)]/20 text-[var(--primary)]"
+            : "bg-[var(--success)]/20 text-[var(--success)]",
         )}
       >
         {member.name[0]}
@@ -145,14 +147,14 @@ function PartyCard({ member }: { member: CombatPartyMember }) {
       <div className="min-w-0 flex-1">
         <h4 className="truncate text-xs font-bold text-foreground/90">
           {member.name}{" "}
-          {member.isPlayer && <span className="text-blue-400">{localizeUi("ui.chat.partycard.you")}</span>}
+          {member.isPlayer && <span className="text-[var(--primary)]">{localizeUi("ui.chat.partycard.you")}</span>}
         </h4>
         <HPBar current={member.hp} max={member.maxHp} isParty />
         <StatusBadges statuses={member.statuses} />
       </div>
       {isDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
-          <Skull size="1rem" className="text-red-400/60" />
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-[var(--background)]/40">
+          <Skull size="1rem" className="text-[var(--destructive)]/60" />
         </div>
       )}
     </motion.div>
@@ -188,7 +190,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
   const backdropDismiss = useBackdropDismiss(onCancel);
   return (
     <motion.div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-[var(--background)]/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -374,7 +376,7 @@ function EncounterConfig() {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/60 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -496,7 +498,7 @@ function CombatLog() {
   return (
     <div
       ref={logRef}
-      className="scrollbar-thin max-h-40 overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-black/30 p-3"
+      className="scrollbar-thin max-h-40 overflow-y-auto rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/30 p-3"
     >
       <AnimatePresence>
         {entries.map(
@@ -509,9 +511,9 @@ function CombatLog() {
                 className={cn(
                   "mb-1 whitespace-pre-wrap text-xs leading-relaxed",
                   e.type === "system" && "italic text-foreground/30",
-                  e.type === "player-action" && "font-semibold text-blue-300",
-                  e.type === "enemy-action" && "text-red-300",
-                  e.type === "party-action" && "text-emerald-300",
+                  e.type === "player-action" && "font-semibold text-[var(--primary)]",
+                  e.type === "enemy-action" && "text-[var(--destructive)]",
+                  e.type === "party-action" && "text-[var(--success)]",
                   e.type === "narrative" && "text-foreground/70",
                 )}
               >
@@ -552,9 +554,9 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
   const player = party.find((m) => m.isPlayer);
   if (!player || player.hp <= 0) {
     return (
-      <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-center">
-        <Skull size="1.5rem" className="mx-auto mb-2 text-red-400" />
-        <p className="text-xs text-red-300">{localizeUi("ui.chat.playercontrols.youHaveBeenDefeated")}</p>
+      <div className="rounded-xl border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-4 text-center">
+        <Skull size="1.5rem" className="mx-auto mb-2 text-[var(--destructive)]" />
+        <p className="text-xs text-[var(--destructive)]">{localizeUi("ui.chat.playercontrols.youHaveBeenDefeated")}</p>
       </div>
     );
   }
@@ -700,10 +702,10 @@ function CombatEndScreen() {
   const { closeEncounter } = useEncounter();
 
   const config: Record<string, { icon: typeof Trophy; color: string; label: string }> = {
-    victory: { icon: Trophy, color: "text-emerald-400", label: "VICTORY" },
-    defeat: { icon: Skull, color: "text-red-400", label: "DEFEAT" },
-    fled: { icon: PersonStanding, color: "text-orange-400", label: "FLED" },
-    interrupted: { icon: Flag, color: "text-gray-400", label: "INTERRUPTED" },
+    victory: { icon: Trophy, color: "text-[var(--success)]", label: "VICTORY" },
+    defeat: { icon: Skull, color: "text-[var(--destructive)]", label: "DEFEAT" },
+    fled: { icon: PersonStanding, color: "text-[var(--warning)]", label: "FLED" },
+    interrupted: { icon: Flag, color: "text-[var(--muted-foreground)]", label: "INTERRUPTED" },
   };
 
   const c = config[combatResult ?? "interrupted"];
@@ -863,7 +865,7 @@ function EncounterModalInner() {
           exit={{ opacity: 0 }}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-[var(--background)]/70 backdrop-blur-sm" />
 
           {/* Modal */}
           <motion.div
@@ -881,9 +883,9 @@ function EncounterModalInner() {
             transition={{ type: "spring", bounce: 0.2 }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-[var(--marinara-chat-chrome-panel-divider)] bg-black/30 px-5 py-3">
+            <div className="flex items-center justify-between border-b border-[var(--marinara-chat-chrome-panel-divider)] bg-[var(--background)]/30 px-5 py-3">
               <h2 id="encounter-title" className="flex items-center gap-2 text-sm font-bold text-foreground/90">
-                <Swords size="1rem" className="text-red-400" />
+                <Swords size="1rem" className="text-[var(--destructive)]" />
                 {localizeUi("ui.chat.encountermodalinner.combatEncounter")}
               </h2>
               <div className="flex items-center gap-2">
@@ -964,7 +966,7 @@ function EncounterModalInner() {
 
                   {/* Enemies */}
                   <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-red-400">
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-[var(--destructive)]">
                       <Skull size="0.875rem" />
                       {localizeUi("ui.chat.encountermodalinner.enemies")}
                     </h3>
@@ -976,7 +978,7 @@ function EncounterModalInner() {
 
                   {/* Party */}
                   <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-blue-400">
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-[var(--primary)]">
                       <Shield size="0.875rem" />
                       {localizeUi("ui.chat.chatsettingsdrawer.party")}
                     </h3>
@@ -1035,7 +1037,7 @@ class EncounterErrorBoundary extends Component<{ children: ReactNode; onReset: (
         <Translation>
           {(t) => (
             <div className="fixed inset-0 z-[100] flex items-center justify-center max-md:pt-[env(safe-area-inset-top)]">
-              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+              <div className="absolute inset-0 bg-[var(--background)]/70 backdrop-blur-sm" />
               <div className="relative flex max-w-md flex-col items-center gap-4 rounded-2xl border border-[var(--destructive)]/20 bg-[var(--card)] p-8 shadow-2xl">
                 <AlertTriangle size="2.5rem" className="text-[var(--destructive)]" />
                 <h3 className="text-sm font-bold text-foreground/90">{t("ui.chat.encountererrorboundary.title")}</h3>

@@ -3076,7 +3076,7 @@ export function BotBrowserView() {
             if (e.target === e.currentTarget) setPendingDatacatSwitch(false);
           }}
         >
-          <div className="absolute inset-0 bg-black/60" onClick={() => setPendingDatacatSwitch(false)} />
+          <div className="absolute inset-0 bg-[var(--background)]/60" onClick={() => setPendingDatacatSwitch(false)} />
           <div
             className="mari-chrome-selection-bar relative w-full max-w-md shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -3156,7 +3156,7 @@ function LoginModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-[var(--background)]/60" onClick={onClose} />
       <div
         className="mari-chrome-selection-bar relative w-full max-w-md shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -3776,7 +3776,7 @@ function AvatarZoomOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.botBrowser.detailview.imagePreview")}
-      className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-[var(--background)]/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <img

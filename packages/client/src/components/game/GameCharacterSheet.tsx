@@ -152,9 +152,9 @@ function formatAttributeModifier(score: number): string {
 
 const FIELD_LABEL_CLASS = "text-[0.6875rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]";
 const TEXT_INPUT_CLASS =
-  "w-full rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--marinara-chat-chrome-input-bg)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)]";
+  "w-full rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--marinara-chat-chrome-input-bg)] px-3 py-2 text-sm text-[var(--mari-game-text,var(--foreground))] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)]";
 const NUMBER_INPUT_CLASS =
-  "w-full rounded-lg border border-transparent bg-[var(--marinara-chat-chrome-input-bg)] px-2.5 py-1.5 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)]";
+  "w-full rounded-lg border border-transparent bg-[var(--marinara-chat-chrome-input-bg)] px-2.5 py-1.5 text-sm text-[var(--mari-game-text,var(--foreground))] outline-none transition-colors focus:border-[var(--marinara-chat-chrome-input-border-focus)]";
 
 function normalizeTextValue(value: unknown) {
   if (typeof value === "string") return value;
@@ -524,7 +524,7 @@ export function GameCharacterSheet({
   return (
     <div
       data-game-skip-bg-nav="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/60 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
       {...backdropDismiss}
     >
       <div
@@ -542,7 +542,7 @@ export function GameCharacterSheet({
                 <button
                   onClick={handleCancelEdit}
                   disabled={isSaving || isRegenerating}
-                  className="inline-flex h-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] px-2.5 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)] disabled:opacity-60 sm:h-auto sm:px-3 sm:py-1.5"
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] px-2.5 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))] disabled:opacity-60 sm:h-auto sm:px-3 sm:py-1.5"
                 >
                   {localizeUi("chat.delete.dialog.cancel")}
                 </button>
@@ -550,7 +550,7 @@ export function GameCharacterSheet({
                   <button
                     onClick={() => void handleRegenerate()}
                     disabled={isRegenerating || isSaving}
-                    className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] px-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60 sm:h-auto sm:min-w-0 sm:px-3 sm:py-1.5"
+                    className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] px-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))] disabled:cursor-wait disabled:opacity-60 sm:h-auto sm:min-w-0 sm:px-3 sm:py-1.5"
                     title={localizeUi("game.characterSheet.regenerate.help")}
                     aria-label={localizeUi("game.characterSheet.regenerate.label")}
                   >
@@ -565,7 +565,7 @@ export function GameCharacterSheet({
                 <button
                   onClick={() => void handleSave()}
                   disabled={isSaving || isRegenerating}
-                  className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--marinara-chat-chrome-highlight-bg)] px-2 text-xs font-semibold text-[var(--foreground)] ring-1 ring-[var(--marinara-chat-chrome-panel-border)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-60 sm:h-auto sm:min-w-0 sm:px-3 sm:py-1.5"
+                  className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--marinara-chat-chrome-highlight-bg)] px-2 text-xs font-semibold text-[var(--mari-game-text,var(--foreground))] ring-1 ring-[var(--marinara-chat-chrome-panel-border)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-60 sm:h-auto sm:min-w-0 sm:px-3 sm:py-1.5"
                   title={
                     isSaving
                       ? localizeUi("ui.noodle.stageprofileform.saving")
@@ -598,7 +598,7 @@ export function GameCharacterSheet({
                     setIsEditing(true);
                   }}
                   disabled={isRegenerating}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] p-0 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)] disabled:opacity-60 sm:h-auto sm:w-auto sm:min-w-0 sm:gap-1.5 sm:px-3 sm:py-1.5"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-button-bg)] p-0 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))] disabled:opacity-60 sm:h-auto sm:w-auto sm:min-w-0 sm:gap-1.5 sm:px-3 sm:py-1.5"
                   title={localizeUi("ui.game.gamecharactersheet.editSheet")}
                   aria-label={localizeUi("ui.game.gamecharactersheet.editSheet_8c3fdc2")}
                 >
@@ -612,7 +612,7 @@ export function GameCharacterSheet({
 
         <button
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg p-0 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)] sm:h-auto sm:w-auto sm:p-1.5"
+          className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg p-0 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))] sm:h-auto sm:w-auto sm:p-1.5"
           aria-label={localizeUi("ui.game.gamecharactersheet.closeCharacterSheet")}
           title={localizeUi("ui.game.gamecharactersheet.closeCharacterSheet")}
         >
@@ -642,7 +642,7 @@ export function GameCharacterSheet({
                 </span>
               )}
               {onAvatarSelect ? (
-                <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-white opacity-0 transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                <span className="absolute inset-0 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/55 text-[var(--mari-game-text,var(--foreground))] opacity-0 transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100 [@media(pointer:coarse)]:opacity-100">
                   {isAvatarUploading ? <RefreshCw className="animate-spin" size="1rem" /> : <Camera size="1rem" />}
                 </span>
               ) : null}
@@ -657,7 +657,7 @@ export function GameCharacterSheet({
             />
             <div className="min-w-0 flex-1 pr-20 sm:pr-64">
               <h2
-                className="scrollbar-hide max-w-full touch-pan-x overflow-x-auto whitespace-nowrap text-lg font-bold text-[var(--foreground)] [-webkit-overflow-scrolling:touch] sm:truncate sm:overflow-hidden"
+                className="scrollbar-hide max-w-full touch-pan-x overflow-x-auto whitespace-nowrap text-lg font-bold text-[var(--mari-game-text,var(--foreground))] [-webkit-overflow-scrolling:touch] sm:truncate sm:overflow-hidden"
                 title={card.title}
               >
                 {card.title}
@@ -688,7 +688,9 @@ export function GameCharacterSheet({
                 <span className="text-[0.4375rem] uppercase tracking-wider text-[var(--muted-foreground)]">
                   {localizeUi("ui.game.gamecharactersheet.lvl")}
                 </span>
-                <span className="text-xs font-bold leading-none text-[var(--foreground)]">{headerLevel}</span>
+                <span className="text-xs font-bold leading-none text-[var(--mari-game-text,var(--foreground))]">
+                  {headerLevel}
+                </span>
               </div>
             )}
           </div>
@@ -775,7 +777,7 @@ export function GameCharacterSheet({
                       type="checkbox"
                       checked={draft.rpgStatsEnabled}
                       onChange={(e) => setDraft((prev) => ({ ...prev, rpgStatsEnabled: e.target.checked }))}
-                      className="h-4 w-4 rounded accent-[var(--foreground)]"
+                      className="h-4 w-4 rounded accent-[var(--mari-game-text,var(--foreground))]"
                     />
                     {localizeUi("ui.presets.sectionstab.enable")}
                   </label>
@@ -787,7 +789,7 @@ export function GameCharacterSheet({
                         <span className={FIELD_LABEL_CLASS}>{localizeUi("ui.characters.statstab.pools")}</span>
                         <button
                           onClick={addPool}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                         >
                           <Plus size={13} />
                           {localizeUi("ui.game.gamecharactersheet.addPool")}
@@ -867,7 +869,7 @@ export function GameCharacterSheet({
                       ))}
                       <button
                         onClick={addAttribute}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                       >
                         <Plus size={13} />
                         {localizeUi("ui.game.gamecharactersheet.addAttribute")}
@@ -890,7 +892,7 @@ export function GameCharacterSheet({
                   />
                   <button
                     onClick={() => addListItem("abilities")}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                   >
                     <Plus size={13} />
                     {localizeUi("ui.characters.metadatatab.add")}
@@ -929,7 +931,7 @@ export function GameCharacterSheet({
                       />
                       <button
                         onClick={() => addListItem("strengths")}
-                        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-2 py-1 text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-2 py-1 text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                       >
                         <Plus size={12} />
                         {localizeUi("ui.characters.metadatatab.add")}
@@ -965,7 +967,7 @@ export function GameCharacterSheet({
                       />
                       <button
                         onClick={() => addListItem("weaknesses")}
-                        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-2 py-1 text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-2 py-1 text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                       >
                         <Plus size={12} />
                         {localizeUi("ui.characters.metadatatab.add")}
@@ -1004,7 +1006,7 @@ export function GameCharacterSheet({
                   />
                   <button
                     onClick={addExtraEntry}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--foreground)]"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--marinara-chat-chrome-panel-border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--mari-game-text,var(--foreground))]"
                   >
                     <Plus size={13} />
                     {localizeUi("ui.game.gamecharactersheet.addDetail")}
@@ -1064,7 +1066,9 @@ export function GameCharacterSheet({
                       <span className="text-[0.5625rem] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
                         {attr.name}
                       </span>
-                      <span className="text-lg font-bold leading-tight text-[var(--foreground)]">{attr.value}</span>
+                      <span className="text-lg font-bold leading-tight text-[var(--mari-game-text,var(--foreground))]">
+                        {attr.value}
+                      </span>
                       <span className="text-[0.625rem] font-mono leading-none text-[var(--muted-foreground)]">
                         {formatAttributeModifier(attr.value)}
                       </span>
@@ -1080,7 +1084,9 @@ export function GameCharacterSheet({
                     return (
                       <div key={pool.name}>
                         <div className="mb-0.5 flex items-center justify-between text-xs">
-                          <span className="font-medium text-[var(--foreground)]/80">{pool.name}</span>
+                          <span className="font-medium text-[var(--mari-game-text,var(--foreground))]/80">
+                            {pool.name}
+                          </span>
                           <span className="font-mono text-[var(--muted-foreground)]">
                             {poolValue}/{poolMax}
                           </span>
@@ -1117,7 +1123,9 @@ export function GameCharacterSheet({
                   return (
                     <div key={stat.name}>
                       <div className="mb-0.5 flex items-center justify-between text-xs">
-                        <span className="font-medium text-[var(--foreground)]/80">{stat.name}</span>
+                        <span className="font-medium text-[var(--mari-game-text,var(--foreground))]/80">
+                          {stat.name}
+                        </span>
                         <span className="font-mono text-[var(--muted-foreground)]">
                           {value}/{max}
                         </span>
@@ -1127,7 +1135,7 @@ export function GameCharacterSheet({
                           className="h-full rounded-full transition-all"
                           style={{
                             width: `${width}%`,
-                            background: stat.color || "var(--foreground)",
+                            background: stat.color || "var(--mari-game-text,var(--foreground))",
                           }}
                         />
                       </div>
@@ -1149,7 +1157,7 @@ export function GameCharacterSheet({
                 {previewGameCard.abilities.map((ability, index) => (
                   <div
                     key={`${ability}-${index}`}
-                    className="rounded-lg bg-[var(--marinara-chat-chrome-highlight-bg)] px-2.5 py-1.5 text-xs text-[var(--foreground)]/80"
+                    className="rounded-lg bg-[var(--marinara-chat-chrome-highlight-bg)] px-2.5 py-1.5 text-xs text-[var(--mari-game-text,var(--foreground))]/80"
                   >
                     {ability}
                   </div>
@@ -1172,7 +1180,10 @@ export function GameCharacterSheet({
                       />
                       <div className="space-y-0.5">
                         {previewGameCard.strengths.map((strength, index) => (
-                          <div key={`${strength}-${index}`} className="text-[0.6875rem] text-[var(--foreground)]/70">
+                          <div
+                            key={`${strength}-${index}`}
+                            className="text-[0.6875rem] text-[var(--mari-game-text,var(--foreground))]/70"
+                          >
                             • {strength}
                           </div>
                         ))}
@@ -1188,7 +1199,10 @@ export function GameCharacterSheet({
                       />
                       <div className="space-y-0.5">
                         {previewGameCard.weaknesses.map((weakness, index) => (
-                          <div key={`${weakness}-${index}`} className="text-[0.6875rem] text-[var(--foreground)]/70">
+                          <div
+                            key={`${weakness}-${index}`}
+                            className="text-[0.6875rem] text-[var(--mari-game-text,var(--foreground))]/70"
+                          >
                             • {weakness}
                           </div>
                         ))}
@@ -1210,7 +1224,7 @@ export function GameCharacterSheet({
                 {Object.entries(previewGameCard.extra).map(([key, value]) => (
                   <div key={key} className="flex items-start justify-between gap-3">
                     <span className="shrink-0 capitalize text-[var(--muted-foreground)]">{key.replace(/_/g, " ")}</span>
-                    <span className="text-right text-[var(--foreground)]/80">{value}</span>
+                    <span className="text-right text-[var(--mari-game-text,var(--foreground))]/80">{value}</span>
                   </div>
                 ))}
               </div>
@@ -1231,11 +1245,11 @@ export function GameCharacterSheet({
                     className="flex items-center justify-between rounded-lg bg-[var(--marinara-chat-chrome-highlight-bg)] px-2.5 py-1.5 text-xs"
                   >
                     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <span className="min-w-0 whitespace-normal break-words text-[var(--foreground)]/80 [overflow-wrap:anywhere]">
+                      <span className="min-w-0 whitespace-normal break-words text-[var(--mari-game-text,var(--foreground))]/80 [overflow-wrap:anywhere]">
                         {item.name}
                       </span>
                       {item.location && (
-                        <span className="rounded bg-[var(--foreground)]/10 px-1.5 py-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
+                        <span className="rounded bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
                           {item.location}
                         </span>
                       )}
@@ -1263,7 +1277,7 @@ export function GameCharacterSheet({
                 {Object.entries(card.customFields).map(([key, value]) => (
                   <div key={key} className="flex items-start justify-between gap-3">
                     <span className="shrink-0 text-[var(--muted-foreground)]">{key}</span>
-                    <span className="text-right text-[var(--foreground)]/80">{value}</span>
+                    <span className="text-right text-[var(--mari-game-text,var(--foreground))]/80">{value}</span>
                   </div>
                 ))}
               </div>

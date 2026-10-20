@@ -302,7 +302,7 @@ export function CustomEmojiTab({
                         type="button"
                         onClick={() => void handleDelete(emoji.id, emoji.name)}
                         title={localizeUi("ui.chat.customemojitab.deleteValue1", { value1: emoji.name })}
-                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--destructive)] text-white shadow ring-1 ring-black/10 transition-transform hover:scale-110"
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--destructive)] text-[var(--destructive-foreground)] shadow ring-1 ring-[var(--border)]/10 transition-transform hover:scale-110"
                       >
                         <Trash2 size="0.625rem" />
                       </button>

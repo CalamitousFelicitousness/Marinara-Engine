@@ -124,7 +124,7 @@ function ActiveLorebookEntryRow({
         <span className="ml-auto shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">#{entry.order}</span>
         <button
           type="button"
-          className="min-h-8 shrink-0 rounded px-1.5 text-[0.625rem] text-[var(--muted-foreground)] hover:bg-white/10 hover:text-[var(--foreground)]"
+          className="min-h-8 shrink-0 rounded px-1.5 text-[0.625rem] text-[var(--muted-foreground)] hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]"
           onClick={(event) => {
             event.stopPropagation();
             useUIStore.getState().openLorebookDetail(entry.lorebookId);

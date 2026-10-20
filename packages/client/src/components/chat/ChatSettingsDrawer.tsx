@@ -6714,7 +6714,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       cardCssMode === "disabled"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6725,7 +6725,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                       cardCssMode === "exclusive"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6736,7 +6736,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       cardCssMode === "chat"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6789,7 +6789,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       scopedRegexMode === "disabled"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6801,7 +6801,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                       scopedRegexMode === "exclusive"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6813,7 +6813,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       scopedRegexMode === "chat"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6909,7 +6909,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                       groupChatMode === "merged"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6939,7 +6939,7 @@ export function ChatSettingsDrawer({
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                       groupChatMode === "individual"
-                        ? "bg-[var(--primary)] text-white"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
@@ -6982,7 +6982,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                         (metadata.groupResponseOrder ?? "sequential") === "sequential"
-                          ? "bg-[var(--primary)] text-white"
+                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -6993,7 +6993,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                         metadata.groupResponseOrder === "smart"
-                          ? "bg-[var(--primary)] text-white"
+                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -7004,7 +7004,7 @@ export function ChatSettingsDrawer({
                       className={cn(
                         "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                         metadata.groupResponseOrder === "manual"
-                          ? "bg-[var(--primary)] text-white"
+                          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                       )}
                     >
@@ -10851,7 +10851,7 @@ export function ChatSettingsDrawer({
           aria-modal="true"
           aria-labelledby="chat-settings-greeting-title"
           aria-describedby="chat-settings-greeting-description"
-          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 max-md:pt-[env(safe-area-inset-top)]"
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-[var(--background)]/60 max-md:pt-[env(safe-area-inset-top)]"
           onClick={(event) => {
             if (event.target === event.currentTarget) setFirstMesConfirm(null);
           }}

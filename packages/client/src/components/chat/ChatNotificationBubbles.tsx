@@ -295,7 +295,7 @@ function NotificationBubble({
               event.stopPropagation();
               onDeclineCall();
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--destructive)] text-white shadow-sm transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--destructive)] text-[var(--destructive-foreground)] shadow-sm transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
             title={localizeUi("ui.chat.notificationbubble.declineCall")}
           >
             {declining ? <Loader2 size="0.8125rem" className="animate-spin" /> : <PhoneOff size="0.8125rem" />}

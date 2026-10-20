@@ -2037,7 +2037,7 @@ function StatBarEditable({
       <div className="h-1.5 rounded-full bg-[var(--muted)]/30 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, backgroundColor: stat.color || "#8b5cf6" }}
+          style={{ width: `${pct}%`, backgroundColor: stat.color || "var(--marinara-app-accent-static)" }}
         />
       </div>
     </div>

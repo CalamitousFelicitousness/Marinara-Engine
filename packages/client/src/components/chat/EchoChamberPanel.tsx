@@ -34,18 +34,18 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { parseAgentSettingsRecord } from "@marinara-engine/shared";
 
 const NAME_COLORS = [
-  "text-red-400",
-  "text-blue-400",
-  "text-green-400",
-  "text-yellow-400",
-  "text-cyan-400",
-  "text-orange-400",
-  "text-emerald-400",
-  "text-amber-400",
-  "text-teal-400",
-  "text-lime-400",
-  "text-sky-400",
-  "text-stone-300",
+  "text-[var(--destructive)]",
+  "text-[var(--primary)]",
+  "text-[var(--success)]",
+  "text-[var(--warning)]",
+  "text-[var(--primary)]",
+  "text-[var(--warning)]",
+  "text-[var(--success)]",
+  "text-[var(--warning)]",
+  "text-[var(--primary)]",
+  "text-[var(--success)]",
+  "text-[var(--primary)]",
+  "text-[var(--muted-foreground)]",
 ];
 
 const CORNERS: EchoChamberSide[] = ["top-left", "top-right", "bottom-left", "bottom-right"];

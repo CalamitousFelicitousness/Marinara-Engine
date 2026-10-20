@@ -1678,10 +1678,12 @@ function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () =
   }, [visible]);
   return (
     <div>
-      <p className="text-sm leading-relaxed text-[var(--foreground)]/70 dark:text-white/70 whitespace-pre-line">
+      <p className="text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))]/70 dark:text-[var(--mari-game-text,var(--foreground))]/70 whitespace-pre-line">
         {text.slice(0, visible)}
         {visible < text.length && (
-          <span className="animate-pulse text-[var(--foreground)]/40 dark:text-white/40">▌</span>
+          <span className="animate-pulse text-[var(--mari-game-text,var(--foreground))]/40 dark:text-[var(--mari-game-text,var(--foreground))]/40">
+            ▌
+          </span>
         )}
         <span ref={endRef} />
       </p>
@@ -11926,9 +11928,9 @@ function GameSurfaceComponent({
       <>
         <div
           data-component="GameSurface.MessagesLoading"
-          className="flex h-full items-center justify-center bg-[var(--background)] dark:bg-black/80"
+          className="flex h-full items-center justify-center bg-[var(--mari-game-bg,var(--background))] dark:bg-[var(--mari-game-bg,var(--background))]/80"
         >
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70 dark:border-white/20 dark:border-t-white/70" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--mari-game-text,var(--foreground))]/70 dark:border-[var(--border)]/20 dark:border-t-[var(--border)]/70" />
         </div>
         {imagePromptReviewModal}
       </>
@@ -11966,7 +11968,7 @@ function GameSurfaceComponent({
       <>
         <Suspense
           fallback={
-            <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-[var(--background)]/90">
+            <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/90">
               <Loader2 size={20} className="animate-spin text-[var(--primary)]" />
             </div>
           }
@@ -12180,10 +12182,10 @@ function GameSurfaceComponent({
     // Phase: "idle" = show Start button over overview, "intro" = typewriter reveal after clicking Start
     const introPhase = startGame.isPending || startGameRequested || awaitingFirstTurn ? "intro" : "idle";
     const SURFACE_BTN =
-      "flex items-center gap-2 rounded-lg bg-[var(--muted)]/30 px-4 py-2 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
+      "flex items-center gap-2 rounded-lg bg-[var(--muted)]/30 px-4 py-2 text-xs text-[var(--mari-game-text,var(--foreground))]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--mari-game-text,var(--foreground))] dark:bg-[var(--mari-game-text,var(--foreground))]/10 dark:text-[var(--mari-game-text,var(--foreground))]/70 dark:hover:bg-[var(--mari-game-text,var(--foreground))]/20 dark:hover:text-[var(--mari-game-text,var(--foreground))]";
     return (
       <>
-        <div className="relative flex h-full items-center justify-center overflow-hidden bg-[var(--background)] dark:bg-black/80 p-6">
+        <div className="relative flex h-full items-center justify-center overflow-hidden bg-[var(--mari-game-bg,var(--background))] dark:bg-[var(--mari-game-bg,var(--background))]/80 p-6">
           {experiencePreparesBeforeStart && experienceSurfaceId && (
             // ponytail: reuse the package's idempotent mount when Continue opens the normal surface;
             // a shared persistent slot is only needed if an Experience cannot retain its prepared world.
@@ -12198,7 +12200,7 @@ function GameSurfaceComponent({
               {experienceStartupInvalid && (
                 <p
                   role="alert"
-                  className="absolute inset-x-3 bottom-3 z-50 rounded-lg border border-[var(--destructive)] bg-[var(--card)] p-3 text-sm text-[var(--card-foreground)]"
+                  className="absolute inset-x-3 bottom-3 z-50 rounded-lg border border-[var(--destructive)] bg-[var(--mari-game-bg,var(--card))] p-3 text-sm text-[var(--card-foreground)]"
                 >
                   {localizeUi("game.experienceStartup.invalidContext", {
                     count: EXPERIENCE_STARTUP_CONTEXT_MAX_LENGTH,
@@ -12210,11 +12212,15 @@ function GameSurfaceComponent({
           <div className="flex max-h-full max-w-lg flex-col items-center gap-6 text-center">
             {/* Genre / Setting tag */}
             {setupConfig && (
-              <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-2 text-xs text-[var(--muted-foreground)] dark:text-white/40">
+              <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-2 text-xs text-[var(--muted-foreground)] dark:text-[var(--mari-game-text,var(--foreground))]/40">
                 <span>{setupConfig.genre as string}</span>
-                <span className="text-[var(--muted-foreground)]/50 dark:text-white/20">|</span>
+                <span className="text-[var(--muted-foreground)]/50 dark:text-[var(--mari-game-text,var(--foreground))]/20">
+                  |
+                </span>
                 <span>{setupConfig.setting as string}</span>
-                <span className="text-[var(--muted-foreground)]/50 dark:text-white/20">|</span>
+                <span className="text-[var(--muted-foreground)]/50 dark:text-[var(--mari-game-text,var(--foreground))]/20">
+                  |
+                </span>
                 <span>{setupConfig.tone as string}</span>
               </div>
             )}
@@ -12229,12 +12235,12 @@ function GameSurfaceComponent({
             {/* Start button or generating indicator */}
             <div className="flex w-full flex-shrink-0 flex-col items-center gap-4">
               {experienceStartupBlocked && (
-                <p role="status" className="text-sm text-[var(--foreground)]">
+                <p role="status" className="text-sm text-[var(--mari-game-text,var(--foreground))]">
                   {localizeUi("game.experienceStartup.preparing")}
                 </p>
               )}
               <label className="flex w-full max-w-sm flex-col gap-1.5 text-left">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] dark:text-white/50">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] dark:text-[var(--mari-game-text,var(--foreground))]/50">
                   <Plug size={12} />
                   {localizeUi("ui.game.gamesurfacecomponent.gmPartyModel")}
                 </span>
@@ -12242,7 +12248,7 @@ function GameSurfaceComponent({
                   value={chat.connectionId ?? ""}
                   onChange={(e) => handleStartScreenConnectionChange(e.target.value)}
                   disabled={isStreaming || startGame.isPending || updateChat.isPending}
-                  className="w-full rounded-lg bg-zinc-950/80 px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-zinc-700/80 transition-all focus:ring-zinc-400/40 disabled:opacity-60 dark:bg-white/10"
+                  className="w-full rounded-lg bg-[var(--mari-game-bg,var(--card))]/80 px-3 py-2 text-xs text-[var(--mari-game-text,var(--foreground))] outline-none ring-1 ring-[var(--border)]/80 transition-all focus:ring-[var(--border)]/40 disabled:opacity-60 dark:bg-[var(--mari-game-text,var(--foreground))]/10"
                 >
                   <option value="">{localizeUi("ui.game.gamesurfacecomponent.none")}</option>
                   <option value="random">{localizeUi("ui.game.gamesurfacecomponent.random")}</option>
@@ -12273,19 +12279,19 @@ function GameSurfaceComponent({
                         // Retry any autoplay-blocked audio now that we have a user gesture
                         audioManager.retryPending();
                       }}
-                      className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25"
+                      className="group flex items-center gap-2 rounded-lg bg-[var(--mari-game-bg,var(--card))] px-6 py-3 text-sm font-semibold text-[var(--mari-game-text,var(--foreground))] ring-1 ring-[var(--border)]/80 transition-all hover:scale-105 hover:bg-[var(--mari-game-bg,var(--card))] hover:shadow-lg hover:shadow-[color:var(--mari-game-bg,var(--background))]/25"
                     >
                       {localizeUi("ui.noodle.wizardfooter.continue")}
                     </button>
                   ) : (
                     <>
                       {initialTurnFailed ? (
-                        <div className="max-w-sm text-sm text-[var(--muted-foreground)] dark:text-white/60">
+                        <div className="max-w-sm text-sm text-[var(--muted-foreground)] dark:text-[var(--mari-game-text,var(--foreground))]/60">
                           {localizeUi("ui.game.gamesurfacecomponent.gameGenerationFailedChooseAnotherGmPartyModelOr")}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-white/60">
-                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70 dark:border-white/20 dark:border-t-white/70" />
+                        <div className="flex items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-[var(--mari-game-text,var(--foreground))]/60">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--mari-game-text,var(--foreground))]/70 dark:border-[var(--border)]/20 dark:border-t-[var(--border)]/70" />
                           <span>
                             {generationPhase ??
                               (hasEverHadPlayableContent && !sceneProcessed
@@ -12341,7 +12347,7 @@ function GameSurfaceComponent({
                     handleStartGameRequest();
                   }}
                   disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
-                  className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25 disabled:opacity-50 disabled:hover:scale-100"
+                  className="group flex items-center gap-2 rounded-lg bg-[var(--mari-game-bg,var(--card))] px-6 py-3 text-sm font-semibold text-[var(--mari-game-text,var(--foreground))] ring-1 ring-[var(--border)]/80 transition-all hover:scale-105 hover:bg-[var(--mari-game-bg,var(--card))] hover:shadow-lg hover:shadow-[color:var(--mari-game-bg,var(--background))]/25 disabled:opacity-50 disabled:hover:scale-100"
                 >
                   <Play size={18} className="transition-transform group-hover:scale-110" />
                   {localizeUi("ui.game.gamesurfacecomponent.startGame")}
@@ -13034,7 +13040,7 @@ function GameSurfaceComponent({
                       data-game-section="scene-alert"
                       className={cn(
                         GAME_SECTION_CLASS,
-                        "rounded-xl border border-[var(--warning)]/20 bg-[var(--card)]/95 px-4 py-3 shadow-lg backdrop-blur-sm",
+                        "rounded-xl border border-[var(--warning)]/20 bg-[var(--mari-game-bg,var(--card))]/95 px-4 py-3 shadow-lg backdrop-blur-sm",
                       )}
                     >
                       <div className="flex items-start gap-3">
@@ -13043,7 +13049,7 @@ function GameSurfaceComponent({
                           <div className="text-xs font-medium text-[var(--warning)]">
                             {localizeUi("ui.game.gamesurfacecomponent.localSceneHelperFailedToStart")}
                           </div>
-                          <div className="mt-1 text-[0.6875rem] leading-relaxed text-white/70">
+                          <div className="mt-1 text-[0.6875rem] leading-relaxed text-[var(--mari-game-text,var(--foreground))]/70">
                             {localizeUi("ui.game.gamesurfacecomponent.marinaraWillKeepTheGameRunningWithoutTheLocal")}
                             {sidecarFailedRuntimeVariant &&
                               ` Runtime: ${sidecarFailedRuntimeVariant.replace(/-/g, " ")}.`}
@@ -13051,7 +13057,7 @@ function GameSurfaceComponent({
                               ? localizeUi("ui.game.gamesurfacecomponent.value1", { value1: sidecarStartupError })
                               : ""}
                           </div>
-                          <div className="mt-1 text-[0.6875rem] leading-relaxed text-white/55">
+                          <div className="mt-1 text-[0.6875rem] leading-relaxed text-[var(--mari-game-text,var(--foreground))]/55">
                             {localizeUi("ui.game.gamesurfacecomponent.openLocalAiModelToRetryStartupSwitchModels")}
                           </div>
                         </div>
@@ -13060,7 +13066,7 @@ function GameSurfaceComponent({
                             void refreshSidecarStatus();
                             openSidecarModal(true);
                           }}
-                          className="rounded-lg bg-white/10 px-3 py-1.5 text-[0.6875rem] font-medium text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+                          className="rounded-lg bg-[var(--mari-game-text,var(--foreground))]/10 px-3 py-1.5 text-[0.6875rem] font-medium text-[var(--mari-game-text,var(--foreground))]/80 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/20 hover:text-[var(--mari-game-text,var(--foreground))]"
                         >
                           {localizeUi("ui.game.gamesurfacecomponent.openLocalAiModel")}
                         </button>
@@ -13076,16 +13082,16 @@ function GameSurfaceComponent({
                       data-game-section="scene-retry"
                       className={cn(
                         GAME_SECTION_CLASS,
-                        "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
+                        "flex items-center gap-3 rounded-xl bg-[var(--mari-game-bg,var(--background))]/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
                       )}
                     >
                       <AlertTriangle size={14} className="shrink-0 text-[var(--warning)]" />
-                      <span className="text-xs text-white/70">
+                      <span className="text-xs text-[var(--mari-game-text,var(--foreground))]/70">
                         {localizeUi("ui.game.gamesurfacecomponent.imageGenerationFailed")}
                       </span>
                       <button
                         onClick={() => retryAssetGeneration()}
-                        className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+                        className="flex items-center gap-1.5 rounded-lg bg-[var(--mari-game-text,var(--foreground))]/10 px-3 py-1.5 text-xs text-[var(--mari-game-text,var(--foreground))]/80 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/20 hover:text-[var(--mari-game-text,var(--foreground))]"
                       >
                         <RefreshCw size={12} />
                         {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -13096,7 +13102,7 @@ function GameSurfaceComponent({
                           setPendingAssetGeneration(null);
                           setAssetGenerationBlocksScene(false);
                         }}
-                        className="text-white/40 transition-colors hover:text-white/70"
+                        className="text-[var(--mari-game-text,var(--foreground))]/40 transition-colors hover:text-[var(--mari-game-text,var(--foreground))]/70"
                       >
                         <X size={14} />
                       </button>
@@ -13111,23 +13117,23 @@ function GameSurfaceComponent({
                       data-game-section="scene-retry"
                       className={cn(
                         GAME_SECTION_CLASS,
-                        "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
+                        "flex items-center gap-3 rounded-xl bg-[var(--mari-game-bg,var(--background))]/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
                       )}
                     >
                       <AlertTriangle size={14} className="shrink-0 text-[var(--warning)]" />
-                      <span className="text-xs text-white/70">
+                      <span className="text-xs text-[var(--mari-game-text,var(--foreground))]/70">
                         {localizeUi("ui.game.gamesurfacecomponent.sceneAnalysisFailed")}
                       </span>
                       <button
                         onClick={() => retrySceneAnalysis()}
-                        className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+                        className="flex items-center gap-1.5 rounded-lg bg-[var(--mari-game-text,var(--foreground))]/10 px-3 py-1.5 text-xs text-[var(--mari-game-text,var(--foreground))]/80 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/20 hover:text-[var(--mari-game-text,var(--foreground))]"
                       >
                         <RefreshCw size={12} />
                         {localizeUi("ui.game.gamesurfacecomponent.retry")}
                       </button>
                       <button
                         onClick={() => setSceneAnalysisFailed(false)}
-                        className="text-white/40 transition-colors hover:text-white/70"
+                        className="text-[var(--mari-game-text,var(--foreground))]/40 transition-colors hover:text-[var(--mari-game-text,var(--foreground))]/70"
                       >
                         <X size={14} />
                       </button>
@@ -13242,7 +13248,7 @@ function GameSurfaceComponent({
                     return (
                       <Suspense
                         fallback={
-                          <div className="flex h-full flex-1 items-center justify-center text-sm text-white/70">
+                          <div className="flex h-full flex-1 items-center justify-center text-sm text-[var(--mari-game-text,var(--foreground))]/70">
                             <Loader2 size={15} className="mr-2 animate-spin" />
                             {localizeUi("ui.game.gamesurfacecomponent.loadingReplay")}
                           </div>
@@ -13276,7 +13282,7 @@ function GameSurfaceComponent({
                         <button
                           type="button"
                           onClick={() => setCombatLogsOpen(true)}
-                          className="mari-chat-style-control mari-game-scene-control flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/80 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+                          className="mari-chat-style-control mari-game-scene-control flex items-center gap-1.5 rounded-lg border border-[var(--border)]/15 bg-[var(--mari-game-bg,var(--background))]/65 px-3 py-1.5 text-xs font-semibold text-[var(--mari-game-text,var(--foreground))]/80 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--mari-game-bg,var(--background))]/80 hover:text-[var(--mari-game-text,var(--foreground))]"
                           title={localizeUi("ui.game.gamesurfacecomponent.openCombatLogs")}
                         >
                           <ScrollText size={13} />
@@ -13299,7 +13305,7 @@ function GameSurfaceComponent({
                       <div className="relative h-full min-h-0">
                         <Suspense
                           fallback={
-                            <div className="flex h-full items-center justify-center text-sm text-white/70">
+                            <div className="flex h-full items-center justify-center text-sm text-[var(--mari-game-text,var(--foreground))]/70">
                               {localizeUi("ui.game.gamesurfacecomponent.loadingCombat")}
                             </div>
                           }
@@ -13595,28 +13601,28 @@ function GameSurfaceComponent({
 
                 {combatLogsOpen && (
                   <div
-                    className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+                    className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/60 px-4 backdrop-blur-sm"
                     {...combatLogsBackdropDismiss}
                   >
                     <div
                       data-game-section="combat-logs"
                       className={cn(
                         GAME_SECTION_CLASS,
-                        "flex max-h-[82vh] w-full max-w-2xl flex-col rounded-xl border border-white/15 bg-[var(--card)] shadow-2xl",
+                        "flex max-h-[82vh] w-full max-w-2xl flex-col rounded-xl border border-[var(--border)]/15 bg-[var(--mari-game-bg,var(--card))] shadow-2xl",
                       )}
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <div className="flex items-center justify-between border-b border-[var(--border)]/10 px-4 py-3">
                         <div className="flex items-center gap-2">
                           <ScrollText size={16} className="text-[var(--muted-foreground)]" />
-                          <span className="text-sm font-semibold text-[var(--foreground)]">
+                          <span className="text-sm font-semibold text-[var(--mari-game-text,var(--foreground))]">
                             {localizeUi("ui.game.gamesurfacecomponent.combatLogs")}
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setCombatLogsOpen(false)}
-                          className="rounded-lg p-1 text-[var(--muted-foreground)] transition-colors hover:bg-zinc-800/80 hover:text-[var(--foreground)]"
+                          className="rounded-lg p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--mari-game-bg,var(--card))]/80 hover:text-[var(--mari-game-text,var(--foreground))]"
                           title={localizeUi("ui.game.gamesurfacecomponent.closeLogs")}
                         >
                           <X size={16} />
@@ -13664,12 +13670,15 @@ function GameSurfaceComponent({
                                     ? "GM"
                                     : "System";
                               return (
-                                <div key={entry.id} className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-white/45">
+                                <div
+                                  key={entry.id}
+                                  className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-bg,var(--background))]/25 px-3 py-2"
+                                >
+                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/45">
                                     {label}
                                   </div>
                                   <div
-                                    className="whitespace-pre-wrap break-words text-xs leading-relaxed text-white/80"
+                                    className="whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/80"
                                     dangerouslySetInnerHTML={{ __html: formatNarration(entry.content, false) }}
                                   />
                                 </div>
@@ -13746,8 +13755,8 @@ function GameSurfaceComponent({
                       className={cn(
                         "animate-in fade-in-0 slide-in-from-bottom-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-lg backdrop-blur-sm",
                         n.gain
-                          ? "border-emerald-400/30 bg-emerald-900/80 text-emerald-200"
-                          : "border-red-400/30 bg-red-900/80 text-red-200",
+                          ? "border-[var(--success)]/30 bg-[var(--mari-game-bg,var(--card))]/80 text-[var(--success)]"
+                          : "border-[var(--destructive)]/30 bg-[var(--mari-game-bg,var(--card))]/80 text-[var(--destructive)]",
                       )}
                     >
                       {n.text}
@@ -13839,7 +13848,7 @@ function GameSurfaceComponent({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={closeInterruptModal}
-              className="rounded-lg bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-zinc-700/80 transition-colors hover:bg-zinc-800/80 hover:text-[var(--foreground)]"
+              className="rounded-lg bg-[var(--mari-game-bg,var(--card))]/80 px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)]/80 transition-colors hover:bg-[var(--mari-game-bg,var(--card))]/80 hover:text-[var(--mari-game-text,var(--foreground))]"
             >
               {localizeUi("ui.game.gamesurfacecomponent.no")}
             </button>
@@ -13892,7 +13901,7 @@ function GameSurfaceComponent({
 
           {!concludeSession.isPending && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-[var(--foreground)]">
+              <span className="text-xs font-medium text-[var(--mari-game-text,var(--foreground))]">
                 {localizeUi("ui.game.gamesurfacecomponent.whatDoYouWantToHappenInTheNext")}
               </span>
               <textarea
@@ -13901,7 +13910,7 @@ function GameSurfaceComponent({
                 rows={4}
                 maxLength={5000}
                 placeholder={localizeUi("ui.game.gamesurfacecomponent.leaveEmptyToLetTheGmSteerNaturally")}
-                className="resize-none rounded-lg border border-zinc-700/80 bg-zinc-950/80 px-3 py-2 text-sm leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/70 focus:border-zinc-400/60"
+                className="resize-none rounded-lg border border-[var(--border)]/80 bg-[var(--mari-game-bg,var(--card))]/80 px-3 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))] outline-none placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--border)]/60"
               />
             </label>
           )}
@@ -13910,7 +13919,7 @@ function GameSurfaceComponent({
             <button
               onClick={handleCloseEndSessionDialog}
               disabled={concludeSession.isPending}
-              className="rounded-lg bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-zinc-700/80 transition-colors hover:bg-zinc-800/80 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-[var(--mari-game-bg,var(--card))]/80 px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)]/80 transition-colors hover:bg-[var(--mari-game-bg,var(--card))]/80 hover:text-[var(--mari-game-text,var(--foreground))] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {localizeUi("chat.delete.dialog.cancel")}
             </button>

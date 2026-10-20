@@ -228,7 +228,7 @@ const MODE_CONFIG: Record<
 
 function ChatSidebarTitleIcon() {
   return (
-    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[linear-gradient(135deg,#4de5dd_0%,#eb8951_52%,#e15c8c_100%)] text-white shadow-sm">
+    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[linear-gradient(135deg,#4de5dd_0%,#eb8951_52%,#e15c8c_100%)] text-[var(--foreground)] shadow-sm">
       <MessageSquareText size="0.875rem" strokeWidth={2.35} />
     </div>
   );

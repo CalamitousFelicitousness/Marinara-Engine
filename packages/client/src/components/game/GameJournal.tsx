@@ -371,7 +371,7 @@ export function GameJournal({
           GAME_WINDOW_CONTENT_CLASS,
           embedded
             ? "flex min-h-40 items-center justify-center"
-            : "absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+            : "absolute inset-0 z-40 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/70 backdrop-blur-sm",
         )}
       >
         <div className="text-sm text-[var(--muted-foreground)]">{localizeUi("ui.game.gamejournal.loadingJournal")}</div>
@@ -386,16 +386,18 @@ export function GameJournal({
         GAME_WINDOW_CONTENT_CLASS,
         embedded
           ? "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
-          : "absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-black/85 backdrop-blur-md",
+          : "absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-[var(--mari-game-bg,var(--background))]/85 backdrop-blur-md",
       )}
     >
       {/* Header */}
       {!embedded && (
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="text-sm font-bold text-white/90">{localizeUi("ui.game.gamejournal.adventureJournal")}</h2>
+        <div className="flex items-center justify-between border-b border-[var(--border)]/10 px-4 py-3">
+          <h2 className="text-sm font-bold text-[var(--mari-game-text,var(--foreground))]/90">
+            {localizeUi("ui.game.gamejournal.adventureJournal")}
+          </h2>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--mari-game-text,var(--foreground))]/60 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
           >
             <X size={14} />
           </button>
@@ -403,7 +405,7 @@ export function GameJournal({
       )}
 
       {/* Tabs — horizontally scrollable on mobile */}
-      <div className="overflow-x-auto border-b border-white/10 px-4 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
+      <div className="overflow-x-auto border-b border-[var(--border)]/10 px-4 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
         <div className="flex gap-1 w-max min-w-full">
           {TABS.filter((tab) => tab.id !== "world" || hasWorld || canMakeWorld).map((tab) => {
             const Icon = tab.icon;
@@ -416,8 +418,8 @@ export function GameJournal({
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.625rem] font-medium transition-colors",
                   activeTab === tab.id
-                    ? "bg-white/10 text-white/85"
-                    : "text-white/50 hover:bg-white/5 hover:text-white/70",
+                    ? "bg-[var(--mari-game-text,var(--foreground))]/10 text-[var(--mari-game-text,var(--foreground))]/85"
+                    : "text-[var(--mari-game-text,var(--foreground))]/50 hover:bg-[var(--mari-game-text,var(--foreground))]/5 hover:text-[var(--mari-game-text,var(--foreground))]/70",
                 )}
               >
                 <Icon size={12} />
@@ -469,9 +471,14 @@ export function GameJournal({
         {activeTab === "world" && hasWorld && <WorldView chatId={chatId} turnKey={worldTurnKey} />}
         {activeTab === "world" && !hasWorld && canMakeWorld && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="max-w-sm text-xs leading-relaxed text-white/60">{localizeUi("ui.game.makeworld.intro")}</p>
+            <p className="max-w-sm text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/60">
+              {localizeUi("ui.game.makeworld.intro")}
+            </p>
             {!overworldEnabled && (
-              <p role="note" className="max-w-sm text-xs leading-relaxed text-white/60">
+              <p
+                role="note"
+                className="max-w-sm text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/60"
+              >
                 {localizeUi("game.worldKit.setup.overworldLocked")}
               </p>
             )}
@@ -489,7 +496,7 @@ export function GameJournal({
       </div>
 
       {makingWorld && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/70 p-4 backdrop-blur-sm">
           <GameMakeWorld
             chatId={chatId}
             request={worldRequest}
@@ -500,10 +507,10 @@ export function GameJournal({
       )}
 
       {editingEntry && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="flex max-h-full w-full max-w-xl flex-col gap-3 rounded-xl border border-white/15 bg-[var(--background)] p-4 shadow-2xl">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--mari-game-bg,var(--background))]/70 p-4 backdrop-blur-sm">
+          <div className="flex max-h-full w-full max-w-xl flex-col gap-3 rounded-xl border border-[var(--border)]/15 bg-[var(--mari-game-bg,var(--background))] p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[var(--foreground)]">
+              <h3 className="text-sm font-semibold text-[var(--mari-game-text,var(--foreground))]">
                 {localizeUi("ui.game.gamejournal.editJournalEntry")}
               </h3>
               <button
@@ -511,7 +518,7 @@ export function GameJournal({
                 onClick={() => setEditingEntry(null)}
                 disabled={entrySaving}
                 aria-label={localizeUi("ui.game.gamejournal.cancelEntryEdit")}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] disabled:opacity-50"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--mari-game-text,var(--foreground))] disabled:opacity-50"
               >
                 <X size={14} />
               </button>
@@ -524,7 +531,7 @@ export function GameJournal({
                   setEditingEntry((current) => (current ? { ...current, title: event.target.value } : current))
                 }
                 maxLength={500}
-                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                className="rounded-lg border border-[var(--border)] bg-[var(--mari-game-bg,var(--background))] px-3 py-2 text-sm text-[var(--mari-game-text,var(--foreground))] outline-none focus:border-[var(--primary)]"
               />
             </label>
             <label className="flex min-h-0 flex-1 flex-col gap-1 text-xs text-[var(--muted-foreground)]">
@@ -535,7 +542,7 @@ export function GameJournal({
                   setEditingEntry((current) => (current ? { ...current, content: event.target.value } : current))
                 }
                 maxLength={20_000}
-                className="min-h-48 resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm leading-relaxed text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                className="min-h-48 resize-y rounded-lg border border-[var(--border)] bg-[var(--mari-game-bg,var(--background))] px-3 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))] outline-none focus:border-[var(--primary)]"
               />
             </label>
             {entrySaveFailed && (
@@ -546,7 +553,7 @@ export function GameJournal({
                 type="button"
                 onClick={() => setEditingEntry(null)}
                 disabled={entrySaving}
-                className="rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] disabled:opacity-50"
+                className="rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--mari-game-text,var(--foreground))] disabled:opacity-50"
               >
                 {localizeUi("ui.game.gamejournal.cancelEntryEdit")}
               </button>
@@ -585,7 +592,9 @@ function TimelineView({
   const { t: localizeUi } = useUiTranslation();
   if (entries.length === 0) {
     return (
-      <div className="text-center text-xs text-white/40">{localizeUi("ui.game.timelineview.noJournalEntriesYet")}</div>
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
+        {localizeUi("ui.game.timelineview.noJournalEntriesYet")}
+      </div>
     );
   }
 
@@ -594,13 +603,21 @@ function TimelineView({
       {[...entries].reverse().map((entry, i) => {
         const Icon = TYPE_ICONS[entry.type] ?? ScrollText;
         return (
-          <div key={i} className="group relative flex gap-3 rounded-lg border border-white/5 bg-white/3 px-3 py-2">
-            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10">
-              <Icon size={12} className="text-white/60" />
+          <div
+            key={i}
+            className="group relative flex gap-3 rounded-lg border border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/3 px-3 py-2"
+          >
+            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mari-game-text,var(--foreground))]/10">
+              <Icon size={12} className="text-[var(--mari-game-text,var(--foreground))]/60" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="pr-14 text-xs font-medium text-white/80">{entry.title}</div>
-              <AnimatedText html={entry.content} className="mt-0.5 text-[0.625rem] text-white/50" />
+              <div className="pr-14 text-xs font-medium text-[var(--mari-game-text,var(--foreground))]/80">
+                {entry.title}
+              </div>
+              <AnimatedText
+                html={entry.content}
+                className="mt-0.5 text-[0.625rem] text-[var(--mari-game-text,var(--foreground))]/50"
+              />
             </div>
             <div className="absolute right-2 top-2 flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
               <button
@@ -608,7 +625,7 @@ function TimelineView({
                 onClick={() => onEdit(entry)}
                 title={localizeUi("ui.game.gamejournal.editEntry")}
                 aria-label={localizeUi("ui.game.gamejournal.editEntry")}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--mari-game-text,var(--foreground))]/45 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
               >
                 <PenLine size={12} />
               </button>
@@ -636,13 +653,13 @@ function TimelineView({
 
 // Thresholds must match getReputationTier in packages/server/src/services/game/reputation.service.ts
 function reputationLabel(rep: number): { text: string; color: string } {
-  if (rep >= 80) return { text: "Devoted", color: "text-emerald-300" };
-  if (rep >= 50) return { text: "Allied", color: "text-emerald-400" };
-  if (rep >= 20) return { text: "Friendly", color: "text-green-400" };
-  if (rep >= -20) return { text: "Neutral", color: "text-gray-400" };
-  if (rep >= -50) return { text: "Unfriendly", color: "text-amber-400" };
-  if (rep >= -80) return { text: "Hostile", color: "text-orange-400" };
-  return { text: "Enemy", color: "text-red-400" };
+  if (rep >= 80) return { text: "Devoted", color: "text-[var(--success)]" };
+  if (rep >= 50) return { text: "Allied", color: "text-[var(--success)]" };
+  if (rep >= 20) return { text: "Friendly", color: "text-[var(--success)]" };
+  if (rep >= -20) return { text: "Neutral", color: "text-[var(--muted-foreground)]" };
+  if (rep >= -50) return { text: "Unfriendly", color: "text-[var(--warning)]" };
+  if (rep >= -80) return { text: "Hostile", color: "text-[var(--warning)]" };
+  return { text: "Enemy", color: "text-[var(--destructive)]" };
 }
 
 function NpcsView({
@@ -684,7 +701,9 @@ function NpcsView({
 
   if (!hasContent) {
     return (
-      <div className="text-center text-xs text-white/40">{localizeUi("ui.game.npcsview.noNpcsEncounteredYet")}</div>
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
+        {localizeUi("ui.game.npcsview.noNpcsEncounteredYet")}
+      </div>
     );
   }
 
@@ -724,24 +743,27 @@ function NpcsView({
           ? normalizeNpcName(cleanNpcDisplayName(removingNpcName)) === normalizeNpcName(name)
           : false;
         return (
-          <div key={normalizeNpcName(name)} className="rounded-lg border border-white/5 bg-white/3 px-3 py-2">
+          <div
+            key={normalizeNpcName(name)}
+            className="rounded-lg border border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/3 px-3 py-2"
+          >
             <div className="flex items-center gap-2">
               {canUploadPortrait ? (
                 <div className="group/journal-avatar relative shrink-0">
                   <button
                     type="button"
                     onClick={() => handleNpcPortraitAvatarClick(entry.npc.name)}
-                    className="rounded-full transition-transform hover:scale-[1.05] focus:outline-none focus:ring-2 focus:ring-white/20"
+                    className="rounded-full transition-transform hover:scale-[1.05] focus:outline-none focus:ring-2 focus:ring-[var(--border)]/20"
                     title={localizeUi("ui.game.npcsview.uploadOrReplaceNpcPortrait")}
                   >
                     {entry.npc.avatarUrl ? (
                       <img
                         src={entry.npc.avatarUrl}
                         alt={name}
-                        className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10 transition-colors hover:ring-white/25"
+                        className="h-6 w-6 rounded-full object-cover ring-1 ring-[var(--border)]/10 transition-colors hover:ring-[var(--border)]/25"
                       />
                     ) : (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[0.6rem] font-semibold text-white/60 ring-1 ring-white/10 transition-colors hover:ring-white/25">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 text-[0.6rem] font-semibold text-[var(--mari-game-text,var(--foreground))]/60 ring-1 ring-[var(--border)]/10 transition-colors hover:ring-[var(--border)]/25">
                         {name[0]?.toUpperCase() ?? "?"}
                       </div>
                     )}
@@ -755,7 +777,7 @@ function NpcsView({
                       }}
                       disabled={portraitGenerating}
                       className={cn(
-                        "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-white/75 opacity-0 ring-1 ring-white/15 transition-opacity disabled:cursor-wait md:group-hover/journal-avatar:opacity-100",
+                        "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--mari-game-bg,var(--background))]/75 text-[var(--mari-game-text,var(--foreground))]/75 opacity-0 ring-1 ring-[var(--border)]/15 transition-opacity disabled:cursor-wait md:group-hover/journal-avatar:opacity-100",
                         (portraitGenerating || mobilePortraitActionsNpc === normalizeNpcName(entry.npc.name)) &&
                           "max-md:opacity-100",
                       )}
@@ -772,11 +794,11 @@ function NpcsView({
               ) : entry.npc.avatarUrl ? (
                 <img src={entry.npc.avatarUrl} alt={name} className="h-6 w-6 shrink-0 rounded-full object-cover" />
               ) : (
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.6rem] font-semibold text-white/60">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 text-[0.6rem] font-semibold text-[var(--mari-game-text,var(--foreground))]/60">
                   {name[0]?.toUpperCase() ?? "?"}
                 </div>
               )}
-              <span className="flex-1 text-xs font-medium text-white/80">
+              <span className="flex-1 text-xs font-medium text-[var(--mari-game-text,var(--foreground))]/80">
                 {entry.npc.emoji ? localizeUi("ui.game.npcsview.value1", { value1: entry.npc.emoji }) : ""}
                 {name}
               </span>
@@ -787,16 +809,22 @@ function NpcsView({
                   onClick={() => onNpcRemove(entry.originalName)}
                   disabled={isRemoving}
                   title={localizeUi("ui.game.npcsview.removeThisNpcFromTheJournal")}
-                  className="rounded p-1 text-white/35 transition-colors hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)] disabled:opacity-40"
+                  className="rounded p-1 text-[var(--mari-game-text,var(--foreground))]/35 transition-colors hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)] disabled:opacity-40"
                 >
                   <Trash2 size={11} />
                 </button>
               )}
             </div>
             {shouldShowNpcDescription(entry.npc) && (
-              <div className="mt-1 text-[0.6rem] text-white/40">{entry.npc.description}</div>
+              <div className="mt-1 text-[0.6rem] text-[var(--mari-game-text,var(--foreground))]/40">
+                {entry.npc.description}
+              </div>
             )}
-            {entry.npc?.location && <div className="mt-0.5 text-[0.6rem] text-white/30">📍 {entry.npc.location}</div>}
+            {entry.npc?.location && (
+              <div className="mt-0.5 text-[0.6rem] text-[var(--mari-game-text,var(--foreground))]/30">
+                📍 {entry.npc.location}
+              </div>
+            )}
           </div>
         );
       })}
@@ -822,19 +850,30 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
   const shown: WorldJournal | null | undefined = world.isError ? null : world.data;
   if (shown === undefined) {
     return (
-      <div className="flex justify-center py-6 text-white/40">
+      <div className="flex justify-center py-6 text-[var(--mari-game-text,var(--foreground))]/40">
         <Loader2 size={14} className="animate-spin" />
       </div>
     );
   }
   if (shown === null) {
-    return <div className="text-center text-xs text-white/40">{localizeUi("ui.game.worldview.noWorld")}</div>;
+    return (
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
+        {localizeUi("ui.game.worldview.noWorld")}
+      </div>
+    );
   }
-  const nothing = <div className="text-xs text-white/40">{localizeUi("ui.game.worldview.nothingYet")}</div>;
-  const row = "rounded-lg border border-white/5 bg-white/3 px-3 py-2 text-xs text-white/70";
+  const nothing = (
+    <div className="text-xs text-[var(--mari-game-text,var(--foreground))]/40">
+      {localizeUi("ui.game.worldview.nothingYet")}
+    </div>
+  );
+  const row =
+    "rounded-lg border border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/3 px-3 py-2 text-xs text-[var(--mari-game-text,var(--foreground))]/70";
   const section = (title: string, body: ReactNode) => (
     <section className="flex flex-col gap-2">
-      <h3 className="text-[0.625rem] font-semibold uppercase tracking-wide text-white/50">{title}</h3>
+      <h3 className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/50">
+        {title}
+      </h3>
       {body}
     </section>
   );
@@ -844,12 +883,20 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
         ? section(
             localizeUi("ui.game.worldview.story"),
             shown.story.map((each) => (
-              <div key={each.flag} className={cn(row, each.done && "text-white/45")}>
+              <div
+                key={each.flag}
+                className={cn(row, each.done && "text-[var(--mari-game-text,var(--foreground))]/45")}
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <span className={cn("font-medium text-white/85", each.done && "line-through text-white/45")}>
+                  <span
+                    className={cn(
+                      "font-medium text-[var(--mari-game-text,var(--foreground))]/85",
+                      each.done && "line-through text-[var(--mari-game-text,var(--foreground))]/45",
+                    )}
+                  >
                     {each.title}
                   </span>
-                  <span className="shrink-0 text-white/45">
+                  <span className="shrink-0 text-[var(--mari-game-text,var(--foreground))]/45">
                     {each.done
                       ? localizeUi("ui.game.worldview.storyDone")
                       : each.progress
@@ -866,7 +913,9 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
         localizeUi("ui.game.worldview.where"),
         <div className={row}>
           {shown.where.join(" › ")}
-          <div className="mt-1 text-white/45">{localizeUi(`ui.game.worldview.renown.${shown.renown}`)}</div>
+          <div className="mt-1 text-[var(--mari-game-text,var(--foreground))]/45">
+            {localizeUi(`ui.game.worldview.renown.${shown.renown}`)}
+          </div>
         </div>,
       )}
       {section(
@@ -875,7 +924,9 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
           ? shown.standing.map((each) => (
               <div key={each.group} className={cn(row, "flex items-center justify-between gap-2")}>
                 <span>{each.group}</span>
-                <span className="text-white/45">{localizeUi(`ui.game.worldview.standingBands.${each.band}`)}</span>
+                <span className="text-[var(--mari-game-text,var(--foreground))]/45">
+                  {localizeUi(`ui.game.worldview.standingBands.${each.band}`)}
+                </span>
               </div>
             ))
           : nothing,
@@ -885,7 +936,7 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
         shown.news.length
           ? shown.news.map((each, index) => (
               <div key={index} className={row}>
-                <div className="flex gap-2 text-white/45">
+                <div className="flex gap-2 text-[var(--mari-game-text,var(--foreground))]/45">
                   <span>
                     {each.ago <= 0
                       ? localizeUi("ui.game.worldview.newsToday")
@@ -909,7 +960,9 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
                   count: each.weeks,
                 })}
                 {each.close ? (
-                  <div className="text-white/45">{localizeUi("ui.game.worldview.brewingClose")}</div>
+                  <div className="text-[var(--mari-game-text,var(--foreground))]/45">
+                    {localizeUi("ui.game.worldview.brewingClose")}
+                  </div>
                 ) : null}
               </div>
             ))
@@ -920,7 +973,7 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
         shown.deeds.length
           ? shown.deeds.map((each, index) => (
               <div key={index} className={row}>
-                <span className="text-white/45">{each.place}</span>
+                <span className="text-[var(--mari-game-text,var(--foreground))]/45">{each.place}</span>
                 <div>{each.text}</div>
               </div>
             ))
@@ -939,7 +992,7 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
       <button
         type="button"
         onClick={() => void downloadWorld()}
-        className="inline-flex items-center gap-1.5 self-start rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        className="inline-flex items-center gap-1.5 self-start rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-2.5 py-1.5 text-xs text-[var(--mari-game-text,var(--foreground))]/70 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
       >
         <Download size={12} />
         {localizeUi("ui.game.worldview.download")}
@@ -952,7 +1005,7 @@ function LocationsView({ locations }: { locations: string[] }) {
   const { t: localizeUi } = useUiTranslation();
   if (locations.length === 0) {
     return (
-      <div className="text-center text-xs text-white/40">
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
         {localizeUi("ui.game.locationsview.noLocationsDiscoveredYet")}
       </div>
     );
@@ -961,9 +1014,12 @@ function LocationsView({ locations }: { locations: string[] }) {
   return (
     <div className="flex flex-wrap gap-2">
       {locations.map((loc, i) => (
-        <div key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5">
-          <MapPin size={10} className="text-white/40" />
-          <span className="text-xs text-white/70">{loc}</span>
+        <div
+          key={i}
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-2.5 py-1.5"
+        >
+          <MapPin size={10} className="text-[var(--mari-game-text,var(--foreground))]/40" />
+          <span className="text-xs text-[var(--mari-game-text,var(--foreground))]/70">{loc}</span>
         </div>
       ))}
     </div>
@@ -985,18 +1041,18 @@ function InventoryView({
 
   if (visibleItems.length === 0) {
     return (
-      <div className="text-center text-xs text-white/40">
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
         {localizeUi("ui.game.inventoryview.noItemsInInventoryLog")}
       </div>
     );
   }
 
   const actionColors: Record<string, string> = {
-    acquired: "text-emerald-400",
-    used: "text-amber-400",
-    lost: "text-red-400",
-    removed: "text-red-300",
-    sold: "text-amber-300",
+    acquired: "text-[var(--success)]",
+    used: "text-[var(--warning)]",
+    lost: "text-[var(--destructive)]",
+    removed: "text-[var(--destructive)]",
+    sold: "text-[var(--warning)]",
   };
 
   return (
@@ -1004,9 +1060,9 @@ function InventoryView({
       {[...visibleItems].reverse().map((item, i) => (
         <div
           key={i}
-          className="flex items-center justify-between rounded-lg border border-white/5 bg-white/3 px-3 py-1.5"
+          className="flex items-center justify-between rounded-lg border border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/3 px-3 py-1.5"
         >
-          <span className="text-xs text-white/70">
+          <span className="text-xs text-[var(--mari-game-text,var(--foreground))]/70">
             {item.quantity > 1 ? localizeUi("ui.game.inventoryview.value1X", { value1: item.quantity }) : ""}
             {item.item}
           </span>
@@ -1033,7 +1089,7 @@ function LibraryView({
   const { t: localizeUi } = useUiTranslation();
   if (entries.length === 0) {
     return (
-      <div className="text-center text-xs text-white/40">
+      <div className="text-center text-xs text-[var(--mari-game-text,var(--foreground))]/40">
         {localizeUi("ui.game.libraryview.noBooksOrNotesFoundYet")}
       </div>
     );
@@ -1045,22 +1101,30 @@ function LibraryView({
         const isBook = entry.readableType === "book" || entry.title.toLowerCase() === "book";
         const text = entry.content;
         return (
-          <div key={i} className="group relative rounded-lg border border-white/5 bg-white/3 px-3 py-2">
+          <div
+            key={i}
+            className="group relative rounded-lg border border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/3 px-3 py-2"
+          >
             <div className="flex items-center gap-1.5">
               <BookOpen size={11} className="text-[var(--primary)]/70" />
               <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--primary)]/70">
                 {isBook ? localizeUi("ui.game.libraryview.book") : localizeUi("ui.game.libraryview.note")}
               </span>
-              <span className="ml-auto pr-14 text-[0.5625rem] text-white/30">{entry.timestamp}</span>
+              <span className="ml-auto pr-14 text-[0.5625rem] text-[var(--mari-game-text,var(--foreground))]/30">
+                {entry.timestamp}
+              </span>
             </div>
-            <JournalMarkdown text={text} className="mt-1.5 text-xs leading-relaxed text-white/70" />
+            <JournalMarkdown
+              text={text}
+              className="mt-1.5 text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/70"
+            />
             <div className="absolute right-2 top-2 flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
               <button
                 type="button"
                 onClick={() => onEdit(entry)}
                 title={localizeUi("ui.game.gamejournal.editEntry")}
                 aria-label={localizeUi("ui.game.gamejournal.editEntry")}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--mari-game-text,var(--foreground))]/45 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
               >
                 <PenLine size={12} />
               </button>
@@ -1091,7 +1155,7 @@ function NotesView({ notes, onChange, saved }: { notes: string; onChange: (text:
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex items-center justify-between">
-        <p className="text-[0.625rem] text-white/40">
+        <p className="text-[0.625rem] text-[var(--mari-game-text,var(--foreground))]/40">
           {localizeUi("ui.game.notesview.yourPersonalNotesVisibleToTheGameMasterAnd")}
         </p>
         <span
@@ -1108,14 +1172,19 @@ function NotesView({ notes, onChange, saved }: { notes: string; onChange: (text:
           value={notes}
           onChange={(e) => onChange(e.target.value)}
           placeholder={localizeUi("ui.game.notesview.writeYourNotesHereTrackCluesPlansNpcNames")}
-          className="min-h-44 resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-xs leading-relaxed text-white/80 outline-none placeholder:text-white/25 focus:border-white/20 md:min-h-0"
+          className="min-h-44 resize-none rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-bg,var(--background))]/40 px-3 py-2.5 text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/80 outline-none placeholder:text-[var(--mari-game-text,var(--foreground))]/25 focus:border-[var(--border)]/20 md:min-h-0"
           spellCheck={false}
         />
-        <div className="min-h-44 overflow-auto rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 md:min-h-0">
+        <div className="min-h-44 overflow-auto rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-2.5 md:min-h-0">
           {notes.trim() ? (
-            <JournalMarkdown text={notes} className="text-xs leading-relaxed text-white/75" />
+            <JournalMarkdown
+              text={notes}
+              className="text-xs leading-relaxed text-[var(--mari-game-text,var(--foreground))]/75"
+            />
           ) : (
-            <div className="text-xs text-white/30">{localizeUi("ui.game.notesview.nothingWrittenYet")}</div>
+            <div className="text-xs text-[var(--mari-game-text,var(--foreground))]/30">
+              {localizeUi("ui.game.notesview.nothingWrittenYet")}
+            </div>
           )}
         </div>
       </div>

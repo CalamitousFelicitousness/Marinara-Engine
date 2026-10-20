@@ -2120,7 +2120,7 @@ function renderAgentCard({
       >
         <AgentArtwork imageUrl={imagePath} alt="" iconSize="1rem" />
         {!selectionMode && (
-          <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="absolute inset-0 flex items-center justify-center bg-[var(--background)]/45 opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size="0.875rem" />
           </span>
         )}

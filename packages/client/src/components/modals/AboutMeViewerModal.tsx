@@ -321,7 +321,7 @@ export function AboutMeViewerModal({
       // `mari-card-css` recreates the card-CSS scope root here (the popout portals to
       // body, outside the chat area), so a card's/persona's custom CSS can theme it.
       // Desktop: transparent (Discord-style, no dim). Mobile: dim behind the sheet.
-      className={cn("mari-card-css fixed inset-0", isMobile && "bg-black/60")}
+      className={cn("mari-card-css fixed inset-0", isMobile && "bg-[var(--background)]/60")}
       style={{ zIndex: 9990 }}
       data-component="AboutMeProfilePopout"
       // Click outside closes, but NOT while editing (protects the draft; use
@@ -367,7 +367,7 @@ export function AboutMeViewerModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-2 top-2 rounded-lg bg-black/25 p-1 text-white/90 transition-colors hover:bg-black/40"
+          className="absolute right-2 top-2 rounded-lg bg-[var(--background)]/25 p-1 text-[var(--foreground)]/90 transition-colors hover:bg-[var(--background)]/40"
           aria-label={localizeUi("capabilities.actions.close")}
         >
           <X size="0.875rem" />

@@ -352,7 +352,7 @@ export function CharacterScheduleManagerModal({ open, onClose }: Props) {
               type="button"
               disabled={!selected.size || working !== null}
               onClick={() => void generate()}
-              className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               {localizeUi("ui.characters.schedulemanager.generate")}

@@ -21180,14 +21180,29 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await expect(surface).toHaveClass(/mari-rp-reduced-paint/);
     const reducedStyles = await bubble.evaluate((element) => {
       const bubbleStyle = getComputedStyle(element);
-      const overlayStyle = getComputedStyle(document.querySelector(".rpg-overlay")!);
+      const overlay = document.querySelector(".rpg-overlay")!;
+      const overlayStyle = getComputedStyle(overlay);
       const vignetteStyle = getComputedStyle(document.querySelector(".rpg-vignette")!);
+      // Mari's all-UI-theme decision keeps the reduced overlay on its inherited theme background.
+      const expectedOverlay = overlay.appendChild(document.createElement("span"));
+      expectedOverlay.style.backgroundColor = `color-mix(in srgb, ${overlayStyle.getPropertyValue("--background")} 50%, transparent)`;
+      const expectedOverlayColor = getComputedStyle(expectedOverlay).backgroundColor;
+      expectedOverlay.remove();
+      const pixel = (color: string) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data);
+      };
       return {
         backgroundImage: bubbleStyle.backgroundImage,
         boxShadow: bubbleStyle.boxShadow,
         dropShadow: bubbleStyle.getPropertyValue("--tw-shadow").trim(),
         overlayBackgroundImage: overlayStyle.backgroundImage,
-        overlayBackgroundColor: overlayStyle.backgroundColor,
+        overlayBackgroundColor: pixel(overlayStyle.backgroundColor),
+        expectedOverlayBackgroundColor: pixel(expectedOverlayColor),
         vignetteDisplay: vignetteStyle.display,
       };
     });
@@ -21195,7 +21210,7 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     expect(reducedStyles.dropShadow).toBe("0 0 #0000");
     expect(reducedStyles.boxShadow).not.toBe("none");
     expect(reducedStyles.overlayBackgroundImage).toBe("none");
-    expect(reducedStyles.overlayBackgroundColor).toBe("rgba(8, 8, 18, 0.5)");
+    expect(reducedStyles.overlayBackgroundColor).toEqual(reducedStyles.expectedOverlayBackgroundColor);
     expect(reducedStyles.vignetteDisplay).toBe("none");
 
     await page.evaluate(() => {

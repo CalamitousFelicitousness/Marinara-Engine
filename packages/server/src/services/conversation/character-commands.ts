@@ -452,10 +452,51 @@ const QUOTED_PARAM_BLOCK = '(?:[^"\\]]|"(?:\\\\.|[^"\\\\])*")*';
 const SCHEDULE_UPDATE_RE = new RegExp(`\\[schedule_update:\\s*(${QUOTED_PARAM_BLOCK})\\]`, "gi");
 const CROSS_POST_RE = /\[cross_post:\s*target="([^"]+)"\]/gi;
 const SELFIE_RE = /\[selfie(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^\]\r\n"]+)))?\]/gi;
-// Free text may quote dialogue or on-screen text and wrap lines, so it runs to the closing "]". It stops at
-// "[" and is capped, so an unclosed tag cannot swallow the rest of the reply or the next command.
-// Free text has no length cap: a long description is shortened by the Prompt Model when the clip is made.
-const VIDEO_RE = /\[video(?::\s*(?:context="([^"]*)"|"([^"]*)"|([^[\]]+)))?\]/gi;
+// Free text may quote dialogue or on-screen text, wrap lines and hold brackets of its own ("[Shot 1]"), so it runs
+// to the "]" that closes the tag. Free text has no length cap: a long description is shortened by the Prompt Model
+// when the clip is made.
+const VIDEO_TAG_START_RE = /\[video(?=\s*[:\]])/giu;
+
+/**
+ * Every `[video]` tag, read with its brackets balanced. `context` is null for a tag that never closes: it makes no
+ * clip and is hidden to the end of its line, so it cannot swallow the rest of the reply.
+ */
+function readVideoTags(content: string): Array<{ start: number; end: number; context: string | undefined | null }> {
+  const tags: Array<{ start: number; end: number; context: string | undefined | null }> = [];
+  VIDEO_TAG_START_RE.lastIndex = 0;
+  for (let match = VIDEO_TAG_START_RE.exec(content); match; match = VIDEO_TAG_START_RE.exec(content)) {
+    let depth = 0;
+    let end = -1;
+    for (let i = match.index; i < content.length && end < 0; i++) {
+      if (content[i] === "[") depth += 1;
+      else if (content[i] === "]" && --depth === 0) end = i + 1;
+    }
+    if (end < 0) {
+      const lineEnd = content.indexOf("\n", match.index);
+      end = lineEnd < 0 ? content.length : lineEnd;
+      tags.push({ start: match.index, end, context: null });
+    } else {
+      const body = content
+        .slice(match.index + "[video".length, end - 1)
+        .replace(/^\s*:?\s*/u, "")
+        .trim();
+      const quoted = body.match(/^(?:context=)?"([\s\S]*)"$/u)?.[1];
+      tags.push({ start: match.index, end, context: (quoted ?? body).trim() || undefined });
+    }
+    VIDEO_TAG_START_RE.lastIndex = end;
+  }
+  return tags;
+}
+
+function stripVideoTags(content: string): string {
+  let out = "";
+  let from = 0;
+  for (const tag of readVideoTags(content)) {
+    out += content.slice(from, tag.start);
+    from = tag.end;
+  }
+  return out + content.slice(from);
+}
 const MEMORY_RE = /\[memory:\s*target="([^"]+)"\s*,\s*summary="([^"]+)"\]/gi;
 const SCENE_RE = new RegExp(`\\[scene:\\s*(${QUOTED_PARAM_BLOCK})\\]`, "gi");
 const CALL_RE = new RegExp(`\\[call(?::\\s*(${QUOTED_PARAM_BLOCK}))?\\]`, "gi");
@@ -1186,9 +1227,8 @@ export function parseCharacterCommands(content: string): {
   }
 
   // Parse video message commands
-  for (const match of content.matchAll(VIDEO_RE)) {
-    const context = (match[1] ?? match[2] ?? match[3])?.trim();
-    commands.push({ type: "video", context: context || undefined });
+  for (const tag of readVideoTags(content)) {
+    if (tag.context !== null) commands.push({ type: "video", context: tag.context });
   }
 
   // Parse memory commands
@@ -1447,11 +1487,10 @@ export function parseCharacterCommands(content: string): {
   }
 
   // Strip all commands from the visible content
-  let cleanContent = stripCapabilityConversationCommands(content)
+  let cleanContent = stripVideoTags(stripCapabilityConversationCommands(content))
     .replace(SCHEDULE_UPDATE_RE, "")
     .replace(CROSS_POST_RE, "")
     .replace(SELFIE_RE, "")
-    .replace(VIDEO_RE, "")
     .replace(MEMORY_RE, "")
     .replace(SCENE_RE, "")
     .replace(CALL_RE, "")

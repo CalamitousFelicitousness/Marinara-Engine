@@ -181,6 +181,16 @@ try {
     ["selfie"],
   );
   assert.deepEqual(parseCharacterCommands("Now [video]").commands, [{ type: "video", context: undefined }]);
+  // Brackets inside the description, as video prompts in a technical format use, keep the tag whole.
+  const shots = parseCharacterCommands("Look! [video: description: [Shot 1] Ana waves. [Shot 2] She laughs.] Cute.");
+  assert.deepEqual(shots.commands, [
+    { type: "video", context: "description: [Shot 1] Ana waves. [Shot 2] She laughs." },
+  ]);
+  assert.equal(shots.cleanContent.replace(/\s+/gu, " ").trim(), "Look! Cute.", "the tag is hidden");
+  // A tag that never closes makes no clip, and is hidden to the end of its line only.
+  const unclosed = parseCharacterCommands("Look [video: no closing [Shot 1] bracket\nNext line stays.");
+  assert.deepEqual(unclosed.commands, []);
+  assert.equal(unclosed.cleanContent.replace(/\s+/gu, " ").trim(), "Look Next line stays.");
 
   const parsed = parseCharacterCommands('On my way! [video: context="waving from the bus"]');
   assert.deepEqual(parsed.commands, [{ type: "video", context: "waving from the bus" }]);

@@ -69,27 +69,30 @@ export function createRoleplayClipTools(args: {
   // The cast of a clip with no picture of its own: every character or persona it names, with their appearance lines
   // and, for the Avatar first frame, the avatar of the first one named.
   const resolveClipCast = async (names: readonly string[], promptText: string, withAvatar: boolean) => {
-    const cast = await resolveIllustratorCharacterReferences({
-      charactersStore: args.charactersStore,
-      characterGallery: args.characterGallery,
-      personaGallery: args.personaGallery,
-      ...args.cast(),
-      requestedNames: [...names],
-      promptText,
-      fallbackToChatCharacters: true,
-      includeReferenceImages: withAvatar,
-      includePersonaWhenMentionedInPrompt: false,
-      maxReferences: 12,
-    });
-    // The avatar of the first person named; when that person has no picture, no one else's face stands in.
-    const first = names[0]?.trim().toLowerCase();
-    const index = first ? cast.referenceNames.findIndex((name) => name.trim().toLowerCase() === first) : 0;
-    const base64 = index >= 0 ? cast.referenceImages[index] : undefined;
+    const resolve = (requestedNames: string[], text: string, opts: { avatars: boolean; fallback: boolean }) =>
+      resolveIllustratorCharacterReferences({
+        charactersStore: args.charactersStore,
+        characterGallery: args.characterGallery,
+        personaGallery: args.personaGallery,
+        ...args.cast(),
+        requestedNames,
+        promptText: text,
+        fallbackToChatCharacters: opts.fallback,
+        includeReferenceImages: opts.avatars,
+        includePersonaWhenMentionedInPrompt: false,
+        maxReferences: opts.fallback ? 12 : 1,
+      });
+    const first = names[0]?.trim() ?? "";
+    const cast = await resolve([...names], promptText, { avatars: withAvatar && !first, fallback: true });
+    // The avatar of the first person named, matched on its own so a short name ("Lena") finds its card ("Dr. Lena
+    // Kowalski"); when that person has no picture, no one else's face stands in.
+    const avatarCast = withAvatar && first ? await resolve([first], first, { avatars: true, fallback: false }) : cast;
+    const base64 = avatarCast.referenceImages[0];
     return {
       // The persona too when the clip names them, so it shows in their gallery.
       characterIds: cast.personaId ? [...cast.characterIds, cast.personaId] : cast.characterIds,
       appearanceBlock: cast.appearanceBlock,
-      avatar: base64 ? { base64, name: cast.referenceNames[index] ?? "" } : null,
+      avatar: base64 ? { base64, name: avatarCast.referenceNames[0] ?? "" } : null,
     };
   };
   // Attach Card Appearance for videos, with instructions that speak to appearance: everyone in the scene (characters

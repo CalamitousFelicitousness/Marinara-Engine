@@ -241,9 +241,12 @@ export async function generateRoleplayClip(
     characterIds?: string[];
     appearanceBlock?: string | null;
     queue?: boolean;
+    /** Stop: ends the clip while it waits its turn or renders. */
+    signal?: AbortSignal;
     debugMode?: boolean;
   },
 ): Promise<GeneratedSceneVideo> {
+  args.signal?.throwIfAborted();
   const setup = await resolveChatVideoSetup(db, args.chatMeta);
   const referenceImage =
     args.firstFrame !== "none" && args.avatar
@@ -273,6 +276,7 @@ export async function generateRoleplayClip(
     sourcePath: null,
     characterIds: args.characterIds?.length ? args.characterIds : undefined,
     queue: args.queue,
+    signal: args.signal,
     debugMode: args.debugMode,
   });
 }

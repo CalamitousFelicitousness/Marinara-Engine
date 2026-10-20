@@ -1,7 +1,7 @@
 // Roleplay clips follow the chat's First frame, through the real routes with a fake text model, image service and
 // ComfyUI: with Clips only, the avatar or no picture draws no picture at all; Send Avatar References for videos
 // lets a Prompt only clip start from the avatar; a clip without a picture is written by the Clip Director and describes everyone it names, the
-// user's persona included, and the Avatar first frame starts from whoever is named first.
+// user's persona included, and the Avatar first frame starts from whoever is named first, by a short name too.
 import assert from "node:assert/strict";
 import { startRoleplayVideoHarness } from "./fixtures/roleplay-video-harness.js";
 
@@ -95,8 +95,8 @@ try {
   assert.doesNotMatch(noVideoBody, /video_error/u, "no video error");
   await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.video.id });
 
-  // A storyteller's [illustrate] asks for its clip, so the Video Run Interval doesn't hold it back. Inside the interval,
-  // Clips only doesn't run Illustrator on its own at all (the interval paces it), so no automatic clip is made.
+  // Inside the Video Run Interval, Clips only doesn't run Illustrator on its own at all (the interval paces it), and a
+  // storyteller's [illustrate] gets its picture instead of a clip.
   const commanded = await h.createRoleplay("Commanded clip");
   await h.saveChatSettings(commanded.id, {
     enableAgents: true,
@@ -123,15 +123,21 @@ try {
     return ((typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>).lastAutomaticVideoMessageId;
   };
   const anchorBefore = await intervalAnchor();
+  const imagesBeforeCommand = requests.images;
   replies.main = '[illustrate: subject="Aster waves from the porch" characters="Aster"] Aster waves.';
   await h.generate(commanded.id, "Show me!");
-  assert.equal(
-    (await h.attachments(commanded.id, "video")).length,
-    commandedClips + 1,
-    "the storyteller's [illustrate] makes its clip anyway",
-  );
-  // The requested clip doesn't move the interval, so an automatic clip on the same reply would still be checked.
-  assert.equal(await intervalAnchor(), anchorBefore, "a requested clip leaves the interval where it was");
+  // The model writes [illustrate] itself, so its clip waits for the Video Run Interval too, and shows its picture.
+  assert.equal((await h.attachments(commanded.id, "video")).length, commandedClips, "no clip inside the interval");
+  assert.equal(requests.images, imagesBeforeCommand + 1, "the requested picture is drawn instead");
+  assert.equal(await intervalAnchor(), anchorBefore, "a refused clip leaves the interval where it was");
+  // Once the interval has passed, [illustrate] makes its clip and the interval counts from it.
+  await h.saveChatSettings(commanded.id, { illustratorVideoRunInterval: 1 });
+  const automaticAgent = replies.agent;
+  replies.agent = { shouldGenerate: false };
+  await h.generate(commanded.id, "Show me again!");
+  replies.agent = automaticAgent;
+  assert.equal((await h.attachments(commanded.id, "video")).length, commandedClips + 1, "[illustrate] makes its clip");
+  assert.notEqual(await intervalAnchor(), anchorBefore, "and the interval counts from it");
 
   // ── Re-running Illustrator on a reply (the Illustrate button) follows Illustrator makes and First frame too ──
   const rerun = async () => {
@@ -222,6 +228,8 @@ try {
   const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
   const cyra = await h.characters.create(characterDataSchema.parse({ name: "Cyra" }));
   assert.ok(cyra);
+  const lena = await h.characters.create(characterDataSchema.parse({ name: "Dr. Lena Kowalski" }));
+  assert.ok(lena);
   const tools = createRoleplayClipTools({
     db: h.db,
     chat: roleplay,
@@ -232,6 +240,7 @@ try {
       chatCharacters: [
         { id: h.aster.id, name: "Aster", avatarPath: "/api/avatars/file/aster.png" },
         { id: cyra.id, name: "Cyra", avatarPath: null },
+        { id: lena.id, name: "Dr. Lena Kowalski", avatarPath: "/api/avatars/file/aster.png" },
       ],
       persona: null,
     }),
@@ -247,6 +256,28 @@ try {
     avatarPng.toString("base64"),
     "the named person's own avatar",
   );
+  // The Illustrator often names someone by a short name; the avatar is still found through the card's full name.
+  const shortName = await tools.resolveClipCast(["Lena", "Aster"], "Lena and Aster", true);
+  assert.equal(shortName.avatar?.name, "Dr. Lena Kowalski", "a short name finds its card's avatar");
+  assert.equal(shortName.avatar?.base64, avatarPng.toString("base64"));
+
+  // Stop reaches a clip that has not gone out yet: nothing is sent to the video service.
+  const { generateRoleplayClip } = await import("../../packages/server/src/services/video/chat-video-generation.js");
+  const stopped = new AbortController();
+  stopped.abort();
+  const sentBefore = requests.comfy.length;
+  await assert.rejects(
+    generateRoleplayClip(h.db, {
+      chatId: roleplay.id,
+      chatMeta: { sceneVideoConnectionId: h.video.id },
+      prompt: "Aster waves",
+      firstFrame: "none",
+      avatar: null,
+      signal: stopped.signal,
+    }),
+    { name: "AbortError" },
+  );
+  assert.equal(requests.comfy.length, sentBefore, "a stopped clip is never sent");
 
   console.log("roleplay-clip-first-frame regression passed");
 } finally {

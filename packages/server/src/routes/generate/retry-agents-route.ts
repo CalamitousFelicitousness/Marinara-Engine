@@ -3747,6 +3747,7 @@ async function applyRetryResultEffects(args: {
                 characterGallery: createCharacterGalleryStorage(app.db),
                 personaGallery: createPersonaGalleryStorage(app.db),
                 debugMode,
+                signal,
               })
             : null;
           const clipAppearance = clipChatMeta.illustratorVideoIncludeCharacterAppearance === true;
@@ -3798,6 +3799,7 @@ async function applyRetryResultEffects(args: {
                 characterIds: cast.characterIds,
                 appearanceBlock: clipAppearance ? cast.appearanceBlock : null,
                 queue: true,
+                signal,
                 debugMode,
               });
               assertRetryActive();
@@ -4253,6 +4255,7 @@ async function applyRetryResultEffects(args: {
                           })),
                         appearanceBlock,
                         queue: true,
+                        signal,
                         debugMode,
                       })
                     : await generateRoleplayClip(app.db, {
@@ -4273,6 +4276,7 @@ async function applyRetryResultEffects(args: {
                           : referenceResolution.characterIds,
                         appearanceBlock,
                         queue: true,
+                        signal,
                         debugMode,
                       });
                 assertRetryActive();

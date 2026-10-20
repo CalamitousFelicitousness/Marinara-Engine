@@ -930,7 +930,6 @@ import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
   claimAutomaticVideoRun,
-  type AutomaticVideoRunClaim,
   loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
@@ -4713,7 +4712,31 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           characterGallery,
           personaGallery,
           debugMode: input.debugMode,
+          signal: agentSignal,
         });
+        // A Roleplay clip, automatic or asked for with [illustrate], starts only once the Video Run Interval has passed
+        // (checked and recorded in one step, given back if the clip fails), and at most Videos per reply of them join
+        // one reply. Null when it may not start.
+        let roleplayClipLimit: Promise<number> | undefined;
+        let roleplayClipsStarted = 0;
+        const claimRoleplayClip = async (messageId: string) => {
+          roleplayClipLimit ??= appSettings
+            .get(VIDEO_GENERATION_SETTINGS_KEY)
+            .then((raw) => normalizeVideoGenerationUserSettings(raw).maxCharacterVideosPerReply);
+          if (roleplayClipsStarted >= (await roleplayClipLimit)) return null;
+          roleplayClipsStarted += 1;
+          const claim = await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+            automaticVideoAllowed(
+              await chats.listMessages(input.chatId),
+              current,
+              await loadVideoRunInterval(agentsStore, current),
+              false,
+              messageId,
+            ),
+          );
+          if (!claim) roleplayClipsStarted -= 1;
+          return claim;
+        };
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -13824,33 +13847,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const clipOnlyFrame = clipsOnlyUsable
                   ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))
                   : "picture";
-                if (clipOnlyFrame !== "picture" && messageId) {
+                // The model writes [illustrate] itself, so its clips are paced like Illustrator's own; a refused one
+                // shows its picture instead.
+                const clipOnlyRun =
+                  clipOnlyFrame !== "picture" && messageId ? await claimRoleplayClip(messageId) : null;
+                const clipOnlyRefused = clipOnlyFrame !== "picture" && !!messageId && !clipOnlyRun;
+                if (clipOnlyRefused) {
+                  logger.info(
+                    "[illustrator] Skipped a clip: the Video Run Interval has not passed or the reply has its clips",
+                  );
+                }
+                if (clipOnlyRun && messageId && clipOnlyFrame !== "picture") {
+                  const videoRun = clipOnlyRun;
                   // The stream now waits on a clip, not text, so the client can let the next message start.
                   sendSseEvent(reply, { type: "video_started", data: { messageId } });
                   pendingRoleplayMedia.push(
                     (async () => {
-                      let videoRun: AutomaticVideoRunClaim | null = null;
                       try {
-                        // The Video Run Interval is checked and counts from this reply as the clip starts, in one
-                        // step, so two replies can't both start a clip; it is given back if the clip fails. A clip a
-                        // command asked for ([illustrate]) is neither paced by the interval nor moves it, so an
-                        // automatic clip on the same reply is still checked.
-                        videoRun = commandTarget
-                          ? { settle: async () => undefined }
-                          : await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
-                              automaticVideoAllowed(
-                                await chats.listMessages(input.chatId),
-                                current,
-                                await loadVideoRunInterval(agentsStore, current),
-                                false,
-                                messageId,
-                              ),
-                            );
-                        if (!videoRun) {
-                          logger.info("[illustrator] Skipped a clip: the Video Run Interval has not passed");
-                          sendSseEvent(reply, { type: "video_skipped", data: { messageId } });
-                          return;
-                        }
                         const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
                         // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
                         // to the video connection's instructions.
@@ -13870,12 +13883,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           appearanceBlock:
                             chatMeta.illustratorVideoIncludeCharacterAppearance === true ? cast.appearanceBlock : null,
                           queue: true,
+                          signal: agentSignal,
                           debugMode: input.debugMode,
                         });
                         await videoRun.settle(true);
                         await attachClipToReply(video, messageId, targetSwipeIndex);
                       } catch (videoErr) {
-                        await videoRun?.settle(false);
+                        await videoRun.settle(false);
                         logger.warn(videoErr, "[illustrator] Clip failed");
                         sendSseEvent(reply, {
                           type: "video_error",
@@ -13884,6 +13898,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       }
                     })(),
                   );
+                } else if (clipOnlyRefused && !commandTarget) {
+                  // Illustrator's own clip waits for the Video Run Interval; Clips only draws no picture meanwhile.
                 } else if (imgConnFull) {
                   const resolvedImageConnection = imgConnFull;
                   sendSseEvent(reply, {
@@ -14265,26 +14281,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         }
                       };
                       // Re-checked here, as the clip starts: another clip may have started since the agent was offered
-                      // one. The check and the Video Run Interval's new starting point are one step, so two replies
-                      // can't both start a clip; the starting point is given back if the clip fails.
-                      // A clip a command asked for ([illustrate]) is neither paced by the interval nor moves it, so an
-                      // automatic clip on the same reply is still checked.
+                      // one. A clip [illustrate] asked for is paced the same way; a refused one shows its picture.
                       const videoRun =
                         wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay"
-                          ? commandTarget
-                            ? { settle: async () => undefined }
-                            : await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
-                                automaticVideoAllowed(
-                                  await chats.listMessages(input.chatId),
-                                  current,
-                                  await loadVideoRunInterval(agentsStore, current),
-                                  false,
-                                  messageId,
-                                ),
-                              )
+                          ? await claimRoleplayClip(messageId)
                           : null;
                       if (wantsVideo && !videoRun) {
-                        logger.info("[illustrator] Skipped a clip: the Video Run Interval has not passed");
+                        logger.info(
+                          "[illustrator] Skipped a clip: the Video Run Interval has not passed or the reply has its clips",
+                        );
                       }
                       // The stream now waits on a clip, not text, so the client can let the next message start.
                       if (videoRun) sendSseEvent(reply, { type: "video_started", data: { messageId } });
@@ -14312,6 +14317,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                     })),
                                   appearanceBlock,
                                   queue: true,
+                                  signal: agentSignal,
                                   debugMode: input.debugMode,
                                 })
                               : await generateRoleplayClip(app.db, {
@@ -14337,6 +14343,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                     : referenceResolution.characterIds,
                                   appearanceBlock,
                                   queue: true,
+                                  signal: agentSignal,
                                   debugMode: input.debugMode,
                                 });
                           await videoRun.settle(true);
@@ -14786,6 +14793,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       debugMode: input.debugMode,
                       serviceTier,
                       db: app.db,
+                      signal: agentSignal,
                       sendEvent: (payload) => {
                         sendSseEvent(reply, payload);
                       },

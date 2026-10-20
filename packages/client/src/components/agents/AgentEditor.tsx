@@ -3452,6 +3452,7 @@ export function AgentEditor() {
                   min={0}
                   max={100}
                   value={localRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.imageRunInterval")}
                   onChange={(e) => {
                     const v = e.target.value;
                     setLocalRunInterval(v === "" ? "" : Math.max(0, Math.min(100, parseInt(v) || 0)));

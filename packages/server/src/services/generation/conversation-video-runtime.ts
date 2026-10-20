@@ -664,6 +664,8 @@ export function startConversationVideoCommand(args: {
   debugMode?: boolean;
   serviceTier: "flex" | "priority" | null;
   db: DB;
+  /** Stop: ends the clip while it waits its turn or renders. */
+  signal?: AbortSignal;
   sendEvent: (payload: Record<string, unknown>) => void;
 }): Promise<void> | null {
   if (args.command.type !== "video" || !args.characterId) return null;
@@ -690,6 +692,7 @@ export function startConversationVideoCommand(args: {
         queue: true,
         debugMode: args.debugMode,
         serviceTier: args.serviceTier,
+        signal: args.signal,
       });
       if (!("video" in result)) {
         await videoRun?.settle(false);

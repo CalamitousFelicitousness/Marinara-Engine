@@ -145,6 +145,8 @@ try {
     assert.ok(lost, "the clip may still be made");
     const refused = await claimAutomaticVideoRun(store, "broken", "b1", () => false);
     assert.equal(refused, null, "the next claim is checked, not joined to a stale hold");
+    // A clip that had to pass the interval check is refused when the write fails, rather than slipping through.
+    assert.equal(await claimAutomaticVideoRun(failing, "broken", "b2", () => true), null, "a checked clip is refused");
   }
 
   replaceBuiltInAgentDefinitions([

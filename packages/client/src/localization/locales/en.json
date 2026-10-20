@@ -13551,7 +13551,7 @@
   "ui.panels.videogenerationsettings.usedByGameAndGallerySceneVideosWhenThe": "Used by Game and Gallery scene videos when the selected Default for Videos connection does not define its own duration defaults.",
   "ui.panels.videogenerationsettings.usedForOneOffClipsCharactersGenerateFromExplicit": "Used for one-off clips characters generate from explicit call requests.",
   "ui.panels.videogenerationsettings.videosPerReply": "Videos per reply",
-  "ui.panels.videogenerationsettings.videosPerReplyHelp": "How many videos Conversation characters can send on their own in one reply, one per character; each video is generated separately, so a lower number saves generations.",
+  "ui.panels.videogenerationsettings.videosPerReplyHelp": "How many videos one reply can get on its own: one per Conversation character, or Roleplay Illustrator clips. Lower saves generations.",
   "ui.panels.videogenerationsettings.videosPerReplyRange": "Raise it for group chats, where several characters answer in one reply, or when you ask for several videos at once. From {{min}} to {{max}}.",
   "ui.personas.descriptiontab.describeWhoYouAreYourRoleInTheStory": "Describe who you are, your role in the story, and your key traits…",
   "ui.personas.descriptiontab.yourGeneralDescriptionThisIsSentInEveryPrompt": "Your general description. This is sent in every prompt so the AI knows who you are.",

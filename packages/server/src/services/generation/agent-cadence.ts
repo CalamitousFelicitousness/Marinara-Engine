@@ -189,7 +189,8 @@ export async function claimAutomaticVideoRun(
     // A write that failed after this call took its hold gives it back, as a clip that was not made.
     await settle(false);
     logger.warn(err, "[video] Could not record the clip for the Video Run Interval");
-    return { settle: async () => undefined };
+    // A clip that had to pass a check is refused when the check could not run; one already decided goes ahead.
+    return allowed ? null : { settle: async () => undefined };
   }
   if (!granted) return null;
   return { settle };

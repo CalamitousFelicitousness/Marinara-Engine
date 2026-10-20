@@ -341,7 +341,10 @@ function buildResumeSelection(messages: ChatMessage[], model: string, extendedCa
     split.history,
     { sessionId, cwd, version: SDK_VERSION, gitBranch: "main", permissionMode: "bypassPermissions" },
     model,
-    extendedCacheTtl ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" },
+    // ponytail: only with the 1-hour cache on, where Claude Code's own markers are known to be
+    // 1h too. Without it Claude Code picks an account-dependent TTL and an extra plain marker
+    // fails ("maximum of 4 blocks with cache_control"). Upgrade path: mirror Claude Code's TTL.
+    extendedCacheTtl ? { type: "ephemeral", ttl: "1h" } : undefined,
   );
   logger.debug(
     "[claude-subscription] resume path: shape=%s sessionId=%s historyLen=%d",

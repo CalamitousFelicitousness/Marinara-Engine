@@ -110,6 +110,7 @@ import {
   findLatestTTSAutoplayMessage,
   findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
+  nextTTSAutoplayReadingId,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
   TTS_AUTOPLAY_VOICE_EVENT,
@@ -3249,10 +3250,11 @@ const LocalChatArea = memo(function LocalChatArea({
       }
 
       // Avatars hold their talking and moods for the voice until this reading ends, however it ends.
+      const readingId = nextTTSAutoplayReadingId();
       const announceVoice = (pending: boolean) =>
         window.dispatchEvent(
           new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
-            detail: { chatId: targetChatId, messageId: lastMsg.id, pending },
+            detail: { chatId: targetChatId, messageId: lastMsg.id, readingId, pending },
           }),
         );
       announceVoice(true);

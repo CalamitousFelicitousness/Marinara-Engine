@@ -244,8 +244,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   // text's mouth, moods and Expression Engine picks for the voice.
   let voiceAutoplay = false;
   let voice: "off" | "waiting" | "done" = "off";
-  /** The message ChatArea is reading for this reply, and whether that reading is still going. */
-  let voiceMessageId: string | null = null;
+  /** The reading ChatArea started for this reply, and whether that reading is still going. */
+  let voiceReadingId: string | null = null;
   let voicePending = false;
   /** When the wait last had news: the generation ended, or a voice played. */
   let voiceNewsAt = -Infinity;
@@ -376,7 +376,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     inFlight?.abort();
     inFlight = null;
     voice = voiceAutoplay && mode === "roleplay" ? "waiting" : "off";
-    voiceMessageId = null;
+    voiceReadingId = null;
     voicePending = false;
     voiceNewsAt = -Infinity;
     turnEndedAt = -Infinity;
@@ -574,9 +574,9 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
   };
 
   const checkVoice = () => {
-    const over = voiceMessageId !== null && !voicePending && !generating;
+    const over = voiceReadingId !== null && !voicePending && !generating;
     const neverBegan =
-      voiceMessageId === null && (!voiceAutoplay || (!generating && now - turnEndedAt >= T.voiceStartGraceMs));
+      voiceReadingId === null && (!voiceAutoplay || (!generating && now - turnEndedAt >= T.voiceStartGraceMs));
     const tooLong = !generating && now - voiceNewsAt >= T.voiceWaitMaxMs;
     if (over || neverBegan || tooLong) endVoice();
   };
@@ -874,11 +874,11 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       if (detail.pending) {
         if (replay) return;
         voice = "waiting";
-        voiceMessageId = detail.messageId;
+        voiceReadingId = detail.readingId;
         voicePending = true;
         voiceNewsAt = now;
         replyMessageIds.add(detail.messageId);
-      } else if (detail.messageId === voiceMessageId) {
+      } else if (detail.readingId === voiceReadingId) {
         voicePending = false;
       }
     };

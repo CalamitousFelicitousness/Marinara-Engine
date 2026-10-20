@@ -22,8 +22,13 @@ export const TTS_AUTOPLAY_VOICE_EVENT = "marinara:tts-autoplay-voice";
 export type TTSAutoplayVoiceDetail = {
   chatId: string;
   messageId: string;
+  /** One per reading: a regenerated swipe keeps its message id, so the end of the reading it replaced is not its own. */
+  readingId: string;
   pending: boolean;
 };
+
+let ttsAutoplayReadings = 0;
+export const nextTTSAutoplayReadingId = () => `tts-reading-${(ttsAutoplayReadings += 1)}`;
 
 export function findLatestTTSAutoplayMessage<T extends TTSAutoplayMessage>(messages: readonly T[]): T | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {

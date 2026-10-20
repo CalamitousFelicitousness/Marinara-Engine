@@ -915,8 +915,10 @@ const scene = (id: string, names: string[]) => {
     }
     return t;
   };
-  const reading = (messageId: string, pending: boolean) =>
-    window.dispatchEvent(new CustomEvent(TTS_AUTOPLAY_VOICE_EVENT, { detail: { chatId: id, messageId, pending } }));
+  const reading = (messageId: string, pending: boolean, readingId = messageId) =>
+    window.dispatchEvent(
+      new CustomEvent(TTS_AUTOPLAY_VOICE_EVENT, { detail: { chatId: id, messageId, readingId, pending } }),
+    );
   const begin = () => store().setAbortController(id, new AbortController());
   const finish = () => {
     store().clearStreamBuffer(id);
@@ -1033,6 +1035,21 @@ const scene = (id: string, names: string[]) => {
   await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
   assert.ok(t - failedAt >= 4_000, "it relaxes no sooner than 4 s later");
   assert.equal(talkedMs, 0, "the text is long gone, so it is not replayed");
+
+  // A regenerated swipe keeps its message id: the end of the reading it replaced does not end the new one's wait.
+  fresh();
+  begin();
+  await type('Alice sobs. "I miss him."');
+  reading("voice-6", true, "voice-6-a");
+  finish();
+  reading("voice-6", true, "voice-6-b");
+  await play(500);
+  reading("voice-6", false, "voice-6-a");
+  await play(6_000);
+  assert.deepEqual([talkedMs, [...faces]], [0, ["neutral"]], "the replaced reading's end does not end the wait");
+  reading("voice-6", false, "voice-6-b");
+  await until("the held mood", () => alice.emotion === "sad", 500);
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
 
   // A reading that stays away (still loading, or blocked until a tap): after 30 s the avatar stops waiting, and a
   // voice that still comes moves the mouth.

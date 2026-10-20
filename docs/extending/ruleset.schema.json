@@ -194250,11 +194250,13 @@
                     "minItems": 1,
                     "maxItems": 4
                   },
+                  "allySeenWithin": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
                   "$comment": {}
                 },
-                "required": [
-                  "light"
-                ],
                 "additionalProperties": false
               },
               "suppresses": {

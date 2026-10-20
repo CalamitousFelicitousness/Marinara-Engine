@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition held only while an ally is seen near (1.629): a bearded devil's Steadfast. */
+function carriesAllySeen629(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAllySeen629(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.heldOnlyIn)?.allySeenWithin !== undefined) return true;
+  return featureValues(record).some((one) => carriesAllySeen629(one, depth + 1));
+}
+
 /** Squeezing between walls, or a condition that moves as a smaller size (1.628): Amorphous. */
 function carriesSqueezing628(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8425,6 +8435,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition held only while an ally is seen near, 1.629.
+  if (
+    !declaresApi(629) &&
+    (carriesAllySeen629(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAllySeen629(document)))
+  )
+    return "A ruleset with a condition held only while its holder sees an ally near (heldOnlyIn.allySeenWithin) requires schemaVersion 2 and capabilityApi 1.629 or newer";
   // Squeezing between walls, or moving as a smaller size, 1.628.
   if (
     !declaresApi(628) &&

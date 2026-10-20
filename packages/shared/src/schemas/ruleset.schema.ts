@@ -13190,9 +13190,17 @@ const combatConditionSchema = z
         light: z
           .array(z.enum(["sunlight", "bright", "dim", "dark"]))
           .min(1)
-          .max(4),
+          .max(4)
+          .optional(),
+        /** Or only while its holder sees an ally of theirs within this distance, in the ruleset's own
+         *  unit (Capability API 1.629): a bearded devil's Steadfast, 30, on a kept-on condition with
+         *  `conditionImmunities: ["frightened"]`. */
+        allySeenWithin: z.number().finite().gt(0).max(10000).optional(),
       })
       .strict()
+      .refine((held) => held.light || held.allySeenWithin !== undefined, {
+        message: '"heldOnlyIn" names a light, an ally seen within a distance, or both',
+      })
       .optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API
      *  1.275): what they do stops and their clocks run on, and they hold again once this ends.

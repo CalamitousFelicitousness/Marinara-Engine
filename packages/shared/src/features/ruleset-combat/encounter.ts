@@ -497,6 +497,36 @@ function sourceInSight(
 /** Holders whose sight a gate is reading right now, so reading it never asks itself again. */
 const sightGated = new Set<string>();
 
+/** Whether somebody sees an ally of theirs standing within this distance (1.629). Off a board, any
+ *  ally standing will do: a fight that measures nothing gates nothing but having one. */
+function allySeenWithin(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  combat: RulesetCombat,
+  distance: number,
+): boolean {
+  if (!state) return true;
+  const allies = state.combatants.filter(
+    (one) => one.id !== combatant.id && one.side === combatant.side && rulesetCombatStanding(one) && !one.defeated,
+  );
+  const grid = state.board?.grid;
+  if (!grid || !combat.distance || !rulesetPositionOf(combatant)) return allies.length > 0;
+  const reach = rulesetInCells(distance, combat.distance.perCell);
+  return allies.some((ally) => {
+    if (!rulesetPositionOf(ally) || rulesetGap(combatant, ally) > reach) return false;
+    if (!rulesetFootprintsSee(grid, combatant, ally)) return false;
+    // What they see with is read off their conditions, this one among them: the line is enough then.
+    if (sightGated.has(combatant.id)) return true;
+    sightGated.add(combatant.id);
+    try {
+      return rulesetCanSee(definition, state, combatant, ally);
+    } finally {
+      sightGated.delete(combatant.id);
+    }
+  });
+}
+
 /** Whether whoever applied a condition stands within this distance of its holder (1.275). Without
  *  a board, or a source to measure to, it is near: a fight that measures nothing gates nothing. */
 function sourceWithin(
@@ -698,7 +728,17 @@ export function rulesetActiveConditions(
     if (entry.whileOffTerrain && onTerrain(combatant, state, entry.whileOffTerrain)) return [];
     // Only in the light it names (1.552): a shadow's Sunlight Weakness. Read while no light is being
     // worked out, since the light itself reads what everybody holds.
-    if (entry.heldOnlyIn && !readingLight && !heldInLight(definition, combat, combatant, state, entry.heldOnlyIn.light))
+    if (
+      entry.heldOnlyIn?.light &&
+      !readingLight &&
+      !heldInLight(definition, combat, combatant, state, entry.heldOnlyIn.light)
+    )
+      return [];
+    // Only while an ally is seen near (1.629): a bearded devil's Steadfast.
+    if (
+      entry.heldOnlyIn?.allySeenWithin !== undefined &&
+      !allySeenWithin(definition, combatant, state, combat, entry.heldOnlyIn.allySeenWithin)
+    )
       return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(definition, combatant, entry.condition, state)) return [entry];

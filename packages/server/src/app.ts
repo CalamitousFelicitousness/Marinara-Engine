@@ -15,6 +15,7 @@ import { basicAuthHook, isBasicAuthSatisfied } from "./middleware/basic-auth.js"
 import { csrfProtectionHook } from "./middleware/csrf-protection.js";
 import { HEALTH_RATE_LIMIT, rateLimitHook } from "./middleware/rate-limit.js";
 import { securityHeadersHook } from "./middleware/security-headers.js";
+import { compressJsonHook } from "./middleware/compress-json.js";
 import { seedDefaultPreset } from "./db/seed.js";
 import { seedProfessorMari } from "./db/seed-mari.js";
 import { seedDefaultConnection } from "./db/seed-connection.js";
@@ -23,8 +24,10 @@ import { seedDefaultGameAssets } from "./db/seed-game-assets.js";
 import { seedDefaultRegexScripts } from "./db/seed-regex.js";
 import { buildAssetManifest, ensureAssetDirs } from "./services/game/asset-manifest.service.js";
 import { recoverGalleryImages } from "./services/storage/gallery-recovery.js";
+import { createLibraryFoldersStorage } from "./services/storage/library-folders.storage.js";
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
 import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
+import { migrateTripoConnectionsToApiKey } from "./services/avatars/generation/tripo-key.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
 import { APP_VERSION, resetTurnGameRegistry } from "@marinara-engine/shared";
 import { existsSync } from "fs";
@@ -70,6 +73,7 @@ import { logRateLimited } from "./lib/log-rate-limit.js";
 import { genRequestId, registerRequestLogging, RequestLogController } from "./lib/request-logging.js";
 import { startup } from "./lib/startup-timeline.js";
 import { openCodeSessionHook } from "./utils/opencode-session.js";
+import { isApiRequest } from "./utils/api-request.js";
 import { startMessageTrashMaintenance, sweepExpiredMessageTrash } from "./services/storage/message-trash.storage.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
@@ -227,9 +231,22 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await startup.phase("migrate.agent-prompts", () => migrateLegacyDefaultAgentPrompts(db));
   await startup.phase("migrate.extended-descriptions", () => migrateCharacterExtendedDescriptionsToLorebooks(db));
   try {
+    const removedFolderIds = await startup.phase("migrate.lorebook-folder-references", () =>
+      createLibraryFoldersStorage(db).pruneMissingLorebookItemIds(),
+    );
+    if (removedFolderIds > 0) app.log.info("Removed %d missing lorebook ID(s) from library folders", removedFolderIds);
+  } catch (error) {
+    app.log.warn(error, "Lorebook folder cleanup did not complete; it will retry next startup");
+  }
+  try {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
+  }
+  try {
+    await startup.phase("migrate.tripo-key", () => migrateTripoConnectionsToApiKey(db));
+  } catch (error) {
+    app.log.warn(error, "Tripo connection migration did not complete; it will retry next startup");
   }
   await startup.phase("seed.backgrounds", () => seedDefaultBackgrounds());
   await startup.phase("seed.game-assets", () => seedDefaultGameAssets());
@@ -281,7 +298,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // ── HTTP Basic Auth ──
   app.addHook("onRequest", basicAuthHook);
 
-  // ── CSRF / Origin protection for unsafe API requests ──
+  // ── CSRF / Origin protection for unsafe requests ──
   app.addHook("onRequest", csrfProtectionHook);
 
   // APK-managed Termux installs use a per-install secret so unrelated Android
@@ -294,11 +311,14 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // This caused messages to vanish after generation because the refetch
   // returned a cached response without the newly saved message.
   app.addHook("onSend", async (req, reply, payload) => {
-    if (req.url.startsWith("/api/") && !reply.hasHeader("Cache-Control")) {
+    if (isApiRequest(req) && !reply.hasHeader("Cache-Control")) {
       reply.header("Cache-Control", "no-store");
     }
     return payload;
   });
+
+  // ── Compress API JSON (never SSE or file streams) ──
+  app.addHook("onSend", compressJsonHook);
 
   // ── Error Handler ──
   app.setErrorHandler(errorHandler);

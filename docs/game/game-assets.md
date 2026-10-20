@@ -99,10 +99,20 @@ Music has a strict folder layout. Every music track must sit in a three-level pa
 The allowed values are:
 
 - State: `exploration`, `dialogue`, `combat`, `travel_rest`.
-- Genre: `fantasy`, `horror`, `romance`, `mystery`, `scifi`, `modern`, `slice_of_life`, `adventure`, `drama`, `custom`.
+- Genre: `fantasy`, `horror`, `romance`, `mystery`, `scifi`, `modern`, `slice_of_life`, `adventure`, `drama`, `custom`, or a setting's family (see below), such as `wuxia`.
 - Intensity: `calm`, `tense`, `intense`.
 
 This layout is how Game Mode knows when to play each track. Ambient, sound effect, sprite, and background folders do not have this rule. You can name their subfolders freely.
+
+### A setting's own art and music
+
+A game started with a setting kit has an art family, shown under **Art and music** when you change the kit's words: `fantasy`, `scifi`, `modern`, `wuxia`, `jazz_age`, `wasteland`, or one of the kit's own. The game uses the folders named for its family and every folder that is not named for a family, and leaves the other families' folders out, so a cyberpunk game never plays fantasy battle music or shows the enchanted forest. When nothing of its own family or the shared folders fits, nothing plays rather than another family's track.
+
+- **Music**: put the setting's tracks in `music/<state>/<family>/<intensity>`, such as `combat/wuxia/intense`. They play ahead of shared tracks.
+- **Backgrounds**: `backgrounds/<family>`. Backgrounds generated during a game with a setting kit are saved there too.
+- **Combat sounds**: a sound in `sfx/combat/<family>` with the same name as a bundled one, such as `sword-swing`, replaces it in games of that family. The bundled combat sounds are fantasy, so another family's fights are quiet until you add its own.
+
+The bundled starter backgrounds count as shared, except the fantasy ones (`ancient_library`, `castle_cliff`, `enchanted_forest`) and the modern `city_night`. A game without a setting kit uses every folder, as before. A setting kit saved before art families existed keeps working: one made from a starter kit uses that starter's family, and any other uses every folder until you pick a family under **Art and music**. The selection bar described in [Choosing which assets a game can use](#choosing-which-assets-a-game-can-use) names the open game's family.
 
 ## Organizing your assets
 

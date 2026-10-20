@@ -75,12 +75,14 @@ import { TrackerPanelBubble } from "./TrackerPanelBubble";
 import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, WINDOW_MARGIN_PX } from "../../lib/floating-window-layout";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { CHAT_TOOLBAR_ICON_GAP_CLASS, getChatToolbarButtonClass } from "./ChatToolbarControls";
-import { TranscriptWindowControls } from "./TranscriptWindowControls";
+import { HISTORY_PAGER_BUTTON_CLASS, TranscriptWindowControls } from "./TranscriptWindowControls";
 import { EndSceneBar } from "./SceneBanner";
 import { ChatCommonOverlays, type ChatSettingsTools } from "./ChatCommonOverlays";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
 import type { SpriteDisplayMode } from "./sprite-display-modes";
+import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
+import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 import type {
   CharacterMap,
   ExpressionAvatarResolver,
@@ -115,6 +117,12 @@ const WeatherEffects = lazy(async () => {
 const SpriteOverlay = lazy(async () => {
   const module = await import("./SpriteOverlay");
   return { default: module.SpriteOverlay };
+});
+
+// 2D and 3D Avatars: loads only in chats where an avatar agent is on.
+const AvatarStage = lazy(async () => {
+  const module = await import("../../features/avatars/stage/AvatarStage");
+  return { default: module.AvatarStage };
 });
 
 const EchoChamberPanel = lazy(async () => {
@@ -759,6 +767,13 @@ type RoleplaySurfaceProps = {
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void | Promise<void>;
+  /** N1: the user message whose reply failed, if any — drives the "Failed · Retry" line. */
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleConversationStart: (
     messageId: string,
@@ -798,6 +813,8 @@ type RoleplaySurfaceProps = {
   onExpressionChange: (characterId: string, expression: string, options?: { immediate?: boolean }) => void;
   onSpritePlacementChange: (placementKey: string, placement: SpritePlacement) => void;
   onFinishSpritePlacement: () => void;
+  avatarLayout?: ComponentProps<typeof ChatCommonOverlays>["sceneSettings"]["avatarLayout"];
+  onAvatarsShown?: ComponentProps<typeof AvatarStage>["onShownChange"];
   onDeleteConfirm: () => void;
   onDeleteSwipe: () => void;
   onDeleteOtherSwipes: () => void;
@@ -876,6 +893,11 @@ export function ChatRoleplaySurface({
   onDelete,
   onRegenerate,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleConversationStart,
   onToggleHiddenFromAI,
@@ -909,6 +931,8 @@ export function ChatRoleplaySurface({
   onExpressionChange,
   onSpritePlacementChange,
   onFinishSpritePlacement,
+  avatarLayout,
+  onAvatarsShown,
   onDeleteConfirm,
   onDeleteSwipe,
   onDeleteOtherSwipes,
@@ -1190,6 +1214,12 @@ export function ChatRoleplaySurface({
   const weatherEffectsPaused = isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput);
   const hideEchoChamberOnMobile = sidebarOpen || rightPanelOpen || settingsOpen || wizardOpen;
   const showSpriteOverlay = expressionAgentEnabled && spriteCharacterIds.length > 0 && spriteDisplayModes.length > 0;
+  // Avatars show independently of the Expression Engine; the user hides the full-body sprite by hand.
+  const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
+  const avatarParticipants = useMemo(
+    () => chatAvatarParticipants(chatCharIds, characterMap, personaInfo),
+    [characterMap, chatCharIds, personaInfo],
+  );
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -1731,6 +1761,25 @@ export function ChatRoleplaySurface({
             />
           </Suspense>
         )}
+        {avatarAgentIds.length > 0 && avatarParticipants.length > 0 && (
+          <Suspense fallback={null}>
+            <AvatarStage
+              chatId={activeChatId}
+              mode="roleplay"
+              participants={avatarParticipants}
+              enabledAgentIds={avatarAgentIds}
+              side={visualNovel ? "center" : spritePosition}
+              placements={spritePlacements}
+              characterVisualSettings={spriteVisualSettings?.characterOverrides}
+              scale={fullBodySpriteScale}
+              scaleMultiplier={visualNovel ? vnSpriteScale : 1}
+              framings={spriteVisualSettings?.avatarFramings}
+              editing={spriteArrangeMode}
+              onPlacementChange={onSpritePlacementChange}
+              onShownChange={onAvatarsShown}
+            />
+          </Suspense>
+        )}
 
         <div className="relative flex flex-1 overflow-hidden">
           <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -1853,7 +1902,7 @@ export function ChatRoleplaySurface({
                     <button
                       onClick={handleLoadMoreClick}
                       disabled={isFetchingNextPage}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-foreground/70 backdrop-blur-sm transition-all hover:bg-[var(--accent)] hover:text-foreground/90 disabled:opacity-50"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                     >
                       {isFetchingNextPage ? (
                         <Loader2 size="0.75rem" className="animate-spin" />
@@ -1952,6 +2001,10 @@ export function ChatRoleplaySurface({
                           onDelete={onDelete}
                           onRegenerate={onRegenerate}
                           onEdit={onEdit}
+                          failedReply={msg.id === failedReplyMessageId}
+                          failedReplyReason={failedReplyReason}
+                          onRetryFailedReply={onRetryFailedReply}
+                          replyCheckup={msg.id === replyCheckupMessageId ? replyCheckup : undefined}
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
                           onToggleHiddenFromAI={onToggleHiddenFromAI}
@@ -2009,7 +2062,7 @@ export function ChatRoleplaySurface({
                 <div ref={messagesEndRef} />
               </div>
             </div>
-            <PinnedImageOverlay activeChatId={activeChatId} includeSceneVideos />
+            <PinnedImageOverlay activeChatId={activeChatId} />
 
             <div ref={inputChromeRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
               <div
@@ -2088,6 +2141,10 @@ export function ChatRoleplaySurface({
                               key={`${activeChatId}:${activeVnMessage.id}:${activeVnMessage.activeSwipeIndex}`}
                               message={activeVnMessage}
                               memoryStartCharacterIds={memoryContextStarts.get(activeVnMessage.id)}
+                              failedReply={activeVnMessage.id === failedReplyMessageId}
+                              failedReplyReason={failedReplyReason}
+                              onRetryFailedReply={onRetryFailedReply}
+                              replyCheckup={activeVnMessage.id === replyCheckupMessageId ? replyCheckup : undefined}
                               visualNovel
                               visualNovelSpeech={vnSpeech}
                               onVisualNovelSpeechParagraph={setVnParagraphIndex}
@@ -2270,6 +2327,7 @@ export function ChatRoleplaySurface({
           onSpriteSideChange,
           spriteVisualSettings,
           onSpriteVisualSettingsChange,
+          avatarLayout,
         }}
         onCloseSettings={onCloseSettings}
         onOpenScheduleEditor={onOpenScheduleEditor}

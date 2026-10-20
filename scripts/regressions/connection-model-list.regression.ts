@@ -29,7 +29,13 @@ let failModels = false;
 let duringModels: (() => Promise<void>) | null = null;
 let catalog = [
   { id: "vendor/alpha", name: "Alpha", context_length: 64000, api_key: SECRET },
-  { id: "vendor/beta", name: "Beta" },
+  // Mistral's /models shape (#7164): the context window is max_context_length.
+  {
+    id: "vendor/beta",
+    name: "Beta",
+    max_context_length: 1_000_000,
+    capabilities: { completion_chat: true, vision: true },
+  },
   { id: "vendor/alpha", name: "Alpha duplicate" },
 ];
 const provider = createServer(async (req, res) => {
@@ -104,6 +110,8 @@ try {
     "duplicate model IDs are saved once",
   );
   assert.equal(firstBody.models[0]!.context, 64000);
+  assert.equal(firstBody.models[1]!.context, 1_000_000, "Mistral's max_context_length sets the context window");
+  assert.equal(firstBody.models[1]!.capabilities, undefined, "Mistral's capabilities object is not a parameter list");
   const savedRow = (await storage.getById(legacy.id))!;
   assert.equal(typeof savedRow.savedModels, "string");
   assert.equal(JSON.parse(savedRow.savedModels!).fetchedAt, firstBody.fetchedAt);

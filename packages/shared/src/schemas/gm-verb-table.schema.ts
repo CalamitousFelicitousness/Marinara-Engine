@@ -81,6 +81,7 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "book",
   "branch",
   "choices",
+  "clock",
   "combat",
   "combat_result",
   "dialogue",
@@ -88,10 +89,12 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "direction",
   "element_attack",
   "extra",
+  "history",
   "inventory",
   "item_used",
   "loot",
   "main",
+  "map",
   "map_update",
   "music",
   "note",
@@ -113,10 +116,12 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "skill_check",
   "state",
   "status",
+  "story",
   "tag",
   "thought",
   "whisper",
   "widget",
+  "world",
 ] as const);
 
 const reservedGmTagNames = new Set<string>(RESERVED_GM_TAG_NAMES);

@@ -849,7 +849,7 @@ try {
     memory.initialize(resumeChat.id, {
       signal: summaryController.signal,
       onProgress: (event) => {
-        if (event.stage === "summarizing" && event.completed === 1 && event.total > 1)
+        if (event.stage === "summarizing" && event.part?.completed === 1 && event.part.total > 1)
           summaryController.abort(new Error("pause paid summary"));
       },
     }),
@@ -1772,7 +1772,7 @@ try {
     memory.initialize(hiddenMiddleChat.id, {
       signal: privateController.signal,
       onProgress: (event) => {
-        if (event.stage === "summarizing" && event.completed === 1 && event.total > 1)
+        if (event.stage === "summarizing" && event.part?.completed === 1 && event.part.total > 1)
           privateController.abort(new Error("pause scoped summary"));
       },
     }),

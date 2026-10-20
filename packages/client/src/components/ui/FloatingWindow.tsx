@@ -46,6 +46,7 @@ import {
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
+import { isBrowserExtensionUi } from "../../lib/chat-floating-ui-events";
 import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewport-chat-bottom";
 import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
@@ -103,6 +104,8 @@ export interface FloatingWindowProps {
    */
   minimizable?: {
     icon: ReactNode;
+    /** A live summary the bubble shows instead of `icon`, as wide as it needs (World State's date and time). */
+    banner?: ReactNode;
     label: string;
     getPhoneBubble?: (bounds: WindowBounds, bubbleSize: number) => WindowPoint;
     bubbleBadge?: ReactNode;
@@ -158,7 +161,7 @@ export function findFreeBubble(
       const saved = placements[element.dataset.window ?? ""];
       if (!saved) return rect;
       // Earlier siblings may have reserved a slot in this layout effect before React paints it.
-      const point = clampWindowBubble(saved, bounds, Math.max(rect.width, rect.height));
+      const point = clampWindowBubble(saved, bounds, { width: rect.width, height: rect.height });
       return { left: point.x, top: point.y, right: point.x + rect.width, bottom: point.y + rect.height };
     });
   const free = (x: number, y: number) =>
@@ -191,6 +194,7 @@ const KEEPS_ESCAPE_SELECTOR =
   "textarea, [contenteditable='true'], input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='color'], [type='file'])";
 
 const CENTER_CONTENT_SELECTOR = '[data-component="CenterContent"]';
+const CHAT_WINDOW_TOP_OBSTACLE_SELECTOR = "[data-chat-mode] [data-chat-window-top-obstacle]";
 
 /** A closed host may no longer have an opener; keep keyboard users in the active chat. */
 export function focusWindowOpener(id: FloatingWindowId) {
@@ -216,6 +220,18 @@ export function readFloatingWindowBounds(): WindowBounds {
   if (typeof window === "undefined") return { left: 0, top: 0, right: 1024, bottom: 768 };
   const topbar = document.querySelector<HTMLElement>('[data-component="TopBar"]');
   const area = document.querySelector<HTMLElement>(CENTER_CONTENT_SELECTOR)?.getBoundingClientRect();
+  const topObstacles = Array.from(document.querySelectorAll<HTMLElement>(CHAT_WINDOW_TOP_OBSTACLE_SELECTOR))
+    .filter((element) => getComputedStyle(element).visibility === "visible")
+    .map((element) => element.getBoundingClientRect())
+    .filter(
+      (rect) =>
+        rect.width > 1 &&
+        rect.height > 1 &&
+        rect.right > 0 &&
+        rect.left < window.innerWidth &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight,
+    );
   const composer = Array.from(document.querySelectorAll("[data-chat-mode] [data-chat-composer]"))
     .map((element) =>
       (
@@ -225,12 +241,21 @@ export function readFloatingWindowBounds(): WindowBounds {
       ).getBoundingClientRect(),
     )
     .find((rect) => rect.width > 1 && rect.height > 1);
+  const bottom = Math.min(window.innerHeight, area?.bottom ?? window.innerHeight) - WINDOW_MARGIN_PX;
   return {
     left: Math.max(0, area?.left ?? 0) + WINDOW_MARGIN_PX,
-    top: Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0, area?.top ?? 0) + WINDOW_MARGIN_PX,
+    top:
+      Math.max(
+        0,
+        topbar?.getBoundingClientRect().bottom ?? 0,
+        area?.top ?? 0,
+        ...topObstacles.map((rect) => rect.bottom),
+      ) + WINDOW_MARGIN_PX,
     right: Math.min(window.innerWidth, area?.right ?? window.innerWidth) - WINDOW_MARGIN_PX,
-    bottom:
-      Math.min(window.innerHeight, area?.bottom ?? window.innerHeight, composer?.top ?? Infinity) - WINDOW_MARGIN_PX,
+    bottom: Math.min(bottom, (composer?.top ?? Infinity) - WINDOW_MARGIN_PX),
+    ...(composer && {
+      besideComposer: { left: composer.left - WINDOW_MARGIN_PX, right: composer.right + WINDOW_MARGIN_PX, bottom },
+    }),
   };
 }
 
@@ -254,7 +279,8 @@ function readSafeAreaInsets() {
 
 /**
  * Where phone bubbles may sit: the chat below the topbar, inside the safe area, above the on-screen
- * keyboard and above the open chat's message box, so a bubble never covers it.
+ * keyboard and above the open chat's message box, so a bubble never covers it. Unlike a computer's,
+ * they never reach down beside the box.
  */
 export function readPhoneBubbleBounds(): WindowBounds {
   const base = readFloatingWindowBounds();
@@ -283,8 +309,15 @@ export function readPhoneBubbleBounds(): WindowBounds {
 }
 
 function sameBounds(left: WindowBounds, right: WindowBounds) {
+  const [a, b] = [left.besideComposer, right.besideComposer];
   return (
-    left.left === right.left && left.top === right.top && left.right === right.right && left.bottom === right.bottom
+    left.left === right.left &&
+    left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    a?.left === b?.left &&
+    a?.right === b?.right &&
+    a?.bottom === b?.bottom
   );
 }
 
@@ -298,7 +331,7 @@ export function useWindowBubbleBounds(active: boolean): WindowBounds {
   return useLiveBounds(readFloatingWindowBounds, active);
 }
 
-// Input can appear after Game controls or be replaced when the active chat changes.
+// Input and top chrome can appear after Game controls or be replaced when the active chat changes.
 // Observe those mounts only; streaming text and animated style attributes do not matter here.
 function observeWindowBounds(update: () => void) {
   const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
@@ -311,7 +344,7 @@ function observeWindowBounds(update: () => void) {
       }
     }
     for (const element of document.querySelectorAll(
-      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]`,
+      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container], ${CHAT_WINDOW_TOP_OBSTACLE_SELECTOR}`,
     )) {
       if (observed.has(element)) continue;
       observed.add(element);
@@ -319,11 +352,12 @@ function observeWindowBounds(update: () => void) {
     }
     update();
   };
-  const containsComposer = (node: Node) =>
+  const containsBoundsElement = (node: Node) =>
     node instanceof Element &&
-    (node.matches("[data-chat-composer]") || node.querySelector("[data-chat-composer]") !== null);
+    (node.matches("[data-chat-composer], [data-chat-window-top-obstacle]") ||
+      node.querySelector("[data-chat-composer], [data-chat-window-top-obstacle]") !== null);
   const mounts = new MutationObserver((records) => {
-    if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some(containsComposer))) refresh();
+    if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some(containsBoundsElement))) refresh();
   });
   const area = document.querySelector(CENTER_CONTENT_SELECTOR);
   if (area) mounts.observe(area, { childList: true, subtree: true });
@@ -489,13 +523,15 @@ export function FloatingWindow({
       titleClassName,
     ],
   );
-  // Bumped after a defaultLayoutKey change has rendered, so the default reads the updated page.
+  // Bumped a frame after a defaultLayoutKey change has rendered, so the default reads the updated page,
+  // including bubbles that move with the same change (they settle in a follow-up render, #7188).
   const [defaultRevision, setDefaultRevision] = useState(0);
   const defaultLayoutKeyRef = useRef(defaultLayoutKey);
   useEffect(() => {
     if (defaultLayoutKeyRef.current === defaultLayoutKey) return;
     defaultLayoutKeyRef.current = defaultLayoutKey;
-    setDefaultRevision((revision) => revision + 1);
+    const frame = window.requestAnimationFrame(() => setDefaultRevision((revision) => revision + 1));
+    return () => window.cancelAnimationFrame(frame);
   }, [defaultLayoutKey]);
   // The default follows the viewport and Reset View until the user changes the window.
   const defaultLayout = useMemo(
@@ -629,6 +665,8 @@ export function FloatingWindow({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (rootRef.current?.contains(target)) return;
+      // A browser extension's own UI, such as a Grammarly suggestion card, is not a press elsewhere in the app.
+      if (isBrowserExtensionUi(target)) return;
       // The window's own toggle closes it on click; closing here too would let that click reopen it.
       if (target.closest(`[data-window-opener="${id}"]`)) return;
       if (target.closest(".mari-window, [data-chat-help-overlay], [role='dialog'][aria-modal='true']")) return;
@@ -751,6 +789,7 @@ export function FloatingWindow({
           size={PHONE_BUBBLE_SIZE_PX}
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
+          banner={minimizable.banner}
           label={minimizable.label}
           locked={layout.locked}
           zIndex={PHONE_BUBBLE_Z_INDEX}
@@ -768,6 +807,7 @@ export function FloatingWindow({
           bounds={bounds}
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
+          banner={minimizable.banner}
           label={minimizable.label}
           locked={layout.locked}
           zIndex={FLOATING_WINDOW_Z_BASE}

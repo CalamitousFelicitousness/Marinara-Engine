@@ -1,5 +1,5 @@
 import type { DB } from "../../db/connection.js";
-import { readImageAppearanceOverride } from "@marinara-engine/shared";
+import { buildChatImageGenerationRecord, readImageAppearanceOverride } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -9,11 +9,14 @@ import {
 import {
   compileImagePrompt,
   formatImageStylePromptGuidance,
+  removeCopiedPromptGuidance,
   resolveImageStyleGuidanceText,
 } from "../image/image-prompt-compiler.js";
 import { persistGeneratedImageToEntityGalleries } from "../image/generated-image-entity-gallery.js";
 import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from "../image/image-generation-defaults.js";
 import { generateImage, saveImageToDisk } from "../image/image-generation.js";
+import { runImageGenerationRequest } from "../image/image-generation-queue.js";
+import { resolveImagePromptReviewSize, resolveReviewedImagePromptSubmission } from "../image/image-prompt-review.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../image/illustrator-image-variants.js";
 import { resolveConversationSelfieSystemPrompt } from "../conversation/selfie-prompt.js";
@@ -102,6 +105,19 @@ export async function handleConversationSelfieCommand(args: {
   chats: ChatsStore;
   connections: ConnectionsStore;
   sendEvent: (payload: Record<string, unknown>) => void;
+  /**
+   * Optional, for a selfie taken as a video's first frame; a character's own [selfie] leaves them unset and
+   * behaves as before. `signal` cancels the prompt writer and the image request; `queue` runs the image request
+   * through the per-connection queue, as Gallery requests do.
+   */
+  signal?: AbortSignal;
+  queue?: boolean;
+  /** Stop once the prompt is ready and report it through `onPreview`, without drawing anything. */
+  previewOnly?: boolean;
+  onPreview?: (preview: { prompt: string; negativePrompt: string; width: number; height: number }) => void;
+  /** A reviewed prompt: it replaces the written one and is sent as is. */
+  promptOverride?: string | null;
+  negativePromptOverride?: string | null;
 }): Promise<boolean> {
   if (args.command.type !== "selfie") return false;
   const command = args.command as SelfieCommand;
@@ -155,9 +171,11 @@ async function generateSelfie(
   const cardAppearance =
     (typeof extensions?.appearance === "string" && extensions.appearance) ||
     (typeof args.charData?.description === "string" ? args.charData.description : "");
-  // #7053: selfies are image prompts, so an enabled non-empty override replaces
-  // the card appearance here too.
-  const appearance = readImageAppearanceOverride(extensions, cardAppearance) ?? cardAppearance;
+  // #7243: resolve the override separately instead of folding it into `appearance`.
+  // Letting it replace the card text left the prompt-builder with a bare override
+  // — for a LoRA user, one unexplained token — and no visual context, so it
+  // discarded the token and invented a look.
+  const imageAppearance = readImageAppearanceOverride(extensions, null);
   const personality = typeof args.charData?.personality === "string" ? args.charData.personality : "";
   const characterImageInstructions =
     typeof extensions?.conversationImageInstructions === "string" ? extensions.conversationImageInstructions : "";
@@ -202,7 +220,10 @@ async function generateSelfie(
   const baseSelfieSystemPrompt = await resolveConversationSelfieSystemPrompt({
     promptOverridesStorage: createPromptOverridesStorage(args.db),
     chatPromptTemplate: selfiePromptTemplate,
-    appearance,
+    appearance: cardAppearance,
+    // #7243: the override rides its own variable so it can fall away when empty,
+    // the same way personality and characterImageInstructions do.
+    imageAppearance: imageAppearance ?? "",
     charName: args.charName,
     characterImageInstructions,
     personality,
@@ -219,32 +240,47 @@ async function generateSelfie(
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;
   const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
   if (debugOverrideEnabled || logger.isLevelEnabled("debug")) {
-    logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder system:\n%s", selfieSystemPrompt);
+    // Log the system prompt as sent, with the image connection's instructions (#7357).
+    logDebugOverride(
+      debugOverrideEnabled,
+      "[debug/commands/selfie] prompt-builder system:\n%s",
+      selfieSystemPromptWithImageInstructions,
+    );
     logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] prompt-builder user:\n%s", userPrompt);
   }
-  const promptResult = await promptRuntime.provider.chatComplete(
-    [
+  let imagePrompt = args.promptOverride?.trim() ?? "";
+  if (!imagePrompt) {
+    const promptResult = await promptRuntime.provider.chatComplete(
+      [
+        {
+          role: "system",
+          content: selfieSystemPromptWithImageInstructions,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
       {
-        role: "system",
-        content: selfieSystemPromptWithImageInstructions,
+        model: promptRuntime.model,
+        ...(promptRuntime.suppressModelParameters
+          ? {}
+          : { temperature: 0.7, maxTokens: 8196, serviceTier: args.serviceTier }),
+        suppressModelParameters: promptRuntime.suppressModelParameters,
+        signal: args.signal,
+        enableCaching: promptRuntime.enableCaching,
+        anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
       },
-      {
-        role: "user",
-        content: userPrompt,
-      },
-    ],
-    {
-      model: promptRuntime.model,
-      ...(promptRuntime.suppressModelParameters
-        ? {}
-        : { temperature: 0.7, maxTokens: 8196, serviceTier: args.serviceTier }),
-      suppressModelParameters: promptRuntime.suppressModelParameters,
-      enableCaching: promptRuntime.enableCaching,
-      anthropicExtendedCacheTtl: promptRuntime.anthropicExtendedCacheTtl,
-    },
-  );
+    );
 
-  const imagePrompt = (promptResult.content ?? "").trim();
+    // The writer follows the style, the connection's instructions and the card's image habits; a
+    // sentence of them it copied word for word is not image-model text (#7357).
+    imagePrompt = removeCopiedPromptGuidance((promptResult.content ?? "").trim(), [
+      styleGuidance,
+      imgConnFull.imagePromptInstructions,
+      characterImageInstructions,
+    ]);
+  }
   if (!imagePrompt) return;
 
   const imageFallback = await resolveImageConnectionFallback(args.connections, imgConnFull.id);
@@ -259,6 +295,7 @@ async function generateSelfie(
   );
   let finalSelfiePrompt = selfiePositivePrompt ? `${imagePrompt}, ${selfiePositivePrompt}` : imagePrompt;
   let selfieReferenceImages: string[] | undefined;
+  let selfieReferenceCharacterIds: string[] = [];
   let selfieResolvedCharacterIds = args.characterId ? [args.characterId] : [];
   const selfieUseAvatarReferences = args.chatMeta.selfieUseAvatarReferences === true;
   const selfieIncludeCharacterAppearance = args.chatMeta.selfieIncludeCharacterAppearance === true;
@@ -299,6 +336,7 @@ async function generateSelfie(
     }
     if (selfieUseAvatarReferences && referenceResolution.referenceImages.length > 0) {
       selfieReferenceImages = referenceResolution.referenceImages;
+      selfieReferenceCharacterIds = referenceResolution.characterIds;
       if (referenceResolution.referenceLine && !suppressReferencePromptLine) {
         finalSelfiePrompt += `\n\n${referenceResolution.referenceLine}`;
       }
@@ -314,6 +352,8 @@ async function generateSelfie(
 
   const selfieRes = typeof args.chatMeta.selfieResolution === "string" ? args.chatMeta.selfieResolution : "";
   const [selfieW, selfieH] = selfieRes.split("x").map(Number) as [number, number];
+  const selfieWidth = selfieW || imageSettings.selfie.width;
+  const selfieHeight = selfieH || imageSettings.selfie.height;
   const serviceHint = imgConnFull.imageService || "";
   const compiledSelfiePrompt = compileImagePrompt({
     kind: "selfie",
@@ -325,23 +365,44 @@ async function generateSelfie(
     omitProfileStyleText: true,
     omitProfileSubjectTags: true,
   });
+  // A reviewed prompt is sent exactly as the user left it.
+  const selfieSubmission = resolveReviewedImagePromptSubmission({
+    generatedPrompt: compiledSelfiePrompt.prompt,
+    generatedNegativePrompt: compiledSelfiePrompt.negativePrompt ?? "",
+    promptOverride: args.promptOverride ?? undefined,
+    negativePromptOverride: args.negativePromptOverride ?? undefined,
+  });
+  if (args.previewOnly) {
+    return reportSelfiePreview(args, imgConnFull, imageDefaults, selfieSubmission, selfieWidth, selfieHeight);
+  }
+  logDebugOverride(debugOverrideEnabled, "[debug/commands/selfie] final image prompt:\n%s", selfieSubmission.prompt);
+  const drawSelfie = () =>
+    generateImage(imgModel, imgBaseUrl, imgApiKey, serviceHint || imgSource, {
+      prompt: selfieSubmission.prompt,
+      negativePrompt: selfieSubmission.negativePrompt || undefined,
+      model: imgModel,
+      width: selfieWidth,
+      height: selfieHeight,
+      imageEndpointId: imgConnFull.imageEndpointId || undefined,
+      comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
+      imageDefaults,
+      quality: resolveConnectionImageQuality(imgConnFull),
+      referenceImages: selfieReferenceImages,
+      signal: args.signal,
+      fallback: imageFallback,
+      onFallback: reportFallback,
+    });
   const imageResults = await generateIllustratorImageVariants({
     count: args.chatMeta.illustratorImagesPerGeneration,
     generate: () =>
-      generateImage(imgModel, imgBaseUrl, imgApiKey, serviceHint || imgSource, {
-        prompt: compiledSelfiePrompt.prompt,
-        negativePrompt: compiledSelfiePrompt.negativePrompt || undefined,
-        model: imgModel,
-        width: selfieW || imageSettings.selfie.width,
-        height: selfieH || imageSettings.selfie.height,
-        imageEndpointId: imgConnFull.imageEndpointId || undefined,
-        comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
-        imageDefaults,
-        quality: resolveConnectionImageQuality(imgConnFull),
-        referenceImages: selfieReferenceImages,
-        fallback: imageFallback,
-        onFallback: reportFallback,
-      }),
+      args.queue === undefined
+        ? drawSelfie()
+        : runImageGenerationRequest({
+            connectionKey: imgConnFull.id?.trim() || `${serviceHint || imgSource}:${imgBaseUrl}:${imgModel}`,
+            queue: args.queue,
+            signal: args.signal,
+            task: drawSelfie,
+          }),
     onVariantError: (error, index) =>
       logger.warn(error, "[commands] Selfie variant %d failed for %s", index + 1, args.charName),
   });
@@ -354,11 +415,17 @@ async function generateSelfie(
     const galleryEntry = await galleryStore.create({
       chatId: args.chatId,
       filePath,
-      prompt: compiledSelfiePrompt.prompt,
+      prompt: selfieSubmission.prompt,
       provider: effectiveImageProvider,
       model: effectiveImageModel,
-      width: selfieW || imageSettings.selfie.width,
-      height: selfieH || imageSettings.selfie.height,
+      width: selfieWidth,
+      height: selfieHeight,
+      generation: buildChatImageGenerationRecord({
+        prompt: selfieSubmission.prompt,
+        connectionId: imgConnFull.id,
+        negativePrompt: selfieSubmission.negativePrompt,
+        referenceCharacterIds: selfieReferenceCharacterIds,
+      }),
     });
     await persistGeneratedImageToEntityGalleries({
       enabled: imageSettings.autoSaveToGalleries,
@@ -367,11 +434,11 @@ async function generateSelfie(
       characterIds: selfieResolvedCharacterIds,
       characterGallery: createCharacterGalleryStorage(args.db),
       personaGallery: createPersonaGalleryStorage(args.db),
-      prompt: compiledSelfiePrompt.prompt,
+      prompt: selfieSubmission.prompt,
       provider: effectiveImageProvider,
       model: effectiveImageModel,
-      width: selfieW || imageSettings.selfie.width,
-      height: selfieH || imageSettings.selfie.height,
+      width: selfieWidth,
+      height: selfieHeight,
     });
 
     const filename = filePath.split("/").pop()!;
@@ -382,8 +449,10 @@ async function generateSelfie(
         type: "image",
         url: imageUrl,
         filename: `selfie_${args.charName.toLowerCase().replace(/\s+/g, "_")}_${variantIndex + 1}.${imageResult.ext}`,
-        prompt: compiledSelfiePrompt.prompt,
+        prompt: selfieSubmission.prompt,
         galleryId: galleryEntry?.id,
+        // Names the sender in later prompt history; a merged group reply can hold several speakers.
+        characterName: args.charName,
       };
       await args.chats.appendSwipeAttachment(args.messageId, generationSwipeIndex, attachment);
 
@@ -400,12 +469,25 @@ async function generateSelfie(
         characterName: args.charName,
         messageId: args.messageId,
         imageUrl,
-        prompt: compiledSelfiePrompt.prompt,
+        prompt: selfieSubmission.prompt,
         galleryId: galleryEntry?.id,
       },
     });
     logger.debug("[commands] Selfie generated for %s", args.charName);
   }
+}
+
+/** A selfie preview: the prompt as it would be sent and the size it would be drawn at, for the prompt review. */
+function reportSelfiePreview(
+  args: { onPreview?: (preview: { prompt: string; negativePrompt: string; width: number; height: number }) => void },
+  connection: Parameters<typeof resolveImagePromptReviewSize>[0]["connection"],
+  imageDefaults: Parameters<typeof resolveImagePromptReviewSize>[0]["imageDefaults"],
+  submission: { prompt: string; negativePrompt: string },
+  width: number,
+  height: number,
+): void {
+  const size = resolveImagePromptReviewSize({ connection, prompt: submission.prompt, width, height, imageDefaults });
+  args.onPreview?.({ ...submission, width: size.width, height: size.height });
 }
 
 function readNestedString(value: unknown, key: string): string | null {

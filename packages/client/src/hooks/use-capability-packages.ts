@@ -83,6 +83,32 @@ export function useImportRuleset() {
   });
 }
 
+/** What the Engine reads from a ruleset package file: on a dry run, for the review, nothing kept. */
+export interface RulesetPackageRead {
+  status: "checked" | "added" | "unchanged";
+  rulesetId: string;
+  version: number;
+  /** The package's ruleset.json, as read (on a dry run). */
+  ruleset?: string;
+  /** Each catalog file's number of entries, by catalog id. */
+  catalogs: Record<string, number>;
+}
+
+/** Read a ruleset package file (a parsed `.ruleset.json`) without keeping anything, for the review. */
+export function readRulesetPackage(file: Record<string, unknown>) {
+  return api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file, dryRun: true });
+}
+
+/** Import a ruleset package file (RM): its ruleset and catalog files, as data, under `local/<id>`. */
+export function useImportRulesetPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: Record<string, unknown>) =>
+      api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: capabilityPackageKeys.rulesets() }),
+  });
+}
+
 /** Remove every stored version of an imported ruleset. `force` is the answer to the server's
  *  `ruleset_in_use` 409, so a ruleset a game plays on is never removed by one click. */
 export function useRemoveRuleset() {
@@ -171,6 +197,45 @@ export function selectGameExperiencePackages(
       isInstalledCapabilityReady(pkg) &&
       pkg.manifest.contributions?.slots?.includes("game-surface") &&
       Boolean(pkg.manifest.entrypoints.client?.trim()),
+  );
+}
+
+/** The chat's package integrations the user turned on (Calls, which keeps its header button, aside). */
+export function selectEnabledConversationPackages(
+  installed: InstalledCapabilityPackage[],
+  chatMeta: Record<string, any>,
+): InstalledCapabilityPackage[] {
+  if (chatMeta.enableAgents !== true) return [];
+  const activeAgentIds: string[] = Array.isArray(chatMeta.activeAgentIds) ? chatMeta.activeAgentIds : [];
+  return installed.filter((item) => {
+    if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
+    if (item.manifest.kind.includes("conversation-calls")) return false;
+    const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
+    return activeAgentIds.includes(item.id) || contributedAgentIds.some((id: string) => activeAgentIds.includes(id));
+  });
+}
+
+/** Turn games, whose surface (board) a Conversation chat mounts whether or not the game's agent is on. */
+export function selectConversationTurnGamePackages(
+  installed: InstalledCapabilityPackage[],
+): InstalledCapabilityPackage[] {
+  return installed.filter(
+    (item) => item.status === "active" && item.manifest.kind.includes("turn-game") && item.manifest.entrypoints.client,
+  );
+}
+
+/**
+ * Packages mounted in a Conversation chat's `conversation-surface` slot. Turn games declare that slot too, but their
+ * surface is already mounted by selectConversationTurnGamePackages, so they are left out here: with the game's agent
+ * on, the board would otherwise render twice.
+ */
+export function selectConversationSurfacePackages(
+  installed: InstalledCapabilityPackage[],
+  chatMeta: Record<string, any>,
+): InstalledCapabilityPackage[] {
+  return selectEnabledConversationPackages(installed, chatMeta).filter(
+    (item) =>
+      item.manifest.contributions?.slots?.includes("conversation-surface") && !item.manifest.kind.includes("turn-game"),
   );
 }
 
@@ -417,7 +482,11 @@ export function useCapabilityClientModules() {
       });
       const source = `/api/capability-packages/${encodeURIComponent(item.id)}/client?v=${encodeURIComponent(item.version)}${attempt > 0 ? `&retry=${attempt}` : ""}`;
       if (!beginCapabilityClientImport(item.id, { version: item.version, attempt })) continue;
-      void import(/* @vite-ignore */ source)
+      // Packages take the Engine's stores and libraries from globalThis.__MARINARA_HOST__, so it is complete before any
+      // package client is evaluated (lib/marinara-host.ts).
+      void import("../lib/marinara-host")
+        .then(({ ensureMarinaraHost }) => ensureMarinaraHost())
+        .then(() => import(/* @vite-ignore */ source))
         .then(() => {
           if (!customElements.get(tag)) {
             throw new Error(`Client module did not register ${tag}`);
@@ -553,13 +622,14 @@ export function useInstallCapabilityPackage() {
   });
 }
 
-export function useDeclineCapabilityPackageUpdate() {
+/** One request for all listed updates ("Not now"), so none of them returns on a reload right after. */
+export function useDeclineCapabilityPackageUpdates() {
   const invalidate = useInvalidateCapabilityState();
   return useMutation({
-    mutationFn: ({ id, version }: Pick<CapabilityPackageUpdate, "id" | "version">) =>
-      api.post<{ declined: true }>(
-        `/capability-packages/${encodeURIComponent(id)}/updates/${encodeURIComponent(version)}/decline`,
-      ),
+    mutationFn: (updates: Array<Pick<CapabilityPackageUpdate, "id" | "version">>) =>
+      api.post<{ declined: string[] }>("/capability-packages/updates/decline", {
+        updates: updates.map(({ id, version }) => ({ id, version })),
+      }),
     onSuccess: invalidate,
   });
 }

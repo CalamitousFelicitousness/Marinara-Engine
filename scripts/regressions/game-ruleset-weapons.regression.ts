@@ -14,6 +14,7 @@
  *     weapon's tags are what its blows carry.
  *   - Item facts and the Game Master's line say the attack, and an item invented like a weapon fights
  *     with its own stats.
+ *   - A rider may name held weapons by item tag (1.70), so a held weapon carries it as a row does.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -27,6 +28,7 @@ import {
   defaultRulesetSheetBuild,
   inventRulesetItem,
   parseRulesetDefinition,
+  RULESET_CATALOG_ROW_KEY,
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetItemBook,
@@ -242,6 +244,12 @@ try {
         /Unknown derived value "martial"/,
       ],
       [
+        "a sheet bonus off an unknown value (1.95)",
+        emberText,
+        attack("hand-axe", (a) => (a.toHit.sheetBonus = { derived: "aim" })),
+        /Unknown derived value "aim"/,
+      ],
+      [
         "a distance with no cell to measure it in",
         emberText,
         (doc) => {
@@ -440,8 +448,11 @@ try {
     side: "enemy",
     block: { health: 30, defense: 6, initiativeModifier: -5, actions: [] },
   };
+  // Less the tags each carries for what follows the attack action (1.246), checked once below.
   const weaponsOf = (state: RulesetEncounterState, id = "juno"): RulesetCombatAction[] =>
-    rulesetCombatant(state, id)!.actions.filter((action) => action.id.startsWith("item:"));
+    rulesetCombatant(state, id)!
+      .actions.filter((action) => action.id.startsWith("item:"))
+      .map(({ itemTags: _itemTags, ...action }) => action);
   const emberFight = (
     items: RulesetSheetItem[],
     abilities: Record<string, number> = { brawn: 2, wits: 1 },
@@ -459,6 +470,7 @@ try {
     });
   {
     const both = emberFight([held(axe, "Hand axe"), held(spear, "Boar spear"), held(bow, "Hunting bow", false)]);
+    assert.deepEqual(rulesetCombatant(both, "juno")!.actions.find((one) => one.id === "item:0")?.itemTags, ["thrown"]);
     assert.deepEqual(weaponsOf(both), [
       {
         id: "item:0",
@@ -469,6 +481,7 @@ try {
         // Two paces a cell: a swing one cell off, a throw five, ten at the longest.
         reach: 1,
         range: { normal: 5, long: 10 },
+        ability: "brawn",
         toHit: 2,
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },
       },
@@ -480,6 +493,7 @@ try {
         targets: { side: "enemy", count: 1 },
         reach: 2,
         range: { normal: 5 },
+        ability: "brawn",
         toHit: 2,
         // Both hands are full, so the spear deals its own die rather than its versatile one.
         damage: { count: 1, sides: 6, flat: 2, type: "cut", qualities: ["thrown"] },
@@ -663,6 +677,125 @@ try {
     assert.equal(tearing(plainNail, immune), "immune");
   }
 
+  // ── A rider on held weapons (1.70) ──
+  {
+    // Ember Roads with a knack that adds a die to the first hit of a turn made with a thrown weapon:
+    // the knacks list's rows know nothing of the outfitter's items, so the rider names their tag.
+    const ambush = (rider: Record<string, unknown>) => (doc: Record<string, any>) =>
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "knacks")
+        .entries.push({
+          id: "ambush",
+          label: "Ambush",
+          summary: "A throw nobody saw coming.",
+          rows: [{ list: "knacks", values: { name: "Ambush" } }],
+          mechanics: { kind: "rider", rider: { on: "hit", oncePer: "turn", amount: { dice: "1d4" }, ...rider } },
+        });
+    const thrown = { weapons: { tags: ["thrown"] } };
+    const withAmbush = parsedOrThrow(variant(emberText, ambush(thrown)), "a rider on thrown weapons");
+    refused(
+      emberText,
+      ambush({ weapons: { tags: ["glass"] } }),
+      /rider\.weapons\.tags\.0: Unknown item tag "glass"/,
+      "an unknown tag",
+    );
+    refused(emberText, ambush({ weapons: { tags: [] } }), /weapons\.tags/, "a rider on no tag");
+    const riderFight = (definition: RulesetDefinition, items: RulesetSheetItem[], gear: string[] = []) =>
+      createRulesetEncounter({
+        definition,
+        seed: 5,
+        roller: () => 4,
+        combatants: [
+          {
+            id: "juno",
+            name: "Juno",
+            side: "party",
+            build: {
+              ...build(definition, { brawn: 2, wits: 1 }),
+              lists: {
+                knacks: [{ name: "Ambush", [RULESET_CATALOG_ROW_KEY]: "knacks/ambush" }],
+                gear: gear.map((name) => ({ name, swing: "brawn", damage: "1d4", harm: "cut" })),
+              },
+            },
+            items,
+            // Every catalog, rows and all: the knack's entry is in one that writes rows.
+            catalogs: Object.fromEntries(
+              (definition.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]),
+            ),
+          },
+          hound,
+        ],
+      });
+    const ridersOf = (state: RulesetEncounterState) =>
+      rulesetCombatant(state, "juno")!.riders?.map((rider) => rider.actions);
+    // The axe, never the bow, and only held.
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(axe, "Hand axe"), held(bow, "Hunting bow")])), [["item:0"]]);
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(axe, "Hand axe", false)])), [[]], "put away");
+    assert.deepEqual(
+      ridersOf(riderFight(withAmbush, [held(axe, "Hand axe")], ["Knife"])),
+      [["item:0"]],
+      "a rider that names only weapons fires on no row",
+    );
+    // An off hand strikes with the same weapon, so it carries the rider too.
+    const offHanded = { ...axe, attack: { ...axe.attack!, offHand: true } };
+    assert.deepEqual(ridersOf(riderFight(withAmbush, [held(offHanded, "Hand axe")])), [["item:0", "offhand:0"]]);
+    // A hit with the axe carries it; one with the bow does not.
+    const riders = (state: RulesetEncounterState) =>
+      applyRulesetCombatChoice(
+        withAmbush,
+        state,
+        { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+        () => 4,
+      ).events.filter((event) => event.type === "rider").length;
+    assert.equal(riders(riderFight(withAmbush, [held(axe, "Hand axe")])), 1);
+    assert.equal(riders(riderFight(withAmbush, [held(bow, "Hunting bow")])), 0);
+    // A rider that names rows fires on no held weapon, as before 1.70; one that names both, on both.
+    const onRows = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"] })), "a rider on gear rows");
+    assert.deepEqual(ridersOf(riderFight(onRows, [held(axe, "Hand axe")], ["Knife"])), [["attack:0:0"]]);
+    const onBoth = parsedOrThrow(variant(emberText, ambush({ sources: ["gear"], ...thrown })), "a rider on both");
+    assert.deepEqual(ridersOf(riderFight(onBoth, [held(axe, "Hand axe")], ["Knife"])), [["item:0", "attack:0:0"]]);
+    // One that names nothing still fires on any hit.
+    assert.deepEqual(ridersOf(riderFight(parsedOrThrow(variant(emberText, ambush({})), "any hit"), [])), [undefined]);
+
+    // The install gate: 1.70, in the ruleset file and in a catalog file.
+    const manifest = (minor: number, paths = ["ruleset.json"]) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-held-riders",
+      name: "Held riders",
+      version: "0.1.0",
+      description: "A packaged ruleset whose riders fire on held weapons.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths } },
+      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: 10 })),
+      permissions: [],
+      restartRequired: false,
+    });
+    const heldIssue = /riders fire on held weapons.*capabilityApi 1\.70/;
+    const document = variant(emberText, ambush(thrown));
+    assert.match(getCapabilityPackageInstallIssue(manifest(69) as any, document) ?? "", heldIssue);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(70) as any, document), null);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(69) as any, variant(emberText, ambush({}))), null);
+    const knacks = document.catalogs.find((catalog: { id: string }) => catalog.id === "knacks");
+    const inFile = {
+      ...document,
+      catalogs: document.catalogs.map((catalog: { id: string }) =>
+        catalog.id === "knacks" ? { ...catalog, entries: undefined, asset: "catalogs/knacks.json" } : catalog,
+      ),
+    };
+    const paths = ["ruleset.json", "catalogs/knacks.json"];
+    const files = new Map<string, unknown>([["catalogs/knacks.json", { entries: knacks.entries }]]);
+    assert.match(
+      getCapabilityPackageInstallIssue(manifest(69, paths) as any, inFile, files) ?? "",
+      heldIssue,
+      "a catalog file",
+    );
+    assert.equal(getCapabilityPackageInstallIssue(manifest(70, paths) as any, inFile, files), null);
+  }
+
   // ── What an item says ──
   {
     assert.deepEqual(rulesetItemFacts(ember, spear).attack, {
@@ -755,6 +888,248 @@ try {
     assert.equal(pocket.item.slots, undefined);
     assert.equal(pocket.item.attack, undefined);
     assert.match(pocket.notes.join(" "), /never worn, and the attack it started from was left out/);
+  }
+
+  // ── What the holder brings to a weapon off their own sheet (1.95: 5e's Archery) ──
+  {
+    const archer = (sheetBonus: Record<string, unknown>): RulesetCatalogItem => ({
+      ...axe,
+      attack: { ...axe.attack!, toHit: { ...axe.attack!.toHit, sheetBonus } as never },
+    });
+    const plain = weaponsOf(emberFight([held(axe, "Hand axe")]))[0]!.toHit!;
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 2 }), "Hand axe")]))[0]!.toHit,
+      plain + 2,
+      "+2 as it stands",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ abilityMod: "wits" }), "Hand axe")], { brawn: 2, wits: 3 }))[0]!.toHit,
+      weaponsOf(emberFight([held(axe, "Hand axe")], { brawn: 2, wits: 3 }))[0]!.toHit! + 3,
+      "read off the holder's own sheet",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 2.7 }), "Hand axe")]))[0]!.toHit,
+      plain + 2,
+      "a fraction is cut toward zero",
+    );
+    assert.equal(
+      weaponsOf(emberFight([held(archer({ const: 0 }), "Hand axe")]))[0]!.toHit,
+      plain,
+      "nothing for no one",
+    );
+    // The item's facts name it by its name on the sheet.
+    assert.equal(rulesetItemFacts(ember, archer({ abilityMod: "wits" })).attack!.toHit, "Brawn + Wits modifier");
+    // Checked at import like any of the weapon's values, and gated at 1.95 in the ruleset file and a catalog file.
+    const withBonus = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.attack.toHit.sheetBonus = { abilityMod: "wits" };
+    });
+    parsedOrThrow(withBonus, "a weapon with a sheet bonus");
+    const manifest = (minor: number, paths = ["ruleset.json"]) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-sheet-bonus",
+      name: "Sheet bonus",
+      version: "0.1.0",
+      description: "A packaged ruleset whose weapons add a bonus off their holder's sheet.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths } },
+      files: paths.map((path) => ({ path, sha256: "0".repeat(64), bytes: 10 })),
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate = /bonus to hit read off their holder's sheet.*capabilityApi 1\.95/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(94) as any, withBonus) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(95) as any, withBonus), null);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(94) as any, variant(emberText)) ?? "", gate);
+    // An item's use that rolls to hit reads it the same way, and asks the same.
+    const onUse = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.use = { toHit: { sheetBonus: { const: 2 } } };
+    });
+    assert.match(getCapabilityPackageInstallIssue(manifest(94) as any, onUse) ?? "", gate, "an item's use");
+    const outfitter = itemCatalogOf(withBonus);
+    const inFile = {
+      ...withBonus,
+      catalogs: withBonus.catalogs.map((catalog: { id: string }) =>
+        catalog.id === outfitter.id
+          ? { ...catalog, entries: undefined, asset: `catalogs/${outfitter.id}.json` }
+          : catalog,
+      ),
+    };
+    const paths = ["ruleset.json", `catalogs/${outfitter.id}.json`];
+    const files = new Map<string, unknown>([[`catalogs/${outfitter.id}.json`, { entries: outfitter.entries }]]);
+    assert.match(
+      getCapabilityPackageInstallIssue(manifest(94, paths) as any, inFile, files) ?? "",
+      gate,
+      "a catalog file",
+    );
+    assert.equal(getCapabilityPackageInstallIssue(manifest(95, paths) as any, inFile, files), null);
+  }
+
+  // ── Damage the holder brings off their own sheet, in one hand (1.97: 5e's Dueling) ──
+  {
+    const attack = (id: string, edit: (attack: Record<string, any>) => void) => (doc: Record<string, any>) =>
+      edit(itemEntry(doc, id).item.attack);
+    const dueling = (item: RulesetCatalogItem, damage: Record<string, unknown>): RulesetCatalogItem => ({
+      ...item,
+      attack: { ...item.attack!, damage: { ...item.attack!.damage, ...damage } } as never,
+    });
+    const flatOf = (items: RulesetSheetItem[], label: string) =>
+      weaponsOf(emberFight(items)).find((action) => action.label === label)!.damage!.flat;
+    const plainAxe = flatOf([held(axe, "Hand axe")], "Hand axe");
+    assert.equal(flatOf([held(dueling(axe, { sheetBonus: { const: 2 } }), "Hand axe")], "Hand axe"), plainAxe + 2);
+    assert.equal(
+      flatOf([held(dueling(axe, { sheetBonus: { const: 2.9 } }), "Hand axe")], "Hand axe"),
+      plainAxe + 2,
+      "cut toward zero",
+    );
+    // A versatile spear alone is wielded with both hands: no one-handed bonus. Beside an axe it is
+    // held in one, and the bonus counts.
+    const duelSpear = dueling(spear, { sheetBonus: { const: 2 }, oneHanded: true });
+    const spearAlone = flatOf([held(spear, "Boar spear")], "Boar spear");
+    assert.equal(flatOf([held(duelSpear, "Boar spear")], "Boar spear"), spearAlone, "two-handed: none");
+    assert.equal(
+      flatOf([held(duelSpear, "Boar spear"), held(axe, "Hand axe")], "Boar spear"),
+      flatOf([held(spear, "Boar spear"), held(axe, "Hand axe")], "Boar spear") + 2,
+      "one-handed: +2",
+    );
+    // One that takes two hands is never one-handed.
+    const duelBow = dueling(bow, { sheetBonus: { const: 2 }, oneHanded: true });
+    assert.equal(
+      flatOf([held(duelBow, "Hunting bow")], "Hunting bow"),
+      flatOf([held(bow, "Hunting bow")], "Hunting bow"),
+    );
+    // Without oneHanded it counts however the weapon is held.
+    assert.equal(
+      flatOf([held(dueling(spear, { sheetBonus: { const: 2 } }), "Boar spear")], "Boar spear"),
+      spearAlone + 2,
+    );
+    // The facts name it by its name on the sheet.
+    assert.match(
+      rulesetItemFacts(ember, dueling(axe, { sheetBonus: { abilityMod: "wits" } })).attack!.damage,
+      /Wits modifier/,
+    );
+    // Refused: an unknown value, and oneHanded with nothing to gate.
+    refused(
+      emberText,
+      attack("hand-axe", (a) => (a.damage.sheetBonus = { derived: "duel" })),
+      /Unknown derived value "duel"/,
+      "damage sheet bonus off nothing",
+    );
+    refused(
+      emberText,
+      attack("hand-axe", (a) => (a.damage.oneHanded = true)),
+      /oneHanded says when the damage's sheetBonus counts/,
+      "oneHanded alone",
+    );
+    // Gated at 1.97.
+    const withDamage = variant(emberText, (doc) => {
+      itemEntry(doc, "hand-axe").item.attack.damage.sheetBonus = { const: 2 };
+    });
+    parsedOrThrow(withDamage, "a weapon with a damage sheet bonus");
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-damage-bonus",
+      name: "Damage bonus",
+      version: "0.1.0",
+      description: "A packaged ruleset whose weapons add damage off their holder's sheet.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate = /add damage off the sheet.*capabilityApi 1\.97/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(96) as any, withDamage) ?? "", gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(97) as any, withDamage), null);
+
+    // ── Low damage dice thrown again, two-handed (1.98: 5e's Great Weapon Fighting) ──
+    const greatSpear = dueling(spear, { rerollUpTo: { const: 2 } });
+    const rerollOf = (items: RulesetSheetItem[], label: string) =>
+      weaponsOf(emberFight(items)).find((action) => action.label === label)!.damage!.reroll;
+    assert.equal(rerollOf([held(greatSpear, "Boar spear")], "Boar spear"), 2, "a versatile spear in both hands");
+    assert.equal(
+      rerollOf([held(greatSpear, "Boar spear"), held(axe, "Hand axe")], "Boar spear"),
+      undefined,
+      "one hand: none",
+    );
+    assert.equal(
+      rerollOf([held(dueling(bow, { rerollUpTo: { const: 2 } }), "Hunting bow")], "Hunting bow"),
+      2,
+      "two of a slot",
+    );
+    assert.equal(
+      rerollOf([held(dueling(spear, { rerollUpTo: { const: 0 } }), "Boar spear")], "Boar spear"),
+      undefined,
+      "0: none",
+    );
+    assert.equal(
+      rerollOf([held(dueling(spear, { rerollUpTo: { const: 99 } }), "Boar spear")], "Boar spear"),
+      7,
+      "never every face",
+    );
+    // A 1 is thrown again and the new face stands; a 3 is not. The two-handed spear deals a d8.
+    const swing = (item: RulesetCatalogItem, faces: number[]) => {
+      const queue = [...faces];
+      const state = emberFight([held(item, "Boar spear")]);
+      const result = applyRulesetCombatChoice(
+        ember,
+        state,
+        { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+        (sides) => (sides === 8 ? (queue.shift() ?? 8) : 6),
+      );
+      return result.events.find((event) => event.type === "damage") as { rolls?: number[] } | undefined;
+    };
+    assert.deepEqual(swing(greatSpear, [1, 5])?.rolls, [5], "a 1 becomes the 5 thrown again");
+    assert.deepEqual(swing(greatSpear, [3, 5])?.rolls, [3], "a 3 stands");
+    assert.deepEqual(swing(spear, [1, 5])?.rolls, [1], "without it the 1 stands");
+    assert.deepEqual(swing(greatSpear, [2, 4])?.rolls, [4], "a 2 is thrown again too");
+    // A critical's extra dice are thrown again the same way.
+    const critical = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.combat.attackRoll = {
+          dice: { count: 1, sides: 20 },
+          naturals: { max: "critical" },
+          critical: "double-dice",
+        };
+      }),
+      "a d20 fight with criticals",
+    );
+    const queue = [1, 5, 2, 7];
+    const critState = emberFight([held(greatSpear, "Boar spear")], { brawn: 2, wits: 1 }, critical);
+    const crit = applyRulesetCombatChoice(
+      critical,
+      critState,
+      { actorId: "juno", optionId: "item:0", targetIds: ["hound"] },
+      (sides) => (sides === 8 ? (queue.shift() ?? 8) : sides),
+    ).events.find((event) => event.type === "damage") as { rolls?: number[]; critical?: boolean } | undefined;
+    assert.deepEqual([crit?.critical, crit?.rolls], [true, [5, 7]], "the critical's 2 is thrown again as well");
+    // Refused: an unknown value, and in a pool fight. Gated at 1.98.
+    refused(
+      emberText,
+      attack("boar-spear", (a) => (a.damage.rerollUpTo = { derived: "gwf" })),
+      /Unknown derived value "gwf"/,
+      "reroll off nothing",
+    );
+    refused(
+      gravewatchText,
+      attack("grave-spade", (a) => (a.damage.rerollUpTo = { const: 2 })),
+      /nothing to reroll/,
+      "reroll in a pool fight",
+    );
+    const withReroll = variant(emberText, (doc) => {
+      itemEntry(doc, "boar-spear").item.attack.damage.rerollUpTo = { const: 2 };
+    });
+    parsedOrThrow(withReroll, "a weapon that rerolls");
+    const rerollGate = /reroll low damage dice.*capabilityApi 1\.98/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(97) as any, withReroll) ?? "", rerollGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(98) as any, withReroll), null);
   }
 
   console.log(

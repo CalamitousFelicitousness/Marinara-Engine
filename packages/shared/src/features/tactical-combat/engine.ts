@@ -18,21 +18,28 @@ import { assignCombatTactics } from "../combat-ai.js";
 import type { Combatant, CombatSkill, CombatStatusEffect, CombatSummary } from "../../types/game.js";
 import { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 import { CLASS_PROFILES, deriveClass } from "./classes.js";
-import { generateTacticalBattlefield, placeSpawns } from "./grid-gen.js";
+import { foothillElevation, generateTacticalBattlefield, madeTacticalBattlefield, placeSpawns } from "./grid-gen.js";
 import {
   clamp,
+  climbCost,
   computeDamage,
   computeHeal,
   critChance,
   deriveMovement,
+  effectiveSpeed,
   elementMultiplier,
   hitChance,
   inBounds,
   isImpassable,
   manhattan,
   terrainInfoAt,
+  hasLineOfSight,
+  inReach,
+  reachFrom,
 } from "./math.js";
 import { deterministicRng } from "./rng.js";
+import { TACTICAL_ENVIRONMENTS } from "./environments.js";
+import type { WorldElementSet } from "../world/elements.js";
 import type {
   ApplyActionResult,
   TacticalAction,
@@ -43,27 +50,12 @@ import type {
   TacticalEvent,
   TacticalForecast,
   TacticalFormation,
+  TacticalMadeBattlefield,
+  TacticalTurnOrder,
   TacticalUnit,
 } from "./types.js";
 
-const ENVIRONMENTS: TacticalEnvironment[] = [
-  "forest",
-  "dungeon",
-  "desert",
-  "cave",
-  "city",
-  "ruins",
-  "snow",
-  "water",
-  "castle",
-  "wasteland",
-  "plains",
-  "mountains",
-  "swamp",
-  "volcanic",
-  "spaceship",
-  "mansion",
-];
+const ENVIRONMENTS: readonly TacticalEnvironment[] = TACTICAL_ENVIRONMENTS;
 
 const FORMATIONS: TacticalFormation[] = ["line", "ambush", "surrounded", "skirmish", "defense"];
 
@@ -133,9 +125,14 @@ export function createTacticalCombat(
     seed: number;
     difficulty: string;
     weather?: CombatWeather;
+    elements?: WorldElementSet;
     environment?: string;
     formation?: string;
     battlefield?: TacticalBattlefieldBrief;
+    /** A board painted by hand for the fight's place (worldgen W9g): fought on as painted, the brief unused. */
+    made?: TacticalMadeBattlefield;
+    /** One unit at a time in a rolled order (combat C6c); by side when absent. */
+    turnOrder?: TacticalTurnOrder;
   },
 ): TacticalCombatState {
   const difficulty = normalizeGameDifficulty(opts.difficulty);
@@ -162,11 +159,18 @@ export function createTacticalCombat(
   ];
 
   const setupRng = deterministicRng(seed, 0);
-  const generated = generateTacticalBattlefield(units.length, setupRng, environment, opts.battlefield);
+  const generated = opts.made
+    ? madeTacticalBattlefield(opts.made)
+    : generateTacticalBattlefield(units.length, setupRng, environment, opts.battlefield);
   if (!generated.ok) throw new Error(generated.error);
   const { grid } = generated;
   if (!placeSpawns(grid, units, formation, setupRng, generated.protectedTiles)) {
     throw new Error("Battlefield features prevent a connected unit deployment.");
+  }
+  // A generated board's foothills, read off the tiles as deployment left them (combat C6b).
+  if (!opts.made) {
+    const elevation = foothillElevation(grid);
+    if (elevation) grid.elevation = elevation;
   }
 
   const state: TacticalCombatState = {
@@ -180,11 +184,38 @@ export function createTacticalCombat(
     log: [{ kind: "phase", text: "Player Phase — Round 1", phase: "player" }],
     difficulty,
     weather: opts.weather,
+    ...(opts.elements ? { elements: opts.elements } : {}),
     formation,
     battlefield: generated.battlefield,
     ...(environment ? { environment } : {}),
+    ...(opts.turnOrder === "initiative" ? { initiative: { order: rollTacticalInitiative(units, seed) } } : {}),
   };
   return state;
+}
+
+/** The order units take their turns in (combat C6c): a d20 plus a fifth of speed each, as Classic
+ *  rolls initiative, from the fight's seed on a stream of its own, so the same fight always rolls
+ *  the same order. Ties go to the faster unit, then by id. */
+export function rollTacticalInitiative(units: readonly TacticalUnit[], seed: number): string[] {
+  const rng = deterministicRng(seed >>> 0, -2);
+  return units
+    .map((unit) => ({ unit, total: 1 + Math.floor(rng() * 20) + Math.floor(effectiveSpeed(unit) / 5) }))
+    .sort(
+      (a, b) =>
+        b.total - a.total || effectiveSpeed(b.unit) - effectiveSpeed(a.unit) || a.unit.id.localeCompare(b.unit.id),
+    )
+    .map((entry) => entry.unit.id);
+}
+
+/** Whose turn it is in a fight by initiative: the first standing unit in the order that has not acted
+ *  this round. None when everybody has, which is the round's end; always none in a fight by side. */
+export function currentTacticalActor(state: TacticalCombatState): TacticalUnit | undefined {
+  if (!state.initiative) return undefined;
+  for (const id of state.initiative.order) {
+    const unit = getUnit(state, id);
+    if (unit && unit.hp > 0 && !unit.hasActed) return unit;
+  }
+  return undefined;
 }
 
 // ── Lookups ──
@@ -265,7 +296,10 @@ export function getMovementRange(state: TacticalCombatState, unitId: string): Ta
       const nx = cx + dx;
       const ny = cy + dy;
       if (!canTraverseTile(state, unit, { x: nx, y: ny })) continue;
-      const enterCost = terrainInfoAt(grid, nx, ny).moveCost + combatWeatherEffects(state.weather).walkingCost;
+      // A walker climbs a level for one more, comes down for nothing, and never takes a cliff (combat C6b).
+      const climb = climbCost(grid, { x: cx, y: cy }, { x: nx, y: ny });
+      if (climb === null) continue;
+      const enterCost = terrainInfoAt(grid, nx, ny).moveCost + combatWeatherEffects(state.weather).walkingCost + climb;
       const newCost = bestCost + enterCost;
       if (newCost > unit.movement) continue;
       const key = `${nx},${ny}`;
@@ -301,10 +335,7 @@ export function getTargetsInRange(state: TacticalCombatState, unitId: string, fr
   const from = fromTile ?? { x: unit.x, y: unit.y };
   return aliveUnits(state)
     .filter((t) => t.side !== unit.side)
-    .filter((t) => {
-      const d = manhattan(from, t);
-      return d >= unit.attackRange.min && d <= unit.attackRange.max;
-    })
+    .filter((t) => inReach(state.grid, from, t, unit.attackRange.min, unit.attackRange.max))
     .map((t) => t.id);
 }
 
@@ -315,14 +346,22 @@ function forecastFrom(
   attacker: TacticalUnit,
   defender: TacticalUnit,
   from: TacticalCoord,
-  opts: { power?: number; element?: string; hitPenalty?: number; traits?: CombatAttackTraits } = {},
+  opts: {
+    power?: number;
+    element?: string;
+    hitPenalty?: number;
+    traits?: CombatAttackTraits;
+    /** Where cover is measured from when it is not `from`: where an area lands, as its roll does. */
+    coverFrom?: TacticalCoord;
+  } = {},
 ): { damage: number; hitChance: number; critChance: number } {
-  // Temporarily view the attacker as standing on `from` for terrain-independent math
-  // (attacker terrain doesn't affect its own outgoing hit/damage, so position only
-  // matters for range — computeDamage reads defender terrain from real coords).
+  // The attacker as standing on `from`: its own ground changes nothing it deals, but the cover between
+  // it and the defender does (combat C6a-2). computeDamage reads the defender's ground from its coords.
+  const at = opts.coverFrom ?? from;
+  const placed = { ...attacker, x: at.x, y: at.y };
   const hc = Math.max(
     0,
-    hitChance(state.grid, attacker, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
+    hitChance(state.grid, placed, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
   );
   const cc = critChance(attacker, defender);
   const dmg = computeDamage({
@@ -333,27 +372,41 @@ function forecastFrom(
     crit: false,
     difficulty: state.difficulty,
     weather: state.weather,
+    elements: state.elements,
     power: opts.power,
     element: opts.element,
   });
-  void from;
   return { damage: dmg, hitChance: hc, critChance: cc };
 }
 
 /** FE-style forecast from the attacker's CURRENT tile. Matches `applyAction` statistically. */
-export function forecastAttack(state: TacticalCombatState, attackerId: string, defenderId: string): TacticalForecast {
+export function forecastAttack(
+  state: TacticalCombatState,
+  attackerId: string,
+  defenderId: string,
+  /** The skill it is made with, when one: an area's cover is read from where it lands. */
+  skill?: CombatSkill,
+): TacticalForecast {
   const attacker = getUnit(state, attackerId);
   const defender = getUnit(state, defenderId);
   if (!attacker || !defender) {
     return { damage: 0, hitChance: 0, critChance: 0, hits: 0 };
   }
-  const main = forecastFrom(state, attacker, defender, { x: attacker.x, y: attacker.y });
+  const main = forecastFrom(
+    state,
+    attacker,
+    defender,
+    { x: attacker.x, y: attacker.y },
+    {
+      ...(skill?.areaRadius ? { coverFrom: { x: defender.x, y: defender.y } } : {}),
+    },
+  );
   const forecast: TacticalForecast = { ...main, hits: 1 };
 
-  // Counter: defender survives an expected hit and can reach back at basic range.
+  // Counter: defender survives an expected hit and can reach back at basic range, by the same test the
+  // counter itself is made by (sight, and the reach higher ground gives).
   const expected = defender.hp - main.damage;
-  const dist = manhattan(attacker, defender);
-  if (expected > 0 && dist >= defender.attackRange.min && dist <= defender.attackRange.max) {
+  if (expected > 0 && canCounter(state, attacker, defender)) {
     forecast.counter = {
       ...forecastFrom(state, defender, attacker, { x: defender.x, y: defender.y }, { hitPenalty: 10 }),
     };
@@ -372,6 +425,8 @@ interface HitOptions {
   isCounter?: boolean;
   statusEffect?: string;
   cooldownForStatus?: number;
+  /** Where cover is measured from when it is not the attacker's cell: where an area lands. */
+  coverFrom?: TacticalCoord;
 }
 
 interface HitOutcome {
@@ -404,9 +459,10 @@ function resolveHit(
   const label = opts.skillName ? `${attacker.name}'s ${opts.skillName}` : `${attacker.name}`;
   const verb = opts.isCounter ? "counters" : opts.skillName ? "strikes" : "attacks";
 
+  const from = opts.coverFrom ? { ...attacker, x: opts.coverFrom.x, y: opts.coverFrom.y } : attacker;
   const hc = Math.max(
     0,
-    hitChance(state.grid, attacker, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
+    hitChance(state.grid, from, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
   );
   if (rng() * 100 >= hc) {
     events.push({
@@ -440,12 +496,13 @@ function resolveHit(
     crit,
     difficulty: state.difficulty,
     weather: state.weather,
+    elements: state.elements,
     power: opts.power,
     element,
   });
 
   defender.hp = Math.max(0, defender.hp - damage);
-  const mult = elementMultiplier(element, defender.element);
+  const mult = elementMultiplier(element, defender.element, state.elements);
   const elementNote = mult > 1 ? " (super effective!)" : mult < 1 ? " (resisted)" : "";
 
   if (crit) {
@@ -518,11 +575,11 @@ function resolveHit(
   return { hit: true, crit, damage, defeated };
 }
 
-/** True if `defender` can retaliate against `attacker` after surviving a strike. */
-function canCounter(attacker: TacticalUnit, defender: TacticalUnit): boolean {
+/** True if `defender` can retaliate against `attacker` after surviving a strike: in its reach and in
+ *  sight of it. */
+function canCounter(state: TacticalCombatState, attacker: TacticalUnit, defender: TacticalUnit): boolean {
   if (defender.hp <= 0) return false;
-  const d = manhattan(attacker, defender);
-  return d >= defender.attackRange.min && d <= defender.attackRange.max;
+  return inReach(state.grid, defender, attacker, defender.attackRange.min, defender.attackRange.max);
 }
 
 function skillReady(unit: TacticalUnit, skill: CombatSkill): boolean {
@@ -601,7 +658,7 @@ function performUnitAction(
       if (!target || target.hp <= 0) return;
       const outcome = resolveHit(state, unit, target, {}, events);
       // Counterattack.
-      if (outcome.hit && !outcome.defeated && canCounter(unit, target)) {
+      if (outcome.hit && !outcome.defeated && canCounter(state, unit, target)) {
         resolveHit(state, target, unit, { isCounter: true, hitPenalty: 10 }, events);
       }
       return;
@@ -691,9 +748,12 @@ function performUnitAction(
       const target = getUnit(state, action.targetId ?? "");
       if (!target || target.hp <= 0) return;
       if ((skill.areaRadius ?? 0) > 0) {
+        // It spreads from where it lands, as far as the radius and the sight lines from there reach.
         const targets = aliveUnits(state).filter(
           (other) =>
-            manhattan(target, other) <= skill.areaRadius! && (skill.friendlyFire === true || other.side !== unit.side),
+            manhattan(target, other) <= skill.areaRadius! &&
+            hasLineOfSight(state.grid, target, other) &&
+            (skill.friendlyFire === true || other.side !== unit.side),
         );
         for (const other of targets)
           resolveHit(
@@ -707,6 +767,7 @@ function performUnitAction(
               skillName: skill.name,
               statusEffect: skill.statusEffect,
               cooldownForStatus: skill.cooldown,
+              coverFrom: target,
             },
             events,
           );
@@ -726,7 +787,7 @@ function performUnitAction(
         },
         events,
       );
-      if (outcome.hit && !outcome.defeated && canCounter(unit, target)) {
+      if (outcome.hit && !outcome.defeated && canCounter(state, unit, target)) {
         resolveHit(state, target, unit, { isCounter: true, hitPenalty: 10 }, events);
       }
       return;
@@ -784,7 +845,9 @@ function tickRound(state: TacticalCombatState, events: TacticalEvent[]): void {
 
     u.hasMoved = false;
     u.hasActed = false;
-    u.defending = false;
+    // By initiative a guard lasts until its holder's own next turn, which may come late in the next
+    // round; by side every guard drops as the round turns.
+    if (!state.initiative) u.defending = false;
   }
 }
 
@@ -864,9 +927,10 @@ export function validateTacticalUnitAction(
       if (!target || target.hp <= 0) return { ok: false, error: "Invalid attack target." };
       if (target.side === unit.side) return { ok: false, error: "Cannot attack an ally." };
       const d = manhattan(fromTile, target);
-      if (d < unit.attackRange.min || d > unit.attackRange.max) {
+      if (d < unit.attackRange.min || d > reachFrom(next.grid, fromTile, target, unit.attackRange.max)) {
         return { ok: false, error: `${target.name} is out of attack range.` };
       }
+      if (!hasLineOfSight(next.grid, fromTile, target)) return { ok: false, error: `${target.name} is out of sight.` };
       break;
     }
 
@@ -886,6 +950,8 @@ export function validateTacticalUnitAction(
         const d = manhattan(fromTile, target);
         const max = skill.range ?? Math.max(unit.attackRange.max, 2);
         if (d < 1 || d > max) return { ok: false, error: `${target.name} is out of skill range.` };
+        if (!hasLineOfSight(next.grid, fromTile, target))
+          return { ok: false, error: `${target.name} is out of sight.` };
       } else {
         // heal/buff/debuff — must target a valid unit (ally for heal/buff, enemy for debuff) within support range.
         const target = getUnit(next, action.targetId ?? unit.id);
@@ -893,8 +959,11 @@ export function validateTacticalUnitAction(
         const wantAlly = skill.type !== "debuff";
         if (wantAlly && target.side !== unit.side) return { ok: false, error: "That skill targets allies." };
         if (!wantAlly && target.side === unit.side) return { ok: false, error: "That skill targets enemies." };
-        const d = manhattan(fromTile, target);
+        // A unit aiming at itself is where it will stand, not where it stood.
+        const at = target.id === unit.id ? fromTile : target;
+        const d = manhattan(fromTile, at);
         if (d > (skill.range ?? 2)) return { ok: false, error: `${target.name} is out of support range.` };
+        if (!hasLineOfSight(next.grid, fromTile, at)) return { ok: false, error: `${target.name} is out of sight.` };
       }
       break;
     }
@@ -902,8 +971,10 @@ export function validateTacticalUnitAction(
     case "item": {
       const target = getUnit(next, action.targetId);
       if (!target || target.hp <= 0) return { ok: false, error: "Invalid item target." };
-      const d = manhattan(fromTile, target);
+      const at = target.id === unit.id ? fromTile : target;
+      const d = manhattan(fromTile, at);
       if (d > 2) return { ok: false, error: `${target.name} is out of item range.` };
+      if (!hasLineOfSight(next.grid, fromTile, at)) return { ok: false, error: `${target.name} is out of sight.` };
       break;
     }
 
@@ -929,6 +1000,12 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
 
   if (action.type === "endTurn") {
     if (next.phase !== "player") return { ok: false, error: "Not the player phase." };
+    // By initiative it ends the turn of the one unit whose turn it is; the rest come round in order.
+    if (next.initiative) {
+      const current = currentTacticalActor(next);
+      if (current) current.hasActed = true;
+      return { ok: true, state: next, events };
+    }
     for (const u of aliveUnits(next, "party")) u.hasActed = true;
     next.phase = "enemy";
     events.push({ kind: "phase", text: "Enemy Phase", phase: "enemy" });
@@ -943,6 +1020,10 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
   if (unit.hp <= 0) return { ok: false, error: `${unit.name} is defeated.` };
   if (unit.side !== "party") return { ok: false, error: "You can only command party units." };
   if (unit.hasActed) return { ok: false, error: `${unit.name} has already acted this turn.` };
+  if (next.initiative && action.type !== "control") {
+    const current = currentTacticalActor(next);
+    if (current?.id !== unit.id) return { ok: false, error: `It is ${current?.name ?? "nobody"}'s turn.` };
+  }
 
   if (action.type === "control") {
     if (action.controller !== "manual" && action.controller !== "ai")
@@ -960,9 +1041,10 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
 
   // Terminal check (an attack may have wiped the enemy team mid-phase).
   if (!checkTerminal(next, events)) {
-    // Auto-advance to enemy phase once every living party unit has acted.
+    // Auto-advance to enemy phase once every living party unit has acted. By initiative the turns are
+    // run in order by applyTacticalTurn instead.
     const anyPending = aliveUnits(next, "party").some((u) => !u.hasActed);
-    if (!anyPending) {
+    if (!anyPending && !next.initiative) {
       next.phase = "enemy";
       events.push({ kind: "phase", text: "Enemy Phase", phase: "enemy" });
     }

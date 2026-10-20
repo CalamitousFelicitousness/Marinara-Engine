@@ -5,6 +5,7 @@ import {
   getRoleplayPrivateCommands,
   getRoleplayCommandActivity,
   getRoleplayWhispers,
+  getRoleplayDocuments,
   getRoleplayCommandContentOffset,
   ROLEPLAY_COMMAND_KEYS,
   normalizeChatSummaryEntries,
@@ -19,6 +20,12 @@ import {
 import { parseQuotedParam } from "../conversation/character-commands.js";
 import { wrapContent } from "../prompt/format-engine.js";
 import { normalizeCharacterLookupName } from "../game/name-normalization.js";
+import { parseExtra } from "./prompt-attachments.js";
+import {
+  dropPromptHistoryMessages,
+  WHISPER_ONLY_PLACEHOLDER,
+  type GenerationPromptMessage,
+} from "./prompt-message-scope.js";
 
 export type { RoleplayCommand } from "@marinara-engine/shared";
 
@@ -136,9 +143,12 @@ function parseCommands(
   activity: RoleplayCommandActivity[];
   invalid: number;
   roll?: { command: Extract<RoleplayCommand, { type: "roll" }>; start: number; end: number };
+  /** Where each command was in `content`, kept apart so only whispers save a place. */
+  positions: Map<RoleplayCommandActivity, number>;
 } {
   const commands: RoleplayCommand[] = [];
   const activity: RoleplayCommandActivity[] = [];
+  const positions = new Map<RoleplayCommandActivity, number>();
   let content = "";
   let cursor = 0;
   let invalid = 0;
@@ -171,11 +181,13 @@ function parseCommands(
     const command = end - match.index <= MAX_COMMAND_LENGTH ? readCommand(match[1]!.toLowerCase(), body) : null;
     if (command && commands.length < 24) {
       commands.push(command);
-      activity.push({
+      const item = {
         command,
         raw: text.slice(match.index, end),
         ...(command.type === "whisper" ? { contentOffset: content.length } : {}),
-      });
+      };
+      activity.push(item);
+      positions.set(item, content.length);
       if (command.type === "roll" && !roll) roll = { command, start: match.index, end };
     } else recordInvalid(match[1]!.toLowerCase(), text.slice(match.index, end));
     cursor = end;
@@ -193,7 +205,7 @@ function parseCommands(
     recordInvalid("[whisper".startsWith(suffix) ? "whisper" : "notes", content.slice(lastBracket));
     content = content.slice(0, lastBracket);
   }
-  return { content, commands, activity, invalid, roll };
+  return { content, commands, activity, invalid, roll, positions };
 }
 
 export function parseRoleplayCommands(text: string) {
@@ -205,12 +217,16 @@ export function parseRoleplayUserCommands(text: string) {
   return parseCommands(text, true);
 }
 
-/** Preserve per-swipe activities; new user tags can only write notes or whisper to a current character. */
+/**
+ * Preserve per-swipe activities; new user tags can only write notes or whisper to a current character, or, with
+ * `persona` (a character's or narrator's message being edited), to the persona as that message's own whispers can.
+ */
 export function prepareUserRoleplayCommands(args: {
   content: string;
   extra: Record<string, unknown>;
   metadata: Record<string, unknown>;
   characters: readonly { id: string; name: string }[];
+  persona?: { id: string; name: string };
 }): { content: string; extra: Record<string, unknown> } {
   const parsed = parseRoleplayUserCommands(args.content);
   if (!parsed.activity.length) return { content: parsed.content, extra: args.extra };
@@ -223,8 +239,13 @@ export function prepareUserRoleplayCommands(args: {
       const matches = args.characters.filter(
         (character) => normalizeCharacterLookupName(character.name) === recipientName,
       );
-      if (matches.length !== 1) activity.error = "roleplay.commands.errors.whisperRecipient";
-      else activity.whisperRecipient = { id: matches[0]!.id, kind: "character" };
+      const recipient = args.persona
+        ? resolveRoleplayWhisperRecipient(activity.command.character, args.characters, args.persona)
+        : matches.length === 1
+          ? ({ id: matches[0]!.id, kind: "character" } as const)
+          : null;
+      if (recipient) activity.whisperRecipient = recipient;
+      else activity.error = "roleplay.commands.errors.whisperRecipient";
     }
     if (activity.command.type === "whisper") {
       const offset = activity.contentOffset ?? parsed.content.length;
@@ -331,47 +352,141 @@ export function resolveRoleplayWhisperRecipient(
   return match ? { id: match.id, kind: match.kind } : null;
 }
 
+/**
+ * Messages hidden from this character through its own hide list that still carry a whisper to it.
+ * A whisper always reaches its recipient; hiding from everyone still removes it (#7191).
+ */
+export function roleplayHiddenWhisperMessageIds(
+  history: readonly HistoryMessage[],
+  characterId: string | null,
+): Set<string> {
+  const ids = new Set<string>();
+  if (!characterId) return ids;
+  for (const message of history) {
+    const extra = parseExtra(message.extra);
+    if (
+      typeof message.id === "string" &&
+      (message.role === "assistant" || message.role === "user") &&
+      extra.hiddenFromAI !== true &&
+      Array.isArray(extra.hiddenFromAICharacterIds) &&
+      extra.hiddenFromAICharacterIds.includes(characterId) &&
+      getRoleplayWhispers(extra).some(({ recipient }) => recipient.kind === "character" && recipient.id === characterId)
+    )
+      ids.add(message.id);
+  }
+  return ids;
+}
+
+/** A message's visible text, without private tags the user may have typed into it. */
+function visibleBody(message: HistoryMessage): string {
+  const content = typeof message.content === "string" ? message.content : "";
+  return message.role === "user" ? parseRoleplayUserCommands(content).content : content;
+}
+
+/**
+ * Messages that hold only a whisper, with no text or attachment. Advanced Memory keeps no empty message,
+ * so it adds these to its window separately (see selectAdvancedMemoryWhisperOnlyIds).
+ */
+export function roleplayWhisperOnlyMessageIds(history: readonly HistoryMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of history) {
+    const extra = parseExtra(message.extra);
+    if (
+      typeof message.id === "string" &&
+      (message.role === "assistant" || message.role === "user") &&
+      extra.hiddenFromAI !== true &&
+      extra.commandOnly !== true &&
+      !visibleBody(message).trim() &&
+      !(Array.isArray(extra.attachments) && extra.attachments.length > 0) &&
+      !getRoleplayDocuments(extra).length &&
+      getRoleplayWhispers(extra).length > 0
+    )
+      ids.add(message.id);
+  }
+  return ids;
+}
+
+/** The latest user turn's text for macros and searches. A turn that is only a whisper has none to share. */
+export function latestRoleplayUserInput(
+  messages: readonly { role: string; content: string }[],
+  history: readonly HistoryMessage[],
+): string | undefined {
+  const message = [...messages].reverse().find((candidate) => candidate.role === "user");
+  const id = (message as { id?: unknown } | undefined)?.id;
+  return typeof id === "string" && roleplayWhisperOnlyMessageIds(history.filter((source) => source.id === id)).has(id)
+    ? ""
+    : message?.content;
+}
+
+type RoleplayWhisper = ReturnType<typeof getRoleplayWhispers>[number];
+
+/**
+ * Where each whisper goes in `text`, a prompt body built from `source`, earliest first. History wrappers shift
+ * saved offsets, so the unchanged source body comes first, then edit anchors. A stand-in's body, like a
+ * whisper-only message's, is its placeholder, and its whispers follow the placeholder, since their saved offsets
+ * point into text the prompt does not show.
+ */
+function placeRoleplayWhispers(
+  text: string,
+  source: HistoryMessage,
+  whispers: readonly RoleplayWhisper[],
+  standIn: boolean,
+): Array<RoleplayWhisper & { offset: number }> {
+  const placeholder = standIn || !visibleBody(source).trim();
+  const sourceText = placeholder ? WHISPER_ONLY_PLACEHOLDER : typeof source.content === "string" ? source.content : "";
+  const sourceStart = sourceText ? text.indexOf(sourceText) : -1;
+  const hasSource = sourceStart >= 0 && sourceStart === text.lastIndexOf(sourceText);
+  return whispers
+    .map((whisper) => ({
+      ...whisper,
+      offset: placeholder
+        ? hasSource
+          ? sourceStart + sourceText.length
+          : text.length
+        : (hasSource ? sourceStart : 0) +
+          getRoleplayCommandContentOffset(hasSource ? sourceText : text, whisper.activity),
+    }))
+    .sort((a, b) => a.offset - b.offset || a.index - b.index);
+}
+
 /** Insert secrets at their saved positions in the final viewer's retained history, after copying shared prompts. */
 export function appendRoleplayWhispers(
-  prompt: Array<{ id?: string | null; contextKind?: string; content: string }>,
+  prompt: GenerationPromptMessage[],
   history: readonly HistoryMessage[],
   viewer: RoleplayWhisperRecipient | null,
   narratorId: string | null,
 ): boolean {
-  if (!viewer) return false;
   const sources = new Map(history.map((message) => [message.id, message]));
-  let added = false;
-  for (const message of prompt) {
-    if (!message.id || message.contextKind !== "history") continue;
-    const source = sources.get(message.id);
-    if (source?.role !== "assistant" && source?.role !== "user") continue;
-    let extra = source.extra;
-    if (typeof extra === "string") {
-      try {
-        extra = JSON.parse(extra);
-      } catch {
-        continue;
-      }
-    }
-    if (!extra || typeof extra !== "object") continue;
-    const whispers = getRoleplayWhispers(extra as Record<string, unknown>).filter(
+  // A whisper-only stand-in delivers only the viewer's own whispers, never the narrator's view.
+  const whispersFor = (message: GenerationPromptMessage) => {
+    const source = sources.get(message.whisperSourceId ?? message.id);
+    if (!viewer || (source?.role !== "assistant" && source?.role !== "user")) return [];
+    return getRoleplayWhispers(parseExtra(source.extra)).filter(
       ({ recipient }) =>
-        (viewer.kind === "character" && viewer.id === narratorId) ||
+        (!message.whisperSourceId && viewer.kind === "character" && viewer.id === narratorId) ||
         (viewer.kind === recipient.kind && viewer.id === recipient.id),
     );
-    if (!whispers.length) continue;
-    // History wrappers shift saved offsets. Prefer the unchanged source body, then fall back to edit anchors.
-    const sourceText = typeof source.content === "string" ? source.content : "";
-    const sourceStart = sourceText ? message.content.indexOf(sourceText) : -1;
-    const hasSource = sourceStart >= 0 && sourceStart === message.content.lastIndexOf(sourceText);
-    const positioned = whispers
-      .map((whisper) => ({
-        ...whisper,
-        offset:
-          (hasSource ? sourceStart : 0) +
-          getRoleplayCommandContentOffset(hasSource ? sourceText : message.content, whisper.activity),
-      }))
-      .sort((a, b) => a.offset - b.offset || a.index - b.index);
+  };
+  // A message that is only a whisper is not there at all for anyone it does not reach, unless the user shared
+  // a private note on it with them.
+  const whisperOnly = roleplayWhisperOnlyMessageIds(history);
+  dropPromptHistoryMessages(
+    prompt,
+    (message) =>
+      !!message.id &&
+      whisperOnly.has(message.id) &&
+      !whispersFor(message).length &&
+      !(
+        viewer?.kind === "character" && readMessagePrivateNoteRecipientId(sources.get(message.id)?.extra) === viewer.id
+      ),
+  );
+  let added = false;
+  for (const message of prompt) {
+    if (message.contextKind !== "history") continue;
+    const source = sources.get(message.whisperSourceId ?? message.id);
+    const whispers = whispersFor(message);
+    if (!source || !whispers.length) continue;
+    const positioned = placeRoleplayWhispers(message.content, source, whispers, !!message.whisperSourceId);
     for (const { command, offset } of positioned.reverse()) {
       const fragment = `\n\n[Private whisper to ${command.character} (known only to this recipient and the appointed narrator)]\n${command.text}\n[End of private whisper]\n\n`;
       message.content = message.content.slice(0, offset) + fragment + message.content.slice(offset);
@@ -379,6 +494,153 @@ export function appendRoleplayWhispers(
     added = true;
   }
   return added;
+}
+
+/**
+ * Agents read every live whisper in Roleplay (#7430), but not in a multiplayer room: there every human
+ * participant sees agent output, and a whisper to one of them must stay theirs. Room generation runs inside
+ * currentRoomGeneration(). For agent runs started outside it, any room data that is not an ended room, including
+ * data that can't be read, counts as a room.
+ */
+export function roleplayAgentsSeeWhispers(chatMode: unknown, metadata: Record<string, unknown>): boolean {
+  const room = metadata.multiplayer;
+  return (
+    chatMode === "roleplay" &&
+    !currentRoomGeneration() &&
+    (room === undefined || room === null || parseExtra(room).status === "ended")
+  );
+}
+
+/**
+ * Where a command sits in the saved `reply`, from `prefix`, the reply text before it when parsed: after the prefix,
+ * else after its longest ending (80 to 12 characters) found exactly once, since cleanup such as a stripped
+ * "Name:" can change the start. Null when neither is found.
+ */
+export function placeAfterPrefix(reply: string, prefix: string): number | null {
+  const start = reply.indexOf(prefix);
+  if (start >= 0) return start + prefix.length;
+  for (let length = Math.min(80, prefix.length); length >= 12; length--) {
+    const anchor = prefix.slice(-length);
+    const found = reply.indexOf(anchor);
+    if (found >= 0 && found === reply.lastIndexOf(anchor)) return found + length;
+  }
+  return null;
+}
+
+/**
+ * Give each command of a reply split at scene breaks to the part its text was in, so a whisper or document keeps
+ * that part's audience. `parts` say where each starts in the whole reply and `placeOf` where a command was in it.
+ * Saved inline places move into their part. A command with no place goes to the last part, and so does an
+ * interruption, which is committed with the last part.
+ */
+export function placeRoleplayActivityInParts(
+  parts: readonly { content: string; start: number }[],
+  activity: readonly RoleplayCommandActivity[],
+  placeOf: (item: RoleplayCommandActivity) => number | null,
+): RoleplayCommandActivity[][] {
+  const placed = parts.map((): RoleplayCommandActivity[] => []);
+  for (const item of activity) {
+    const offset = item.command.type === "interrupt" ? null : placeOf(item);
+    let index = parts.length - 1;
+    if (offset !== null) {
+      index = 0;
+      while (index + 1 < parts.length && parts[index + 1]!.start < offset) index++;
+    }
+    const part = parts[index]!;
+    if (typeof item.contentOffset !== "number") {
+      placed[index]!.push(item);
+      continue;
+    }
+    const contentOffset = Math.min(Math.max(0, item.contentOffset - part.start), part.content.length);
+    placed[index]!.push({
+      ...item,
+      contentOffset,
+      contentAnchor:
+        contentOffset === 0
+          ? part.content.slice(0, 80)
+          : part.content.slice(Math.max(0, contentOffset - 80), contentOffset),
+    });
+  }
+  return placed;
+}
+
+/**
+ * A message as agents read it: `text`, the agent-facing body built from `source`, with each live whisper at its
+ * saved place, marked as private with its recipient's name from `names`. A whisper-only message, or a `standIn`,
+ * reads as its whispers alone. `names` is null where agents do not read whispers (see roleplayAgentsSeeWhispers).
+ * `limit` cuts the text and each whisper to that many characters on their own, so a long whisper cannot crowd the
+ * text out; a whisper whose place is cut off follows the cut text. A message with no whispers comes back uncut.
+ * Character responders never get this text; their whispers come from appendRoleplayWhispers.
+ */
+export function roleplayAgentText(
+  text: string,
+  source: HistoryMessage | null | undefined,
+  names: ReadonlyMap<string, string> | null,
+  standIn = false,
+  limit = Infinity,
+): string {
+  if (!names || (source?.role !== "user" && source?.role !== "assistant")) return text;
+  const whispers = getRoleplayWhispers(parseExtra(source.extra));
+  if (!whispers.length) return text;
+  let result = text;
+  let positioned: Array<RoleplayWhisper & { offset: number }>;
+  if (standIn || !visibleBody(source).trim()) {
+    // The placeholder only stands in for these whispers, so they take its place: the first one, since the
+    // message's body comes before any document text, or the end when the text has none.
+    const start = text.indexOf(WHISPER_ONLY_PLACEHOLDER);
+    if (start >= 0) result = text.slice(0, start) + text.slice(start + WHISPER_ONLY_PLACEHOLDER.length);
+    positioned = whispers.map((whisper) => ({ ...whisper, offset: start >= 0 ? start : text.length }));
+  } else positioned = placeRoleplayWhispers(text, source, whispers, false);
+  result = result.slice(0, limit);
+  const end = result.length;
+  for (const { command, recipient, offset } of positioned.reverse()) {
+    const before = result.slice(0, Math.min(offset, end));
+    const after = result.slice(Math.min(offset, end));
+    const whisper = `[Private whisper to ${names.get(recipient.id) ?? command.character}: ${command.text.slice(0, limit)}]`;
+    result = `${before}${/\S$/u.test(before) ? " " : ""}${whisper}${/^\S/u.test(after) ? " " : ""}${after}`;
+  }
+  return result;
+}
+
+/**
+ * The text a continue just added to `source`, as agents read it: only the whispers written with it, the ones after
+ * the message's `earlier` activity records, each at its saved place. They are placed in the whole message, since
+ * their saved places point into it, and the earlier text is then cut off.
+ */
+export function roleplayAgentContinuation(
+  continuation: string,
+  source: HistoryMessage | null | undefined,
+  earlier: number,
+  names: ReadonlyMap<string, string> | null,
+): string {
+  if (!names || !source) return continuation;
+  const extra = parseExtra(source.extra);
+  const added = {
+    ...source,
+    extra: { ...extra, roleplayCommandActivity: getRoleplayCommandActivity(extra).slice(earlier) },
+  };
+  const body = typeof source.content === "string" ? source.content : "";
+  const start = continuation.trim() ? body.lastIndexOf(continuation.trim()) : -1;
+  const whole = start >= 0 ? roleplayAgentText(body, added, names) : "";
+  return start >= 0 && whole.startsWith(body.slice(0, start))
+    ? whole.slice(start).trim()
+    : roleplayAgentText(continuation, added, names);
+}
+
+/** Agents' copy of a prompt, each history message read as roleplayAgentText. The prompt itself is unchanged. */
+export function roleplayAgentPrompt<T extends GenerationPromptMessage>(
+  prompt: T[],
+  history: readonly HistoryMessage[],
+  names: ReadonlyMap<string, string> | null,
+): T[] {
+  if (!names) return prompt;
+  const sources = new Map(history.map((message) => [message.id, message]));
+  return prompt.map((message) => {
+    if (message.contextKind !== "history") return message;
+    const source = sources.get(message.whisperSourceId ?? message.id);
+    const content = roleplayAgentText(message.content, source, names, !!message.whisperSourceId);
+    return content === message.content ? message : { ...message, content };
+  });
 }
 
 /** Attach a message's private note for the one character the user shared it with. */
@@ -540,7 +802,10 @@ export function buildRoleplayCommandsReminder(args: {
   const enabled = (key: RoleplayCommandKey) => isRoleplayCommandAllowed(args.metadata, key, args.characterId);
   if (enabled("illustrate") && args.availableAgentIds.has("illustrator"))
     lines.push(
-      '- [illustrate: subject="the moment, object, or interaction to depict" characters="names of involved characters, separated by commas"] requests an image using this chat\'s Illustrator settings and the named characters\' avatars. Use it to surprise the user or capture an important moment.',
+      '- [illustrate: subject="the moment, object, or interaction to depict" characters="names of involved characters, separated by commas"] requests an image using this chat\'s Illustrator settings and the named characters\' avatars. Use it to surprise the user or capture an important moment.' +
+        (args.metadata.roleplayIllustrateInline === true
+          ? " The image appears exactly where you write the command, so place it where the picture belongs: at the start, between paragraphs, or at the end."
+          : ""),
     );
   if (enabled("document"))
     lines.push(
@@ -594,7 +859,8 @@ export function appendRoleplayPromptTail(
   if (!personal && !commands) return;
   if (personal) {
     // Trackers are an earlier injection, not necessarily the last user message.
-    // Add private state only here, after the shared agent prompt has been copied.
+    // Personal notes and reminders are added only here, after the agents' copy of the prompt was made:
+    // agents read whispers (#7430), never these.
     const contextPattern = format === "markdown" ? /^#{1,2}[ \t]*Context[ \t]*$/mu : /^Context:[ \t]*$/mu;
     const contextMessage = [...messages].reverse().find((candidate) => {
       if (candidate.role !== "user" || candidate.contextKind === "history") return false;

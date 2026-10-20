@@ -41,7 +41,7 @@ import { ChatSettingsBubble } from "./ChatSettingsBubble";
 import { ChatWindowWelcomeModal } from "../modals/ChatWindowWelcomeModal";
 import { useGameModeStore } from "../../stores/game-mode.store";
 import { useGenerate } from "../../hooks/use-generate";
-import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
+import { useGenerateGallerySelfie, type ChatImage } from "../../hooks/use-gallery";
 import {
   characterKeys,
   spriteKeys,
@@ -70,13 +70,13 @@ import {
 } from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { useGameStateStore } from "../../stores/game-state.store";
-import { useGalleryStore } from "../../stores/gallery.store";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
 import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
+  normalizeAdvancedMemorySettings,
   normalizeGroupChatMode,
   normalizeManualTrackerAgentTypes,
   type GeneratedSceneVideo,
@@ -93,7 +93,7 @@ import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
-import { getChatTranslationConfig, type ChatMode } from "@marinara-engine/shared";
+import { getChatTranslationConfig, type ChatMode, type ReplyCheckupLink } from "@marinara-engine/shared";
 import { ttsService } from "../../lib/tts-service";
 import { useTTSConfig } from "../../hooks/use-tts";
 import {
@@ -108,17 +108,28 @@ import {
 } from "../../lib/tts-roleplay-speaker-extractor";
 import {
   findLatestTTSAutoplayMessage,
+  findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
+  nextTTSAutoplayReadingId,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
+  TTS_AUTOPLAY_VOICE_EVENT,
   type TTSAutoplayMessage,
   type TTSAutoplayMessageReadyDetail,
+  type TTSAutoplayVoiceDetail,
 } from "../../lib/tts-autoplay";
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, type ChatScrollToBottomDetail } from "../../lib/chat-scroll-events";
 import { CHAT_RESOURCE_AGENT_SETUP_EVENT } from "../../lib/chat-resource-drag";
 import {
   blurActiveChatFloatingUiControl,
   CHAT_FLOATING_UI_DISMISS_EVENT,
+  CHAT_LOREBOOK_ENTRIES_OPEN_REQUEST_EVENT,
+  CHAT_PEEK_PROMPT_REQUEST_EVENT,
+  CHAT_REGENERATE_REQUEST_EVENT,
+  CHAT_REPLY_CHECKUP_REQUEST_EVENT,
+  CHAT_RETRY_WITH_CONNECTION_REQUEST_EVENT,
+  CHAT_SEARCH_OPEN_REQUEST_EVENT,
+  CHAT_SETTINGS_SECTION_OPEN_REQUEST_EVENT,
   CHAT_SUMMARY_OPEN_REQUEST_EVENT,
 } from "../../lib/chat-floating-ui-events";
 import {
@@ -134,6 +145,9 @@ import {
   saveLocalSpriteVisualSettings,
   type LocalSpriteVisualSettings,
 } from "./local-sprite-visual-settings";
+import type { AvatarLayoutControls } from "./AvatarLayoutSettings";
+import type { AvatarFraming } from "../../features/avatars/contract";
+import { sameStageAvatars, type StageAvatarSummary } from "../../features/avatars/stage/avatar-stage-logic";
 import {
   SPRITE_DISPLAY_OPACITY_MAX,
   SPRITE_DISPLAY_OPACITY_MIN,
@@ -149,6 +163,8 @@ import type {
   PeekPromptData,
 } from "./chat-area.types";
 import { HomeCreditsModal } from "./HomeCreditsModal";
+import { ReplyCheckup } from "./ReplyCheckup";
+import { checkReply, replyLineFindings } from "../../lib/reply-checkup";
 import { HomeBrowserHub } from "./HomeBrowserHub";
 import { NewChatConnectionGate } from "./NewChatConnectionGate";
 import { ChatCommonOverlays, preloadChatSettingsDrawer, type ChatSettingsInitialSection } from "./ChatCommonOverlays";
@@ -209,6 +225,11 @@ type RoleplaySceneVideoPromptPreview = {
   aspectRatio: "16:9" | "9:16";
   resolution: string | null;
   maxPromptLength: number | null;
+};
+
+type ConversationVideoPromptPreview = Omit<RoleplaySceneVideoPromptPreview, "galleryImageId"> & {
+  /** The selfie the clip starts from, when First frame makes one. */
+  selfie?: { prompt: string; negativePrompt: string; width: number; height: number } | null;
 };
 
 type GenerateConversationSelfiePayload = {
@@ -579,7 +600,13 @@ export const ChatArea = memo(function ChatArea({
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
   const chatSettingsButton =
-    chat && chatSettingsHosted ? <ChatSettingsBubble chatId={chat.id} mode={readChatMode(chat)} /> : null;
+    chat && chatSettingsHosted ? (
+      <ChatSettingsBubble
+        chatId={chat.id}
+        mode={readChatMode(chat)}
+        advancedMemory={normalizeAdvancedMemorySettings(metadata.advancedMemory).enabled}
+      />
+    ) : null;
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
     return (
       <Suspense fallback={null}>
@@ -632,10 +659,12 @@ const LocalChatArea = memo(function LocalChatArea({
   const centerCompact = useUIStore((s) => s.centerCompact);
   const guideGenerations = useUIStore((s) => s.guideGenerations);
   const keepGuidanceAfterRegenerate = useUIStore((s) => s.keepGuidanceAfterRegenerate);
+  const showHistoryTrimNotice = useUIStore((s) => s.showHistoryTrimNotice);
   const intuitiveSwipeNavigation = useUIStore((s) => s.intuitiveSwipeNavigation);
   const intuitiveSwipeRerollLatest = useUIStore((s) => s.intuitiveSwipeRerollLatest);
   const editLastMessageOnArrowUp = useUIStore((s) => s.editLastMessageOnArrowUp);
   const ttsLineVolume = useUIStore((s) => s.ttsLineVolume);
+  const lastAppError = useUIStore((s) => s.lastAppError);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef(0);
@@ -658,13 +687,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const [illustratorPromptReview, setIllustratorPromptReview] = useState<IllustratorPromptReviewRequest | null>(null);
   const [illustratorPromptReviewSubmitting, setIllustratorPromptReviewSubmitting] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const [homeProfessorChatOpen, setHomeProfessorChatOpen] = useState(false);
-  const [homeProfessorChatActive, setHomeProfessorChatActive] = useState(false);
-  const homeProfessorChatOpenRef = useRef(false);
   const queryClient = useQueryClient();
-  useEffect(() => {
-    homeProfessorChatOpenRef.current = homeProfessorChatOpen;
-  }, [homeProfessorChatOpen]);
   // #5889: when Safari's autoplay policy blocks playback, the service parks in
   // "blocked" and waits for a user gesture instead of retrying - tell the user
   // the one tap that resumes it. Deduped by toast id across repeat blocks.
@@ -681,14 +704,6 @@ const LocalChatArea = memo(function LocalChatArea({
       lastTtsState = state;
     });
   }, [localizeUi]);
-  const handleHomeProfessorChatOpenChange = useCallback((open: boolean) => {
-    homeProfessorChatOpenRef.current = open;
-    if (open) setHomeProfessorChatActive(true);
-    setHomeProfessorChatOpen(open);
-  }, []);
-  const handleHomeProfessorChatExitComplete = useCallback(() => {
-    if (!homeProfessorChatOpenRef.current) setHomeProfessorChatActive(false);
-  }, []);
   // Delete dialog & multi-select state
   const [deleteDialogMessageId, setDeleteDialogMessageId] = useState<string | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
@@ -736,9 +751,6 @@ const LocalChatArea = memo(function LocalChatArea({
   }, [settingsOpen]);
   useEffect(() => {
     if (!activeChatId) return;
-    homeProfessorChatOpenRef.current = false;
-    setHomeProfessorChatOpen(false);
-    setHomeProfessorChatActive(false);
   }, [activeChatId]);
   const closeFloatingChatDrawers = useCallback(
     (event?: Event) => {
@@ -771,15 +783,35 @@ const LocalChatArea = memo(function LocalChatArea({
     return () => window.removeEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
   }, [handleOpenSettingsPanel]);
 
-  // The Chat Summary agent's "open summaries" link lands on the Chat Summary drawer.
+  // The Chat Summary agent's "open summaries" link and the omnibar's chat tool rows land on their Chat Settings drawer.
   useEffect(() => {
-    const openSummary = (event: Event) => {
-      const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
-      if (chatId !== useChatStore.getState().activeChatId) return;
-      handleOpenSettingsPanel(undefined, { initialSection: "summary" });
+    const requests = [
+      [CHAT_SUMMARY_OPEN_REQUEST_EVENT, "summary"],
+      [CHAT_LOREBOOK_ENTRIES_OPEN_REQUEST_EVENT, "active-context"],
+      [CHAT_SEARCH_OPEN_REQUEST_EVENT, "message-search"],
+    ] as const;
+    const listeners = requests.map(([eventName, initialSection]) => {
+      const listener = (event: Event) => {
+        const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
+        if (chatId !== useChatStore.getState().activeChatId) return;
+        handleOpenSettingsPanel(undefined, { initialSection });
+      };
+      window.addEventListener(eventName, listener);
+      return [eventName, listener] as const;
+    });
+    return () => listeners.forEach(([eventName, listener]) => window.removeEventListener(eventName, listener));
+  }, [handleOpenSettingsPanel]);
+
+  // UX-13: an omnibar row that names a setting inside Chat Settings opens the drawer at that section.
+  useEffect(() => {
+    const openSection = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string; section?: "advanced-parameters" | "memory-recall" }>)
+        .detail;
+      if (detail?.chatId !== useChatStore.getState().activeChatId || !detail.section) return;
+      handleOpenSettingsPanel(undefined, { initialSection: detail.section });
     };
-    window.addEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, openSummary);
-    return () => window.removeEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, openSummary);
+    window.addEventListener(CHAT_SETTINGS_SECTION_OPEN_REQUEST_EVENT, openSection);
+    return () => window.removeEventListener(CHAT_SETTINGS_SECTION_OPEN_REQUEST_EVENT, openSection);
   }, [handleOpenSettingsPanel]);
 
   useEffect(() => {
@@ -865,6 +897,37 @@ const LocalChatArea = memo(function LocalChatArea({
   const branchChat = useBranchChat();
   const branchPendingRef = useRef(false);
   const { generate, retryAgents } = useGenerate();
+  // N1: a failed reply leaves a quiet "Failed · Retry" line under the user message that
+  // triggered it — conversation/roleplay only, derived from K1's lastAppError (no new storage).
+  // Dismissed on edit (see handleEdit/handleRoleplayEdit below) and on delete
+  // (see handleDeleteConfirm below); also clears on the next successful reply
+  // since lastAppError itself clears or moves on to a different action, and
+  // hides while a reply to a newer message is still streaming.
+  const [dismissedFailedReplyId, setDismissedFailedReplyId] = useState<string | null>(null);
+  useEffect(() => {
+    setDismissedFailedReplyId(null);
+  }, [lastAppError]);
+  const failedReplyMessageId = useMemo(() => {
+    if (isStreaming) return null;
+    if (lastAppError?.action !== "Generate reply" || lastAppError.chatId !== activeChatId) return null;
+    const last = messages?.[messages.length - 1];
+    if (!last || last.role !== "user" || last.id === dismissedFailedReplyId) return null;
+    return last.id;
+  }, [isStreaming, lastAppError, activeChatId, messages, dismissedFailedReplyId]);
+  const handleRetryFailedReply = useCallback(() => {
+    if (!activeChatId || isStreaming) return;
+    void generate({ chatId: activeChatId, connectionId: null });
+  }, [activeChatId, isStreaming, generate]);
+  // The omnibar's Fix row lists the chat's other connections; picking one
+  // retries with it just for this message, without changing the chat's own
+  // connection (O4 item 3).
+  const handleRetryWithConnection = useCallback(
+    (connectionId: string) => {
+      if (!activeChatId || isStreaming) return;
+      void generate({ chatId: activeChatId, connectionId });
+    },
+    [activeChatId, isStreaming, generate],
+  );
   const generateGallerySelfie = useGenerateGallerySelfie(activeChatId ?? "");
   const { mutateAsync: setActiveSwipe } = useSetActiveSwipe(activeChatId);
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
@@ -1250,14 +1313,33 @@ const LocalChatArea = memo(function LocalChatArea({
     return parseChatMetadata(raw);
   }, [chat]);
 
+  // The latest saved layout, so edits queued before React commits each build on the one before.
+  const localSpriteVisualSettingsRef = useRef({ chatId: chat?.id, settings: localSpriteVisualSettings });
   useEffect(() => {
-    setLocalSpriteVisualSettings(loadLocalSpriteVisualSettings(chat?.id));
+    const settings = loadLocalSpriteVisualSettings(chat?.id);
+    localSpriteVisualSettingsRef.current = { chatId: chat?.id, settings };
+    setLocalSpriteVisualSettings(settings);
   }, [chat?.id]);
 
+  /** Saves a change to this chat's layout on this device, at the time of the edit (never in a state updater).
+   *  A function patch reads the latest layout. An edit from a chat that is no longer open is dropped. */
   const patchLocalSpriteVisualSettings = useCallback(
-    (patch: Partial<LocalSpriteVisualSettings>) => {
-      if (!chat?.id) return;
-      setLocalSpriteVisualSettings((previous) => saveLocalSpriteVisualSettings(chat.id, patch, previous));
+    (
+      patch:
+        | Partial<LocalSpriteVisualSettings>
+        | ((previous: LocalSpriteVisualSettings) => Partial<LocalSpriteVisualSettings>),
+    ) => {
+      const chatId = chat?.id;
+      if (!chatId || useChatStore.getState().activeChatId !== chatId) return;
+      const latest = localSpriteVisualSettingsRef.current;
+      const previous = latest.chatId === chatId ? latest.settings : loadLocalSpriteVisualSettings(chatId);
+      const next = saveLocalSpriteVisualSettings(
+        chatId,
+        typeof patch === "function" ? patch(previous) : patch,
+        previous,
+      );
+      localSpriteVisualSettingsRef.current = { chatId, settings: next };
+      setLocalSpriteVisualSettings(next);
     },
     [chat?.id],
   );
@@ -1398,6 +1480,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const [conversationSelfieReviewItems, setConversationSelfieReviewItems] = useState<ImagePromptReviewItem[]>([]);
   const [conversationSelfieReviewSubmitting, setConversationSelfieReviewSubmitting] = useState(false);
   const roleplaySceneVideoGeneratingRef = useRef(false);
+  const conversationVideoGeneratingRef = useRef(false);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1535,12 +1618,11 @@ const LocalChatArea = memo(function LocalChatArea({
           }
         }
 
-        const result = await api.post<{ video: GeneratedSceneVideo }>("/gallery/generate-scene-video", payload, {
+        // The video shows inline under its message; Pin video in the gallery still floats it.
+        await api.post<{ video: GeneratedSceneVideo }>("/gallery/generate-scene-video", payload, {
           signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
         });
-        const galleryStore = useGalleryStore.getState();
-        galleryStore.pinVideo(result.video);
-        galleryStore.syncLatestViewer({ ...result.video, kind: "video" as const });
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
         void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
         toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
       } catch (error) {
@@ -1564,6 +1646,119 @@ const LocalChatArea = memo(function LocalChatArea({
       queryClient,
       localizeUi,
     ],
+  );
+
+  /** A Conversation character sends a video message, or animates a gallery picture under the newest reply. */
+  const handleGenerateConversationVideo = useCallback(
+    async (characterId?: string, galleryImageId?: string) => {
+      if (!activeChatId || chatMode !== "conversation") return;
+      const targetCharacterId =
+        characterId && chatCharIds.includes(characterId)
+          ? characterId
+          : (chatCharIds.find((id) => characterMap.has(id)) ?? chatCharIds[0]);
+      if (!targetCharacterId) throw new Error(localizeUi("ui.chat.chatarea.addACharacterBeforeSendingAVideo"));
+      // One at a time: a second action would find the review window taken, and its cleanup would cancel the first.
+      if (conversationVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
+      const payload: Record<string, unknown> = {
+        characterId: targetCharacterId,
+        ...(galleryImageId ? { galleryImageId } : {}),
+        queueMediaGenerationRequests: useUIStore.getState().queueImageGenerationRequests,
+        debugMode: useUIStore.getState().debugMode,
+      };
+      try {
+        conversationVideoGeneratingRef.current = true;
+        if (useUIStore.getState().reviewImagePromptsBeforeSend) {
+          let preview: ConversationVideoPromptPreview | undefined;
+          try {
+            preview = await api.post<ConversationVideoPromptPreview>(
+              `/gallery/${activeChatId}/video`,
+              { ...payload, previewOnly: true },
+              { signal: AbortSignal.timeout(MEDIA_PROMPT_PREVIEW_TIMEOUT_MS) },
+            );
+          } catch (error) {
+            if (!isMediaPromptPreviewTimeout(error)) throw error;
+            toast.error(localizeUi("ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault"));
+          }
+          if (preview) {
+            const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
+              (value): value is string => Boolean(value),
+            );
+            const items: ImagePromptReviewItem[] = [
+              {
+                id: "conversation-video",
+                kind: "video",
+                title: localizeUi(
+                  galleryImageId ? "ui.chat.chatarea.animateSelectedPicture" : "ui.chat.chatarea.videoMessage",
+                ),
+                prompt: preview.prompt,
+                details: details.join(" | "),
+                maxLength: preview.maxPromptLength ?? undefined,
+              },
+            ];
+            // A selfie first frame is reviewed with the clip, as /selfie is reviewed on its own.
+            if (preview.selfie) {
+              items.push({
+                id: "conversation-video-selfie",
+                kind: "portrait",
+                title: localizeUi("ui.chat.chatarea.videoFirstFrameSelfie"),
+                prompt: preview.selfie.prompt,
+                negativePrompt: preview.selfie.negativePrompt || undefined,
+                width: preview.selfie.width,
+                height: preview.selfie.height,
+              });
+            }
+            // Close only the review this call opened (another chat's request may hold the window), and close it as
+            // soon as its prompts are read, not after the minutes-long clip, when a newer review may be showing.
+            const reviewOpened = !roleplayVideoReviewResolveRef.current;
+            const overrides = await openRoleplayVideoPromptReview(items);
+            if (reviewOpened) closeRoleplayVideoPromptReview(null);
+            if (!overrides) return;
+            const reviewedPrompt = overrides.find((item) => item.id === "conversation-video")?.prompt.trim();
+            if (!reviewedPrompt) return;
+            payload.promptOverride = reviewedPrompt;
+            const reviewedSelfie = overrides.find((item) => item.id === "conversation-video-selfie");
+            if (reviewedSelfie?.prompt.trim()) {
+              payload.selfiePromptOverride = reviewedSelfie.prompt.trim();
+              if (reviewedSelfie.negativePrompt !== undefined) {
+                payload.selfieNegativePromptOverride = reviewedSelfie.negativePrompt;
+              }
+            }
+          }
+        }
+        const result = await api.post<{ messageId?: string | null }>(`/gallery/${activeChatId}/video`, payload, {
+          signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
+        });
+        // Saved but not added to the chat: say where it is, since the Videos tab may not be the one open.
+        if (!result?.messageId) toast(localizeUi("ui.chat.chatarea.videoSavedToGalleryOnly"));
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
+      } finally {
+        conversationVideoGeneratingRef.current = false;
+        // A selfie or clip can be saved even when the request then failed, so the Gallery always refreshes.
+        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+        void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
+      }
+    },
+    [
+      activeChatId,
+      characterMap,
+      chatCharIds,
+      chatMode,
+      closeRoleplayVideoPromptReview,
+      openRoleplayVideoPromptReview,
+      queryClient,
+      localizeUi,
+    ],
+  );
+
+  // Stable, so the Gallery's memoized actions don't change on every render (while a reply streams, too).
+  const handleConversationGalleryVideo = useCallback(
+    (characterId?: string) => handleGenerateConversationVideo(characterId),
+    [handleGenerateConversationVideo],
+  );
+  // Animate sends as the character picked in the Gallery, the same one its Video button uses.
+  const handleConversationAnimateImage = useCallback(
+    (image: ChatImage, characterId?: string) => handleGenerateConversationVideo(characterId, image.id),
+    [handleGenerateConversationVideo],
   );
 
   const handleGenerateConversationSelfie = useCallback(
@@ -1860,6 +2055,100 @@ const LocalChatArea = memo(function LocalChatArea({
     [chat?.id, patchLocalSpriteVisualSettings, spriteCharacterVisualSettings, spritePlacements, spritePosition],
   );
 
+  // ── Avatars: arranged, sized and framed from Chat Settings → Agents → Avatars ──
+  const handleAvatarScaleChange = useCallback(
+    (ownerId: string, scale: number) =>
+      patchLocalSpriteVisualSettings((previous) => {
+        const overrides = normalizeSpriteCharacterVisualSettingsMap(
+          Object.prototype.hasOwnProperty.call(previous, "characterOverrides")
+            ? previous.characterOverrides
+            : chatMeta.spriteCharacterVisualSettings,
+        );
+        return {
+          characterOverrides: { ...overrides, [ownerId]: { ...overrides[ownerId], fullBodySpriteScale: scale } },
+        };
+      }),
+    [chatMeta.spriteCharacterVisualSettings, patchLocalSpriteVisualSettings],
+  );
+  const handleAvatarFramingChange = useCallback(
+    (ownerId: string, framing: AvatarFraming) =>
+      patchLocalSpriteVisualSettings((previous) => ({
+        avatarFramings: { ...previous.avatarFramings, [ownerId]: framing },
+      })),
+    [patchLocalSpriteVisualSettings],
+  );
+  const handleResetAvatarPlacements = useCallback(() => {
+    if (!chat?.id) return;
+    pendingSpritePlacements.current = Object.fromEntries(
+      Object.entries(pendingSpritePlacements.current).filter(([key]) => !key.endsWith(":avatar")),
+    );
+    patchLocalSpriteVisualSettings({ spritePlacements: pendingSpritePlacements.current });
+  }, [chat?.id, patchLocalSpriteVisualSettings]);
+  const toggleSpriteArrange = useCallback(() => setSpriteArrangeMode((previous) => !previous), []);
+  const [stageAvatars, setStageAvatars] = useState<StageAvatarSummary[]>([]);
+  const handleStageAvatarsChange = useCallback(
+    (avatars: StageAvatarSummary[]) =>
+      setStageAvatars((previous) => (sameStageAvatars(previous, avatars) ? previous : avatars)),
+    [],
+  );
+  const gameFullBodySpriteScale = useUIStore((s) => s.gameFullBodySpriteScale);
+  // Game avatars default to Game's full-body sprite size; Roleplay and Visual Novel ones to the chat's.
+  const avatarScale =
+    chatMode === "game"
+      ? (localSpriteVisualSettings.fullBodySpriteScale ?? gameFullBodySpriteScale)
+      : fullBodySpriteScale;
+  const avatarFramings = localSpriteVisualSettings.avatarFramings;
+  const avatarLayout = useMemo<AvatarLayoutControls>(
+    () => ({
+      avatars: stageAvatars,
+      scales: Object.fromEntries(
+        stageAvatars.map(({ ownerId }) => [
+          ownerId,
+          spriteCharacterVisualSettings[ownerId]?.fullBodySpriteScale ?? avatarScale,
+        ]),
+      ),
+      framings: avatarFramings ?? {},
+      hasPlacements: Object.keys(spritePlacements).some((key) => key.endsWith(":avatar")),
+      arranging: spriteArrangeMode,
+      onToggleArrange: toggleSpriteArrange,
+      onScaleChange: handleAvatarScaleChange,
+      onFramingChange: handleAvatarFramingChange,
+      onResetPlacements: handleResetAvatarPlacements,
+    }),
+    [
+      avatarFramings,
+      avatarScale,
+      handleAvatarFramingChange,
+      handleAvatarScaleChange,
+      handleResetAvatarPlacements,
+      spriteArrangeMode,
+      spriteCharacterVisualSettings,
+      spritePlacements,
+      stageAvatars,
+      toggleSpriteArrange,
+    ],
+  );
+  const gameAvatarStage = useMemo(
+    () => ({
+      placements: spritePlacements,
+      characterVisualSettings: spriteCharacterVisualSettings,
+      scale: avatarScale,
+      framings: avatarFramings,
+      editing: spriteArrangeMode,
+      onPlacementChange: handleSpritePlacementChange,
+      onShownChange: handleStageAvatarsChange,
+    }),
+    [
+      avatarFramings,
+      avatarScale,
+      handleSpritePlacementChange,
+      handleStageAvatarsChange,
+      spriteArrangeMode,
+      spriteCharacterVisualSettings,
+      spritePlacements,
+    ],
+  );
+
   // Set of active agent type IDs for this chat.
   const enabledAgentTypes = useMemo(() => {
     const set = new Set<string>();
@@ -1902,8 +2191,10 @@ const LocalChatArea = memo(function LocalChatArea({
       fullBodySpriteOpacity,
       expressionAvatarsEnabled: expressionAvatarsPreferenceEnabled,
       characterOverrides: spriteCharacterVisualSettings,
+      avatarFramings,
     }),
     [
+      avatarFramings,
       expressionAvatarsPreferenceEnabled,
       expressionSpriteOpacity,
       expressionSpriteScale,
@@ -1988,9 +2279,10 @@ const LocalChatArea = memo(function LocalChatArea({
   const handleDeleteConfirm = useCallback(() => {
     if (deleteDialogMessageId) {
       deleteMessage.mutate(deleteDialogMessageId);
+      if (deleteDialogMessageId === failedReplyMessageId) setDismissedFailedReplyId(deleteDialogMessageId);
     }
     setDeleteDialogMessageId(null);
-  }, [deleteDialogMessageId, deleteMessage]);
+  }, [deleteDialogMessageId, deleteMessage, failedReplyMessageId]);
 
   const handleDeleteSwipe = useCallback(() => {
     const messageId = deleteDialogMessageId;
@@ -2295,15 +2587,17 @@ const LocalChatArea = memo(function LocalChatArea({
   const handleEdit = useCallback(
     (messageId: string, content: string) => {
       updateMessage({ messageId, content });
+      if (messageId === failedReplyMessageId) setDismissedFailedReplyId(messageId);
     },
-    [updateMessage],
+    [updateMessage, failedReplyMessageId],
   );
 
   const handleRoleplayEdit = useCallback(
     async (messageId: string, content: string) => {
       await updateMessageAsync({ messageId, content });
+      if (messageId === failedReplyMessageId) setDismissedFailedReplyId(messageId);
     },
-    [updateMessageAsync],
+    [updateMessageAsync, failedReplyMessageId],
   );
 
   const handleToggleConversationStart = useCallback(
@@ -2374,6 +2668,32 @@ const LocalChatArea = memo(function LocalChatArea({
     [activeChatId, forkScene, isForking, isStreaming],
   );
 
+  // R2: the reply checkup reads facts already saved on a reply (no model call).
+  const checkMessage = useCallback(
+    (message: { content: string; extra?: unknown; characterId?: string | null }) =>
+      checkReply(message, {
+        connectionId: chat?.connectionId ?? null,
+        character: chatCharacterRows.find((row) => row.id === message.characterId) ?? null,
+      }),
+    [chat?.connectionId, chatCharacterRows],
+  );
+
+  const handleReplyCheckupLink = useCallback(
+    (link: ReplyCheckupLink) => {
+      if (link.kind === "chat-settings") {
+        handleOpenSettingsPanel(undefined, { initialSection: link.section });
+        return;
+      }
+      const ui = useUIStore.getState();
+      if (link.resource === "connection") ui.openConnectionDetail(link.id);
+      // F7: land on the exact setting the finding names, not the editor's default tab.
+      else if (link.resource === "lorebook")
+        ui.openLorebookDetail(link.id, { initialTab: "overview", field: "token-budget" });
+      else ui.openCharacterDetail(link.id, { initialTab: "card" });
+    },
+    [handleOpenSettingsPanel],
+  );
+
   // Peek prompt state
   const [peekPromptData, setPeekPromptData] = useState<PeekPromptData | null>(null);
 
@@ -2381,7 +2701,31 @@ const LocalChatArea = memo(function LocalChatArea({
     (messageId?: string) => {
       if (!activeChatId) return;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
-        onSuccess: (data) => setPeekPromptData({ ...data, chatId: activeChatId }),
+        // Characters who reply one by one each have their own prompt, so diagnostics follow
+        // the character whose saved prompt is shown, also when {{prompt}} opens the latest one.
+        // Like the server, use the saved mode, which still applies after the group shrinks to one character.
+        onSuccess: ({ characterId, ...data }) => {
+          // A cached prompt belongs to the newest reply; its checkup leads the Peek header.
+          const reply = messageId
+            ? messages?.find((message) => message.id === messageId)
+            : data.source === "cached"
+              ? messages?.findLast((message) => message.role === "assistant" || message.role === "narrator")
+              : undefined;
+          setPeekPromptData({
+            ...data,
+            chatId: activeChatId,
+            ...(normalizeGroupChatMode(chatMeta.groupChatMode) === "individual" && characterId ? { characterId } : {}),
+            checkup: reply
+              ? {
+                  findings: checkMessage(reply),
+                  onLink: (link) => {
+                    setPeekPromptData(null);
+                    handleReplyCheckupLink(link);
+                  },
+                }
+              : undefined,
+          });
+        },
         onError: (error) => {
           const message =
             error instanceof ApiError
@@ -2393,8 +2737,48 @@ const LocalChatArea = memo(function LocalChatArea({
         },
       });
     },
-    [activeChatId, peekPrompt],
+    [activeChatId, chatMeta.groupChatMode, checkMessage, handleReplyCheckupLink, messages, peekPrompt],
   );
+
+  // R2: only the newest reply gets the quiet line, and only for facts about the reply itself.
+  const replyCheckup = useMemo(() => {
+    const last = messages?.[messages.length - 1];
+    if (!last || isStreaming || (last.role !== "assistant" && last.role !== "narrator")) return null;
+    const findings = checkMessage(last);
+    // Kept even when the trim note is hidden, so the omnibar's Check row still has a checkup to open.
+    return replyLineFindings(findings).length > 0 ? { messageId: last.id, findings } : null;
+  }, [checkMessage, isStreaming, messages]);
+  const [openReplyCheckupId, setOpenReplyCheckupId] = useState<string | null>(null);
+  const replyCheckupNode = useMemo(
+    () =>
+      replyCheckup ? (
+        <ReplyCheckup
+          messageId={replyCheckup.messageId}
+          findings={replyCheckup.findings}
+          open={openReplyCheckupId === replyCheckup.messageId}
+          onOpenChange={(open) => setOpenReplyCheckupId(open ? replyCheckup.messageId : null)}
+          onLink={handleReplyCheckupLink}
+          onPeek={() => handlePeekPrompt(replyCheckup.messageId)}
+          showHistoryTrimNotice={showHistoryTrimNotice}
+        />
+      ) : null,
+    [handlePeekPrompt, handleReplyCheckupLink, openReplyCheckupId, replyCheckup, showHistoryTrimNotice],
+  );
+  // The omnibar's "Check the last reply" row opens the line's checkup in place.
+  useEffect(() => {
+    if (!activeChatId || !replyCheckup) return;
+    const handleReplyCheckupRequest = (event: Event) => {
+      if ((event as CustomEvent<{ chatId?: string }>).detail?.chatId !== activeChatId) return;
+      setOpenReplyCheckupId(replyCheckup.messageId);
+      requestAnimationFrame(() =>
+        document
+          .querySelector(`[data-reply-checkup="${replyCheckup.messageId}"]`)
+          ?.scrollIntoView({ block: "nearest", behavior: "smooth" }),
+      );
+    };
+    window.addEventListener(CHAT_REPLY_CHECKUP_REQUEST_EVENT, handleReplyCheckupRequest);
+    return () => window.removeEventListener(CHAT_REPLY_CHECKUP_REQUEST_EVENT, handleReplyCheckupRequest);
+  }, [activeChatId, replyCheckup]);
 
   // Find the last assistant message for peek-prompt eligibility
   const lastAssistantMessageId = useMemo(() => {
@@ -2413,6 +2797,35 @@ const LocalChatArea = memo(function LocalChatArea({
     }
     return null;
   }, [messages]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    const handlePeekPromptRequest = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      if ((event.detail as { chatId?: unknown } | null)?.chatId !== activeChatId) return;
+      handlePeekPrompt();
+    };
+    const handleRegenerateRequest = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      if ((event.detail as { chatId?: unknown } | null)?.chatId !== activeChatId) return;
+      if (!latestAssistantMessageForSwipes) return;
+      void handleRegenerate(latestAssistantMessageForSwipes.id, { skipTouchConfirm: true });
+    };
+    const handleRetryWithConnectionRequest = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as { chatId?: unknown; connectionId?: unknown } | null;
+      if (detail?.chatId !== activeChatId || typeof detail.connectionId !== "string") return;
+      handleRetryWithConnection(detail.connectionId);
+    };
+    window.addEventListener(CHAT_PEEK_PROMPT_REQUEST_EVENT, handlePeekPromptRequest);
+    window.addEventListener(CHAT_REGENERATE_REQUEST_EVENT, handleRegenerateRequest);
+    window.addEventListener(CHAT_RETRY_WITH_CONNECTION_REQUEST_EVENT, handleRetryWithConnectionRequest);
+    return () => {
+      window.removeEventListener(CHAT_PEEK_PROMPT_REQUEST_EVENT, handlePeekPromptRequest);
+      window.removeEventListener(CHAT_REGENERATE_REQUEST_EVENT, handleRegenerateRequest);
+      window.removeEventListener(CHAT_RETRY_WITH_CONNECTION_REQUEST_EVENT, handleRetryWithConnectionRequest);
+    };
+  }, [activeChatId, handlePeekPrompt, handleRegenerate, latestAssistantMessageForSwipes, handleRetryWithConnection]);
 
   const latestMessageForEdit = useMemo(() => {
     if (!messages) return null;
@@ -2810,7 +3223,12 @@ const LocalChatArea = memo(function LocalChatArea({
     [characterMap],
   );
   const speakTTSAutoplayMessage = useCallback(
-    async (lastMsg: TTSAutoplayMessage, targetChatId: string, generationAtStart: TTSGenerationSnapshot | null) => {
+    async (
+      lastMsg: TTSAutoplayMessage,
+      targetChatId: string,
+      generationAtStart: TTSGenerationSnapshot | null,
+      earlierMessages: readonly TTSAutoplayMessage[] = [],
+    ) => {
       if (useChatStore.getState().activeChatId !== targetChatId) return;
 
       const cfg = ttsConfigRef.current;
@@ -2831,72 +3249,100 @@ const LocalChatArea = memo(function LocalChatArea({
         startedTTSAutoplayRevisionsRef.current.delete(oldest);
       }
 
-      const fallbackSpeaker =
-        lastMsg.role === "narrator"
-          ? "Narrator"
-          : lastMsg.characterId
-            ? characterMap.get(lastMsg.characterId)?.name
-            : undefined;
-      let ttsRequests;
-      if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
-        try {
-          const extracted = await extractRoleplayTTSSpeakers({
-            message: filterTTSText(lastMsg.content, cfg),
-            group: getChatDisplayName(chat) || characterNames.join(", "),
-            user: personaInfo?.name || "User",
-            characters: characterNames,
-            messageAuthor: lastMsg.characterId ? characterMap.get(lastMsg.characterId)?.name : undefined,
-            debugMode: useUIStore.getState().debugMode,
-          });
-          ttsRequests = buildExtractedRoleplayTTSVoiceRequests(
-            extracted.segments,
-            cfg,
-            fallbackSpeaker,
-            lastMsg.characterId,
-            resolveTTSCharacterId,
-          );
-        } catch (error) {
-          console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
-          ttsRequests = buildTTSVoiceRequests(
-            lastMsg.content,
-            cfg,
-            fallbackSpeaker,
-            lastMsg.characterId,
-            resolveTTSCharacterId,
-          );
-        }
-      } else {
-        ttsRequests = buildTTSVoiceRequests(
-          lastMsg.content,
-          cfg,
-          fallbackSpeaker,
-          lastMsg.characterId,
-          resolveTTSCharacterId,
+      // Avatars hold their talking and moods for the voice until this reading ends, however it ends.
+      const readingId = nextTTSAutoplayReadingId();
+      const announceVoice = (pending: boolean) =>
+        window.dispatchEvent(
+          new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
+            detail: { chatId: targetChatId, messageId: lastMsg.id, readingId, pending },
+          }),
         );
+      announceVoice(true);
+      try {
+        const visualNovel =
+          mode === "roleplay" &&
+          (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
+        const requestsFor = async (message: TTSAutoplayMessage) => {
+          const fallbackSpeaker =
+            message.role === "narrator"
+              ? "Narrator"
+              : message.characterId
+                ? characterMap.get(message.characterId)?.name
+                : undefined;
+          let requests;
+          if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
+            try {
+              const extracted = await extractRoleplayTTSSpeakers({
+                message: filterTTSText(message.content, cfg),
+                group: getChatDisplayName(chat) || characterNames.join(", "),
+                user: personaInfo?.name || "User",
+                characters: characterNames,
+                messageAuthor: message.characterId ? characterMap.get(message.characterId)?.name : undefined,
+                debugMode: useUIStore.getState().debugMode,
+              });
+              requests = buildExtractedRoleplayTTSVoiceRequests(
+                extracted.segments,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            } catch (error) {
+              console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+              requests = buildTTSVoiceRequests(
+                message.content,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            }
+          } else {
+            requests = buildTTSVoiceRequests(
+              message.content,
+              cfg,
+              fallbackSpeaker,
+              message.characterId,
+              resolveTTSCharacterId,
+            );
+          }
+          return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
+        };
+        // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
+        // prepared at once so playback doesn't wait one round trip per part.
+        const parts = await Promise.all(
+          [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
+        );
+
+        const currentGeneration = ttsGenerationRef.current;
+        const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
+        if (
+          useChatStore.getState().activeChatId !== targetChatId ||
+          (currentGeneration !== null && currentGeneration !== generationAtStart) ||
+          (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
+        )
+          return;
+        const chunks = parts.flatMap(({ message, requests }) =>
+          requests.map((_request, index) => ({ messageId: message.id, requests, index })),
+        );
+        if (chunks.length === 0) return;
+
+        await ttsService.speakSequence(
+          parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
+          lastMsg.id,
+          {
+            chatId: targetChatId,
+            progressive: cfg.progressivePlayback,
+            volume: ttsLineVolume / 100,
+            onChunkStart: (_request, index) => {
+              const chunk = chunks[index];
+              if (chunk) notifyRoleplayTTSParagraph(targetChatId, chunk.messageId, chunk.requests, chunk.index);
+            },
+          },
+        );
+      } finally {
+        announceVoice(false);
       }
-
-      const currentGeneration = ttsGenerationRef.current;
-      const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
-      if (
-        useChatStore.getState().activeChatId !== targetChatId ||
-        (currentGeneration !== null && currentGeneration !== generationAtStart) ||
-        (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
-      )
-        return;
-      if (ttsRequests.length === 0) return;
-
-      if (
-        mode === "roleplay" &&
-        (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel"
-      ) {
-        ttsRequests = withRoleplayTTSParagraphs(ttsRequests, lastMsg.content, cfg);
-      }
-
-      await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
-        progressive: cfg.progressivePlayback,
-        volume: ttsLineVolume / 100,
-        onChunkStart: (_request, index) => notifyRoleplayTTSParagraph(targetChatId, lastMsg.id, ttsRequests, index),
-      });
     },
     [
       characterMap,
@@ -2912,7 +3358,7 @@ const LocalChatArea = memo(function LocalChatArea({
     const handleMessageReady = (event: Event) => {
       const detail = (event as CustomEvent<TTSAutoplayMessageReadyDetail>).detail;
       if (!detail || detail.chatId !== activeChatId) return;
-      void speakTTSAutoplayMessage(detail.message, detail.chatId, ttsGenerationRef.current);
+      void speakTTSAutoplayMessage(detail.message, detail.chatId, ttsGenerationRef.current, detail.earlierMessages);
     };
     window.addEventListener(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady);
     return () => window.removeEventListener(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady);
@@ -2948,7 +3394,7 @@ const LocalChatArea = memo(function LocalChatArea({
       })
     )
       return;
-    void speakTTSAutoplayMessage(lastMsg, activeChatId, generation);
+    void speakTTSAutoplayMessage(lastMsg, activeChatId, generation, findSplitReplyEarlierParts(msgs, lastMsg));
   }, [activeChatId, isStreaming, speakTTSAutoplayMessage]);
 
   const newestMsgId = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.id;
@@ -3061,17 +3507,39 @@ const LocalChatArea = memo(function LocalChatArea({
         useChatStore.getState().clearGotoRequest();
         return;
       }
-      // Wait one frame so newly-loaded messages are painted before scrolling.
-      const raf = requestAnimationFrame(() => {
+      // The target message is in the loaded page, but the transcript only
+      // mounts a render window of it; the surface's own effect still needs a
+      // commit to widen that window to include the target — especially right
+      // after switching chats, where the node can take longer than a handful
+      // of frames to mount (measured ~860ms on a busy tab). A fixed 20-frame
+      // budget (~330ms) gave up before that and landed on the newest message
+      // instead of the hit (O5 F2) even though it looked right in a quieter
+      // test run; retry on a wall-clock budget instead; this feeds both this
+      // door and the Search All Chats modal, which share `gotoRequest`.
+      let cancelled = false;
+      let rafId = 0;
+      const deadline = Date.now() + 3000;
+      const tryScroll = () => {
+        if (cancelled) return;
         const el = document.querySelector(`[data-message-id="${CSS.escape(targetId)}"]`);
         if (el instanceof HTMLElement) {
           openedAtBottomChatIdRef.current = activeChatId;
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           userScrolledAwayRef.current = true; // suppress auto-scroll-to-bottom hijacking the jump
+          useChatStore.getState().clearGotoRequest();
+          return;
         }
-        useChatStore.getState().clearGotoRequest();
-      });
-      return () => cancelAnimationFrame(raf);
+        if (Date.now() >= deadline) {
+          useChatStore.getState().clearGotoRequest();
+          return;
+        }
+        rafId = requestAnimationFrame(tryScroll);
+      };
+      rafId = requestAnimationFrame(tryScroll);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(rafId);
+      };
     }
 
     // Target is older than the loaded window — fetch the next (older) page.
@@ -3116,14 +3584,7 @@ const LocalChatArea = memo(function LocalChatArea({
     return (
       <>
         <HomeCreditsModal open={creditsOpen} onClose={() => setCreditsOpen(false)} />
-        <HomeBrowserHub
-          pageActive={isPageActive}
-          professorChatActive={homeProfessorChatActive}
-          professorChatOpen={homeProfessorChatOpen}
-          onProfessorChatOpenChange={handleHomeProfessorChatOpenChange}
-          onProfessorChatExitComplete={handleHomeProfessorChatExitComplete}
-          onOpenCredits={() => setCreditsOpen(true)}
-        />
+        <HomeBrowserHub pageActive={isPageActive} onOpenCredits={() => setCreditsOpen(true)} />
         {pendingNewChatMode && (
           <NewChatConnectionGate
             mode={pendingNewChatMode}
@@ -3174,6 +3635,7 @@ const LocalChatArea = memo(function LocalChatArea({
           variant: "origin" as const,
           sceneChatId: chatMeta.activeSceneChatId,
           sceneChatName: getChatDisplayName(activeSceneChat),
+          repliesAllowed: activeSceneMeta.sceneOriginRepliesAllowed === true,
         }
       : chatMeta.sceneStatus === "active"
         ? {
@@ -3272,6 +3734,7 @@ const LocalChatArea = memo(function LocalChatArea({
             onPeekPrompt={handlePeekPrompt}
             multiSelectMode={multiSelectMode}
             selectedMessageIds={selectedMessageIds}
+            avatarStage={gameAvatarStage}
           />
 
           <ChatCommonOverlays
@@ -3294,6 +3757,7 @@ const LocalChatArea = memo(function LocalChatArea({
               onSpriteSideChange: handleSetSpritePosition,
               spriteVisualSettings: effectiveSpriteVisualSettings,
               onSpriteVisualSettingsChange: patchLocalSpriteVisualSettings,
+              avatarLayout,
             }}
             onCloseSettings={handleCloseSettingsPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
@@ -3363,6 +3827,11 @@ const LocalChatArea = memo(function LocalChatArea({
             onDelete={handleDelete}
             onRegenerate={handleRegenerate}
             onEdit={handleEdit}
+            failedReplyMessageId={failedReplyMessageId}
+            failedReplyReason={lastAppError?.message}
+            onRetryFailedReply={handleRetryFailedReply}
+            replyCheckupMessageId={replyCheckup?.messageId ?? null}
+            replyCheckup={replyCheckupNode}
             onSetActiveSwipe={handleSetActiveSwipe}
             onToggleHiddenFromAI={handleToggleHiddenFromAI}
             onPeekPrompt={handlePeekPrompt}
@@ -3377,6 +3846,8 @@ const LocalChatArea = memo(function LocalChatArea({
             onIllustrate={handleIllustrate}
             onIllustrateWithAgent={handleIllustrateWithAgent}
             onGenerateSelfie={handleGenerateConversationSelfie}
+            onGenerateVideo={handleConversationGalleryVideo}
+            onAnimateImage={handleConversationAnimateImage}
             onWizardFinish={() => {
               setWizardOpen(false);
               handleOpenSettingsPanel();
@@ -3406,6 +3877,14 @@ const LocalChatArea = memo(function LocalChatArea({
           isSubmitting={conversationSelfieReviewSubmitting}
           onCancel={() => closeConversationSelfiePromptReview(null)}
           onConfirm={confirmConversationSelfiePromptReview}
+        />
+        <ImagePromptReviewModal
+          open={roleplayVideoReviewItems.length > 0}
+          items={roleplayVideoReviewItems}
+          isSubmitting={roleplayVideoReviewSubmitting}
+          mediaType="video"
+          onCancel={() => closeRoleplayVideoPromptReview(null)}
+          onConfirm={confirmRoleplayVideoPromptReview}
         />
         {chatHelpOverlay}
         {pendingNewChatMode && (
@@ -3497,6 +3976,11 @@ const LocalChatArea = memo(function LocalChatArea({
           onDelete={handleDelete}
           onRegenerate={handleRegenerate}
           onEdit={handleRoleplayEdit}
+          failedReplyMessageId={failedReplyMessageId}
+          failedReplyReason={lastAppError?.message}
+          onRetryFailedReply={handleRetryFailedReply}
+          replyCheckupMessageId={replyCheckup?.messageId ?? null}
+          replyCheckup={replyCheckupNode}
           onSetActiveSwipe={handleSetActiveSwipe}
           onToggleConversationStart={handleToggleConversationStart}
           onToggleHiddenFromAI={handleToggleHiddenFromAI}
@@ -3533,6 +4017,8 @@ const LocalChatArea = memo(function LocalChatArea({
           onExpressionChange={handleExpressionChange}
           onSpritePlacementChange={handleSpritePlacementChange}
           onFinishSpritePlacement={() => setSpriteArrangeMode(false)}
+          avatarLayout={avatarLayout}
+          onAvatarsShown={handleStageAvatarsChange}
           onDeleteConfirm={handleDeleteConfirm}
           onDeleteSwipe={handleDeleteSwipe}
           onDeleteOtherSwipes={handleDeleteOtherSwipes}

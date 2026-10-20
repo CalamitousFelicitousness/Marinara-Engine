@@ -148,6 +148,15 @@ To clear that override and return Mira to her schedule:
 
 If the chat has only one character, you can leave the name out. Run **/status** with no options to see the list of characters and usage help.
 
+## Characters can change their own status
+
+With the **Schedule Updates** command on in **Chat Settings → Agents**, a character can set its own temporary status and activity. For example, if you ask it to focus for an hour, it can switch to **Busy** with the activity "Studying".
+
+- The change lasts as long as the character says, or one hour if it doesn't say. The longest is seven days.
+- When the time is up, the character goes back to its schedule, or to **Online** if it has none.
+- It never edits the saved schedule.
+- A status you set yourself with **/status** stays until you clear it. A character can't replace it.
+
 ## How autonomous messages are paced
 
 Marinara paces autonomous messages so a character never spams you. The rules below use each character's own schedule.

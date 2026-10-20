@@ -1,22 +1,84 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { seedUIState } from "./ui-state-fixture.js";
 import { openChatMessageSearch } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
+type FeatureSettings = Record<string, unknown>;
+type MessageTrashHolds = { holders: number; original?: FeatureSettings };
+
+// Message Trash is a global switch, and the mobile projects and repeated runs share one server (#7220). Runs that
+// need it hold it together: the first saves the original settings and only the last one restores them.
+// ponytail: a worker killed mid-test leaves its hold (or the brief lock) until the e2e servers restart and reset
+// .tmp/playwright-data; add stale-holder cleanup by worker pid if that ever bites.
+async function holdMessageTrash(request: APIRequestContext, baseURL: string) {
+  const dir = new URL(`../.tmp/playwright-data/message-trash-${new URL(baseURL).port}/`, import.meta.url);
+  const holdersFile = new URL("holders.json", dir);
+  const lock = new URL("lock/", dir);
+  const unlock = async (state: MessageTrashHolds) => {
+    await writeFile(holdersFile, JSON.stringify(state));
+    await rm(lock, { recursive: true, force: true });
+  };
+  const withLock = async (update: (state: MessageTrashHolds) => Promise<void>) => {
+    await mkdir(dir, { recursive: true });
+    await expect(() => mkdir(lock)).toPass();
+    let state: MessageTrashHolds = { holders: 0 };
+    try {
+      state = await readFile(holdersFile, "utf8").then(JSON.parse, () => state);
+      await update(state);
+    } finally {
+      await unlock(state);
+    }
+  };
+  const release = async (state: MessageTrashHolds) => {
+    state.holders -= 1;
+    if (state.holders > 0) return;
+    const restored = await request.put("/api/app-settings/features", { data: state.original ?? {} });
+    if (!restored.ok()) throw new Error(`Feature settings cleanup failed (${restored.status()})`);
+    delete state.original;
+  };
+  // Set once this hold is counted; after that only letting go of the lock can fail.
+  let held: MessageTrashHolds | undefined;
+  try {
+    await withLock(async (state) => {
+      const response = await request.get("/api/app-settings/features");
+      expect(response.ok()).toBeTruthy();
+      const current = ((await response.json()) as { settings?: FeatureSettings }).settings ?? {};
+      const enabled = await request.put("/api/app-settings/features", { data: { ...current, messageTrash: true } });
+      expect(enabled.ok()).toBeTruthy();
+      // Only the first holder saves; an original a failed restore could not put back stays saved for the next try.
+      state.original ??= current;
+      state.holders += 1;
+      held = state;
+    });
+  } catch (error) {
+    // The caller gets no release callback, so take back a counted hold here while the lock is still ours: other
+    // holders keep theirs, and the setting is restored if this was the last one. Then fail with the original error.
+    const state = held;
+    if (state)
+      await release(state)
+        .finally(() => unlock(state))
+        .catch((rollbackError) => {
+          throw new AggregateError([error, rollbackError], "Could not take back a failed Message Trash hold");
+        });
+    throw error;
+  }
+  return () => withLock(release);
+}
+
 for (const mode of ["conversation", "roleplay"] as const) {
-  test(`${mode} message marks stay visible and trash reports partial restores`, async ({ page, request }, testInfo) => {
-    const originalFeaturesResponse = await request.get("/api/app-settings/features");
-    expect(originalFeaturesResponse.ok()).toBeTruthy();
-    const originalFeatures = await originalFeaturesResponse.json();
-    const features = { ...(originalFeatures.settings ?? {}), messageTrash: true };
+  test(`${mode} message marks stay visible and trash reports partial restores`, async ({
+    page,
+    request,
+    baseURL,
+  }, testInfo) => {
+    const releaseMessageTrash = await holdMessageTrash(request, baseURL!);
     let chatId: string | undefined;
     let messageId: string | undefined;
     let cleanupFailures: unknown[] = [];
     try {
-      const enabledFeaturesResponse = await request.put("/api/app-settings/features", { data: features });
-      expect(enabledFeaturesResponse.ok()).toBeTruthy();
       const created = await request.post("/api/chats", { data: { name: "Message marks fixture", mode } });
       expect(created.ok()).toBeTruthy();
       const chat = await created.json();
@@ -200,11 +262,7 @@ for (const mode of ["conversation", "roleplay"] as const) {
           }),
         );
       }
-      cleanupRequests.push(
-        request.put("/api/app-settings/features", { data: originalFeatures.settings ?? {} }).then((response) => {
-          if (!response.ok()) throw new Error(`Feature settings cleanup failed (${response.status()})`);
-        }),
-      );
+      cleanupRequests.push(releaseMessageTrash());
       const cleanupResults = await Promise.allSettled(cleanupRequests);
       cleanupFailures = cleanupResults.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
     }

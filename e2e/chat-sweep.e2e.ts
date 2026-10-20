@@ -37,7 +37,13 @@ test("Roleplay agents can omit chat summaries without changing other modes", asy
       trackerPanelEnabled: false,
       chibiProfessorMariEnabled: false,
       appAccentPulseMode: false,
-      chatSettingsExpandedSections: { "roleplay-agents": true, "game-agents": true, "conversation-agents": true },
+      chatSettingsExpandedSections: {
+        "roleplay-agents": true,
+        "game-agents": true,
+        "conversation-agents": true,
+        // Attach chat summaries sits in Roleplay's Trackers Control card.
+        [`${chat.id}:trackers-control`]: true,
+      },
       gameInstantTextReveal: true,
       theme: info.project.name === "desktop-chromium" ? "light" : "dark",
     });
@@ -237,8 +243,9 @@ test("Personas are chosen per chat and Conversation names match that choice", as
       return picker;
     };
     const picker = await openPersonas("Alice Persona");
-    await picker.getByRole("button", { name: /Ungrouped/u }).click();
-    await page.getByRole("button", { name: /Bob Persona/u }).click();
+    // Personas in no folder list flat since #7312 removed the "Ungrouped" folder.
+    await expect(picker.getByRole("button", { name: /Ungrouped/u })).toHaveCount(0);
+    await picker.getByRole("button", { name: /Bob Persona/u }).click();
     await expect
       .poll(async () => (await (await request.get(`/api/chats/${chat.id}`)).json()).personaId)
       .toBe(bobPersona.id);

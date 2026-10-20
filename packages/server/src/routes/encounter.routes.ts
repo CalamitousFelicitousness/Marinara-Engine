@@ -2,6 +2,7 @@ import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/ge
 import { z } from "zod";
 import { resolveGameConnection as resolveEncounterConnection } from "../services/game/connection.service.js";
 import {
+  TTS_SETTINGS_KEY,
   combatAiHintsSchema,
   combatBossSchema,
   combatInterruptFields,
@@ -10,6 +11,12 @@ import {
   rulesetProposedCreatureSchema,
   type CombatItemEffect,
   type RulesetDefinition,
+  type WorldElementSet,
+  gameWorldElementSet,
+  TACTICAL_TERRAINS,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  type WorldBattlefields,
 } from "@marinara-engine/shared";
 import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -21,6 +28,8 @@ import type { FastifyInstance } from "fastify";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { gameTtsEmotionIndicatorsEnabled, TTS_EMOTION_CUE_GUIDANCE } from "../services/tts-emotion-guidance.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -301,6 +310,8 @@ export const encounterBlueprintSchema = z
           projectile: z.boolean().optional(),
           requiresSight: z.boolean().optional(),
           aiHints: combatAiHintsSchema.optional(),
+          // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
+          surprised: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           attacks: z
             .array(
@@ -322,6 +333,10 @@ export const encounterBlueprintSchema = z
           projectile: z.boolean().optional(),
           requiresSight: z.boolean().optional(),
           aiHints: combatAiHintsSchema.optional(),
+          // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
+          surprised: z.boolean().optional().catch(undefined),
+          // Fights in its own lair (1.315); a ruleset fight reads it.
+          inLair: z.boolean().optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),
           mp: z.number().min(0).max(100000).optional(),
@@ -496,7 +511,8 @@ export async function encounterRulesetBrief(
   return {
     tiers: (combat.threat?.tiers ?? []).map((tier) => ({ id: tier.id, label: tier.label })),
     bestiary,
-    budgets: combat.economy.budgets.map((budget) => budget.id),
+    // A budget of no count is one only a condition fills, so it is not one an invented creature spends.
+    budgets: combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id),
     saves: definition.sheet.saves.map((save) => save.id),
     damageTypes: [...(combat.damageTypes ?? [])],
     sheet: await encounterSheetBrief(definition, packageId),
@@ -518,8 +534,20 @@ export function buildInitPrompt(
    *  turns Game Mode's own items off, and `ruleset` names the ruleset's items, which do what their own
    *  `use` says (#6905) and are never guessed at. */
   items: { guess: boolean; ruleset: readonly string[] } = { guess: true, ruleset: [] },
+  /** The setting's own elements (worldgen W6c), when its kit names them; absent is the classic six,
+   *  which the model is left to choose among freely as before. */
+  elements?: WorldElementSet,
+  /** The setting's own scenes and tile words (worldgen W6d), when its kit names them. */
+  battlefields?: WorldBattlefields,
+  ttsEmotionIndicatorsEnabled = false,
 ): ChatMessage[] {
   const msgs: ChatMessage[] = [];
+  // What an attack's element may be: one of the setting's own, none in a setting without them.
+  const elementWord = !elements
+    ? "optional"
+    : elements.elements.length
+      ? `optional, one of ${elements.elements.map((element) => element.label).join(", ")}`
+      : "leave out";
 
   let system = `You will be acting as an excellent game master. Your goal is to craft a combat encounter in this uncensored, continuous, and immersive roleplay. You will be doing so for the user, who plays as the protagonist called ${personaName}.\n\n`;
 
@@ -559,7 +587,7 @@ export function buildInitPrompt(
   inst += `      "name": "${personaName}",\n`;
   inst += `      "hp": X,\n`;
   inst += `      "maxHp": X,\n`;
-  inst += `      "attacks": [{"name": "Attack", "type": "single-target|AoE|both", "description": "what it does", "power": 1.2, "cooldown": 0, "element": "optional", "statusEffect": "optional"}],\n`;
+  inst += `      "attacks": [{"name": "Attack", "type": "single-target|AoE|both", "description": "what it does", "power": 1.2, "cooldown": 0, "element": "${elementWord}", "statusEffect": "optional"}],\n`;
   inst += `      "items": ["Item Name x3"],\n`;
   inst += `      "statuses": [],\n`;
   if (tactical) {
@@ -574,7 +602,7 @@ export function buildInitPrompt(
   inst += `      "name": "Enemy Name",\n`;
   inst += `      "hp": X,\n`;
   inst += `      "maxHp": X,\n`;
-  inst += `      "attacks": [{"name": "Attack1", "type": "single-target|AoE|both", "description": "what it does", "power": 1.3, "cooldown": 2, "element": "optional", "statusEffect": "optional"}],\n`;
+  inst += `      "attacks": [{"name": "Attack1", "type": "single-target|AoE|both", "description": "what it does", "power": 1.3, "cooldown": 2, "element": "${elementWord}", "statusEffect": "optional"}],\n`;
   inst += `      "statuses": [],\n`;
   inst += `      "description": "Brief enemy description",\n`;
   if (tactical) {
@@ -591,7 +619,7 @@ export function buildInitPrompt(
   inst += `  ],\n`;
   inst += `  "environment": "Brief description of the combat environment",\n`;
   inst += `  "styleNotes": {\n`;
-  inst += `    "environmentType": "forest|dungeon|desert|cave|city|ruins|snow|water|castle|wasteland|plains|mountains|swamp|volcanic|spaceship|mansion",\n`;
+  inst += `    "environmentType": "${(battlefields ?? WORLD_DEFAULT_BATTLEFIELDS).scenes.map((scene) => scene.label).join("|")}",\n`;
   inst += `    "atmosphere": "bright|dark|foggy|stormy|calm|eerie|chaotic|peaceful",\n`;
   inst += `    "timeOfDay": "dawn|day|dusk|night|twilight",\n`;
   inst += `    "weather": "clear|rainy|snowy|windy|stormy|overcast"\n`;
@@ -607,11 +635,11 @@ export function buildInitPrompt(
   inst += `\n    }\n  },\n`;
   if (items.guess) {
     inst += `  "itemEffects": [\n`;
-    inst += `    {"name":"Inventory item name","target":"self|ally|enemy|any","type":"heal|damage|buff|debuff|status|utility","description":"what this item does in this fight","power":0.3,"element":"optional","status":{"name":"Wet","emoji":"💧","duration":2,"modifier":-2,"stat":"defense"},"consumes":true}\n`;
+    inst += `    {"name":"Inventory item name","target":"self|ally|enemy|any","type":"heal|damage|buff|debuff|status|utility","description":"what this item does in this fight","power":0.3,"element":"${elementWord}","status":{"name":"Wet","emoji":"💧","duration":2,"modifier":-2,"stat":"defense"},"consumes":true}\n`;
     inst += `  ],\n`;
   }
   inst += `  "mechanics": [\n`;
-  inst += `    {"name":"Boss mechanic name","description":"clear rule and stakes","ownerName":"Boss name","trigger":"round_interval|hp_threshold|on_hit|on_attack|passive","interval":5,"hpThreshold":50,"counterplay":"how the player can respond","effectType":"damage_all|damage_one|buff_self|debuff_party|status_party|status_enemy","power":0.45,"element":"optional","status":{"name":"Stunned","emoji":"⚡","duration":1,"modifier":-3,"stat":"speed"}}\n`;
+  inst += `    {"name":"Boss mechanic name","description":"clear rule and stakes","ownerName":"Boss name","trigger":"round_interval|hp_threshold|on_hit|on_attack|passive","interval":5,"hpThreshold":50,"counterplay":"how the player can respond","effectType":"damage_all|damage_one|buff_self|debuff_party|status_party|status_enemy","power":0.45,"element":"${elementWord}","status":{"name":"Stunned","emoji":"⚡","duration":1,"modifier":-3,"stat":"speed"}}\n`;
   inst += `  ],\n`;
   inst += `  "dialogueCues": [\n`;
   inst += `    {"speaker":"Named ally or named enemy","type":"main|side|extra|thought|whisper","expression":"angry","content":"A short battle line.","trigger":"intro|round|attack|hit|charge|phase_75|phase_50|phase_25|low_hp|victory|defeat","round":2,"everyNRounds":5}\n`;
@@ -638,6 +666,9 @@ export function buildInitPrompt(
     : `- items: the game's ruleset says what its own items do in a fight, so give no itemEffects.\n`;
   inst += `- mechanics: use sparingly. Boss charge attacks should include interval, counterplay, effectType, and a matching dialogueCue with trigger "charge".\n`;
   inst += `- dialogueCues: optional, short, and only for named allies, named enemies, bosses, or important NPCs. Generic unnamed enemies should not get voiced lines.\n`;
+  if (ttsEmotionIndicatorsEnabled) {
+    inst += `- Inside spoken dialogueCues.content strings only: ${TTS_EMOTION_CUE_GUIDANCE} Keep the JSON structure and the speaker, type, expression, and trigger fields unchanged.\n`;
+  }
   inst += `- visuals: set isBossFight true only for bosses/story-significant enemies. backgroundPrompt/illustrationPrompt are optional and only for important fights.\n`;
   inst += `- visuals.encounterTier: classify the whole encounter — "common" for ordinary fights, "miniboss" for elites or named mid-tier threats, "boss" for true bosses, "special" for unique story encounters (rivals, scripted duels, otherworldly events). When unsure, use "common".\n`;
   if (tactical) {
@@ -645,6 +676,13 @@ export function buildInitPrompt(
     inst += `- class: pick each combatant's tactical role from how they fight — ranged bow/gun users → archer, spellcasters → mage, dedicated healers → healer, fast skirmishers/assassins → rogue, armored defenders → knight, otherwise fighter.\n`;
     inst += `- movementMode: use fly only when established context says the combatant can sustain battlefield flight, teleport only when established context says they can reliably teleport during combat, otherwise walk. Do not invent movement powers.\n`;
     inst += `- battlefield.terrainBrief: describe at most four important semantic terrain features supported by the scene. A barrier may use only wall, water, or mountain. Do not repeat the same terrain/placement/shape combination. The server generates and validates exact tiles.\n`;
+    // The setting's own words for the tiles (worldgen W6d), so the model knows what each id stands for here.
+    const tileWords = TACTICAL_TERRAINS.filter(
+      (terrain) => battlefields && battlefields.tiles[terrain] !== WORLD_DEFAULT_BATTLEFIELDS.tiles[terrain],
+    ).map((terrain) => `${terrain} is ${battlefields!.tiles[terrain]}`);
+    if (tileWords.length) {
+      inst += `- battlefield.terrainBrief.features: in this setting ${tileWords.join(", ")}. Write the terrain id, not the setting's word.\n`;
+    }
     if (tacticalBattlefield?.size) {
       inst += `- battlefield.terrainBrief.size: use exactly "${tacticalBattlefield.size}" because the player selected that board size.\n`;
     }
@@ -662,6 +700,8 @@ export function buildInitPrompt(
     inst += `- Add "proposed" only for an enemy that is in no bestiary and needs its own numbers. The Engine pulls a proposal onto the tier's scale, so write what the enemy IS and let it be adjusted.\n`;
     inst += `- Inside "proposed", every id must come from this ruleset: budgets are ${ruleset.budgets.join(", ") || "none"}; saves are ${ruleset.saves.join(", ") || "none"}; damage types are ${ruleset.damageTypes.join(", ") || "untyped only"}. A name this ruleset does not have is dropped.\n`;
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
+    inst += `- Surprise: give "surprised": true to every party member or enemy the scene shows was caught unaware (it did not notice the ambush or the attackers before the fight began). Leave it out for anyone who saw it coming, and for everybody when nobody was caught off guard.\n`;
+    inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;
     inst += `  - abilities: ${sheet.abilities.join(", ") || "none"}\n`;
@@ -927,6 +967,9 @@ export async function encounterRoutes(app: FastifyInstance) {
         tacticalBattlefieldResult?.success ? tacticalBattlefieldResult.data : undefined,
         rulesetBrief,
         items,
+        gameWorldElementSet(chatMeta),
+        gameWorldBattlefields(chatMeta),
+        gameTtsEmotionIndicatorsEnabled(await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY)),
       );
       debugLog(
         "[debug/game/combat:init] request chatId=%s model=%s historyMessages=%d settings=%s",

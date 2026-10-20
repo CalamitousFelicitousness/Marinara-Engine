@@ -7,6 +7,8 @@ import { useChatStore } from "../../stores/chat.store";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { returnToSceneOrigin } from "../../lib/scene-generation";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { useUpdateChatMetadata } from "../../hooks/use-chats";
+import { SettingsSwitch } from "../panels/settings/SettingControls";
 import type { SceneForkMode, ScenePackageOrigin } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -35,6 +37,8 @@ interface SceneBannerProps {
   variant: "scene" | "origin";
   sceneChatId?: string;
   sceneChatName?: string;
+  /** Origin only: Scene participants may still answer the user in this Conversation. */
+  repliesAllowed?: boolean;
   originChatId?: string;
   packageOrigin?: ScenePackageOrigin | null;
   description?: string;
@@ -44,12 +48,14 @@ export function SceneBanner({
   variant,
   sceneChatId,
   sceneChatName,
+  repliesAllowed = false,
   originChatId,
   packageOrigin,
   description,
 }: SceneBannerProps) {
   const { t: localizeUi } = useUiTranslation();
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
+  const updateMeta = useUpdateChatMetadata();
   const back = useSceneOriginBack(originChatId, packageOrigin);
 
   if (variant === "scene") {
@@ -112,6 +118,18 @@ export function SceneBanner({
           <p className="truncate text-xs" style={{ color: "var(--muted-foreground)" }}>
             {sceneChatName}
           </p>
+        )}
+        {sceneChatId && (
+          <SettingsSwitch
+            label={localizeUi("ui.chat.scenebanner.allowRepliesHere")}
+            help={localizeUi("ui.chat.scenebanner.allowRepliesHereHint")}
+            helpPosition="label"
+            checked={repliesAllowed}
+            disabled={updateMeta.isPending}
+            onChange={(next) => updateMeta.mutate({ id: sceneChatId, sceneOriginRepliesAllowed: next })}
+            className="-mx-2 mt-1 gap-2"
+            labelClassName="text-xs"
+          />
         )}
       </div>
       {sceneChatId && (

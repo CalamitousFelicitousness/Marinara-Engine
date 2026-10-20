@@ -12,7 +12,7 @@
 // passable tile, no two units share a tile, and every enemy is BFS-reachable
 // from every party unit (corridors are carved to a central hub when needed).
 
-import { clamp, isImpassable, manhattan } from "./math.js";
+import { clamp, climbCost, isImpassable, manhattan } from "./math.js";
 import { TERRAIN_DATA } from "./types.js";
 import type {
   TacticalBattlefieldBrief,
@@ -23,12 +23,37 @@ import type {
   TacticalEnvironment,
   TacticalFormation,
   TacticalGrid,
+  TacticalMadeBattlefield,
   TacticalTerrain,
   TacticalUnit,
 } from "./types.js";
 
-/** Increment when a generated brief's resolved-grid semantics intentionally change. */
-export const TACTICAL_BATTLEFIELD_GENERATOR_VERSION = 1 as const;
+/** Increment when a generated brief's resolved-grid semantics intentionally change. Version 2 (combat C6b)
+ *  adds foothills: the same tiles as version 1 for the same seed, with height read off them. */
+export const TACTICAL_BATTLEFIELD_GENERATOR_VERSION = 2 as const;
+
+/**
+ * Foothills (combat C6b): a mountain stands two levels high, ground beside one (any of its eight
+ * neighbours) one level, and everything else is level ground. A generated board so only ever slopes one
+ * level a step, even diagonally, and has no cliff; cliffs are for boards painted by hand. Read from the
+ * tiles alone, with no dice, so a seed still lays out the tiles it always did. None on a board with no
+ * mountain, which stays flat. Read after deployment, which may clear a mountain to make room.
+ */
+export function foothillElevation(grid: TacticalGrid): number[][] | undefined {
+  const mountain = (x: number, y: number) => grid.tiles[y]?.[x] === "mountain";
+  let any = false;
+  const elevation = grid.tiles.map((row, y) =>
+    row.map((terrain, x) => {
+      if (terrain === "mountain") {
+        any = true;
+        return 2;
+      }
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (mountain(x + dx, y + dy)) return 1;
+      return 0;
+    }),
+  );
+  return any ? elevation : undefined;
+}
 
 /**
  * The only thing placement reads off a unit: which side it is on, whether it anchors the group, and
@@ -453,6 +478,110 @@ export function generateTacticalBattlefield(
       size,
       ...(brief && (brief.size || brief.features?.length) ? { brief } : {}),
     },
+  };
+}
+
+// ── Hand-made boards (worldgen W9g) ──
+
+/**
+ * Why a board painted by hand cannot be fought on, or nothing: it is one of the standard sizes, its
+ * deployment strips (the two columns at each side) are plains like a generated board's, and every tile a
+ * fighter can stand on connects to the rest, so placement never has to change a painted tile. The strips
+ * and a way between them are room for 40 at the least, the most fighters a battle has. Columns and rows
+ * in the reasons count from 1.
+ */
+export function tacticalMadeBoardIssues(size: TacticalBattlefieldSize, grid: TacticalGrid): string[] {
+  const { width, height } = BATTLEFIELD_SIZES[size];
+  if (
+    grid.width !== width ||
+    grid.height !== height ||
+    grid.tiles.length !== height ||
+    grid.tiles.some((row) => row.length !== width)
+  ) {
+    return [`A ${size} battlefield is ${width} tiles across and ${height} down.`];
+  }
+  if (grid.tiles.some((row) => row.some((terrain) => !Object.prototype.hasOwnProperty.call(TERRAIN_DATA, terrain)))) {
+    return ["The battlefield has a tile that is none of the six kinds."];
+  }
+  // Heights (combat C6b), when painted: one a tile, each a whole number from 0 to 3.
+  if (
+    grid.elevation &&
+    (grid.elevation.length !== height ||
+      grid.elevation.some(
+        (row) => row.length !== width || row.some((level) => !Number.isInteger(level) || level < 0 || level > 3),
+      ))
+  ) {
+    return ["The battlefield's heights are one a tile, from 0 to 3."];
+  }
+  const issues: string[] = [];
+  if (grid.tiles.some((row) => row.some((terrain, x) => inSpawnZone(grid, x) && terrain !== "plains"))) {
+    issues.push("The two columns at each side are where the sides line up: they must be plains.");
+  }
+  // Every open tile, flooded from ONE open tile of the first column: the column's tiles must reach each
+  // other too, which a cliff round some of them would prevent (combat C6b).
+  const seen = new Set<string>();
+  const queue: TacticalCoord[] = [];
+  for (let y = 0; y < height; y++) {
+    if (!isImpassable(grid, 0, y)) {
+      seen.add(tileKey(0, y));
+      queue.push({ x: 0, y });
+      break;
+    }
+  }
+  while (queue.length) {
+    const current = queue.shift()!;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const next = { x: current.x + dx, y: current.y + dy };
+      const key = tileKey(next.x, next.y);
+      if (!inBounds(grid, next.x, next.y) || seen.has(key) || isImpassable(grid, next.x, next.y)) continue;
+      // A cliff (a step of two levels or more) is no way across on foot (combat C6b), so a tile behind
+      // one is cut off unless another way leads round. Walking connects both ways, so the flood is fair.
+      if (climbCost(grid, current, next) === null) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (isImpassable(grid, x, y) || seen.has(tileKey(x, y))) continue;
+      issues.push(
+        `The tile at column ${x + 1}, row ${y + 1} is cut off: every tile a fighter can stand on must connect to both sides.`,
+      );
+      return issues;
+    }
+  }
+  return issues;
+}
+
+/**
+ * A hand-made board, as a battle is fought on it: exactly as painted. Every tile but plains is kept, so
+ * placement, which only ever turns a tile it may change into plains, leaves the painting as it is.
+ */
+export function madeTacticalBattlefield(made: TacticalMadeBattlefield): GenerateTacticalBattlefieldResult {
+  const issues = tacticalMadeBoardIssues(made.size, made.grid);
+  if (issues.length) return { ok: false, error: `${made.name}: ${issues[0]}` };
+  const grid: TacticalGrid = {
+    width: made.grid.width,
+    height: made.grid.height,
+    tiles: made.grid.tiles.map((row) => [...row]),
+    ...(made.grid.elevation ? { elevation: made.grid.elevation.map((row) => [...row]) } : {}),
+  };
+  const protectedTiles = new Set<string>();
+  grid.tiles.forEach((row, y) =>
+    row.forEach((terrain, x) => {
+      if (terrain !== "plains") protectedTiles.add(tileKey(x, y));
+    }),
+  );
+  return {
+    ok: true,
+    grid,
+    protectedTiles,
+    battlefield: { kind: "hand-made", size: made.size, id: made.id, name: made.name, scene: made.scene },
   };
 }
 

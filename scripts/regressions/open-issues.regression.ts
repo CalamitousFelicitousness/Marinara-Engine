@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,7 +46,12 @@ import {
   orderConversationRespondersByDelay,
   remainingConversationPresenceDelay,
 } from "../../packages/server/src/routes/generate/conversation-presence-runtime.js";
-import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
+import {
+  AGENT_SUITE_TRACKER_SLICES,
+  TRACKER_SLICE_ERROR_KEYS,
+  trackerSliceErrorMessage,
+  type TrackerSliceError,
+} from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
 import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -159,10 +164,7 @@ import {
   stripConversationPromptTimestamps,
   stripConversationResponseEnvelope,
 } from "../../packages/server/src/services/conversation/transcript-sanitize.js";
-import {
-  GAME_SETUP_GENERATION_TIMEOUT_MS,
-  resolveInitialGameGmConnectionId,
-} from "../../packages/server/src/services/game/initial-game-setup.js";
+import { resolveInitialGameGmConnectionId } from "../../packages/server/src/services/game/initial-game-setup.js";
 import {
   resolveIllustratorPromptRuntime,
   type IllustratorPromptConnection,
@@ -401,7 +403,6 @@ import {
   filterAndSortBackgrounds,
   getNextBackgroundFolderName,
 } from "../../packages/client/src/lib/background-library.js";
-import { resolveProfessorMariNavigation } from "../../packages/client/src/lib/professor-mari-navigation.js";
 import { resolveCapabilityPackageDisplay } from "../../packages/client/src/lib/capability-package-localization.js";
 import { resolveFeatureAgentPackage } from "../../packages/client/src/lib/feature-agent-package.js";
 import { mergeEmbeddedCharacterCardFields } from "../../packages/client/src/lib/character-import.js";
@@ -599,7 +600,7 @@ assert.equal(
 );
 assert.match(
   characterRoutesSource,
-  /const sprites = await readSpritesForId\(char\.id, true\);[\s\S]*if \(!sprites\)[\s\S]*status\(413\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites\)/u,
+  /const sprites = await readSpritesForId\(char\.id, true\);[\s\S]*if \(!sprites\)[\s\S]*status\(413\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites, \{ keepOnboarding: true \}\)/u,
   "PNG export must reject sprite collections that cannot round-trip before building the card envelope",
 );
 assert.match(
@@ -648,7 +649,7 @@ assert.match(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.getData\(\)/u,
+  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.read\(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES\)/u,
   "native package imports must validate ZIP entry sizes before extraction",
 );
 assert.match(
@@ -756,7 +757,7 @@ assert.match(
 );
 assert.match(
   professorMariWorkspaceSource,
-  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}requested value[\s\S]{0,220}Claim completion only/u,
+  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
   "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
 );
 const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
@@ -765,107 +766,6 @@ assert.match(
   /Keep card fields distinct:[\s\S]{0,600}fetch the character again/u,
   "The seeded Professor Mari command guide must retain the same targeted character-field safeguards",
 );
-
-assert.deepEqual(resolveProfessorMariNavigation("Where are the characters?"), {
-  kind: "panel",
-  panel: "characters",
-});
-assert.deepEqual(resolveProfessorMariNavigation("CHARS"), { kind: "panel", panel: "characters" });
-assert.deepEqual(resolveProfessorMariNavigation("Persona?"), { kind: "panel", panel: "personas" });
-for (const query of ["Chats", "conversations", "convo", "roleplay", "GAME"]) {
-  assert.deepEqual(resolveProfessorMariNavigation(query), { kind: "chats" });
-}
-assert.deepEqual(resolveProfessorMariNavigation("Can I talk to Professor Mari?"), { kind: "professor" });
-assert.deepEqual(resolveProfessorMariNavigation("Where do I disable Professor Mari navigation?"), {
-  kind: "settings",
-  tab: "general",
-  controlId: "professor-mari-navigation",
-});
-assert.deepEqual(resolveProfessorMariNavigation("change my theme"), { kind: "settings", tab: "appearance" });
-assert.deepEqual(resolveProfessorMariNavigation("image generation settings"), {
-  kind: "settings",
-  tab: "generations",
-});
-assert.deepEqual(resolveProfessorMariNavigation("open Discord"), { kind: "window", window: "discord" });
-assert.deepEqual(resolveProfessorMariNavigation("customize my home widgets"), {
-  kind: "window",
-  window: "widgets",
-});
-const professorMariNamedResources = [
-  { kind: "character" as const, id: "character-maukie", name: "Maukie" },
-  { kind: "persona" as const, id: "persona-echo", name: "Echo" },
-  { kind: "character" as const, id: "character-echo", name: "Echo" },
-  { kind: "preset" as const, id: "preset-cinema", name: "Cinematic RP" },
-  { kind: "lorebook" as const, id: "lorebook-snezhnaya", name: "Snezhnaya Archives" },
-  { kind: "agent" as const, id: "illustrator", name: "Illustrator", aliases: ["image agent"] },
-];
-assert.deepEqual(resolveProfessorMariNavigation("Maukie", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "character",
-  id: "character-maukie",
-});
-assert.deepEqual(resolveProfessorMariNavigation("Where is Maukie?", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "character",
-  id: "character-maukie",
-});
-assert.deepEqual(resolveProfessorMariNavigation("Mauk", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "character",
-  id: "character-maukie",
-});
-assert.deepEqual(resolveProfessorMariNavigation("edit the Echo persona", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "persona",
-  id: "persona-echo",
-});
-// An ambiguous name resolves to the first matching resource in supply order.
-assert.deepEqual(resolveProfessorMariNavigation("Echo", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "persona",
-  id: "persona-echo",
-});
-assert.deepEqual(resolveProfessorMariNavigation("open Cinematic RP preset", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "preset",
-  id: "preset-cinema",
-});
-assert.deepEqual(resolveProfessorMariNavigation("Snezhnaya Archives lorebook", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "lorebook",
-  id: "lorebook-snezhnaya",
-});
-assert.deepEqual(resolveProfessorMariNavigation("Illustrator", [], professorMariNamedResources), {
-  kind: "resource",
-  resource: "agent",
-  id: "illustrator",
-});
-assert.deepEqual(
-  resolveProfessorMariNavigation("Where did Noodle go?", [
-    { id: "official.noodle", label: "Noodle", aliases: ["NoodleR"] },
-  ]),
-  { kind: "package", packageId: "official.noodle" },
-);
-assert.equal(resolveProfessorMariNavigation("Where did Noodle go?"), null);
-assert.equal(resolveProfessorMariNavigation("quantum spaghetti cupboard"), null);
-assert.deepEqual(
-  resolveProfessorMariNavigation(
-    "Midnight at Zapolyarny",
-    [],
-    [],
-    [{ id: "chat-midnight", name: "Midnight at Zapolyarny" }],
-  ),
-  { kind: "chat", chatId: "chat-midnight" },
-);
-assert.deepEqual(resolveProfessorMariNavigation("CHAT", [], [], [{ id: "chat-generic", name: "Chat" }]), {
-  kind: "chats",
-});
-for (const name of ["Conversation", "Roleplay", "Game"]) {
-  assert.deepEqual(resolveProfessorMariNavigation(name, [], [], [{ id: `chat-${name}`, name }]), {
-    kind: "chat",
-    chatId: `chat-${name}`,
-  });
-}
 
 const localizedPackageManifest = {
   name: "Noodle",
@@ -2487,7 +2387,7 @@ try {
     lorebookId: professorMariLorebookId,
   });
   assert.equal(
-    (professorMariEntryIndex.output as Array<{ content: string }>)[0]?.content.endsWith("…"),
+    (professorMariEntryIndex.output as { items: Array<{ content: string }> }).items[0]?.content.endsWith("…"),
     true,
     "the lorebook entry index should remain compact",
   );
@@ -4771,7 +4671,6 @@ assert.equal(
   "roleplay-images",
 );
 assert.equal(resolveIllustratorImageConnectionId("game", {}, " agent-images "), "agent-images");
-assert.equal(GAME_SETUP_GENERATION_TIMEOUT_MS, 500_000);
 const previousGameDynamicImagePromptTimeout = process.env.GAME_DYNAMIC_IMAGE_PROMPT_TIMEOUT_MS;
 try {
   delete process.env.GAME_DYNAMIC_IMAGE_PROMPT_TIMEOUT_MS;
@@ -5500,6 +5399,17 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+// Slice 82: the chat's parts live in components/chat/mari/; "nowhere" and count checks read all of them.
+const mariChatDir = new URL("../../packages/client/src/components/chat/mari/", import.meta.url);
+const mariChatPart = (name: string) => readFileSync(new URL(name, mariChatDir), "utf8");
+const mariChatAllSource = [professorMariHomeSource, ...readdirSync(mariChatDir).map(mariChatPart)].join("\n");
+const mariSeesPanelSource = mariChatPart("MariSeesPanel.tsx");
+const mariMessageActionsSource = mariChatPart("use-mari-message-actions.ts");
+const mariWorkspaceRunSource = mariChatPart("use-mari-workspace-run.ts");
+const mariChatHistoryActionsSource = mariChatPart("use-mari-chat-history-actions.ts");
+const mariWorkTimelineSource = mariChatPart("MariWorkTimeline.tsx");
+const mariTranscriptSource = mariChatPart("MariTranscript.tsx");
+const compactMariMessageSource = mariChatPart("CompactMariMessage.tsx");
 const contextBudgetChatInputSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
   "utf8",
@@ -5701,15 +5611,12 @@ for (const [name, source] of [
   assert.match(source, /<ContextBudgetIndicator budget=\{contextBudget\}/u, `${name} must show usage in its popup`);
   assert.match(source, /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u, `${name} must use the larger context gauge`);
 }
-assert.equal(
-  professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} \/>/gu)?.length,
-  2,
-  "Both Professor Mari connection popups must show context usage",
-);
-assert.equal(
-  professorMariHomeSource.match(/relative flex h-\[1\.875rem\] w-\[1\.875rem\]/gu)?.length,
-  2,
-  "Both Professor Mari connection buttons must use the larger context gauge",
+// Mari's context use moved out of the connection popups (69be7be17: it duplicated the status strip) into the
+// "how she works" connection row, behind the Show context usage setting.
+assert.match(
+  mariSeesPanelSource,
+  /showContextUsage && contextBudget\s*\?\s*localizeUi\("ui\.chat\.homeprofessormarichat\.awareOfContextUse"/u,
+  "Professor Mari's connection row must show context usage when the setting is on",
 );
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
 assert.match(
@@ -5717,24 +5624,32 @@ assert.match(
   /enterToSendProfessorMari/u,
   "Professor Mari must read her persisted Send on Enter preference",
 );
+// One composer since the floating-mode branch was removed (f27ce165b).
 assert.equal(
-  professorMariHomeSource.match(
+  mariChatAllSource.match(
     /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
   )?.length,
-  2,
-  "Both Professor Mari composers must preserve Shift+Enter and require the configured send shortcut",
+  1,
+  "Professor Mari's composer must preserve Shift+Enter and require the configured send shortcut",
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);
 assert.match(
-  professorMariHomeSource,
+  mariMessageActionsSource,
   /const handleEditMessage = useCallback\([\s\S]{0,180}if \(!chatId \|\| isBusy\) return;/u,
   "Professor Mari's first edit after generation must not be rejected by a stale busy ref",
 );
+// A failed send now keeps the message in the transcript with one Retry card (failRun) and never refills the
+// composer; Stop is not a failure, so failRun returns before it shows anything.
 assert.match(
-  professorMariHomeSource,
-  /catch \(error\) \{\s*if \(isProfessorMariAbortError\(error\)\) return;\s*setDraft\(text\)/u,
-  "Stopping Professor Mari must not restore an already-submitted prompt to the composer",
+  mariWorkspaceRunSource,
+  /const failRun = useCallback\(\s*\([^)]*\) => \{\s*if \(isProfessorMariAbortError\(error\)\) return;/u,
+  "Stopping Professor Mari must not show a failure",
+);
+assert.doesNotMatch(
+  mariChatAllSource,
+  /catch \(error\) \{[^}]*setDraft\(/u,
+  "A failed or stopped Professor Mari send must not restore the submitted prompt to the composer",
 );
 assert.match(
   lorebookHooksSource,
@@ -5742,13 +5657,15 @@ assert.match(
   "Deleting a lorebook must refresh cached chat metadata so it leaves active context immediately",
 );
 assert.match(
-  professorMariHomeSource,
+  mariChatHistoryActionsSource,
   /handleDeleteProfessorChat[\s\S]{0,500}showConfirmDialog/u,
   "Deleting one Professor Mari chat must use the app confirmation dialog",
 );
+// Every step row, failed ones included, opens to technical details with the tool's output (slice 72
+// moved the details into one `technicalDetails` helper that every step row renders).
 assert.match(
-  professorMariHomeSource,
-  /isError && tool\.output\?\.trim\(\)[\s\S]{0,200}<pre/u,
+  mariWorkTimelineSource,
+  /const technicalDetails = \(tool: WorkspaceToolCall\) =>[\s\S]{0,600}tool\.output !== null && tool\.output !== undefined \? <pre>/u,
   "Failed workspace tools must reveal their provider output in the transcript",
 );
 const professorMariTranscript = { clientHeight: 240, scrollHeight: 720, scrollTop: 0 };
@@ -5766,7 +5683,7 @@ assert.equal(
   "Professor Mari streaming must stop following output after the reader scrolls away from the bottom",
 );
 assert.match(
-  professorMariHomeSource,
+  mariTranscriptSource,
   /ref=\{setTranscriptScrollNode\}[\s\S]{0,100}data-component="HomeProfessorMariChat\.Transcript"/u,
   "Professor Mari transcript panes must trigger scrolling from their mounted ref",
 );
@@ -5777,11 +5694,11 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
-  /options\.shouldApply\?\.\(\) === false[\s\S]{0,160}setMessages/u,
+  /options\.shouldApply\?\.\(\) === false[\s\S]{0,480}setMessages/u,
   "Professor Mari message loads must recheck an operation guard before applying a response",
 );
 assert.match(
-  professorMariHomeSource,
+  mariWorkspaceRunSource,
   /loadMessages\(completedChatId, \{[\s\S]{0,160}workspaceRunIdRef\.current === runId[\s\S]{0,100}activeChatIdRef\.current === completedChatId/u,
   "Professor Mari background refreshes must not overwrite state after a newer operation starts",
 );
@@ -5793,17 +5710,23 @@ assert.match(
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(
-  professorMariHomeSource,
+  mariWorkspaceRunSource,
   /refreshWorkspaceStatus\([\s\S]{0,140}workspaceRunIdRef\.current === runId[\s\S]{0,100}activeChatIdRef\.current === completedChatId/u,
   "Professor Mari post-run status refreshes must not overwrite state after a newer operation starts",
 );
+// The work-stage layout (1a61247d1) replaced the user-message separators with a right-aligned bubble.
 assert.match(
-  professorMariHomeSource,
-  /message\.role === "user"[\s\S]{0,180}<TranscriptRow[\s\S]{0,100}border-y border-\[var\(--border\)\]\/60/u,
-  "Professor Mari user messages must retain their theme-aware horizontal separators",
+  compactMariMessageSource,
+  /message\.role === "user"[\s\S]{0,180}<TranscriptRow[^>]*className="mari-user-request/u,
+  "Professor Mari user messages must render as the user-request row",
 );
 assert.match(
-  professorMariHomeSource,
+  readFileSync(new URL("../../packages/client/src/styles/mari.css", import.meta.url), "utf8"),
+  /\.mari-user-request__bubble \{[^}]*background: color-mix\(in srgb, var\(--foreground\) \d+%, var\(--card\)\)/u,
+  "Professor Mari user bubbles must take their colour from the theme",
+);
+assert.match(
+  mariChatHistoryActionsSource,
   /Promise\.allSettled\([\s\S]*?api\.delete\(`\/chats\/internal\/professor-mari\/chats\/\$\{id\}`\)/u,
   "Professor Mari chat history should delete all selected chats through the existing endpoint",
 );
@@ -5938,7 +5861,8 @@ assert.match(
 // Chat Summary is a Chat Settings drawer, so a request opens Chat Settings there (desktop window or phone sheet).
 assert.match(
   assignedSweepChatAreaSource,
-  /chatId !== useChatStore\.getState\(\)\.activeChatId\) return;\s*handleOpenSettingsPanel\(undefined, \{ initialSection: "summary" \}\)[\s\S]{0,120}CHAT_SUMMARY_OPEN_REQUEST_EVENT/u,
+  // One listener table now serves the summary, lorebook-entries and search drawers (omnibar chat tool rows).
+  /\[CHAT_SUMMARY_OPEN_REQUEST_EVENT, "summary"\][\s\S]{0,400}chatId !== useChatStore\.getState\(\)\.activeChatId\) return;\s*handleOpenSettingsPanel\(undefined, \{ initialSection \}\)/u,
   "Summary requests must open Chat Settings at the Chat Summary drawer for the active chat only",
 );
 assert.match(
@@ -6190,7 +6114,7 @@ assert.match(
   "Individual Conversation lorebook injection should happen separately for each provider generation",
 );
 assert.match(
-  conversationGenerationSource,
+  readFileSync(new URL("../../packages/server/src/routes/generate/reply-text-cleanup.ts", import.meta.url), "utf8"),
   /chatMode === "conversation" && otherNames\.length > 0[\s\S]{0,500}fullResponse = fullResponse\.slice\(0, nextSpeakerMatch\.index\)/u,
   "Individual Conversation generations should discard an extra character turn returned in the same completion",
 );
@@ -6220,7 +6144,12 @@ assert.match(
   /resolveIllustratorImageSize\(\s*requestChatMode === "game" \? imageSettings\.game : imageSettings\.illustration,\s*illData\.aspectRatio/u,
   "automatic Illustrator generation should use the Game scene canvas in Game mode and preserve the shared orientation resolver",
 );
-assert.match(professorMariHomeSource, /Math\.min\(textarea\.scrollHeight, 128\)/u);
+// R11: the composer cap is its CSS max-height now (8 lines, 6 on touch), not a hard-coded 128 px.
+assert.match(
+  professorMariHomeSource,
+  /const cap = Number\.parseFloat\(getComputedStyle\(textarea\)\.maxHeight\);\s*const to = Number\.isFinite\(cap\) \? Math\.min\(textarea\.scrollHeight, cap\)/u,
+  "Professor Mari's composer must stop growing at its max-height",
+);
 assert.equal(
   themesRouteSource.match(/requirePrivilegedAccess\(req, reply, \{ feature: "Theme install\/update\/delete" \}\)/gu)
     ?.length,
@@ -6256,6 +6185,14 @@ assert.notEqual(
   mobilePlaywrightProject.use?.baseURL,
   "desktop and mobile Playwright projects must use isolated app servers",
 );
+// Chromium runs with its audio output off, so opening an audio device cannot stall a headless page
+// (and the toasts with it); the switch is Chromium's own, so a WebKit project never gets it.
+for (const project of [desktopPlaywrightProject, mobilePlaywrightProject]) {
+  assert.ok(project.use?.launchOptions?.args?.includes("--disable-audio-output"), `${project.name} mutes Chromium`);
+}
+for (const project of playwrightConfig.projects ?? []) {
+  if (!/chromium/u.test(project.name ?? "")) assert.ok(!project.use?.launchOptions?.args?.length, project.name);
+}
 const playwrightServerSource = readFileSync(join(REPOSITORY_ROOT, "e2e/start-servers.mjs"), "utf8");
 assert.match(playwrightServerSource, /startProject\("mobile", mobileClientPort, mobileServerPort\)/u);
 assert.match(playwrightServerSource, /startProject\("desktop", desktopClientPort, desktopServerPort\)/u);
@@ -6292,10 +6229,10 @@ assert.equal(
   "Home effect pausing must keep one central visibility listener",
 );
 assert.match(appSource, /dispatchEvent\(new CustomEvent\("marinara:effects-paused"/u);
-assert.match(homeBrowserHubSource, /window\.removeEventListener\(MARINARA_EFFECTS_PAUSED_EVENT, sync\)/u);
+// Slice 85: the navigator is gone; the Home widget's blink is the Mari frame that pauses with the page.
 assert.match(
   globalStylesSource,
-  /data-marinara-effects-paused="true"[^}]+mari-home-professor-popup__sprite[\s\S]+animation-play-state: paused !important;/u,
+  /data-marinara-effects-paused="true"\] \.mari-home-professor-blink,[^}]+animation-play-state: paused !important;/u,
 );
 const agentEditorSource = readFileSync(
   new URL("../../packages/client/src/components/agents/AgentEditor.tsx", import.meta.url),
@@ -6364,10 +6301,13 @@ const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
 );
-const choiceSelectionModalSource = readFileSync(
-  new URL("../../packages/client/src/components/presets/ChoiceSelectionModal.tsx", import.meta.url),
-  "utf8",
-);
+// The modal renders each variable's options through the shared ChoiceOptionsField.
+const choiceSelectionModalSource =
+  readFileSync(
+    new URL("../../packages/client/src/components/presets/ChoiceSelectionModal.tsx", import.meta.url),
+    "utf8",
+  ) +
+  readFileSync(new URL("../../packages/client/src/components/presets/ChoiceOptionsField.tsx", import.meta.url), "utf8");
 const gameSurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
@@ -6543,10 +6483,14 @@ const illustratorReferencesSource = readFileSync(
   "utf8",
 );
 assert.match(appSource, /--marinara-app-accent-static-gradient/u);
-assert.match(appSource, /position=\{notificationPosition === "bottom" \? "bottom-center" : "top-center"\}/u);
+// While the omnibar is open, toasts move to the edge it does not cover; otherwise the user's position applies.
 assert.match(
   appSource,
-  /swipeDirections=\{\["left", "right", notificationPosition === "bottom" \? "bottom" : "top"\]\}/u,
+  /position=\{\s*omnibarOpen\s*\?[^:]+:[^:]+:\s*notificationPosition === "bottom"\s*\? "bottom-center"\s*: "top-center"\s*\}/u,
+);
+assert.match(
+  appSource,
+  /swipeDirections=\{\[\s*"left",\s*"right",\s*omnibarOpen \? \(isMobileShell \? "top" : "bottom"\) : notificationPosition === "bottom" \? "bottom" : "top",\s*\]\}/u,
 );
 assert.doesNotMatch(agentEditorSource, /fetch\(["']\/api\/game-assets\/pick-local-music-folder/u);
 assert.match(agentEditorSource, /api\.post<[^>]+>\(["']\/game-assets\/pick-local-music-folder["']\)/u);
@@ -6968,10 +6912,10 @@ assert.equal(
 );
 assert.match(
   transcriptWindowControlsSource,
-  /const TRANSCRIPT_WINDOW_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--small px-3 text-xs";/u,
+  /export const HISTORY_PAGER_BUTTON_CLASS =\s*"mari-chat-history-pager mari-chat-style-control mari-chrome-control mari-chrome-control--small px-3 text-xs";/u,
 );
 assert.equal(
-  transcriptWindowControlsSource.match(/className=\{cn\(TRANSCRIPT_WINDOW_BUTTON_CLASS, buttonClassName\)\}/gu)?.length,
+  transcriptWindowControlsSource.match(/className=\{cn\(HISTORY_PAGER_BUTTON_CLASS, buttonClassName\)\}/gu)?.length,
   3,
 );
 assert.doesNotMatch(transcriptWindowControlsSource, /text-\[var\(--muted-foreground\)\]/u);
@@ -6996,7 +6940,7 @@ assert.match(
 );
 assert.match(
   conversationSelfieRuntimeSource,
-  /selfieResolvedCharacterIds = Array\.from\([\s\S]{0,300}referenceResolution\.characterIds[\s\S]{0,4500}characterIds: selfieResolvedCharacterIds/u,
+  /selfieResolvedCharacterIds = Array\.from\([\s\S]{0,300}referenceResolution\.characterIds[\s\S]{0,5000}characterIds: selfieResolvedCharacterIds/u,
   "Conversation group selfies must be saved to every depicted character gallery",
 );
 assert.match(
@@ -7013,7 +6957,10 @@ const markdownBlockquoteStyles =
   globalStyles.match(/\.mari-message-content \.mari-md-blockquote \{[\s\S]*?\}/u)?.[0] ?? "";
 assert.match(markdownBlockquoteStyles, /color:\s*inherit;/u);
 assert.doesNotMatch(markdownBlockquoteStyles, /color:\s*var\(--muted-foreground\);/u);
-const markdownMessageStyles = globalStyles.match(/\.mari-message-content \{[\s\S]*?\}/u)?.[0] ?? "";
+// The workspace transcript adds its own earlier `.mari-message-content` rule (padding only); check every rule.
+const markdownMessageStyles = [...globalStyles.matchAll(/^\.mari-message-content \{[\s\S]*?\}/gmu)]
+  .map((match) => match[0])
+  .join("\n");
 const markdownMessageContainerStyles =
   globalStyles.match(/\.mari-message-body,\s*\.mari-message-bubble \{[\s\S]*?\}/u)?.[0] ?? "";
 const markdownCodeBlockStyles =
@@ -9309,6 +9256,20 @@ assert.equal(
   128,
   "The Tracker should use the matching right chat gutter",
 );
+assert.equal(
+  resolveTrackerPanelDesktopWidth({
+    preferredWidth: 340,
+    mainLeft: 0,
+    mainRight: 1024,
+    chatColumnLeft: 19,
+    chatColumnRight: 1005,
+    side: "right",
+    gap: 8,
+    minWidth: 96,
+  }),
+  96,
+  "A docked Tracker in a gutter too narrow for it keeps its minimum width instead of a sliver (#7188)",
+);
 assert.equal(resolveTrackerPanelContentScale(340, 340), 1);
 assert.equal(resolveTrackerPanelContentScale(340, 255), 0.75);
 assert.equal(
@@ -10414,7 +10375,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
-    error: "World custom fields must be a JSON array",
+    error: { code: "notArray", field: "worldCustomFields" },
   });
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
@@ -10430,25 +10391,73 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     currencies: [],
     equipped: [],
     inventory: [{ foo: 1 }],
-  }) as { error?: string };
-  assert.match(
-    String(malformedRows.error),
-    /inventory/iu,
+  });
+  assert.deepEqual(
+    malformedRows,
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "missingName", index: 0 } } },
     "a row without a name must be reported, naming the group it came from",
   );
-  assert.match(
-    String(
-      (
-        inventorySlice.buildPatch(gameState, {
-          currencies: [],
-          equipped: [],
-          inventory: [{ name: "Rope", qty: 0 }],
-        }) as { error?: string }
-      ).error,
-    ),
-    /qty/iu,
+  assert.deepEqual(
+    inventorySlice.buildPatch(gameState, {
+      currencies: [],
+      equipped: [],
+      inventory: [{ name: "Rope", qty: 0 }],
+    }),
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "qtyBelowOne", index: 0 } } },
     "a quantity below 1 must be reported rather than silently clamped",
   );
+
+  // #7738: slice errors are codes the UI localizes. Every code must name an English key, and the
+  // English text must read as it did before the errors were localized.
+  const collectKeys = (value: unknown): string[] =>
+    typeof value === "string" ? [value] : Object.values(value as object).flatMap(collectKeys);
+  const trackerErrorKeys = collectKeys(TRACKER_SLICE_ERROR_KEYS);
+  assert.equal(trackerErrorKeys.length, 17, "every tracker slice error code has a key");
+  for (const key of trackerErrorKeys) {
+    assert.equal(typeof englishLocale[key], "string", `${key} must exist in en.json`);
+  }
+  const renderEnglish = (error: TrackerSliceError) =>
+    trackerSliceErrorMessage(error, (key, values) =>
+      englishLocale[key]!.replace(/\{\{(\w+)\}\}/gu, (_, name: string) => {
+        const value = (values as Record<string, unknown> | undefined)?.[name];
+        assert.ok(value !== undefined, `${key} needs {{${name}}}`);
+        return String(value);
+      }),
+    );
+  const sliceError = (slice: string, parsed: unknown) =>
+    (AGENT_SUITE_TRACKER_SLICES[slice]!.buildPatch(gameState, parsed) as { error: TrackerSliceError }).error;
+  const inventoryRows = (inventory: unknown[]) =>
+    sliceError("inventory-tracker", { currencies: [], equipped: [], inventory });
+  for (const [error, english] of [
+    [sliceError("world-state", []), "Scene data must be a JSON object"],
+    [sliceError("world-state", { worldCustomFields: "invalid" }), "World custom fields must be a JSON array"],
+    [sliceError("character-tracker", {}), "Present characters must be a JSON array"],
+    [sliceError("persona-stats", []), "Persona stats data must be a JSON object"],
+    [sliceError("persona-stats", { personaStats: {} }), "Persona stats must be a JSON array"],
+    [sliceError("persona-stats", { inventory: {} }), "Inventory must be a JSON array"],
+    [sliceError("custom-tracker", {}), "Custom tracker fields must be a JSON array"],
+    [sliceError("inventory-tracker", null), "Inventory Tracker data must be a JSON object"],
+    [
+      sliceError("inventory-tracker", { currencies: [] }),
+      "Inventory Tracker data must include currencies, equipped, and inventory arrays",
+    ],
+    [
+      { code: "invalidInventoryRow", group: "currencies", problem: { code: "notArray" } },
+      'Inventory Tracker "currencies": must be an array',
+    ],
+    [inventoryRows(["Rope"]), 'Inventory Tracker "inventory": row 0 must be an object'],
+    [inventoryRows([{ foo: 1 }]), 'Inventory Tracker "inventory": row 0 is missing a string "name"'],
+    [inventoryRows([{ name: "Rope" }, { name: "  " }]), 'Inventory Tracker "inventory": row 1 has an empty "name"'],
+    [
+      inventoryRows([{ name: "Rope", location: 3 }]),
+      'Inventory Tracker "inventory": row 0 has a non-string "location"',
+    ],
+    [inventoryRows([{ name: "Rope", qty: "lots" }]), 'Inventory Tracker "inventory": row 0 has a non-numeric "qty"'],
+    [inventoryRows([{ name: "Rope", qty: 0 }]), 'Inventory Tracker "inventory": row 0 has a "qty" below 1'],
+    [sliceError("quest", {}), "Active quests must be a JSON array"],
+  ] as const) {
+    assert.equal(renderEnglish(error), english);
+  }
 
   // Accepted payloads still get the shared invariants applied.
   const equippedWins = inventorySlice.buildPatch(gameState, {

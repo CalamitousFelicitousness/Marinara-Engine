@@ -32,6 +32,7 @@ function createSheetCommandStripRegex(): RegExp {
 }
 
 export interface ParsedSheetCommandTag {
+  sheet?: string;
   who?: string;
   /** Null when the tag names no op this Engine has, or is missing what that op needs. */
   op: RulesetSheetOp | null;
@@ -85,7 +86,12 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   const values = readAttributes(body);
   const whoValue = values.get("who")?.trim();
   const who = whoValue ? whoValue.slice(0, MAX_WHO_LENGTH) : undefined;
-  const parsed: ParsedSheetCommandTag = { op: null, ...(who ? { who } : {}) };
+  const sheet = values.get("sheet");
+  const parsed: ParsedSheetCommandTag = {
+    op: null,
+    ...(who ? { who } : {}),
+    ...(sheet !== undefined ? { sheet } : {}),
+  };
   const name = readOpName(values.get("op"));
   if (!name) return parsed;
 
@@ -108,6 +114,32 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     const pool = values.get("pool")?.trim();
     if (!pool || amount === null) return parsed;
     return { ...parsed, op: { op: name, pool, amount } };
+  }
+  if (name === "advance") {
+    const targets = ["field", "ability", "skill", "save"].filter((key) => values.has(key));
+    if (targets.length !== 1) return parsed;
+    const target = targets[0]!;
+    const requested = values.get(target)?.trim();
+    if (!requested) return parsed;
+    if (target === "skill" || target === "save") {
+      const tier = values.get("tier")?.trim();
+      if (!tier || values.has("to") || values.has("by")) return parsed;
+      return {
+        ...parsed,
+        op: target === "skill" ? { op: "advance", skill: requested, tier } : { op: "advance", save: requested, tier },
+      };
+    }
+    if (values.has("to") === values.has("by") || values.has("tier")) return parsed;
+    const to = values.get("to");
+    const raw = values.get("by") ?? to;
+    const numeric = raw !== undefined && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw.trim()) ? Number(raw) : NaN;
+    if ((target === "ability" || values.has("by")) && !Number.isFinite(numeric)) return parsed;
+    if (target === "ability")
+      return {
+        ...parsed,
+        op: { op: "advance", ability: requested, ...(to === undefined ? { by: numeric } : { to: numeric }) },
+      };
+    return { ...parsed, op: { op: "advance", field: requested, ...(to === undefined ? { by: numeric } : { to }) } };
   }
   if (name === "track") {
     const track = values.get("track")?.trim();
@@ -145,7 +177,13 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
-  return { ...parsed, op: { op: "rest", rest } };
+  // Dice spent to heal on it (1.335): a count, or the tag does not say what it means.
+  const rawDice = values.get("dice");
+  const dice = rawDice === undefined ? null : readInteger(rawDice);
+  if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
+  // From one pool of several (1.337): 5e's d8 hit dice.
+  const pool = dice ? values.get("pool")?.trim() : undefined;
+  return { ...parsed, op: { op: "rest", rest, ...(dice ? { dice } : {}), ...(pool ? { pool } : {}) } };
 }
 
 /** The outcome summary (`now`) of a command for the whole party lists one value per member, so it
@@ -178,13 +216,14 @@ export type SheetCommandTagOutcome = { ok: true; now: string } | { ok: false; re
  *  Engine read and did, never spliced out of what the model wrote — so a forged `result=` cannot
  *  survive a round trip, and an unreadable body keeps only a sanitized copy of itself. */
 export function serializeSheetCommandTag(
-  input: { who?: string; op: RulesetSheetOp | null; raw: string },
+  input: { sheet?: string; who?: string; op: RulesetSheetOp | null; raw: string },
   outcome: SheetCommandTagOutcome,
 ): string {
   const parts: string[] = [];
   const attribute = (key: string, value: string | number, limit?: number) =>
     parts.push(`${key}="${sanitizeSheetTagValue(String(value), limit)}"`);
 
+  if (input.sheet !== undefined) attribute("sheet", input.sheet);
   const op = input.op;
   if (!op) {
     attribute("raw", input.raw);
@@ -199,6 +238,17 @@ export function serializeSheetCommandTag(
     } else if (op.op === "spend" || op.op === "restore" || op.op === "damage" || op.op === "temp") {
       attribute("pool", op.pool);
       attribute("amount", op.amount);
+    } else if (op.op === "advance") {
+      if ("skill" in op || "save" in op) {
+        if ("skill" in op) attribute("skill", op.skill);
+        else attribute("save", op.save);
+        attribute("tier", op.tier);
+      } else {
+        if ("field" in op) attribute("field", op.field);
+        else attribute("ability", op.ability);
+        if (op.to !== undefined) attribute("to", op.to);
+        else attribute("by", op.by ?? 0);
+      }
     } else if (op.op === "track") {
       attribute("track", op.track);
       if (op.to !== undefined) attribute("to", op.to);
@@ -217,6 +267,8 @@ export function serializeSheetCommandTag(
       if (op.pool) attribute("pool", op.pool);
     } else if (op.op === "rest") {
       attribute("rest", op.rest);
+      if (op.dice) attribute("dice", op.dice);
+      if (op.dice && op.pool) attribute("pool", op.pool);
     }
   }
   if (outcome.ok) {
@@ -237,6 +289,7 @@ export function stripSheetCommandTags(text: string): string {
 }
 
 export interface ResolvedSheetCommandTag {
+  sheet?: string;
   who?: string;
   ok: boolean;
   reason?: string;
@@ -253,6 +306,7 @@ export function readResolvedSheetCommandTags(text: string): ResolvedSheetCommand
     const values = readAttributes(match[1] ?? "");
     const result = values.get("result")?.trim().toLowerCase();
     if (result !== "ok" && result !== "refused") continue;
+    const sheet = values.get("sheet");
     const who = values.get("who")?.trim();
     const now = values.get("now")?.trim();
     const reason = values.get("reason")?.trim();
@@ -268,9 +322,13 @@ export function readResolvedSheetCommandTags(text: string): ResolvedSheetCommand
       // has already answered above.
       (name === "state" ? values.get("state") : undefined) ??
       values.get("field") ??
+      values.get("ability") ??
+      values.get("skill") ??
+      values.get("save") ??
       values.get("rest");
-    const head = [who, name ?? "sheet", target].filter(Boolean).join(" ");
+    const head = [sheet === "party" ? "party" : who, name ?? "sheet", target].filter(Boolean).join(" ");
     found.push({
+      ...(sheet !== undefined ? { sheet } : {}),
       ...(who ? { who } : {}),
       ok: result === "ok",
       ...(reason ? { reason } : {}),

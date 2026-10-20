@@ -26,6 +26,8 @@ import {
   applyCharacterTagEdit,
   normalizeCharacterTagEdit,
   isEmptyCharacterTagEdit,
+  GREETING_IMAGE_BAKE_MAX_PER_REQUEST,
+  restoreBakedGreetingImages,
 } from "@marinara-engine/shared";
 import type { CharacterData, ConversationCallCharacterVideoClipKind, ExportEnvelope } from "@marinara-engine/shared";
 import { createCharactersStorage, type PersonaStorageRow } from "../services/storage/characters.storage.js";
@@ -34,7 +36,10 @@ import { encodePersonaCreate, encodePersonaUpdate, projectPersona } from "../ser
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
-import { createGameSceneVideosStorage } from "../services/storage/game-scene-videos.storage.js";
+import {
+  createGameSceneVideosStorage,
+  parseSceneVideoCharacterIds,
+} from "../services/storage/game-scene-videos.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../services/storage/noodle.storage.js";
@@ -50,6 +55,8 @@ import { compileImagePrompt } from "../services/image/image-prompt-compiler.js";
 import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { buildAvatarPortraitLeadPrompt } from "../services/image/avatar-generation-prompt.js";
+import { downloadGreetingImage } from "../services/image/greeting-image-bake.js";
+import { GREETING_IMAGE_BAKE_RATE_LIMIT } from "../middleware/rate-limit.js";
 import {
   ConversationCallVideoClipAvatarMismatchError,
   ConversationCallVideoClipNotFoundError,
@@ -103,6 +110,7 @@ import { extname } from "path";
 import { pipeline } from "stream/promises";
 import { newId } from "../utils/id-generator.js";
 import { createReplyFallbackNotifier } from "./generate/fallback-notification.js";
+import { removeAvatarOwner } from "../services/avatars/storage.js";
 import {
   findGalleryRowByFilename,
   galleryFileHasReferences,
@@ -141,6 +149,9 @@ const CALL_VIDEO_CLIP_LABELS = {
 const CALL_VIDEO_CLIP_UPLOAD_MAX_BYTES = 250 * 1024 * 1024;
 const ALLOWED_CALL_VIDEO_CLIP_UPLOAD_EXTS = new Set([".mp4"]);
 const renameCardVersionSchema = z.object({ version: z.string().trim().min(1).max(100) });
+const bakeGreetingImagesSchema = z.object({
+  urls: z.array(z.string()).min(1).max(GREETING_IMAGE_BAKE_MAX_PER_REQUEST),
+});
 type UploadedMultipartFile = NonNullable<Awaited<ReturnType<FastifyRequest["file"]>>>;
 
 function applyTrackerCardPaint(currentValue: unknown, paint: Record<string, unknown>, preserveStatIcons = true) {
@@ -761,8 +772,21 @@ async function buildNativeCharacterExport(
   };
 }
 
-export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filename: string; data: string }> = []) {
+/**
+ * `keepOnboarding` is for the Compatible PNG route only. The PNG is the file
+ * authors hand around, so a Marinara user importing it should still get the
+ * card's onboarding; other front-ends ignore the unknown extension key. The
+ * Compatible JSON export deliberately omits it, so that stays a clean V2 card.
+ */
+export function buildCompatibleCharacterExport(
+  data: any,
+  sprites: Array<{ filename: string; data: string }> = [],
+  { keepOnboarding = false }: { keepOnboarding?: boolean } = {},
+) {
+  // Compatible cards carry no gallery, so baked greeting images go back to their web links.
+  data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
+  delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [
     ["backstory", "Backstory"],
@@ -776,6 +800,7 @@ export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filen
     delete extensions[key];
   }
   delete extensions.characterSheetImageId;
+  if (!keepOnboarding) delete extensions.onboarding;
   extensions.useCharacterSheetAsReference = false;
   if (sprites.length > 0) {
     extensions.marinara = {
@@ -1589,6 +1614,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectCharacterAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.remove(id),
     });
+    await removeAvatarOwner({ ownerType: "character", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted character %s", id),
+    );
     // Cascade the character's Noodle presence, otherwise its account and posts stay
     // in the timeline forever as a ghost (issue #4295).
     try {
@@ -1689,29 +1717,32 @@ export async function charactersRoutes(app: FastifyInstance) {
       })),
     );
     const sceneClips = sceneVideoGroups.flatMap(({ chat, videos }) =>
-      videos.map((video) => {
-        const filename = video.filePath.split("/").pop() ?? "";
-        const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
-        return {
-          id: `scene:${video.id}`,
-          source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
-          label: chat.mode === "game" ? "Game scene" : "Scene video",
-          prompt: video.prompt,
-          status: "ready" as const,
-          url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
-          createdAt: video.createdAt,
-          updatedAt: video.createdAt,
-          durationSeconds: video.durationSeconds,
-          trimStartSeconds: null,
-          trimEndSeconds: null,
-          aspectRatio: video.aspectRatio,
-          provider: video.provider,
-          model: video.model,
-          chatId: chat.id,
-          chatName: chat.name,
-          clipKind: null,
-        };
-      }),
+      videos
+        // A tagged video belongs only to the characters it shows; untagged ones keep belonging to the whole chat.
+        .filter((video) => parseSceneVideoCharacterIds(video.characterIds)?.includes(req.params.id) ?? true)
+        .map((video) => {
+          const filename = video.filePath.split("/").pop() ?? "";
+          const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
+          return {
+            id: `scene:${video.id}`,
+            source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
+            label: chat.mode === "game" ? "Game scene" : "Scene video",
+            prompt: video.prompt,
+            status: "ready" as const,
+            url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
+            createdAt: video.createdAt,
+            updatedAt: video.createdAt,
+            durationSeconds: video.durationSeconds,
+            trimStartSeconds: null,
+            trimEndSeconds: null,
+            aspectRatio: video.aspectRatio,
+            provider: video.provider,
+            model: video.model,
+            chatId: chat.id,
+            chatName: chat.name,
+            clipKind: null,
+          };
+        }),
     );
     const uploadedVideoClips = await listGalleryVideoClips(CHARACTER_GALLERY_VIDEO_ROOT, req.params.id, "character");
 
@@ -2028,6 +2059,53 @@ export async function charactersRoutes(app: FastifyInstance) {
       url: `/api/characters/${id}/gallery/file/${encodeURIComponent(filename)}`,
     };
   });
+
+  // Saves web images from the greetings into the gallery, only when the user
+  // asks (#7221). The editor then points the greetings at the saved copies.
+  app.post<{ Params: { id: string } }>(
+    "/:id/gallery/bake",
+    { config: { rateLimit: GREETING_IMAGE_BAKE_RATE_LIMIT } },
+    async (req, reply) => {
+      const { urls } = bakeGreetingImagesSchema.parse(req.body ?? {});
+      const char = await storage.getById(req.params.id);
+      if (!char) return reply.status(404).send({ error: "Character not found" });
+      // Paths use the stored id, never the raw route parameter.
+      const id = char.id;
+
+      const dir = await ensureCharacterGalleryDir(id);
+      const results: Array<{ url: string; file?: string; error?: string }> = [];
+      for (const url of new Set(urls)) {
+        let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
+        try {
+          image = await downloadGreetingImage(url);
+        } catch (error) {
+          logger.warn(error, "Could not download a greeting image from %s for character %s", URL.parse(url)?.host, id);
+          results.push({ url, error: error instanceof Error ? error.message : "Download failed" });
+          continue;
+        }
+        // App-generated name; nothing from the URL reaches the file system.
+        const file = `${newId()}.${image.ext}`;
+        let written = false;
+        try {
+          await writeFile(join(dir, file), image.buffer, { flag: "wx" });
+          written = true;
+          await characterGallery.create({
+            characterId: id,
+            filePath: `characters/${id}/${file}`,
+            width: image.width,
+            height: image.height,
+          });
+          results.push({ url, file });
+        } catch (error) {
+          if (written) await unlink(join(dir, file)).catch(() => undefined);
+          // Storage errors can name server paths, so the client gets a plain message.
+          logger.error(error, "Could not store a greeting image for character %s", id);
+          results.push({ url, error: "The image could not be stored" });
+        }
+      }
+      return { results };
+    },
+  );
 
   app.get<{ Params: { id: string; filename: string } }>("/:id/gallery/file/:filename", async (req, reply) => {
     const { id, filename } = req.params;
@@ -2352,7 +2430,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!sprites) {
       return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });
     }
-    const v2Envelope = buildCompatibleCharacterExport(charData, sprites);
+    const v2Envelope = buildCompatibleCharacterExport(charData, sprites, { keepOnboarding: true });
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback
@@ -2712,6 +2790,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       collectAvatarPaths: () => collectPersonaAvatarPaths(app.db, [id]),
       mutateReferences: () => storage.removePersona(id),
     });
+    await removeAvatarOwner({ ownerType: "persona", ownerId: id }).catch((err) =>
+      logger.warn(err, "Failed to remove the avatar model of deleted persona %s", id),
+    );
     for (const image of galleryImages) {
       await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     }
@@ -2805,30 +2886,34 @@ export async function charactersRoutes(app: FastifyInstance) {
       })),
     );
     const sceneClips = sceneVideoGroups.flatMap(({ chat, videos }) =>
-      videos.map((video) => {
-        const filename = video.filePath.split("/").pop() ?? "";
-        const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
-        return {
-          id: `scene:${video.id}`,
-          source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
-          label: chat.mode === "game" ? "Game scene" : "Scene video",
-          prompt: video.prompt,
-          status: "ready" as const,
-          url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
-          createdAt: video.createdAt,
-          updatedAt: video.createdAt,
-          origin: null,
-          durationSeconds: video.durationSeconds,
-          trimStartSeconds: null,
-          trimEndSeconds: null,
-          aspectRatio: video.aspectRatio,
-          provider: video.provider,
-          model: video.model,
-          chatId: chat.id,
-          chatName: chat.name,
-          clipKind: null,
-        };
-      }),
+      videos
+        // A Conversation clip names who it shows; it reaches the persona's gallery only when the persona is one of
+        // them. Untagged clips (older ones, Roleplay and Game Mode) keep belonging to the whole chat.
+        .filter((video) => parseSceneVideoCharacterIds(video.characterIds)?.includes(req.params.id) ?? true)
+        .map((video) => {
+          const filename = video.filePath.split("/").pop() ?? "";
+          const routePrefix = chat.mode === "game" ? "/api/game" : "/api/gallery";
+          return {
+            id: `scene:${video.id}`,
+            source: chat.mode === "game" ? ("game-scene" as const) : ("scene-video" as const),
+            label: chat.mode === "game" ? "Game scene" : "Scene video",
+            prompt: video.prompt,
+            status: "ready" as const,
+            url: `${routePrefix}/scene-videos/file/${encodeURIComponent(chat.id)}/${encodeURIComponent(filename)}`,
+            createdAt: video.createdAt,
+            updatedAt: video.createdAt,
+            origin: null,
+            durationSeconds: video.durationSeconds,
+            trimStartSeconds: null,
+            trimEndSeconds: null,
+            aspectRatio: video.aspectRatio,
+            provider: video.provider,
+            model: video.model,
+            chatId: chat.id,
+            chatName: chat.name,
+            clipKind: null,
+          };
+        }),
     );
     const uploadedVideoClips = await listGalleryVideoClips(PERSONA_GALLERY_VIDEO_ROOT, req.params.id, "persona");
 

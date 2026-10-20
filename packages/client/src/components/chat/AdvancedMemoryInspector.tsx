@@ -1,30 +1,41 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE, type AdvancedMemoryRecord } from "@marinara-engine/shared";
 import {
+  ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
+  ADVANCED_MEMORY_SCENE_AUDIENCE_UNMATCHED as SCENE_AUDIENCE_UNMATCHED,
+  type AdvancedMemoryRecord,
+} from "@marinara-engine/shared";
+import {
+  advancedMemorySceneNumbers,
   useAdvancedMemoryAction,
   useAdvancedMemorySources,
   useAdvancedMemoryStatus,
   useExportAdvancedMemory,
 } from "../../hooks/use-advanced-memory";
+import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import type { MemoryCharacterOption } from "./AdvancedMemorySettings";
 
 const buttonClass =
   "mari-chrome-control inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs disabled:opacity-50";
-const reasonKeys: Record<string, string> = {
+export const reasonKeys: Record<string, string> = {
   "decision-recall": "chat.advancedMemory.reason.decisionRecall",
   "decision-recall-fallback": "chat.advancedMemory.reason.decisionRecallFallback",
+  "decision-recall-partial": "chat.advancedMemory.reason.decisionRecallPartial",
   "decision-recall-preview": "chat.advancedMemory.reason.decisionRecallPreview",
   "decision-excerpt-fallback": "chat.advancedMemory.reason.decisionExcerptFallback",
+  "excerpt-no-room": "chat.advancedMemory.reason.excerptNoRoom",
+  "excerpt-no-source": "chat.advancedMemory.reason.excerptNoSource",
   "preparation-needed": "chat.advancedMemory.reason.preparationNeeded",
   "unverified-summary-omitted": "chat.advancedMemory.reason.unverifiedSummaryOmitted",
   "scene-boundary-rollover": "chat.advancedMemory.reason.sceneBoundaryRollover",
   "open-scene-prefix-summary": "chat.advancedMemory.reason.openScenePrefixSummary",
   "no-relevant-recall": "chat.advancedMemory.reason.noRelevantRecall",
+  "no-recall-candidates": "chat.advancedMemory.reason.noRecallCandidates",
+  "no-recall-budget": "chat.advancedMemory.reason.noRecallBudget",
 };
 
 export function AdvancedMemoryInspector({
@@ -47,35 +58,49 @@ export function AdvancedMemoryInspector({
   const [editAudience, setEditAudience] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [search, setSearch] = useState("");
+  const [recollectionDrafts, setRecollectionDrafts] = useState<Record<string, string>>({});
   const sources = useAdvancedMemorySources(chatId, showSources ? selectedId : null);
   const records = useMemo(() => {
     const all = status.data?.records ?? [];
+    // Recollections show inside their scene, not as cards of their own.
     return all
-      .filter((record) => record.kind !== "excerpt")
+      .filter((record) => record.kind !== "excerpt" && record.kind !== "recollection")
       .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
   }, [status.data?.records]);
-  const sceneNumbers = new Map(
-    [
-      ...new Set(
-        [...records.filter((record) => record.kind === "scene"), ...(status.data?.unpreparedScenes ?? [])]
-          .sort((a, b) => a.startIndex - b.startIndex)
-          .map((record) => record.sceneId),
-      ),
-    ].map((id, index) => [id, index + 1]),
-  );
+  const sceneNumbers = advancedMemorySceneNumbers(status.data);
   const recordTitle = (record: AdvancedMemoryRecord) =>
     record.kind === "scene"
       ? t("chat.advancedMemory.sceneNumber", { number: sceneNumbers.get(record.sceneId) })
       : t(`chat.advancedMemory.kind.${record.kind}`);
   const selected = records.find((record) => record.id === selectedId);
+  // The selected scene's recollections, in the chat's character order.
+  const characterOrder = (id: string | undefined) => {
+    const index = characters.findIndex((character) => character.id === id);
+    return index < 0 ? characters.length : index;
+  };
+  const recollections =
+    selected?.kind === "scene" && selected.id !== selected.sceneId
+      ? (status.data?.records ?? [])
+          .filter((record) => record.kind === "recollection" && record.sceneId === selected.sceneId)
+          .sort((a, b) => characterOrder(a.audienceCharacterIds[0]) - characterOrder(b.audienceCharacterIds[0]))
+      : [];
   const editableTimeline = selected?.kind === "scene" && selected.id !== selected.sceneId;
   const timelineChanged = editableTimeline && draftTimeline.trim() !== (selected.timeline ?? "").trim();
   const blockedRecord = records.find((record) => record.id === status.data?.job.reviewRecordId);
+  // Helper-assigned participants Advanced Memory couldn't confirm; the list marks these scenes too.
+  const unconfirmedAudience = (record: AdvancedMemoryRecord) =>
+    record.kind === "scene" &&
+    !!record.content &&
+    !record.manualOverride &&
+    record.dependencies.some((item) => item.id === SCENE_AUDIENCE_UNMATCHED);
+  const generatedScene = selected?.kind === "scene" && !!selected.content && !selected.manualOverride;
+  const unmatchedAudience = !!selected && unconfirmedAudience(selected);
   const reviewAudience =
-    selected?.kind === "scene" &&
-    !!selected.content &&
-    !selected.manualOverride &&
-    !selected.dependencies.some((item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision);
+    unmatchedAudience ||
+    (generatedScene &&
+      !selected.dependencies.some(
+        (item) => item.id === SCENE_AUDIENCE.id && item.revision === SCENE_AUDIENCE.revision,
+      ));
   const reviewCorrection =
     selected?.kind === "scene" &&
     selected.manualOverride &&
@@ -91,7 +116,14 @@ export function AdvancedMemoryInspector({
       : t("chat.advancedMemory.narratorOnly");
   const query = search.trim().toLocaleLowerCase();
   const filteredRecords = records.filter((record) =>
-    [recordTitle(record), record.title, record.content, record.timeline, audience(record)]
+    [
+      recordTitle(record),
+      record.title,
+      record.content,
+      record.timeline,
+      audience(record),
+      unconfirmedAudience(record) ? t("chat.advancedMemory.audienceUnconfirmed") : "",
+    ]
       .join(" ")
       .toLocaleLowerCase()
       .includes(query),
@@ -123,7 +155,39 @@ export function AdvancedMemoryInspector({
     setDraftAudience(record.audienceCharacterIds);
     setEditAudience(false);
     setShowSources(false);
+    setRecollectionDrafts({});
   };
+  // A scene number from the Fix box opens that scene, or its missing-summary card, and moves focus there.
+  const sceneRequest = useUIStore((state) =>
+    state.advancedMemoryRequest?.chatId === chatId ? state.advancedMemoryRequest.sceneId : undefined,
+  );
+  const focusRef = useRef<HTMLElement | null>(null);
+  const setFocusElement = (element: HTMLElement | null) => {
+    focusRef.current = element;
+  };
+  // A new object per request, so asking for the same scene again moves focus again.
+  const [focusScene, setFocusScene] = useState<{ sceneId: string } | null>(null);
+  useEffect(() => {
+    // Read the store, not this render's value: the request is taken once.
+    if (!sceneRequest || !status.data || useUIStore.getState().advancedMemoryRequest?.sceneId !== sceneRequest) return;
+    useUIStore.getState().setAdvancedMemoryRequest(null);
+    const record =
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest && item.id !== item.sceneId) ??
+      records.find((item) => item.kind === "scene" && item.sceneId === sceneRequest);
+    setSearch("");
+    if (record) openRecord(record);
+    else setSelectedId(null);
+    setFocusScene({ sceneId: sceneRequest });
+  }, [records, sceneRequest, status.data]);
+  useEffect(() => {
+    if (!focusScene) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusRef.current?.scrollIntoView({ block: "nearest" });
+      focusRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusScene]);
+  const focusedScene = focusScene?.sceneId;
   const deleteSummary = async (record: AdvancedMemoryRecord) => {
     const confirmed = await showConfirmDialog({
       title: t("chat.advancedMemory.deleteSummary"),
@@ -144,6 +208,21 @@ export function AdvancedMemoryInspector({
           setShowSources(false);
         },
       },
+    );
+  };
+  // Saved empty, a recollection is deleted: it leaves prompts and is never written again, until one is typed in.
+  const deleteRecollection = async (recollection: AdvancedMemoryRecord, name: string) => {
+    const confirmed = await showConfirmDialog({
+      title: t("chat.advancedMemory.recollections.deleteFor", { name }),
+      message: t("chat.advancedMemory.recollections.deleteConfirm"),
+      confirmLabel: t("chat.advancedMemory.recollections.delete"),
+      cancelLabel: t("chat.advancedMemory.cancelSetup"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    action.mutate(
+      { action: "record", recordId: recollection.id, patch: { content: "" } },
+      { onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _deleted, ...rest }) => rest) },
     );
   };
   const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -245,7 +324,9 @@ export function AdvancedMemoryInspector({
           (status.data?.unpreparedScenes ?? []).map((scene) => (
             <div
               key={scene.sceneId}
-              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs"
+              ref={scene.sceneId === focusedScene ? setFocusElement : undefined}
+              tabIndex={scene.sceneId === focusedScene ? -1 : undefined}
+              className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <p className="font-medium">
                 {t(scene.deleted ? "chat.advancedMemory.deletedScene" : "chat.advancedMemory.missingScene", {
@@ -326,7 +407,13 @@ export function AdvancedMemoryInspector({
           >
             {t("chat.advancedMemory.backToArchive")}
           </button>
-          <h5 className="break-words text-sm font-semibold">{recordTitle(selected)}</h5>
+          <h5
+            ref={selected.sceneId === focusedScene ? setFocusElement : undefined}
+            tabIndex={-1}
+            className="break-words text-sm font-semibold focus-visible:outline-none"
+          >
+            {recordTitle(selected)}
+          </h5>
           {selected.kind === "scene" && (
             <p className="text-xs text-[var(--muted-foreground)]">
               {t(selected.status === "open" ? "chat.advancedMemory.sceneOpen" : "chat.advancedMemory.sceneClosed")}
@@ -364,7 +451,11 @@ export function AdvancedMemoryInspector({
           />
           {reviewAudience && (
             <p role="status" className="text-xs text-[var(--muted-foreground)]">
-              {t("chat.advancedMemory.reviewAudienceHelp")}
+              {t(
+                unmatchedAudience
+                  ? "chat.advancedMemory.unmatchedAudienceHelp"
+                  : "chat.advancedMemory.reviewAudienceHelp",
+              )}
             </p>
           )}
           {selected.kind === "scene" && selected.id !== selected.sceneId && (
@@ -451,6 +542,100 @@ export function AdvancedMemoryInspector({
           >
             {t("chat.advancedMemory.save")}
           </button>
+          {recollections.length > 0 && (
+            <section
+              className="space-y-3 border-t border-[var(--border)] pt-3"
+              aria-label={t("chat.advancedMemory.recollections.title")}
+              data-component="AdvancedMemoryRecollections"
+            >
+              <h6 className="text-xs font-semibold">{t("chat.advancedMemory.recollections.title")}</h6>
+              <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                {t("chat.advancedMemory.recollections.help")}
+              </p>
+              {recollections.map((recollection) => {
+                const name = characterName(recollection.audienceCharacterIds[0] ?? "");
+                const draftText = recollectionDrafts[recollection.id] ?? recollection.content;
+                // An edited one is left out of prompts once what its character could read changes, until saved again.
+                const review = recollection.manualOverride && recollection.embeddingStatus === "stale";
+                const deleted = recollection.manualOverride && !recollection.content;
+                return (
+                  <div key={recollection.id} className="space-y-1.5">
+                    <label className="block space-y-1 text-xs">
+                      <span className="font-medium">{name}</span>
+                      <textarea
+                        value={draftText}
+                        onChange={(event) =>
+                          setRecollectionDrafts((current) => ({ ...current, [recollection.id]: event.target.value }))
+                        }
+                        rows={4}
+                        aria-label={t("chat.advancedMemory.recollections.label", { name })}
+                        className="mari-chrome-field min-h-24 w-full resize-y rounded-lg px-3 py-2 text-xs leading-relaxed"
+                      />
+                    </label>
+                    <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                      {!recollection.content ? (
+                        t(
+                          deleted
+                            ? "chat.advancedMemory.recollections.deleted"
+                            : "chat.advancedMemory.recollections.empty",
+                        )
+                      ) : (
+                        <>
+                          {t(
+                            recollection.manualOverride
+                              ? "chat.advancedMemory.manual"
+                              : "chat.advancedMemory.generated",
+                          )}
+                          {recollection.embeddingStatus === "stale" && (
+                            <>
+                              {" · "}
+                              {t(
+                                review
+                                  ? "chat.advancedMemory.recollections.review"
+                                  : "chat.advancedMemory.recollections.stale",
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        className={`${buttonClass} flex-1`}
+                        aria-label={t("chat.advancedMemory.recollections.saveFor", { name })}
+                        disabled={
+                          action.isPending || !draftText.trim() || (draftText === recollection.content && !review)
+                        }
+                        onClick={() =>
+                          action.mutate(
+                            { action: "record", recordId: recollection.id, patch: { content: draftText } },
+                            {
+                              onSuccess: () => setRecollectionDrafts(({ [recollection.id]: _saved, ...rest }) => rest),
+                            },
+                          )
+                        }
+                      >
+                        {t("chat.advancedMemory.save")}
+                      </button>
+                      {!deleted && (
+                        <button
+                          type="button"
+                          className={`${buttonClass} text-[var(--destructive)]`}
+                          aria-label={t("chat.advancedMemory.recollections.deleteFor", { name })}
+                          disabled={action.isPending}
+                          onClick={() => void deleteRecollection(recollection, name)}
+                        >
+                          <Trash2 size="0.75rem" aria-hidden="true" />
+                          {t("chat.advancedMemory.recollections.delete")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
           <button
             type="button"
             className={`${buttonClass} w-full`}
@@ -538,7 +723,18 @@ export function AdvancedMemoryInspector({
                       </>
                     )}
                   </span>
-                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{audience(record)}</span>
+                  <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {audience(record)}
+                    {unconfirmedAudience(record) && (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span className="text-[var(--marinara-app-accent-static)]">
+                          {t("chat.advancedMemory.audienceUnconfirmed")}
+                        </span>
+                      </>
+                    )}
+                  </span>
                   <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
                     {t("chat.advancedMemory.timeframe")}: {record.timeline || t("chat.advancedMemory.timeframeUnknown")}
                   </span>

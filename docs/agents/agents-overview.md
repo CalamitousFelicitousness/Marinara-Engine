@@ -32,7 +32,7 @@ When upgrading from an Engine version that bundled these features, Marinara down
 
 ### Updating packages
 
-Marinara asks before it updates a package. When a newer compatible version of a package you installed is available, an **Agent updates available** window appears. It lists each update with its new version and whether it needs a restart. When the package publishes release notes, **What changed** shows them. A dot marks a change you will notice; updates without one are routine fixes.
+Marinara asks before it updates a package. When a newer compatible version of a package you installed is available, an **Agent updates available** window appears. It lists each update with its new version and whether it needs a restart. When the package publishes release notes, **What changed** shows them. If the update skips versions, **What changed** lists the notes of every version since yours, newest first, and shows how many there are. A long note is cut short; select **More** to read all of it. A dot marks a change you will notice; updates without one are routine fixes.
 
 - Click **Update all** to install every listed update. Restart Marinara Engine if it asks you to.
 - Click **Not now** to keep your current versions. Marinara does not ask again about a version you skipped.
@@ -55,9 +55,13 @@ You should see the agents you added listed as active, each with a small remove b
 
 The **Agents** section has a few more controls:
 
-- **Attach chat summaries** (Roleplay chats only): off by default, including in existing chats without a saved choice. Turn it on to include saved chat summaries in agent requests, including post-processing and manual retries. This does not remove summaries from the main reply or stop summary generation. Agents explicitly granted full main-prompt access can still read summaries inside that prompt.
-- **Review Agent Outputs**: when on, lorebook, summary, and character card changes wait for your approval before they save. When off, lorebook and summary changes can save on their own, but character card edits still ask you first. See [Agent Approvals and the Agent Suite](approvals-and-agent-suite.md).
-- **Manual Trackers** (Roleplay chats only): when on, tracker agents do not run after every reply. You trigger them by hand from a button in the HUD. HUD means heads-up display, the on-screen status overlay in Roleplay.
+- **Agent Menus** (Roleplay chats only): sits right under **Enable Agents**. Click an agent's name to jump to its settings.
+- **Trackers Control** (Roleplay chats only): a card that starts closed. Click it to open these settings:
+  - **Attach chat summaries**: off by default, including in existing chats without a saved choice. Turn it on to include saved chat summaries in agent requests, including post-processing and manual retries. This does not remove summaries from the main reply or stop summary generation. Agents explicitly granted full main-prompt access can still read summaries inside that prompt.
+  - **Attach Lorebooks to Trackers**: when on, tracker agents also get the lorebook entries used for the main reply. It shows once the chat has a tracker agent.
+  - **Review Agent Outputs**: described in its own item after this list.
+  - **Individual tracker schedule**: turn a tracker on to stop it from running after every reply. You then run it by hand from a button in the HUD. HUD means heads-up display, the on-screen status overlay in Roleplay. It shows once the chat has a tracker agent.
+- **Review Agent Outputs**: when on, lorebook, summary, and character card changes wait for your approval before they save. When off, lorebook and summary changes can save on their own, but character card edits still ask you first. See [Agent Approvals and the Agent Suite](approvals-and-agent-suite.md). In Roleplay chats, it is inside **Trackers Control**.
 - **Agent Suite**: opens a viewer where you can read and edit everything the agents have stored for this chat.
 
 ### The cost warning
@@ -81,7 +85,7 @@ You can add or remove compatible agents at any time.
 Some agents change something you can see right away. Others work quietly. Here is how to check.
 
 - Tracker agents write into the HUD and the tracker panels. If the time, location, mood, or stats updated, a tracker agent ran.
-- A floating status overlay shows short thinking messages from agents while they work, so you can watch them run in real time.
+- **Agent activity** in **Chat Settings** lists short notes from the agents. While they work, its icon turns into a spinner, and a dot appears on it when an agent fails. See [Agent activity](../roleplay/getting-started.md#agent-activity).
 - The **Prose Guardian** and **Continuity Checker** agents change the reply text itself. A cleaned-up or corrected reply is a sign they ran.
 - For a full trace, turn on **Debug mode** in **Settings**, then **Advanced**, then **Message Tools**. It logs the prompt and response for each agent to the server console. It also shows an **Agent Debug** overlay with per-agent calls, tokens, and timing.
 
@@ -90,6 +94,7 @@ Did an agent you expected not run? Check that **Enable Agents** is on. Check tha
 ## Related guides
 
 - [Downloadable Agents Reference](built-in-agents.md)
+- [2D and 3D Avatars](avatars.md)
 - [Official Marinara Agents repository](https://github.com/Pasta-Devs/Marinara-Agents)
 - [Creating Custom Agents](custom-agents.md)
 - [Agent Approvals and the Agent Suite](approvals-and-agent-suite.md)

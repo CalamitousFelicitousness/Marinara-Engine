@@ -16,6 +16,8 @@ export interface TTSVoiceRequest {
   text: string;
   paragraphIndex?: number;
   speaker?: string;
+  /** The chat character the speaker resolved to (the one whose voice reads the line), if any. */
+  characterId?: string;
   tone?: string;
   voice?: string;
   pauseAfterMs?: number;
@@ -122,6 +124,7 @@ function buildTTSConfigCacheSignature(config: TTSConfig): string {
     config.skipTagContent ? "skip-tags" : "read-tags",
     config.skipCodeBlocks !== false ? "skip-code" : "read-code",
     config.skipBracketedText ? "skip-brackets" : "read-brackets",
+    config.roleplaySpeakerExtractorEmotionsEnabled ? "emotion-indicators" : "plain-speech",
     config.narratorVoiceEnabled ? "narrator-voice" : "narrator-global",
     config.narratorVoice,
     config.voiceMode,
@@ -305,7 +308,9 @@ function stripTTSMarkup(value: string, preserveSpeakerTags = false): string {
   return withoutNonSpeechBlocks.replace(/<(?!\/?speaker(?:=|\s|>))[^>]+>/gi, " ");
 }
 
-type TTSReadOptions = Partial<Pick<TTSConfig, "skipTagContent" | "skipCodeBlocks" | "skipBracketedText">> & {
+type TTSReadOptions = Partial<
+  Pick<TTSConfig, "skipTagContent" | "skipCodeBlocks" | "skipBracketedText" | "roleplaySpeakerExtractorEmotionsEnabled">
+> & {
   preserveEmotionIndicators?: boolean;
 };
 
@@ -339,7 +344,10 @@ export function filterTTSText(value: string, options: TTSReadOptions = {}): stri
     if (tags.length === 0) parts.push(filtered.slice(cursor));
     filtered = parts.join(" ");
   }
-  return options.skipBracketedText ? filtered.replace(/!?\[[^\]]*\](?:\([^)]*\))?/g, " ") : filtered;
+  const preserveEmotions = options.preserveEmotionIndicators ?? options.roleplaySpeakerExtractorEmotionsEnabled;
+  return options.skipBracketedText && !preserveEmotions
+    ? filtered.replace(/!?\[[^\]]*\](?:\([^)]*\))?/g, " ")
+    : filtered;
 }
 
 export function cleanTTSInputText(value: string, options: TTSReadOptions = {}): string {
@@ -358,7 +366,9 @@ export function cleanTTSInputText(value: string, options: TTSReadOptions = {}): 
     .replace(/_([^_\n]+)_/g, "$1")
     .replace(/[*~`]/g, "")
     .replace(/\{(shake|shout|whisper|glow|pulse|wave|flicker|drip|bounce|tremble|glitch|expand):([^}]+)\}/gi, "$2");
-  if (!options.preserveEmotionIndicators) {
+  // Speaker/scene structure never belongs in speech, even when audio cues are kept.
+  cleaned = cleaned.replace(/\[(?:main|side|extra|action|thought|whisper:[^\]\r\n]+)\]/gi, " ");
+  if (!(options.preserveEmotionIndicators ?? options.roleplaySpeakerExtractorEmotionsEnabled)) {
     cleaned = cleaned.replace(/\[[a-z_]+:[^\]]*\]/gi, "").replace(VN_TTS_METADATA_TAG_RE, " ");
   }
   return cleaned
@@ -369,10 +379,16 @@ export function cleanTTSInputText(value: string, options: TTSReadOptions = {}): 
 
 const DEFAULT_TTS_CHUNK_CHAR_LIMIT = 900;
 
+/** Keep cue punctuation/spacing out of split decisions while retaining original text offsets. */
+function matchTTSChunkPieces(value: string, pattern: RegExp): string[] {
+  const protectedText = value.replace(/\[[^\]\r\n]*\]/g, (cue) => cue.replace(/[.!?…。！？,;:\s]/g, "\uE000"));
+  return [...protectedText.matchAll(pattern)].map((match) => value.slice(match.index, match.index + match[0].length));
+}
+
 function splitOversizedTTSPiece(value: string, maxChars: number): string[] {
   const chunks: string[] = [];
   let current = "";
-  const words = value.split(/\s+/).filter(Boolean);
+  const words = matchTTSChunkPieces(value, /\[[^\]]*\]|[^\s[]+|\[/g);
 
   for (const word of words) {
     if (word.length > maxChars) {
@@ -409,7 +425,7 @@ function packTTSChunkPieces(pieces: string[], maxChars: number): string[] {
         chunks.push(current);
         current = "";
       }
-      const clausePieces = piece.match(/[^,;:]+[,;:]?|[,;:]+/g)?.filter((part) => part.trim()) ?? [];
+      const clausePieces = matchTTSChunkPieces(piece, /[^,;:]+[,;:]?|[,;:]+/g).filter((part) => part.trim());
       if (clausePieces.length > 1 && clausePieces.every((part) => part.trim().length < piece.length)) {
         chunks.push(...packTTSChunkPieces(clausePieces, maxChars));
       } else {
@@ -433,9 +449,10 @@ function packTTSChunkPieces(pieces: string[], maxChars: number): string[] {
 
 function splitCleanTTSInputIntoChunks(value: string, maxChars = DEFAULT_TTS_CHUNK_CHAR_LIMIT): string[] {
   if (value.length <= maxChars) return [value];
-  const sentencePieces = value.match(/[^.!?…。！？]+(?:[.!?…。！？]+["')\]}»”’]*)?|[.!?…。！？]+["')\]}»”’]*|.+/g) ?? [
+  const sentencePieces = matchTTSChunkPieces(
     value,
-  ];
+    /[^.!?…。！？]+(?:[.!?…。！？]+["')\]}»”’]*)?|[.!?…。！？]+["')\]}»”’]*|.+/g,
+  );
   return packTTSChunkPieces(sentencePieces, maxChars);
 }
 
@@ -459,9 +476,9 @@ export function buildTTSVoiceRequests(
   const shouldExtractUtterances = config.dialogueOnly || hasSpeakerTags;
   const utterances =
     hasSpeakerTags && !config.dialogueOnly
-      ? extractSpeakerTaggedUtterances(normalized, fallbackSpeaker, true)
+      ? extractSpeakerTaggedUtterances(normalized, fallbackSpeaker, true, config)
       : shouldExtractUtterances
-        ? extractDialogueUtterances(normalized, fallbackSpeaker)
+        ? extractDialogueUtterances(normalized, fallbackSpeaker, config)
         : [
             {
               text: cleanTTSInputText(normalized, config),
@@ -484,6 +501,7 @@ export function buildTTSVoiceRequests(
     return chunks.map((chunk, chunkIndex) => ({
       text: chunk,
       speaker,
+      ...(resolvedCharacterId ? { characterId: resolvedCharacterId } : {}),
       tone: utterance.tone,
       voice,
       ...(config.dialogueOnly &&
@@ -508,12 +526,16 @@ function isLikelyTTSVNSpeaker(value: string): boolean {
   return /^[\p{L}\p{N}][\p{L}\p{N}' ._-]{0,47}$/u.test(speaker);
 }
 
-export function extractDialogueUtterances(text: string, fallbackSpeaker?: string | null): TTSUtterance[] {
+export function extractDialogueUtterances(
+  text: string,
+  fallbackSpeaker?: string | null,
+  options: TTSReadOptions = {},
+): TTSUtterance[] {
   // Remove ordinary HTML before looking for quoted dialogue. Otherwise quote
   // marks inside style/class attributes are mistaken for spoken lines.
   const speechText = stripTTSMarkup(text, true);
   const utterances: TTSUtterance[] = [];
-  utterances.push(...extractSpeakerTaggedUtterances(speechText, fallbackSpeaker, false));
+  utterances.push(...extractSpeakerTaggedUtterances(speechText, fallbackSpeaker, false, options));
   const untaggedSpeechText = speechText.replace(/<speaker="[^"]*">[\s\S]*?<\/speaker>/gi, " ");
 
   const vnLineRe = /^\s*(?:Dialogue\s*)?\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
@@ -530,7 +552,7 @@ export function extractDialogueUtterances(text: string, fallbackSpeaker?: string
     const tone =
       secondTag ||
       (firstTag && !/^(main|side|extra|thought|action|whisper(?::.+)?)$/i.test(firstTag) ? firstTag : undefined);
-    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes((match[4] ?? "").trim()));
+    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes((match[4] ?? "").trim()), options);
     if (spoken) {
       utterances.push({ text: spoken, speaker, tone });
     }
@@ -541,6 +563,7 @@ export function extractDialogueUtterances(text: string, fallbackSpeaker?: string
   while ((quoteMatch = quoteRe.exec(untaggedSpeechText)) !== null) {
     const spoken = cleanTTSInputText(
       quoteMatch.slice(1).find((group) => typeof group === "string" && group.length > 0) ?? "",
+      options,
     );
     if (spoken) {
       utterances.push({ text: spoken, speaker: fallbackSpeaker || undefined });
@@ -554,6 +577,7 @@ function extractSpeakerTaggedUtterances(
   text: string,
   fallbackSpeaker?: string | null,
   includeNarration = false,
+  options: TTSReadOptions = {},
 ): TTSUtterance[] {
   const utterances: TTSUtterance[] = [];
   const speakerTagRe = /<speaker="([^"]*)">([\s\S]*?)<\/speaker>/gi;
@@ -562,7 +586,7 @@ function extractSpeakerTaggedUtterances(
 
   const addNarration = (value: string) => {
     if (!includeNarration) return;
-    const spoken = cleanTTSInputText(value);
+    const spoken = cleanTTSInputText(value, options);
     if (spoken) utterances.push({ text: spoken, speaker: "Narrator" });
   };
 
@@ -570,7 +594,7 @@ function extractSpeakerTaggedUtterances(
     addNarration(text.slice(lastIndex, speakerTagMatch.index));
 
     const speaker = speakerTagMatch[1]?.trim() || fallbackSpeaker || undefined;
-    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes((speakerTagMatch[2] ?? "").trim()));
+    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes((speakerTagMatch[2] ?? "").trim()), options);
     if (spoken) {
       utterances.push({ text: spoken, speaker });
     }

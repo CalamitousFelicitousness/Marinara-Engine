@@ -164,8 +164,12 @@ export async function resolveConversationPresenceRuntime(args: {
     }
   }
 
-  const requestedResponderNames = respondingConvoCharInfo.map((character) => character.displayName);
-  const sceneBusyCharIds = new Set(await resolveSceneBusyCharacterIds(args.chats, args.chatId, args.chatMeta));
+  const requestedResponders = respondingConvoCharInfo;
+  const sceneBusyCharIds = new Set(
+    await resolveSceneBusyCharacterIds(args.chats, args.chatId, args.chatMeta, {
+      userReply: !args.shouldAccountAutonomousGeneration,
+    }),
+  );
   const seatedGameCharIds = await resolveSeatedTurnGameCharacterIds(args.db, args.chatId);
   const effectiveStatus = (character: { charId: string; status: string }): string =>
     sceneBusyCharIds.has(character.charId)
@@ -178,7 +182,14 @@ export async function resolveConversationPresenceRuntime(args: {
     respondingConvoCharInfo = respondingConvoCharInfo.filter((character) => effectiveStatus(character) !== "offline");
   }
   if (respondingConvoCharInfo.length === 0 && !args.regenerateMessageId && !args.impersonate) {
-    args.writeSse({ type: "offline", characters: requestedResponderNames });
+    const sceneNames = requestedResponders
+      .filter((character) => sceneBusyCharIds.has(character.charId))
+      .map((character) => character.displayName);
+    const offlineNames = requestedResponders
+      .filter((character) => !sceneBusyCharIds.has(character.charId))
+      .map((character) => character.displayName);
+    if (sceneNames.length) args.writeSse({ type: "offline", reason: "scene_busy", characters: sceneNames });
+    if (offlineNames.length) args.writeSse({ type: "offline", characters: offlineNames });
     args.writeSse({ type: "done" });
     args.endSse();
     return buildPresenceResult({
@@ -253,14 +264,19 @@ export async function resolveConversationPresenceRuntime(args: {
         });
       }
 
-      const currentSceneParticipants = new Set(await resolveSceneBusyCharacterIds(args.chats, args.chatId));
+      const delayedResponderNames = respondingConvoCharNames;
+      const currentSceneParticipants = new Set(
+        await resolveSceneBusyCharacterIds(args.chats, args.chatId, undefined, {
+          userReply: !args.shouldAccountAutonomousGeneration,
+        }),
+      );
       respondingConvoCharInfo = respondingConvoCharInfo.filter(
         (character) => !currentSceneParticipants.has(character.charId),
       );
       respondingCharacterIds = respondingConvoCharInfo.map((character) => character.charId);
       respondingConvoCharNames = respondingConvoCharInfo.map((character) => character.displayName);
       if (respondingCharacterIds.length === 0) {
-        args.writeSse({ type: "offline", characters: requestedResponderNames });
+        args.writeSse({ type: "offline", reason: "scene_busy", characters: delayedResponderNames });
         args.writeSse({ type: "done" });
         args.endSse();
         return buildPresenceResult({

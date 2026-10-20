@@ -4,7 +4,7 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls icy blue instrument frames, pale metal edges and cut corners. **Prof. Mari** adds gold-trimmed storybook frames, gemstone blues and Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
 The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
 
@@ -20,11 +20,15 @@ Use **Reset color** beside a control to follow the preset's light or dark colors
 
 To carry the look into the rest of the chat, use the three switches below the color pickers:
 
-- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls, including Game Mode's HUD widgets, map panel, side remarks and character sheets.
-- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, side remarks, HUD widgets, map panel and character sheets, input boxes and controls. Conversation messages keep their own shape.
-- **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too.
+- **Apply preset font** uses the selected widget font for messages, input boxes and chat controls.
+- **Apply preset shape** uses the selected frame shape for Roleplay messages in classic and visual-novel layouts, the Game dialogue box, input boxes and controls. Conversation messages keep their own shape.
+- **Apply preset colors** uses the widget's border, background and text colors for those areas, including Conversation messages. Your custom colors and gradients apply too. Quoted dialogue keeps each Character's or Persona's own Dialogue Highlight Color. A message made of HTML, such as an agent's styled card, keeps the text colors it sets itself.
 
-Each switch starts off and works independently. For example, you can use Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
+The buttons that load older or newer messages, such as **Load More** and **Show older**, follow these switches like the other chat controls.
+
+In Game Mode, the switches also cover side remarks, HUD widgets, the map panel, character sheets, logs, the Inventory, combat panels and dialogs.
+
+Each switch starts off and works independently. For example, you can use Professor Mari's lettering while keeping the chat's usual colors. Turning a switch off restores that part of the usual chat styling. Choosing another preset keeps your switch choices. Professor Mari can create custom themes for these areas too.
 
 Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
 
@@ -146,6 +150,7 @@ The classes, data attributes and variables below let a theme style these parts t
 | Drawer arrow and content | `.mari-drawer__arrow`, `.mari-drawer__body` |
 | The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
 | A minimized window's button (bubble) | `.mari-window-bubble` |
+| The live summary a bubble shows instead of its icon (World State's banner) | `.mari-window-bubble__banner` |
 | The line shown while a dragged bubble lines up with another | `.mari-window-snap-guide` |
 | The dot shown while agents run (Chat Settings button, Trackers window) | `.mari-agents-running-dot` |
 
@@ -164,7 +169,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-axis` is `"x"` on a snap guide that runs up and down, and `"y"` on one that runs across.
 - `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
 - `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
-- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
+- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged. A bubble that shows a live summary instead of its icon, such as a minimized World State tracker, has `data-banner="true"` and grows as wide as the summary.
 - A locked bubble has `data-locked="true"`, including the Chat Settings button. It still opens its window, but cannot be moved until the window is unlocked. Use `.mari-window-bubble[data-locked="true"]` to give these buttons a distinct appearance.
 - On a phone, windows have `data-presentation="sheet"`, and so do their bubbles, which are slightly larger. The Tracker Panel's bubble is `.mari-window-bubble[data-tracker-panel-toggle="bubble"]`.
 - The Chat Settings button is a bubble too: `.mari-window-bubble[data-chat-settings-button]`, with `data-open="true"` while Chat Settings is open.
@@ -219,9 +224,13 @@ The three **Apply preset** switches also let a custom theme use the widget desig
 | Part | Class |
 | --- | --- |
 | Roleplay and Game message boxes, Game side remarks, HUD widgets, map panel and character sheets, and chat input boxes | `.mari-chat-style-surface` |
+| Game logs, Inventory, combat panels, choices and dialogs; the panels also have `data-game-section` with their name, such as `logs`, `inventory` or `combat-actions` | `.mari-game-section.mari-chat-style-surface` |
+| Game content in a window, such as the Journal, which follows the window's colors | `.mari-game-section` |
 | Conversation messages (font and colors only) | `.mari-chat-style-conversation` |
 | Unboxed Conversation message text | `.mari-chat-style-text` |
 | Chat controls, including Calls and Conversation group controls | `.mari-chat-style-control` |
+| History buttons: **Load More**, **Show older**, **Show newer**, **Latest**, and the Game logs' **Older**, **All** and **Show more older logs**. They also have `.mari-chat-style-control` | `.mari-chat-history-pager` |
+| A message made of HTML, such as an agent's styled card. Text colors set inside it are kept when **Apply preset colors** is on | `.mari-html-content` |
 
 | Variable | What it controls |
 | --- | --- |

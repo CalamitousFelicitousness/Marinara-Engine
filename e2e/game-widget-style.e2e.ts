@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
+import { openChatTool } from "./chat-settings-tools.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const APP_VERSION = (
@@ -15,7 +16,7 @@ const GRADIENTS = {
   text: "linear-gradient(90deg, #6c5ce7, #00cec9)",
 };
 type Axis = "font" | "shape" | "colors";
-type Surface = "widget" | "map" | "side" | "sheet";
+type Surface = "widget" | "map" | "side" | "sheet" | "logs" | "inventory";
 type Appearance = Awaited<ReturnType<typeof appearance>>;
 
 async function createGame(request: APIRequestContext) {
@@ -48,6 +49,7 @@ async function createGame(request: APIRequestContext) {
             gameIntroPresented: true,
             gameActiveState: "exploration",
             gamePartyCharacterIds: [character.id],
+            gameInventory: [{ name: "Lantern", quantity: 3 }],
             gameCharacterCards: [
               {
                 name: CHARACTER,
@@ -138,6 +140,8 @@ async function appearance(target: Locator) {
       font: host.fontFamily,
       radius: host.borderRadius,
       clip: after.clipPath,
+      // Game sections clip themselves to a cut frame instead of painting a clipped layer.
+      sectionClip: host.clipPath,
     };
   });
 }
@@ -156,6 +160,18 @@ async function pixels(page: Page, colors: string[]) {
       }),
     colors,
   );
+}
+
+/** Resolves a CSS color, such as a color-mix() of a computed color, the way an element would. */
+async function resolveColor(page: Page, color: string) {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.color = value;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, color);
 }
 
 async function application(page: Page, enabled: Axis[]) {
@@ -185,7 +201,7 @@ for (const [preset, theme] of [
   ["dottore", "dark"],
   ["mari", "light"],
 ] as const) {
-  test(`Game widgets, side remarks and character sheets follow ${preset} styling in ${theme} mode`, async ({
+  test(`Game widgets, side remarks, sheets, logs, Inventory and Journal follow ${preset} styling in ${theme} mode`, async ({
     page,
     request,
     isMobile,
@@ -249,6 +265,64 @@ for (const [preset, theme] of [
         await sheet.getByRole("button", { name: "Close character sheet", exact: true }).click();
         await expect(sheet).toBeHidden();
       };
+      // Game sections that open over the scene.
+      const logs = page.locator('[role="dialog"]').filter({ hasText: "Session Logs" }).locator(":scope > div");
+      const inventory = page.getByRole("dialog", { name: "Inventory" }).locator(":scope > div");
+      const sections: [Surface, Locator, () => Promise<void>, () => Promise<void>][] = [
+        [
+          "logs",
+          logs,
+          () => page.getByRole("button", { name: "Logs", exact: true }).filter({ visible: true }).first().click(),
+          () => page.getByRole("button", { name: "Close logs", exact: true }).click(),
+        ],
+        [
+          "inventory",
+          inventory,
+          // Phones show the Inventory button as its icon alone.
+          () => narration.locator("button:has(> svg.lucide-package)").filter({ visible: true }).first().click(),
+          () => inventory.getByRole("button", { name: "Close", exact: true }).click(),
+        ],
+      ];
+      const isSection = (name: string) => sections.some(([section]) => section === name);
+      const inventoryButton = narration.locator("button:has(> svg.lucide-package)").filter({ visible: true }).first();
+      // What the Inventory paints inside: the quantity badge's white text, the item letter's amber,
+      // and black tints, which follow the background inside the section but not on its own shadow.
+      const inventoryTints = async () => {
+        await inventoryButton.click();
+        await expect(inventory).toBeVisible();
+        await page.mouse.move(1, 1);
+        const tints = await inventory.evaluate((section) => {
+          const badge = Array.from(section.querySelectorAll<HTMLElement>('span[class~="text-white"]')).find((element) =>
+            element.textContent?.trim().endsWith("3"),
+          )!;
+          const letter = section.querySelector<HTMLElement>('div[class~="text-amber-400/80"]')!;
+          return {
+            badge: getComputedStyle(badge).color,
+            letter: getComputedStyle(letter).color,
+            ownBlack: getComputedStyle(section).getPropertyValue("--color-black"),
+            innerBlack: getComputedStyle(section.firstElementChild!).getPropertyValue("--color-black"),
+            rootBlack: getComputedStyle(document.documentElement).getPropertyValue("--color-black"),
+            background: getComputedStyle(section).getPropertyValue("--mari-game-bg"),
+          };
+        });
+        await inventory.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(inventory).toBeHidden();
+        return tints;
+      };
+      // Game content in a window follows the window's style: its white tint becomes the window text.
+      const journalWhite = async () => {
+        const session = await openChatTool(page, "control:session");
+        await session.getByRole("button", { name: "Journal", exact: true }).click();
+        const journal = session.locator('[data-game-section="journal"]');
+        await expect(journal).toBeVisible();
+        const colors = await journal.evaluate((element) => [
+          getComputedStyle(element).getPropertyValue("--color-white"),
+          getComputedStyle(element.closest(".mari-window")!).color,
+        ]);
+        await session.locator('[data-window-control="close"]').click();
+        await expect(session).toBeHidden();
+        return pixels(page, colors);
+      };
 
       const surfaces = (): [Surface, Locator][] => [
         ["widget", widget],
@@ -261,12 +335,21 @@ for (const [preset, theme] of [
         result.set("narration", await appearance(narration));
         for (const [name, target] of surfaces()) result.set(name, await appearance(target));
         if (isMobile) result.set("pill", await appearance(pill));
+        for (const [name, target, open, close] of sections) {
+          await open();
+          await expect(target).toBeVisible();
+          await page.mouse.move(1, 1);
+          result.set(name, await appearance(target));
+          await close();
+          await expect(target).toBeHidden();
+        }
         await openSheet();
         result.set("sheet", await appearance(sheet));
         return result;
       };
 
       // Default with every switch off is the staging look.
+      expect((await journalWhite())[0], "the Journal keeps its white text").toBe("255,255,255,255");
       const baseline = await measure();
       await shoot("default-sheet");
       await closeSheet();
@@ -287,6 +370,8 @@ for (const [preset, theme] of [
       await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", preset);
       await expectBaseline(await measure());
       await closeSheet();
+      const [journalText, windowText] = await journalWhite();
+      expect(journalText, "the Journal uses the window text").toBe(windowText);
 
       await application(page, ["font"]);
       const lettering = await measure();
@@ -319,6 +404,7 @@ for (const [preset, theme] of [
           else expect(value.radius).not.toBe(old.radius);
         } else if (preset === "dottore") expect(value.clip, `${name} has cut corners`).toBe(reference.clip);
         else expect(value.radius, `${name} has the arched shape`).toBe(reference.radius);
+        if (isSection(name) && preset === "dottore") expect(value.sectionClip, `${name} is cut`).toContain("polygon");
       }
       await shoot("shape-sheet");
       await closeSheet();
@@ -344,6 +430,17 @@ for (const [preset, theme] of [
         }
       }
       await closeSheet();
+      const control = await inventoryButton.evaluate((button) => getComputedStyle(button).color);
+      const tints = await inventoryTints();
+      expect(await pixels(page, [tints.badge]), "Inventory white text uses the widget text color").toEqual(
+        await pixels(page, [palette.textFill]),
+      );
+      expect(await pixels(page, [tints.letter]), "Inventory amber uses the control color").toEqual(
+        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${control} 80%, transparent)`)]),
+      );
+      expect(tints.ownBlack, "the Inventory's own shadow stays dark").toBe(tints.rootBlack);
+      expect(tints.innerBlack, "black tints inside follow the background").toBe(tints.background);
+      expect(tints.innerBlack).not.toBe(tints.rootBlack);
 
       await application(page, ["font", "shape", "colors"]);
       const styled = await measure();
@@ -400,14 +497,275 @@ for (const [preset, theme] of [
       await closeSheet();
       await setStore(page, { setAppAccentColor: "" });
 
+      // Default supplies no palette: Game amber marks warnings, so it takes the app accent held steady.
+      await setStore(page, { setChatWidgetPreset: "default" });
+      await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
+      const steady = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--marinara-app-accent-static").trim(),
+      );
+      expect(await pixels(page, [(await inventoryTints()).letter]), "Default amber uses the steady accent").toEqual(
+        await pixels(page, [await resolveColor(page, `color-mix(in oklab, ${steady} 80%, transparent)`)]),
+      );
+
       await application(page, []);
       await setStore(page, { setChatWidgetPreset: "default" });
       await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
       await expectBaseline(await measure());
       await closeSheet();
+      expect((await journalWhite())[0]).toBe("255,255,255,255");
     } catch (error) {
       await shoot("failure").catch(() => undefined);
       throw error;
+    } finally {
+      try {
+        await page.close();
+      } finally {
+        await fixture.remove();
+      }
+    }
+  });
+}
+
+async function createCombat(request: APIRequestContext, mode: "classic" | "tactical") {
+  const unit = (id: string, side: "player" | "enemy") => ({
+    id,
+    name: id,
+    side,
+    hp: 30,
+    maxHp: 40,
+    mp: 10,
+    maxMp: 10,
+    attack: 6,
+    defense: 4,
+    speed: id === "Hero" ? 12 : 5,
+    level: 2,
+    skills: [],
+  });
+  const party = [unit("Hero", "player"), unit("Companion", "player")];
+  const enemies = [unit("Guard", "enemy")];
+  const created = await request.post("/api/game/create", {
+    data: {
+      name: `Combat style ${mode}`,
+      setupConfig: {
+        genre: "Fantasy",
+        setting: "Ruins",
+        tone: "Adventure",
+        difficulty: "normal",
+        playerGoals: "Hold",
+        gmMode: "standalone",
+        rating: "sfw",
+        partyCharacterIds: [],
+        combatStyle: mode,
+        combatDirector: false,
+        gmBossControl: false,
+        tacticalBattlefield: { seed: 9 },
+      },
+    },
+  });
+  expect(created.ok(), await created.text()).toBeTruthy();
+  const chatId = ((await created.json()) as { sessionChat: { id: string } }).sessionChat.id;
+  const remove = async () => {
+    await request.delete(`/api/chats/${chatId}?force=true`);
+  };
+  try {
+    type Tactical = { units: { id: string; tactics: unknown }[] };
+    let tactical: Tactical | null = null;
+    if (mode === "tactical") {
+      const started = await request.post("/api/game/combat/tactical/start", {
+        data: { chatId, party, enemies, seed: 9 },
+      });
+      expect(started.ok(), await started.text()).toBeTruthy();
+      tactical = ((await started.json()) as { state: Tactical }).state;
+    }
+    const message = await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "Hold the ruins. [state: combat]" },
+    });
+    expect(message.ok()).toBeTruthy();
+    const withTactics = (list: ReturnType<typeof unit>[]) =>
+      list.map((c) => ({ ...c, ...(tactical ? { tactics: tactical.units.find((u) => u.id === c.id)!.tactics } : {}) }));
+    const patched = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        windowLayout: null,
+        chatSettingsHintDismissed: true,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameActiveState: "combat",
+        gameImageAutoGenerationEnabled: false,
+        gameStoryboardAutoIllustrationsEnabled: false,
+        gameCombatStyle: mode,
+        gameCombatState: {
+          party: withTactics(party),
+          enemies: withTactics(enemies),
+          itemEffects: [],
+          mechanics: [],
+          dialogueCues: [],
+          startMessageId: ((await message.json()) as { id: string }).id,
+          combatStyle: mode,
+        },
+        ...(tactical ? { gameTacticalCombatSnapshot: tactical } : {}),
+      },
+    });
+    expect(patched.ok(), await patched.text()).toBeTruthy();
+    return { chatId, remove };
+  } catch (error) {
+    await remove();
+    throw error;
+  }
+}
+
+for (const mode of ["classic", "tactical"] as const) {
+  test(`Game ${mode} combat sections follow the chat style`, async ({ page, request, isMobile }, info) => {
+    test.setTimeout(180_000);
+    const fixture = await createCombat(request, mode);
+    try {
+      await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+      await page.route("**/api/game-assets/manifest", (route) =>
+        route.fulfill({ json: { scannedAt: "2026-07-16T00:00:00.000Z", count: 0, assets: {}, byCategory: {} } }),
+      );
+      await seedUIState(page, {
+        hasCompletedOnboarding: true,
+        sidebarOpen: false,
+        rightPanelOpen: false,
+        chatSettingsMoveTipDismissed: true,
+        chatHelpSeenModes: ["conversation", "roleplay", "game"],
+        appAccentPulseMode: false,
+        appAccentRgbMode: false,
+        gameInstantTextReveal: true,
+        theme: "dark",
+      });
+      await page.addInitScript(
+        ({ id, version }) => {
+          localStorage.setItem("marinara-active-chat-id", id);
+          localStorage.setItem("marinara:whats-new:seen-version", version);
+        },
+        { id: fixture.chatId, version: APP_VERSION },
+      );
+      await page.goto("/");
+
+      // Each style's panels: the classic action bar (a sheet on phones) and round, or the tactical bars.
+      const expected =
+        mode === "tactical"
+          ? ["tactical-status", "combat-ai"]
+          : isMobile
+            ? ["combat-sheet"]
+            : ["combat-round", "combat-actions"];
+      for (const name of expected) {
+        const section = page.locator(`[data-game-section="${name}"]`).filter({ visible: true });
+        await expect(section).toHaveCount(1, { timeout: 40_000 });
+        await expect(section, `${name} carries the shared chat style classes`).toHaveClass(
+          /(?=.*\bmari-chat-style-surface\b)(?=.*\bmari-game-section\b)/u,
+        );
+      }
+      const read = async () => {
+        await page.mouse.move(1, 1);
+        const result: Record<string, Appearance> = {};
+        for (const name of expected) {
+          result[name] = await appearance(page.locator(`[data-game-section="${name}"]`).filter({ visible: true }));
+        }
+        return result;
+      };
+      const baseline = await read();
+      await page.screenshot({ path: info.outputPath(`combat-${mode}-default.png`), animations: "disabled" });
+
+      // A preset alone keeps them as they are, like the other chat surfaces.
+      await setStore(page, { setChatWidgetPreset: "dottore" });
+      await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", "dottore");
+      expect(await read()).toEqual(baseline);
+
+      await application(page, ["font", "shape", "colors"]);
+      const palette = await page.evaluate(() => {
+        const root = getComputedStyle(document.documentElement);
+        return [root.getPropertyValue("--mari-widget-bg"), root.getPropertyValue("--mari-widget-text")];
+      });
+      const styled = await read();
+      await page.screenshot({ path: info.outputPath(`combat-${mode}-dottore.png`), animations: "disabled" });
+      for (const name of expected) {
+        const value = styled[name]!;
+        expect(value.font, `${name} uses the Dottore font`).toContain("monospace");
+        expect(value.sectionClip, `${name} has cut corners`).toContain("polygon");
+        expect(await pixels(page, [value.background, value.textFill]), `${name} uses the Dottore colors`).toEqual(
+          await pixels(page, palette),
+        );
+      }
+
+      await setStore(page, {
+        setChatWidgetBackgroundColor: GRADIENTS.background,
+        setChatWidgetBorderColor: GRADIENTS.border,
+        setChatWidgetTextColor: GRADIENTS.text,
+      });
+      const custom = await read();
+      for (const name of expected) {
+        expect(custom[name]!.image, `${name} uses the custom background`).toContain("102, 126, 234");
+        expect(custom[name]!.borderImage, `${name} uses the custom border`).toContain("255, 107, 107");
+      }
+      await setStore(page, {
+        setChatWidgetBackgroundColor: "",
+        setChatWidgetBorderColor: "",
+        setChatWidgetTextColor: "",
+      });
+
+      // Pale party, enemy and element colors made for the dark scene stay readable on a light style.
+      await setStore(page, { setTheme: "light", setChatWidgetPreset: "mari" });
+      await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", "mari");
+      await page.mouse.move(1, 1);
+      const measureContrast = () =>
+        page.evaluate((names) => {
+          const pale =
+            /(?:^|\s)text-(?:red|orange|yellow|green|emerald|cyan|sky|blue|violet|purple|fuchsia|rose)-(?:50|100|200|300|400)(?:\/\d+)?(?=\s|$)/u;
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext("2d", { willReadFrequently: true })!;
+          const paint = (color: string) => {
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+          };
+          const luminance = ([r, g, b]: number[]) => {
+            const linear = (value: number) =>
+              (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
+          };
+          const results: [string, number][] = [];
+          for (const name of names) {
+            for (const section of document.querySelectorAll<HTMLElement>(`[data-game-section="${name}"]`)) {
+              if (!section.getClientRects().length) continue;
+              for (const element of section.querySelectorAll<HTMLElement>("*")) {
+                const text = element.textContent?.trim();
+                if (element instanceof SVGElement || !text || !element.getClientRects().length) continue;
+                if (!pale.test(element.getAttribute("class") ?? "")) continue;
+                // The scene, then every fill from the section down to the element, then its text.
+                const chain: HTMLElement[] = [];
+                for (
+                  let node: HTMLElement | null = element;
+                  node && node !== section.parentElement;
+                  node = node.parentElement
+                ) {
+                  chain.unshift(node);
+                }
+                let background = paint("#000");
+                for (const node of chain) background = paint(getComputedStyle(node).backgroundColor);
+                const foreground = paint(getComputedStyle(element).color);
+                const [light, dark] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
+                results.push([`${name} "${text.slice(0, 20)}"`, (light! + 0.05) / (dark! + 0.05)]);
+              }
+            }
+          }
+          return results;
+        }, expected);
+      // Phones show the active party member once the battle intro ends.
+      if (mode === "classic") {
+        await expect
+          .poll(async () => (await measureContrast()).length, { message: "the active party member's color is checked" })
+          .toBeGreaterThan(0);
+      }
+      const contrast = await measureContrast();
+      for (const [label, ratio] of contrast) expect(ratio, `${label} is readable`).toBeGreaterThanOrEqual(3);
+      await setStore(page, { setTheme: "dark" });
+
+      await application(page, []);
+      await setStore(page, { setChatWidgetPreset: "default" });
+      await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
+      expect(await read()).toEqual(baseline);
     } finally {
       try {
         await page.close();

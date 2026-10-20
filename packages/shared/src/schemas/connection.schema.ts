@@ -9,6 +9,7 @@ import {
   MAX_PINNED_MODELS,
 } from "../types/connection.js";
 import { DECISION_CONNECTION_TIMEOUT_BOUNDS_MS } from "../types/decision.js";
+import { TTS_REQUEST_TIMEOUT_MS } from "../types/tts.js";
 import { MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH } from "../constants/defaults.js";
 
 export const apiProviderSchema = z.enum([
@@ -26,6 +27,7 @@ export const apiProviderSchema = z.enum([
   "xai",
   "arli",
   "zai",
+  "deepseek",
   "custom",
   "image_generation",
   "video_generation",
@@ -96,6 +98,7 @@ export const createConnectionSchema = z.object({
   imageGenerationQuality: imageGenerationQualitySchema.default("auto"),
   videoGenerationSource: z.string().nullable().default(null),
   videoService: z.string().nullable().default(null),
+  videoPromptInstructions: z.string().trim().max(MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH).nullable().default(null),
   audioSource: audioGenerationSourceSchema.nullable().default(null),
   decisionSource: z.enum(DECISION_SOURCES).nullable().default(null),
   credentialsFromConnectionId: z.string().trim().min(1).nullable().default(null),
@@ -109,6 +112,14 @@ export const createConnectionSchema = z.object({
     .nullable()
     .default(null),
   audioVoice: z.string().nullable().default(null),
+  /** Milliseconds; null keeps the default. */
+  audioTimeoutMs: z
+    .number()
+    .int()
+    .min(TTS_REQUEST_TIMEOUT_MS.min)
+    .max(TTS_REQUEST_TIMEOUT_MS.max)
+    .nullable()
+    .default(null),
   audioSoundEffects: z.boolean().default(false),
   audioMusic: z.boolean().default(false),
   promptPresetId: z.string().nullable().default(null),
@@ -127,8 +138,11 @@ export const createConnectionSchema = z.object({
    * inference endpoints, so it is never used in place of the API key.
    */
   managementToken: z.string().default(""),
-  /** NanoGPT only: show the subscription usage widget in the connection editor. */
+  /** NanoGPT, Claude (Subscription) and OpenAI (ChatGPT): show the subscription usage widget for this connection. */
   showUsageWidget: z.boolean().default(false),
+  /** Claude (Subscription) and OpenAI (ChatGPT): which plan windows the usage widget shows. */
+  showUsageFiveHour: z.boolean().default(true),
+  showUsageWeekly: z.boolean().default(true),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

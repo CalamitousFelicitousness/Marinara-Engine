@@ -14,13 +14,17 @@
 // edits trigger a push — transient UI state (modal open, detail panels, etc.)
 // is filtered out via `pickSyncedSettings`.
 import { useEffect } from "react";
+import { toast } from "sonner";
 import {
+  MAX_APP_SETTINGS_VALUE_LENGTH,
   normalizeImageStyleProfileSettings,
   normalizeQuoteFormat,
   type AppSettingsResponse,
 } from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
+import { translate } from "../localization/i18n";
 import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
+import { normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import {
   normalizeChatWidgetColor,
@@ -35,6 +39,10 @@ import {
   normalizeTrackerThoughtBubbleDisplay,
   normalizeScenePromptPreferences,
   normalizeConversationBackgroundImageOpacity,
+  normalizeMariWindowHeightRem,
+  normalizeMariWindowWidthRem,
+  normalizeOmnibarWindowWidthRem,
+  normalizeOmnibarWindowHeightRem,
   pickSyncedSettings,
   useUIStore,
 } from "../stores/ui.store";
@@ -44,6 +52,7 @@ const SETTINGS_PATH = `/app-settings/${SETTINGS_KEY}`;
 const LOCAL_SETTINGS_KEY = "marinara-engine-ui";
 const LOCAL_UPDATED_AT_KEY = "marinara-engine-ui-updated-at";
 const DEBOUNCE_MS = 1000;
+const SETTINGS_TOO_LARGE_TOAST_ID = "settings-sync-too-large";
 
 type SyncedSettingsObject = ReturnType<typeof pickSyncedSettings>;
 type ServerSettingsPayload = SyncedSettingsObject & { __updatedAt?: number };
@@ -68,6 +77,18 @@ export function omitLocalOnlySettings(settings: ParsedSettings): ParsedSettings 
       sanitized.conversationBackgroundImageOpacity,
     );
   }
+  if ("mariWindowHeightRem" in sanitized) {
+    sanitized.mariWindowHeightRem = normalizeMariWindowHeightRem(sanitized.mariWindowHeightRem);
+  }
+  if ("mariWindowWidthRem" in sanitized) {
+    sanitized.mariWindowWidthRem = normalizeMariWindowWidthRem(sanitized.mariWindowWidthRem);
+  }
+  if ("omnibarWindowWidthRem" in sanitized) {
+    sanitized.omnibarWindowWidthRem = normalizeOmnibarWindowWidthRem(sanitized.omnibarWindowWidthRem);
+  }
+  if ("omnibarWindowHeightRem" in sanitized) {
+    sanitized.omnibarWindowHeightRem = normalizeOmnibarWindowHeightRem(sanitized.omnibarWindowHeightRem);
+  }
   return sanitized;
 }
 
@@ -90,7 +111,11 @@ function readLocalUpdatedAt(): number | null {
 }
 
 function writeLocalUpdatedAt(updatedAt: number): void {
-  window.localStorage.setItem(LOCAL_UPDATED_AT_KEY, String(updatedAt));
+  try {
+    window.localStorage.setItem(LOCAL_UPDATED_AT_KEY, String(updatedAt));
+  } catch {
+    // Full or blocked browser storage must not stop the push; the server copy stays the source of truth.
+  }
 }
 
 function hasLocalPersistedUiState(): boolean {
@@ -103,6 +128,15 @@ function serializeSettings(settings: SyncedSettingsObject): string {
 
 function buildServerSettingsValue(settings: SyncedSettingsObject, updatedAt: number): string {
   return JSON.stringify({ ...settings, __updatedAt: updatedAt } satisfies ServerSettingsPayload);
+}
+
+/** Saves the settings value, or says so plainly when it is too large for the server instead of failing silently. */
+async function putServerSettingsValue(value: string): Promise<void> {
+  if (value.length > MAX_APP_SETTINGS_VALUE_LENGTH) {
+    toast.error(translate("settings.sync.tooLarge"), { id: SETTINGS_TOO_LARGE_TOAST_ID });
+    throw new Error("Settings are larger than the server accepts");
+  }
+  await api.put(SETTINGS_PATH, { value });
 }
 
 function parseServerSettingsValue(value: string): {
@@ -143,7 +177,7 @@ export function useSettingsSync() {
       pendingUpdatedAt = null;
       writeLocalUpdatedAt(updatedAt);
       lastPushed = settingsFingerprint;
-      api.put(SETTINGS_PATH, { value: buildServerSettingsValue(settings, updatedAt) }).catch(() => {
+      putServerSettingsValue(buildServerSettingsValue(settings, updatedAt)).catch(() => {
         // Server unreachable — next change will retry. We keep `lastPushed`
         // as the failed payload so we only re-send when the user actually
         // changes something again.
@@ -333,6 +367,16 @@ export function useSettingsSync() {
                 }
               }
 
+              // A loaded image stays loaded: keep approvals from this browser and the server alike.
+              const localApprovals = useUIStore.getState().approvedRemoteImageUrls;
+              const serverApprovals = normalizeApprovedRemoteImageUrls(parsed.settings.approvedRemoteImageUrls);
+              const approvals = normalizeApprovedRemoteImageUrls([...localApprovals, ...serverApprovals]);
+              if (JSON.stringify(approvals) !== JSON.stringify(serverApprovals)) staleSyncedShape = true;
+              parsed.settings.approvedRemoteImageUrls = approvals;
+              if (JSON.stringify(approvals) !== JSON.stringify(localApprovals)) {
+                useUIStore.setState({ approvedRemoteImageUrls: approvals });
+              }
+
               const serverUpdatedAt = parsed.updatedAt;
               const localIsNewer =
                 hasTrustedLocalTimestamp &&
@@ -346,9 +390,9 @@ export function useSettingsSync() {
                 lastPushed = serialize();
                 const rewriteUpdatedAt = Date.now();
                 try {
-                  await api.put(SETTINGS_PATH, {
-                    value: buildServerSettingsValue(pickSyncedSettings(useUIStore.getState()), rewriteUpdatedAt),
-                  });
+                  await putServerSettingsValue(
+                    buildServerSettingsValue(pickSyncedSettings(useUIStore.getState()), rewriteUpdatedAt),
+                  );
                   writeLocalUpdatedAt(rewriteUpdatedAt);
                 } catch {
                   // Best-effort recovery. The in-memory merge still protects
@@ -365,9 +409,9 @@ export function useSettingsSync() {
                   try {
                     const rewriteUpdatedAt =
                       hadMissingSyncedSettings || staleSyncedShape ? Date.now() : (serverUpdatedAt ?? Date.now());
-                    await api.put(SETTINGS_PATH, {
-                      value: buildServerSettingsValue(pickSyncedSettings(useUIStore.getState()), rewriteUpdatedAt),
-                    });
+                    await putServerSettingsValue(
+                      buildServerSettingsValue(pickSyncedSettings(useUIStore.getState()), rewriteUpdatedAt),
+                    );
                     writeLocalUpdatedAt(rewriteUpdatedAt);
                   } catch {
                     // Rewriting legacy/incomplete blobs is best-effort. This
@@ -390,7 +434,7 @@ export function useSettingsSync() {
           const payload = serializeSettings(settings);
           lastPushed = payload;
           try {
-            await api.put(SETTINGS_PATH, { value: buildServerSettingsValue(settings, updatedAt) });
+            await putServerSettingsValue(buildServerSettingsValue(settings, updatedAt));
           } catch {
             // Seed failed; leave `lastPushed` set so the next change triggers a retry.
           }

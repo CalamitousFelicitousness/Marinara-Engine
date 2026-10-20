@@ -35,7 +35,9 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   canReparentFolder,
   estimateTextTokens,
+  expandLorebookIncludes,
   parseLorebookDecisionActivation,
+  stripMacroComments,
   type CreateLorebookEntryInput,
   type LorebookEntryTimingState,
   type Lorebook,
@@ -52,6 +54,7 @@ import { createGameStateStorage } from "../services/storage/game-state.storage.j
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
 import { runLorebookTestScan } from "../services/lorebook/test-scan.js";
+import { loadLorebookIncludesFor } from "../services/prompt/macro-context.js";
 import { listLorebookActivationStats } from "../services/lorebook/activation-stats.js";
 import {
   buildLorebookEntryEmbeddingText,
@@ -72,7 +75,6 @@ import {
   clearCharacterEmbeddedLorebook,
   resolveEmbeddedCharacterId,
 } from "../services/lorebook/character-book-sync.js";
-import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../services/llm/local-sidecar.js";
 import {
   createMemoryRecallEmbeddingSpaceId,
@@ -1012,15 +1014,31 @@ export async function lorebooksRoutes(app: FastifyInstance) {
   // ── Search ──
 
   app.get("/search/entries", async (req) => {
-    const query = (req.query as Record<string, string>).q ?? "";
-    if (!query) return [];
-    return storage.searchEntries(query);
+    const { q: query = "", limit } = req.query as Record<string, unknown>;
+    // A repeated parameter arrives as an array; only a single text value is a query.
+    if (typeof query !== "string" || !query || (limit !== undefined && typeof limit !== "string")) return [];
+    const matches = await storage.searchEntries(query);
+    // Optional, for callers that show a few hits (the omnibar); absent keeps every match.
+    const cap = limit ? Math.min(Math.max(parseInt(limit, 10) || 0, 1), 50) : matches.length;
+    return matches.slice(0, cap);
   });
 
   // ── Active entries (for prompt injection) ──
 
   app.get("/active/entries", async () => {
     return storage.listActiveEntries();
+  });
+
+  // ── Fill in {{include::...}} in a message the user is sending (#7607) ──
+  // Only the includes: the client then fills in every other macro, the included entry's too, so a
+  // {{random}} in the entry is rolled once and stored. Comments go first, as in resolveMacros.
+
+  app.post<{ Body: { text?: unknown; chatId?: unknown } }>("/expand-includes", async (req, reply) => {
+    const text = req.body?.text;
+    if (typeof text !== "string") return reply.status(400).send({ error: "text must be a string" });
+    const chatId = typeof req.body?.chatId === "string" && req.body.chatId ? req.body.chatId : undefined;
+    const includes = await loadLorebookIncludesFor(app.db, chatId, [text]);
+    return { text: includes ? expandLorebookIncludes(stripMacroComments(text), includes) : text };
   });
 
   // ── Scan chat for activated entries ──
@@ -1401,18 +1419,25 @@ export async function lorebooksRoutes(app: FastifyInstance) {
   // ── Vectorize: generate embeddings for all entries in a lorebook ──
 
   app.post<{ Params: { id: string } }>("/:id/vectorize", async (req, reply) => {
-    const body = req.body as { connectionId: string; model: string; onlyMissing?: boolean };
+    // `model` is still accepted from older clients but ignored: the server resolves it below.
+    const body = req.body as { connectionId: string; model?: string; onlyMissing?: boolean };
     if (!body.connectionId) {
       return reply.status(400).send({ error: "connectionId is required" });
     }
     const useLocalSidecar = body.connectionId === LOCAL_SIDECAR_CONNECTION_ID;
-    if (!useLocalSidecar && !body.model) {
-      return reply.status(400).send({ error: "model is required" });
-    }
 
     const connStorage = createConnectionsStorage(app.db);
     const conn = useLocalSidecar ? null : await connStorage.getWithKey(body.connectionId);
     if (!useLocalSidecar && !conn) return reply.status(404).send({ error: "Connection not found" });
+    // Resolve the source the way chat-time semantic matching does (Embedding Connection override
+    // included), so stored entry vectors and query vectors land in the same embedding space.
+    const remoteSource = conn ? await resolveMemoryRecallEmbeddingSource(app.db, { activeConnection: conn }) : null;
+    if (!useLocalSidecar && !remoteSource?.spaceId) {
+      return reply.status(400).send({
+        error:
+          "No usable embedding source for this connection. Set an embedding model, or check its Embedding Connection.",
+      });
+    }
 
     const allEntries = await storage.listEntries(req.params.id);
     if (!allEntries.length) return { vectorized: 0, total: 0, skipped: 0 };
@@ -1438,41 +1463,26 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       : vectorizableEntries;
     if (!entries.length) return { vectorized: 0, total: allEntries.length, skipped: allEntries.length };
 
-    const embeddingBaseUrl = useLocalSidecar
-      ? ""
-      : conn!.embeddingBaseUrl
-        ? (conn!.embeddingBaseUrl as string).replace(/\/+$/, "")
-        : (conn!.baseUrl as string);
-    const provider = useLocalSidecar
-      ? getLocalSidecarProvider()
-      : (() => {
-          const resolvedConn = conn!;
-          return createLLMProvider(
-            resolvedConn.provider as string,
-            embeddingBaseUrl,
-            resolvedConn.apiKey as string,
-            resolvedConn.maxContext,
-            resolvedConn.openrouterProvider,
-            resolvedConn.maxTokensOverride,
-            resolvedConn.claudeFastMode === "true",
-            resolvedConn.treatAsLocalEndpoint === "true",
-            resolvedConn.defaultParameters,
-            resolvedConn.id,
-          );
-        })();
-    const embeddingModel = useLocalSidecar ? LOCAL_SIDECAR_MODEL : body.model;
-    const embeddingProfileModel = useLocalSidecar
-      ? (sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL)
-      : embeddingModel;
-    const embeddingSpaceId = useLocalSidecar
-      ? createMemoryRecallEmbeddingSpaceId("sidecar", embeddingProfileModel, sidecarModelService.getResolvedBackend())
-      : createMemoryRecallEmbeddingSpaceId("remote", embeddingModel, conn!.provider as string, embeddingBaseUrl);
+    const sidecarProfileModel = sidecarModelService.getConfiguredModelRef() ?? LOCAL_SIDECAR_MODEL;
+    const embeddingSpaceId =
+      remoteSource?.spaceId ??
+      createMemoryRecallEmbeddingSpaceId("sidecar", sidecarProfileModel, sidecarModelService.getResolvedBackend());
+    const embedDocuments = async (batchTexts: string[]): Promise<number[][]> => {
+      if (!remoteSource) {
+        return getLocalSidecarProvider().embed(
+          formatMemoryRecallEmbeddingTexts(batchTexts, sidecarProfileModel, "document"),
+          LOCAL_SIDECAR_MODEL,
+        );
+      }
+      // The shared source formats the input profile itself, and logs and swallows provider errors.
+      const embeddings = await remoteSource.embed(batchTexts, undefined, "document");
+      if (!embeddings) {
+        throw new Error(`Embedding request through ${remoteSource.label} failed. Check the server log for details.`);
+      }
+      return embeddings;
+    };
 
-    const texts = formatMemoryRecallEmbeddingTexts(
-      (entries as LorebookEntry[]).map(buildLorebookEntryEmbeddingText),
-      embeddingProfileModel,
-      "document",
-    );
+    const texts = (entries as LorebookEntry[]).map(buildLorebookEntryEmbeddingText);
     const existingVectorEntries = body.onlyMissing
       ? (vectorizableEntries as Array<Record<string, unknown>>).filter(
           (entry) => Array.isArray(entry.embedding) && entry.embedding.length > 0,
@@ -1502,7 +1512,7 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       const batchEntries = entries.slice(i, i + BATCH_SIZE);
       let embeddings: number[][];
       try {
-        embeddings = await provider.embed(batchTexts, embeddingModel);
+        embeddings = await embedDocuments(batchTexts);
       } catch (error) {
         logger.warn(error, "[lorebooks] Embedding batch failed");
         return reply.status(502).send({

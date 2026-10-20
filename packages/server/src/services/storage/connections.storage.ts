@@ -6,7 +6,13 @@ import type { DB } from "../../db/connection.js";
 import { apiConnections } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { encryptApiKey, decryptApiKey } from "../../utils/crypto.js";
-import { MAX_PINNED_MODELS, parsePinnedModels, type CreateConnectionInput } from "@marinara-engine/shared";
+import {
+  MAX_PINNED_MODELS,
+  isChatProvider,
+  parsePinnedModels,
+  supportsSubscriptionUsageWidget,
+  type CreateConnectionInput,
+} from "@marinara-engine/shared";
 import { sweepDanglingConnectionReferences } from "./connection-reference-cleanup.js";
 import { clearConnectionRateLimit, setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { logger } from "../../lib/logger.js";
@@ -31,6 +37,11 @@ function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory
   if (provider === "audio") return "audio";
   if (provider === "decision") return "decision";
   return "language";
+}
+
+/** Decision connections never become the main connection, a random pick or an agent fallback. */
+function takesChatDefaults(provider: string): boolean {
+  return provider !== "decision";
 }
 
 /** One model in a saved provider list: display and limit fields only, never credentials. */
@@ -304,18 +315,20 @@ export function createConnectionsStorage(db: DB) {
           input.provider === "decision" && input.credentialsFromConnectionId ? "" : (input.apiKey ?? ""),
         ),
         managementTokenEncrypted: encryptApiKey(input.provider === "nanogpt" ? (input.managementToken ?? "") : ""),
-        showUsageWidget: String(input.provider === "nanogpt" && (input.showUsageWidget ?? false)),
+        showUsageWidget: String(supportsSubscriptionUsageWidget(input.provider) && (input.showUsageWidget ?? false)),
+        showUsageFiveHour: String(input.showUsageFiveHour ?? true),
+        showUsageWeekly: String(input.showUsageWeekly ?? true),
         profileImportReviewRequired: "false",
         model: input.model ?? "",
         pinnedModels: JSON.stringify(parsePinnedModels(input.pinnedModels ?? [])),
         savedModels: null,
         imagePath: input.imagePath ?? null,
         maxContext: input.maxContext ?? 128000,
-        isDefault: String(input.provider !== "decision" && (input.isDefault ?? false)),
+        isDefault: String(takesChatDefaults(input.provider) && (input.isDefault ?? false)),
         fallbackForMain: String(providerCategory === "language" && (input.fallbackForMain ?? false)),
-        useForRandom: String(input.provider !== "decision" && (input.useForRandom ?? false)),
+        useForRandom: String(takesChatDefaults(input.provider) && (input.useForRandom ?? false)),
         defaultForAgents: String(input.defaultForAgents ?? false),
-        fallbackForAgents: String(input.provider !== "decision" && (input.fallbackForAgents ?? false)),
+        fallbackForAgents: String(takesChatDefaults(input.provider) && (input.fallbackForAgents ?? false)),
         enableCaching: String(input.enableCaching ?? false),
         anthropicExtendedCacheTtl: String(input.anthropicExtendedCacheTtl ?? false),
         cachingAtDepth: input.cachingAtDepth ?? 5,
@@ -333,12 +346,14 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: input.imageGenerationQuality ?? "auto",
         videoGenerationSource: input.videoGenerationSource ?? null,
         videoService: input.videoService ?? null,
+        videoPromptInstructions: input.videoPromptInstructions ?? null,
         audioSource: input.audioSource ?? null,
         decisionSource: input.decisionSource ?? null,
         credentialsFromConnectionId: input.provider === "decision" ? (input.credentialsFromConnectionId ?? null) : null,
         maxStateTokens: input.maxStateTokens ?? null,
         decisionTimeoutMs: input.decisionTimeoutMs ?? null,
         audioVoice: input.audioVoice ?? null,
+        audioTimeoutMs: input.audioTimeoutMs ?? null,
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
         promptPresetId: input.promptPresetId ?? null,
@@ -350,7 +365,7 @@ export function createConnectionsStorage(db: DB) {
       };
       await db.transaction(async (tx) => {
         // If this is set as default, unset others.
-        if (input.isDefault && input.provider !== "decision") {
+        if (input.isDefault && takesChatDefaults(input.provider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           values.fallbackForMain = "false";
         }
@@ -362,12 +377,7 @@ export function createConnectionsStorage(db: DB) {
         if (input.defaultForAgents) {
           values.fallbackForAgents = "false";
           const category = defaultCategoryForProvider(input.provider);
-          if (
-            category === "image_generation" ||
-            category === "video_generation" ||
-            category === "audio" ||
-            category === "decision"
-          ) {
+          if (category !== "language") {
             await tx
               .update(apiConnections)
               .set({ defaultForAgents: "false" })
@@ -384,15 +394,10 @@ export function createConnectionsStorage(db: DB) {
             }
           }
         }
-        if (input.fallbackForAgents && input.provider !== "decision") {
+        if (input.fallbackForAgents && takesChatDefaults(input.provider)) {
           values.defaultForAgents = "false";
           const category = defaultCategoryForProvider(input.provider);
-          if (
-            category === "image_generation" ||
-            category === "video_generation" ||
-            category === "audio" ||
-            category === "decision"
-          ) {
+          if (category !== "language") {
             await tx
               .update(apiConnections)
               .set({ fallbackForAgents: "false" })
@@ -484,10 +489,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.showUsageWidget !== undefined) {
         updateFields.showUsageWidget = String(data.showUsageWidget);
       }
-      if (effectiveProvider !== "nanogpt") {
-        updateFields.managementTokenEncrypted = encryptApiKey("");
-        updateFields.showUsageWidget = "false";
-      }
+      if (data.showUsageFiveHour !== undefined) updateFields.showUsageFiveHour = String(data.showUsageFiveHour);
+      if (data.showUsageWeekly !== undefined) updateFields.showUsageWeekly = String(data.showUsageWeekly);
+      if (effectiveProvider !== "nanogpt") updateFields.managementTokenEncrypted = encryptApiKey("");
+      if (!supportsSubscriptionUsageWidget(effectiveProvider)) updateFields.showUsageWidget = "false";
       if (data.model !== undefined) updateFields.model = data.model;
       if (data.pinnedModels !== undefined)
         updateFields.pinnedModels = JSON.stringify(parsePinnedModels(data.pinnedModels));
@@ -565,12 +570,16 @@ export function createConnectionsStorage(db: DB) {
       if (data.videoService !== undefined) {
         updateFields.videoService = data.videoService;
       }
+      if (data.videoPromptInstructions !== undefined) {
+        updateFields.videoPromptInstructions = data.videoPromptInstructions;
+      }
       if (data.audioSource !== undefined) {
         updateFields.audioSource = data.audioSource;
       }
       if (data.audioVoice !== undefined) {
         updateFields.audioVoice = data.audioVoice;
       }
+      if (data.audioTimeoutMs !== undefined) updateFields.audioTimeoutMs = data.audioTimeoutMs;
       if (data.audioSoundEffects !== undefined) {
         updateFields.audioSoundEffects = String(data.audioSoundEffects);
       }
@@ -595,13 +604,13 @@ export function createConnectionsStorage(db: DB) {
       if (data.treatAsLocalEndpoint !== undefined) {
         updateFields.treatAsLocalEndpoint = String(data.treatAsLocalEndpoint);
       }
-      if (effectiveProvider === "decision") {
+      if (!takesChatDefaults(effectiveProvider)) {
         updateFields.isDefault = "false";
         updateFields.useForRandom = "false";
         updateFields.fallbackForAgents = "false";
       }
       await db.transaction(async (tx) => {
-        if (shouldClearDefault && effectiveProvider !== "decision") {
+        if (shouldClearDefault && takesChatDefaults(effectiveProvider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           updateFields.fallbackForMain = "false";
         }
@@ -612,12 +621,7 @@ export function createConnectionsStorage(db: DB) {
         if (shouldClearAgentDefaults) {
           updateFields.fallbackForAgents = "false";
           const category = defaultCategoryForProvider(effectiveProvider);
-          if (
-            category === "image_generation" ||
-            category === "video_generation" ||
-            category === "audio" ||
-            category === "decision"
-          ) {
+          if (category !== "language") {
             await tx
               .update(apiConnections)
               .set({ defaultForAgents: "false" })
@@ -645,15 +649,10 @@ export function createConnectionsStorage(db: DB) {
             }
           }
         }
-        if (shouldClearAgentFallbacks && effectiveProvider !== "decision") {
+        if (shouldClearAgentFallbacks && takesChatDefaults(effectiveProvider)) {
           updateFields.defaultForAgents = "false";
           const category = defaultCategoryForProvider(effectiveProvider);
-          if (
-            category === "image_generation" ||
-            category === "video_generation" ||
-            category === "audio" ||
-            category === "decision"
-          ) {
+          if (category !== "language") {
             await tx
               .update(apiConnections)
               .set({ fallbackForAgents: "false" })
@@ -734,12 +733,14 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationQuality: source.imageGenerationQuality,
         videoGenerationSource: source.videoGenerationSource,
         videoService: source.videoService,
+        videoPromptInstructions: source.videoPromptInstructions,
         audioSource: source.audioSource,
         decisionSource: source.decisionSource,
         credentialsFromConnectionId: source.credentialsFromConnectionId,
         maxStateTokens: source.maxStateTokens,
         decisionTimeoutMs: source.decisionTimeoutMs,
         audioVoice: source.audioVoice,
+        audioTimeoutMs: source.audioTimeoutMs,
         audioSoundEffects: source.audioSoundEffects,
         audioMusic: source.audioMusic,
         promptPresetId: source.promptPresetId,
@@ -748,6 +749,8 @@ export function createConnectionsStorage(db: DB) {
         maxRequestsPerMinute: source.maxRequestsPerMinute,
         managementTokenEncrypted: source.managementTokenEncrypted,
         showUsageWidget: source.showUsageWidget,
+        showUsageFiveHour: source.showUsageFiveHour,
+        showUsageWeekly: source.showUsageWeekly,
         claudeFastMode: source.claudeFastMode,
         treatAsLocalEndpoint: source.treatAsLocalEndpoint,
         createdAt: timestamp,
@@ -766,15 +769,7 @@ export function createConnectionsStorage(db: DB) {
       // The pool is drawn as the live chat LLM — media connections can never
       // serve a chat turn, so they are excluded even if a row was flagged
       // before its provider changed.
-      return rows
-        .filter(
-          (r: any) =>
-            r.provider !== "decision" &&
-            r.provider !== "audio" &&
-            r.provider !== "image_generation" &&
-            r.provider !== "video_generation",
-        )
-        .map((r: any) => withDecryptedKey(r));
+      return rows.filter((r: any) => isChatProvider(r.provider)).map((r: any) => withDecryptedKey(r));
     },
 
     async remove(id: string) {

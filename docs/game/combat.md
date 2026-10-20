@@ -4,13 +4,17 @@ This guide explains combat in Marinara Engine Game Mode. Choose **Classic** menu
 
 ## Tactical battles and terrain
 
-Tactical combat places your party and enemies on a battlefield. Select a party unit, inspect its movement range, choose a destination and action, then confirm. Each party unit can act before the enemy phase. Attack forecasts show expected consequences before you commit.
+Tactical combat places your party and enemies on a battlefield. Select a party unit, inspect its movement range, choose a destination and action, then confirm. Who acts when depends on the battle's **Turn order** (see [Turn order](#turn-order)). Attack forecasts show expected consequences before you commit.
 
 When creating a Tactical game, optional battlefield settings let you choose a seed, a size and terrain guidance for the GM. Leave the seed blank for a generated seed. A seed is a whole number from 0 to 4294967295, including zero. It reproduces the board when the encounter's combatants, terrain brief and other generation inputs are the same; it does not force the GM to generate the same story or enemies.
 
 The GM supplies the scene's environment, formation and a short terrain brief. The engine then creates the exact tiles and spawn positions. Briefs can request terrain patches and barriers near the center or an edge of the map. Terrain guidance is a request to the GM, not a guarantee that every word becomes a tile. The accepted battlefield is saved, so refreshing restores that board rather than generating another one.
 
-The engine checks the brief and the resulting layout. It preserves requested terrain while making the generated encounter reachable. If those constraints cannot fit together, the battle reports the problem. **Use generated terrain** explicitly starts without the rejected terrain features; it does not quietly erase them. Exact hand-painted maps and a battlefield editor are not available yet.
+The engine checks the brief and the resulting layout. It preserves requested terrain while making the generated encounter reachable. If those constraints cannot fit together, the battle reports the problem. **Use generated terrain** explicitly starts without the rejected terrain features; it does not quietly erase them.
+
+A game's world can also have **hand-made battlefields**. These are boards painted tile by tile for one of the world's places, with a maker such as Pixelforge. When a fight starts while the party is at that place, or at a place inside it, the fight uses one of those boards instead of a generated one. The board is used exactly as painted, in the scene it was painted for. If the place has several boards, the fight's seed picks one. The GM's terrain brief is not used there, but its formation still decides where each side starts. The GM is told the board was made for this place, and the battlefield line names the board.
+
+A hand-made board must follow three rules. It is one of the three board sizes. The two columns at each side are plains, where the sides line up. Every tile a fighter can stand on connects to the rest. The maker refuses a board that breaks a rule and says why. Hand-made battlefields are kept with the world's hand edits, so they travel with it in world files, map packs and the library.
 
 | Terrain               | Walking                 | Defense and evasion                       |
 | --------------------- | ----------------------- | ----------------------------------------- |
@@ -25,9 +29,24 @@ Units with an established flying or teleportation capability can move differentl
 - **Flying** crosses terrain and intervening units at one movement point per tile, including forests. A flying unit can hover over an otherwise blocked tile, but cannot finish on another unit.
 - **Teleportation** ignores intervening terrain and units. Its destination must be within movement range, unoccupied and walkable. It cannot end inside a wall, on a mountain tile or over unsupported water.
 
-Both special movement modes use the current movement allowance and orthogonal tile distance. They retain the destination terrain's defense/evasion bonuses. This is a simple flat-grid movement model; altitude, ceilings, spell-specific costs and spell-specific sight requirements are not modeled.
+Both special movement modes use the current movement allowance and orthogonal tile distance. They retain the destination terrain's defense/evasion bonuses. Both ignore height (see below). A flier's altitude, ceilings, spell-specific costs and spell-specific sight requirements are not modeled.
 
-Tactical combat uses party and enemy phases, rather than individual tabletop initiative. Movement-blocking walls do not yet block ranged attacks by line of sight. Cover, tabletop rule profiles and full summoning combat are separate future work.
+### Turn order
+
+A Tactical battle takes turns in one of two ways:
+
+- **One at a time, by initiative**: every unit gets a place in a rolled order, and only the unit whose turn it is can act. The board shows the turn order. New Overworld RPG games use this.
+- **Your whole party, then the enemies**: each party unit can act, then the enemy phase plays. Classic games use this.
+
+To change it, open **Chat Settings**, expand **Combat Style**, and pick a **Turn order**. It appears while the **Battle system** is Tactical, unless the game's ruleset runs its own fights. The change takes effect at the next battle; a battle already in progress keeps its order.
+
+### Sight, cover and height
+
+- **Sight.** Walls and mountains block sight. A unit can attack, use a skill or use an item only on a target it can see.
+- **Cover.** Something between the attacker and the target protects the target. A forest or ruins tile in the way, or a wall or mountain that blocks part of the view, gives half cover. A wall or mountain that blocks most of the view gives three-quarter cover. Half cover takes 15 percentage points off the hit chance and three-quarter cover 30. The target's own tile bonus and its cover do not add up: the better one counts.
+- **Height.** On a board with mountains, a mountain stands two levels high and the ground around it one level. Walking up one level costs one more movement point, and walking down costs nothing. A step of two levels or more is a cliff, which nobody can walk. Higher ground also blocks sight between two lower tiles. Attacking down from higher ground adds 10 to the hit chance, a ranged attack from higher ground reaches one tile farther, and low cover such as a forest does not hide a target from above. Hand-made battlefields can have cliffs of their own.
+
+Full summoning combat is separate future work.
 
 ## Classic battles
 
@@ -51,13 +70,13 @@ A ruleset may also let anybody in a fight start a contest: grab someone, shove t
 
 Some abilities answer somebody else's move instead of being taken on your own turn. When an opponent is about to use something, when something is aimed at you, when an attack has just hit you, or when something has just hurt you, and you hold an answer for that moment, the fight pauses and the menu offers it beside **Pass**. After a hit, the log says what the attack rolled and what it was made against, so you can see whether an answer such as Shield would turn it into a miss; if you take it, the same roll is checked again and the log says whether it still lands. Opponents can answer like this too, with a parry of their own. A counter can stop an opponent's ability before it happens, whoever it was aimed at, as long as the opponent is within the counter's reach; a ruleset may say it answers only some kinds of ability, such as spells. Whatever the stopped ability cost is still spent, and nothing can answer a counter.
 
-Such a ruleset may also say what one square of a battlefield is worth in its own distance, in feet, paces or whatever it calls them. When it does, and your game's **Combat Preference** is **Tactical**, the fight is fought on a generated battlefield: the same boards, the same terrain and the same deployment the Tactical battles above use. Your **Combat Preference** means something again for these games, and a ruleset that says nothing about distance, or a game set to **Classic**, fights exactly as it did before, with anybody able to be pointed at anybody.
+Such a ruleset may also say what one square of a battlefield is worth in its own distance, in feet, paces or whatever it calls them. When it does, and your game's **Combat Preference** is **Tactical**, the fight is fought on a battlefield: the same boards, generated or hand-made for the place, the same terrain and the same deployment the Tactical battles above use. Your **Combat Preference** means something again for these games, and a ruleset that says nothing about distance, or a game set to **Classic**, fights exactly as it did before, with anybody able to be pointed at anybody.
 
 On that battlefield the ruleset's own numbers decide everything. How far a turn may walk comes from the ruleset's own movement rule or a creature's own speed; how far a weapon reaches or carries comes from its own rows; an ability's area becomes a real burst, cone or line; a wall blocks a shot; standing behind something adds what the ruleset says cover adds; and walking out of somebody's reach lets them strike at you when the ruleset says such a strike costs something. Movement runs in eight directions at one square each, which is how the tabletop grids these rules are written for are played, and it is not the four-direction model Marinara's own Tactical battles use above.
 
 The battlefield is on screen. Every square is its own button, so the board can be walked with the pointer or with the arrow keys, and each one says what it is, who is standing on it and what it would cost to walk there. Choosing **Move** lights up the squares you can reach with their cost in the ruleset's own distance, draws the way there as you hover or focus one, and marks in amber any square whose path someone would strike at, naming them under the board. Choosing something that needs a target lights up who may be chosen and lets you click them on the board as well as in the list, and an attack that reaches nobody says **Nobody is in reach. Move closer.** rather than offering a swing at nothing. Something that lands as a shape is aimed at a square: the squares it may be aimed at are lit, and the one under your pointer says who it would catch, friends included. Movement may be spent before and after an action, so the menu simply comes back with what is left, and the panel below shows it as **Movement** in the ruleset's own unit. Escape leaves a half-made choice and puts the keyboard back on the menu.
 
-Three-quarter cover, elevation, flying over obstacles, hiding, forced movement other than a contest's push (dragging somebody you hold, for one) and choosing whether to take a strike at somebody walking away are all separate future work.
+A ruleset can also use more of the battlefield: cover in degrees, up to three-quarter cover; higher ground that changes attacks and falls; creatures that fly, swim, climb or burrow; **Hide** and **Search** on the menu; and, when somebody breaks away from an opponent, a pause that asks the opponent whether to strike. Which of these a fight uses depends on the ruleset. Flying over obstacles, squeezing through tight spaces, mounts and dragging somebody you hold are separate future work.
 
 ### Games that use a ruleset
 
@@ -118,11 +137,19 @@ Some attacks and skills carry an element: Fire, Ice, Lightning, Poison, Holy, or
 
 Example reactions include Melt, Shatter, Overload, Superconduct, Toxic Blaze, Purification, Eclipse, and Electrotoxin. This system runs on its own. You do not turn it on or configure it. Reactions happen automatically when the right elements chain on the same target.
 
+## Elements
+
+Attacks, skills and items can carry an element, and an element that lands on a target still wearing another's aura can set off a reaction that hits harder. Which elements exist belongs to the setting: a game without a setting kit, or with one that names none, fights with the classic six (fire, ice, lightning, poison, holy and shadow); a wuxia game with the five phases (wood, fire, earth, metal and water, each overcoming the next); a cyberpunk or space opera game with kinetic, thermal, EM and chemical or plasma; and a modern-day or 1920s game with none at all. Rain and storms on open ground damp fire-like elements and feed lightning-like ones. In a tactical fight, an element hits harder against one it beats and softer against one that beats it. You can change a kit's elements and their reactions under **Change its words**.
+
+## Battlefields
+
+A tactical fight's board is laid out like the kind of place the fight happens in: a forest has trees to hide among, a dungeon walls and corridors, a city streets. A game with a setting kit names its own scenes in its words, each laid out like one of those boards, so a cyberpunk fight happens on a rooftop or in a megablock corridor and a wuxia fight in a bamboo forest or a teahouse, and the board's tiles go by the setting's words too (cover and debris rather than forest and ruins). The map of an area and the small details the Game Master is prompted to notice follow the setting the same way. You can change a kit's scenes and tile words under **Change its words**.
+
 ## Boss mechanics and loot
 
 Strong enemies can have boss mechanics, which are special rules the GM writes for that fight. A mechanic can trigger on a schedule, such as every few rounds, or when the boss drops below a set health level. Mechanics can hit your whole party, buff the boss, or apply a status effect. When one triggers, the effect appears in the combat log so you can react.
 
-When you win a fight, the enemies drop loot, and it goes straight into the party's bags once the fight ends. Each item has a rarity, from most to least common: common, uncommon, rare, epic, and legendary. Harder difficulty tilts the drops toward rarer items and hands out slightly more of them. A notification says what dropped, and the Game Master is told it is already in your bags. In a game whose ruleset has its own loot tables, the enemies drop the ruleset's items instead, and a ruleset that turns Game Mode's own items off drops only its own. A **Victory!** banner appears when you win, and a **Defeat...** banner appears if your party falls.
+When you win a fight, the enemies drop loot, and it goes straight into the party's bags once the fight ends. Each item has a rarity, from most to least common: common, uncommon, rare, epic, and legendary. Harder difficulty tilts the drops toward rarer items and hands out slightly more of them. What drops belongs to your setting: a game with a setting kit drops the kit's own loot (a modern-day game drops a gift card or a first-aid kit, never an enchanted sword), and you can change those words under the kit's **Change its words**. A game without a kit drops what its genre usually has, and a genre with no starter kit, such as Steampunk, drops plain things that belong to no particular setting. A notification says what dropped, and the Game Master is told it is already in your bags. In a game whose ruleset has its own loot tables, the enemies drop the ruleset's items instead, and a ruleset that turns Game Mode's own items off drops only its own. A **Victory!** banner appears when you win, and a **Defeat...** banner appears if your party falls.
 
 ## Interrupting the GM
 

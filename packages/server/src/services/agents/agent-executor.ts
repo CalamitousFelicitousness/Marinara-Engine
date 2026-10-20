@@ -54,7 +54,13 @@ import {
   findInvalidInventoryTrackerRow,
   type CustomAgentContextSources,
 } from "@marinara-engine/shared";
-import { getAgentCallTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../../config/runtime-config.js";
+import {
+  AGENT_MAX_TOOL_ROUNDS,
+  LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS,
+  getAgentCallTimeoutMs,
+  getMaxToolRounds,
+  isDebugAgentsEnabled,
+} from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { failureLevel } from "../../lib/log-context.js";
 import { repairJsonText } from "../../lib/json-repair.js";
@@ -66,6 +72,7 @@ import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 import { completeAgentCall } from "./agent-progress.js";
 import { normalizeCyoaChoiceOutput } from "./cyoa-choice-normalization.js";
 import { getAssetManifest } from "../game/asset-manifest.service.js";
+import { toolRoundsAsText } from "../tools/tool-executor.js";
 import { normalizeBeholderProse } from "./beholder-normalizer.js";
 import {
   beholderDeltaLacksRemoval,
@@ -308,6 +315,7 @@ export function buildAgentPromptMacroContext(
         }
       : undefined,
     lorebookEntryCounts: context.lorebookEntryCounts,
+    lorebookIncludes: context.lorebookIncludes,
     decisions: context.decisions,
   };
 }
@@ -1255,7 +1263,17 @@ async function executeAgentWithTools(
   startTime: number,
   context: AgentContext,
 ): Promise<AgentResult> {
-  const maxToolRounds = getMaxToolRounds();
+  // An agent works with its tools, then answers: enough rounds for one that saves an entry per call on a
+  // backend that calls one tool a round, never the general limit, so a model that keeps calling tools
+  // (a proxy that loses the results) costs a bounded number of calls, not a hundred.
+  // A run that only saves (a lorebook backfill) may ask for more in its settings' `toolRounds`.
+  const asked = config.settings.toolRounds;
+  // Never past the backfill's own allowance, whatever a stored agent's settings say.
+  const agentRounds =
+    typeof asked === "number" && Number.isInteger(asked) && asked > 0
+      ? Math.min(asked, LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS)
+      : AGENT_MAX_TOOL_ROUNDS;
+  const maxToolRounds = Math.min(getMaxToolRounds(), agentRounds);
   const loopMessages = [...initialMessages];
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
@@ -1360,8 +1378,14 @@ async function executeAgentWithTools(
     }
   }
 
-  // Exhausted tool rounds — make one final call without tools to get JSON response
-  const finalProviderMessages = prepareAgentProviderMessages(loopMessages);
+  // Said where support can see it: a run that ends here may have had more to do (a proxy that loses tool
+  // results, or more entries than rounds).
+  logger.warn("[agent] %s used all %d tool rounds; it answers now without tools", config.name, maxToolRounds);
+  // Exhausted tool rounds: one final call without tools for the answer, its tool exchange as text
+  // (a provider's plain path cannot carry tool calls or results; see toolRoundsAsText).
+  const finalProviderMessages = prepareAgentProviderMessages(
+    toolRoundsAsText(loopMessages, "No more tool calls: give your answer now, in the format you were asked for."),
+  );
   emitAgentDebug(context, {
     stage: "request",
     ...agentDebugBase(config, model, temperature, maxTokens),
@@ -2764,7 +2788,7 @@ export function buildIllustratorImageStyleInstructionBlock(styleInstruction: unk
     `If the style instruction contains generic framing or composition defaults that conflict with the selected prompt template, ignore those conflicting defaults and preserve the selected format.`,
     `Never replace Comic Page or manga panels and lettering with a single illustration, and never replace Background, Illustration, or Selfie framing with another format.`,
     `Visual style instruction for the image prompt you write: ${escapeXml(instruction)}`,
-    `Carry the resulting visual treatment into both the JSON "style" field and the generated "prompt". Do not copy this meta-instruction verbatim.`,
+    `Carry the resulting visual treatment into both the JSON "style" field and the generated "prompt", written as words for the image model. Never copy the style instruction's sentences into either field.`,
     `</illustrator_image_style>`,
   ].join("\n");
 }
@@ -3638,6 +3662,12 @@ function sanitizeTextAgentResponse(text: string): string {
   return cleaned;
 }
 
+/** Tracker results with one row group, mapped to the key a root-level envelope belongs under. */
+const SINGLE_GROUP_TRACKER_KEYS: Partial<Record<AgentResultType, string>> = {
+  custom_tracker_update: "fields",
+  character_tracker_update: "presentCharacters",
+};
+
 /**
  * Parse the raw LLM response into a typed result.
  */
@@ -3673,11 +3703,13 @@ function parseAgentResponse(
         }
       }
       let data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
-      // Custom Tracker has one row group; tolerate the incremental envelope at
-      // the root as well as under fields, then use the usual merge/lock path.
-      if (resultType === "custom_tracker_update" && isTrackerRowsUpdate(data) && !("fields" in data)) {
+      // Custom Tracker and Character Tracker each have one row group; tolerate
+      // the incremental envelope at the root as well as under its key, then use
+      // the usual merge/lock path (#7208).
+      const rowsKey = SINGLE_GROUP_TRACKER_KEYS[resultType];
+      if (rowsKey && isTrackerRowsUpdate(data) && !(rowsKey in data)) {
         const { updates, removed } = data;
-        data = { ...data, fields: { updates, removed } };
+        data = { ...data, [rowsKey]: { updates, removed } };
       }
       if (config.settings.jsonContextOutput === true && resultType === "context_injection") {
         const output = data as Record<string, unknown>;

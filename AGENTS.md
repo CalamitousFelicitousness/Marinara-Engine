@@ -52,7 +52,7 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Run `pnpm check` as the baseline validation command.
 - Before pushing, follow the local validation and reporting requirements in `CONTRIBUTING.md § Validation`.
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
-- For every bug fix, behavior change, or new feature, add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading. Purely mechanical changes with no product or contributor-workflow impact do not need an entry.
+- Never add or edit `CHANGELOG.md` outside a release PR (one that bumps the root `package.json` version); release notes are compiled from merged PRs' "What changed" before each release. See `CONTRIBUTING.md § Pull Request Expectations`.
 
 ## Temporary Tests
 
@@ -70,16 +70,17 @@ References: [OpenAI agent instructions](https://learn.chatgpt.com/docs/agent-con
 - Agent-specific coordination rule: before starting issue work, check for an existing issue-linked branch, open PR, draft PR, or project board item so multiple agents do not duplicate effort. See `CONTRIBUTING.md` for the general contributor workflow.
 - Agent-specific coordination rule: when implementation effort starts for an issue, open a draft PR immediately so the project Kanban board shows the work in progress.
 - Agent-specific coordination rule: when starting work on an issue, tag or identify the GitHub user or agent owning that issue/PR on the single issue so ownership is visible before implementation proceeds.
+- Agent-specific coordination rule: assign every issue and PR you open to `SpicyMarinara` (`gh issue create --assignee SpicyMarinara`, `gh pr create --assignee SpicyMarinara`) so it shows in the maintainer's assigned list. If your account cannot assign, mention `@SpicyMarinara` in the description instead.
 - When preparing a PR, make the why explicit in the description so reviewers can see the user problem or rationale, not just the file changes.
-- Check `README.md`, `android/README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/CONFIGURATION.md`, `docs/TROUBLESHOOTING.md`, and `docs/FAQ.md` together when install, update, or release behavior changes.
+- Check `README.md`, `android/README.md`, `CONTRIBUTING.md`, `docs/CONFIGURATION.md`, `docs/TROUBLESHOOTING.md`, and `docs/FAQ.md` together when install, update, or release behavior changes.
 - When a change adds, renames, or edits user-facing docs under `docs/`, also update every translated language pack on the `docs-i18n` branch to match — or open a `[docs-i18n] <paths>` follow-up issue. Renames/deletions must be mirrored there or the translation is silently orphaned. See `CONTRIBUTING.md § Translated documentation`.
 
 ## AI-Generated Pull Request
 
 1. Open a draft early while implementation is in progress, so issue ownership and work status are visible.
 2. Finish implementation and the required local checks. Run CodeRabbit locally; reproduce or trace each finding, fix legitimate defects and rerun review after substantive fixes. Record code-based reasons for rejecting false positives, non-regressions and purely pedantic suggestions. Do not claim zero findings when findings were dismissed.
-3. Once implementation, required local validation and substantive local review are complete, **push and mark the PR ready for review in the same workflow without asking again**. If the first PR is only being created at that point, create it ready rather than draft. A user request to keep it draft is an exception.
-4. Keep a PR draft only for unfinished implementation, unresolved substantive local findings, blocked required local validation, or an explicit maintainer instruction. Unchecked human checklist items and documented optional follow-ups are not automatic draft blockers. Pending GitHub CI and GitHub CodeRabbit are merge gates, not reasons to leave completed local work in draft; the GitHub review must be allowed to run.
+3. Once implementation, required local validation and substantive local review are complete, **push and mark the PR ready for review in the same workflow without asking again**, except when `.github/agents/chai-workflow.md` requires a maintainer decision first. If the first PR is only being created at that point, create it ready rather than draft. A user request to keep it draft is an exception.
+4. Keep a PR draft only for unfinished implementation, unresolved substantive local findings, blocked required local validation, a required maintainer decision, or an explicit maintainer instruction. Unchecked human checklist items and documented optional follow-ups are not automatic draft blockers. Pending GitHub CI and GitHub CodeRabbit are merge gates, not reasons to leave completed local work in draft; the GitHub review must be allowed to run.
 5. Inspect CI/review feedback when preparing a PR for review or shipping it. Address valid failures within scope. Never merge until all repository merge gates pass and merging is authorized.
 
 The local review conserves the shared CodeRabbit quota and complements the GitHub review. Use an existing PR rather than creating another for follow-up fixes.

@@ -16,7 +16,7 @@ Marinara groups its agents in the **Agents** panel into **Apps**, **Writer Agent
 
 A run interval means the agent runs once every few user and assistant messages instead of after every message. You can change a run interval in the agent's setup, up to 100.
 
-Illustrator also accepts **0** for manual-only generation: it stays available for Gallery actions but never runs automatically. Other agents keep their existing positive intervals.
+In Roleplay, Illustrator's run interval is set per chat, in its card in **Chat Settings**. The value in its setup is the default for chats that don't set their own. Illustrator also accepts **0** for manual-only generation: it stays available for Gallery actions but never runs automatically. Other agents keep their existing positive intervals.
 
 ## Apps
 
@@ -159,7 +159,7 @@ When a recurring character returns after leaving the scene, Character Tracker re
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: **Add as Prompt Section** (on by default) and an optional **Auto-Generate NPC Avatars** setting with its own image connection picker.
+- **Key settings**: **Add as Prompt Section** (on by default) and an optional **Auto-Generate NPC Avatars** setting with its own image connection picker. Under it, **Include the outfit in portraits** is on by default, so new portraits show the outfit the tracker noted as well as the look. Turn it off to draw portraits from the look alone.
 
 ### Beholder
 
@@ -268,7 +268,7 @@ Responsible for image and video generations. It writes visual prompts for import
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: it runs once every 5 user and assistant messages by default. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
+- **Key settings**: it runs once every 5 user and assistant messages by default, and each Roleplay chat can change that with **Run Interval** on its card. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
 
 ### Lorebook Keeper
 
@@ -316,7 +316,7 @@ Adds clickable "What will you do?" choice buttons after each reply, for a choose
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: **Edit** to rewrite the choices and **Re-roll** to generate new ones.
+- **Key settings**: **Edit** to rewrite the choices and **Re-roll** to generate new ones. Turn on **Add CYOA choices to the message box instead of sending them** in **Settings** > **General** > **Input & Editing** to have clicked choices go into your message box.
 
 ### Storyboard
 
@@ -327,6 +327,28 @@ Plans still or animated visual storyboards from completed Roleplay exchanges and
 - **Key settings**: choose still or animation planners, image and video connections, keyframe count, duration, display mode, character-reference handling, Roleplay episode and style templates, and Game illustration/video templates.
 - **Compatibility**: Engine `2.3.5` through before `3.0.0`. The package uses `agent-runtime`, `chat-read`, `prompt-context`, `storage`, and `ui` permissions and does not require a restart.
 - **Full guide**: [Storyboard Agent: Roleplay and Game Mode](../game/storyboard.md).
+
+### 2D Avatars
+
+Shows your characters and personas as animated 2D avatars that blink, talk, and change faces with each reply. An avatar is either PNGTuber-style sprites (your expression sprites, with blink and talk pictures) or a mesh avatar file (`.mavatar`).
+
+- **Integration**: Agent package; the Engine runs it and draws the avatars. It sends no extra requests to your AI connections while you chat.
+- **Where it works**: Roleplay and Game, for characters and personas.
+- **Availability**: in **Download Agents** for every install. It needs Marinara Engine 2.5.1 or newer.
+- **Key settings**: set up each avatar on the agent's page in **Agents**. The agent also carries the prompts used to make blink and talk pictures and a mesh avatar from one of your sprites.
+- **Compatibility**: Engine `2.5.0` through before `4.0.0`, with Capability API 1.73. The package uses `agent-runtime`, `chat-read`, `storage`, and `ui` permissions and does not require a restart.
+- **Full guide**: [2D and 3D Avatars](avatars.md).
+
+### 3D Avatars
+
+Shows your characters and personas as animated 3D models that blink, talk, and change faces with each reply. It uses VRM models (`.vrm`, versions 0.x and 1.0), with an optional idle animation (`.vrma`).
+
+- **Integration**: Agent package; the Engine runs it and draws the avatars. It sends no extra requests to your AI connections while you chat.
+- **Where it works**: Roleplay and Game, for characters and personas.
+- **Availability**: in **Download Agents** for every install. It needs Marinara Engine 2.5.1 or newer.
+- **Key settings**: set up each avatar on the agent's page in **Agents**.
+- **Compatibility**: Engine `2.5.0` through before `4.0.0`, with Capability API 1.73. The package uses `agent-runtime`, `chat-read`, `storage`, and `ui` permissions and does not require a restart.
+- **Full guide**: [2D and 3D Avatars](avatars.md).
 
 ### Calls
 

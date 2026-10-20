@@ -1,5 +1,10 @@
 import { DEFAULT_GENERATION_PARAMS, type AgentContext } from "@marinara-engine/shared";
-import { NOVELAI_V5_MAX_CHARACTER_PROMPTS } from "../image/character-prompts.js";
+import {
+  buildCharacterAppearanceReferenceBlock,
+  NOVELAI_V5_MAX_CHARACTER_PROMPTS,
+  personaEntityId,
+  readIllustratorImageAppearanceOverride,
+} from "../image/character-prompts.js";
 import { logger } from "../../lib/logger.js";
 import {
   agentRequestOptions,
@@ -11,6 +16,7 @@ import {
 import type { ResolvedAgent } from "../agents/agent-pipeline.js";
 import { measureContextBudget, type ChatCompletionResult, type ChatMessage } from "../llm/base-provider.js";
 import { normalizeAgentMaxTokens, normalizeMaxContext } from "./generation-parameters.js";
+import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 
 const DEFAULT_MANUAL_ILLUSTRATION_MAX_TOKENS = 1_800;
 const MANUAL_ILLUSTRATION_SYSTEM_PROMPT = [
@@ -164,6 +170,45 @@ function appendConversationMessage(messages: ChatMessage[], role: "user" | "assi
   messages.push({ role, content: clean, contextKind: "history" });
 }
 
+/**
+ * NovelAI caption rules for a manual prompt writer, followed by the card and persona
+ * Appearance reference when Attach card appearance is on, so the writer turns them
+ * into per-character captions instead of the server appending them to the prompt.
+ */
+export function buildManualIllustratorCharacterPromptInstruction(
+  context: AgentContext,
+  characterPromptInstruction: string | undefined,
+  attachCardAppearance: boolean,
+): string | undefined {
+  if (!characterPromptInstruction) return undefined;
+  if (!attachCardAppearance) return characterPromptInstruction;
+  return [
+    characterPromptInstruction,
+    buildCharacterAppearanceReferenceBlock([
+      ...context.characters.map((char) => ({
+        name: char.name,
+        // #7053: the image override replaces the card appearance for the
+        // manual illustrator prompt only.
+        appearance: readIllustratorImageAppearanceOverride(context.memory, char.id) ?? char.appearance ?? "",
+      })),
+      ...(context.persona
+        ? [
+            {
+              name: context.persona.name,
+              // Personas are keyed by their own id, like characters (#7053).
+              appearance:
+                readIllustratorImageAppearanceOverride(context.memory, personaEntityId(context.memory)) ??
+                context.persona.appearance ??
+                "",
+            },
+          ]
+        : []),
+    ]),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildManualIllustratorPromptMessages(args: {
   context: AgentContext;
   contextSize: unknown;
@@ -187,12 +232,9 @@ export function buildManualIllustratorPromptMessages(args: {
       : "No selected Illustrator prompt mode supplied; use one coherent scene illustration.",
     MANUAL_ILLUSTRATION_SYSTEM_PROMPT,
     args.styleInstruction
-      ? `Additional Image Style instruction for the image prompt you write: ${args.styleInstruction}\nCombine it with the selected Illustrator prompt mode. It may refine rendering and visual treatment, but it must not replace or weaken the selected format, layout, framing, or text requirements.`
+      ? `Additional Image Style instruction for the image prompt you write: ${args.styleInstruction}\nCombine it with the selected Illustrator prompt mode. It may refine rendering and visual treatment, but it must not replace or weaken the selected format, layout, framing, or text requirements. Express it as words for the image model; never copy its sentences into the JSON fields.`
       : "No visual style profile is selected. Infer only the visual treatment supported by the scene context.",
     args.characterPromptInstruction?.trim() ?? "",
-    args.imagePromptInstructions
-      ? `<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${args.imagePromptInstructions}\n</image_prompting_instructions>`
-      : "",
     buildCharacterPersonaContext(args.context),
   ].join("\n\n");
   const messages: ChatMessage[] = [
@@ -206,12 +248,17 @@ export function buildManualIllustratorPromptMessages(args: {
   for (const message of recentMessages) {
     appendConversationMessage(messages, message.role === "assistant" ? "assistant" : "user", message.content);
   }
-  const instruction = [
-    "<manual_gallery_illustration_request>",
-    "Write the image-model prompt now for the current scene. The Illustration button has already selected the output type.",
-    ...(args.request ? [`Depict this explicit request: ${args.request}`] : []),
-    "</manual_gallery_illustration_request>",
-  ].join("\n");
+  // The image connection's instructions sit next to the request, as in the automatic
+  // Illustrator call, so the writer follows them instead of losing them above the chat (#7357).
+  const instruction = appendImagePromptInstructions(
+    [
+      "<manual_gallery_illustration_request>",
+      "Write the image-model prompt now for the current scene. The Illustration button has already selected the output type.",
+      ...(args.request ? [`Depict this explicit request: ${args.request}`] : []),
+      "</manual_gallery_illustration_request>",
+    ].join("\n"),
+    args.imagePromptInstructions,
+  );
   const last = messages.at(-1);
   if (last?.role === "user") {
     last.content = `${last.content}\n\n${instruction}`;

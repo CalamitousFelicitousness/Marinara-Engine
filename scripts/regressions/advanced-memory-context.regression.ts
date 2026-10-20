@@ -41,7 +41,7 @@ const prompt: Input["messages"] = [
   },
   ...source.map((item) => ({ ...item, role: item.role as "user" | "assistant", contextKind: "history" as const })),
 ];
-const calls: Array<{ budget: number; readOnly?: boolean }> = [];
+const calls: Array<{ budget: number; readOnly?: boolean; decisionDeadline?: number }> = [];
 let recall = "";
 let cacheValid = true;
 const service = {
@@ -49,7 +49,7 @@ const service = {
     if (!cacheValid) throw new Error("Memory sources changed");
   },
   async prepare(input: Parameters<Input["service"]["prepare"]>[0]) {
-    calls.push({ budget: input.budgetTokens, readOnly: input.readOnly });
+    calls.push({ budget: input.budgetTokens, readOnly: input.readOnly, decisionDeadline: input.decisionDeadline });
     const count = Math.min(source.length, Math.max(1, Math.floor((input.budgetTokens - 256) / 1010)));
     return {
       messageIds: source.slice(-count).map((item) => item.id),
@@ -73,7 +73,21 @@ const service = {
         checkpointId: "checkpoint",
         recalledSceneIds: [],
         recalledMessageIds: recall ? ["older-promise"] : [],
-        reasons: [],
+        reasons: recall ? ["decision-recall", "decision-excerpt-fallback", "excerpt-no-room"] : [],
+        ...(recall
+          ? {
+              decisionRecall: {
+                createdAt: "2026-01-01T00:00:00.000Z",
+                model: "fixture",
+                sourceEndMessageId: null,
+                fallback: false,
+                threshold: 0.5,
+                omittedCount: 0,
+                results: [],
+                notes: ["excerpt-no-room"],
+              },
+            }
+          : {}),
       },
     };
   },
@@ -175,6 +189,11 @@ const limited = await prepareAdvancedMemoryContext({ ...input, maxContext: 12_00
 assert.ok(limited.messages.length < roomy.messages.length);
 assert.equal(limited.receipt.recalledMessageIds.length, 0, "discard optional excerpts before further cutting history");
 assert.deepEqual(
+  [limited.receipt.reasons.slice(0, -1), limited.receipt.decisionRecall!.notes],
+  [["decision-recall"], undefined],
+  "once no scene is recalled, no reason about a recalled scene's excerpt is shown",
+);
+assert.deepEqual(
   limited.receipt.recordRevisions,
   { "continuity-variant": "continuity-revision", "temporary-variant": "temporary-revision" },
   "dropped optional recall must not invalidate the request, while retained continuity still does",
@@ -196,6 +215,20 @@ const preview = await prepareAdvancedMemoryContext({ ...input, readOnly: true })
 assert.equal(calls.at(-1)!.readOnly, true);
 assert.deepEqual(preview.providerMessages, roomy.providerMessages);
 assert.ok(prompt[0]!.content.includes(placements[0]!.token), "prepared snapshot must stay reusable");
+
+// Formatting can outgrow the estimate, so the history is refitted; every attempt for the reply shares one
+// Decision recall time limit.
+const beforeFormatted = calls.length;
+await prepareAdvancedMemoryContext({
+  ...input,
+  maxContext: 12_000,
+  toProviderMessages: (messages) =>
+    messages.map((message) => ({ ...message, content: `${message.content}${"y".repeat(200)}` })),
+});
+const deadlines = calls.slice(beforeFormatted).map((call) => call.decisionDeadline);
+assert(deadlines.length > 1, "the formatted history is refitted");
+assert.equal(new Set(deadlines).size, 1, "one Decision recall time limit per reply");
+assert.equal(typeof deadlines[0], "number");
 
 const synthetic = {
   role: "user" as const,

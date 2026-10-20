@@ -983,6 +983,12 @@ export async function sceneRoutes(app: FastifyInstance) {
       }
 
       let skippedParticipationGuide = false;
+      const copiedCount = upToMessageId
+        ? sceneMessages.findIndex((msg) => msg.id === upToMessageId) + 1
+        : sceneMessages.length;
+      const swipesByMessageId = await chats.getSwipesByMessageId(
+        sceneMessages.slice(0, copiedCount).map((msg) => msg.id),
+      );
       for (const msg of sceneMessages) {
         if (!includeParticipationGuide && !skippedParticipationGuide && msg.role === "narrator") {
           // /scene/create writes the generated participation guide as the first
@@ -996,7 +1002,7 @@ export async function sceneRoutes(app: FastifyInstance) {
         let extra = msg.extra;
         let swipeExtra: unknown = undefined;
         let createdAt = msg.createdAt;
-        const swipes = await chats.getSwipes(msg.id);
+        const swipes = swipesByMessageId.get(msg.id) ?? [];
         const copiedSwipes = swipes.map(
           (swipe: { index: number; content: string; extra?: unknown; createdAt?: string | null }) => ({
             index: swipe.index,

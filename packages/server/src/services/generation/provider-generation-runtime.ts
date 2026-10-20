@@ -1,4 +1,5 @@
 import {
+  capabilityModelId,
   isClaudeAdaptiveOnlyNoSamplingModel,
   normalizeThinkingTagPairs,
   resolveManagedGenerationParameters,
@@ -34,6 +35,7 @@ import {
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
 
 type GenerationConnection = {
+  name?: string | null;
   provider: string;
   model: string;
   apiKey: string;
@@ -194,7 +196,7 @@ export function resolveGenerationParameters(args: GenerationParameterArgs): Reso
     if (capped < runtime.maxTokens) forceParameters("outputCap", { maxTokens: capped });
   }
 
-  const modelLower = (args.connection.model ?? "").toLowerCase();
+  const modelLower = capabilityModelId(args.connection.model ?? "");
   const providerLower = (args.connection.provider ?? "").toLowerCase();
   const isCodex = providerLower === "openai_chatgpt";
   if (runtime.reasoningEffort !== null && keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) {
@@ -214,7 +216,7 @@ export function resolveGenerationParameters(args: GenerationParameterArgs): Reso
   const providerReasoningEffort =
     runtime.enabledParameters?.reasoningEffort === false
       ? undefined
-      : runtime.reasoningEffort === null
+      : runtime.reasoningEffort === null && !resolvedEffort
         ? isCodex
           ? undefined
           : "none"
@@ -251,6 +253,49 @@ export function resolveGenerationParameters(args: GenerationParameterArgs): Reso
   };
 }
 
+/**
+ * The level `{{reasoning}}` reads: what this request asks the model for (`low` to `max`), or `off` when thinking stays
+ * off. Macros resolve while the prompt is built, before the request's parameters are, so this runs the same layering
+ * early from the base level (the preset's, or the default without one).
+ */
+export function resolveReasoningMacroValue(args: {
+  connection: Pick<GenerationConnection, "provider" | "model" | "maxTokensOverride" | "defaultParameters">;
+  chatMode: string;
+  isSceneChat: boolean;
+  chatParameters: unknown;
+  baseReasoningEffort: GenerationParameterValues["reasoningEffort"] | undefined;
+}): string {
+  const { resolvedEffort } = resolveGenerationParameters({
+    connection: args.connection,
+    chatMode: args.chatMode,
+    isSceneChat: args.isSceneChat,
+    chatParameters: args.chatParameters,
+    managedParameterDefinitions: [],
+    modelAccessPolicy: { suppressModelParameters: false },
+    initial: {
+      temperature: undefined,
+      maxTokens: 0,
+      topP: undefined,
+      topK: 0,
+      minP: 0,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      showThoughts: false,
+      reasoningEffort: args.baseReasoningEffort,
+      verbosity: null,
+      serviceTier: null,
+      assistantPrefill: "",
+      assistantReasoningPrefill: "",
+      customThinkingTags: [],
+      customParameters: {},
+      enabledParameters: undefined,
+      stopSequences: [],
+      effectiveMaxContext: undefined,
+    },
+  });
+  return resolvedEffort ?? "off";
+}
+
 export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
   const parameters = resolveGenerationParameters(args);
   const primaryProvider =
@@ -280,6 +325,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     primary: primaryProvider,
     wrapProvider: args.wrapProvider,
     primaryConnectionId: args.connectionId,
+    primaryConnectionName: args.connection.name,
     fallbackConnection: args.fallbackConnection,
     fallbackBaseUrl: args.fallbackBaseUrl ?? "",
     category: "main",

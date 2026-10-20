@@ -89,7 +89,7 @@ assert.equal(
     // a clause may carry and nothing else.
     const damageShaped =
       ["dice", "flat", "type"].every((key) => keys.includes(key)) &&
-      keys.every((key) => ["dice", "flat", "type", "plus", "save"].includes(key));
+      keys.every((key) => ["dice", "flat", "type", "plus", "save", "targetIs", "when"].includes(key));
     if (damageShaped) damageNodes.push(object);
     if (checkKeys.every((key) => keys.includes(key))) checkNodes.push(object);
     if (keys.length === 2 && keys.includes("from") && keys.includes("min")) faceNodes.push(object);
@@ -239,8 +239,8 @@ console.info("game ruleset JSON Schema regression passed.");
     not: { anyOf: RULESET_CREATURE_SHEET_REPLACES.map((key) => ({ required: [key] })) },
   });
   assert.deepEqual(rule.else, {
-    required: [...RULESET_CREATURE_PLAIN_NEEDS, "actions"],
-    properties: { actions: { minItems: 1 } },
+    required: [...RULESET_CREATURE_PLAIN_NEEDS],
+    anyOf: [{ required: ["actions"], properties: { actions: { minItems: 1 } } }, { required: ["spellcasting"] }],
   });
   // And the three numbers are not required outright, or a creature with a sheet could never be valid.
   assert.deepEqual(node.required, ["tier"]);
@@ -275,7 +275,7 @@ console.info("game ruleset JSON Schema regression passed.");
       node.allOf?.some(
         (rule: Record<string, any>) =>
           JSON.stringify(rule.anyOf) ===
-          JSON.stringify(["flat", "dice", "times", "mode"].map((key) => ({ required: [key] }))),
+          JSON.stringify(["flat", "dice", "times", "diceTimes", "mode"].map((key) => ({ required: [key] }))),
       ),
       "a mode alone is a change",
     );

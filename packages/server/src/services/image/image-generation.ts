@@ -14,6 +14,7 @@ import { newId } from "../../utils/id-generator.js";
 import {
   CODEX_IMAGE_MODEL,
   COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
+  SPICYAPI_IMAGE_MODELS,
   buildComfyUiLoraWorkflowReplacements,
   DEFAULT_AUTOMATIC1111_DEFAULTS,
   DEFAULT_COMFYUI_DEFAULTS,
@@ -38,7 +39,12 @@ import {
   supportsNovelAiCharacterPrompts,
 } from "./character-prompts.js";
 import { isImageLocalUrlsEnabled } from "../../config/runtime-config.js";
-import { runMediaGenerationRequest } from "./image-generation-queue.js";
+import {
+  mediaProviderLaneGapMs,
+  mediaProviderLaneKey,
+  runInMediaProviderLane,
+  runMediaGenerationRequest,
+} from "./image-generation-queue.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -57,13 +63,28 @@ import {
 } from "../generation/connection-admission.js";
 import {
   COMFYUI_MAX_REFERENCE_IMAGES,
+  comfyWorkflowTakesReference,
   findMissingComfyReferenceSlots,
   numberedComfyReferencePlaceholder,
 } from "./comfyui-reference-placeholders.js";
 import { buildVeniceApiUrl, buildVeniceImageRequest, parseVeniceImageResponse } from "./venice-image.js";
 import { buildZaiImageRequest, buildZaiImageUrl, parseZaiImageUrl } from "./zai-image.js";
 import { buildFalImageUrl } from "./fal-image.js";
-import { buildAtlasCloudImageRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
+import {
+  SPICYAPI_MAX_INLINE_IMAGE_BYTES,
+  assertSpicyApiModelId,
+  buildSpicyApiImageInput,
+  buildSpicyApiUrl,
+  fitsSpicyApiInlineLimit,
+  parseSpicyApiTask,
+  readSpicyApiMessage,
+  trimSpicyApiReferences,
+} from "./spicyapi-image.js";
+import {
+  atlasCloudImageModelTakesReference,
+  buildAtlasCloudImageRequest,
+  runAtlasCloudPrediction,
+} from "../media/atlas-cloud.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
   buildOpenAIChatGPTHeaders,
@@ -136,6 +157,7 @@ const EXPLICIT_IMAGE_SOURCES = new Set([
   "venice",
   "zai",
   "fal",
+  "spicyapi",
   "atlas",
   "comfyui",
   "swarmui",
@@ -164,6 +186,89 @@ function resolveImageBackend(source: string, baseUrl: string, serviceHint: strin
   }
 
   return explicitSource;
+}
+
+type ReferencePictureTarget = { model: string; baseUrl: string; comfyWorkflow: string };
+
+/** A ComfyUI file-name slot, which SwarmUI workflows can't fill. */
+const SWARMUI_FILE_NAME_SLOT = /%reference_image_name(?:_0[1-4])?%/;
+
+const openAITakesReference = ({ model }: ReferencePictureTarget) => isOpenAIGptImageModel(model);
+
+/**
+ * Whether each image backend sends the reference picture to the model, as its generate function below
+ * does; a function where that depends on the model, the base URL or the workflow. A backend that sends
+ * only the prompt turns an edit into a new picture.
+ */
+const REFERENCE_PICTURE_SUPPORT: Readonly<Record<string, boolean | ((target: ReferencePictureTarget) => boolean)>> = {
+  // Only GPT Image models go to /images/edits; the others are asked for a new picture.
+  openai: openAITakesReference,
+  codex_chatgpt: true,
+  arli: true,
+  nanogpt: true,
+  openrouter: true,
+  pollinations: false,
+  // The v1 API is text-to-image only.
+  stability: ({ baseUrl }) => !isStabilityV1Base(baseUrl),
+  togetherai: false,
+  // NovelAI's own host takes references on V4.5 only; a proxy gets them through chat completions.
+  novelai: ({ baseUrl, model }) =>
+    !isNativeNovelAiHost(imageHostname(baseUrl)) || isNovelAiPreciseReferenceModel(model || "nai-diffusion-4-5-full"),
+  horde: false,
+  xai: true,
+  venice: false,
+  zai: false,
+  fal: false,
+  // The model's input schema decides, and it is read only when the picture is asked for, so
+  // generateSpicyApi refuses an edit itself when the model has no picture input.
+  spicyapi: true,
+  atlas: ({ model }) => atlasCloudImageModelTakesReference(model),
+  // ComfyUI's built-in workflow is text-to-image; a workflow needs a reference placeholder.
+  comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
+  // SwarmUI takes pictures as prompt images, or in a workflow through %reference_image% only
+  // (buildSwarmUiGenerationBody refuses a workflow with any file-name slot).
+  swarmui: ({ comfyWorkflow }) =>
+    !comfyWorkflow.trim() ||
+    (comfyWorkflowTakesReference(comfyWorkflow, ["reference_image"]) && !SWARMUI_FILE_NAME_SLOT.test(comfyWorkflow)),
+  automatic1111: true,
+  runpod_comfyui: ({ comfyWorkflow }) => comfyWorkflowTakesReference(comfyWorkflow),
+  gemini_image: true,
+};
+
+function imageHostname(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return "";
+  }
+}
+
+/** Shown when an edit is asked of an image connection that would draw a new picture instead. */
+export const IMAGE_EDIT_UNSUPPORTED_MESSAGE =
+  "This image connection can't edit pictures. Choose one that accepts a reference picture.";
+
+/** Shown when an edit's picture is too large for the image connection, which does take pictures. */
+export const IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE =
+  "The picture is too large for this image connection to edit. Use a smaller picture or another connection.";
+
+/** Whether an image connection, given as generateImage receives it, sends a reference picture to its model. */
+export function imageConnectionTakesReferencePicture(connection: {
+  source: string;
+  baseUrl: string;
+  serviceHint: string;
+  model?: string;
+  comfyWorkflow?: string;
+}): boolean {
+  const backend = resolveImageBackend(connection.source, connection.baseUrl, connection.serviceHint, connection.model);
+  // Any other backend is called as OpenAI, like the default case of generateImage.
+  const support = REFERENCE_PICTURE_SUPPORT[backend] ?? openAITakesReference;
+  return typeof support === "boolean"
+    ? support
+    : support({
+        model: connection.model?.trim() ?? "",
+        baseUrl: connection.baseUrl,
+        comfyWorkflow: connection.comfyWorkflow ?? "",
+      });
 }
 
 /** Default 30-minute timeout for image generation API calls (overridable via env). */
@@ -205,28 +310,17 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
  * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard), as
- * does this function's own fallback-connection recursion. Batch/automatic work
+ * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
+ *
+ * With "Queue media generation requests" on, every call also waits its turn in
+ * the provider lane for this endpoint and API key (#7662), so agents, trackers,
+ * capability packages and routes all share one line per provider account.
+ * Only the primary attempt holds the lane and permit: the fallback connection
+ * queues after both are released, so opposite fallbacks never wait on each other.
  */
 export async function generateImage(
-  source: string,
-  baseUrl: string,
-  apiKey: string,
-  serviceHint: string,
-  request: ImageGenRequest,
-): Promise<ImageGenResult> {
-  return runMediaGenerationRequest({
-    connectionKey: `image:${baseUrl || source}`,
-    queue: false,
-    signal: request.signal,
-    priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-    task: () => generateImageUncapped(source, baseUrl, apiKey, serviceHint, request),
-  });
-}
-
-async function generateImageUncapped(
   source: string,
   baseUrl: string,
   apiKey: string,
@@ -298,6 +392,8 @@ async function generateImageUncapped(
             return generateZai(normalizedBaseUrl, apiKey, scopedRequest);
           case "fal":
             return generateFal(normalizedBaseUrl, apiKey, scopedRequest);
+          case "spicyapi":
+            return generateSpicyApi(normalizedBaseUrl, apiKey, scopedRequest);
           case "atlas":
             return generateAtlasCloudImage(normalizedBaseUrl, apiKey, scopedRequest);
           case "comfyui":
@@ -328,11 +424,22 @@ async function generateImageUncapped(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    const primaryResult = await withConnectionAdmission(
-      imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId),
-      primaryMode,
-      physicalRequest,
-    );
+    // The provider lane comes first and the global permit second, so requests waiting
+    // their turn at one account never hold permits other providers could use.
+    const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
+    const primaryResult = await runInMediaProviderLane({
+      laneKey: mediaProviderLaneKey(admissionKey, apiKey),
+      gapMs: mediaProviderLaneGapMs(resolvedSource),
+      signal: request.signal,
+      task: () =>
+        runMediaGenerationRequest({
+          connectionKey: `image:${baseUrl || source}`,
+          queue: false,
+          signal: request.signal,
+          priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+        }),
+    });
     outcome = "completed";
     return flattenedPrompt
       ? { ...primaryResult, effectivePrompt: primaryResult.effectivePrompt ?? flattenedPrompt }
@@ -340,6 +447,15 @@ async function generateImageUncapped(
   } catch (error) {
     const fallback = request.fallback;
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;
+    // An edit drawn without its picture is a new picture, so a fallback that drops the picture is not tried.
+    if (request.referenceIsCanvas && !imageConnectionTakesReferencePicture(fallback)) {
+      logger.warn(
+        error,
+        "[illustrator-fallback] Primary image edit failed; skipped fallback connection %s, which can't take a reference picture",
+        fallback.connectionId,
+      );
+      throw error;
+    }
     logger.warn(
       error,
       "[illustrator-fallback] Primary image generation failed; retrying with connection %s (%s)",
@@ -501,7 +617,13 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 
 // ── Provider Implementations ──
 
-const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const DEFAULT_MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const configuredMaxImageResponseBytes = Number(process.env.IMAGE_GEN_MAX_RESPONSE_BYTES);
+// A blank, zero, or malformed value must not disable the cap.
+const MAX_IMAGE_RESPONSE_BYTES =
+  Number.isFinite(configuredMaxImageResponseBytes) && configuredMaxImageResponseBytes > 0
+    ? configuredMaxImageResponseBytes
+    : DEFAULT_MAX_IMAGE_RESPONSE_BYTES;
 const SWARMUI_MAX_TRACKED_IMAGES = 16;
 const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
@@ -639,6 +761,14 @@ function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOp
     keepAliveInitialDelayMs: options.keepAliveInitialDelayMs,
     maxResponseBytes: MAX_IMAGE_RESPONSE_BYTES,
     decodeCompressedResponse: true,
+  }).catch((err: unknown) => {
+    // No `cause`: route error formatters append cause.message and would print the limit twice.
+    if (err instanceof Error && err.message.startsWith("Outbound response exceeded")) {
+      throw new Error(
+        `${err.message}. Raise IMAGE_GEN_MAX_RESPONSE_BYTES in .env and restart Marinara to accept larger images.`,
+      );
+    }
+    throw err;
   });
 }
 
@@ -1265,11 +1395,14 @@ function chatGPTCanvasHint(request: ImageGenRequest, hasReferences: boolean): st
   let rest = height;
   while (rest) [divisor, rest] = [rest, divisor % rest];
   const shape = width === height ? "square" : width < height ? "portrait" : "landscape";
+  const target = `Target canvas: ${shape}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`;
+  // An in-place edit's reference already is this canvas; asking for a new composition redraws the picture.
+  if (hasReferences && request.referenceIsCanvas) return target;
   return [
     ...(hasReferences
       ? ["Do not inherit the canvas dimensions or aspect ratio of the attached reference images."]
       : []),
-    `Target canvas: ${shape}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`,
+    target,
     "Compose the final image for this aspect ratio.",
   ].join("\n");
 }
@@ -1549,6 +1682,176 @@ async function generateFal(baseUrl: string, apiKey: string, request: ImageGenReq
   const url = response?.images?.[0]?.url;
   if (typeof url !== "string" || !url.trim()) throw new Error("fal.ai response did not contain an image URL");
   return downloadImageUrl(url.trim(), request.privateImageResultOrigin, request.signal);
+}
+
+const SPICYAPI_POLL_INTERVAL_MS = 2_000;
+/** About two minutes of busy or unavailable status replies in a row before giving up on the task. */
+const SPICYAPI_MAX_TRANSIENT_POLL_FAILURES = 60;
+const SPICYAPI_FAILED_STATES = new Set(["failed", "canceled", "expired"]);
+const SPICYAPI_CREATE_ATTEMPTS = 3;
+
+/** Re-encode a reference SpicyAPI would refuse inline as a smaller WebP; null when that is not possible. */
+async function fitSpicyApiReference(reference: unknown): Promise<unknown> {
+  if (typeof reference !== "string" || fitsSpicyApiInlineLimit(reference)) return reference;
+  // ponytail: checks type and bytes only, so an under-1 MB reference over SpicyAPI's 8 MP pixel cap still gets
+  // its 400 reply. Upgrade: read the size with sharp metadata and shrink those references too.
+  const sharpFn = await tryLoadSharp();
+  if (sharpFn) {
+    try {
+      const source = Buffer.from(reference.slice(reference.indexOf(",") + 1), "base64");
+      for (const [edge, quality] of [
+        [2048, 85],
+        [1536, 80],
+        [1024, 75],
+        [768, 70],
+      ] as const) {
+        const shrunk: Buffer = await sharpFn(source)
+          .resize(edge, edge, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality })
+          .toBuffer();
+        if (shrunk.length <= SPICYAPI_MAX_INLINE_IMAGE_BYTES) {
+          return `data:image/webp;base64,${shrunk.toString("base64")}`;
+        }
+      }
+    } catch (err) {
+      logger.warn(err, "[image-gen/spicyapi] Could not shrink a reference image");
+    }
+  }
+  logger.warn("[image-gen/spicyapi] Skipped a reference image over SpicyAPI's 1 MB inline limit");
+  return null;
+}
+
+/** Shrink or drop inline references so the task meets SpicyAPI's per-image and per-request limits. */
+async function fitSpicyApiReferences(body: { input: Record<string, unknown> }): Promise<void> {
+  const { input } = body;
+  if (Array.isArray(input.image_urls)) {
+    const fitted = (await Promise.all(input.image_urls.map(fitSpicyApiReference))).filter((ref) => ref !== null);
+    if (fitted.length) input.image_urls = fitted;
+    else delete input.image_urls;
+  } else if (input.image_url !== undefined) {
+    input.image_url = await fitSpicyApiReference(input.image_url);
+    if (input.image_url === null) delete input.image_url;
+  }
+  const dropped = trimSpicyApiReferences(body);
+  if (dropped) {
+    logger.warn("[image-gen/spicyapi] Dropped %d reference image(s) to stay within the 2 MB request limit", dropped);
+  }
+}
+
+/**
+ * A dropped connection leaves it unknown whether SpicyAPI accepted the task. Resending with the same
+ * Idempotency-Key returns the original task instead of creating and billing a second one.
+ */
+async function createSpicyApiTask(
+  url: string,
+  init: RequestInit & { signal: AbortSignal },
+  fetchPolicy: ImageFetchOptions,
+): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await imageFetch(url, init, fetchPolicy);
+    } catch (err) {
+      if (init.signal.aborted || attempt >= SPICYAPI_CREATE_ATTEMPTS) throw err;
+      logger.warn(err, "[image-gen/spicyapi] Task request lost its connection; resending with the same key");
+      await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, init.signal);
+    }
+  }
+}
+
+async function readSpicyApiJson(resp: Response, operation: string): Promise<unknown> {
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `SpicyAPI ${operation} failed (${resp.status}): ${sanitizeErrorText(readSpicyApiMessage(text) ?? text)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`SpicyAPI ${operation} returned invalid JSON`);
+  }
+}
+
+async function generateSpicyApi(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+  if (!apiKey.trim()) throw new Error("SpicyAPI requires an API key");
+  const model = assertSpicyApiModelId(request.model?.trim() || SPICYAPI_IMAGE_MODELS[0]!.id);
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const fetchPolicy = { allowLocal: request.allowLocalUrls };
+  const signal = imageRequestSignal(request);
+
+  // Each model declares its own inputs; read them first so only accepted fields are sent.
+  const modelInfo = await readSpicyApiJson(
+    await imageFetch(buildSpicyApiUrl(baseUrl, `models/${model}`), { headers, signal }, fetchPolicy),
+    "model lookup",
+  );
+  const inputSchema = (modelInfo as { data?: { inputSchema?: unknown } } | null)?.data?.inputSchema;
+  const modelInput = buildSpicyApiImageInput(inputSchema, {
+    prompt: request.prompt,
+    negativePrompt: request.negativePrompt,
+    width: request.width,
+    height: request.height,
+    referenceImages: openAIReferenceImages(request).map(imageDataUrlFromReference),
+  });
+  // Read from the model's schema, before custom parameters, so a custom picture field can't pass for one.
+  const takesPicture = modelInput.image_urls !== undefined || modelInput.image_url !== undefined;
+  const input = withImageCustomParameters(request, modelInput);
+  const body = { model, input };
+  await fitSpicyApiReferences(body);
+  // Checked before the task is made, so a model without a picture input never bills a redrawn edit. A model
+  // that takes one but lost every reference to the size limits gets a size error instead.
+  if (
+    request.referenceIsCanvas &&
+    (!takesPicture || (input.image_urls === undefined && input.image_url === undefined))
+  ) {
+    throw new Error(takesPicture ? IMAGE_EDIT_REFERENCE_TOO_LARGE_MESSAGE : IMAGE_EDIT_UNSUPPORTED_MESSAGE);
+  }
+  logDebugOverride(
+    request.debugMode === true,
+    "[debug/image/spicyapi] final request payload:\n%s",
+    imagePayloadForLog(body),
+  );
+
+  // `wait` holds the request open until the task finishes (up to 50 seconds), so most images need no polling.
+  const created = await createSpicyApiTask(
+    buildSpicyApiUrl(baseUrl, "jobs/createTask", { wait: "50" }),
+    {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Idempotency-Key": randomUUID() },
+      body: JSON.stringify(body),
+      signal,
+    },
+    fetchPolicy,
+  );
+  let task = parseSpicyApiTask(await readSpicyApiJson(created, "image generation"));
+  if (!task.taskId) throw new Error("SpicyAPI image generation response did not include a task ID");
+  const pollUrl = buildSpicyApiUrl(baseUrl, "jobs/recordInfo", { taskId: task.taskId });
+  let transientFailures = 0;
+  while (task.state !== "succeeded" || (!task.imageUrl && task.pending)) {
+    if (!task.state) throw new Error("SpicyAPI task status did not include a state");
+    if (SPICYAPI_FAILED_STATES.has(task.state)) {
+      throw new Error(`SpicyAPI image generation ${task.state}${task.error ? `: ${task.error}` : ""}`);
+    }
+    await sleepWithAbort(SPICYAPI_POLL_INTERVAL_MS, signal);
+    const polled = await imageFetch(pollUrl, { headers, signal }, fetchPolicy).catch((err: unknown) => {
+      if (signal.aborted) throw err;
+      return null;
+    });
+    // A busy, briefly unavailable or dropped connection must not abandon a task that is already paid for.
+    if (!polled || polled.status === 429 || polled.status >= 500) {
+      await polled?.body?.cancel().catch(() => undefined);
+      if (++transientFailures >= SPICYAPI_MAX_TRANSIENT_POLL_FAILURES) {
+        throw new Error(
+          `SpicyAPI task status kept failing (${polled?.status ?? "connection lost"}); task ${task.taskId}`,
+        );
+      }
+      continue;
+    }
+    transientFailures = 0;
+    task = parseSpicyApiTask(await readSpicyApiJson(polled, "task status"));
+  }
+  if (!task.imageUrl) throw new Error("SpicyAPI image generation finished without an image URL");
+  // Result links are signed; the API key must never be sent with the download.
+  return downloadImageUrl(task.imageUrl, request.privateImageResultOrigin, request.signal);
 }
 
 async function generateAtlasCloudImage(
@@ -2438,6 +2741,30 @@ export function buildNovelAiV4CharacterPromptPayload(
   };
 }
 
+export const PROVIDER_BUSY_RETRY_DELAYS_MS = [2_000, 4_000] as const;
+
+/**
+ * NovelAI answers 429 while another generation on the account is still running
+ * ("Concurrent generation is locked"), including ones started outside Marinara.
+ * Wait and retry a couple of times instead of failing the image; the caller
+ * still holds its provider lane, so nothing else in Marinara jumps ahead.
+ */
+export async function retryOnProviderBusy(
+  send: () => Promise<Response>,
+  signal?: AbortSignal,
+  delaysMs: readonly number[] = PROVIDER_BUSY_RETRY_DELAYS_MS,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt += 1) {
+    const resp = await send();
+    if (resp.status !== 429 || attempt >= delaysMs.length || signal?.aborted) return resp;
+    const delayMs = delaysMs[attempt] ?? 0;
+    await resp.body?.cancel().catch(() => undefined);
+    logger.warn("[image] Provider is busy (429); retrying in %dms", delayMs);
+    // Re-checks the signal first: an abort while the body was cancelled must not wait.
+    await sleepWithAbort(delayMs, signal);
+  }
+}
+
 async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   // Only use the native NovelAI API format when hitting the actual NovelAI domain.
   // Proxies (linkapi.ai, etc.) expose OpenAI-compatible chat completions that return
@@ -2554,18 +2881,22 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
   const effectivePrompt = getNovelAiDisplayPrompt(body);
 
   const hasReferences = directorReferenceImages.length > 0;
-  const resp = await imageFetch(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(hasReferences ? {} : { "Content-Type": "application/json" }),
-      },
-      body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
-      signal: imageRequestSignal(request),
-    },
-    { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+  const resp = await retryOnProviderBusy(
+    () =>
+      imageFetch(
+        url,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            ...(hasReferences ? {} : { "Content-Type": "application/json" }),
+          },
+          body: hasReferences ? buildNovelAiReferenceFormData(body, directorReferenceImages) : JSON.stringify(body),
+          signal: imageRequestSignal(request),
+        },
+        { allowLocal: request.allowLocalUrls, allowedOrigins: [nativeUrl.origin] },
+      ),
+    imageRequestSignal(request),
   );
 
   if (!resp.ok) {
@@ -3601,7 +3932,7 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
     }
     return body;
   }
-  if (/%reference_image_name(?:_0[1-4])?%/.test(workflowText)) {
+  if (SWARMUI_FILE_NAME_SLOT.test(workflowText)) {
     throw new Error(
       "SwarmUI workflows must use %reference_image% placeholders; backend-local filename placeholders cannot be distributed safely.",
     );

@@ -254,6 +254,24 @@ try {
     glmTested.json().response,
     "The model used its whole output budget (1024 of 1024 output tokens, 1023 of them reasoning) before writing any visible text. Raise Max Tokens or lower Reasoning Effort, then try again.",
   );
+
+  // Mistral's reasoning models, GLM 5.3 among them, get the same room; its other models keep 200 (#7164).
+  for (const [model, expected] of [
+    ["mistral-large-4-0", 1024],
+    ["zai-glm-5-3", 1024],
+    ["mistral-large-latest", 200],
+  ] as const) {
+    const mistral = await storage.create({
+      name: "Mistral test fixture",
+      provider: "mistral",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      apiKey: "",
+      model,
+    });
+    const tested = await app.inject({ method: "POST", url: `/api/connections/${mistral.id}/test-message` });
+    assert.equal(tested.json().success, true, tested.body);
+    assert.equal(requests.at(-1)!.max_tokens, expected, `${model} test budget`);
+  }
 } finally {
   try {
     try {

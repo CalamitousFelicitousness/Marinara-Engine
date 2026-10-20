@@ -1,21 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  advancedMemoryProblems,
   normalizeAdvancedMemorySettings,
   type AdvancedMemorySettings as MemorySettings,
 } from "@marinara-engine/shared";
+import { useDecisionOptions } from "../../hooks/use-decision-model";
+import { decisionModelOption } from "../connections/DecisionDefaultControl";
 import {
+  advancedMemorySceneNumbers,
+  markAdvancedMemoryNotified,
   useAdvancedMemoryAction,
   useAdvancedMemoryKnowledgeMessages,
   useAdvancedMemoryStatus,
 } from "../../hooks/use-advanced-memory";
+import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { AdvancedMemoryProgress } from "./AdvancedMemoryProgress";
 import { useConnections } from "../../hooks/use-connections";
+import { useChatMessageCount } from "../../hooks/use-chats";
 
 const fieldClass = "mari-chrome-field w-full rounded-lg px-3 py-2 text-xs disabled:opacity-50";
 const actionClass = "mari-chrome-control min-h-9 rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50";
+// Side by side, a label that wraps pushes only its own text up, so both inputs share one row.
+const pairedFieldClass = "flex flex-col justify-between text-xs";
+// Scenes with unclear participants are listed with the other scene problems in the Fix box.
 const warningKeys: Record<string, string> = {
   "decision-connection-unavailable": "chat.advancedMemory.warning.decisionConnectionUnavailable",
   "unscoped-agent-memory": "chat.advancedMemory.warning.unscopedAgentMemory",
@@ -45,6 +55,7 @@ export function AdvancedMemorySettings({
   variant?: "drawer" | "wizard";
 }) {
   const { t } = useTranslation();
+  const excerptHelpId = useId();
   const status = useAdvancedMemoryStatus(chatId);
   const action = useAdvancedMemoryAction(chatId);
   const savedConnections = useConnections();
@@ -52,10 +63,14 @@ export function AdvancedMemorySettings({
     (savedConnections.data ?? []) as Array<{ id: string; name: string; provider: string; model?: string }>
   ).filter((connection) => connection.provider === "decision");
   const settings = status.data?.settings ?? normalizeAdvancedMemorySettings(metadataSettings);
+  // The local models the global Decision model offers, greyed out with the reason when one can't answer (#7326).
+  const decisionOptions = useDecisionOptions(settings.enabled && settings.decisionEnabled);
+  const localDecisionModels = (decisionOptions.data?.options ?? []).filter((entry) => entry.group === "local");
   const [confirmKnowledge, setConfirmKnowledge] = useState(false);
   const [knowledgeCharacterIds, setKnowledgeCharacterIds] = useState<string[]>([]);
   const [knowledgeChoices, setKnowledgeChoices] = useState<Record<string, string>>({});
   const [knowledgeCursors, setKnowledgeCursors] = useState<Array<string | undefined>>([undefined]);
+  const [rescanDraft, setRescanDraft] = useState<{ chatId: string; start?: number; end?: number }>({ chatId });
   const knowledgePanelRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!settings.enabled) setConfirmKnowledge(false);
@@ -104,6 +119,80 @@ export function AdvancedMemorySettings({
     setKnowledgeCursors([undefined]);
     setConfirmKnowledge(true);
   };
+  // Fix: every scene Advanced Memory flagged, repaired in one run. Hand-edited and unclear ones are listed.
+  const problems = status.data ? advancedMemoryProblems(status.data) : null;
+  const sceneNumbers = advancedMemorySceneNumbers(status.data);
+  const fixResult = status.data?.job.fixResult;
+  const showResult = !!fixResult && !running && status.data?.job.id === fixResult.jobId;
+  const numbered = (ids: readonly string[]) =>
+    [...new Set(ids)].filter((id) => sceneNumbers.has(id)).sort((a, b) => sceneNumbers.get(a)! - sceneNumbers.get(b)!);
+  const fixIds = numbered(problems?.fixSceneIds ?? []);
+  const reviewIds = numbered([
+    ...(problems?.reviewSceneIds ?? []),
+    ...(showResult ? fixResult.reviewSceneIds : []),
+  ]).filter((id) => !fixIds.includes(id));
+  const fixedIds = showResult ? numbered(fixResult.fixedSceneIds) : [];
+  const knowledgeBlocked = !!problems?.blockers.includes("needs_confirmation");
+  const canFix = fixIds.length > 0 && !knowledgeBlocked && !running && !action.isPending;
+  const fixPending = action.isPending && action.variables?.action === "initialize" && !!action.variables.fixAll;
+  const fix = () => action.mutate({ action: "initialize", fixAll: true, debugMode: useUIStore.getState().debugMode });
+  // Re-scan starts on the ongoing scene, or the latest one when every scene has ended, never on the whole chat.
+  const sceneRecords = (status.data?.records ?? []).filter((record) => record.kind === "scene");
+  const openScenes = sceneRecords.filter((record) => record.status === "open");
+  const latestStart = Math.max(
+    1,
+    ...(openScenes.length ? openScenes : sceneRecords).map((record) => record.startIndex),
+  );
+  // A range typed for another chat does not carry over.
+  const rescanRange = rescanDraft.chatId === chatId ? rescanDraft : { chatId };
+  const messageCount = useChatMessageCount(settings.enabled && variant === "drawer" ? chatId : null);
+  const lastMessage = Math.max(1, messageCount.data?.count ?? 0);
+  const rescanStart = Math.min(rescanRange.start ?? latestStart, lastMessage);
+  const rescanEnd = Math.max(rescanStart, Math.min(rescanRange.end ?? lastMessage, lastMessage));
+  const showRescan =
+    variant === "drawer" &&
+    sceneRecords.length > 0 &&
+    !["idle", "needs_confirmation"].includes(status.data?.job.status ?? "idle");
+  const rescan = () =>
+    action.mutate({
+      action: "initialize",
+      range: { start: rescanStart, end: rescanEnd },
+      debugMode: useUIStore.getState().debugMode,
+    });
+  const openScene = (sceneId: string) => useUIStore.getState().setAdvancedMemoryRequest({ chatId, sceneId });
+  const showFix = variant === "drawer" && settings.enabled && (fixIds.length > 0 || reviewIds.length > 0 || showResult);
+  // Re-render when a request arrives; the effect below takes it.
+  useUIStore((state) => state.advancedMemoryRequest);
+  const problemKey = [...fixIds, ...reviewIds].join(" ");
+  useEffect(() => {
+    // Seen here, so the notice outside Chat Settings doesn't repeat these scenes.
+    if (variant === "drawer" && problemKey) markAdvancedMemoryNotified(chatId, problemKey.split(" "));
+  }, [chatId, problemKey, variant]);
+  useEffect(() => {
+    // The notice's Fix button opens Chat Settings here and starts Fix once memory has loaded.
+    // Read the store, not this render's value: the request is taken once.
+    const request = useUIStore.getState().advancedMemoryRequest;
+    if (variant !== "drawer" || !request?.fix || request.chatId !== chatId || !status.data) return;
+    // Wait for running work or another save to finish rather than dropping the request.
+    if (!canFix && (action.isPending || running)) return;
+    useUIStore.getState().setAdvancedMemoryRequest(null);
+    if (canFix) fix();
+  });
+  const sceneButtons = (ids: string[]) => (
+    <span className="flex flex-wrap gap-1.5">
+      {ids.map((id) => (
+        <button
+          key={id}
+          type="button"
+          className="mari-chrome-control min-h-9 min-w-9 rounded-lg px-2 py-1 text-xs font-medium tabular-nums"
+          aria-label={t("chat.advancedMemory.fix.openScene", { number: sceneNumbers.get(id) })}
+          onClick={() => openScene(id)}
+        >
+          #{sceneNumbers.get(id)}
+        </button>
+      ))}
+    </span>
+  );
   const confirmAndInitialize = () => {
     const knowledgeStarts = { ...settings.knowledgeStarts };
     for (const id of knowledgeCharacterIds) {
@@ -146,7 +235,8 @@ export function AdvancedMemorySettings({
             <AdvancedMemoryProgress
               chatId={chatId}
               status={status.data}
-              onResume={initialize}
+              // A paused or stopped Fix resumes as Fix, so a hand-edited scene can't stop it.
+              onResume={status.data.job.fixResult === null && !knowledgeBlocked ? fix : initialize}
               pending={action.isPending && action.variables?.action === "initialize"}
             />
           )}
@@ -155,11 +245,64 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.prepareHistoryHelp")}
             </p>
           )}
-          {status.data?.warnings?.length ? (
+          {showFix && (
+            <section
+              aria-label={t("chat.advancedMemory.fix.title")}
+              data-component="AdvancedMemoryFix"
+              className="space-y-2 rounded-lg border border-[var(--marinara-app-accent-static)] bg-[var(--secondary)] p-3 text-xs"
+            >
+              <div role="status" aria-live="polite" className="space-y-2">
+                {showResult && (
+                  <div className="space-y-1.5">
+                    <p className="font-medium">
+                      {fixedIds.length
+                        ? t("chat.advancedMemory.fix.fixed", { count: fixedIds.length })
+                        : t("chat.advancedMemory.fix.noneFixed")}
+                    </p>
+                    {sceneButtons(fixedIds)}
+                  </div>
+                )}
+                {reviewIds.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="font-medium">{t("chat.advancedMemory.fix.review", { count: reviewIds.length })}</p>
+                    {sceneButtons(reviewIds)}
+                  </div>
+                )}
+                {fixIds.length > 0 && (
+                  <p className="font-medium">{t("chat.advancedMemory.fix.needsFixing", { count: fixIds.length })}</p>
+                )}
+              </div>
+              {fixIds.length > 0 && (
+                <>
+                  <p className="leading-relaxed text-[var(--muted-foreground)]">
+                    {t(knowledgeBlocked ? "chat.advancedMemory.fix.confirmKnowledge" : "chat.advancedMemory.fix.help")}
+                  </p>
+                  {knowledgeBlocked ? (
+                    <button type="button" className={`${actionClass} w-full`} disabled={disabled} onClick={initialize}>
+                      {t("chat.advancedMemory.confirmKnowledge")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`${actionClass} w-full disabled:cursor-wait`}
+                      disabled={!canFix}
+                      aria-busy={fixPending}
+                      onClick={fix}
+                    >
+                      {t("chat.advancedMemory.fix.action")}
+                    </button>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+          {status.data?.warnings?.some((warning) => warningKeys[warning]) ? (
             <ul className="list-disc space-y-1 pl-4 text-xs text-[var(--muted-foreground)]">
-              {status.data.warnings.map((warning, index) => (
-                <li key={index}>{t(warningKeys[warning] ?? warning, { defaultValue: warning })}</li>
-              ))}
+              {status.data.warnings
+                .filter((warning) => warningKeys[warning])
+                .map((warning) => (
+                  <li key={warning}>{t(warningKeys[warning]!)}</li>
+                ))}
             </ul>
           ) : null}
           {/* Chat Settings follows its window's width; the setup wizard follows the screen. */}
@@ -168,7 +311,7 @@ export function AdvancedMemorySettings({
               variant === "drawer" ? "grid grid-cols-1 gap-3 @lg:grid-cols-2" : "grid grid-cols-1 gap-3 sm:grid-cols-2"
             }
           >
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.contextCap")}</span>
               <DraftNumberInput
                 value={settings.maxContextTokens}
@@ -185,7 +328,7 @@ export function AdvancedMemorySettings({
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.memoryBudget")}</span>
               <DraftNumberInput
                 value={settings.summaryBudgetTokens}
@@ -202,7 +345,9 @@ export function AdvancedMemorySettings({
               />
             </label>
           </div>
-          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("chat.advancedMemory.budgetHelp")}</p>
+          <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+            {t("chat.advancedMemory.budgetHelp")}
+          </p>
           <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
             {t("chat.advancedMemory.memoryAllocationHelp")}
           </p>
@@ -222,29 +367,56 @@ export function AdvancedMemorySettings({
                 <span>{t("chat.advancedMemory.decisionConnection")}</span>
                 <select
                   value={settings.decisionConnectionId ?? ""}
-                  disabled={disabled || savedConnections.isLoading || savedConnections.isError}
+                  disabled={
+                    disabled ||
+                    savedConnections.isLoading ||
+                    savedConnections.isError ||
+                    decisionOptions.isLoading ||
+                    decisionOptions.isError
+                  }
                   className={fieldClass}
                   onChange={(event) => save({ decisionConnectionId: event.target.value || null })}
                 >
                   <option value="">{t("chat.advancedMemory.chooseDecisionConnection")}</option>
                   {settings.decisionConnectionId &&
-                    !decisionConnections.some((connection) => connection.id === settings.decisionConnectionId) && (
+                    ![...localDecisionModels, ...decisionConnections].some(
+                      (choice) => choice.id === settings.decisionConnectionId,
+                    ) && (
                       <option value={settings.decisionConnectionId}>
                         {t("chat.advancedMemory.missingConnection")}
                       </option>
                     )}
-                  {decisionConnections.map((connection) => (
-                    <option key={connection.id} value={connection.id}>
-                      {connection.name}
-                      {connection.model ? <> · {connection.model}</> : null}
-                    </option>
-                  ))}
+                  {localDecisionModels.length > 0 && (
+                    <optgroup label={t("connections.decision.localGroup")}>
+                      {localDecisionModels.map((entry) => decisionModelOption(t, entry))}
+                    </optgroup>
+                  )}
+                  {decisionConnections.length > 0 && (
+                    <optgroup label={t("connections.decision.connectionGroup")}>
+                      {decisionConnections.map((connection) => (
+                        <option key={connection.id} value={connection.id}>
+                          {connection.name}
+                          {connection.model ? <> · {connection.model}</> : null}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
-              {savedConnections.isError && (
-                <p role="alert" className="text-xs text-[var(--destructive)]">
-                  {t("chat.advancedMemory.failed", { message: savedConnections.error.message })}{" "}
-                  <button type="button" className="underline" onClick={() => void savedConnections.refetch()}>
+              {/* Either list failing leaves the choice incomplete; the steady accent does not pulse. */}
+              {(savedConnections.isError || decisionOptions.isError) && (
+                <p role="alert" className="text-xs text-[var(--marinara-app-accent-static)]">
+                  {t("chat.advancedMemory.failed", {
+                    message: (savedConnections.error ?? decisionOptions.error)?.message,
+                  })}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      if (savedConnections.isError) void savedConnections.refetch();
+                      if (decisionOptions.isError) void decisionOptions.refetch();
+                    }}
+                  >
                     {t("chat.advancedMemory.retry")}
                   </button>
                 </p>
@@ -315,8 +487,8 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.maximumScenesHelp")}
             </span>
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.minimumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMinMessages}
@@ -330,10 +502,11 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.minimumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-xs">
+            <label className={pairedFieldClass}>
               <span>{t("chat.advancedMemory.maximumMessages")}</span>
               <DraftNumberInput
                 value={settings.retrieveMaxMessages}
@@ -347,10 +520,34 @@ export function AdvancedMemorySettings({
                   }))
                 }
                 ariaLabel={t("chat.advancedMemory.maximumMessages")}
+                ariaDescribedBy={excerptHelpId}
                 className={fieldClass}
               />
             </label>
+            <p
+              id={excerptHelpId}
+              className="col-span-2 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]"
+            >
+              {t("chat.advancedMemory.excerptMessagesHelp")}
+            </p>
           </div>
+          <SettingsSwitch
+            label={t("chat.advancedMemory.characterRecollections")}
+            description={t("chat.advancedMemory.characterRecollectionsHelp")}
+            checked={settings.characterRecollections}
+            disabled={disabled}
+            // Turning it on for a prepared chat starts writing recollections for its scenes.
+            onChange={(characterRecollections) =>
+              action.mutate({
+                action: "settings",
+                settings: { characterRecollections },
+                debugMode: useUIStore.getState().debugMode,
+              })
+            }
+            labelPosition="start"
+            className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
+            labelClassName="text-xs font-medium"
+          />
           <label className="block space-y-1 text-xs">
             <span>{t("chat.advancedMemory.initialModel")}</span>
             <select
@@ -384,6 +581,62 @@ export function AdvancedMemorySettings({
                 {t("chat.advancedMemory.narratorHelp")}
               </span>
             </label>
+          )}
+          {individual && characters.length > 1 && (
+            <SettingsSwitch
+              label={t("chat.advancedMemory.autoMessageVisibility")}
+              description={t("chat.advancedMemory.autoMessageVisibilityHelp")}
+              checked={settings.autoMessageVisibility}
+              disabled={disabled}
+              onChange={(autoMessageVisibility) => save({ autoMessageVisibility })}
+              labelPosition="start"
+              className="justify-between rounded-md bg-[var(--secondary)] px-3 py-2.5 text-left"
+              labelClassName="text-xs font-medium"
+            />
+          )}
+          {showRescan && (
+            <section
+              aria-label={t("chat.advancedMemory.rescan.title")}
+              data-component="AdvancedMemoryRescan"
+              className="space-y-2 rounded-lg bg-[var(--secondary)] p-3 text-xs"
+            >
+              <h4 className="font-medium">{t("chat.advancedMemory.rescan.title")}</h4>
+              <p className="leading-relaxed text-[var(--muted-foreground)]">{t("chat.advancedMemory.rescan.help")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span>{t("chat.advancedMemory.rescan.from")}</span>
+                  <DraftNumberInput
+                    value={rescanStart}
+                    min={1}
+                    max={lastMessage}
+                    disabled={numberInputsDisabled}
+                    onCommit={(start) => setRescanDraft({ ...rescanRange, chatId, start })}
+                    ariaLabel={t("chat.advancedMemory.rescan.from")}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span>{t("chat.advancedMemory.rescan.to")}</span>
+                  <DraftNumberInput
+                    value={rescanEnd}
+                    min={1}
+                    max={lastMessage}
+                    disabled={numberInputsDisabled}
+                    onCommit={(end) => setRescanDraft({ ...rescanRange, chatId, end })}
+                    ariaLabel={t("chat.advancedMemory.rescan.to")}
+                    className={fieldClass}
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                className={`${actionClass} w-full`}
+                disabled={disabled || !messageCount.data}
+                onClick={rescan}
+              >
+                {t("chat.advancedMemory.rescan.action")}
+              </button>
+            </section>
           )}
           {individual && (
             <button type="button" className={`${actionClass} w-full`} disabled={disabled} onClick={reviewKnowledge}>

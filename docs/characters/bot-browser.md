@@ -6,14 +6,14 @@ A character card is a file that holds one character's name, personality, greetin
 
 ## What the Card Browser is
 
-The **Card Browser** searches several public character-card sites from inside Marinara. It supports five sources: **ChubAI**, **JannyAI**, **Pygmalion**, **Wyvern**, and **DataCat**. **CharacterTavern** is still listed, but it can't be browsed for now (see [CharacterTavern](#charactertavern)). You can search a source, filter the results, and preview a character's full details. Then you can import that character into your library or save it as a PNG file. You do not need an account or an API key to browse and import character cards at the default settings.
+The **Card Browser** searches several public character-card sites from inside Marinara. It supports six sites: **ChubAI**, **JannyAI**, **Pygmalion**, **Wyvern**, **DataCat**, and **PlotLight**. PlotLight has two sources, one for characters and one for personas (see [PlotLight](#plotlight)). **CharacterTavern** is still listed, but it can't be browsed for now (see [CharacterTavern](#charactertavern)). You can search a source, filter the results, and preview a character's full details. Then you can import that character into your library or save it as a PNG file. You do not need an account or an API key to browse and import character cards at the default settings.
 
 ## Opening the Card Browser
 
 There are two ways to open the **Card Browser**.
 
-1. Click the **Card Browser** icon in the top bar. It sits in the row of panel buttons on the right side.
-2. Or open the **Card Browser** panel in the right sidebar, then click the **Download Cards** button at the top of that panel.
+1. Open the **Characters** panel and click the **Download** button at the top. Its tooltip reads **Download character cards**.
+2. Or click the same **Download** button at the top of the **Personas** panel.
 
 Either way, the whole content area switches to the full **Card Browser** view. This view replaces the chat area. It is not a small pop-up window.
 
@@ -23,7 +23,7 @@ The **Card Browser** stays loaded while the app is open. If you close it and ope
 
 ## Choosing a source
 
-Click the source button in the header. It shows the current source name and a small arrow. A menu opens with the sources in this order: **ChubAI**, **JannyAI**, **CharacterTavern**, **Pygmalion**, **Wyvern**, and **DataCat**. **CharacterTavern** is marked **Unavailable**.
+Click the source button in the header. It shows the current source name and a small arrow. A menu opens with the sources in this order: **ChubAI**, **JannyAI**, **CharacterTavern**, **Pygmalion**, **Wyvern**, **DataCat**, **PlotLight**, and **PlotLight Personas**. **CharacterTavern** is marked **Unavailable**.
 
 **ChubAI** is selected the first time you open the **Card Browser**. When you switch sources, your search text, tags, and filters are cleared. Each source remembers its own adult-content setting and login separately, so a change on one source does not affect the others.
 
@@ -41,23 +41,39 @@ Until then, you can still bring CharacterTavern characters into Marinara by hand
 
 Characters you already imported from CharacterTavern stay in your library.
 
+## PlotLight
+
+PlotLight shares its public characters and personas with apps like Marinara. It has two sources in the menu:
+
+- **PlotLight** lists character cards.
+- **PlotLight Personas** lists personas. A persona is the character that represents you in chats.
+
+You don't need a PlotLight account. Each result keeps its creator's name, and the detail view has a **View on PlotLight** link to the original page.
+
+When you import from PlotLight, Marinara downloads the file PlotLight offers for it. A character card usually comes as a PNG with its portrait and any lorebook the creator allows inside. A persona comes as a text file, and Marinara copies its picture separately. You can import either kind as a character or as a persona.
+
+PlotLight limits how often apps can ask it for things. If you search or import too quickly, Marinara says **PlotLight is busy** and how many seconds to wait. It waits that long before asking again. Searching and importing have separate limits, so one doesn't hold up the other.
+
+Some cards and personas can't be downloaded, for example when the creator doesn't allow it. Marinara then says **PlotLight doesn't offer this for download.** You can't import that one or see its full details, but its picture, creator, and **View on PlotLight** link stay on screen.
+
 ## Searching, sorting, and pages
 
 Type in the **Search characters...** box to search. You do not need to press Enter. Marinara waits a moment (about half a second) after you stop typing, then searches automatically. Clearing the box or changing a filter also searches again.
 
 Next to the search box is a sort dropdown. The options are different on each source, and each source starts on its own default sort:
 
-| Source    | Default sort    |
-| --------- | --------------- |
-| ChubAI    | Most Downloaded |
-| JannyAI   | Newest          |
-| Pygmalion | Downloads       |
-| Wyvern    | Popular         |
-| DataCat   | Relevance       |
+| Source                         | Default sort    |
+| ------------------------------ | --------------- |
+| ChubAI                         | Most Downloaded |
+| JannyAI                        | Newest          |
+| Pygmalion                      | Downloads       |
+| Wyvern                         | Popular         |
+| DataCat                        | Relevance       |
+| PlotLight / PlotLight Personas | Popular         |
 
 Click the **Refresh** button (the circular-arrow icon) to run the current search again.
 
-Below the results are **Previous** and **Next** buttons with a page label such as **Page 2**. When the source cannot report an exact total, only the current page number is shown.
+Below the results are **Previous** and **Next** buttons with a page label such as **Page 2**. When the source cannot report an exact total, only the current page number is shown. **PlotLight** never reports a total, so the header reads **Browsing PlotLight**, and **Next** turns off on the last page. A PlotLight page can hold fewer cards than usual, or none, and still have more pages after it. **Next** then stays on, so you can keep going.
 
 One note on **DataCat**: its **Fresh** sort only shows fresh results when you have no tag filter and no search text. As soon as you type a search or pick a tag, **DataCat** falls back to normal relevance results.
 
@@ -74,9 +90,11 @@ On most sources the tag list is built from the characters in your recent searche
 
 **DataCat** works differently. It loads the most popular tags right away, because it has a very large tag list. You can still type any other tag name by hand.
 
+On **PlotLight**, pick tags from the list or type one by hand, such as **Elf**. Marinara looks each tag up in PlotLight's own tag list. A typed tag that PlotLight doesn't have matches nothing.
+
 ## More filters
 
-Some sources add a **Filters** button in the toolbar. It only appears when the source has filters to offer, so it does not show for **DataCat**. A small badge shows how many filters are active.
+Some sources add a **Filters** button in the toolbar. It only appears when the source has filters to offer, so it does not show for **DataCat** or **PlotLight**. A small badge shows how many filters are active.
 
 The filter panel can include:
 
@@ -95,6 +113,7 @@ Adult content is labeled **NSFW** in the app. There is a single **NSFW** checkbo
 - **Pygmalion**: the **NSFW** checkbox is greyed out until you log in. Its tooltip tells you to log in first. After you log in, the app follows your account settings on Pygmalion. The checkbox then reads **NSFW depends on your account settings**. There is no separate on and off switch after login.
 - **Wyvern**: the **NSFW** checkbox is always greyed out. A notice reads **Use "🔞 Popular NSFW" sort for NSFW content**. To see adult content on **Wyvern**, pick the **🔞 Popular NSFW** option in the sort dropdown.
 - **DataCat**: every character is adult-tagged, so the checkbox is locked on. The first time you pick **DataCat**, a dialog titled **DataCat is NSFW only** appears. Click **Continue to DataCat** to browse it, or **Don't continue to DataCat** to go back.
+- **PlotLight** and **PlotLight Personas**: the **NSFW** checkbox is always greyed out. Its tooltip reads **PlotLight decides what you can see without an account, and adult-tagged results are marked NSFW.** PlotLight applies its own rules for visitors without an account. Some results it shares are still tagged as adult content, and those get the **NSFW** badge.
 
 Adult characters show a small red **NSFW** badge in the corner of their thumbnail.
 
@@ -165,15 +184,6 @@ Click **Download as PNG** to save the character as a standard PNG character card
 
 JSON and PNG are two common formats for the same character data. JSON is a plain text format. A PNG card is an image file with the character data stored inside it. Both hold the full character.
 
-## Your imported characters
-
-The **Card Browser** panel in the right sidebar keeps a separate list of characters you imported through the **Card Browser**. Characters you made by hand or imported another way do not appear here. All of them still appear in the main **Characters** library.
-
-- The **Download Cards** button opens the full **Card Browser** view.
-- The **Search imported...** box filters this list.
-- The sort dropdown offers **A-Z**, **Z-A**, **Newest**, and **Oldest**.
-- Right-click a row, or use its buttons, to find **Quick Start Roleplay** and **Quick Start Conversation**. These open a new chat with that character. You can also delete the character from this list here.
-
 ## Troubleshooting
 
 **JannyAI search or details fail with a Cloudflare error.** Some sites block automated requests. Visit jannyai.com once in the same web browser, pass any challenge it shows, then return to Marinara and search again.
@@ -181,6 +191,10 @@ The **Card Browser** panel in the right sidebar keeps a separate list of charact
 **My Pygmalion login stopped working.** Restarting the Marinara server clears this login. Open the **Log In** window again and paste your token once more.
 
 **CharacterTavern only shows a notice.** That is expected. See [CharacterTavern](#charactertavern) for how to import its cards as files.
+
+**PlotLight says it's busy.** PlotLight limits how often apps can ask it for things. Wait the number of seconds in the message, then try again.
+
+**PlotLight doesn't offer a card or persona for download.** The creator may not allow downloads, or it may no longer be public. Use **View on PlotLight** to check it on the site.
 
 **A search fails or a source stops working.** Public sites can change their pages or block access at any time. Try again later. If a source keeps failing, open the character on the site directly and download the card yourself. Then bring it in through the normal import flow. See [Importing and Exporting Character Cards](import-export.md).
 

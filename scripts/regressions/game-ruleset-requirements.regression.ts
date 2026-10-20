@@ -472,7 +472,7 @@ try {
       ],
     });
     assert.deepEqual(
-      rulesetDefenseAgainst(hot, hot.combat!, fight, rulesetCombatant(fight, "juno")!).guards,
+      rulesetDefenseAgainst(hot, hot.combat!, fight, rulesetCombatant(fight, "juno")!, undefined).guards,
       [{ condition: "heat", level: 3, derived: true, value: -1 }],
       "her defense",
     );

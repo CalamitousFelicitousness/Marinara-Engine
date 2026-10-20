@@ -208,7 +208,7 @@ try {
         sceneId,
         signal: controller.signal,
         onProgress: (job) => {
-          if (job.stage === "summarizing" && job.completed === 1)
+          if (job.stage === "summarizing" && job.part?.completed === 1)
             controller.abort(new Error("Recovery interrupted after saving paid work"));
         },
       }),
@@ -580,6 +580,8 @@ try {
       ],
       [["maukie"], ["maukie"]],
       [["Absent stranger", "Powers That Be"], []],
+      [["Pantalone Bisognosi"], ["pantalone"]],
+      [["Powers"], []],
       [[], []],
       ["all", ["maukie", "pantalone"]],
     ] as Array<[string[] | "all", string[]]>) {

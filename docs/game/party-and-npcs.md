@@ -72,11 +72,17 @@ Some calculated values follow play itself: a ruleset can work out a number from 
 
 These live values belong to the message they happened in. If you swipe to another version of a turn, or regenerate it, the sheet goes back to how it was before that turn, so nothing is ever spent twice.
 
-Click **Edit sheet** to change the build itself, for example after a level-up: scores, fields, lists such as spells, and skill and save training. Calculated values update as you type. It is the same editor as the one on the character card, so rows can be added from the ruleset's catalogs here too, cells the ruleset keeps are shown but cannot be typed in, and a list whose ruleset text has changed offers a **Review** button. Click **Save sheet** when you are done. This changes only this game's copy of the sheet. The sheet stored on the character or persona is never changed by a game.
+Click **Edit sheet** to change the build itself, for example after a level-up: scores, fields, lists such as spells, and skill and save training. Calculated values update as you type. It is the same editor as the one on the character card, so rows can be added from the ruleset's catalogs here too, cells the ruleset keeps are shown but cannot be typed in, and a list whose ruleset text has changed offers a **Review** button. When the ruleset has a step-by-step builder, the editor offers **Guided** beside **All fields**. **Guided** walks you through each choice, such as scores, skills and starting gear, and says what each step still waits on. **All fields** shows everything at once. Click **Save sheet** when you are done. This changes only this game's copy of the sheet. The sheet stored on the character or persona is never changed by a game.
 
 The separate **Edit Sheet** button described above still edits the general sheet (class, abilities, strengths and so on) and leaves the ruleset sheet alone.
 
 If the ruleset's package was removed, or the installed copy is older than the one the game was created on, the block shows a notice instead, and checks cannot be rolled until the package is installed again.
+
+### The party sheet and progress clocks
+
+Some rulesets keep a sheet for the whole party, such as a crew or a company. It shows on the game screen near the map, under the ruleset's own name for it. Click the name to open it. The Game Master keeps it up to date as it does each character's sheet, and where the ruleset allows, you can edit it too. If someone else saved the party sheet while you were editing, it shows their version: **Save** replaces it with yours, and **Cancel** keeps theirs.
+
+A ruleset can also use **Progress clocks**: circles split into segments that the Game Master fills as something builds up, such as an alarm being raised. They show near the map, each with how many segments are filled, and read **Done** once full.
 
 ## The inventory
 
@@ -90,6 +96,7 @@ Everyone in the party carries their own things. The inventory opens on **All**, 
 - **Add.** Type the item's name and click **Add**. It goes into the bag of the tab that is open, and into your own bag from **All**, unless your ruleset says what everyone can carry (see below). Adding an item that bag already has adds one to its first stack of it.
 - **Merge or reorder.** Drag a stack onto another stack of the same item to merge them, whatever each is called. The merged stack stays with whoever carried the stack you dropped it on. Drag a stack onto a different item to swap the two.
 - **From the ruleset.** In a game whose ruleset lists its own items, **From the ruleset** opens a picker of them, with the ruleset's search and filters. Tick the items you want and click **Add**: one of each goes where **Add** puts an item, into the bag of the tab that is open, or from **All** into your own bag unless your ruleset says what everyone can carry. A name you type that is one of the ruleset's items adds that item too. A ruleset can take only its own items, and then there is no name to type.
+- **Starting gear.** When the ruleset offers gear to start with, **Starting gear** opens it. Choose who it is **For**, make any choices a kit asks for, and click its **Take** button to put it in their bag. Gear that fits that character's sheet is listed first; other gear is theirs to take if the Game Master agrees. Taking it is optional. Once everything offered is taken, the button reads **Starting gear (taken)**.
 - **Use.** Click **Use** to tell the Game Master you use the item. For one of the ruleset's items that says what using it does, such as a healing poultice, the Engine does it first: it rolls what it gives back, writes that on the sheet of whoever carries it, takes one off the stack or spends a charge, and tells the Game Master what happened so the story follows it. What it does to somebody else is left to the Game Master to narrate. An item with nothing left is refused, and one that has to be worn is used only while it is. Some items ask a check first, such as a scroll above what you can read: the Engine rolls it, and if it fails the item is used up for nothing.
 - **Nickname.** Type a new name for the stack and click **Save**. It is only what you call that stack: it stays the same item, the Game Master can still name it by its own name, and giving it a nickname never merges it into another stack. The item's own name is shown beside the nickname. Type the own name back to clear it.
 
@@ -119,11 +126,15 @@ The Game Master charges and pays the party in these coins, and a won fight or a 
 
 A variant of the ruleset can leave a coin out, such as a long night in which no crowns reach the barrows. Nobody is paid in that coin or pays with it then, and a price named in it is shown in the coins left, at the same worth.
 
-A ruleset can also have markets, so what you can buy depends on where you are. The Game Master says which place a scene is in and how big it is, a hamlet or a city in the ruleset's own words, and a small place sells less: rare things may only be found in a town, and some sellers keep shop only in bigger places or serve only some buyers, such as a chapel that sells only to the faithful. When you buy something, the Engine works out the price from the item's cost and how cheap or dear the deal is, takes it from the buyer's purse and puts the item in their bag. Lodging, passage and other services are only paid for. A notification shows what was bought and for how much, and a purchase the place, the seller or the purse cannot make is refused, and the Game Master is told why.
+A ruleset can also have markets, so what you can buy depends on where you are. The Game Master says which place a scene is in and how big it is, a hamlet or a city in the ruleset's own words, and a small place sells less: rare things may only be found in a town, and some sellers keep shop only in bigger places or serve only some buyers, such as a chapel that sells only to the faithful. When you buy something, the Engine works out the price from the item's cost and how cheap or dear the deal is, takes it from the buyer's purse and puts the item in their bag. Lodging, passage and other services are only paid for. A notification shows what was bought and for how much, and a purchase the place, the seller or the purse cannot make is refused, and the Game Master is told why. A ruleset can also make each day at a place different: a place may keep only a few of something rare, a seller may turn up something unusual that day, and you can sell things back to a seller who deals in them, at a share of the price, until the place's sellers have spent what they pay out in a day. A new day at the same place, which the Game Master starts when the party stays on, fills the shelves and the purse again.
+
+A game without a ruleset has money and a market too when its setting kit has them: every starter kit does, such as copper, silver and gold in high fantasy, copper cash and taels of silver in wuxia, dollars and cents in modern day, and credits in cyberpunk and space opera. The kit's shop lists the everyday things its setting sells, each with a price and the smallest place that sells it, so a village has a café but only a town has a first-aid kit. You can change the money and the shop under the kit's **Change its words**, or remove the money altogether. Buying, paying and earning then work as above, in the setting's own coins.
 
 ## Recruiting and removing party members
 
 The Game Master controls who is in your party as the story unfolds. There is no manual "add companion" button. Instead, the GM adds or removes party members through the narration, based on what happens in the scene.
+
+When the GM adds an NPC who has exactly the same name as one of your character cards, or a name several of your cards share, a window asks which one joins. It shows each card's name, title and avatar. Pick a card, or choose **Keep the game's own** and the NPC's name, such as **Keep the game's own Emma**, to bring in the character the game made. Closing the window does the same. A card with only a similar name, such as **Samantha** for an NPC named Sam, is never added.
 
 To drop a companion yourself, use the **X** beside their portrait in **Character Profiles**, as described above. You cannot remove your own persona this way.
 
@@ -139,6 +150,15 @@ Open **Session** (see [Opening Session](sessions-and-saves.md#opening-session)),
 - **Items**: a log of items you acquired, used, lost, or removed.
 - **Library**: in-world notes and books the Game Master has shown you, saved so you can read them again.
 - **Notes**: your own free-text notepad.
+- **World**: in a game with a generated world, the world as your party knows it. It shows:
+  - where you are, and how well known the party is
+  - the party's standing with each group it has dealt with
+  - what the party has done
+  - news that has reached it, with rumours marked
+  - trouble brewing that it has heard of
+  - the past any local would tell
+
+  It shows only what the party could know. Secrets only the Game Master knows stay hidden. It follows the story through swipes and branches.
 
 ### Player notes
 
@@ -152,15 +172,15 @@ The **NPCs** tab of the Adventure Journal tracks how each NPC feels about you. E
 
 The reputation label changes as you act in the story. It is one of these seven, from best to worst:
 
-| Label | Meaning |
-|---|---|
-| **Devoted** | Deeply loyal to you |
-| **Allied** | Strong ally |
-| **Friendly** | Positive |
-| **Neutral** | No strong feeling |
-| **Unfriendly** | Negative |
-| **Hostile** | Turned against you |
-| **Enemy** | Actively opposed |
+| Label          | Meaning             |
+| -------------- | ------------------- |
+| **Devoted**    | Deeply loyal to you |
+| **Allied**     | Strong ally         |
+| **Friendly**   | Positive            |
+| **Neutral**    | No strong feeling   |
+| **Unfriendly** | Negative            |
+| **Hostile**    | Turned against you  |
+| **Enemy**      | Actively opposed    |
 
 A label appears only after an NPC's reputation has moved away from the starting point. A brand-new NPC with unchanged reputation shows no label yet.
 

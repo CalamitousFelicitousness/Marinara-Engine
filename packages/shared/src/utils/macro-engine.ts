@@ -44,6 +44,11 @@ export interface MacroContext {
   chatId?: string;
   /** Model name (for {{model}}) */
   model?: string;
+  /**
+   * Reasoning level this request runs with (for {{reasoning}}): `low` to `max`, or `off` when thinking stays off.
+   * `off` reads as false in `{{#if reasoning}}`, so a block can follow whether the model thinks at all.
+   */
+  reasoning?: string;
   /** Generation trigger/type label (for {{lastGenerationType}}) */
   lastGenerationType?: string;
   /** Human-readable time since the last chat activity before this generation (for {{idle_duration}}) */
@@ -156,7 +161,7 @@ export interface ResolveMacroOptions {
   maxMacroDepth?: number;
   /** Maximum macro replacement operations in one resolution tree. */
   maxMacroExpansions?: number;
-  /** Maximum resolved output length. */
+  /** Absolute output cap; defaults to the input length plus 200,000 characters of expansion. */
   maxMacroOutputLength?: number;
 }
 
@@ -328,6 +333,22 @@ function readMacroVariable(map: Record<string, string> | undefined, name: string
   return typeof value === "string" ? value : undefined;
 }
 
+/**
+ * `{{reasoning}}`, or undefined when a preset or chat variable of that name owns it. Presets made before the macro
+ * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
+ * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
+ */
+function readReasoningMacro(ctx: MacroContext, name: string): string | undefined {
+  if (
+    readMacroVariable(ctx.variables, name) !== undefined ||
+    ctx.deferredPresetVariableNames?.has(name) ||
+    readMacroVariable(ctx.localVariables, name) !== undefined
+  ) {
+    return undefined;
+  }
+  return ctx.reasoning ?? "";
+}
+
 function clampMacroOutput(value: string, options: ResolveMacroOptions): string {
   const maxLength = macroLimit(options, "maxMacroOutputLength");
   if (value.length <= maxLength) return value;
@@ -496,6 +517,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   },
   { category: "Context", syntax: "{{input}}", description: "Most recent user message" },
   { category: "Context", syntax: "{{model}}", description: "Current model name" },
+  {
+    category: "Context",
+    syntax: "{{reasoning}}",
+    description: "Current reasoning level (low, medium, high, xhigh, max), or off; off is false in {{#if reasoning}}",
+  },
   { category: "Context", syntax: "{{chatId}}", description: "Current chat ID" },
   { category: "Context", syntax: "{{lastGenerationType}}", description: "Current generation type label" },
   { category: "Context", syntax: "{{idle_duration}}", description: "Time since the last chat activity" },
@@ -666,6 +692,7 @@ function macroContextForCharacterProfile(profile: CharacterMacroProfile, base?: 
     lastInput: base?.lastInput,
     chatId: base?.chatId,
     model: base?.model,
+    reasoning: base?.reasoning,
     lastGenerationType: base?.lastGenerationType,
     idleDuration: base?.idleDuration,
     timeZone: base?.timeZone,
@@ -1135,6 +1162,59 @@ function decisionOperandTiming(raw: string): DecisionStatementModifiers {
 /** Comparisons that name one option. `contains` and the numeric operators do not. */
 const DECISION_CHOICE_OPERATORS = new Set(["==", "=", "is", "!=", "is not"]);
 
+/**
+ * An option written with criteria (#7791): `"angry":"Kaelen shouts or threatens someone"`.
+ * The criteria tell the Decision model what the option means; the option alone is what
+ * is chosen and compared. Both parts use the same kind of quote and escape like any
+ * other quoted value. Null for anything else, which keeps its old meaning.
+ */
+function splitChoiceCriteria(raw: string): { option: string; optionRaw: string; criteria: string } | null {
+  const trimmed = raw.trim();
+  if (stripOuterQuotes(trimmed) === null) return null;
+  const kind = quoteKind(trimmed[0]);
+  let escaped = false;
+  for (let index = 1; index < trimmed.length - 1; index += 1) {
+    const character = trimmed[index]!;
+    if (escaped) escaped = false;
+    else if (character === "\\") escaped = true;
+    else if (quoteKind(character) === kind) {
+      // The option's closing quote: criteria follow only after a colon and a new quote.
+      const separator = /^\s*:\s*/u.exec(trimmed.slice(index + 1));
+      const rest = separator ? trimmed.slice(index + 1 + separator[0].length) : "";
+      const criteria = quoteKind(rest[0]) === kind ? stripOuterQuotes(rest) : null;
+      if (criteria === null) return null;
+      const optionRaw = trimmed.slice(0, index + 1);
+      return { option: stripOuterQuotes(optionRaw)!, optionRaw, criteria };
+    }
+  }
+  return null;
+}
+
+/** A comparison with a Choice statement compares the option alone, never its criteria. */
+function withoutChoiceCriteria(parsed: ParsedConditionExpression): ParsedConditionExpression {
+  if (parsed.right === undefined || !DECISION_CHOICE_OPERATORS.has(parsed.operator)) return parsed;
+  if (decisionChoiceQuestionFromOperand(parsed.left) !== null) {
+    const right = splitChoiceCriteria(parsed.right)?.optionRaw;
+    return right ? { ...parsed, right } : parsed;
+  }
+  if (decisionChoiceQuestionFromOperand(parsed.right) !== null) {
+    const left = splitChoiceCriteria(parsed.left)?.optionRaw;
+    return left ? { ...parsed, left } : parsed;
+  }
+  return parsed;
+}
+
+/** Adds an option a Choice statement is compared with, and its criteria if it has any. */
+function addChoiceOption(question: CollectedDecisionQuestion, raw: string): void {
+  const withCriteria = splitChoiceCriteria(raw);
+  const option = (withCriteria?.option ?? stripOuterQuotes(raw))?.trim();
+  if (!option) return;
+  const criteria = withCriteria?.criteria.trim() ?? "";
+  if (criteria && !question.criteria) question.criteria = question.options.map(() => "");
+  question.criteria?.push(criteria);
+  question.options.push(option);
+}
+
 /** Whitespace-normalized, so a line break inside a statement does not change its key. */
 export function normalizeDecisionQuestion(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
@@ -1155,6 +1235,8 @@ export interface CollectedDecisionQuestion extends DecisionStatementModifiers {
   question: string;
   /** For a Choice statement: the literals it is compared with, as written. */
   options: string[];
+  /** Each option's criteria, by the same index ("" for none). Only set when an option has some. */
+  criteria?: string[];
 }
 
 /**
@@ -1180,10 +1262,9 @@ export function collectDecisionQuestions(template: string): CollectedDecisionQue
       // parse as bare atoms, and belong to the Choice statement before them.
       let lastChoice: CollectedDecisionQuestion | null = null;
       for (const parsed of parseConditionComparisons(condition)) {
-        if (parsed.right === undefined) {
-          const literal = stripOuterQuotes(parsed.left);
-          if (literal !== null && lastChoice && literal.trim()) lastChoice.options.push(literal.trim());
-          if (literal !== null) continue;
+        if (parsed.right === undefined && stripOuterQuotes(parsed.left) !== null) {
+          if (lastChoice) addChoiceOption(lastChoice, parsed.left);
+          continue;
         }
         for (const [operand, other] of [
           [parsed.left, parsed.right],
@@ -1197,16 +1278,9 @@ export function collectDecisionQuestions(template: string): CollectedDecisionQue
           }
           const choice = decisionChoiceQuestionFromOperand(operand);
           if (!choice) continue;
-          const literal =
-            other !== undefined && DECISION_CHOICE_OPERATORS.has(parsed.operator.toLowerCase())
-              ? stripOuterQuotes(other)
-              : null;
-          lastChoice = {
-            kind: "choice",
-            question: choice,
-            options: literal?.trim() ? [literal.trim()] : [],
-            ...decisionOperandTiming(operand),
-          };
+          lastChoice = { kind: "choice", question: choice, options: [], ...decisionOperandTiming(operand) };
+          if (other !== undefined && DECISION_CHOICE_OPERATORS.has(parsed.operator.toLowerCase()))
+            addChoiceOption(lastChoice, other);
           questions.push(lastChoice);
         }
       }
@@ -1245,15 +1319,19 @@ export function containsDecisionStatements(value: unknown, depth = 0): boolean {
  * The resolved statements a template can ask in this context: one for the context
  * itself, plus one per character when the statement names `{{char}}` or another
  * character macro, because a group block or a per-responder pass asks it once per
- * character.
+ * character. Each comes with the context it was resolved in, so a Choice option's
+ * criteria name the same character as their statement.
  */
-export function resolveDecisionQuestionVariants(question: string, ctx: MacroContext): string[] {
-  const variants = new Set([resolveDecisionQuestionText(question, ctx)]);
+export function resolveDecisionQuestionVariants(question: string, ctx: MacroContext): Map<string, MacroContext> {
+  const variants = new Map<string, MacroContext>();
+  const contexts = [ctx];
   if (hasCharacterMacro(question))
-    for (const profile of ctx.characterProfiles ?? [])
-      variants.add(resolveDecisionQuestionText(question, macroContextForCharacterProfile(profile, ctx)));
-  variants.delete("");
-  return [...variants];
+    for (const profile of ctx.characterProfiles ?? []) contexts.push(macroContextForCharacterProfile(profile, ctx));
+  for (const context of contexts) {
+    const key = resolveDecisionQuestionText(question, context);
+    if (key && !variants.has(key)) variants.set(key, context);
+  }
+  return variants;
 }
 
 function normalizeConditionKey(value: string): string {
@@ -1335,6 +1413,12 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
       return ctx.lastInput ?? "";
     case "model":
       return ctx.model ?? "";
+    case "reasoning": {
+      const name = token.replace(/^@/, "");
+      const reasoning = readReasoningMacro(ctx, name);
+      if (reasoning !== undefined) return reasoning;
+      return readMacroVariable(ctx.variables, name) ?? readMacroVariable(ctx.localVariables, name) ?? "";
+    }
     case "chatid":
       return ctx.chatId ?? "";
     case "description":
@@ -1725,10 +1809,11 @@ function resolveConditionMacros(condition: string, ctx: MacroContext, options: R
 }
 
 function evaluateParsedCondition(
-  parsed: ParsedConditionExpression,
+  written: ParsedConditionExpression,
   ctx: MacroContext,
   options: ResolveMacroOptions,
 ): boolean {
+  const parsed = withoutChoiceCriteria(written);
   const left = resolveConditionalOperand(parsed.left, ctx, options);
   if (parsed.operator === "truthy") return left.trim().length > 0 && !/^(false|0|no|off|null|undefined)$/i.test(left);
   const right = resolveConditionalOperand(parsed.right ?? "", ctx, options);
@@ -2142,6 +2227,7 @@ const PLAN_FIXED_OPERAND_NAMES = new Set([
   "group",
   "input",
   "model",
+  "reasoning",
   "chatid",
   "description",
   "personality",
@@ -2220,6 +2306,7 @@ function planConditionAtom(
   } else if (equalityShorthand && parsed.operator === "truthy" && stripOuterQuotes(parsed.left) !== null) {
     effective = { ...equalityShorthand, right: parsed.left };
   }
+  effective = withoutChoiceCriteria(effective);
   const statements: string[] = [];
   const left = planConditionOperand(effective.left, statements, ctx, options);
   const right =
@@ -2542,14 +2629,104 @@ function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: b
   return result;
 }
 
-/** Keep generated summaries inside their readers' scope without nesting duplicate character guards. */
-export function scopeCharacterSummary(input: string, characterNames: readonly string[], depth = 0): string {
+/** A condition, or `null` for an {{else}}, that compares only the character name and literals. */
+function characterOnlyCondition(condition: string | null): boolean {
+  return (
+    condition === null ||
+    (!condition.includes("{{") &&
+      parseConditionComparisons(condition).every(({ left, right }) =>
+        [left, right].every(
+          (operand) =>
+            operand === undefined ||
+            ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
+            stripOuterQuotes(operand) !== null,
+        ),
+      ))
+  );
+}
+
+/** The one character a condition such as `char == "Maukie"` names, or `null`. */
+function namedCharacter(condition: string | null): string | null {
+  const comparisons = condition === null ? [] : parseConditionComparisons(condition);
+  if (comparisons.length !== 1) return null;
+  const { left, operator, right } = comparisons[0]!;
+  if (!["=", "==", "is"].includes(operator) || right === undefined) return null;
+  const isCharacter = (operand: string) =>
+    ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand));
+  const name = isCharacter(left) ? stripOuterQuotes(right) : isCharacter(right) ? stripOuterQuotes(left) : null;
+  return name && !name.includes("{{") ? name : null;
+}
+
+/**
+ * Keep the text of every branch of each character-only condition, once and without its tags, for a reader
+ * who knows every character's part. With `nameReaders`, `{{char}}` in a branch for one character becomes that
+ * character's name, and a condition whose branch still names its reader another way stays as it is, like a
+ * condition on anything else, with its parts flattened inside. Branches no reader got together are joined
+ * with a space.
+ */
+export function flattenCharacterConditions(input: string, nameReaders = true, depth = 0): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  let result = "";
+  let cursor = 0;
+  let joined = false;
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) return result + input.slice(cursor);
+    if (start.start > cursor) joined = false;
+    result += input.slice(cursor, start.start);
+    const contents = block.branches.map(({ condition, contentStart, contentEnd }) => {
+      const name = nameReaders ? namedCharacter(condition) : null;
+      const content = input.slice(contentStart, contentEnd);
+      return name === null ? content : content.replace(/\{\{char(?:Name)?\}\}/giu, () => name);
+    });
+    const characterOnly = block.branches.every(
+      ({ condition }, index) =>
+        characterOnlyCondition(condition) &&
+        (!nameReaders ||
+          ![...CHARACTER_MACRO_NAMES].some((name) => contents[index]!.toLowerCase().includes(`{{${name}}}`))),
+    );
+    let tag = start.start;
+    for (const [index, branch] of block.branches.entries()) {
+      if (!characterOnly) result += input.slice(tag, branch.contentStart);
+      const text = flattenCharacterConditions(
+        characterOnly ? contents[index]! : input.slice(branch.contentStart, branch.contentEnd),
+        nameReaders,
+        depth + 1,
+      );
+      if (characterOnly && joined && text && !/\s$/u.test(result) && !/^\s/u.test(text)) result += " ";
+      result += text;
+      joined ||= characterOnly && !!text;
+      tag = branch.contentEnd;
+    }
+    if (!characterOnly) {
+      result += input.slice(tag, block.endEnd);
+      joined = false;
+    }
+    cursor = block.endEnd;
+  }
+  return result;
+}
+
+/**
+ * Keep generated summaries inside their readers' scope without nesting duplicate character guards.
+ * With `mark`, each part goes to `mark(text, itsReaders, depth)` instead of a character guard, and parts no
+ * reader knows are dropped, e.g. to note who knows what when one prompt serves several characters.
+ * `depth` counts the character conditions around the part; 0 is the top level.
+ */
+export function scopeCharacterSummary(
+  input: string,
+  characterNames: readonly string[],
+  depth = 0,
+  mark?: (text: string, readers: readonly string[], depth: number) => string,
+): string {
   const names = [...new Set(characterNames)];
   if (!names.length) return "";
-  if (names.some((name) => name.includes("{{") || name.includes("}}")))
+  if (!mark && names.some((name) => name.includes("{{") || name.includes("}}")))
     throw new Error("Cannot scope a summary: character names must not contain macro delimiters ({{ or }}).");
   const wrap = (text: string) => {
     if (!text.trim()) return text;
+    if (mark) return mark(text, names, depth);
     const condition = names
       .map((name) => `"${name.replace(/\\/gu, "\\\\").replace(/["\u201c\u201d\u201e\u201f]/gu, "\\$&")}"`)
       .join(" || ");
@@ -2566,19 +2743,7 @@ export function scopeCharacterSummary(input: string, characterNames: readonly st
     result += wrap(input.slice(cursor, start.start));
     // Only character/literal conditions can be simplified now. Keep authored
     // variable conditions intact so changing a variable still changes visibility.
-    const characterOnly = block.branches.every(
-      ({ condition }) =>
-        condition === null ||
-        (!condition.includes("{{") &&
-          parseConditionComparisons(condition).every(({ left, right }) =>
-            [left, right].every(
-              (operand) =>
-                operand === undefined ||
-                ["char", "charname", "character", "speaker"].includes(normalizeConditionKey(operand)) ||
-                stripOuterQuotes(operand) !== null,
-            ),
-          )),
-    );
+    const characterOnly = block.branches.every(({ condition }) => characterOnlyCondition(condition));
     if (!characterOnly) result += wrap(input.slice(start.start, block.endEnd));
     else {
       let remaining = names;
@@ -2588,13 +2753,244 @@ export function scopeCharacterSummary(input: string, characterNames: readonly st
             branch.condition === null ||
             evaluateCondition(branch.condition, { user: "", char: name, characters: [name], variables: {} }),
         );
-        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1);
+        result += scopeCharacterSummary(input.slice(branch.contentStart, branch.contentEnd), readers, depth + 1, mark);
         remaining = remaining.filter((name) => !readers.includes(name));
       }
     }
     cursor = block.endEnd;
   }
   return result;
+}
+
+/**
+ * The names the character-only conditions in `input` compare the character with, as `scopeCharacterSummary`
+ * reads them, e.g. to keep the part of a character who left the chat.
+ */
+export function characterConditionNames(input: string, depth = 0): string[] {
+  const names = new Set<string>();
+  let cursor = 0;
+  while (depth < MAX_MACRO_RESOLUTION_DEPTH) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    if (block.branches.every(({ condition }) => characterOnlyCondition(condition)))
+      for (const { condition, contentStart, contentEnd } of block.branches) {
+        for (const { left, right } of condition === null ? [] : parseConditionComparisons(condition))
+          for (const operand of [left, right]) {
+            const name = operand === undefined ? null : stripOuterQuotes(operand);
+            if (name) names.add(name);
+          }
+        for (const name of characterConditionNames(input.slice(contentStart, contentEnd), depth + 1)) names.add(name);
+      }
+    cursor = block.endEnd;
+  }
+  return [...names];
+}
+
+/**
+ * Render text once per reader of a shared prompt and mark each version not everyone gets,
+ * e.g. `[Known only to Maukie: …]` (#7237). `everyone` is how many readers the prompt has.
+ */
+export function markReaderVersions(
+  readers: readonly string[],
+  everyone: number,
+  render: (reader: string) => string,
+): string {
+  const readersByText = new Map<string, string[]>();
+  for (const reader of readers) {
+    const output = render(reader);
+    readersByText.set(output, [...(readersByText.get(output) ?? []), reader]);
+  }
+  return [...readersByText]
+    .map(([output, who]) => {
+      if (who.length === everyone || !output.trim()) return output;
+      const start = output.length - output.trimStart().length;
+      const end = output.trimEnd().length;
+      return `${output.slice(0, start)}[Known only to ${who.join(", ")}: ${output.slice(start, end)}]${output.slice(end)}`;
+    })
+    .join("");
+}
+
+/**
+ * A line next to the text being rewritten: text, blank, the end of the whole summary (whose trailing space is
+ * trimmed), or text that carries on past the edge, on the same line.
+ */
+type SectionNeighbour = "text" | "blank" | "end" | "mid";
+
+const onlySpacesAndTabs = (text: string) => /^[ \t]*$/u.test(text);
+
+/** Whether `text` has a line break at `from`, after any spaces and tabs. */
+function startsWithLineBreak(text: string, from = 0): boolean {
+  while (text[from] === " " || text[from] === "\t") from++;
+  return text[from] === "\n";
+}
+
+/** Whether `text` ends with a line break, then only spaces and tabs. */
+function endsWithLineBreak(text: string): boolean {
+  const lastBreak = text.lastIndexOf("\n");
+  return lastBreak >= 0 && onlySpacesAndTabs(text.slice(lastBreak + 1));
+}
+
+/**
+ * Let each `{{#if}}` section that fills whole lines of a summary carry its own line breaks, so a section that
+ * renders nothing leaves no empty line however the summary is read: evaluated now, deferred per character,
+ * split per reader by `scopeCharacterSummary`, or flattened for the narrator. A section that renders reads as
+ * before. A section after a line of text leads with the line break before it, so the line after it keeps its
+ * own start; one that is a paragraph of its own also takes the blank lines before it, so a hidden one leaves
+ * one separator. A section with nothing but sections before it ends with the line break after it instead, and
+ * the blank lines after it when it starts a paragraph. Sections nested in a branch are rewritten with the line
+ * breaks that branch carries. Sections that share a line with other text stay as written, and so do a group
+ * block's `[` and `]` lines. Line endings become `\n` and comments go first, as reading drops them anyway.
+ * ponytail: a paragraph made only of several sections keeps one extra blank line when all of them hide, until
+ * the request, Peek Prompt and Advanced Memory collapse runs of blank lines into one. A summary made only of
+ * sections can keep a line break at its end in Individual mode. There, a section with no text before it also
+ * carries the next line's start inside its deferred token, so the Markdown heading guard and the XML indent
+ * miss that line. Each needs a separator that knows its neighbours if it matters.
+ */
+export function attachConditionalLineBreaks(input: string): string {
+  const lines = stripMacroComments(input.replace(/\r\n?/gu, "\n")).split("\n");
+  const rewritten: string[] = [];
+  for (let from = 0; from < lines.length;) {
+    let to = from;
+    while (to < lines.length && !["[", "]"].includes(lines[to]!.trim())) to++;
+    if (to > from)
+      rewritten.push(
+        attachSectionLineBreaks(
+          lines.slice(from, to).join("\n"),
+          from ? "text" : "blank",
+          to < lines.length ? "text" : "end",
+          0,
+        ),
+      );
+    if (to < lines.length) rewritten.push(lines[to]!);
+    from = to + 1;
+  }
+  return rewritten.join("\n");
+}
+
+function attachSectionLineBreaks(
+  input: string,
+  before: SectionNeighbour,
+  after: SectionNeighbour,
+  depth: number,
+): string {
+  if (depth >= MAX_MACRO_RESOLUTION_DEPTH) return input;
+  // Where the line holding `at` starts, and whether the line [from, to) reads as text.
+  const lineFrom = (at: number) => (at > 0 ? input.lastIndexOf("\n", at - 1) + 1 : 0);
+  const kindOf = (from: number, to: number): "text" | "blank" =>
+    (from === 0 && before === "mid") ||
+    (to === input.length && after === "mid") ||
+    !onlySpacesAndTabs(input.slice(from, to))
+      ? "text"
+      : "blank";
+  const textStart = input.length - input.trimStart().length;
+  const textEnd = input.trimEnd().length;
+  let result = "";
+  let cursor = 0;
+  let afterSection = 0; // where the text after the last section starts in `result`
+  while (cursor < input.length) {
+    const start = findConditionalStart(input, cursor);
+    const block = start && findConditionalBranches(input, start.end, start.condition);
+    if (!start || !block) break;
+    const { branches } = block;
+    // The tag before each branch, then {{/if}}.
+    const tags = [start.start, ...branches.map((branch) => branch.contentEnd)].map((from, index) =>
+      input.slice(from, branches[index]?.contentStart ?? block.endEnd),
+    );
+    const contents = branches.map((branch) => input.slice(branch.contentStart, branch.contentEnd));
+    const lineStart = lineFrom(start.start);
+    let lineEnd = block.endEnd;
+    while (input[lineEnd] === " " || input[lineEnd] === "\t") lineEnd++;
+    const indent = input.slice(lineStart, start.start);
+    const wholeLine =
+      onlySpacesAndTabs(indent) &&
+      (lineStart > 0 || before !== "mid") &&
+      (lineEnd === input.length ? after !== "mid" : input[lineEnd] === "\n");
+    // A section leads with the line break before it when a line of text precedes it, else it ends with the
+    // one after it, unless that only leads to the end of the summary.
+    const leads = wholeLine && lineStart > cursor && (before === "mid" || textStart < lineStart);
+    const trails = wholeLine && !leads && input[lineEnd] === "\n" && (after !== "end" || lineEnd < textEnd);
+    // A section with no line break to take stays as written, as one alone between a group block's brackets,
+    // which reading trims (#3435); at the end of the summary its branches still end their line, so a merged
+    // reply puts each version on a line of its own, and the final trim drops the last one.
+    if (!wholeLine || (!leads && !trails && after !== "end")) {
+      result += input.slice(cursor, start.start);
+      contents.forEach(
+        (content, index) => (result += tags[index] + attachSectionLineBreaks(content, "mid", "mid", depth + 1)),
+      );
+      result += tags.at(-1);
+      cursor = block.endEnd;
+      afterSection = result.length;
+      continue;
+    }
+    const nextLineEnd = input.indexOf("\n", lineEnd + 1);
+    const previous = lineStart === 0 ? before : kindOf(lineFrom(lineStart - 1), lineStart - 1);
+    const next =
+      lineEnd === input.length ? after : kindOf(lineEnd + 1, nextLineEnd === -1 ? input.length : nextLineEnd);
+    const firstBreak = input.indexOf("\n", start.end);
+    // Each branch's own lines, without the section's line breaks. Text on the {{#if}}'s line keeps its indent.
+    const lines = contents.map((content, index) => {
+      const onTagLine =
+        (firstBreak === -1 || firstBreak >= branches[index]!.contentStart) && !startsWithLineBreak(content);
+      let text = startsWithLineBreak(content) ? content.slice(content.indexOf("\n") + 1) : content;
+      if (endsWithLineBreak(text)) text = text.slice(0, text.lastIndexOf("\n"));
+      return !text.trim() ? "" : onTagLine ? indent + text : text;
+    });
+    // The section's lines with the line breaks it takes along: [from, to). Sections inside a branch are
+    // rewritten with those line breaks, so one that fills the branch takes them along when it hides.
+    let from = lineStart;
+    let to = lineEnd;
+    let texts: string[];
+    if (leads) {
+      from = lineStart - 1;
+      // A paragraph of its own also takes the blank lines before it, back to the last line of text.
+      if (previous === "blank" && next !== "text")
+        for (let at = from; ;) {
+          const blankStart = lineFrom(at);
+          if (kindOf(blankStart, at) === "text") {
+            from = at;
+            break;
+          }
+          if (blankStart === 0 || blankStart - 1 < cursor) break;
+          at = blankStart - 1;
+        }
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(input.slice(from, lineStart) + text, "mid", next, depth + 1),
+      );
+    } else if (trails) {
+      to = lineEnd + 1;
+      // A section that starts a paragraph also takes the blank lines after it.
+      if (previous === "blank")
+        for (let blankEnd = input.indexOf("\n", to); blankEnd !== -1; blankEnd = input.indexOf("\n", to)) {
+          if (!onlySpacesAndTabs(input.slice(to, blankEnd))) break;
+          to = blankEnd + 1;
+        }
+      // The branch's last, empty line carries on into the line after the section.
+      const toLineEnd = input.indexOf("\n", to);
+      const carriesOn =
+        to === input.length
+          ? after
+          : kindOf(to, toLineEnd === -1 ? input.length : toLineEnd) === "text"
+            ? "mid"
+            : "blank";
+      texts = lines.map(
+        (text) => text && attachSectionLineBreaks(text + input.slice(lineEnd, to), previous, carriesOn, depth + 1),
+      );
+    } else texts = lines.map((text) => text && attachSectionLineBreaks(`${text}\n`, previous, "blank", depth + 1));
+    result += input.slice(cursor, from);
+    // `{{noop}}` keeps the section off a line of its own, so reading it does not trim a line break it carries,
+    // also where a merged reply reads the section apart from the text before it.
+    const lead = result.slice(afterSection);
+    if (onlySpacesAndTabs(lead.slice(lead.lastIndexOf("\n") + 1))) result += "{{noop}}";
+    if (startsWithLineBreak(texts[0]!)) texts[0] = `{{noop}}${texts[0]}`;
+    result += texts.map((text, index) => tags[index] + text).join("") + tags.at(-1);
+    cursor = to;
+    let rest = cursor;
+    while (input[rest] === " " || input[rest] === "\t") rest++;
+    if (endsWithLineBreak(texts.at(-1)!) && (rest === input.length || input[rest] === "\n")) result += "{{noop}}";
+    afterSection = result.length;
+  }
+  return result + input.slice(cursor);
 }
 
 function splitTopLevelDoubleColon(input: string): string[] {
@@ -2840,6 +3236,7 @@ export function expandLorebookIncludes(
  *  - {{decvar::name}} — decrement numeric variable by 1
  *  - {{input}} — last user message
  *  - {{model}} — current model name
+ *  - {{reasoning}} — current reasoning level, or "off"
  *  - {{chatId}} — current chat ID
  *  - {{lastGenerationType}} — current generation type label
  *  - {{idle_duration}} — time since the last chat activity
@@ -2858,12 +3255,18 @@ export function expandLorebookIncludes(
  *  - {{#if char == "Name" || "Other"}}...{{else}}...{{/if}} — conditional block with OR/AND logic
  */
 export function resolveMacros(template: string, ctx: MacroContext, options: ResolveMacroOptions = {}): string {
+  // Keep authored text intact. Bound additional expansion once per resolution tree,
+  // and share that limit with nested calls without pinning it on reused caller options.
+  options = {
+    ...options,
+    macroBudget: getMacroBudget(options),
+    maxMacroOutputLength: options.maxMacroOutputLength ?? template.length + MAX_MACRO_OUTPUT_LENGTH,
+  };
   const macroDepth = options.macroDepth ?? 0;
   if (macroDepth > macroLimit(options, "maxMacroDepth")) {
     getMacroBudget(options).exceeded = true;
     return clampMacroOutput(template, options);
   }
-  getMacroBudget(options);
   // #3104: content with no macro syntax has nothing to resolve. Every step below
   // is triggered by "{{" (live macros), the "\x1e" deferred-character token
   // sentinel, or the "\x00" trim-marker sentinel, so a template containing none
@@ -2992,6 +3395,7 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   );
   result = result.replace(/\{\{input\}\}/gi, ctx.lastInput ?? "");
   result = result.replace(/\{\{model\}\}/gi, ctx.model ?? "");
+  result = result.replace(/\{\{(reasoning)\}\}/gi, (match, name: string) => readReasoningMacro(ctx, name) ?? match);
   result = result.replace(/\{\{chatId\}\}/gi, ctx.chatId ?? "");
   result = result.replace(/\{\{lastGenerationType\}\}/gi, ctx.lastGenerationType ?? "");
   result = result.replace(/\{\{idle_duration\}\}/gi, ctx.idleDuration ?? "");

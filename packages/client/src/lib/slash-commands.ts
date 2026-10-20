@@ -18,6 +18,7 @@ import {
   normalizeTextForMatch,
   parseDiceNotation,
   rollParsedDice,
+  type MessageReply,
   type ParsedDiceNotation,
 } from "@marinara-engine/shared";
 
@@ -63,6 +64,10 @@ export interface SlashCommandContext {
     characterId?: string | null;
     extra?: Record<string, unknown>;
   }) => void | Promise<void>;
+  /** Prepare typed text as a normal send would store it: user-input regex, input translation and macros. */
+  prepareUserMessage: (text: string) => Promise<string>;
+  /** Whether the composer had files attached, which a posted user message carries (/send). */
+  hasComposerAttachments?: boolean;
   /** Invalidate chat queries to refresh the UI */
   invalidate: () => void;
   /** Invalidate the character detail cache after character-owned changes. */
@@ -86,10 +91,49 @@ export interface SlashCommandContext {
   illustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
   /** Trigger the same Conversation selfie action exposed in the chat Gallery. */
   selfie?: (characterId?: string) => void | Promise<void>;
+  /** Have a Conversation character send a video message, as the chat Gallery's Video button does. */
+  video?: (characterId?: string) => void | Promise<void>;
   /** Active downloadable capability packages available to this composer. */
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
   conversationGames?: readonly ConversationGameSlashContribution[];
+}
+
+/**
+ * A typed command runs after the composer is cleared. The user message it posts (/send) takes the
+ * composer's attachments and reply target with it, as Send does. Other messages are unchanged.
+ */
+export function withComposerReplyAndAttachments(
+  ctx: SlashCommandContext,
+  composer: {
+    replyTo?: MessageReply | null;
+    attachments: ReadonlyArray<{ type: string; data: string; name: string }>;
+  },
+): SlashCommandContext {
+  const { replyTo } = composer;
+  const attachments = composer.attachments.map(({ type, data, name }) => ({ type, data, filename: name, name }));
+  return {
+    ...ctx,
+    hasComposerAttachments: attachments.length > 0,
+    createMessage: async (data) => {
+      if (data.role !== "user") return ctx.createMessage(data);
+      // A reply picked while the command was preparing its text stays for the next message.
+      if (replyTo && useChatStore.getState().replyDrafts.get(ctx.chatId) === replyTo) {
+        useChatStore.getState().setReplyDraft(ctx.chatId, null);
+      }
+      try {
+        await ctx.createMessage({
+          ...data,
+          extra: { ...data.extra, ...(replyTo ? { replyTo } : {}), ...(attachments.length ? { attachments } : {}) },
+        });
+      } catch (error) {
+        if (replyTo && !useChatStore.getState().replyDrafts.has(ctx.chatId)) {
+          useChatStore.getState().setReplyDraft(ctx.chatId, replyTo);
+        }
+        throw error;
+      }
+    },
+  };
 }
 
 export interface ConversationGameSlashContribution {
@@ -714,8 +758,9 @@ const COMMANDS: SlashCommand[] = [
     local: true,
     async execute(args, ctx) {
       const content = stripSingleWrappingQuotePair(args);
-      if (!content) return { handled: true, feedback: "Usage: /send <message>" };
-      await ctx.createMessage({ role: "user", content, characterId: null });
+      // Files with no text post on their own, as Post only posts them.
+      if (!content && !ctx.hasComposerAttachments) return { handled: true, feedback: "Usage: /send <message>" };
+      await ctx.createMessage({ role: "user", content: await ctx.prepareUserMessage(content), characterId: null });
       return { handled: true };
     },
   },
@@ -1147,7 +1192,10 @@ const COMMANDS: SlashCommand[] = [
         };
       }
 
-      const { ms, timeStr, message } = parsed;
+      const { ms, timeStr } = parsed;
+      // The user's own typed words, stored as a normal send stores them, so the chat, the toast and
+      // the model read the same {{random}} pick and names.
+      const message = await ctx.prepareUserMessage(parsed.message);
       const chatId = ctx.chatId;
       const invalidate = ctx.invalidate;
 
@@ -1339,6 +1387,70 @@ const COMMANDS: SlashCommand[] = [
         toast.error(error instanceof Error ? error.message : "Selfie generation failed.");
       } finally {
         useGalleryStore.getState().setChatGeneratingSelfie(ctx.chatId, false);
+      }
+      return { handled: true };
+    },
+  },
+  {
+    name: "video",
+    description: "Have a character send you a short video message",
+    usage: "/video [name (optional)]",
+    requiredCapabilityId: "illustrator",
+    modes: ["conversation"],
+    local: true,
+    async execute(args, ctx) {
+      if (!ctx.video) {
+        return { handled: true, feedback: await translateSlash("ui.chat.slash.video.unavailable") };
+      }
+      if (useGalleryStore.getState().videoGeneratingChatIds.has(ctx.chatId)) {
+        return { handled: true, feedback: await translateSlash("ui.chat.slash.video.alreadyRunning") };
+      }
+
+      const requestedCharacter = args.trim();
+      const target = requestedCharacter ? findSceneCharacter(ctx.characters ?? [], requestedCharacter) : null;
+      if (requestedCharacter && !target) {
+        const available = formatAvailableCharacterList(ctx.characters ?? []);
+        return {
+          handled: true,
+          feedback: available
+            ? await translateSlash("ui.chat.slash.video.characterNotFound", { name: requestedCharacter, available })
+            : await translateSlash("ui.chat.slash.video.noCharacters"),
+        };
+      }
+      // A name that fits more than one character (an exact name two share, or else a shared partial name) picks
+      // no one, so a paid clip never goes to the wrong character.
+      // ponytail: /video only; the other commands still take the first match. Upgrade path: make
+      // findSceneCharacter itself refuse ambiguous names (changes /selfie, /emote and the rest).
+      if (target) {
+        const requestedLookup = normalizeLookup(requestedCharacter);
+        const characters = ctx.characters ?? [];
+        const exact = characters.filter((character) => normalizeLookup(character.name) === requestedLookup);
+        const matches =
+          exact.length > 0
+            ? exact
+            : characters.filter((character) => normalizeLookup(character.name).includes(requestedLookup));
+        if (matches.length > 1) {
+          return {
+            handled: true,
+            feedback: await translateSlash("ui.chat.slash.video.ambiguousCharacter", {
+              name: requestedCharacter,
+              matches: formatAvailableCharacterList(matches),
+            }),
+          };
+        }
+      }
+
+      useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, true);
+      try {
+        await withSlashCommandTimeout(
+          Promise.resolve(ctx.video(target?.id)),
+          ILLUSTRATE_SLASH_TIMEOUT_MS,
+          await translateSlash("ui.chat.slash.video.timedOut"),
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : await translateSlash("ui.chat.slash.video.failed"));
+      } finally {
+        useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, false);
       }
       return { handled: true };
     },

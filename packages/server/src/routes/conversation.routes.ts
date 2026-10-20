@@ -12,7 +12,12 @@ import { createCharactersStorage } from "../services/storage/characters.storage.
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "../services/llm/connection-fallback-provider.js";
-import { CONVERSATION_SCHEDULE_DAYS, PROVIDERS, localAuthProviderBaseUrl } from "@marinara-engine/shared";
+import {
+  CONVERSATION_SCHEDULE_DAYS,
+  PROVIDERS,
+  isChatProvider,
+  localAuthProviderBaseUrl,
+} from "@marinara-engine/shared";
 import type { CharacterData, ConversationStatusOverride } from "@marinara-engine/shared";
 import {
   generateCharacterSchedule,
@@ -279,7 +284,7 @@ async function resolveConversationScheduleConnection(connections: ConnectionsSto
   }
 
   const conn = await connections.getWithKey(connId);
-  if (conn && ["image_generation", "video_generation", "audio", "decision"].includes(conn.provider)) {
+  if (conn && !isChatProvider(conn.provider)) {
     return { conn: null, error: "Choose a language connection for schedule generation" };
   }
   return { conn, error: conn ? null : "The selected connection is unavailable. Choose another connection." };

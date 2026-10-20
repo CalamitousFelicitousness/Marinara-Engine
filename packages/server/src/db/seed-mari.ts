@@ -2,6 +2,8 @@
 // Seed: Professor Mari (built-in assistant character)
 // ──────────────────────────────────────────────
 import type { DB } from "./connection.js";
+import { DEFAULT_MARI_RUNTIME, MARI_RUNTIME_SETTINGS_KEY } from "@marinara-engine/shared";
+import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { logger } from "../lib/logger.js";
 import type { CharacterData } from "@marinara-engine/shared";
 import { PROFESSOR_MARI_ID } from "@marinara-engine/shared";
@@ -466,6 +468,8 @@ IMPORTANT RULES FOR FETCH:
 
 const now = () => new Date().toISOString();
 
+// The character avatar is stored in user databases and game NPCs, so this path stays stable. The file is
+// the Basic pixel profile; the client's appearance packs do not change it.
 const MARI_AVATAR = "/sprites/mari/Mari_profile.png";
 
 function parseExistingMariData(raw: unknown): CharacterData | null {
@@ -491,6 +495,13 @@ function getSeedDataForExistingMari(rawExistingData: unknown): CharacterData {
 }
 
 export async function seedProfessorMari(db: DB) {
+  // One-time rollout for existing installs too. Later Classic choices survive every startup.
+  const settings = createAppSettingsStorage(db);
+  if ((await settings.get("migration:mari-pi-default")) !== "done") {
+    await settings.set(MARI_RUNTIME_SETTINGS_KEY, DEFAULT_MARI_RUNTIME);
+    await settings.set("migration:mari-pi-default", "done");
+  }
+
   // Check if Mari already exists
   const existing = await db.select().from(characters).where(eq(characters.id, PROFESSOR_MARI_ID));
 

@@ -13,6 +13,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, ChevronUp, Puzzle } from "lucide-react";
@@ -24,7 +25,7 @@ import { CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS, getChatToolbarButtonClass } fr
 import { CHAT_CONTROL_WINDOW_IDS, ChatControlWindow } from "./ChatControlWindow";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
-import { TranscriptWindowControls } from "./TranscriptWindowControls";
+import { HISTORY_PAGER_BUTTON_CLASS, TranscriptWindowControls } from "./TranscriptWindowControls";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
 import { useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
@@ -48,11 +49,15 @@ import {
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
   stripLeadingMessageTimestamps,
-  type InstalledCapabilityPackage,
   type Message,
   type ScenePackageOrigin,
 } from "@marinara-engine/shared";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  selectConversationSurfacePackages,
+  selectConversationTurnGamePackages,
+  selectEnabledConversationPackages,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { TURN_GAME_BOT_REQUEST_EVENT } from "../../lib/capability-turn-game-events";
 import { useGenerate } from "../../hooks/use-generate";
@@ -85,11 +90,18 @@ interface ConversationViewProps {
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
   onPeekPrompt: (messageId?: string) => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
+  onGenerateVideo?: (characterId?: string) => void | Promise<void>;
   lastAssistantMessageId: string | null;
   onOpenSettings: (event?: ReactMouseEvent<HTMLElement>, options?: { initialSection?: "autonomous" | null }) => void;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
@@ -101,6 +113,7 @@ interface ConversationViewProps {
     variant: "origin" | "scene";
     sceneChatId?: string;
     sceneChatName?: string;
+    repliesAllowed?: boolean;
     originChatId?: string;
     packageOrigin?: ScenePackageOrigin | null;
     description?: string;
@@ -309,18 +322,6 @@ function ConversationBackground({
   ) : null;
 }
 
-/** The chat's package integrations the user turned on (Calls, which keeps its header button, aside). */
-function selectEnabledConversationPackages(installed: InstalledCapabilityPackage[], chatMeta: Record<string, any>) {
-  if (chatMeta.enableAgents !== true) return [];
-  const activeAgentIds: string[] = Array.isArray(chatMeta.activeAgentIds) ? chatMeta.activeAgentIds : [];
-  return installed.filter((item) => {
-    if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
-    if (item.manifest.kind.includes("conversation-calls")) return false;
-    const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
-    return activeAgentIds.includes(item.id) || contributedAgentIds.some((id: string) => activeAgentIds.includes(id));
-  });
-}
-
 /** Package toolbars (the conversation-toolbar slot) as control windows that minimize to bubbles. */
 export function ConversationPackageWindows({
   chatId,
@@ -383,11 +384,17 @@ export function ConversationView({
   onDelete,
   onRegenerate,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
   onPeekPrompt,
   onIllustrate,
   onGenerateSelfie,
+  onGenerateVideo,
   lastAssistantMessageId,
   onOpenSettings,
   onOpenScheduleEditor,
@@ -424,9 +431,7 @@ export function ConversationView({
   const gameSetup = useConversationGamesStore((s) => (s.setup?.chatId === chatId ? s.setup : null));
   const closeGameSetup = useConversationGamesStore((s) => s.closeSetup);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
-  const turnGamePackages = installedCapabilities.filter(
-    (item) => item.status === "active" && item.manifest.kind.includes("turn-game") && item.manifest.entrypoints.client,
-  );
+  const turnGamePackages = selectConversationTurnGamePackages(installedCapabilities);
   const hasLiveStream = isStreaming;
   const streamBuffer = useThrottledStreamBuffer();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
@@ -539,9 +544,7 @@ export function ConversationView({
     personaInfo,
     toolbarButtonClass: getChatToolbarButtonClass({ sizeClassName: CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS }),
   };
-  const conversationSurfacePackages = selectEnabledConversationPackages(installedCapabilities, chatMeta).filter(
-    (item) => item.manifest.contributions?.slots?.includes("conversation-surface"),
-  );
+  const conversationSurfacePackages = selectConversationSurfacePackages(installedCapabilities, chatMeta);
   const conversationCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
   // Like the Roleplay strip, the see-through header lets touches through to the transcript except on its controls.
   const renderHeader = () => (
@@ -1302,11 +1305,7 @@ export function ConversationView({
         {/* Load More */}
         {hasNextPage && (
           <div className="mari-chat-load-more flex justify-center py-3">
-            <button
-              onClick={handleLoadMore}
-              disabled={isFetchingNextPage}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-all hover:bg-[var(--accent)] disabled:opacity-50"
-            >
+            <button onClick={handleLoadMore} disabled={isFetchingNextPage} className={HISTORY_PAGER_BUTTON_CLASS}>
               {isFetchingNextPage ? <Loader2 size="0.75rem" className="animate-spin" /> : <ChevronUp size="0.75rem" />}
               {localizeUi("ui.chat.chatroleplaysurface.loadMore")}
             </button>
@@ -1414,6 +1413,10 @@ export function ConversationView({
                 onDelete={onDelete}
                 onRegenerate={onRegenerate}
                 onEdit={onEdit}
+                failedReply={msg.id === failedReplyMessageId}
+                failedReplyReason={failedReplyReason}
+                onRetryFailedReply={onRetryFailedReply}
+                replyCheckup={msg.id === replyCheckupMessageId ? replyCheckup : undefined}
                 onSetActiveSwipe={onSetActiveSwipe}
                 onToggleHiddenFromAI={onToggleHiddenFromAI}
                 onPeekPrompt={() => onPeekPrompt(msg.id)}
@@ -1543,7 +1546,12 @@ export function ConversationView({
 
         {/* Scene banner — inline at bottom of messages (origin variant only); hidden during a turn-game */}
         {sceneInfo?.variant === "origin" && (
-          <SceneBanner variant="origin" sceneChatId={sceneInfo.sceneChatId} sceneChatName={sceneInfo.sceneChatName} />
+          <SceneBanner
+            variant="origin"
+            sceneChatId={sceneInfo.sceneChatId}
+            sceneChatName={sceneInfo.sceneChatName}
+            repliesAllowed={sceneInfo.repliesAllowed}
+          />
         )}
 
         <div ref={messagesEndRef} className="h-1" />
@@ -1639,6 +1647,7 @@ export function ConversationView({
         onPeekPrompt={onPeekPrompt}
         onIllustrate={onIllustrate}
         onGenerateSelfie={onGenerateSelfie}
+        onGenerateVideo={onGenerateVideo}
       />
     </div>
   );

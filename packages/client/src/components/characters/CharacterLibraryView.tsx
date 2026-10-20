@@ -31,6 +31,7 @@ import {
 } from "../../lib/card-library-search";
 import { estimateCharacterCardTokens, formatEstimatedTokens } from "../../lib/character-token-count";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
+import { resolveSelfCardAssets } from "../../lib/card-asset-links";
 import { normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
@@ -148,12 +149,15 @@ function truncateText(content: string, maxLength: number) {
 }
 
 function getCharacterSections(char: ParsedCharacterRow): LibrarySection[] {
+  // card://self gallery images, such as greeting images saved locally (#7221), show from this character's gallery.
   return [
     { title: "Description", content: getText(char.parsed.description) },
     { title: "Personality", content: getText(char.parsed.personality) },
     { title: "Scenario", content: getText(char.parsed.scenario) },
     { title: "Opening Message", content: getText(char.parsed.first_mes) },
-  ].filter((section) => section.content);
+  ]
+    .map((section) => ({ ...section, content: resolveSelfCardAssets(section.content, char.id) }))
+    .filter((section) => section.content);
 }
 
 function getPersonaSections(persona: Persona): LibrarySection[] {
@@ -595,9 +599,15 @@ export function CharacterLibraryView() {
                 {copy.heading}
               </h1>
               <p className="text-xs text-[var(--marinara-chat-chrome-panel-muted)] md:text-sm">
-                {filteredCards.length} {localizeUi("ui.characters.characterlibraryview.outOf")} {cards.length}{" "}
-                {localizeUi("ui.characters.characterlibraryview.card")}
-                {cards.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}
+                {hasNextPage
+                  ? localizeUi("ui.characters.characterlibraryview.loadedCount", {
+                      visible: filteredCards.length,
+                      loaded: cards.length,
+                    })
+                  : localizeUi("ui.characters.characterlibraryview.cardCount", {
+                      visible: filteredCards.length,
+                      count: cards.length,
+                    })}
               </p>
             </div>
           </div>

@@ -101,7 +101,7 @@ command is explained in the composer; it is never executed by the guest.
 | Group responses | Host-selected approved AI roster and existing sequential/smart/manual generation behavior. | AI identity stays distinct from human persona snapshots. `{{user}}` uses the reviewed host persona, never the last guest to speak. |
 | Conversation schedules and autonomy | Existing server scheduler, candidate/intent logic, cooldown and busy delays; dispatch through the same room claim. | No guest scheduler. Stop/paused rooms and Game cannot generate from timers. With no human view or admitted peer seen for 45 seconds, room autonomy pauses. |
 | Conversation `schedule_update`, `memory`, `react` | Existing Engine handlers under the room policy. | Schedule/memory changes remain room-local; reactions must target this chat and carry no custom image asset. No global character-memory or presence updates. |
-| Roleplay notes, reminders, rolls and whispers | Existing command parsing and host handler; approved participant IDs resolve recipients. | Private notes stay private. A whisper appears only in the recipient's filtered snapshot; the host still owns the stored data. |
+| Roleplay notes, reminders, rolls and whispers | Existing command parsing and host handler; approved participant IDs resolve recipients. | Private notes stay private. A whisper appears only in the recipient's filtered snapshot; the host still owns the stored data. Room agents never read whispers, since every participant sees their output. |
 | Cross-chat scenes and browser reminders | Restricted because their ordinary flow creates/navigates linked private chats or uses a browser-local timer. | Describe a scene in the shared transcript; use host-coordinated Conversation schedules for autonomous messages. No received command creates a private chat or local reminder. |
 | Lorebooks and memories | Host-reviewed attached/room-owned books and room-local conversation memories. | Prompt context only, not library exports. Implicit global books, linked private chats and global card memories are excluded. |
 | Engine trackers, dice, state, summaries and variables | Explicit allowlists at the real tool/agent executor, not only in model prompts. | Safe public fields may be projected; raw agent output, hidden reasoning, debug prompts and private GM fields are withheld. Game effects stay behind the round claim. |
@@ -121,6 +121,14 @@ bounded operation receipts. A retry returns its prior result; a replay remains
 stale after its receipt leaves the 128-entry cache. Persona snapshots on messages
 never change when a player later changes persona. Human and AI persona names must
 be unambiguous for targeted whispers/checks.
+
+Display and persona names are public, so they never prove who owns a seat. A
+player who leaves or goes quiet gets their old seat back only when their Engine
+presents that seat's private rejoin key: the session token from the admission that
+first seated them, sent again as the bearer of the new join request. Without it,
+a request using the same names gets a name conflict and the seat's sessions stay
+untouched. Both Engines keep the key in memory only. After a guest Engine restart,
+the host removes the old seat before that player can use the same persona again.
 
 Game persona changes apply at the next round boundary. Existing sheets, live
 stats, inventory ownership and tracker privacy keys follow the stable participant
@@ -157,6 +165,7 @@ It does not alter a user's certificates, data or configured AI connections.
 
 - `multiplayer-peer-security.regression.ts`: TLS chain/hostname/fingerprint checks before HTTP disclosure, malformed/oversized/redirect responses and cancellation.
 - `multiplayer-peer-server-security.regression.ts`: room-only routes, body/header/output/rate/concurrency limits and immediate listener shutdown.
+- `multiplayer-seat-key-security.regression.ts`: copied names or a wrong rejoin key never take a seat or its whispers; the key holder returns to the same seat, and the key never reaches other participants or stored chat data.
 - `multiplayer-room.regression.ts`: two Engines, admission, ownership, filtered history, revocation/replay, generation serialization and two-player Game rounds/recovery.
 - `multiplayer-session-flows.regression.ts`: two Engines over HTTPS with the actual generation and Game runtimes, a mock provider, and complete Conversation, Roleplay and Game rounds.
 - `multiplayer-generation-policy.regression.ts` and `generation-output.regression.ts`: executor restrictions, private library exclusion, prompt-local identities, shared generation lock and completion semantics.

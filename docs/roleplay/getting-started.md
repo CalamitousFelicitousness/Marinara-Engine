@@ -20,7 +20,7 @@ Create a new Roleplay chat to open the setup wizard. The wizard has five steps. 
 
 1. **Name & Connection**. Name the roleplay and choose which AI connection answers. You can leave the name blank.
 2. **Pick a Preset**. A preset controls the prompt structure and generation settings. The default preset works well for most chats.
-3. **Persona & Characters**. Choose the persona you play and which characters join the scene.
+3. **Persona & Characters**. Choose the persona you play and which characters join the scene. Some character cards can build a persona for you from a few questions: pick **Create your persona** and answer them. See [Interactive Onboarding](../characters/interactive-onboarding.md).
 4. **Attach Lorebooks**. A lorebook is a set of world facts that the AI reads when keywords appear. This step is optional.
 5. **Enable Agents**. Pick which agents run in this chat. You can add or remove agents later in **Chat Settings**, under **Agents**.
 
@@ -79,6 +79,8 @@ You can pop out any of these sections, including Search, to keep it in a separat
 
 Type your note in the box. For example: "Keep the tone dark and suspenseful. The villain is secretly an ally."
 
+For a longer note, make the box bigger. On a computer, drag its bottom corner. If you pop **Author's Notes** out into its own window, the box grows with the window.
+
 Below the note is an **Injection Depth** number field. It sets how far up the chat history the note is placed. The in-app help reads: "Depth 0 = after the latest message, 4 = four messages from the end." Depth 0 keeps the note closest to the newest reply.
 
 Author's Notes also works the same way in Game Mode and Conversation Mode. This guide is its main reference.
@@ -89,6 +91,8 @@ Author's Notes also works the same way in Game Mode and Conversation Mode. This 
 
 Its **Activity** tab lists agent outputs, called thought bubbles. You can dismiss each one or use **Clear all**. Custom agent outputs also appear here.
 
+While agents work, the **Agent activity** icon turns into a spinner. When an agent fails, a dot appears on the icon until you open **Agent activity**.
+
 If an agent failed on the last turn, a failed list appears with a retry button. You can also stop running agents, re-run all tracker agents, and use **Clear Trackers** from here. For a plain-language tour of the whole agent system, see [Agents: AI Helpers for Your Chats](../agents/agents-overview.md).
 
 An **Injections** tab appears only when **Debug mode** is on. Turn it on in **Settings**, under **Advanced**. This tab shows the prompt snippets that writer-style agents saved before the last reply. Writer-style agents include **Prose Guardian**, which rewrites replies to match your style rules, and the **Narrative Director**, which steers the plot.
@@ -97,19 +101,31 @@ You can view, edit, and re-run a saved snippet. An edit changes only what is use
 
 The Narrative Director has a **Push Story** button above the chat box. It arms the Director for the next reply only. The Narrative Director can also hold a hidden long-term arc called **Secret Plot**. See [Narrative Director and Secret Plot](narrative-director.md) for both.
 
+## Illustrations in the message
+
+In **Chat Settings → Agents → Roleplay Commands**, enable **Illustrations** to let characters request an image with `[illustrate: subject="..." characters="..."]`. The image uses the chat's Illustrator settings and appears below the message.
+
+Turn on **Render in-line** under **Illustrations** to show each image inside the message instead, at the place the character wrote the command, for example between two paragraphs. The image keeps its controls: select it to see its prompt, or use the **X** to remove it. The character is told it can place the command wherever the picture belongs. The setting applies to new images, so images already in the chat stay where they are. Automatic Illustrator images and the Visual Novel layout keep showing images as before.
+
 ## Whispers and secrets
 
 In **Chat Settings → Agents → Roleplay Commands**, enable **Whisper** to allow private asides, secrets, or visions inside a reply. It starts off. Choose whether **All** characters or only the appointed **Narrator** can use it. Like Personal Notes, it requires a solo chat or **Individual** group generation.
 
-The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret. Shared agents do not receive whispers.
+The command is `[whisper: character="name" text="the secret"]`. Name exactly one character in the chat or your selected persona. Of the characters, only that recipient and the appointed narrator receive the text in their prompts. An unknown or ambiguous name is ignored without exposing the secret.
 
-A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden or falls outside the selected history.
+Agents read whispers too, including Echo Chamber, trackers, Lorebook Keeper, Long-Term Memory and, in group chats, **Smart** response order, so a whisper to a character can make that character the one who replies. Each whisper is marked as private and names its recipient. Even so, what an agent writes, such as a lorebook entry, a tracker note or a rewritten reply, can reach characters the whisper wasn't meant for. In a hosted multiplayer room, agents and **Smart** response order get no whispers, because everyone in the room sees what agents write. Relationship Tracker and Memory Nag read the chat themselves and don't see whispers yet.
 
-Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. **Cancel** leaves it unchanged.
+A whisper stays at its place in the message. Whispers addressed to your persona are visible immediately; otherwise, choose **Reveal a secret** to read one. Revealing only changes your screen, not what any character knows. Secrets follow their message and active swipe, and leave the prompt when that message is hidden from everyone or falls outside the selected history.
+
+A whisper always reaches its recipient. If you use **Hide from AI** to hide a message only from some characters, the recipient still gets its whisper at that point in the story, but none of the rest of the message. Other characters who cannot see the message get nothing from it.
+
+Once a whisper is visible, choose **Edit whisper**, change the text, then **Save**. The correction stays with that message's swipe and is used in later prompts for its original recipient and the narrator. To take a whisper back, clear its text and choose **Save**: the whisper is removed from the message. **Cancel** leaves it unchanged.
 
 You can also write `[whisper: character="name" text="the secret"]` in your own Roleplay message to whisper to one chat character. Your own whispers are visible to you immediately. This works in ordinary chats without enabling multiplayer.
 
 The same command works when you edit a character's or the narrator's message: after you save, it becomes that message's whisper. Whisper text can span several lines and quote dialogue as is, for example `text=""I love you.""`.
+
+A message that holds nothing but a whisper is left out entirely for the characters it does not reach, so they do not see that anyone whispered. Its recipient and the appointed narrator still get it. A character also receives the message if you shared a private note on it with that character.
 
 ### Your private notes
 
@@ -133,7 +149,7 @@ Open the reply's command information and choose **Restore original message** to 
 
 ## CYOA choices
 
-**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. It works only in Roleplay Mode.
+**CYOA** stands for Choose Your Own Adventure. The **CYOA Choices** agent is off by default. When on, it adds clickable choice buttons after a reply. Clicking a choice sends it as your next message. To combine choices or edit one before sending, turn on **Add CYOA choices to the message box instead of sending them** in **Settings** > **General** > **Input & Editing**: clicking a choice then adds its text to your message box without sending. It works only in Roleplay Mode.
 
 ## Combat encounters
 

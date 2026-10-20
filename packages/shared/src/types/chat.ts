@@ -2,9 +2,15 @@
 // Chat & Message Types
 // ──────────────────────────────────────────────
 
-import type { MariWorkspaceTraceItem } from "./professor-mari-workspace.js";
+import type {
+  MariHeldChange,
+  MariWorkspaceActionResult,
+  MariWorkspaceTraceItem,
+  ProfessorMariAskContext,
+} from "./professor-mari-workspace.js";
 import type { GameDicePlaceholderRecord } from "../utils/dice-placeholder.js";
 import type { GenerationGuideSource } from "../utils/generation-guide.js";
+import type { ContextFitSummary, GenerationFallbackNotice } from "./generation-integration.js";
 import type { HapticFeedbackSensitivity } from "./haptic.js";
 import type { CustomEmojiSelectionPrefs } from "../schemas/custom-emoji.schema.js";
 import type { DiceRollResult, GameDicePoolConsumption, GameDicePoolMismatch } from "./game.js";
@@ -40,6 +46,17 @@ export interface KnowledgeAgentSourceSettings {
   sourceLorebookIds?: string[];
   /** Uploaded file source IDs. Used by Knowledge Retrieval only. */
   sourceFileIds?: string[];
+}
+
+/**
+ * What a Conversation video message starts from: a fresh selfie, the character's avatar (or
+ * sprite), a selfie with the avatar as fallback, or nothing (text-to-video).
+ */
+export const VIDEO_FIRST_FRAMES = ["picture_or_avatar", "picture", "avatar", "prompt_only"] as const;
+export type VideoFirstFrame = (typeof VIDEO_FIRST_FRAMES)[number];
+
+export function normalizeVideoFirstFrame(value: unknown): VideoFirstFrame {
+  return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : "picture_or_avatar";
 }
 
 export const CONVERSATION_COMMAND_KEYS = [
@@ -180,6 +197,20 @@ export interface ChatSummaryPromptTemplate {
 
 /** Server app-setting key for Roleplay Chat Summary prompt templates shared across all roleplays. */
 export const CHAT_SUMMARY_PROMPT_SETTINGS_KEY = "chat-summary-prompts";
+
+const PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX = "professor-mari-seen-run:";
+
+/** Per Professor Mari thread: the id of the newest run the user has seen in her window. */
+export function professorMariSeenRunSettingsKey(chatId: string) {
+  return `${PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX}${chatId}`;
+}
+
+export function isProfessorMariSeenRunSettingsKey(key: string) {
+  return (
+    key.startsWith(PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX) &&
+    /^[A-Za-z0-9_-]{1,80}$/.test(key.slice(PROFESSOR_MARI_SEEN_RUN_SETTINGS_PREFIX.length))
+  );
+}
 
 /** Global Roleplay Chat Summary prompt template settings. */
 export interface ChatSummaryPromptSettings {
@@ -336,7 +367,7 @@ export interface ChatMetadata {
   agentWriteApprovalRequired?: boolean;
   /** Per-agent enable overrides (agentId → boolean) */
   agentOverrides: Record<string, boolean>;
-  /** Agent IDs scoped to this chat. Non-empty = only these agents run; empty = use globally-enabled agents. */
+  /** Agent IDs that run in this chat. An empty list runs none. */
   activeAgentIds: string[];
   /** Per-chat selected named prompt template for each agent type. Missing/default = the agent's default prompt. */
   agentPromptTemplateIds?: Record<string, string>;
@@ -344,18 +375,32 @@ export interface ChatMetadata {
   illustratorIncludeCharacterAppearance?: boolean;
   /** Whether Illustrator should send matching character/persona avatar references to image providers. */
   illustratorUseAvatarReferences?: boolean;
+  /** Whether Roleplay video prompts get matched character appearance lines, like images with the setting above. */
+  illustratorVideoIncludeCharacterAppearance?: boolean;
   /** Optional per-chat LLM connection override used only to write Illustrator/selfie image prompts. */
   illustratorPromptConnectionId?: string | null;
   /** Optional per-chat image generation connection override used by Illustrator. */
   illustratorImageConnectionId?: string | null;
   /** Number of image variants generated for each Illustrator request. */
   illustratorImagesPerGeneration?: number;
+  /**
+   * Messages between automatic Illustrator runs in this chat: a whole number from 0 to 100, where 0 means
+   * it only runs when the user asks (Gallery or slash command). Missing/null = the agent's Run Interval.
+   */
+  illustratorRunInterval?: number | null;
   /** Whether Roleplay Illustrator may generate and activate a reusable background after a scene-location change. */
   illustratorAutoBackgroundsEnabled?: boolean;
   /** Whether Conversation selfie commands should send the matching character avatar as a reference image. */
   selfieUseAvatarReferences?: boolean;
   /** Whether Conversation selfie commands should append matched character card appearance text to image prompts. */
   selfieIncludeCharacterAppearance?: boolean;
+  /** Conversation video prompts get matched character appearance lines. */
+  selfieVideoIncludeCharacterAppearance?: boolean;
+  /**
+   * A Conversation video with no picture to start from (First frame: prompt only) sends the matched
+   * character's avatar or sprite as its reference image.
+   */
+  selfieVideoUseAvatarReferences?: boolean;
   /** Whether Game Mode scene illustrations should send matching character/persona avatar references. */
   gameImageUseAvatarReferences?: boolean;
   /** Whether Game Mode scene illustrations should append matched character-card appearance fields. */
@@ -515,6 +560,8 @@ export interface ChatMetadata {
   roleplayDocumentAudience?: RoleplayCommandAudience;
   roleplayWhisperAudience?: RoleplayCommandAudience;
   roleplaySoundConnectionId?: string | null;
+  /** Show each illustrate command's images inside the message, where the command was written. */
+  roleplayIllustrateInline?: boolean;
   /** Chat-scoped Intiface Central WebSocket URL for haptic manual and auto-connect. */
   hapticIntifaceUrl?: string | null;
   /** Haptic response style for any chat mode. Missing = standard. */
@@ -715,8 +762,10 @@ export interface ChatMetadata {
   gameStoryboardUseNovelAiCharacterPrompts?: boolean;
   /** Last generated scene-video record ID for this game. */
   gameLastSceneVideoId?: string | null;
-  /** Connection used for roleplay/gallery scene-video generation. */
+  /** Connection used for roleplay/gallery scene-video generation and Conversation video messages. */
   sceneVideoConnectionId?: string | null;
+  /** First frame of a Conversation video message; see `normalizeVideoFirstFrame`. */
+  sceneVideoFirstFrame?: VideoFirstFrame | null;
   /** Last generated roleplay/gallery scene-video record ID. */
   sceneLastVideoId?: string | null;
   /** Game-mode GM instruction override. Empty/null uses the built-in default prompt. */
@@ -817,6 +866,12 @@ export interface MessageAttachment {
   name?: string;
   prompt?: string;
   galleryId?: string;
+  /** Character who sent a Conversation selfie; older selfies lack it. */
+  characterName?: string;
+  /** For `type: "video"`: the generated scene video row this attachment plays. */
+  videoId?: string;
+  durationSeconds?: number;
+  aspectRatio?: string;
 }
 
 /** A reaction on a Conversation message: an emoji token + who reacted. */
@@ -911,14 +966,31 @@ export interface MessageExtra {
   roleplayCommandActivity?: RoleplayCommandActivity[] | null;
   /** Professor Mari workspace trace shown on the home assistant transcript. */
   mariWorkspaceTimeline?: MariWorkspaceTraceItem[] | null;
+  /** Trusted resource results from Professor Mari workspace app-data commands. */
+  mariWorkspaceActionResults?: MariWorkspaceActionResult[] | null;
+  /** Resource focus used for this Professor Mari exchange, retained for transcript context. */
+  professorMariContext?: ProfessorMariAskContext | null;
   /** True when this Mari turn deferred mutating commands behind an Accept action (#5725 Manual mode). */
   mariDeferredMutations?: boolean | null;
+  /** Slice 71: what those held commands would change, for the "Needs you" card. */
+  mariHeldChanges?: MariHeldChange[] | null;
+  /** The raw held commands, so Accept can apply exactly them server-side (server-validated on read). */
+  mariHeldCalls?: unknown;
+  /** Slice 70: the quick-reply chips this Mari turn offered (raw; the client sanitizes), so a reload keeps them. */
+  mariSuggestions?: unknown;
+  /**
+   * R14: why this Mari turn failed, on the turn's last saved message (her partial reply, or your message
+   * when she saved nothing), so a reload still shows it failed. `dismissed` once you close its card.
+   */
+  mariRunError?: { message: string; dismissed?: boolean } | null;
   /** Per-swipe sprite expressions from the Expression Engine agent */
   spriteExpressions?: Record<string, string> | null;
   /** Presentation-only ID-macro card references for merged Roleplay narrator avatars; never chat members. */
   referencedCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
+  /** An earlier Individual group reply: its `spriteExpressions` hold only its own character, not the whole turn. */
+  expressionTurnPart?: boolean;
   /** Per-swipe CYOA choices from the CYOA Choices agent */
   cyoaChoices?: Array<{ label: string; text: string }> | null;
   /** Presentation-only Game Mode cues retained so completed turns can be replayed without rerunning scene analysis. */
@@ -954,6 +1026,10 @@ export interface MessageExtra {
   privateNote?: string | null;
   /** Character IDs whose generation context excludes this message. Global hiddenFromAI takes precedence. */
   hiddenFromAICharacterIds?: string[];
+  /** Advanced Memory hid this message from these characters automatically; decided once per message. */
+  autoVisibility?: { decidedAt: string; hiddenCharacterIds: string[] } | null;
+  /** The user changed this message's character visibility, so automatic visibility never touches it. */
+  visibilityManual?: boolean;
   /** When true, Roleplay renders this generated assistant turn as a fresh bubble instead of grouping with the previous assistant turn. */
   startsNewAssistantBubble?: boolean;
   /** Structured dice roll payload rendered by the chat UI. */
@@ -1060,6 +1136,10 @@ export interface GenerationInfo {
   /** Time from generation start until reasoning yielded to visible output. */
   reasoningDurationMs?: number | null;
   finishReason: string | null;
+  /** What the context fit cut from this prompt, for the "replies got worse" checkup. */
+  contextFit?: ContextFitSummary | null;
+  /** Set when the chosen connection failed and the fallback wrote this reply (#7697). */
+  fallback?: GenerationFallbackNotice | null;
 }
 
 /** A swipe (alternate response) for a message. */

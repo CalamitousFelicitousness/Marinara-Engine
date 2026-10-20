@@ -418,6 +418,8 @@ test("Character-sheet resolution migrates once and remains independent after a s
       delete old.state.imageCharacterSheetWidth;
       delete old.state.imageCharacterSheetHeight;
       localStorage.setItem("marinara-engine-ui", JSON.stringify(old));
+      // A v99 Engine never saved the host-only copy, which would otherwise win over an older blob.
+      localStorage.removeItem("marinara-engine-ui:host");
       sessionStorage.setItem("sheet-migration-seeded", "true");
     });
     await page.reload();
@@ -677,6 +679,224 @@ test("Echo Chamber rejects malformed saved and live reactions without crashing t
     await expect(echo.getByText("Valid live reaction", { exact: true })).toBeVisible();
     await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
     expect(errors).toEqual([]);
+  } finally {
+    await data.cleanup();
+  }
+});
+
+const echoResult = (chatId: string, reaction: string, messageId?: string, swipeIndex?: number) => ({
+  type: "agent_result",
+  data: {
+    agentType: "echo-chamber",
+    agentName: "Echo Chamber",
+    resultType: "echo_message",
+    data: { reactions: [{ characterName: "Reader", reaction }] },
+    success: true,
+    error: null,
+    durationMs: 10,
+    chatId,
+    messageId,
+    swipeIndex,
+    generationId: "echo-7592-generation",
+  },
+});
+const sseBody = (events: unknown[]) => events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+const readEchoReactions = (page: Page) =>
+  page.evaluate(async () => {
+    const { useAgentStore } = await import("/src/stores/agent.store.ts" as string);
+    return (useAgentStore.getState().echoMessages as Array<{ reaction: string }>).map((m) => m.reaction);
+  });
+// Agent results the client turns away are logged with console.debug, so a dropped batch can be traced.
+const collectSkippedAgentLogs = (page: Page) => {
+  const logs: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "debug" && message.text().includes("Skipped")) logs.push(message.text());
+  });
+  return logs;
+};
+
+test("Echo Chamber shows reactions that arrive before a held new reply joins the chat (#7592)", async ({
+  page,
+  request,
+}) => {
+  const data = await fixture(request, "roleplay");
+  const skipped = collectSkippedAgentLogs(page);
+  try {
+    expect(
+      (
+        await request.patch(`/api/chats/${data.chat.id}/metadata`, {
+          data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (await request.patch(`/api/chats/${data.chat.id}`, { data: { connectionId: "echo-7592-connection" } })).ok(),
+    ).toBeTruthy();
+    await page.route(`**/api/agents/echo-messages/${data.chat.id}`, (route) => route.fulfill({ json: [] }));
+    const replyId = "__echo_7592_reply__";
+    const content = "The lab door creaks open.";
+    // Prose Guardian holds the saved reply out of the message list until the stream's cleanup,
+    // so the parallel Echo Chamber results reach the client first.
+    await page.route("**/api/generate", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: sseBody([
+          { type: "token", data: content },
+          {
+            type: "message_saved",
+            data: {
+              id: replyId,
+              chatId: data.chat.id,
+              role: "assistant",
+              characterId: data.character.id,
+              content,
+              activeSwipeIndex: 0,
+              extra: { postProcessingPending: { agentType: "prose-guardian" } },
+              createdAt: new Date().toISOString(),
+            },
+          },
+          { type: "agent_start", data: { phase: "parallel" } },
+          echoResult(data.chat.id, "Reaction to the new reply", replyId, 0),
+          echoResult(data.chat.id, "Reaction to another swipe", replyId, 1),
+          echoResult(data.chat.id, "Reaction to another reply", "__echo_7592_other__", 0),
+          {
+            type: "text_rewrite",
+            data: { editedText: content, rewriteApplied: false, originalText: content, agentType: "prose-guardian" },
+          },
+          { type: "done", data: {} },
+        ]),
+      }),
+    );
+    await open(page, data.chat.id, { echoChamberOpen: true, enableStreaming: true });
+    await page.locator("textarea[data-chat-composer]").fill("Open the door.");
+    await page.locator("button.mari-chat-send-btn").click();
+
+    await expect.poll(() => readEchoReactions(page)).toContain("Reaction to the new reply");
+    await expect
+      .poll(() =>
+        page.evaluate(async (chatId) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return Boolean(useChatStore.getState().abortControllers.get(chatId));
+        }, data.chat.id),
+      )
+      .toBe(false);
+    // The whole stream has run, so the other swipe's and the other reply's reactions were turned away.
+    expect(await readEchoReactions(page)).toEqual(["Reaction to the new reply"]);
+    await expect
+      .poll(() => skipped)
+      .toEqual([
+        expect.stringContaining(`[Agent] Skipped Echo Chamber (echo-chamber): reply ${replyId} swipe 1 `),
+        expect.stringContaining("[Agent] Skipped Echo Chamber (echo-chamber): reply __echo_7592_other__ swipe 0 "),
+      ]);
+    await page.evaluate(async () => {
+      const { useAgentStore } = await import("/src/stores/agent.store.ts" as string);
+      useAgentStore.getState().revealNextEchoMessage();
+    });
+    const echo = page.locator('[data-roleplay-agent-window="echo"]');
+    await expect(echo.getByText("Reaction to the new reply", { exact: true })).toBeVisible();
+
+    // A manual rerun turns away a result for a swipe that is not on screen and logs it the same way.
+    await page.route("**/api/generate/retry-agents", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: sseBody([
+          echoResult(data.chat.id, "Rerun reaction to another swipe", data.message.id, 1),
+          echoResult(data.chat.id, "Rerun reaction", data.message.id, 0),
+          { type: "done", data: {} },
+        ]),
+      }),
+    );
+    await echo.getByRole("button", { name: "Re-run Echo Chamber" }).click();
+    await expect.poll(() => readEchoReactions(page)).toContain("Rerun reaction");
+    expect(await readEchoReactions(page)).not.toContain("Rerun reaction to another swipe");
+    await expect
+      .poll(() => skipped.slice(2))
+      .toEqual([
+        expect.stringContaining(`[Retry Agent] Skipped Echo Chamber (echo-chamber): reply ${data.message.id} swipe 1 `),
+      ]);
+  } finally {
+    await data.cleanup();
+  }
+});
+
+test("Agent results for a reply deleted while its stream is live stay turned away (#7592)", async ({
+  page,
+  request,
+  isMobile,
+}) => {
+  const data = await fixture(request, "conversation");
+  const skipped = collectSkippedAgentLogs(page);
+  try {
+    expect(
+      (
+        await request.patch(`/api/chats/${data.chat.id}/metadata`, {
+          data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (await request.patch(`/api/chats/${data.chat.id}`, { data: { connectionId: "echo-7592-connection" } })).ok(),
+    ).toBeTruthy();
+    // Control only the generation stream, so the reply can be deleted between its save and its agent results.
+    await page.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (new URL(url, location.origin).pathname !== "/api/generate") return nativeFetch(input, init);
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              Object.assign(window, { echoStream: controller });
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        );
+      };
+    });
+    const emit = (...events: unknown[]) =>
+      page.evaluate((body) => {
+        const stream = (window as unknown as { echoStream: ReadableStreamDefaultController }).echoStream;
+        stream.enqueue(new TextEncoder().encode(body));
+      }, sseBody(events));
+    await open(page, data.chat.id, { enableStreaming: true });
+    await page.locator("textarea[data-chat-composer]").fill("Open the door.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => "echoStream" in window)).toBe(true);
+
+    const reply = await (
+      await request.post(`/api/chats/${data.chat.id}/messages`, {
+        data: { role: "assistant", characterId: data.character.id, content: "The lab door creaks open." },
+      })
+    ).json();
+    await emit({ type: "token", data: reply.content }, { type: "message_saved", data: reply });
+    const row = page.locator(`[data-message-id="${reply.id}"]`);
+    await expect(row).toBeVisible();
+    if (isMobile) await row.click({ position: { x: 80, y: 24 } });
+    else await row.hover();
+    await row.getByRole("button", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog", { name: "Delete message" })
+      .getByRole("button", { name: "Delete this message" })
+      .click();
+    await expect(row).toHaveCount(0);
+
+    // The stream is still live, but the deleted reply is no longer on screen, so its result is turned away.
+    // The result with no reply is applied, which shows the one before it was handled.
+    await emit(
+      echoResult(data.chat.id, "Reaction to the deleted reply", reply.id, 0),
+      echoResult(data.chat.id, "Reaction with no reply"),
+    );
+    await expect.poll(() => readEchoReactions(page)).toContain("Reaction with no reply");
+    expect(await readEchoReactions(page)).toEqual(["Reaction with no reply"]);
+    await expect
+      .poll(() => skipped)
+      .toEqual([expect.stringContaining(`[Agent] Skipped Echo Chamber (echo-chamber): reply ${reply.id} swipe 0 `)]);
+    await emit({ type: "done", data: {} });
+    await page.evaluate(() =>
+      (window as unknown as { echoStream: ReadableStreamDefaultController }).echoStream.close(),
+    );
   } finally {
     await data.cleanup();
   }

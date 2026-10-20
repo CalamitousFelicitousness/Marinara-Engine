@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────
 // Game: Narration Area (VN-style segmented box)
 // ──────────────────────────────────────────────
+import { artPortraitFor } from "@marinara-engine/shared";
+import { ArtIcon } from "./ArtIcon";
 import {
   useEffect,
   useLayoutEffect,
@@ -65,6 +67,7 @@ import { useGameModeStore } from "../../stores/game-mode.store";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
+import { CHARACTER_COLOR_CLASS, GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { isVisibleGameMessage } from "../../lib/chat-message-visibility";
 import { readDiceRollResults } from "../../lib/dice-roll-result";
@@ -73,7 +76,12 @@ import { createMessageMacroResolver, findCharacterByName } from "../../lib/chat-
 import { animateTextHtml } from "./AnimatedText";
 import { ttsService } from "../../lib/tts-service";
 import { getOrCreateCachedTTSAudioBlob } from "../../lib/tts-audio-cache";
-import { resolveTTSNarratorVoice, resolveTTSVoiceForSpeaker, splitTTSChunks } from "../../lib/tts-dialogue";
+import {
+  findTTSCharacterIdBySpeakerName,
+  resolveTTSNarratorVoice,
+  resolveTTSVoiceForSpeaker,
+  splitTTSChunks,
+} from "../../lib/tts-dialogue";
 import {
   buildGameTranslationSource,
   formatGameTranslationSegment,
@@ -92,8 +100,11 @@ import {
 import { applyGameDiceMarkers, formatGameDiceModifier, formatGameDiceRolls } from "../../lib/game-dice-markers";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "../chat/message-selection-styles";
+import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { formatNarration } from "./game-narration-format";
+import { publishAvatarGameLine } from "../../features/avatars/director/game-line-feed";
+import { prepareAvatarAudioBlob, setGameVoicePlayback } from "../../features/avatars/audio/avatar-audio";
 import {
   CroppedAvatar,
   ExpressionReaction,
@@ -245,7 +256,15 @@ function narrationSegmentAnchorKey(segment: NarrationSegment): string {
 
 type GameSegmentVoiceEntry =
   | { status: "loading"; speaker?: string; tone?: string; voice?: string; chunks: string[] }
-  | { status: "ready"; speaker?: string; tone?: string; voice?: string; chunks: string[]; urls: string[] }
+  | {
+      status: "ready";
+      speaker?: string;
+      tone?: string;
+      voice?: string;
+      chunks: string[];
+      urls: string[];
+      blobs: Blob[];
+    }
   | { status: "error"; speaker?: string; tone?: string; voice?: string; chunks: string[] };
 
 const GAME_VOICE_CACHE_MAX_ENTRIES = 80;
@@ -355,6 +374,8 @@ function GameGenerationStatus() {
 }
 
 interface GameNarrationProps {
+  /** Clicks on its empty space reach what is drawn beneath it (the overworld, worldgen W8). */
+  passThrough?: boolean;
   messages: NarrationMessage[];
   isStreaming: boolean;
   characterMap: CharacterMap;
@@ -688,6 +709,10 @@ function buildVoiceConfigSignature(config?: TTSConfig | null): string {
     config.baseUrl,
     config.model,
     config.voice,
+    config.skipTagContent ? "skip-tags" : "read-tags",
+    config.skipCodeBlocks !== false ? "skip-code" : "read-code",
+    config.skipBracketedText ? "skip-brackets" : "read-brackets",
+    config.roleplaySpeakerExtractorEmotionsEnabled ? "emotions" : "no-emotions",
     config.narratorVoiceEnabled ? "narrator-voice" : "narrator-global",
     config.narratorVoice,
     config.voiceMode,
@@ -1113,6 +1138,7 @@ function formatSkillCheckLogContent(
 }
 
 export function GameNarration({
+  passThrough = false,
   messages,
   isStreaming,
   characterMap,
@@ -1207,6 +1233,11 @@ export function GameNarration({
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
     personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+  // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
+  // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
+  // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
+  const dialogueColorClass = (color?: string) =>
+    color && color !== fallbackDialogueColor ? CHARACTER_COLOR_CLASS : undefined;
   const useStackedLogDisplay = gameDialogueDisplayMode === "stacked";
   const showLogsButton = !useStackedLogDisplay;
   const [editingContent, setEditingContent] = useState<string | null>(null);
@@ -1358,6 +1389,9 @@ export function GameNarration({
     }
     return byName;
   }, [activeCharacterEntries, personaInfo, speakerAvatarMap]);
+  // Name colors fall back to the line's dialogue color; only a speaker's own color outranks Apply preset colors.
+  const nameColorClass = (speaker?: string | null) =>
+    speaker && findNamedMapValue(speakerNameColors, speaker) ? CHARACTER_COLOR_CLASS : undefined;
 
   const gameNpcs = useGameModeStore((s) => s.npcs);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -2299,6 +2333,7 @@ export function GameNarration({
     // Tear down every live voice element, not just the current ref — interleaved
     // playback attempts can orphan earlier elements off the single ref (#2647).
     for (const audio of gameVoiceActiveAudiosRef.current) {
+      setGameVoicePlayback(null, audio);
       audio.pause();
       audio.onended = null;
       audio.onerror = null;
@@ -2331,6 +2366,7 @@ export function GameNarration({
           queueLogScrollTopRestore();
           setGameVoicePlayingKey(null);
           setGameVoicePausedKey(null);
+          if (gameVoiceAudioRef.current) setGameVoicePlayback(null, gameVoiceAudioRef.current);
           gameVoiceAudioRef.current = null;
           return;
         }
@@ -2360,6 +2396,15 @@ export function GameNarration({
         audio.muted = normalizedGameVoiceVolume <= 0;
         gameVoiceActiveAudiosRef.current.add(audio);
         gameVoiceAudioRef.current = audio;
+        const blob = entry.blobs[urlIndex];
+        if (blob)
+          setGameVoicePlayback({
+            element: audio,
+            blob,
+            chatId: latestAssistant?.chatId ?? null,
+            characterId: findTTSCharacterIdBySpeakerName(entry.speaker, activeCharacterEntries),
+            text: entry.chunks[urlIndex] ?? "",
+          });
 
         let started = false;
         const markStarted = () => {
@@ -2368,6 +2413,7 @@ export function GameNarration({
           options?.onStarted?.(key);
         };
         const markFailed = () => {
+          setGameVoicePlayback(null, audio);
           gameVoiceActiveAudiosRef.current.delete(audio);
           if (gameVoiceSequenceRef.current !== sequence || gameVoiceAudioRef.current !== audio) return;
           queueLogScrollTopRestore();
@@ -2379,6 +2425,7 @@ export function GameNarration({
 
         audio.onplaying = markStarted;
         audio.onended = () => {
+          setGameVoicePlayback(null, audio);
           gameVoiceActiveAudiosRef.current.delete(audio);
           if (gameVoiceSequenceRef.current !== sequence || gameVoiceAudioRef.current !== audio) return;
           urlIndex += 1;
@@ -2406,7 +2453,13 @@ export function GameNarration({
 
       playNext();
     },
-    [normalizedGameVoiceVolume, queueLogScrollTopRestore, stopGameVoicePlayback],
+    [
+      activeCharacterEntries,
+      latestAssistant?.chatId,
+      normalizedGameVoiceVolume,
+      queueLogScrollTopRestore,
+      stopGameVoicePlayback,
+    ],
   );
 
   const playGameVoiceKey = useCallback(
@@ -2446,6 +2499,9 @@ export function GameNarration({
     setGameVoicePausedKey(null);
     void audio.play().catch(() => {
       if (gameVoiceAudioRef.current !== audio) return;
+      // An interrupted play() promise can reject while the resumed clip is genuinely playing (#2647).
+      if (!audio.paused && !audio.ended) return;
+      setGameVoicePlayback(null, audio);
       setGameVoicePlayingKey(null);
       setGameVoicePausedKey(null);
       gameVoiceAudioRef.current = null;
@@ -3172,6 +3228,28 @@ export function GameNarration({
     onActiveSpeakerChange(next);
   }, [active, speakerAvatarInfos, spriteMap, onActiveSpeakerChange]);
 
+  // Avatars show the line on screen with the Game Master's expression for it (not while reviewing past turns).
+  useEffect(() => {
+    if (messageOffset !== 0) return;
+    const key = active ? getVoiceKeyForSegment(active) : null;
+    const entry = key ? gameVoiceCacheRef.current.get(key) : null;
+    publishAvatarGameLine(latestAssistant?.chatId ?? null, active, {
+      expected:
+        gameVoiceEnabled &&
+        !!key &&
+        (entry?.status === "ready" || (!disableVoiceGeneration && entry?.status !== "error")),
+      pending: gameVoiceEnabled && !!key && (!entry || entry.status === "loading") && !disableVoiceGeneration,
+    });
+  }, [
+    active,
+    disableVoiceGeneration,
+    gameVoiceEnabled,
+    gameVoiceVersion,
+    getVoiceKeyForSegment,
+    latestAssistant?.chatId,
+    messageOffset,
+  ]);
+
   // How many segments are prepended before the actual GM narration segments
   const playerSegmentOffset = latestUserMessage?.content && latestAssistant ? 1 : 0;
 
@@ -3370,6 +3448,7 @@ export function GameNarration({
           if (controller.signal.aborted) break;
           try {
             const blob = await generateGameVoiceJobBlob(job, controller);
+            prepareAvatarAudioBlob(blob);
             blobs.push(blob);
           } catch (err) {
             if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) break;
@@ -3390,6 +3469,7 @@ export function GameNarration({
               tone: audioJobs[0]?.tone,
               voice: audioJobs[0]?.voice,
               urls,
+              blobs,
             });
           } else {
             for (const url of urls) URL.revokeObjectURL(url);
@@ -3602,9 +3682,7 @@ export function GameNarration({
       }
       pendingRequests.clear();
       for (const entry of cachedVoices.values()) {
-        if (entry.status === "ready") {
-          for (const url of entry.urls) URL.revokeObjectURL(url);
-        }
+        revokeGameVoiceEntry(entry);
       }
       cachedVoices.clear();
     };
@@ -3901,7 +3979,7 @@ export function GameNarration({
   const NARRATION_META_BTN =
     "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
   const NARRATION_COUNT_BADGE =
-    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 dark:bg-white/90 dark:text-black dark:ring-black/20";
+    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 [-webkit-text-fill-color:currentColor] dark:bg-white/90 dark:text-black dark:ring-black/20";
   const ACTIVE_SEGMENT_ACTION_BTN =
     "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
   const LOG_SEGMENT_ACTION_BTN =
@@ -4808,7 +4886,7 @@ export function GameNarration({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center">
               <span
-                className="min-w-0 truncate text-[0.6875rem] font-bold"
+                className={cn("min-w-0 truncate text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                 style={
                   nameColorStyle(findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color) ?? {
                     color: "rgb(186 230 253)",
@@ -4830,6 +4908,7 @@ export function GameNarration({
                 className={cn(
                   "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                  dialogueColorClass(seg.color),
                 )}
                 style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                 dangerouslySetInnerHTML={{
@@ -4928,7 +5007,12 @@ export function GameNarration({
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 items-end px-3 pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] pt-20 md:pt-24 sm:px-6 md:pb-4">
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 items-end px-3 pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] pt-20 md:pt-24 sm:px-6 md:pb-4",
+        passThrough && "pointer-events-none",
+      )}
+    >
       {/* Readability scrim. It darkens the whole scene, not just the panel, so it has to fade
           out with the panel — otherwise collapsing hides the text but keeps the art dimmed. */}
       <div
@@ -4940,9 +5024,17 @@ export function GameNarration({
 
       <div
         data-tour="game-dialogue"
-        className="relative z-10 mx-auto flex h-full max-h-[calc(100svh-7rem)] min-h-0 w-full max-w-4xl flex-col justify-end md:max-h-[calc(100svh-8rem)]"
+        className={cn(
+          "relative z-10 mx-auto flex h-full max-h-[calc(100svh-7rem)] min-h-0 w-full max-w-4xl flex-col justify-end md:max-h-[calc(100svh-8rem)]",
+          passThrough && "pointer-events-none",
+        )}
       >
-        <div className="min-h-0 flex flex-1 flex-col justify-end overflow-hidden">
+        <div
+          className={cn(
+            "min-h-0 flex flex-1 flex-col justify-end overflow-hidden",
+            passThrough && "pointer-events-none [&>*]:pointer-events-auto",
+          )}
+        >
           {/* Stacked mode parks a second log card above the panel, so it collapses with it —
               otherwise "collapse" leaves stacked users looking at most of the same wall of text. */}
           {!effectiveCollapsed &&
@@ -4956,7 +5048,7 @@ export function GameNarration({
               >
                 <div
                   ref={stackedLogRef}
-                  className="flex max-h-[22svh] min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 [overflow-anchor:none] sm:max-h-[26svh] md:max-h-[32svh]"
+                  className="flex max-h-[22svh] min-h-0 flex-col gap-1.5 overflow-y-auto pr-1 [overflow-anchor:none] [overflow-wrap:anywhere] sm:max-h-[26svh] md:max-h-[32svh]"
                   onScroll={(e) => {
                     const el = e.currentTarget;
                     setStackedLogPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 32);
@@ -5080,6 +5172,7 @@ export function GameNarration({
                       line={displayedLine}
                       avatar={charAvatar}
                       color={charColor}
+                      colorClassName={dialogueColorClass(charColor)}
                       nameColor={charNameColor}
                       voiceControl={voiceControl}
                       translation={translationPanel}
@@ -5118,13 +5211,17 @@ export function GameNarration({
             nothing — GameSurface measures its bounding rect and ResizeObserves it to decide
             the HUD widget layout, and a null rect flips that layout to compact. */}
         {effectiveCollapsed ? (
-          collapsedNarrationHandle
+          passThrough ? (
+            <div className="pointer-events-auto contents">{collapsedNarrationHandle}</div>
+          ) : (
+            collapsedNarrationHandle
+          )
         ) : (
           <div
             ref={activePanelRef}
             data-game-skip-bg-nav="true"
             data-component="GameNarration.ActivePanel"
-            className="mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
+            className="pointer-events-auto mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
           >
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
@@ -5228,13 +5325,21 @@ export function GameNarration({
                                   }
                                 />
                               ) : (
-                                <img
-                                  src="/npc-silhouette.svg"
-                                  alt={active.speaker || "?"}
-                                  className={cn(
-                                    GAME_DIALOGUE_AVATAR_CLASS,
-                                    "object-cover transition-colors hover:border-white/30",
-                                  )}
+                                <ArtIcon
+                                  kind="portraits"
+                                  ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                                  label={active.speaker || undefined}
+                                  className={GAME_DIALOGUE_AVATAR_CLASS}
+                                  fallback={
+                                    <img
+                                      src="/npc-silhouette.svg"
+                                      alt={active.speaker || "?"}
+                                      className={cn(
+                                        GAME_DIALOGUE_AVATAR_CLASS,
+                                        "object-cover transition-colors hover:border-white/30",
+                                      )}
+                                    />
+                                  }
                                 />
                               )}
                             </button>
@@ -5274,10 +5379,18 @@ export function GameNarration({
                             }
                           />
                         ) : (
-                          <img
-                            src="/npc-silhouette.svg"
-                            alt={active.speaker || "?"}
-                            className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                          <ArtIcon
+                            kind="portraits"
+                            ids={[artPortraitFor(active.speaker ?? "", active.sprite)]}
+                            label={active.speaker || undefined}
+                            className={GAME_DIALOGUE_AVATAR_CLASS}
+                            fallback={
+                              <img
+                                src="/npc-silhouette.svg"
+                                alt={active.speaker || "?"}
+                                className={cn(GAME_DIALOGUE_AVATAR_CLASS, "object-cover")}
+                              />
+                            }
                           />
                         )}
                         <ExpressionReaction expression={active.sprite} />
@@ -5286,11 +5399,14 @@ export function GameNarration({
                       {/* Right: Name + Dialogue text */}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="mb-1.5 flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             {/* Inert theming hook. The inner span lets a skewed name plate counter-skew its
                               text; unstyled it collapses to plain inline text. */}
                             <span
-                              className="experience-dialogue-speaker text-sm font-bold"
+                              className={cn(
+                                "experience-dialogue-speaker text-sm font-bold [overflow-wrap:anywhere]",
+                                nameColorClass(active.speaker),
+                              )}
                               style={
                                 nameColorStyle(
                                   findNamedMapValue(speakerNameColors, active.speaker ?? "") ?? active.color,
@@ -5352,6 +5468,7 @@ export function GameNarration({
                                 className={cn(
                                   "text-sm leading-relaxed",
                                   active.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                  dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
                                     : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
@@ -5604,14 +5721,18 @@ export function GameNarration({
       {/* Logs modal */}
       {logsOpen && showLogsButton && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           data-game-skip-bg-nav="true"
           role="dialog"
           aria-modal="true"
           {...logsBackdropDismiss}
         >
           <div
-            className="relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-[var(--card)] shadow-2xl"
+            data-game-section="logs"
+            className={cn(
+              GAME_SECTION_CLASS,
+              "relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-[var(--card)] shadow-2xl",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
@@ -5638,7 +5759,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={loadOlderLogs}
-                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                       title={localizeUi("ui.game.gamenarration.loadOlderLogs")}
                     >
                       {localizeUi("ui.game.gamenarration.older")}
@@ -5647,7 +5768,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={showAllLogs}
-                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className={HISTORY_PAGER_BUTTON_CLASS}
                       title={localizeUi("ui.game.gamenarration.loadTheEntireSessionLog")}
                     >
                       {localizeUi("ui.noodle.stageprofilesourcepicker.all")}
@@ -5668,7 +5789,7 @@ export function GameNarration({
               </div>
             </div>
             <div
-              className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-4 [overflow-wrap:anywhere]"
               onScroll={(e) => {
                 if (hiddenLogCount <= 0) return;
                 if (e.currentTarget.scrollTop <= 8) loadOlderLogs();
@@ -5697,7 +5818,7 @@ export function GameNarration({
                       logScrolledRef.current = true;
                       loadOlderLogs();
                     }}
-                    className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                    className={HISTORY_PAGER_BUTTON_CLASS}
                   >
                     {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                     {hiddenLogCount})
@@ -6225,7 +6346,7 @@ export function GameNarration({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center">
                                 <span
-                                  className="text-[0.6875rem] font-bold"
+                                  className={cn("text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                                   style={
                                     nameColorStyle(
                                       findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color,
@@ -6247,6 +6368,7 @@ export function GameNarration({
                                   className={cn(
                                     "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
+                                    dialogueColorClass(seg.color),
                                   )}
                                   style={seg.color ? { ...narrationFontStyle, color: seg.color } : narrationFontStyle}
                                   dangerouslySetInnerHTML={{

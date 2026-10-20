@@ -82,6 +82,22 @@ try {
     3,
     "old settings gain the default",
   );
+  // A new chat's summary and recall budget is 10% of its context limit; saved settings keep their budget.
+  const savedBudget = async (chatId: string) =>
+    JSON.parse((await chats.getById(chatId))!.metadata as string).advancedMemory.summaryBudgetTokens;
+  assert.equal(normalizeAdvancedMemorySettings(undefined).summaryBudgetTokens, 6500);
+  assert.equal((await memory.status(chat.id)).settings.summaryBudgetTokens, 6500, "the new chat saved 10% of 65,000");
+  assert.equal(await savedBudget(chat.id), 6500);
+  for (const saved of [
+    { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, enabled: true, summaryBudgetTokens: 4096 },
+    { enabled: true, maxContextTokens: 32_000 },
+  ]) {
+    const older = await chats.create({ name: "Older settings", mode: "roleplay", characterIds: [] });
+    assert(older);
+    await chats.patchMetadata(older.id, { advancedMemory: saved });
+    await memory.updateSettings(older.id, { retrieveMaxScenes: 2 });
+    assert.equal(await savedBudget(older.id), 4096, "an existing chat keeps its budget, or the old 4,096 default");
+  }
   await chats.createMessagesBatch(
     chat.id,
     Array.from({ length: 65 }, (_, index) => ({
@@ -98,6 +114,12 @@ try {
           },
           { type: "image/png", filename: "uploaded.png", data: "data:image/png;base64,AAAA" },
           { type: "text/plain", filename: "clue.txt", data: "data:text/plain,READABLE_CLUE_TEXT" },
+          {
+            type: "video",
+            filename: "clip_1.mp4",
+            url: "/api/gallery/scene-videos/file/x/clip_1.mp4",
+            prompt: "VIDEO_PROMPT",
+          },
         ],
       },
     })),
@@ -132,12 +154,12 @@ try {
   assert.equal(recalled.recalledScenes!.match(/SCENE_RECAP/g)?.length, 3);
   assert.doesNotMatch(
     recalled.recalledScenes!,
-    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|content unavailable/u,
+    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|clip_1\.mp4|VIDEO_PROMPT|content unavailable/u,
   );
   assert.match(recalled.recalledScenes!, /READABLE_CLUE_TEXT/u, "readable attachments remain in recalled excerpts");
   assert.doesNotMatch(
     summaryInputs.join("\n"),
-    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|content unavailable/u,
+    /illustration_1|uploaded\.png|ILLUSTRATION_CAPTION|clip_1\.mp4|VIDEO_PROMPT|content unavailable/u,
   );
   assert.match(
     summaryInputs.join("\n"),

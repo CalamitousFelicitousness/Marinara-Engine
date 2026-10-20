@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WORLD_DEFAULT_ELEMENTS, worldElementId, type WorldElementSet } from "./world/elements.js";
 
 export const GAME_DIFFICULTIES = ["casual", "normal", "hard", "brutal"] as const;
 export type GameDifficulty = (typeof GAME_DIFFICULTIES)[number];
@@ -88,13 +89,17 @@ export function weatherHitPenalty(weather: CombatWeather | undefined, traits: Co
     (traits.projectile ? effects.projectilePenalty : 0) + (traits.requiresSight ? effects.sightPenalty : 0),
   );
 }
-export function weatherDamageMultiplier(weather: CombatWeather | undefined, element?: string): number {
+/** How the weather moves an element's hit: exposed rain and storms damp a hot element (fire) and feed a
+ *  charged one (lightning), as the game's element set (worldgen W6c) says which they are. */
+export function weatherDamageMultiplier(
+  weather: CombatWeather | undefined,
+  element?: string,
+  elements: WorldElementSet = WORLD_DEFAULT_ELEMENTS,
+): number {
   const effects = combatWeatherEffects(weather);
-  return element?.toLowerCase() === "fire"
-    ? effects.fireMultiplier
-    : element?.toLowerCase() === "lightning"
-      ? effects.lightningMultiplier
-      : 1;
+  const id = worldElementId(elements, element);
+  const favoured = elements.elements.find((each) => each.id === id)?.weather;
+  return favoured === "hot" ? effects.fireMultiplier : favoured === "charged" ? effects.lightningMultiplier : 1;
 }
 
 /** Classic uses opposed d20 rolls; five percentage points become one roll modifier. */

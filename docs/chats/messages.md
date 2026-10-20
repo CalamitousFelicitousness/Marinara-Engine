@@ -20,7 +20,7 @@ The buttons below appear on messages. Some only show up in certain situations, w
 | **Peek prompt** | Shows the exact prompt the AI received for this reply. | Only on the latest AI message |
 | **Stored guidance** | Shows the direction that steered this reply. | Only if the reply used a guided direction or was made by Impersonate |
 | **Branch from here** | Copies the chat up to this message into a new branch. | Always |
-| **View thoughts** | Opens the model's hidden reasoning text. | Only if the model returned reasoning |
+| **View model thoughts** | Opens the model's hidden reasoning text. | Only if the model returned reasoning |
 | **Delete** | Deletes the message. See below. | Always |
 | **Pause speaking** / **Resume speaking** / **Restart speaking** | Controls the spoken audio of a message. | Only when Text to Speech is on and speaking |
 
@@ -85,7 +85,11 @@ The AI context is the set of messages the app sends to the AI on each turn. Clic
 
 In a Roleplay group chat with more than one character, **Hide from AI** opens a compact avatar chooser. Select the group avatar to hide the message from everyone, or select one or more character avatars to hide it only from those characters. Selecting everyone clears individual selections, while selecting an individual character turns off the everyone option. The crossed-eye marker on the message shows the avatars of the characters who cannot see it. In a one-character chat, the button continues to hide or unhide the message directly.
 
+A whisper inside a message still reaches its recipient when you hide the message only from that character. They get the whisper, but none of the rest of the message. Hiding the message from everyone removes its whispers too. See [Whispers and secrets](../roleplay/getting-started.md#whispers-and-secrets).
+
 You can also hide messages with `/hide [range] [name (optional)]`, for example `/hide 3-8`. In Roleplay, `/hide 3-8 Maukie` hides them only from Maukie; omitting the name hides them from everyone. `/unhide [range]` restores globally hidden messages. To undo character-specific hiding, use the avatar chooser in a group Roleplay chat, or the message's **Unhide from AI** action in a one-character Roleplay chat. Message numbers start at 1, counting from the first message in the chat. See [Slash Commands Reference](slash-commands.md) for formats and examples.
+
+When Advanced Memory's **Decide who sees new messages** is on, new messages in a group chat where characters reply one by one are hidden from absent characters automatically, with the same marker. Changing a message's choice yourself always wins; see [Deciding who sees new messages](../agents/memory.md#deciding-who-sees-new-messages).
 
 ## Message display toggles
 
@@ -95,6 +99,8 @@ Two toggles change what extra detail shows on messages. Both live in **Settings*
 - **Show token usage on messages**: adds a per-message token count to AI replies. A token is a small piece of text the AI reads and writes. The count shows the prompt tokens and completion tokens for that reply. When available, it also shows cache hits and how long the reply took.
 
 A related toggle in the same **Message Tools** section, **Show model name on messages**, adds the name of the AI model that wrote each reply. It is also off by default.
+
+When older messages had to be left out of the prompt to make it fit, a short note under the reply says how many, for example "1109 older messages not sent". To hide this note under the reply, turn off **Show "older messages not sent" note** in the same section. Opening Checkup can still show it. It is on by default. Notes about a reply that was cut off or came back empty still show.
 
 ## Related guides
 

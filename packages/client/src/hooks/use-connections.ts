@@ -3,9 +3,15 @@ import { showConfirmDialog } from "../lib/app-dialogs";
 // ──────────────────────────────────────────────
 // React Query: Connection hooks
 // ──────────────────────────────────────────────
-import { MAX_PINNED_MODELS, parsePinnedModels, type ModelParameterCapabilities } from "@marinara-engine/shared";
+import {
+  DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY,
+  MAX_PINNED_MODELS,
+  parsePinnedModels,
+  type ModelParameterCapabilities,
+  type PlanUsage,
+} from "@marinara-engine/shared";
 import type { RemoteConnectionModel } from "../lib/connection-model-selection";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { ApiError, api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
 import { useUIStore } from "../stores/ui.store";
@@ -25,7 +31,28 @@ export const connectionKeys = {
   detail: (id: string) => [...connectionKeys.all, "detail", id] as const,
   /** Invalidated with every connection save, so a new key or address reloads the list. */
   models: (id: string) => [...connectionKeys.all, "models", id] as const,
+  defaultEmbedding: () => [...connectionKeys.all, "default-embedding"] as const,
 };
+
+const DEFAULT_EMBEDDING_PATH = `/app-settings/${DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY}`;
+
+/** Connection defaults > Embeddings: a connection id, the local sidecar id, or null. */
+export function useDefaultEmbeddingConnection() {
+  return useQuery({
+    queryKey: connectionKeys.defaultEmbedding(),
+    queryFn: () => api.get<{ connectionId: string | null }>(DEFAULT_EMBEDDING_PATH),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSetDefaultEmbeddingConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionId: string | null) =>
+      api.put<{ connectionId: string | null }>(DEFAULT_EMBEDDING_PATH, { connectionId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: connectionKeys.defaultEmbedding() }),
+  });
+}
 
 /** Refresh once per page load, keeping startup and the saved connection usable if a backend is offline. */
 export function useRefreshLocalContext() {
@@ -45,15 +72,18 @@ export function useRefreshLocalContext() {
   }, [qc]);
 }
 
+/** The connection list, for `useConnections` and for callers that must wait until it has loaded. */
+export const connectionListQuery = queryOptions({
+  queryKey: connectionKeys.list(),
+  // Deadline so a frozen host cannot leave isLoading true forever — this
+  // query gates the Support Diagnostics copy button alongside health (#5657).
+  queryFn: ({ signal }) => api.get<unknown[]>("/connections", { signal: requestTimeoutSignal(10_000, signal) }),
+  staleTime: 5 * 60_000,
+  retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
+});
+
 export function useConnections() {
-  return useQuery({
-    queryKey: connectionKeys.list(),
-    // Deadline so a frozen host cannot leave isLoading true forever — this
-    // query gates the Support Diagnostics copy button alongside health (#5657).
-    queryFn: ({ signal }) => api.get<unknown[]>("/connections", { signal: requestTimeoutSignal(10_000, signal) }),
-    staleTime: 5 * 60_000,
-    retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
-  });
+  return useQuery(connectionListQuery);
 }
 
 export function useConnection(id: string | null) {
@@ -93,12 +123,14 @@ export type CreateConnectionPayload = {
   imageGenerationQuality?: ImageGenerationQuality;
   videoGenerationSource?: string | null;
   videoService?: string | null;
+  videoPromptInstructions?: string | null;
   audioSource?: string | null;
   decisionSource?: DecisionSource | null;
   credentialsFromConnectionId?: string | null;
   maxStateTokens?: number | null;
   decisionTimeoutMs?: number | null;
   audioVoice?: string | null;
+  audioTimeoutMs?: number | null;
   audioSoundEffects?: boolean;
   audioMusic?: boolean;
   promptPresetId?: string | null;
@@ -173,6 +205,8 @@ export function useDeleteConnection() {
     },
     onSuccess: async (_data, id) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
+      // Deleting the default embedding connection clears that default on the server.
+      qc.invalidateQueries({ queryKey: connectionKeys.defaultEmbedding() });
       const activeChatId = useChatStore.getState().activeChatId;
       if (!activeChatId) return;
       const activeChat = qc.getQueryData<Chat>(chatKeys.detail(activeChatId));
@@ -189,19 +223,40 @@ export function useDeleteConnection() {
   });
 }
 
+/** Record a failed connection check so the omnibar can answer "fix this". */
+function recordConnectionFailure(id: string, action: string, error: unknown) {
+  useUIStore.getState().setLastAppError({
+    message: error instanceof Error ? error.message : String(error),
+    action,
+    retry: { kind: "open-connection", id },
+  });
+}
+
 export function useTestConnection() {
   return useMutation({
     mutationFn: (id: string) =>
       api.post<ConnectionTestResult>(`/connections/${id}/test`, { debugMode: useUIStore.getState().debugMode }),
+    onError: (error, id) => recordConnectionFailure(id, "Test connection", error),
+    // A failed check still answers 200 with `success: false`.
+    onSuccess: (result, id) =>
+      result.success
+        ? useUIStore.getState().setLastAppError(null)
+        : recordConnectionFailure(id, "Test connection", result.message),
   });
 }
 
 export function useTestMessage() {
   return useMutation({
     mutationFn: (id: string) =>
-      api.post<{ success: boolean; response: string; latencyMs: number }>(`/connections/${id}/test-message`, {
-        debugMode: useUIStore.getState().debugMode,
-      }),
+      api.post<{ success: boolean; response: string; latencyMs: number; error?: string }>(
+        `/connections/${id}/test-message`,
+        { debugMode: useUIStore.getState().debugMode },
+      ),
+    onError: (error, id) => recordConnectionFailure(id, "Send test message", error),
+    onSuccess: (result, id) =>
+      result.success
+        ? useUIStore.getState().setLastAppError(null)
+        : recordConnectionFailure(id, "Send test message", result.error ?? "Unknown error"),
   });
 }
 
@@ -385,13 +440,16 @@ export type NanoGptSubscriptionUsage = {
   provider: string;
 };
 
-/** Read the NanoGPT subscription quotas for the usage widget. */
-export function useNanoGptSubscriptionUsage(connectionId: string | null, enabled: boolean) {
+export type SubscriptionUsage = NanoGptSubscriptionUsage | PlanUsage;
+
+/** Read a connection's subscription usage for the usage widget. */
+export function useSubscriptionUsage(connectionId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: [...connectionKeys.detail(connectionId ?? ""), "subscription-usage"],
-    queryFn: () => api.get<NanoGptSubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
+    queryFn: () => api.get<SubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
     enabled: enabled && !!connectionId,
-    // Quotas move slowly and NanoGPT may rate limit reads; keep it calm.
+    // Quotas move slowly, NanoGPT and ChatGPT may rate limit reads, and a Claude
+    // reading starts a Claude Code process on the host; keep it calm.
     staleTime: 60_000,
     retry: false,
   });

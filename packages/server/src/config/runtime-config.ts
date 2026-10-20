@@ -17,6 +17,13 @@ const DEFAULT_PORT = 7860;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_DATA_DIR = resolve(SERVER_ROOT, "data");
 const DEFAULT_MAX_TOOL_ROUNDS = 100;
+/** The most tool rounds a Game Mode turn gets before it must narrate (MAX_TOOL_ROUNDS when lower). */
+export const GAME_TURN_MAX_TOOL_ROUNDS = 4;
+/** The most tool rounds an agent gets before it must answer (MAX_TOOL_ROUNDS when lower). */
+export const AGENT_MAX_TOOL_ROUNDS = 16;
+/** The most tool rounds a lorebook backfill run gets: it saves one entry a call, a chunk at a time, on a
+ *  backend that may call one tool a round (MAX_TOOL_ROUNDS when lower). */
+export const LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS = 64;
 const MAX_CONFIGURED_TOOL_ROUNDS = 10_000;
 const DEFAULT_CUSTOM_TOOL_TIMEOUT_MS = 60_000;
 export const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 300_000;
@@ -340,6 +347,17 @@ export function getLogPreset() {
 }
 
 /**
+ * Whether the `claude_subscription` provider may use the host's installed
+ * Claude Code instead of the Agent SDK's bundled build. Default `true`; set
+ * `CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI=false` (or `0`/`off`/`no`) to always
+ * use the bundled build.
+ */
+export function isClaudeSubscriptionInstalledCliEnabled(value = process.env.CLAUDE_SUBSCRIPTION_USE_INSTALLED_CLI) {
+  const raw = normalizeEnvValue(value);
+  return raw === null || !isDisabledFlag(raw);
+}
+
+/**
  * Kill switch for the `claude_subscription` provider's resume code path.
  * Default `true`; set `CLAUDE_SUBSCRIPTION_USE_RESUME=false` (or `0`/`off`/`no`)
  * to revert to the legacy transcript-fold path. When enabled, prior turns are
@@ -457,6 +475,18 @@ export function getDockerBypassMode(): "auto" | "enabled" | "disabled" {
  */
 export function isDockerProxyAuthRequired() {
   return !isDisabledFlag(process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY);
+}
+
+/**
+ * Treat loopback requests that carry reverse-proxy forwarding headers as the
+ * remote clients they represent, so a proxy or tunnel on this machine cannot
+ * pass every visitor off as the local user.
+ *
+ * Default: ON. Set REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false only when the proxy
+ * itself requires a login from every client it forwards.
+ */
+export function isLoopbackProxyAuthRequired() {
+  return !isDisabledFlag(process.env.REQUIRE_AUTH_FOR_LOOPBACK_PROXY);
 }
 
 export function isDebugAgentsEnabled() {
@@ -697,6 +727,10 @@ export function isTtsLocalUrlsEnabled() {
   return isEnabledFlag(process.env.TTS_LOCAL_URLS_ENABLED);
 }
 
+export function isSttLocalUrlsEnabled() {
+  return isEnabledFlag(process.env.STT_LOCAL_URLS_ENABLED);
+}
+
 export function isDeeplxLocalUrlsEnabled() {
   return isEnabledFlag(process.env.DEEPLX_LOCAL_URLS_ENABLED);
 }
@@ -707,6 +741,11 @@ export function isWebhookLocalUrlsEnabled() {
 
 export function isCustomToolScriptEnabled() {
   return isEnabledFlag(process.env.CUSTOM_TOOL_SCRIPT_ENABLED);
+}
+
+/** Overworld games (setting kits and generated worlds) are not ready for everyone yet: off unless set. */
+export function isOverworldGamesEnabled() {
+  return isEnabledFlag(process.env.MARINARA_OVERWORLD_GAMES);
 }
 
 export function isCustomAgentRepositoriesEnabled() {

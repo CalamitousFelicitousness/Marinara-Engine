@@ -43,11 +43,15 @@ const EDITABLE_PARAMETER_KEYS: Array<keyof EditableGenerationParameters> = [
 type AdvancedConnection = ConnectionProviderLike & Record<string, unknown>;
 
 interface AdvancedParametersSectionProps {
+  /** Open on arrival (the reply checkup's "Max output tokens" link). */
+  forceOpen?: boolean;
   metadata: Record<string, unknown>;
   isConversation: boolean;
   connectionId: string | null;
   connections: AdvancedConnection[];
   contextMessageLimit: number | null | undefined;
+  /** Roleplay Advanced Memory sizes the history by its token cap and does not use the message limit. */
+  advancedMemoryManagesHistory: boolean;
   excludePastReasoning: boolean | undefined;
   imageCaptioningEnabled: boolean | undefined;
   imageCaptioningConnectionId: string | null | undefined;
@@ -63,11 +67,13 @@ interface AdvancedParametersSectionProps {
 }
 
 export function AdvancedParametersSection({
+  forceOpen,
   metadata,
   isConversation,
   connectionId,
   connections,
   contextMessageLimit,
+  advancedMemoryManagesHistory,
   excludePastReasoning,
   imageCaptioningEnabled,
   imageCaptioningConnectionId,
@@ -89,6 +95,10 @@ export function AdvancedParametersSection({
   const imageCaptioningDefaults = parseConnectionImageCaptioningDefaults(conn?.defaultParameters);
   const saveDefaults = useSaveConnectionDefaults();
   const [expanded, setExpanded] = useState(false);
+  // Explicit navigation opens once; a later user collapse still wins.
+  useEffect(() => {
+    if (forceOpen) setExpanded(true);
+  }, [forceOpen]);
   const contentVisible = useDrawerContentVisible("advanced-parameters", expanded);
   const preview = useEffectiveGenerationParameters(connectionId, contentVisible);
   const awaitingDefaults = preview.canPreview && !preview.data;
@@ -252,6 +262,11 @@ export function AdvancedParametersSection({
               {localizeUi("ui.agents.agenteditor.messages")}
             </span>
           </div>
+        )}
+        {contextMessageLimit && advancedMemoryManagesHistory && (
+          <p className="px-1 text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.chatSettings.advancedparameterssection.contextMessageLimitAdvancedMemory")}
+          </p>
         )}
         <SettingsSwitch
           label={localizeUi("ui.chatSettings.advancedparameterssection.excludePastReasoning")}

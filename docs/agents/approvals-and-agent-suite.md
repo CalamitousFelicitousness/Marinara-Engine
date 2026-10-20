@@ -11,7 +11,8 @@ To find the toggle:
 1. Open the chat you want to control.
 2. Open **Chat Settings**.
 3. Scroll to the **Agents** section.
-4. Turn on **Review Agent Outputs**.
+4. In a Roleplay chat, open **Trackers Control**. In a Game, skip this step.
+5. Turn on **Review Agent Outputs**.
 
 When **Review Agent Outputs** is on, lorebook updates, summary updates, and other reviewable writer-agent outputs wait for your approval before they are saved. When it is off, lorebook and summary updates can be saved automatically.
 
@@ -66,7 +67,9 @@ To open it:
 
 On the left is a list of the agents active in this chat. Pick one to see what it has stored. The right side shows editable blocks. They are grouped into **Stored Memory**, **Tracker Data** (only for tracker agents), and **Recent Outputs** (only for custom agents). Agents that do not track data show only **Stored Memory**.
 
-Each block is a text or JSON editor. After you change a block:
+Each block is a text or JSON editor. JSON blocks have line numbers and say right away when the JSON doesn't parse; **Save** stays off until it does. To search all tracker data at once or edit it as fields, click **Open in State Editor** in the **Tracker Data** header (see [The State Editor](../roleplay/hud-and-trackers.md#the-state-editor)).
+
+After you change a block:
 
 - Click **Save** to keep your edit.
 - Click **Reset** to undo your unsaved change and return to the stored value.

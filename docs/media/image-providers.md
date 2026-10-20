@@ -41,6 +41,7 @@ The table below shows each service at a glance. Details and quirks follow in the
 | Z.AI | Yes | Cloud |
 | Atlas Cloud | Yes | Cloud |
 | fal.ai | Yes | Cloud |
+| SpicyAPI | Yes | Cloud |
 | NanoGPT | Yes | Cloud |
 | Block Entropy | Yes | Cloud |
 | RunPod Serverless (ComfyUI) | Yes | Cloud |
@@ -53,7 +54,7 @@ The table below shows each service at a glance. Details and quirks follow in the
 
 ## OpenAI (DALL-E)
 
-Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an API key from your OpenAI account. It offers DALL-E and GPT Image models. It accepts up to 16 reference images.
+Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an API key from your OpenAI account. It offers DALL-E and GPT Image models. GPT Image models accept up to 16 reference images; DALL-E models take none.
 
 ## ChatGPT (Codex login)
 
@@ -106,6 +107,16 @@ Cloud service with the default Base URL `https://api.atlascloud.ai/api/v1`. It n
 Cloud service with the default **Base URL** `https://fal.run`. Create an API key at [fal.ai](https://fal.ai/dashboard/keys), then select **fal.ai** in the image service grid. The starter **Model** list offers `fal-ai/flux/schnell` and `fal-ai/flux/dev`; you can type another text-to-image endpoint ID with a compatible input/output schema. **Test Connection** checks the configuration only. **Test Image** sends a real generation request and uses your fal.ai credits.
 
 Marinara sends the prompt and requested dimensions, then downloads the first returned image into its existing image workflow. Negative prompts are appended as text instructions. Use **Custom Parameters** for model-specific options such as `seed`, `num_inference_steps`, or `image_size`. This integration uses synchronous text-to-image requests; it does not send reference images or resume interrupted jobs. Check the selected model's [API reference](https://fal.ai/models/fal-ai/flux/schnell/api) for its supported inputs.
+
+## SpicyAPI
+
+Cloud service with the default **Base URL** `https://api.spicyapi.ai/api/v1`. Create an API key in the [SpicyAPI console](https://spicyapi.ai/console/keys), then select **SpicyAPI** in the image service grid. Marinara fills in the model `alibaba/z-image-spicy-pro/text-to-image`. Click **Fetch Models from API** to load every SpicyAPI text-to-image and edit model, or type a model ID such as `bytedance/seedream-5.0-pro/text-to-image`. **Test Connection** checks your key by reading the model list, so it costs nothing. **Test Image** makes a real image and uses your SpicyAPI balance.
+
+Pick the **SpicyAPI** service. Don't use **OpenAI (DALL-E)** or a **Custom (OAI-Compatible)** connection with a SpicyAPI address. SpicyAPI's OpenAI-style address only handles text, so those can't make images.
+
+Each SpicyAPI model takes its own settings. Marinara asks SpicyAPI which ones the chosen model accepts and sends only those. It picks the closest shape the model offers, such as an aspect ratio, a width and height, or a fixed size. If the model has no negative prompt field, the negative prompt is added to the end of the prompt as text. Use **Custom Parameters** for other model options, such as `seed`, `resolution`, or `loras`.
+
+SpicyAPI runs each image as a task. Marinara waits for the task to finish, checks back if it takes more than about a minute, and then downloads the result. If the connection drops, Marinara picks up the same task instead of paying for a new one. Edit models (IDs that end in `/edit`) receive your reference images. SpicyAPI takes reference images up to 1 MB each and 2 MB per request, so Marinara shrinks larger images and leaves out extra ones that don't fit.
 
 ## NanoGPT
 
@@ -201,28 +212,32 @@ A **reference image** is an existing picture you send along with your prompt. It
 
 | Provider | Reference images |
 | --- | --- |
-| OpenAI (DALL-E) | Up to 16 |
+| OpenAI (DALL-E) | Up to 16, GPT Image models only |
 | ChatGPT (Codex login) | Up to 16 |
 | NovelAI | Up to 16, V4.5 model only |
 | xAI / Grok Imagine | Up to 3 |
 | Venice.ai | Not supported for text-to-image generation |
 | Z.AI | Not supported in the current text-to-image integration |
 | Atlas Cloud | First image for compatible image-to-image, edit, or Kontext model IDs |
+| SpicyAPI | Edit models only, up to the model's limit; larger images are shrunk to fit |
 | NanoGPT | Up to 3 |
 | Stability AI | First image only, used as image to image |
 | Arli AI | First image only, used as image to image |
+| SD Web UI (AUTOMATIC1111 / Forge) and Draw Things | First image only, used as image to image |
 | OpenRouter Images | Supported, no fixed limit |
 | ComfyUI and RunPod Serverless (ComfyUI) | Up to 4, through workflow placeholders |
 | SwarmUI | Up to 4 |
-| Together AI, Pollinations, Stable Horde | Not supported |
+| Together AI, Pollinations, Stable Horde, fal.ai | Not supported |
 
 NovelAI precise reference images only work on a V4.5 model, such as `nai-diffusion-4-5-full`. NovelAI has not yet released Precise Reference for V5. If references are requested on another model, Marinara renders the image without them and records a warning in the server log.
 
-## Queue image generation requests
+## Queue media generation requests
 
-The **Queue image generation requests** toggle lives in **Settings**, then **Generations**, then **Image Generation**. It is on by default.
+The **Queue media generation requests** toggle lives in **Settings**, then **Generations**, then **Overall Generations**. It is on by default.
 
-When it is on, Marinara sends image jobs one at a time. Keep it on for services that reject two requests at once. Turn it off only if your service handles many requests at the same time and you want them faster.
+When it is on, Marinara sends image jobs to each image provider account one at a time, and video jobs to each video provider account one at a time, in separate queues. An image and a video for the same account can run together. This applies whichever feature asks for them: the Illustrator, trackers, commands, the Gallery, Game assets and downloaded agents such as Slurp. Two connections with the same address and API key share the corresponding queue. Different accounts and providers still work at the same time. NovelAI also gets a short pause between jobs. When NovelAI answers that it is busy, Marinara waits and tries again twice instead of failing the image.
+
+Keep it on for services that reject two requests at once. Turn it off only if your service handles many requests at the same time and you want them faster.
 
 ## Related guides
 

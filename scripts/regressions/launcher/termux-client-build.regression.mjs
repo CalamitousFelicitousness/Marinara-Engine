@@ -5,7 +5,12 @@ import { tmpdir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkClientBuild } from "../../check-client-build.mjs";
-import { resolveClientBuildHeapMb } from "../../../packages/client/scripts/build-heap.mjs";
+import {
+  resolveClientBuildHeapMb,
+  resolveDesktopClientBuildHeapMb,
+  splitNodeOptions,
+  typeCheckHeapHint,
+} from "../../../packages/client/scripts/build-heap.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -19,7 +24,112 @@ assert.equal(buildHeap(3 * GiB), 1536);
 assert.equal(buildHeap(2.75 * GiB), 1408);
 assert.equal(buildHeap(2 * GiB), 1280, "a 2 GB phone still gets the heap the build needs");
 assert.equal(buildHeap(8 * GiB, { MARINARA_EXPLICIT_NODE_HEAP: "1" }), null, "a heap the user set wins");
-assert.equal(buildHeap(8 * GiB, {}, false), null, "desktop builds keep their heap");
+assert.equal(buildHeap(8 * GiB, {}, false), null, "desktop builds take their heap from the desktop rule below");
+
+// A desktop build type-checks the client too, which needs about 2.3 GiB: more than Node's default on a
+// 7 GiB machine (the macos-15 runners, about 2 GiB), so it gets 3072 MiB when half the memory allows.
+const desktopHeap = (totalMemoryBytes, defaultHeapMb, env = {}, constrainedMemoryBytes = 0) =>
+  resolveDesktopClientBuildHeapMb({ env, totalMemoryBytes, defaultHeapMb, constrainedMemoryBytes });
+assert.equal(desktopHeap(7 * GiB, 2048), 3072, "a 7 GiB machine gets the heap the type-check needs");
+assert.equal(desktopHeap(14 * GiB, 2048), 3072);
+assert.equal(desktopHeap(32 * GiB, 4192), null, "a default already above it is kept, never lowered");
+assert.equal(desktopHeap(4 * GiB, 2048), null, "never more than half the device's memory");
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max-old-space-size=1800" }),
+  null,
+  "a heap the user set in NODE_OPTIONS wins",
+);
+assert.equal(desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max_old_space_size=1800" }), null, "however they spell it");
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: '--require "./hooks/--max-old-space-size.cjs"' }),
+  3072,
+  "the same words inside another option's value are not a heap",
+);
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--require ./x.cjs --max-old-space-size 1800" }),
+  null,
+  "the flag as its own option is (Node refuses a value after a space there; the build leaves it to Node)",
+);
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: '"--max-old-space-size=1024"' }),
+  null,
+  "and so is a quoted one, which Node reads as the same option",
+);
+assert.equal(
+  desktopHeap(7 * GiB, 2048, { NODE_OPTIONS: "--max-old-space-size-percentage=50" }),
+  null,
+  "and its percentage form, which sets the heap too",
+);
+// In a container, half of its memory limit, not of the machine's.
+assert.equal(desktopHeap(32 * GiB, 2048, {}, 4 * GiB), null, "a 4 GiB container never gets more than 2 GiB");
+assert.equal(desktopHeap(32 * GiB, 2048, {}, 8 * GiB), 3072, "an 8 GiB container gets the heap the build needs");
+assert.equal(desktopHeap(7 * GiB, 2048, {}, 2 ** 62), 3072, "a limit above the machine's memory is no limit");
+// NODE_OPTIONS read as Node reads it: quotes group an option, spaces included, and a backslash inside
+// them keeps the next character.
+assert.deepEqual(splitNodeOptions('--require "./my hooks/x.cjs"  --max-old-space-size=900'), [
+  "--require",
+  "./my hooks/x.cjs",
+  "--max-old-space-size=900",
+]);
+assert.deepEqual(splitNodeOptions('"--title=a \\"b\\""'), ['--title=a "b"']);
+assert.deepEqual(splitNodeOptions('  ""  '), [""], "an empty quoted option is still one");
+assert.deepEqual(splitNodeOptions(""), []);
+
+// A heap the user set is kept even when the type-check (2304 MiB) does not fit in it, so a type-check
+// that ran out of memory under it says how to fix it: SIGABRT, or exit code 134 on Windows.
+const hint = (env, result = { status: null, signal: "SIGABRT" }, heapLimitMb = 3072) =>
+  typeCheckHeapHint({ ...result, env, heapLimitMb });
+assert.match(hint({ NODE_OPTIONS: "--max-old-space-size=2048" }), /about 2\.5 GiB.*limits it to 2048 MiB.*2560/u);
+assert.match(hint({ NODE_OPTIONS: "--max-old-space-size=2048" }, { status: 134, signal: null }), /2048 MiB/u);
+assert.match(
+  hint({ NODE_OPTIONS: '--require ./x.cjs "--max_old_space_size=1800"' }),
+  /1800 MiB/u,
+  "however it is spelt",
+);
+assert.match(
+  hint({ NODE_OPTIONS: "--max-old-space-size=4096 --max-old-space-size=2048" }),
+  /2048 MiB/u,
+  "Node reads the last one",
+);
+assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size=2048 --max-old-space-size=4096" }), null);
+assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size=2304" }), null, "a heap the type-check fits in is not blamed");
+assert.equal(hint({}), null, "without a heap the user set, the build chose the heap");
+assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size-percentage=50" }), null);
+for (const NODE_OPTIONS of [
+  "--max-old-space-size-percentage=1",
+  "--max-old-space-size=4096 --max-old-space-size-percentage=1",
+  "--max-old-space-size-percentage=1 --max-old-space-size=4096",
+  "--max_old_space_size_percentage=1",
+  "--max-old-space-size-percentage 1",
+]) {
+  assert.match(
+    hint({ NODE_OPTIONS }, undefined, 512),
+    /limits it to 512 MiB with --max-old-space-size-percentage.*Raise that percentage/u,
+    "a percentage limit uses Node's resolved heap and advice for the effective flag",
+  );
+}
+for (const NODE_OPTIONS of [
+  "--max-old-space-size=1024 --max-old-space-size-percentage=50",
+  "--max-old-space-size-percentage=50 --max-old-space-size=1024",
+]) {
+  assert.equal(hint({ NODE_OPTIONS }), null, "an ineffective small absolute limit is not blamed");
+}
+assert.equal(hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, undefined, 2304), null);
+assert.equal(
+  hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, { status: 2, signal: null }, 512),
+  null,
+  "a percentage limit does not turn a type error into a heap failure",
+);
+assert.equal(
+  hint({ NODE_OPTIONS: "--max-old-space-size-percentage=1" }, { status: null, signal: "SIGTERM" }, 512),
+  null,
+  "a different terminating signal is not a heap failure",
+);
+assert.equal(
+  hint({ NODE_OPTIONS: "--max-old-space-size=2048" }, { status: 2, signal: null }),
+  null,
+  "type errors are not a heap problem",
+);
 
 const fixture = mkdtempSync(join(tmpdir(), "marinara-termux-build-"));
 const write = (path, content) => {
@@ -40,7 +150,11 @@ try {
   }
   write("android.mjs", 'Object.defineProperty(process, "platform", { value: "android" });');
   write("node_modules/typescript/package.json", '{"name":"typescript"}');
-  write("node_modules/typescript/bin/tsc", 'require("node:fs").appendFileSync("steps", "tsc\\n");');
+  // Exits as V8 does on Windows when it runs out of heap, when the fixture asks it to.
+  write(
+    "node_modules/typescript/bin/tsc",
+    'require("node:fs").appendFileSync("steps", "tsc\\n"); if (process.env.FIXTURE_TSC_OOM) process.exit(134);',
+  );
   write("node_modules/vite/package.json", '{"name":"vite"}');
   // Stands in for `vite build` loading vite.config.ts, whose android-build-heap plugin calls the
   // same helper, and records the heap the build ran with.
@@ -146,6 +260,16 @@ try {
 
   build("desktop", process.execPath, ["scripts/build.mjs"], {}, `tsc\nvite::${serverHeapLimit}\nguest\n`);
   assert.doesNotThrow(() => checkClientBuild(join(fixture, "dist")), "desktop retains typechecking and PWA policy");
+  // A desktop type-check that runs out of a heap the user set says how to fix it.
+  write("steps", "");
+  const outOfMemory = spawnSync(process.execPath, ["scripts/build.mjs"], {
+    cwd: fixture,
+    env: { ...baseEnv, NODE_OPTIONS: "--max-old-space-size=2048", FIXTURE_TSC_OOM: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(outOfMemory.status, 134, "the build stops with the type-check's status");
+  assert.equal(readFileSync(join(fixture, "steps"), "utf8"), "tsc\n", "and runs nothing after it");
+  assert.match(outOfMemory.stderr, /^\[build\] The client type-check needs about 2\.5 GiB .* 2048 MiB\./mu);
   build(
     "desktop direct vite build",
     process.execPath,

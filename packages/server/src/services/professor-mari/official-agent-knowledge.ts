@@ -1,3 +1,5 @@
+import { matchOmnibarCapabilityAgentPackageIds } from "@marinara-engine/shared";
+
 export type OfficialAgentKnowledgeCategory = "writer" | "tracker" | "misc";
 
 export interface OfficialAgentKnowledgeEntry {
@@ -113,6 +115,34 @@ export const OFFICIAL_AGENT_KNOWLEDGE_ENTRIES: readonly OfficialAgentKnowledgeEn
     summary: "tracks currencies, equipped items, and carried inventory in separate structured lists",
   },
   {
+    id: "quartermaster",
+    name: "Quartermaster",
+    category: "tracker",
+    modes: "Roleplay",
+    summary: "keeps a character sheet, equipped gear, saved outfits, and inventory in step with the story",
+  },
+  {
+    id: "beholder",
+    name: "Beholder",
+    category: "tracker",
+    modes: "Roleplay",
+    summary: "tracks what each character wears and holds, plus injuries, on a paper doll",
+  },
+  {
+    id: "relationship-tracker",
+    name: "Relationship Tracker",
+    category: "tracker",
+    modes: "Roleplay",
+    summary: "tracks how characters and the player's persona feel about each other",
+  },
+  {
+    id: "memory-nag",
+    name: "Memory Nag",
+    category: "tracker",
+    modes: "Roleplay",
+    summary: "remembers promises, open questions, and other loose ends and reminds the AI when they matter",
+  },
+  {
     id: "hierarchical-maps",
     name: "World Maps",
     category: "tracker",
@@ -133,6 +163,20 @@ export const OFFICIAL_AGENT_KNOWLEDGE_ENTRIES: readonly OfficialAgentKnowledgeEn
     modes: "Home",
     summary:
       "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
+  },
+  {
+    id: "slurp2",
+    name: "Slurp",
+    category: "misc",
+    modes: "Home",
+    summary: "adds a private creator app with fictional followers, subscriptions, posts, comments, and messages",
+  },
+  {
+    id: "gacha-forge",
+    name: "Gacha Forge",
+    category: "misc",
+    modes: "Home",
+    summary: "builds a gacha game from a world description, with banners, characters, story chapters, and battles",
   },
   {
     id: "illustrator",
@@ -267,9 +311,25 @@ export const PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE = [
   ]),
   "Catalog guidance:",
   "- Package sources, manifests, artifacts, and the complete official catalog are public at https://github.com/Pasta-Devs/Marinara-Agents.",
-  "- Catalog availability is not proof that a package is installed. Inspect the user's installed agents before claiming one is active.",
+  "- The catalog is not proof of install. Before naming an agent for a request, call `agent.list`; suggest a catalog package (Agents → Download Agents) only when nothing installed covers it. Never claim an uninstalled agent is active.",
   "- Install, update, or uninstall official packages from Agents → Download Agents. When a compatible update is found, Marinara asks before applying it; declining or failing an update preserves the installed version and leaves the manual Update action available.",
   "- Pipeline agents are enabled per compatible chat in Chat Settings → Agents. Feature packages such as Maps, Calls, and Conversation games expose their own controls after installation.",
   "- Do not describe About Me Keeper as an agent. Conversation About Me and its update tool are built into Marinara Engine.",
   "</official_agent_catalog>",
 ].join("\n");
+
+/**
+ * K4: when an unasked quick-answer query names a capability ("images",
+ * "music", "maps"...), ground the answer with 2-3 real catalog lines instead
+ * of letting the model guess. Static catalog data only (R22 stays true for
+ * unasked calls).
+ */
+export function formatCapabilityAgentGroundingLines(query: string): string | null {
+  const packageIds = matchOmnibarCapabilityAgentPackageIds(query);
+  if (packageIds.length === 0) return null;
+  const entries = packageIds.flatMap((id) => OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.filter((entry) => entry.id === id));
+  if (entries.length === 0) return null;
+  return entries
+    .map((entry) => `- ${entry.name} (package \`${entry.id}\`; ${entry.modes}): ${entry.summary}.`)
+    .join("\n");
+}

@@ -1,6 +1,6 @@
 import type { CapabilityAchievementHost } from "./achievement.js";
 import type { CapabilityIntegrationHost } from "./generation-integration.js";
-import type { ChatMode, MessageRole } from "./chat.js";
+import type { ChatMode, ConversationPresenceStatus, MessageRole } from "./chat.js";
 import type { SpatialContextSnapshot, SpatialSnapshotSource } from "./spatial-context.js";
 
 export type CapabilityRuntimeLogArgument = unknown;
@@ -11,6 +11,53 @@ export interface CapabilityRuntimeLogger {
   warn(message: string, ...args: CapabilityRuntimeLogArgument[]): void;
   error(error: unknown, message: string, ...args: CapabilityRuntimeLogArgument[]): void;
   debugOverride(overrideEnabled: boolean, message: string, ...args: CapabilityRuntimeLogArgument[]): void;
+  /** Capability API 1.341: whether the Engine logger writes this level now. */
+  isLevelEnabled?(level: "trace" | "debug" | "info" | "warn" | "error" | "fatal"): boolean;
+}
+
+/** Capability API 1.341: services other packages registered with `api.registerService`. */
+export interface CapabilityServiceLookupHost {
+  /**
+   * Another package's service registered with api.registerService. null while absent, during a shared-room
+   * generation, or for an `agent-runtime:` or `mari-actions:` key (only the Engine reads those).
+   */
+  get<T = unknown>(key: string): T | null;
+}
+
+/** Capability API 1.341: the conversation commands every package registered, read with the Engine's grammar. */
+export interface CapabilityConversationCommandHost {
+  /** Commands registered by every package, parsed with the host grammar. */
+  parse(content: string): Array<{ type: "capability"; commandType: string; payload: string | null }>;
+  /** Content with every registered command tag removed. */
+  strip(content: string): string;
+  /** Prompt lines for registered commands that have handlers. */
+  instructions(): string[];
+}
+
+/** One message for `persistence.appendMessages` (capability API 1.341). */
+export interface CapabilityAppendMessageInput {
+  role: MessageRole;
+  characterId: string | null;
+  content: string;
+  extra?: Record<string, unknown>;
+  createdAt?: string | null;
+}
+
+/** A `[schedule_update]` for one character, with the fields the command carries. Needs a status or an activity. */
+export interface CapabilityCharacterStatusUpdate {
+  status?: ConversationPresenceStatus;
+  /** What the character is doing now, at most 500 characters. */
+  activity?: string;
+  /** How long it lasts, as the command writes it ("2h", "30m", "1h30m"): 60 minutes when absent or unreadable, at most
+   *  a week. */
+  duration?: string;
+}
+
+/** The status the character card carries after the update, until `expiresAt`. */
+export interface CapabilityCharacterStatusResult {
+  status: ConversationPresenceStatus;
+  activity: string | null;
+  expiresAt: string;
 }
 
 export interface CapabilityChatRecord {
@@ -201,6 +248,13 @@ export interface CapabilityMessageRecord {
   activeSwipeIndex: number;
   extra: string;
   createdAt: string;
+  /**
+   * The message as Engine agents read it (capability API 1.71): each live whisper at its saved place as
+   * `[Private whisper to <name>: …]`, a whisper-only message as its whispers alone, a reply's documents after it, and
+   * no leftover private notes. `listMessages` sets it in Roleplay chats outside hosted multiplayer rooms; it is absent
+   * elsewhere and on older Engines, so read `agentContent ?? content`. `extra` still holds every whisper in all modes.
+   */
+  agentContent?: string;
 }
 
 export interface CapabilitySpatialSnapshotWrite {
@@ -360,18 +414,97 @@ export interface CapabilityPersistenceSession {
 export interface CapabilityPersistenceHost extends CapabilityPersistenceSession {
   withChatLock<T>(chatId: string, operation: () => Promise<T>): Promise<T>;
   transaction<T>(operation: (session: CapabilityPersistenceSession) => Promise<T>): Promise<T>;
+  /**
+   * Capability API 1.341. The Engine's queued metadata patch: one queue per chat, the multiplayer room guard and
+   * write ordinals. Keys in the patch replace those keys; every other key stays. Inside `withChatLock` for the same
+   * chat it runs within that lock. Requires `chat-write`.
+   */
+  patchChatMetadata?(
+    chatId: string,
+    patch:
+      | Record<string, unknown>
+      | ((current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>),
+    options?: { touchUpdatedAt?: boolean },
+  ): Promise<void>;
+  /** Capability API 1.341. Adds messages, each with its first swipe, as the Engine's batch write does. Requires `chat-write`. */
+  appendMessages?(chatId: string, messages: CapabilityAppendMessageInput[]): Promise<CapabilityMessageRecord[]>;
+  /** Capability API 1.341. A durable note from a conversation to its connected roleplay. Requires `chat-write`. */
+  createChatNote?(sourceChatId: string, targetChatId: string, content: string, anchorMessageId?: string): Promise<void>;
+  /** Capability API 1.341. A one-time influence from a conversation to its connected roleplay. Requires `chat-write`. */
+  createChatInfluence?(
+    sourceChatId: string,
+    targetChatId: string,
+    content: string,
+    anchorMessageId?: string,
+  ): Promise<void>;
+  /**
+   * Applies a `[schedule_update]` for a character of a Conversation chat as the Engine does after a reply: a temporary
+   * status on the character card, so presence shows it in every chat. Resolves the card's new status, or null when
+   * nothing changed: a status the user set by hand stays in charge, and a shared room keeps its own routines. Rejects
+   * bad input, a chat that is not a Conversation chat and a character that is not in it. Requires chat-write. Added
+   * to capability API 1.341 after it was first reported, so feature-detect it.
+   */
+  updateCharacterStatus?(
+    chatId: string,
+    characterId: string,
+    update: CapabilityCharacterStatusUpdate,
+  ): Promise<CapabilityCharacterStatusResult | null>;
 }
 
 export interface CapabilityEmbeddingHost {
   spaceId: string;
   label: string;
-  embed(texts: string[], signal?: AbortSignal): Promise<number[][] | null>;
+  /**
+   * Pass `"query"` for search text; texts default to `"document"`. Some models (e5, nomic) add a
+   * different prefix to each. Capability API 1.68: older Engines ignore the third argument.
+   */
+  embed(texts: string[], signal?: AbortSignal, inputType?: "query" | "document"): Promise<number[][] | null>;
+}
+
+/** One bounded question for the user's Decision model. */
+export interface CapabilityDecisionQuestion {
+  /** Unique within one request; the answer comes back under this id. */
+  id: string;
+  /** A yes/no statement about the context, at most 500 characters. */
+  question: string;
+  /** Present for a Choice question: the options the model chooses between. */
+  options?: string[];
+}
+
+export interface CapabilityDecisionRequest {
+  /** Caller-provided context, oldest first. The oldest messages are dropped to fit the model. */
+  /** `name` is at most 100 characters. */
+  messages: Array<{ role: "system" | "user" | "assistant"; name?: string; content: string }>;
+  questions: CapabilityDecisionQuestion[];
+  signal?: AbortSignal;
+  debugMode?: boolean;
+}
+
+export interface CapabilityDecisionResult {
+  model: string | null;
+  /** Probability of yes, per yes/no question id. A question missing here was not answered. */
+  answers: Record<string, number>;
+  /** Chosen option, per Choice question id, or "none of these" when no option fits. */
+  choices: Record<string, string>;
+  /** The model's own yes threshold. Probabilities are not comparable across Decision models. */
+  threshold: number;
+}
+
+export interface CapabilityDecisionHost {
+  /**
+   * Ask the user's configured Decision model. Resolves null when no Decision model is
+   * configured, or it gave no answer at all (unreachable, timed out or cancelled);
+   * throws only for an invalid request.
+   */
+  evaluate(request: CapabilityDecisionRequest): Promise<CapabilityDecisionResult | null>;
 }
 
 export interface CapabilityRuntimeHost {
   /** Read and unlock the package's own achievements. Requires the `achievements`
    *  permission and capability API 1.36. */
   achievements: CapabilityAchievementHost;
+  /** The user's Decision model. Optional: feature-detect it on older Engines. */
+  decisions?: CapabilityDecisionHost;
   /** Live provider/media services. Requires capability API 1.31. */
   integrations?: CapabilityIntegrationHost;
   embeddings: CapabilityEmbeddingHost;
@@ -384,4 +517,8 @@ export interface CapabilityRuntimeHost {
   logger: CapabilityRuntimeLogger;
   persistence: CapabilityPersistenceHost;
   resources: CapabilityResourceHost;
+  /** Capability API 1.341. */
+  services?: CapabilityServiceLookupHost;
+  /** Capability API 1.341. */
+  commands?: CapabilityConversationCommandHost;
 }

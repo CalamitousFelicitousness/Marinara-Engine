@@ -5,9 +5,10 @@
 import { BUILT_IN_AGENT_MANIFESTS, replaceBuiltInAgentManifestRegistry } from "../features/agents/agent-registry.js";
 import type { BuiltInAgentManifest } from "../features/agents/agent-manifest.types.js";
 import type { AgentToolConfig, ToolDefinition } from "../features/function-calls/tool-definitions.js";
+import { AVATAR_2D_AGENT_ID, AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY } from "./avatars.js";
 import type { ChatMode } from "./chat.js";
 import type { WrapFormat } from "./prompt.js";
-import type { MacroDecisionAnswers } from "../utils/macro-engine.js";
+import type { LorebookIncludeSource, MacroDecisionAnswers } from "../utils/macro-engine.js";
 
 /** When in the generation pipeline an agent runs. */
 export type AgentPhase =
@@ -275,6 +276,8 @@ export interface AgentResult {
   /** Whether the agent succeeded */
   success: boolean;
   error: string | null;
+  /** The message the result belongs to, when the server anchored it to one. */
+  messageId?: string | null;
 }
 
 export type AgentWriteApprovalKind = "character_card_create" | "lorebook_update" | "summary_update";
@@ -456,6 +459,8 @@ export interface AgentContext {
   }>;
   /** Per-lorebook total entry counts (for {{lorebooksize::ID}} macro in agent prompts). */
   lorebookEntryCounts?: Record<string, number>;
+  /** Lorebooks `{{include::...}}` reads in agent prompts; set only when one uses it (#7212). */
+  lorebookIncludes?: LorebookIncludeSource;
   /**
    * Semantic source material resolved for custom agents that opt into vector access.
    * The runtime keeps this out of ordinary agent prompts and injects it only for
@@ -819,6 +824,8 @@ const ADDITIONAL_BUILT_IN_PROMPT_TEMPLATE_COLLECTION_KEYS: Record<string, readon
     "roleplayAnimationTemplates",
     "roleplayOutputTemplates",
   ],
+  // The 2D Avatars package ships its generation prompts as a template collection (see types/avatars.ts).
+  [AVATAR_2D_AGENT_ID]: [AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY],
 };
 
 const RETIRED_BUILT_IN_AGENT_TOOLS: Record<string, ReadonlySet<string>> = {

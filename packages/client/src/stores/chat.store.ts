@@ -211,6 +211,8 @@ interface ChatState {
    * - absent — no Mari work in progress for that chat.
    */
   mariPhaseByChatId: Map<string, "thinking" | "updating">;
+  /** Professor Mari's provisional words for the round she is writing; never saved, cleared when it ends. */
+  mariDraftByChatId: Map<string, string>;
   streamBuffer: string;
   /** Per-chat stream text for active generations, so switching chats does not lose in-flight UI state. */
   streamBuffers: Map<string, string>;
@@ -280,8 +282,12 @@ interface ChatState {
   activeConversationCall: ActiveConversationCallSnapshot | null;
   /** When true, show the active Conversation call as the full call surface instead of the micro panel. */
   conversationCallExpanded: boolean;
+  /** F10: a Mari run failed before the server ever saw it (404/network error), so the server's
+   * in-memory workspace status has nothing to show — the top-bar edge needs its own signal. */
+  mariClientRunFailed: boolean;
 
   // Actions
+  setMariClientRunFailed: (failed: boolean) => void;
   setActiveChat: (chat: Chat | null) => void;
   setActiveChatId: (id: string | null) => void;
   setStreaming: (streaming: boolean, chatId?: string) => void;
@@ -289,6 +295,7 @@ interface ChatState {
   setContinuationStream: (chatId: string, continuation: ContinuationStream) => void;
   setPendingVnReply: (chatId: string, reply: Pick<Message, "id" | "activeSwipeIndex" | "content"> | null) => void;
   setMariPhase: (chatId: string, phase: "thinking" | "updating" | "idle") => void;
+  setMariDraft: (chatId: string, draft: string | null) => void;
   setAbortController: (chatId: string, controller: AbortController | null) => void;
   setBackgroundIllustration: (chatId: string, pending: boolean) => void;
   setNarrationSaved: (chatId: string, saved: boolean) => void;
@@ -374,6 +381,7 @@ export const useChatStore = create<ChatState>()(
     isStreaming: false,
     streamingChatId: null,
     mariPhaseByChatId: new Map(),
+    mariDraftByChatId: new Map(),
     streamBuffer: "",
     streamBuffers: new Map(),
     continuationStreams: new Map(),
@@ -407,7 +415,9 @@ export const useChatStore = create<ChatState>()(
     gotoRequest: null,
     activeConversationCall: null,
     conversationCallExpanded: false,
+    mariClientRunFailed: false,
 
+    setMariClientRunFailed: (failed) => set({ mariClientRunFailed: failed }),
     setActiveChat: (chat) => set({ activeChat: chat }),
     setActiveChatId: (id) => {
       const prev = get().activeChatId;
@@ -448,9 +458,7 @@ export const useChatStore = create<ChatState>()(
       // Only reset agent + game state when actually switching chats — re-selecting the
       // same chat should not blow away loaded tracker data.
       if (id !== prev) {
-        // Professor Mari suggestions and guided plans are already scoped to their chat IDs.
-        // Keep them through temporary editor navigation so reopening the chat does not flash
-        // or replace them with the starter suggestions (#4953).
+        // Clear chat-scoped agent state so suggestions and guided plans cannot leak into another chat.
         useAgentStore.getState().resetForChatChange();
         useGameStateStore.getState().setGameState(null);
         if (id) {
@@ -528,6 +536,14 @@ export const useChatStore = create<ChatState>()(
         const next = new Map(state.mariPhaseByChatId);
         next.set(chatId, phase);
         return { mariPhaseByChatId: next };
+      }),
+    setMariDraft: (chatId, draft) =>
+      set((state) => {
+        if ((state.mariDraftByChatId.get(chatId) ?? null) === (draft || null)) return state;
+        const next = new Map(state.mariDraftByChatId);
+        if (draft) next.set(chatId, draft);
+        else next.delete(chatId);
+        return { mariDraftByChatId: next };
       }),
     setPendingVnReply: (chatId, reply) =>
       set((state) => {
@@ -1052,6 +1068,7 @@ export const useChatStore = create<ChatState>()(
       currentInputSnapshot = "";
       clearCurrentInputPresenceTimer();
       set({
+        mariDraftByChatId: new Map(),
         activeChatId: null,
         activeChat: null,
         isStreaming: false,
@@ -1087,6 +1104,7 @@ export const useChatStore = create<ChatState>()(
         gotoRequest: null,
         activeConversationCall: null,
         conversationCallExpanded: false,
+        mariClientRunFailed: false,
       });
       try {
         localStorage.removeItem(STORAGE_KEY);

@@ -29,8 +29,10 @@ import {
   type WorldWeatherFamily,
 } from "../../lib/world-state-helpers";
 import { TrackerLockProvider, useTrackerLockContext } from "../../features/tracker-panel/components/TrackerLockContext";
+import { TrackerStateEditorButton } from "../../features/tracker-panel/components/TrackerStateEditorButton";
 import { buildInventoryTrackerEditPatch } from "../../features/tracker-panel/lib/inventory-tracker-edit";
 import { useTrackerFieldLockUpdater } from "../../features/tracker-panel/hooks/use-tracker-field-lock-updater";
+import type { GameStateEditorSectionId } from "../../lib/state-editor/game-state-editor-source";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { FloatingWindow, PHONE_SHEET_CLASS } from "../ui/FloatingWindow";
 import { useMatchMedia } from "../../hooks/use-match-media";
@@ -260,6 +262,7 @@ export function RoleplayHUD({
           <>
             {enabledAgentTypes.has("world-state") && (
               <CombinedWorldWidget
+                chatId={chatId}
                 location={location ?? ""}
                 date={date ?? ""}
                 time={time ?? ""}
@@ -367,12 +370,15 @@ export function RoleplayTrackerCapability({
   packageId,
   chatId,
   compact = false,
+  buttonClassName,
   onRerunSingleTracker,
   isTrackerRetryBusy,
 }: {
   packageId: string;
   chatId: string;
   compact?: boolean;
+  /** Replaces the chat toolbar button look, for hosts with their own button style (the Tracker Panel header). */
+  buttonClassName?: string;
   onRerunSingleTracker?: (agentType: string) => void;
   isTrackerRetryBusy?: boolean;
 }) {
@@ -390,10 +396,12 @@ export function RoleplayTrackerCapability({
           trackerRetryBusy: isTrackerRetryBusy,
           lockMode,
           onToggleLockMode: onSetLockMode ? () => onSetLockMode(!lockMode) : undefined,
-          toolbarButtonClass: getChatToolbarButtonClass({
-            compact,
-            className: compact ? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined,
-          }),
+          toolbarButtonClass:
+            buttonClassName ??
+            getChatToolbarButtonClass({
+              compact,
+              className: compact ? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined,
+            }),
         }}
         className="contents"
       />
@@ -469,6 +477,7 @@ function CombinedPlayerWidget({
   return (
     <MobileTrackerWindow
       id={MOBILE_PLAYER_WINDOW_ID}
+      chatId={chatId}
       title={localizeUi("ui.chat.combinedplayerwidget.playerTracker")}
       icon={<Swords size="0.875rem" />}
       width={320}
@@ -513,15 +522,24 @@ function CombinedPlayerWidget({
 /** The phone tracker's movable button and themed sheet share every other chat window's layout storage. */
 function MobileTrackerWindow({
   id,
+  chatId,
+  stateEditorSection,
   title,
   icon,
+  banner,
   width,
   height,
   children,
 }: {
   id: string;
+  /** The chat whose game state this sheet's tracker edits: gives its title bar the State Editor button. */
+  chatId: string;
+  /** Opens the editor on this tracker's own section instead of the first one. */
+  stateEditorSection?: GameStateEditorSectionId;
   title: string;
   icon: ReactNode;
+  /** Shown on the button instead of the icon (World State's date, time and weather). */
+  banner?: ReactNode;
   width: number;
   height: number;
   children: ReactNode;
@@ -534,9 +552,10 @@ function MobileTrackerWindow({
       title={title}
       titleIcon={icon}
       closeLabel={t("window.controls.close")}
+      headerControls={<TrackerStateEditorButton chatId={chatId} sectionId={stateEditorSection} />}
       presentation="sheet"
       sheetClassName={PHONE_SHEET_CLASS}
-      minimizable={{ icon, label: title }}
+      minimizable={{ icon, banner, label: title }}
       getDefaultLayout={(bounds, bubbleSize) =>
         getChatControlDefaultLayout(bounds, 0, { width, height }, 0, bubbleSize)
       }
@@ -715,6 +734,7 @@ export function getWorldMiniatureTileClass(hasWorldState: boolean, open = false)
 }
 
 function CombinedWorldWidget({
+  chatId,
   location,
   date,
   time,
@@ -731,6 +751,7 @@ function CombinedWorldWidget({
   onRerunSingleTracker,
   isTrackerRetryBusy,
 }: WorldTrackerValues & {
+  chatId: string;
   trackerTemperatureUnit: TrackerTemperatureUnit;
   onSaveLocation: (v: string) => void;
   onSaveDate: (v: string) => void;
@@ -743,16 +764,17 @@ function CombinedWorldWidget({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const close = () => useFloatingWindowStore.getState().closeWindow(MOBILE_WORLD_WINDOW_ID);
-  const display = getWorldTrackerDisplay(
-    { location, date, time, weather, temperature, worldCustomFields },
-    trackerTemperatureUnit,
-  );
+  const world = { location, date, time, weather, temperature, worldCustomFields };
+  const display = getWorldTrackerDisplay(world, trackerTemperatureUnit);
 
   return (
     <MobileTrackerWindow
       id={MOBILE_WORLD_WINDOW_ID}
+      chatId={chatId}
+      stateEditorSection="world-state"
       title={localizeUi("ui.panels.appearancesettings.worldState")}
       icon={<MapPin size="0.875rem" />}
+      banner={display.hasWorldState && <WorldStateBanner world={world} display={display} />}
       width={288}
       height={400}
     >
@@ -784,6 +806,19 @@ function CombinedWorldWidget({
         />
       </Suspense>
     </MobileTrackerWindow>
+  );
+}
+
+/** World State's banner on its minimized window's button: the miniature, with its values for screen readers. */
+export function WorldStateBanner({ world, display }: { world: WorldTrackerValues; display: WorldTrackerDisplay }) {
+  const values = [world.location, world.date, world.time, world.weather, world.temperature];
+  return (
+    <>
+      <span aria-hidden="true" className="inline-flex items-center gap-1">
+        <WorldStateMiniature display={display} />
+      </span>
+      <span className="sr-only">{values.filter((value) => value.trim()).join(", ")}</span>
+    </>
   );
 }
 

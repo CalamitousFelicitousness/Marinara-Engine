@@ -109,6 +109,11 @@ export type ResolveGenerationToolsArgs = {
   gameState: unknown;
   gameSpotifyMusicEnabled: boolean;
   agentContext: AgentContext;
+  /**
+   * `{{input}}` for the main reply's custom tools. They act for the character responding, so in Roleplay it
+   * leaves out the whispers agents read (#7430). Agents' own tool calls take it from `agentContext`.
+   */
+  responderInput?: string;
   emitMetadataPatch(patch: Record<string, unknown>): void;
   /**
    * Tools the mode itself needs, attached regardless of the chat's "Enable Tool Use"
@@ -316,6 +321,7 @@ function buildCustomToolHiddenContext(args: {
   personaId: string | null;
   agentContext: AgentContext;
   gameState: unknown;
+  input?: string;
 }): CustomToolHiddenContext {
   const characters = args.agentContext.characters.map((character) => ({
     id: character.id,
@@ -350,7 +356,9 @@ function buildCustomToolHiddenContext(args: {
       ])
     : "";
   const lastInput =
-    [...args.agentContext.recentMessages].reverse().find((message) => message.role === "user")?.content ?? "";
+    args.input ??
+    [...args.agentContext.recentMessages].reverse().find((message) => message.role === "user")?.content ??
+    "";
   const now = new Date();
   const timeZone = resolveConversationTimeZone(args.chatMetadata);
   const zonedNow = getZonedDateParts(now, timeZone);
@@ -865,6 +873,7 @@ async function resolveToolRuntime(
     gameState,
     gameSpotifyMusicEnabled,
     agentContext,
+    responderInput,
     emitMetadataPatch,
     observeSpotifyPlaybackBeforePlay,
     lorebookEmbeddingOptions,
@@ -1074,18 +1083,23 @@ async function resolveToolRuntime(
     };
   };
 
+  const hiddenContextArgs = {
+    requestBody,
+    chatId,
+    chatMetadata,
+    promptCharacterIds,
+    personaId,
+    agentContext,
+    gameState,
+  };
+  const agentHiddenContext = buildCustomToolHiddenContext(hiddenContextArgs);
   const baseToolExecutionContext: ToolExecutionContext = {
     chatId,
     gameState: gameState ? (gameState as Record<string, unknown>) : undefined,
-    hiddenContext: buildCustomToolHiddenContext({
-      requestBody,
-      chatId,
-      chatMetadata,
-      promptCharacterIds,
-      personaId,
-      agentContext,
-      gameState,
-    }),
+    hiddenContext:
+      responderInput === undefined
+        ? agentHiddenContext
+        : buildCustomToolHiddenContext({ ...hiddenContextArgs, input: responderInput }),
     customTools: customToolDefs,
     spotify: spotifyCreds,
     spotifyRepeatAfterPlay: gameSpotifyMusicEnabled ? "track" : undefined,
@@ -1206,6 +1220,7 @@ async function resolveToolRuntime(
         }
         const executionContext = {
           ...baseToolExecutionContext,
+          hiddenContext: agentHiddenContext,
           // Existing Agent tools keep their text fallback when no vectors are available.
           searchLorebook: searchLorebookForTools,
           saveLorebookEntry,

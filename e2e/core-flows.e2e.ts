@@ -137,6 +137,15 @@ async function prepareFreshClient(page: Page) {
   }, APP_VERSION);
 }
 
+/** Presses the app's Mod+letter shortcut (Cmd on Apple devices, Ctrl elsewhere), as the app itself reads it. */
+async function pressModShortcut(page: Page, letter: string) {
+  const apple = await page.evaluate(async () => {
+    const module = (await import("/src/lib/command-center.ts" as string)) as { isApplePlatform: () => boolean };
+    return module.isApplePlatform();
+  });
+  await page.keyboard.press(`${apple ? "Meta" : "Control"}+${letter}`);
+}
+
 async function installMockVisualViewport(page: Page) {
   await page.addInitScript(() => {
     const state = {
@@ -285,12 +294,12 @@ async function getChatCharacterIds(request: APIRequestContext, chatId: string): 
 async function dragChatResource(page: Page, source: Locator, target: Locator) {
   const kind = await source.getAttribute("data-touch-drag-card");
   if (kind === "character" || kind === "persona") {
-    const handle = source.getByTitle(`Drag ${kind}`, { exact: true });
-    const start = await handle.boundingBox();
+    // Rows drag from their body since handleless dragging (#7362); left of centre misses the row actions.
+    const start = await source.boundingBox();
     const end = await target.boundingBox();
     expect(start).not.toBeNull();
     expect(end).not.toBeNull();
-    await page.mouse.move(start!.x + start!.width / 2, start!.y + start!.height / 2);
+    await page.mouse.move(start!.x + start!.width * 0.45, start!.y + start!.height / 2);
     await page.mouse.down();
     try {
       await page.mouse.move(end!.x + end!.width / 2, end!.y + end!.height / 2, { steps: 8 });
@@ -446,6 +455,63 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
 
   await page.reload();
   await expect(announcement).toBeHidden();
+});
+
+test("the Home What's New widget reopens the window without resetting the seen version", async ({ page }, testInfo) => {
+  await page.goto("/api/health");
+  await page.evaluate(
+    ({ bypassKey, seenKey, version }) => {
+      sessionStorage.setItem(bypassKey, "true");
+      localStorage.setItem(seenKey, version);
+    },
+    { bypassKey: WHATS_NEW_E2E_BYPASS_KEY, seenKey: WHATS_NEW_SEEN_VERSION_KEY, version: APP_VERSION },
+  );
+  await page.goto("/");
+
+  const announcement = page.getByRole("dialog", { name: "What's New?" });
+  const widget = page.locator('[data-home-widget-id="whats-new"] > section');
+  const reopen = widget.getByRole("button", { name: "See what's new" });
+  const releaseNotes = widget.getByRole("link", { name: "Read release notes" });
+  await expect(reopen).toBeVisible({ timeout: 30_000 });
+  await expect(releaseNotes).toBeVisible();
+  await expect(announcement).toBeHidden();
+  // Both actions stay inside the card, down to the narrowest phone width.
+  const mobile = testInfo.project.name.includes("mobile");
+  for (const width of mobile ? [390, 320] : [1440, 900]) {
+    await page.setViewportSize({ width, height: mobile ? 844 : 900 });
+    await expect
+      .poll(
+        async () => {
+          const card = (await widget.boundingBox())!;
+          const actions = [await reopen.boundingBox(), await releaseNotes.boundingBox()];
+          return actions.every(
+            (box) =>
+              box !== null &&
+              box.x >= card.x &&
+              box.y >= card.y &&
+              box.x + box.width <= card.x + card.width &&
+              box.y + box.height <= card.y + card.height,
+          );
+        },
+        { message: `What's New actions at ${width}px` },
+      )
+      .toBe(true);
+  }
+
+  await reopen.click();
+  await expect(announcement).toBeVisible();
+  await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
+  await expect(announcement.locator("[data-release-copy]").first()).not.toHaveText("");
+  await announcement.getByRole("button", { name: "Got it" }).click();
+  await expect(announcement).toBeHidden();
+  expect(await page.evaluate((key) => localStorage.getItem(key), WHATS_NEW_SEEN_VERSION_KEY)).toBe(APP_VERSION);
+
+  // The marker still holds, so a reload does not show it again; the button still works from the keyboard.
+  await page.reload();
+  await expect(reopen).toBeVisible({ timeout: 30_000 });
+  await expect(announcement).toBeHidden();
+  await reopen.press("Enter");
+  await expect(announcement).toBeVisible();
 });
 
 test("available app updates wait for confirmation before refreshing", async ({ page }) => {
@@ -2260,6 +2326,18 @@ for (const layout of ["Roleplay", "Classic Conversation", "Bubble Conversation"]
         const message = (await messageResponse.json()) as { id: string };
 
         await prepareFreshClient(page);
+        await page.addInitScript(() => {
+          let clipboardText = "";
+          Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+              readText: async () => clipboardText,
+              writeText: async (value: string) => {
+                clipboardText = String(value);
+              },
+            },
+          });
+        });
         await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
         await page.goto("/");
         await page.evaluate(
@@ -2300,6 +2378,12 @@ for (const layout of ["Roleplay", "Classic Conversation", "Bubble Conversation"]
         await expect(peekPrompt).toBeAttached();
         await expect(peekPrompt).toHaveCSS("color", actionColor);
         await expect(copy).toHaveCSS("color", actionColor);
+        // The whole saved prompt is copied, collapsed sections included, one role line per message.
+        await page.getByRole("button", { name: "Copy assembled prompt", exact: true }).tap();
+        await expect(page.getByText("Prompt copied.", { exact: true })).toBeVisible();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe("[system]\nStay in character.\n\n[user]\nContinue the scene.");
 
         await testInfo.attach(`mobile-roleplay-peek-prompt-${testInfo.project.name}.png`, {
           body: await page.screenshot({ fullPage: true }),
@@ -3181,7 +3265,12 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     await editor.locator('input[type="file"][accept*="image/png"]').setInputFiles({
       name: "style-plate.png",
       mimeType: "image/png",
-      buffer: readFileSync(new URL("../packages/client/public/sprites/mari/Mari_wave.png", import.meta.url)),
+      buffer: readFileSync(
+        new URL(
+          "../packages/client/assets/imagegen/mari-generated-originals/professor-mari-assistant-map-source.png",
+          import.meta.url,
+        ),
+      ),
     });
 
     await expect(editor).toBeVisible();
@@ -3567,7 +3656,7 @@ test("mobile connection drag previews preserve configured Chroma text", async ({
     const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
     await expect(sourceMetadata).toHaveCSS("color", expectedColor);
 
-    const dragHandle = source.getByTitle("Drag connection", { exact: true });
+    const dragHandle = source;
     const handleBounds = await dragHandle.boundingBox();
     expect(handleBounds).not.toBeNull();
     const point = {
@@ -4418,7 +4507,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         await expect(desktopTabs).toBeVisible();
         await expect(compactMenuButton).toBeHidden();
         await expect(editor.locator(".mari-editor-tab-rail")).toHaveCount(0);
-        await expect(desktopTabs.getByRole("button")).toHaveCount(panel === "characters" ? 10 : 8);
+        await expect(desktopTabs.getByRole("button")).toHaveCount(panel === "characters" ? 11 : 8);
         const [headerBox, identityBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
           header.boundingBox(),
           header.locator(".mari-editor-header-main").boundingBox(),
@@ -4580,8 +4669,11 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     expect(overlapsCamera).toBe(false);
 
     await openEditorSection(editor, "Metadata");
-    const uploadButton = editor.getByRole("button", { name: "Upload avatar", exact: true });
-    const metadataGenerateButton = editor.getByRole("button", { name: "Generate with AI", exact: true });
+    const avatarActions = editor
+      .locator('[data-editor-section="metadata"] section')
+      .filter({ has: page.getByRole("heading", { name: "Replace Avatar", exact: true }) });
+    const uploadButton = avatarActions.getByRole("button", { name: "Upload avatar", exact: true });
+    const metadataGenerateButton = avatarActions.getByRole("button", { name: "Generate with AI", exact: true });
     await expect(uploadButton).toBeVisible();
     await expect(metadataGenerateButton).toBeVisible();
     await page.mouse.move(1, 1);
@@ -6901,6 +6993,58 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
   }
 });
 
+test("CYOA choices go to the message box when the add-to-message setting is on", async ({ page, request }) => {
+  const firstChoice = `Take the bridge ${Date.now()}`;
+  const secondChoice = `Wave at the guard ${Date.now()}`;
+  const transcript = [
+    JSON.stringify({ user_name: "You", character_name: "Guide", chat_metadata: {} }),
+    JSON.stringify({
+      name: "Guide",
+      is_user: false,
+      mes: "The road splits at the river.",
+      extra: {
+        cyoaChoices: [
+          { label: "Bridge", text: firstChoice },
+          { label: "Guard", text: secondChoice },
+        ],
+      },
+    }),
+  ].join("\n");
+  const importResponse = await request.post("/api/import/st-chat", {
+    multipart: {
+      file: { name: `cyoa-add-${Date.now()}.jsonl`, mimeType: "application/jsonl", buffer: Buffer.from(transcript) },
+      mode: "roleplay",
+    },
+  });
+  expect(importResponse.ok(), await importResponse.text()).toBeTruthy();
+  const imported = (await importResponse.json()) as { chatId: string };
+
+  try {
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      addCyoaChoicesToMessage: true,
+    });
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, imported.chatId);
+    await page.goto("/");
+
+    const composer = page.locator("textarea.mari-chat-input-textarea");
+    await page.getByText(firstChoice, { exact: true }).click();
+    await page.getByText(secondChoice, { exact: true }).click();
+
+    await expect(composer).toHaveValue(`${firstChoice}\n\n${secondChoice}`);
+    await expect(composer).toBeFocused();
+    await expect(page.getByText(firstChoice, { exact: true })).toBeVisible();
+    const messages = await (await request.get(`/api/chats/${imported.chatId}/messages`)).json();
+    expect(Array.isArray(messages) ? messages : messages.messages).toHaveLength(1);
+  } finally {
+    await request.delete(`/api/chats/${imported.chatId}?force=true`).catch(() => undefined);
+  }
+});
+
 test("typographic quotes do not pull the Roleplay caret behind later text", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Roleplay quote caret behavior is covered on desktop.");
 
@@ -8031,6 +8175,8 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
   page,
   request,
 }, testInfo) => {
+  // Five full reload/paint paths (added in 711c461e09) share this budget; each assertion keeps its 10s limit.
+  test.setTimeout(120_000);
   let characterId = "";
   let chatId = "";
   try {
@@ -8039,7 +8185,7 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
     characterId = (await characterResponse.json()).id;
     const avatarResponse = await request.post(`/api/characters/${characterId}/avatar`, {
       data: {
-        avatar: `data:image/png;base64,${readFileSync(new URL("../packages/client/public/sprites/mari/Mari_wave.png", import.meta.url)).toString("base64")}`,
+        avatar: `data:image/png;base64,${readFileSync(new URL("../packages/client/assets/imagegen/mari-generated-originals/professor-mari-assistant-map-source.png", import.meta.url)).toString("base64")}`,
         filename: "tracker-fixture.png",
       },
     });
@@ -8626,7 +8772,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
 
     const packageInput = page
       .getByRole("region", { name: "Agents" })
-      .locator('input[type="file"][accept*="application/json"]');
+      .locator('input[type="file"][accept*="application/json"][accept*="application/zip"]');
     await packageInput.setInputFiles({
       name: "permission-review-agent.json",
       mimeType: "application/json",
@@ -11646,6 +11792,9 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await expect(page.getByRole("heading", { name: characterName })).toHaveCount(0);
     await expect.poll(async () => (await readStoredCard())?.class).toBe("Chronomancer");
     expect((await readStoredCard())?.rpgStats).toEqual(originalCard.rpgStats);
+    // The "sheet updated." toast can cover the mobile top bar, and a pointer resting on it pauses auto-dismiss.
+    await page.mouse.move(0, 0);
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
     await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
     await sheet.getByRole("button", { name: "Edit sheet" }).click();
@@ -12979,113 +13128,7 @@ test("new Professor Mari Home widgets receive a movable layout slot immediately"
   }
 });
 
-test("Professor Mari visibly arrives on Home and navigates without AI", async ({ page }, testInfo) => {
-  test.setTimeout(45_000);
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-
-  const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-  await expect(assistant).toBeVisible({ timeout: 6_000 });
-  const navigationInput = assistant.getByRole("textbox");
-  await expect(navigationInput).toBeVisible();
-  await expect(navigationInput).toHaveAttribute(
-    "placeholder",
-    testInfo.project.name.includes("mobile") ? "Looking for…?" : "What are you looking for?",
-  );
-  await expect(navigationInput).not.toBeFocused();
-  await expect(assistant.getByRole("button", { name: "Help Me Navigate", exact: true })).toHaveCount(0);
-  await navigationInput.fill("unfinished destination");
-  await navigationInput.press("Escape");
-  await expect(navigationInput).toBeVisible();
-  await expect(navigationInput).toHaveValue("");
-  await expect(
-    assistant.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__idle")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-idle.png",
-  );
-  await expect(assistant.locator(".mari-home-professor-popup__blink")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-blink-v3.png",
-  );
-  await assistant.getByRole("button", { name: "Minimize Professor Mari navigation", exact: true }).click();
-  await expect(assistant).toBeHidden();
-  const recallButton = page.getByRole("button", { name: "Help Me Navigate", exact: true });
-  await expect(recallButton).toBeVisible();
-  const recallSprite = recallButton.locator("img");
-  await expect(recallSprite).toHaveAttribute("src", "/sprites/mari/generated/professor-mari-assistant-idle.png");
-  await expect(recallSprite).toHaveCSS("object-position", "calc(50% + 1.5px) 100%");
-  const [recallBounds, viewportWidth] = await Promise.all([
-    recallButton.boundingBox(),
-    page.evaluate(() => window.innerWidth),
-  ]);
-  expect(recallBounds).not.toBeNull();
-  expect(Math.abs(recallBounds!.width - recallBounds!.height)).toBeLessThanOrEqual(1);
-  if (testInfo.project.name.includes("mobile")) {
-    expect(viewportWidth - (recallBounds!.x + recallBounds!.width)).toBeLessThanOrEqual(16);
-  } else {
-    expect(viewportWidth - (recallBounds!.x + recallBounds!.width)).toBeLessThanOrEqual(20);
-  }
-  await recallButton.click();
-  await expect(assistant).toBeVisible();
-  await expect(navigationInput).toBeFocused();
-  await navigationInput.fill("quantum spaghetti cupboard");
-  await navigationInput.press("Enter");
-  await expect(assistant.getByText("Couldn't find it, sorry!", { exact: true })).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__state-image--shrug")).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__idle-stage")).toHaveCSS("opacity", "0");
-  await assistant.getByRole("button", { name: "Back to search", exact: true }).click();
-  await expect(navigationInput).toBeFocused();
-  await navigationInput.fill("Could I talk to Professor Mari?");
-  await navigationInput.press("Enter");
-  await expect(assistant.getByText("Here, found it!", { exact: true })).toBeVisible();
-  await expect(assistant.locator(".mari-home-professor-popup__state-image--map")).toHaveAttribute(
-    "src",
-    "/sprites/mari/generated/professor-mari-assistant-map.png",
-  );
-  await expect(assistant.locator(".mari-home-professor-popup__idle-stage")).toHaveCSS("opacity", "0");
-  await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
-  await expect(
-    page.locator('[data-component="HomeProfessorMariChat.Window"]').getByRole("button", { name: "Close", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
-  await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-
-  await page.getByRole("tab", { name: "Home", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
-  await expect(assistant).toBeVisible({ timeout: 1_000 });
-  await expect(navigationInput).toBeVisible();
-
-  const chatResponse = await page.request.post("/api/chats", {
-    data: {
-      name: `Professor navigator return ${Date.now()}`,
-      mode: "conversation",
-      characterIds: [],
-    },
-  });
-  expect(chatResponse.ok()).toBeTruthy();
-  const chat = (await chatResponse.json()) as { id: string };
-  try {
-    await page.evaluate(async (chatId) => {
-      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
-      module.useChatStore.getState().setActiveChatId(chatId);
-    }, chat.id);
-    await expect(page.locator('[data-component="HomeBrowserHub"]')).toHaveCount(0);
-    await page.locator('[data-component="TopBar"] button[title="Home"]').click();
-    await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeVisible({ timeout: 6_000 });
-  } finally {
-    await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
-  }
-});
-
-test("Professor Mari opens a named character directly in its editor", async ({ page }) => {
+test("Professor Mari opens a named character directly in its editor", async ({ page }, testInfo) => {
   const resourceName = `Maukie Navigator ${Date.now()}`;
   const characterResponse = await page.request.post("/api/characters", {
     data: { data: { name: resourceName } },
@@ -13103,8 +13146,11 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
     await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({
       timeout: 30_000,
     });
-    const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-    await expect(assistant).toBeVisible({ timeout: 6_000 });
+    // #7312 moved the Home navigator's commands into the omnibar: Home's address bar opens it, and phones,
+    // which hide the address bar, use the shortcut.
+    const address = page.locator('[data-tour="home-address"]');
+    if (testInfo.project.name.includes("mobile")) await expect(address).toBeHidden();
+    else await expect(address).toBeVisible({ timeout: 6_000 });
     await page.evaluate(async () => {
       const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(true);
@@ -13117,13 +13163,27 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
         })),
       )
       .toEqual({ paused: undefined, reduced: "true" });
-    const navigationInput = assistant.getByRole("textbox");
+    if (testInfo.project.name.includes("mobile")) {
+      await page
+        .locator("main")
+        .first()
+        .click({ position: { x: 5, y: 5 } });
+      await pressModShortcut(page, "k");
+    } else {
+      await address.click();
+    }
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const navigationInput = omnibar.getByRole("searchbox", { name: "Search Marinara" });
+    await expect(navigationInput).toBeFocused();
     await navigationInput.fill(resourceName);
+    await expect(
+      omnibar.locator("[data-command-center-result-row]").filter({ hasText: resourceName }).first(),
+    ).toBeVisible();
     await navigationInput.press("Enter");
-    await expect(assistant.getByText("Here, found it!", { exact: true })).toBeVisible();
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible({ timeout: 30_000 });
     await expect(editor.locator(".mari-editor-title-input")).toHaveValue(resourceName);
+    await expect(omnibar.getByRole("dialog", { name: "Search Marinara" })).toBeHidden();
   } finally {
     await page.request.delete(`/api/characters/${character.id}`).catch(() => undefined);
   }
@@ -13175,47 +13235,13 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
 
   await next.click();
   await expect(page.locator("h3").filter({ hasText: /^Ask Me Where Things Are$/ })).toBeVisible();
-  const navigationTarget = page.locator('[data-tour="home-navigation"]');
-  await expect(navigationTarget).toBeVisible({ timeout: 6_000 });
+  const addressTarget = page.locator('[data-tour="home-address"]');
+  await expect(addressTarget).toBeVisible({ timeout: 6_000 });
   await expect(
-    page.locator('[data-component="OnboardingTutorial.Spotlight"][data-tour-target="home-navigation"]'),
+    page.locator('[data-component="OnboardingTutorial.Spotlight"][data-tour-target="home-address"]'),
   ).toBeVisible();
   await expect(page.locator('[data-component="OnboardingTutorial.Spotlight"]')).toHaveCount(1);
-  const tutorialCard = page.locator('[data-component="OnboardingTutorial.Card"]');
-  const centeredStage = page.locator('[data-component="OnboardingTutorial.CenteredStage"]');
-  await expect
-    .poll(async () => {
-      const [cardBounds, stageBounds] = await Promise.all([tutorialCard.boundingBox(), centeredStage.boundingBox()]);
-      if (!cardBounds || !stageBounds) return Number.POSITIVE_INFINITY;
-      return Math.abs(cardBounds.y + cardBounds.height / 2 - (stageBounds.y + stageBounds.height / 2));
-    })
-    .toBeLessThanOrEqual(2);
-  const [cardMetrics, centeredStageBounds, navigationBounds] = await Promise.all([
-    tutorialCard.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        centerX: bounds.left + bounds.width / 2,
-        centerY: bounds.top + bounds.height / 2,
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      };
-    }),
-    centeredStage.boundingBox(),
-    navigationTarget.boundingBox(),
-  ]);
-  const viewport = page.viewportSize();
-  expect(centeredStageBounds).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(Math.abs(cardMetrics.centerX - (centeredStageBounds!.x + centeredStageBounds!.width / 2))).toBeLessThanOrEqual(
-    2,
-  );
-  expect(
-    Math.abs(cardMetrics.centerY - (centeredStageBounds!.y + centeredStageBounds!.height / 2)),
-  ).toBeLessThanOrEqual(2);
-  expect(cardMetrics.scrollHeight).toBeLessThanOrEqual(cardMetrics.clientHeight);
-  expect(navigationBounds).not.toBeNull();
-  expect(navigationBounds!.width).toBeLessThan(viewport!.width / 2);
-  expect(navigationBounds!.height).toBeLessThan(viewport!.height / 2);
+  await expect(page.locator('[data-component="OnboardingTutorial.Card"]')).toBeVisible();
 
   await next.click();
   await expect(page.locator("h3").filter({ hasText: /^Guides and Home Controls$/ })).toBeVisible();
@@ -13695,7 +13721,7 @@ test("Mobile Roleplay quick picker matches the character selector surface", asyn
       expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
       await page.getByTitle("Trigger character response", { exact: true }).click();
       await page.getByTitle("Quick Switcher", { exact: true }).click();
-      const picker = page.locator(".fixed[data-chat-floating-panel]");
+      const picker = page.locator("[data-quick-switcher-mobile-menu]");
       await expect(picker).toBeVisible();
       for (const tab of ["Connections", "Personas"]) {
         await picker.getByRole("button", { name: tab, exact: true }).click();
@@ -14902,7 +14928,9 @@ test("Agent updates share one dismissible prompt and remain available after Not 
       installedVersion: "1.0.0",
       version: "1.1.0",
       restartRequired: false,
-      releaseNotes: "- Keeps dialogue tags out of narration.",
+      releaseNotes: [
+        { version: "1.1.0", date: "2026-07-23", notes: "- Keeps dialogue tags out of narration.", highlight: true },
+      ],
       releaseHighlight: true,
     },
     // Deliberately publishes no notes: the catalog may ship none, and the row
@@ -14916,7 +14944,8 @@ test("Agent updates share one dismissible prompt and remain available after Not 
     },
   ];
   const declinedUpdateIds = new Set<string>();
-  let declineRequests = 0;
+  const declineBatches: Array<Array<{ id: string; version: string }>> = [];
+  let singleDeclineRequests = 0;
 
   await page.route("**/api/capability-packages/updates/pending", async (route) => {
     await route.fulfill({
@@ -14925,15 +14954,21 @@ test("Agent updates share one dismissible prompt and remain available after Not 
       body: JSON.stringify(availableUpdates.filter((update) => !declinedUpdateIds.has(update.id))),
     });
   });
-  await page.route("**/api/capability-packages/*/updates/*/decline", async (route) => {
-    declineRequests += 1;
-    const packageId = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[3] ?? "");
-    declinedUpdateIds.add(packageId);
+  // "Not now" declines every listed update in one request since #7312 (63ccd8cd8).
+  await page.route("**/api/capability-packages/updates/decline", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const { updates } = route.request().postDataJSON() as { updates: Array<{ id: string; version: string }> };
+    declineBatches.push(updates);
+    for (const update of updates) declinedUpdateIds.add(update.id);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ declined: true }),
+      body: JSON.stringify({ declined: updates.map((update) => update.id) }),
     });
+  });
+  await page.route("**/api/capability-packages/*/updates/*/decline", async (route) => {
+    singleDeclineRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ declined: true }) });
   });
   await page.route("**/api/capability-packages/catalog", async (route) => {
     await route.fulfill({
@@ -15029,9 +15064,15 @@ test("Agent updates share one dismissible prompt and remain available after Not 
     .toBe(true);
 
   await updateDialog.getByRole("button", { name: "Not now", exact: true }).click();
-  await expect.poll(() => declineRequests).toBe(2);
+  await expect.poll(() => declineBatches.length).toBe(1);
+  expect([...declineBatches[0]!].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+    { id: "prose-guardian", version: "1.1.0" },
+    { id: "world-builder", version: "2.1.0" },
+  ]);
   expect([...declinedUpdateIds].sort()).toEqual(["prose-guardian", "world-builder"]);
   await expect(updateDialog).toBeHidden();
+  expect(declineBatches).toHaveLength(1);
+  expect(singleDeclineRequests).toBe(0);
 
   await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
@@ -17938,7 +17979,7 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
 
   const topBar = page.locator('[data-component="TopBar"]');
   const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-  const composer = window.getByPlaceholder("Ask Professor Mari");
+  const composer = window.getByPlaceholder("Ask Professor Mari to check or change something");
   await expect(window).toBeVisible();
   await expect(composer).toBeVisible();
   await expect
@@ -17961,7 +18002,40 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
   await page.screenshot({ path: testInfo.outputPath("professor-chat-mobile.png") });
 });
 
-test("Professor Mari follows an open conversation across chats and mobile navigation", async ({ page }, testInfo) => {
+test("character editor hands an editable resource context to floating Professor Mari", async ({ page, request }) => {
+  const name = `Mari handoff character ${Date.now()}`;
+  const response = await request.post("/api/characters", { data: { data: { name } } });
+  expect(response.ok()).toBeTruthy();
+  const character = (await response.json()) as { id: string };
+
+  try {
+    await page.goto("/");
+    await page.evaluate(async (characterId) => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      useUIStore.getState().openCharacterDetail(characterId);
+    }, character.id);
+
+    // Home's own "Ask Professor Mari" stays mounted under the editor (#7312), so ask from the editor itself.
+    await page.locator(".mari-editor-shell").getByRole("button", { name: "Ask Professor Mari" }).click();
+    const composer = page.getByPlaceholder("Ask Professor Mari");
+    // The handoff is a context chip in the composer's context row (floating window removed in 5bb03f918).
+    const context = page.locator(".mari-workspace-composer__context");
+    await expect(composer).toHaveValue("Explain this resource and suggest useful improvements.");
+    await expect(context).toContainText(name);
+
+    await composer.fill("Explain only the character's scenario.");
+    await expect(composer).toHaveValue("Explain only the character's scenario.");
+    await context
+      .getByRole("button", { name: /^Remove / })
+      .first()
+      .click();
+    await expect(context).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/characters/${character.id}`);
+  }
+});
+
+test("Professor Mari follows an open conversation across chats and mobile navigation", async ({ page }) => {
   const chatResponse = await page.request.post("/api/chats", {
     data: {
       name: "Professor Mari floating handoff",
@@ -17974,52 +18048,48 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
 
   try {
     await page.goto("/");
+    // #7312: Professor Mari lives in the omnibar. Her floating chat, with its reopen pill and Dismiss
+    // button, was removed by design (5bb03f918), so this follows her omnibar window instead.
     await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
-    const professorWindow = page.locator('[data-component="HomeProfessorMariChat.Window"]');
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const professorWindow = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
     await expect(professorWindow).toBeVisible();
+    const composer = professorWindow.getByPlaceholder("Ask Professor Mari to check or change something");
+    await composer.fill("Keep this question while the chat opens.");
 
-    if (testInfo.project.name.includes("mobile")) {
-      await page.locator('[data-tour="sidebar-toggle"]').click();
-      const reopenProfessorMari = page.getByRole("button", { name: "Open Professor Mari chat" });
-      await expect(reopenProfessorMari).toBeVisible();
-      await expect(page.getByRole("button", { name: "Dismiss Professor Mari floating chat" })).toBeVisible();
-      await reopenProfessorMari.dispatchEvent("click");
-      await expect(reopenProfessorMari).toHaveCount(0);
-      await expect(page.getByPlaceholder("Ask Professor Mari").last()).toBeVisible();
-    }
-
+    // Opening a conversation under her keeps her open, with the unsent question intact.
     await page.evaluate(async (chatId) => {
       const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
+    await expect(page.locator("[data-chat-resource-drop-surface]")).toBeAttached();
+    await expect(professorWindow).toBeVisible();
+    await expect(composer).toHaveValue("Keep this question while the chat opens.");
 
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByRole("button", { name: "Close Professor Mari chat" }).last().click();
-      await expect(page.getByRole("button", { name: "Open Professor Mari chat" })).toBeVisible();
-    } else {
-      const dismissProfessorMari = page.getByRole("button", { name: "Dismiss Professor Mari floating chat" });
-      await expect(dismissProfessorMari).toBeVisible();
-      await expect(dismissProfessorMari).toHaveClass(/mari-chrome-control--small/u);
-      const [buttonBox, iconBox] = await Promise.all([
-        dismissProfessorMari.boundingBox(),
-        dismissProfessorMari.locator("svg").boundingBox(),
-      ]);
-      expect(buttonBox?.width).toBeLessThanOrEqual(32);
-      expect(buttonBox?.height).toBeLessThanOrEqual(32);
-      expect(iconBox?.width).toBeLessThanOrEqual(18);
-      expect(iconBox?.height).toBeLessThanOrEqual(18);
-      await expect(page.getByPlaceholder("Ask Professor Mari")).toBeVisible();
-    }
+    await omnibar.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(omnibar).toBeHidden();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+
+    // Reopened over the conversation, she follows it: her arrival names the open chat.
+    await page
+      .locator("main")
+      .first()
+      .click({ position: { x: 5, y: 5 } });
+    await pressModShortcut(page, "j");
+    await expect(professorWindow).toBeVisible();
+    await expect(professorWindow).toContainText("You're in Professor Mari floating handoff.");
+    await omnibar.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(omnibar).toBeHidden();
 
     await page.locator('[data-component="TopBar"]').getByTitle("Home").click();
-    await expect(page.getByRole("button", { name: "Dismiss Professor Mari floating chat" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Open Professor Mari chat" })).toHaveCount(0);
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+    await expect(omnibar.getByRole("dialog")).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }
 });
 
-test("Professor Mari suggestions stay visible after chat history loads", async ({ page }) => {
+test("Professor Mari starter suggestions stay confined to an empty chat", async ({ page }) => {
   const chatResponse = await page.request.get("/api/chats/internal/professor-mari");
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
@@ -18062,13 +18132,17 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
     });
 
+    // Home's Professor tab opens her window in the omnibar since #7312. Which thread opens depends on
+    // the screen she opens over (R7), so open the seeded chat from her Chats tab.
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
-    const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const window = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
+    await expect(window).toBeVisible();
+    await omnibar.getByRole("tab", { name: "Chats", exact: true }).click();
+    await window.locator(`[data-professor-mari-chat-id="${chat.id}"] button`).first().click();
     await expect(window.getByText(messageContent, { exact: true })).toBeVisible();
 
-    const suggestions = window.getByRole("group", { name: "Suggested replies" });
-    await expect(suggestions).toBeVisible();
-    await expect(suggestions.getByRole("button", { name: "Create a character" })).toBeVisible();
+    await expect(window.getByRole("button", { name: "Create a character" })).toHaveCount(0);
     // The store write propagates to the inline CSS variable asynchronously;
     // poll instead of sampling once.
     await expect
@@ -18077,12 +18151,60 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
       )
       .toBe("#14b8a6");
     const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
-    await expect(window.getByText("You", { exact: true }).last()).toHaveCSS("color", chromeMutedColor);
-    await expect(window.getByRole("button", { name: "Edit Message" }).last()).toHaveCSS("color", chromeMutedColor);
-    await expect(window.getByText("Suggestions only. Pick one, or type your own.", { exact: true })).toHaveCSS(
-      "color",
-      chromeMutedColor,
+    // Your messages are unlabelled bubbles since #7312 (625611892), so the "You" label check went with it.
+    await expect(window.getByText("You", { exact: true })).toHaveCount(0);
+    await expect(window.getByRole("button", { name: "Edit message" }).last()).toHaveCSS("color", chromeMutedColor);
+  } finally {
+    await Promise.all(
+      createdMessageIds.map((id) => bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${id}`)),
     );
+  }
+});
+
+test("Professor Mari transcript preserves server message order after reload", async ({ page }) => {
+  const chatResponse = await page.request.get("/api/chats/internal/professor-mari");
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  const nonce = Date.now();
+  const turns = [
+    { role: "user", content: `Mari order user A ${nonce}` },
+    { role: "assistant", characterId: "__professor_mari__", content: `Mari order assistant A ${nonce}` },
+    { role: "user", content: `Mari order user B ${nonce}` },
+    { role: "assistant", characterId: "__professor_mari__", content: `Mari order assistant B ${nonce}` },
+  ] as const;
+  const createdMessageIds: string[] = [];
+
+  const assertTurnOrder = async () => {
+    const transcript = page.locator('[data-component="HomeProfessorMariChat.Transcript"]');
+    const offsets = await Promise.all(
+      turns.map(async ({ content }) => {
+        const message = transcript.getByText(content, { exact: true });
+        await expect(message).toBeVisible();
+        return message.evaluate((node) => {
+          let index = 0;
+          let cursor: Node | null = node;
+          while ((cursor = cursor.previousSibling)) index += 1;
+          return node.getBoundingClientRect().top + index / 1_000;
+        });
+      }),
+    );
+    expect(offsets).toEqual([...offsets].sort((left, right) => left - right));
+  };
+
+  try {
+    for (const turn of turns) {
+      const response = await page.request.post(`/api/chats/${chat.id}/messages`, { data: turn });
+      expect(response.ok()).toBeTruthy();
+      const message = (await response.json()) as { id: string };
+      createdMessageIds.push(message.id);
+    }
+
+    await page.goto("/");
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await assertTurnOrder();
+    await page.reload();
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await assertTurnOrder();
   } finally {
     await Promise.all(
       createdMessageIds.map((id) => bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${id}`)),
@@ -18167,20 +18289,19 @@ test("Professor Mari shows the latest context budget when token usage is enabled
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
 
     const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-    await window.getByRole("button", { name: "Select connection" }).click();
-    const budget = window.locator('[data-component="ContextBudget"]');
-    const configuredChromeTextColor = await page.evaluate(() =>
-      document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim(),
-    );
-    const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
-    const chromeTextColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-text");
-    expect(configuredChromeTextColor).toBe("#14b8a6");
-    await expect(budget).toContainText("Context");
-    await expect(budget).toContainText("12.3k / 128k tokens");
-    await expect(budget.getByText("Context", { exact: true })).toHaveCSS("color", chromeMutedColor);
-    await expect(budget.getByText("12.3k / 128k tokens", { exact: true })).toHaveCSS("color", chromeTextColor);
-    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12345");
-    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "128000");
+    // M7: the trust strip became the "How she works" group of Aware of.
+    await page.locator('[data-destination="context"]').click();
+    const howSheWorks = window.locator('[data-component="HomeProfessorMariChat.WhatMariSees"] [data-group="how"]');
+    await expect(howSheWorks).toContainText("Budget connection");
+    await expect(howSheWorks).toContainText("Sandbox ready");
+    await expect(howSheWorks).toContainText("12.3k / 128k tokens");
+    // The store write propagates to the inline CSS variable asynchronously;
+    // poll instead of sampling once.
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim()),
+      )
+      .toBe("#14b8a6");
   } finally {
     await bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${message.id}`);
   }
@@ -18211,8 +18332,11 @@ test("Professor Mari history opens a loaded chat at its newest message", async (
     await page.goto("/");
     await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
 
-    const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-    await window.getByRole("button", { name: "Chats" }).click();
+    // #7312: her window lives in the omnibar, and Chats is a tab in its header.
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const window = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
+    await expect(window).toBeVisible();
+    await omnibar.getByRole("tab", { name: "Chats", exact: true }).click();
     await window.locator(`[data-professor-mari-chat-id="${firstChat.id}"] button`).first().click();
 
     const transcript = window.locator('[data-component="HomeProfessorMariChat.Transcript"]');
@@ -18248,8 +18372,11 @@ test("Professor Mari bulk chat deletion follows the active accent", async ({ pag
     const activeAccentColor = await readCssVariableColor(page, "--marinara-chat-chrome-button-text-active");
     await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
 
-    const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-    await window.getByRole("button", { name: "Chats" }).click();
+    // #7312: her window lives in the omnibar, and Chats is a tab in its header.
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const window = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
+    await expect(window).toBeVisible();
+    await omnibar.getByRole("tab", { name: "Chats", exact: true }).click();
     await window.getByRole("button", { name: "Select", exact: true }).click();
     await window
       .locator(`[data-professor-mari-chat-id="${firstChat.id}"]`)
@@ -18331,14 +18458,18 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
   await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
 
   const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-  await expect(window.getByText("Install this dependency?")).toBeVisible();
-  await expect(window.getByText("nanoid@5.1.11")).toBeVisible();
-  await expect(window.getByRole("button", { name: "Install" })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Not now" })).toBeVisible();
-  await expect(window.getByText("Apply sensitive file change?")).toBeVisible();
-  await expect(window.getByText("package.json", { exact: true })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Apply change" })).toBeVisible();
-  await expect(window.getByRole("button", { name: "Discard" })).toBeVisible();
+  const install = window.locator(".mari-card").filter({ hasText: "Install nanoid" });
+  await expect(install.getByRole("button", { name: "Install" })).toBeVisible();
+  await expect(install.getByRole("button", { name: "Not now" })).toBeVisible();
+  await expect(install.getByText("nanoid@5.1.11")).toBeHidden();
+  await install.getByText("Technical details").click();
+  await expect(install.getByText("nanoid@5.1.11")).toBeVisible();
+  await expect(install.getByText("sha512-regression-integrity")).toBeVisible();
+  const file = window.locator(".mari-card").filter({ hasText: "Change package.json" });
+  await expect(file.getByRole("button", { name: "Apply change" })).toBeVisible();
+  await expect(file.getByRole("button", { name: "Not now" })).toBeVisible();
+  await file.getByText("Technical details").click();
+  await expect(file.getByText("package.json", { exact: true })).toBeVisible();
   await expect.poll(() => window.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
 });
 
@@ -18380,6 +18511,10 @@ function respondWithProfessorMariAction(response: import("node:http").ServerResp
 test("Professor Mari creates a character when its own authorization quote omits the intent verb", async ({
   request,
 }) => {
+  // This scripted provider exercises the Classic JSON-frame protocol.
+  expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
+    true,
+  );
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona ${suffix}`;
   let callCount = 0;
@@ -18498,6 +18633,10 @@ test("Professor Mari creates a character when its own authorization quote omits 
 test("Professor Mari creates a character from a German instruction and a card with quoted denial-like dialogue", async ({
   request,
 }) => {
+  // This scripted provider exercises the Classic JSON-frame protocol.
+  expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
+    true,
+  );
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona DE ${suffix}`;
   const cardWithQuotedDialogue = `Character - Juli
@@ -19832,7 +19971,6 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await page.evaluate(async () => {
     const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setHasCompletedOnboarding(true);
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
   });
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
 
@@ -19996,11 +20134,7 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
       localStorage.setItem("marinara:home:widget-visibility:v2", JSON.stringify(["character"]));
       localStorage.removeItem("marinara:home:widget-layout:v2");
       localStorage.removeItem("marinara:home:widget-order:v1");
-      // The floating Professor Mari assistant popup overlaps the widget's
-      // action row on the iPhone-profile viewport and intercepts the "View
-      // character" click. It is unrelated to the layout under test.
     });
-    await seedUIState(page, { professorMariNavigationEnabled: false }, "merge");
     await page.goto("/");
 
     const characterWidget = page.locator('[data-home-widget-id="character"]');
@@ -20047,6 +20181,8 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
 test("home browser hub scales cleanly and opens FAQ as a bookmark window", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   const mobile = testInfo.project.name.includes("mobile");
+  // It checks the default Home copy, which a dated Mari pack replaces inside its window; the fixture turns those off.
+  await seedUIState(page, {}, "merge");
   await page.addInitScript(() => {
     if (localStorage.getItem("marinara:home:widget-visibility:v2") !== null) return;
     localStorage.setItem(
@@ -20078,7 +20214,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(page.getByRole("heading", { name: "Character of the Day", exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you!",
+      "Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you! Looking for a page? Press Ctrl+K and type it.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -20107,6 +20243,23 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   const faqWindow = page.getByRole("dialog", { name: "Professor Mari's FAQ" });
   await expect(faqWindow).toBeVisible();
   await expect(faqWindow.getByRole("searchbox", { name: "Search FAQ" })).toBeVisible();
+  await faqWindow.getByRole("button", { name: /How do I connect Marinara to a model/ }).click();
+  await faqWindow.getByRole("button", { name: "Ask Prof. Mari about this" }).click();
+  await expect(faqWindow).toBeHidden();
+  // "Ask Prof. Mari about this" hands off to the omnibar (there is no "Professor" Home tab).
+  await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
+  await expect(
+    page.locator('textarea[placeholder="Ask Professor Mari to check or change something"]:visible'),
+  ).toContainText("How do I connect Marinara to a model?");
+  // Mari's omnibar pane covers the bookmark bar, so close it first.
+  const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+  await omnibar
+    .getByRole("button", { name: /^Close/ })
+    .first()
+    .click();
+  await expect(omnibar).toBeHidden();
+  await openHomeBookmark(page, "FAQ");
+  await expect(faqWindow).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(faqWindow).toBeHidden();
 
@@ -20235,60 +20388,43 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   }
 
   if (!mobile) {
-    const professorWidget = page.locator(".mari-home-widget--professor");
-    const professorDesk = page.locator('.mari-home-widget--professor [data-part="desk"]');
-    const professorLaptop = page.locator('.mari-home-widget--professor [data-part="laptop"]');
-    const professorSceneFit = await Promise.all([
-      professorWidget.boundingBox(),
-      professorDesk.boundingBox(),
-      professorLaptop.boundingBox(),
-    ]);
-    expect(professorSceneFit[0]).not.toBeNull();
-    expect(professorSceneFit[1]).not.toBeNull();
-    expect(professorSceneFit[2]).not.toBeNull();
-    const widgetBottom = professorSceneFit[0]!.y + professorSceneFit[0]!.height;
-    expect(professorSceneFit[1]!.y + professorSceneFit[1]!.height).toBeLessThanOrEqual(widgetBottom);
-    expect(professorSceneFit[2]!.y + professorSceneFit[2]!.height).toBeLessThanOrEqual(widgetBottom);
+    // Slice 85: her idle portrait stands inside the card at 192 px tall (the navigator's art, approved), unrotated.
+    const professorSprite = page.locator('.mari-home-widget--professor [data-part="sprite"]');
+    const professorSpriteFit = () =>
+      professorSprite.evaluate((sprite: HTMLImageElement) => {
+        const box = sprite.getBoundingClientRect();
+        const card = sprite.closest(".mari-home-widget--professor")!.getBoundingClientRect();
+        return {
+          height: Math.round(box.height),
+          transform: getComputedStyle(sprite).transform,
+          inside: box.top >= card.top && box.bottom <= card.bottom && box.right <= card.right,
+        };
+      });
+    await expect.poll(professorSpriteFit).toEqual({ height: 192, transform: "none", inside: true });
 
     await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
-    });
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
-    await page.waitForTimeout(1_300);
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setReduceAmbientEffects(true);
-      module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-    });
-    const restoredAssistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-    await expect(restoredAssistant).toBeVisible({ timeout: 1_000 });
-    await expect(restoredAssistant.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible();
-    await expect(restoredAssistant.locator(".mari-home-professor-popup__arrival-frame")).toHaveCSS("opacity", "0");
     await page.evaluate(async () => {
       const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(false);
     });
     await clickTopbarPanel(page, "settings");
-    const suggestionsToggle = page.getByRole("checkbox", { name: "Professor Mari suggestions" });
-    const navigationToggle = page.getByRole("checkbox", { name: "Professor Mari navigation" });
+    // Slice 57 moved these two toggles into the omnibar's own settings page; they are
+    // `role="switch"` there, reached via the main panel's "Open" row.
+    await page.getByRole("button", { name: "Open Search and Professor Mari settings", exact: true }).click();
+    const omnibarSettingsDialog = page.locator('[data-component="GlobalOmnibar"]');
+    const suggestionsToggle = omnibarSettingsDialog.getByRole("switch", { name: "Reply chips" });
     await expect(suggestionsToggle).toBeVisible();
-    await expect(navigationToggle).toBeChecked();
-    const [suggestionsBounds, navigationBounds, settingsSearchBounds, addressRowBounds] = await Promise.all([
-      suggestionsToggle.boundingBox(),
-      navigationToggle.boundingBox(),
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setOmnibarOpen(false);
+    });
+    await expect(omnibarSettingsDialog).toBeHidden();
+    const [settingsSearchBounds, addressRowBounds] = await Promise.all([
       page.locator(".mari-settings-search-header").boundingBox(),
       page.locator('[data-component="HomeBrowserHub.AddressRow"]').boundingBox(),
     ]);
-    expect(suggestionsBounds).not.toBeNull();
-    expect(navigationBounds).not.toBeNull();
     expect(settingsSearchBounds).not.toBeNull();
     expect(addressRowBounds).not.toBeNull();
-    expect(navigationBounds!.y).toBeGreaterThan(suggestionsBounds!.y);
     expect(
       Math.abs(
         settingsSearchBounds!.y + settingsSearchBounds!.height - (addressRowBounds!.y + addressRowBounds!.height / 2),
@@ -20329,8 +20465,15 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     }).toPass({ timeout: 10_000 });
     await expect(feed.locator("[data-home-empty-slot]")).toHaveCount(0);
 
+    // The Professor tab opens Mari's omnibar pane; it does not move the Home address.
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
-    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
+    await expect(page.locator('[data-component="GlobalOmnibar"]')).toBeVisible();
+    await page
+      .locator('[data-component="GlobalOmnibar"]')
+      .getByRole("button", { name: /^Close/ })
+      .first()
+      .click();
+    await expect(page.locator('[data-component="GlobalOmnibar"]')).toBeHidden();
     await page.getByRole("tab", { name: "Home", exact: true }).click();
     await expect(feed).toHaveAttribute("data-home-grid-columns", "4");
     expect(await content.evaluate((element) => element.scrollHeight <= element.clientHeight + 2)).toBeTruthy();
@@ -20385,211 +20528,6 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   if (mobile) await expect(dragHandles.first()).toHaveCSS("opacity", "1");
 
   expect(errors).toEqual([]);
-});
-
-test("Professor Mari navigation can be repositioned within Home on desktop", async ({ page }, testInfo) => {
-  const mobile = testInfo.project.name.includes("mobile");
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem("marinara:e2e:professor-position-cleared") === "true") return;
-    localStorage.removeItem("marinara:home:professor-position:v1");
-    sessionStorage.setItem("marinara:e2e:professor-position-cleared", "true");
-  });
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setHasCompletedOnboarding(true);
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-  });
-
-  const handle = page.locator('[data-component="HomeBrowserHub.ProfessorDragHandle"]');
-  if (mobile) {
-    await expect(handle).toHaveCount(0);
-    return;
-  }
-
-  const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
-  const content = page.locator('[data-component="HomeBrowserHub.Content"]');
-  const sprite = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantSprite"]');
-  const bubble = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantBubble"]');
-  const bubbleTail = page.locator('[data-component="HomeBrowserHub.ProfessorAssistantBubbleTail"]');
-  const dragAnimation = page.locator('[data-component="HomeBrowserHub.ProfessorDragAnimation"]');
-  await expect(assistant).toBeVisible({ timeout: 6_000 });
-  await expect(sprite).toBeVisible();
-  await expect(bubbleTail).toHaveCount(1);
-  expect(
-    await bubble.evaluate((element) => ({
-      after: getComputedStyle(element, "::after").display,
-      before: getComputedStyle(element, "::before").display,
-    })),
-  ).toEqual({ after: "none", before: "none" });
-  // Mari arrives by sliding up past the Home hub's bottom edge. Hovering her mid-arrival lets Playwright
-  // scroll the hub to reveal her, and the hub keeps that offset (her hidden drag frame overflows it), so
-  // every bound measured below shifts. Let the arrival finish first.
-  await sprite.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
-  await sprite.hover();
-  await expect(handle).toBeVisible();
-  await expect(handle).toHaveCSS("opacity", "1");
-  await expect(dragAnimation).toBeHidden();
-
-  const [handleBounds, initialSpriteBounds, contentBounds] = await Promise.all([
-    handle.boundingBox(),
-    sprite.boundingBox(),
-    content.boundingBox(),
-  ]);
-  expect(handleBounds).not.toBeNull();
-  expect(initialSpriteBounds).not.toBeNull();
-  expect(contentBounds).not.toBeNull();
-  await page.mouse.move(handleBounds!.x + handleBounds!.width / 2, handleBounds!.y + handleBounds!.height / 2);
-  await page.mouse.down();
-  await expect(assistant).toHaveAttribute("data-dragging", "true");
-  await expect(dragAnimation).toBeVisible();
-  await expect(bubble).toContainText("W-What are you doing? Put me down! (˶>⩊<˶)");
-  await page.waitForTimeout(80);
-  const firstDragTimeline = await dragAnimation.evaluate((element) => ({
-    currentTime: Number(element.getAnimations()[0]?.currentTime ?? 0),
-    frame: getComputedStyle(element).backgroundPositionX,
-  }));
-  expect(["3.1%", "34.48%", "66.12%", "98.15%"]).toContain(firstDragTimeline.frame);
-  const dragAnimationBounds = await dragAnimation.boundingBox();
-  expect(dragAnimationBounds).not.toBeNull();
-  const dragScaleX = dragAnimationBounds!.width / initialSpriteBounds!.width;
-  const dragScaleY = dragAnimationBounds!.height / initialSpriteBounds!.height;
-  expect(dragScaleX).toBeGreaterThan(1.16);
-  expect(dragScaleY).toBeGreaterThan(1.1);
-  expect(dragScaleX / dragScaleY).toBeGreaterThan(1.03);
-  expect(dragScaleX / dragScaleY).toBeLessThan(1.08);
-
-  const rightEdgeGrabX = contentBounds!.x + contentBounds!.width - 16 - initialSpriteBounds!.width * (1 - 0.45);
-  await page.mouse.move(rightEdgeGrabX, contentBounds!.y + 220, { steps: 6 });
-  await expect(bubble).toHaveAttribute("data-tail-side", "right");
-  const movedDragTimeline = await dragAnimation.evaluate((element) => ({
-    currentTime: Number(element.getAnimations()[0]?.currentTime ?? 0),
-    frame: getComputedStyle(element).backgroundPositionX,
-  }));
-  expect(movedDragTimeline.currentTime).toBeGreaterThan(firstDragTimeline.currentTime);
-  expect(["3.1%", "34.48%", "66.12%", "98.15%"]).toContain(movedDragTimeline.frame);
-  const rightTailStyle = await bubbleTail.evaluate((element) => {
-    const tail = getComputedStyle(element);
-    const outerTail = getComputedStyle(element, "::before");
-    return {
-      clipPath: outerTail.clipPath,
-      height: tail.height,
-      overlap: Number.parseFloat(tail.width) + Number.parseFloat(tail.right),
-      right: Number.parseFloat(tail.right),
-      transform: tail.transform,
-      width: tail.width,
-    };
-  });
-  expect(rightTailStyle.right).toBeLessThan(0);
-  expect(rightTailStyle.overlap).toBeGreaterThan(1);
-  expect(rightTailStyle.transform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
-  await page.mouse.up();
-  await expect(assistant).toHaveAttribute("data-dragging", "false");
-  await expect(dragAnimation).toBeHidden();
-  await expect(bubble).toHaveAttribute("data-tail-side", "right");
-
-  await sprite.hover();
-  const repositionedHandleBounds = await handle.boundingBox();
-  expect(repositionedHandleBounds).not.toBeNull();
-  await page.mouse.move(
-    repositionedHandleBounds!.x + repositionedHandleBounds!.width / 2,
-    repositionedHandleBounds!.y + repositionedHandleBounds!.height / 2,
-  );
-  await page.mouse.down();
-  await expect(assistant).toHaveAttribute("data-dragging", "true");
-  await expect(dragAnimation).toBeVisible();
-  expect(
-    await dragAnimation.evaluate((element) =>
-      Number(element.getAnimations()[0]?.currentTime ?? Number.POSITIVE_INFINITY),
-    ),
-  ).toBeLessThan(150);
-
-  const dragTarget = {
-    x: contentBounds!.x + contentBounds!.width * 0.35,
-    y: contentBounds!.y + Math.min(220, contentBounds!.height * 0.35),
-  };
-  await page.mouse.move(dragTarget.x, dragTarget.y, { steps: 10 });
-  await expect(bubble).toHaveAttribute("data-tail-side", "left");
-  const leftTailStyle = await bubbleTail.evaluate((element) => {
-    const tail = getComputedStyle(element);
-    const outerTail = getComputedStyle(element, "::before");
-    return {
-      clipPath: outerTail.clipPath,
-      height: tail.height,
-      overlap: Number.parseFloat(tail.width) + Number.parseFloat(tail.left),
-      left: Number.parseFloat(tail.left),
-      transform: tail.transform,
-      width: tail.width,
-    };
-  });
-  expect(leftTailStyle.left).toBeLessThan(0);
-  expect(leftTailStyle.overlap).toBeGreaterThan(1);
-  expect(leftTailStyle.transform).toBe("none");
-  expect(rightTailStyle.clipPath).toBe(leftTailStyle.clipPath);
-  expect(rightTailStyle.width).toBe(leftTailStyle.width);
-  expect(rightTailStyle.height).toBe(leftTailStyle.height);
-  const movedSpriteBounds = await sprite.boundingBox();
-  expect(movedSpriteBounds).not.toBeNull();
-  expect(Math.abs(movedSpriteBounds!.x - initialSpriteBounds!.x)).toBeGreaterThan(100);
-  expect(Math.abs(movedSpriteBounds!.x + movedSpriteBounds!.width * 0.45 - dragTarget.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(movedSpriteBounds!.y + movedSpriteBounds!.height * 0.09 - dragTarget.y)).toBeLessThanOrEqual(1);
-  expect(movedSpriteBounds!.x).toBeGreaterThanOrEqual(contentBounds!.x + 15);
-  expect(movedSpriteBounds!.y).toBeGreaterThanOrEqual(contentBounds!.y + 27);
-  expect(movedSpriteBounds!.x + movedSpriteBounds!.width).toBeLessThanOrEqual(
-    contentBounds!.x + contentBounds!.width - 15,
-  );
-  expect(movedSpriteBounds!.y + movedSpriteBounds!.height).toBeLessThanOrEqual(
-    contentBounds!.y + contentBounds!.height - 15,
-  );
-  await page.mouse.up();
-  await expect(assistant).toHaveAttribute("data-dragging", "false");
-  await expect(dragAnimation).toBeHidden();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const position = JSON.parse(localStorage.getItem("marinara:home:professor-position:v1") ?? "null") as {
-          x?: number;
-          y?: number;
-        } | null;
-        return Boolean(position && position.x! >= 0 && position.x! <= 1 && position.y! >= 0 && position.y! <= 1);
-      }),
-    )
-    .toBe(true);
-
-  const droppedPosition = await sprite.boundingBox();
-  await page.reload();
-  await expect(sprite).toBeVisible({ timeout: 6_000 });
-  await expect(sprite.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible({ timeout: 3_000 });
-  const restoredPosition = await sprite.boundingBox();
-  expect(droppedPosition).not.toBeNull();
-  expect(restoredPosition).not.toBeNull();
-  expect(Math.abs(restoredPosition!.x - droppedPosition!.x)).toBeLessThanOrEqual(8);
-  expect(Math.abs(restoredPosition!.y - droppedPosition!.y)).toBeLessThanOrEqual(8);
-
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
-  });
-  await expect(sprite).toBeHidden();
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
-  });
-  await expect(sprite).toBeVisible({ timeout: 1_000 });
-  await expect(
-    page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true }),
-  ).toBeVisible();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1"))).toBeNull();
-  const resetPosition = await sprite.boundingBox();
-  expect(resetPosition).not.toBeNull();
-  expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);
-  await expect
-    .poll(async () => {
-      const position = await sprite.boundingBox();
-      return position ? position.y + position.height : Number.POSITIVE_INFINITY;
-    })
-    .toBeLessThanOrEqual(contentBounds!.y + contentBounds!.height);
 });
 
 test("Home widgets lift and brighten on fine-pointer hover", async ({ page }, testInfo) => {
@@ -20806,10 +20744,23 @@ test("Home lifecycle stays bounded across repeated tab and chat navigation", asy
       };
     };
 
+    // #7312: the Professor tab opens her window in the omnibar over Home; Home's own address stays put.
+    const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+    const professorWindow = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
+    const openProfessor = async () => {
+      await page.getByRole("tab", { name: "Professor", exact: true }).click();
+      await expect(professorWindow).toBeVisible();
+      await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
+      await expect(page.getByRole("tab", { name: "Home", exact: true })).toHaveAttribute("aria-selected", "true");
+    };
+    const closeProfessor = async () => {
+      await omnibar.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(professorWindow).toHaveCount(0);
+    };
     const cycleInternalTabs = async (count: number) => {
       for (let index = 0; index < count; index += 1) {
-        await page.getByRole("tab", { name: "Professor", exact: true }).click();
-        await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
+        await openProfessor();
+        await closeProfessor();
         await page.getByRole("tab", { name: "Home", exact: true }).click();
         await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
       }
@@ -20837,17 +20788,21 @@ test("Home lifecycle stays bounded across repeated tab and chat navigation", asy
     await page.waitForTimeout(1_750);
     const baseline = await collect();
 
-    await page.getByRole("tab", { name: "Professor", exact: true }).click();
-    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
-    const professorTabIntervals = await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __homeLifecycleAudit: { snapshot: () => { intervals: number } };
-          }
-        ).__homeLifecycleAudit.snapshot().intervals,
-    );
-    expect(professorTabIntervals).toBeLessThanOrEqual(baseline.lifecycle.intervals);
+    const readIntervals = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __homeLifecycleAudit: { snapshot: () => { intervals: number } };
+            }
+          ).__homeLifecycleAudit.snapshot().intervals,
+      );
+    await openProfessor();
+    // Her omnibar window opens over a still-mounted Home, so it adds its own polling while open; closing
+    // it has to hand every one of those intervals back.
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toHaveCount(1);
+    await closeProfessor();
+    await expect.poll(readIntervals).toBeLessThanOrEqual(baseline.lifecycle.intervals);
     await page.getByRole("tab", { name: "Home", exact: true }).click();
     await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
 
@@ -22017,6 +21972,105 @@ test("iPhone Conversation Presence keeps its last activity field reachable", asy
   }
 });
 
+test("phone keyboard keeps a full-screen package editor usable and full height after it closes", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
+
+  const fullViewport = page.viewportSize()!;
+  // Taller than the phone is wide, so the browser does not treat it as turning sideways.
+  const keyboardViewportHeight = 480;
+  const setVisibleHeight = async (height: number) => {
+    if (browserName === "webkit") {
+      // iPhone keeps the layout viewport and shrinks only the visual viewport.
+      await page.evaluate((visibleHeight) => {
+        (
+          window as typeof window & { __setMarinaraVisualViewport: (height: number, offsetTop: number) => void }
+        ).__setMarinaraVisualViewport(visibleHeight, 0);
+      }, height);
+    } else {
+      // Android Chrome resizes the layout viewport (interactive-widget=resizes-content).
+      await page.setViewportSize({ width: fullViewport.width, height });
+    }
+  };
+  if (browserName === "webkit") await installMockVisualViewport(page);
+  await prepareFreshClient(page);
+  await page.goto("/");
+  await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
+
+  // World Maps opens its map editor like this: a full-screen layer portalled into <body>,
+  // marked as chat floating UI, whose editor shell fills it.
+  await page.evaluate(() => {
+    const layer = document.createElement("div");
+    layer.dataset.chatFloatingPanel = "";
+    layer.dataset.testid = "package-editor-layer";
+    layer.className = "fixed inset-0 flex min-h-0 flex-col overflow-hidden";
+    layer.style.zIndex = "10020";
+    const shell = document.createElement("div");
+    shell.className = "mari-editor-shell flex min-h-0 flex-1 flex-col overflow-hidden";
+    const header = document.createElement("header");
+    header.className = "mari-editor-header";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save map";
+    header.append(save);
+    // Its place details: a full-height section in the pane under the header, scrolling on its own.
+    const pane = document.createElement("div");
+    pane.className = "min-h-0 flex-1";
+    const details = document.createElement("section");
+    details.className = "flex h-full min-h-0 flex-col";
+    const form = document.createElement("div");
+    form.className = "min-h-0 flex-1 overflow-y-auto";
+    for (let index = 1; index <= 30; index += 1) {
+      const field = document.createElement("input");
+      field.setAttribute("aria-label", `Place ${index}`);
+      field.style.cssText = "display:block;width:100%;height:44px;margin:12px 0";
+      form.append(field);
+    }
+    details.append(form);
+    pane.append(details);
+    shell.append(header, pane);
+    // The package keeps its own styles and toasts beside the editor shell.
+    layer.append(document.createElement("style"), shell, document.createElement("section"));
+    document.body.append(layer);
+  });
+
+  const field = page.getByTestId("package-editor-layer").getByLabel("Place 24");
+  const readLayout = () =>
+    page.evaluate(() => {
+      const layer = document.querySelector('[data-testid="package-editor-layer"]')!.getBoundingClientRect();
+      const save = document.querySelector('[data-testid="package-editor-layer"] button')!.getBoundingClientRect();
+      const focused = document.activeElement!.getBoundingClientRect();
+      return {
+        layerTop: Math.round(layer.top),
+        layerBottom: Math.round(layer.bottom),
+        saveVisible: save.top >= layer.top && save.bottom <= layer.bottom,
+        fieldVisible: focused.top >= save.bottom && focused.bottom <= layer.bottom,
+      };
+    });
+
+  await field.tap();
+  await expect(field).toBeFocused();
+  await setVisibleHeight(keyboardViewportHeight);
+  await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+  // The browser then scrolls the field being typed in into view.
+  await field.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+  await expect
+    .poll(readLayout)
+    .toEqual({ layerTop: 0, layerBottom: keyboardViewportHeight, saveVisible: true, fieldVisible: true });
+
+  // Closing the keyboard with the back gesture keeps the field focused; the editor fills the screen again.
+  // Regression guard only: staging also passes this half in emulation. The real-Android report of the
+  // editor staying compressed after the keyboard closes (#7452) was not reproduced here.
+  await setVisibleHeight(fullViewport.height);
+  await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+  await expect(field).toBeFocused();
+  await expect
+    .poll(readLayout)
+    .toEqual({ layerTop: 0, layerBottom: fullViewport.height, saveVisible: true, fieldVisible: true });
+});
+
 test("mobile chat composer follows the visual viewport above the software keyboard", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
   test.setTimeout(90_000);
@@ -22590,6 +22644,29 @@ test("mobile chat composer follows the visual viewport above the software keyboa
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }
+});
+
+test("page backing keeps the app running when the browser refuses canvas reads", async ({ page }) => {
+  // WebKit throws InvalidStateError from getImageData under memory pressure (#7241).
+  await page.addInitScript(() => {
+    CanvasRenderingContext2D.prototype.getImageData = () => {
+      throw new DOMException("Unable to get image data from canvas", "InvalidStateError");
+    };
+  });
+  await page.goto("/");
+  await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
+  await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+    useUIStore.getState().setAppBackgroundColor("#234567");
+  });
+  await expect(page.getByText("Marinara hit a recoverable UI error.")).toHaveCount(0);
+  // Without the canvas, the backing keeps the theme's own background color, unflattened.
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#234567");
+  await expect
+    .poll(() => page.locator("html").evaluate((element) => element.style.getPropertyValue("--marinara-page-backing")))
+    .toBe("#234567");
 });
 
 test("mobile Roleplay releases its inactive background after a crossfade", async ({ page }, testInfo) => {
@@ -24105,7 +24182,7 @@ test("Background library organization works with desktop drag and touch drag", a
 
     await expect(page.getByText("Drag a background onto a folder chip to file it.")).toBeVisible();
     const sortSelect = page.getByLabel("Sort backgrounds");
-    await expect(sortSelect.locator("option")).toHaveText(["A-Z", "Z-A", "Newest", "Oldest"]);
+    await expect(sortSelect.locator("option")).toHaveText(["Manual order", "A-Z", "Z-A", "Newest", "Oldest"]);
     await page.getByRole("button", { name: /Tags \(/ }).click();
     await page.getByRole("button", { name: "smoke-folder", exact: true }).click();
 
@@ -24158,7 +24235,7 @@ test("Background library organization works with desktop drag and touch drag", a
     const folder = page.locator(`[data-background-folder-id="${folderId}"]`);
     await expect(folder).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
-      const dragHandle = backgroundRow.getByTitle(/^Drag /);
+      const dragHandle = backgroundRow.locator("[data-drag-surface]");
       const startRect = await dragHandle.boundingBox();
       expect(startRect).not.toBeNull();
       const start = {

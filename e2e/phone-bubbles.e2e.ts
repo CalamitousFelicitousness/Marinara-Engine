@@ -138,25 +138,50 @@ async function dragBubble(page: Page, target: Locator, to: { x: number; y: numbe
   if (!options.hold) await page.mouse.up();
 }
 
-/** No bubble sits on the message box, and the page never scrolls sideways. */
+/** Once every bubble holds still, none sits on the message box, and the page never scrolls sideways. */
 async function expectComposerClearAndNoSideScroll(page: Page) {
-  const overlap = await page.evaluate(() => {
-    const composer = document.querySelector("[data-chat-mode] [data-chat-composer]");
-    const shell = composer?.closest("[data-chat-resource-drop-exclude]") ?? composer;
-    const composerRect = shell?.getBoundingClientRect();
-    if (!composerRect) return [];
-    return Array.from(document.querySelectorAll(".mari-window-bubble"))
-      .map((element) => ({ id: element.getAttribute("data-window"), rect: element.getBoundingClientRect() }))
-      .filter(
-        ({ rect }) =>
-          rect.left < composerRect.right &&
-          rect.right > composerRect.left &&
-          rect.top < composerRect.bottom &&
-          rect.bottom > composerRect.top,
-      )
-      .map(({ id }) => id);
+  const result = await page.evaluate(async () => {
+    const measure = () => {
+      const composer = document.querySelector("[data-chat-mode] [data-chat-composer]");
+      const shell = composer?.closest("[data-chat-resource-drop-exclude]") ?? composer;
+      return {
+        composer: shell?.getBoundingClientRect(),
+        bubbles: Array.from(document.querySelectorAll(".mari-window-bubble"), (element) => {
+          // Chat tools menu rows have no window id; name them by the tool or control they hold.
+          const control =
+            element.getAttribute("data-chat-tools-menu-tool") ?? element.getAttribute("data-window-control");
+          return {
+            id: element.getAttribute("data-window") ?? (control ? `menu:${control}` : element.outerHTML.slice(0, 120)),
+            rect: element.getBoundingClientRect(),
+          };
+        }),
+      };
+    };
+    // A message box that mounts late, or a screen change, moves the open Chat tools menu, and Framer glides its
+    // rows there with inline transforms (no Web Animation to await). Measure after a few still frames.
+    let latest = measure();
+    let still = 0;
+    for (const start = performance.now(); still < 3 && performance.now() - start < 3_000;) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const next = measure();
+      still = JSON.stringify(next) === JSON.stringify(latest) ? still + 1 : 0;
+      latest = next;
+    }
+    const { composer, bubbles } = latest;
+    const overlap = composer
+      ? bubbles
+          .filter(
+            ({ rect }) =>
+              rect.left < composer.right &&
+              rect.right > composer.left &&
+              rect.top < composer.bottom &&
+              rect.bottom > composer.top,
+          )
+          .map(({ id }) => id)
+      : [];
+    return { settled: still >= 3, overlap };
   });
-  expect(overlap).toEqual([]);
+  expect(result).toEqual({ settled: true, overlap: [] });
   const sideScroll = await page.evaluate(
     () =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth ||
@@ -413,6 +438,7 @@ test.describe("phone bubbles", () => {
                     innerClip: inner.clipPath,
                     border: outer.backgroundImage,
                     background: inner.backgroundImage,
+                    ring: inner.boxShadow,
                   };
                 }, gradient);
                 expect(paint.clip).toBe(expected.clip);
@@ -420,6 +446,13 @@ test.describe("phone bubbles", () => {
                   expect(paint.innerClip).toBe(expected.innerClip);
                   expect(paint.border).toContain("linear-gradient");
                   expect(paint.background).toContain("linear-gradient");
+                  // Mari's and Dottore's thin inner ring survives custom border paint on every shape (#7244):
+                  // a gap in the background's first stop, then a ring in the border's first stop.
+                  expect(paint.ring).toBe(
+                    preset === "default"
+                      ? "none"
+                      : "rgb(32, 40, 56) 0px 0px 0px 2px inset, rgb(204, 160, 119) 0px 0px 0px 3px inset",
+                  );
                 }
               }
               await expectComposerClearAndNoSideScroll(page);
@@ -655,6 +688,9 @@ test.describe("phone bubbles", () => {
           Math.abs(worldStart.x - playerStart.x) >= worldStart.width ||
             Math.abs(worldStart.y - playerStart.y) >= worldStart.height,
         ).toBe(true);
+        // #7320: World State's banner grows left from its slot, so it stays in the top row beside the others.
+        await expect(world).toHaveAttribute("data-banner", "true");
+        expect(Math.abs(worldStart.y - playerStart.y), "the banner shares the top row").toBeLessThanOrEqual(1);
         await dragBubble(page, world, { x: 40, y: 240 });
         const placed = await box(world);
         await expect
@@ -934,6 +970,9 @@ test.describe("phone bubbles", () => {
           { preset, size },
         );
         await expect(launcher).toHaveCSS("width", `${size ?? 36}px`);
+        // A new size moves the launcher back inside the chat a frame after its width changes (#7220). Wait until every
+        // button holds still clear of the message box, so the next drag grabs the launcher where it really is.
+        await expectComposerClearAndNoSideScroll(page);
         for (const edge of ["right", "left"] as const) {
           for (const direction of ["below", "above"] as const) {
             await dragBubble(page, launcher, {

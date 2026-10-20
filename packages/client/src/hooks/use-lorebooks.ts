@@ -13,6 +13,7 @@ import type {
   SetLorebooksEnabledResult,
 } from "@marinara-engine/shared";
 import { characterKeys } from "./use-characters";
+import { libraryFolderKeys } from "./use-library-folders";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import {
   collectAllPaginatedItems,
@@ -258,6 +259,8 @@ export function useDeleteLorebook() {
       // missing this lets the character editor keep rendering stale
       // entries and a broken "Edit Embedded Lorebook" button.
       qc.invalidateQueries({ queryKey: characterKeys.all });
+      // The server also drops the deleted book from library folders.
+      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("lorebooks") });
     },
   });
 }
@@ -269,6 +272,17 @@ export function useLorebookEntries(lorebookId: string | null) {
     queryKey: lorebookKeys.entries(lorebookId ?? ""),
     queryFn: () => api.get<LorebookEntry[]>(`/lorebooks/${lorebookId}/entries`),
     enabled: !!lorebookId,
+  });
+}
+
+/** Entries in every lorebook whose name, keys or content contain the query. A server read, capped. */
+export function useLorebookEntrySearch(query: string, enabled: boolean, limit = 6) {
+  return useQuery({
+    queryKey: [...lorebookKeys.all, "entry-search", query, limit] as const,
+    queryFn: ({ signal }) =>
+      api.get<LorebookEntry[]>(`/lorebooks/search/entries?q=${encodeURIComponent(query)}&limit=${limit}`, { signal }),
+    enabled: enabled && query.length > 0,
+    staleTime: 30_000,
   });
 }
 

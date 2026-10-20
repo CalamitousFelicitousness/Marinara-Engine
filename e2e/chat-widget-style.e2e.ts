@@ -304,6 +304,17 @@ async function expectGradientWidgets(page: Page, settings: Locator, bubble: Loca
   await expect(title).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
 }
 
+// Custom border paint keeps a preset's thin inner button ring (#7244): a gap in the
+// background's first colour, then a ring in the border's first colour. Default has none.
+async function expectButtonRing(page: Page, bubble: Locator, preset: Preset) {
+  const ring = () =>
+    bubble.locator(".mari-window-bubble__paint").evaluate((element) => getComputedStyle(element, "::after").boxShadow);
+  if (preset === "default") return expect.poll(ring).toBe("none");
+  const gap = await resolvedStyle(page, "color", "#667eea");
+  const line = await resolvedStyle(page, "color", "#ff6b6b");
+  await expect.poll(ring).toBe(`${gap} 0px 0px 0px 2px inset, ${line} 0px 0px 0px 3px inset`);
+}
+
 async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" | "light") {
   let controls = await openAppearance(page);
   const untouched = [];
@@ -329,6 +340,7 @@ async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" |
       .toEqual(appearance);
   }
   await expectGradientWidgets(page, selected.locator(".mari-window"), selected.locator(".mari-window-bubble"));
+  await expectButtonRing(page, selected.locator(".mari-window-bubble"), preset);
   expect(
     await selected
       .locator(".mari-window__header")
@@ -337,6 +349,7 @@ async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" |
   await clickTopbarPanel(page, "settings");
   const settings = await openChatSettings(page);
   await expectGradientWidgets(page, settings, page.locator("[data-chat-settings-button]"));
+  await expectButtonRing(page, page.locator("[data-chat-settings-button]"), preset);
   // A custom foreground/background pair must remain paired on native fields in either app theme.
   const profile = settings.getByRole("combobox", { name: "Profile", exact: true });
   await expect(profile).toHaveCSS(
@@ -1142,7 +1155,14 @@ for (const [preset, theme] of [
       await controls.locator("#chat-widget-font").selectOption("@serif");
       await controls.locator("#chat-widget-shape").selectOption("cut-corner");
       await setGradientColors(controls);
+      // Cut corners keeps the preset's inner button ring under custom colors too (#7244).
+      await expectButtonRing(
+        page,
+        controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${preset}"] .mari-window-bubble`),
+        preset,
+      );
       await clickTopbarPanel(page, "settings");
+      await expectButtonRing(page, page.locator("[data-chat-settings-button]"), preset);
       const background = await resolvedStyle(page, "background-image", GRADIENT_COLORS.background);
       const border = await resolvedStyle(page, "background-image", GRADIENT_COLORS.border);
       const textGradient = await resolvedStyle(page, "background-image", GRADIENT_COLORS.text);

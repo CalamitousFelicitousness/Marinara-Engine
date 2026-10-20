@@ -21,7 +21,7 @@ The GM supplies a small structured brief grounded in the scene. The engine resol
 
 The environment/formation pipeline supports optional map size and scene landmarks. Terrain guidance belongs to each encounter; map seeds are internal per encounter, with no campaign setup seed control. Keep old setups valid. Save the accepted grid and generator provenance so a future generator change cannot redraw an existing battle. Saved seeds reproduce generation given the same brief and combatants; they do not make arbitrary model output deterministic.
 
-Generated terrain may be repaired for connectivity, but authored constraints must not silently disappear. Bound model output, tile counts, unit counts and feature dimensions. Reject an impossible constrained layout with an actionable reason and offer an explicit generated fallback. A full paint/place editor and arbitrary authored maps are later work and must use the same validation rules.
+Generated terrain may be repaired for connectivity, but authored constraints must not silently disappear. Bound model output, tile counts, unit counts and feature dimensions. Reject an impossible constrained layout with an actionable reason and offer an explicit generated fallback. Boards painted by hand for a world's places (worldgen W9g, in a maker such as Pixelforge) pass the same rules: their deployment strips plains and every open tile connected, so they are fought on exactly as painted.
 
 ### Movement capabilities
 
@@ -29,7 +29,7 @@ Walking, flying and teleportation need explicit movement semantics. Flight and t
 
 An omitted movement mode defaults to walking for legacy encounters. An explicitly unsupported movement mode is rejected with an error; do not silently replace a requested capability with walking. This validation contract applies to generated blueprints and tactical API inputs.
 
-Keep traversal, legal destinations and occupancy separate. Teleporting across a wall does not imply permission to finish inside solid terrain. The initial flat grid cannot represent altitude, ceilings, spell-specific sight requirements or limited flight duration; document that ceiling instead of claiming full tabletop movement rules. Reuse the same movement legality for previews, resolution, path animation and enemy AI.
+Keep traversal, legal destinations and occupancy separate. Teleporting across a wall does not imply permission to finish inside solid terrain. The grid has height since combat C6b (climbing, cliffs, ridges that block sight, high ground) but cannot represent ceilings, spell-specific sight requirements or limited flight duration; document that ceiling instead of claiming full tabletop movement rules. Reuse the same movement legality for previews, resolution, path animation and enemy AI.
 
 ## Tabletop rules: built-in profiles plus GM reference tools
 
@@ -41,7 +41,7 @@ The engine should own actual rolls, legal targets, movement, action budgets, res
 
 Start with supported check, turn and resource primitives. A d20-oriented profile and a d10-pool-oriented profile need different resolution rules; one is not a renamed version of the other. Future coverage should include initiative, contested checks, damage/mitigation, conditions and resource use. Document unsupported cases and keep GM adjudication explicit.
 
-Tactical tabletop work also needs shared line-of-sight and cover rules. The current grid blocks movement through walls but distance-based ranged targeting can cross them. Update resolver, AI, counters, forecasts and threat overlays together. Preserve the current party/enemy phase system; individual initiative is a separate selectable rule profile.
+Shared line of sight is in place (combat C6): a wall or a mountain blocks it in the resolver, the AI, counters, areas, forecasts and threat overlays alike. Cover tiers build on the same test. Individual initiative is a game setting (combat C6c): new games roll an order once per fight and take one unit's turn at a time, in the engine and in the combat director alike; older games keep the party/enemy phases.
 
 ## Summoning: retain the design, defer the larger system
 

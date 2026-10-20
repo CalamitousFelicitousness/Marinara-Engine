@@ -19,6 +19,8 @@ import {
   compileImagePrompt,
   createRegexScriptSchema,
   createDefaultImageStyleProfileSettings,
+  removeCopiedPromptGuidance,
+  resolveImageStyleGuidanceText,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
   mergeBuiltInAgentSettings,
@@ -61,6 +63,7 @@ import {
   hasDeferredRelocationConditionals,
   normalizeGameStoryboardKeyframeCount,
   parseDeferredConditionalPayload,
+  attachConditionalLineBreaks,
   resolveDeferredCharacterMacros,
   resolveCharacterScopedMacros,
   selectConditionalPayloadBranch,
@@ -68,6 +71,7 @@ import {
   normalizeInventoryTrackerRows,
   normalizeInventoryTrackerPlayerStats,
   findInvalidInventoryTrackerRow,
+  nameToXmlTag,
 } from "../../packages/shared/src/index.js";
 import { replaceBuiltInAgentDefinitions as replaceBuiltInAgentDefinitionsDist } from "../../packages/shared/dist/index.js";
 import { buildInventoryTrackerEditPatch } from "../../packages/client/src/features/tracker-panel/lib/inventory-tracker-edit.js";
@@ -311,8 +315,10 @@ import { applyRegexScriptsToPromptText } from "../../packages/server/src/service
 import { shouldSkipAgentByMessageInterval } from "../../packages/server/src/services/generation/agent-cadence.js";
 import {
   DIRECTOR_SECRET_PLOT_LAST_MESSAGE_KEY,
+  buildDirectorSecretPlotAgent,
   shouldRunDirectorSecretPlotMaintenance,
 } from "../../packages/server/src/services/generation/director-secret-plot-runtime.js";
+import { NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT } from "../../packages/shared/src/constants/agent-prompts.js";
 import {
   filterPromptHistoryByMessageIds,
   filterPromptMessagesForCharacterAudience,
@@ -459,6 +465,27 @@ assert.equal(
   false,
   "Narrative Director cadence should not invent a new message for continuations",
 );
+{
+  const director = { type: "director", promptTemplate: "direction prompt", settings: {} } as unknown as Parameters<
+    typeof buildDirectorSecretPlotAgent
+  >[0];
+  assert.equal(
+    buildDirectorSecretPlotAgent(director).promptTemplate,
+    NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
+    "Secret Plot should use the built-in prompt when the Director has no custom one",
+  );
+  assert.equal(
+    buildDirectorSecretPlotAgent({ ...director, settings: { secretPlotPromptTemplate: "  " } }).promptTemplate,
+    NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
+    "a blank custom Secret Plot prompt should fall back to the built-in one",
+  );
+  const custom = buildDirectorSecretPlotAgent({
+    ...director,
+    settings: { secretPlotPromptTemplate: "Keep the arc about the relationship." },
+  });
+  assert.equal(custom.promptTemplate, "Keep the arc about the relationship.");
+  assert.equal(custom.settings.resultType, "secret_plot");
+}
 assert.equal(
   formatAgentMainResponseForPrompt({
     mainResponse: "I tighten my gloves.",
@@ -678,7 +705,9 @@ import {
 import {
   formatConversationDateHistoryMessages,
   formatConversationGroupOutputFormat,
+  formatSentSelfieNotes,
 } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
+import { captionSentSelfies } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import {
   buildConversationCurrentContextBlock,
   replaceConversationContextBlockForTarget,
@@ -752,7 +781,9 @@ import {
 import {
   buildRuntimeAgentSectionEligibleTypesForTest,
   clearUnusedRuntimeAgentSectionsForTest,
+  formatAgentInjections,
   makeRuntimeAgentSectionTokens,
+  pruneEmptyPromptWrappers,
   splitRuntimeHandledAgentInjectionsForTest,
 } from "../../packages/server/src/services/generation/runtime-agent-sections.js";
 import {
@@ -762,7 +793,8 @@ import {
   TEXT_REWRITE_PENDING_MESSAGE,
 } from "../../packages/server/src/services/generation/prose-guardian-settings.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
-import { passThroughLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { passThroughLeaf, sanitizePromptLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
+import { wrapContent } from "../../packages/server/src/services/prompt/format-engine.js";
 import {
   escapeStandaloneGameNarrationAngleLines,
   hasVisibleGameNarrationText,
@@ -802,6 +834,7 @@ import {
   type WorkspaceCommandResult,
 } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
 import { fitMessagesForModelAccess } from "../../packages/server/src/services/generation/model-access-policy.js";
+import { resolveRoleplayChatSummaryForPrompt } from "../../packages/server/src/services/generation/roleplay-summary-retrieval.js";
 import {
   resolveAdvancedMemoryPrompt,
   describeAdvancedMemoryPlacements,
@@ -853,7 +886,10 @@ import {
   extractDialogueUtterances,
   resolveTTSVoiceForSpeaker,
 } from "../../packages/client/src/lib/tts-dialogue.js";
-import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
+import {
+  resolveCharacterAdvancedPromptIds,
+  resolveChatSummaryMacros,
+} from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
   illustratorPromptTemplateOwnsComposition,
@@ -1594,8 +1630,8 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 33);
-      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 33);
+      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 39);
+      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 39);
       assert.deepEqual(
         OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"),
         {
@@ -1616,7 +1652,7 @@ const cases: RegressionCase[] = [
             OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.filter((entry) => entry.category === category).length,
           ]),
         ),
-        { writer: 6, tracker: 9, misc: 18 },
+        { writer: 6, tracker: 13, misc: 20 },
       );
       assert.ok(frontendAgentCatalog, "Frontend architecture is missing the first-party agent catalog");
       assert.deepEqual(
@@ -3406,6 +3442,32 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "macro output limits preserve authored text while bounding generated expansion",
+    run() {
+      const context: MacroContext = { user: "Mari", char: "Dottore", characters: ["Dottore"], variables: {} };
+      const literal = "Preserved summary detail. ".repeat(10_000);
+      const options = { trimResult: false };
+      assert.ok(
+        resolveMacros(literal, context, options) === literal,
+        "literal content must survive beyond 200k characters",
+      );
+      assert.ok(
+        resolveMacros(`${literal}${literal}{{char}}`, context, options) === `${literal}${literal}Dottore`,
+        "reusing options must size each authored template independently",
+      );
+      assert.equal(
+        resolveMacros(literal, context, { maxMacroOutputLength: 16 }),
+        literal.slice(0, 16),
+        "an explicit caller limit remains an absolute cap, including literal content",
+      );
+      const template = "{{user}}";
+      const budget = { expansions: 0, exceeded: false };
+      const expanded = resolveMacros(template, { ...context, user: "x".repeat(300_000) }, { macroBudget: budget });
+      assert.equal(expanded.length, template.length + 200_000, "the default still bounds text added by macros");
+      assert.equal(budget.exceeded, true, "a clipped expansion must report that its budget was exceeded");
+    },
+  },
+  {
     name: "character field macros resolve nested macros",
     run() {
       const resolved = resolveMacros("Profile: {{description}}", {
@@ -4010,7 +4072,7 @@ const cases: RegressionCase[] = [
       );
       assert.match(chatsRouteSource, /const customPrompt = resolveGameGmPromptTemplate\(chatMeta, setupConfig\);/u);
       assert.match(editorSource, /StoryboardAgentSettingsPanel/u);
-      assert.match(editorSource, /\{!isStoryboardAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
+      assert.match(editorSource, /\{!isStoryboardAgent && !isAvatarAgent && \(\s*<FieldGroup[\s\S]*?agentBudget/u);
       assert.doesNotMatch(
         editorSource,
         /\.\.\.\(localContextSize !== "" \? \{ contextSize: Number\(localContextSize\) \} : \{\}\)/u,
@@ -4127,7 +4189,7 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(editorSource, /StoryboardAdvancedPromptLibrary|storyboardPromptLibraryOpen/u);
       assert.match(
         editorSource,
-        /\{!isStoryboardAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
+        /\{!isStoryboardAgent && !isAvatarAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
         "Storyboard should not render a second global prompt library below its numbered stages",
       );
       assert.match(editorSource, /onPlannerPromptChange=\{setLocalPrompt\}/u);
@@ -4738,6 +4800,195 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "Auto style guidance never reaches the final image prompt as text (#7318)",
+    async run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const autoInstruction = /Infer a consistent visual style/iu;
+      const prompt = "1girl, solo, silver hair, red eyes, black coat, rain, night city street";
+      for (const kind of ["avatar", "illustration", "background", "selfie"] as const) {
+        const compiled = compileImagePrompt({ kind, prompt, styleProfiles, styleProfileId: "auto" });
+        assert.doesNotMatch(compiled.prompt, autoInstruction, `${kind}: ${compiled.prompt}`);
+        assert.match(compiled.prompt, /silver hair/u, `${kind} kept the source prompt: ${compiled.prompt}`);
+      }
+
+      const background = await buildBackgroundProviderPrompt({
+        chatId: "auto-style-background",
+        locationSlug: "rainy-street",
+        sceneDescription: "Rain-soaked neon street at night",
+        imgModel: "unused",
+        imgBaseUrl: "",
+        imgApiKey: "",
+        styleProfiles,
+        styleProfileId: "auto",
+      });
+      assert.doesNotMatch(background.prompt, autoInstruction, background.prompt);
+
+      // A real style profile's Style text is still applied when no prompt writer handled it.
+      const anime = compileImagePrompt({ kind: "illustration", prompt, styleProfiles, styleProfileId: "anime" });
+      assert.match(anime.prompt, /Anime illustration with clean character design/u, anime.prompt);
+
+      // Style text the user wrote into a clone of Auto (Clone keeps the auto base style) still applies.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const autoClone = {
+        ...autoProfile,
+        id: "auto-custom",
+        builtIn: false,
+        styleText: "watercolor, soft pastel palette",
+      };
+      const cloneProfiles = { ...styleProfiles, profiles: [...styleProfiles.profiles, autoClone] };
+      for (const kind of ["avatar", "illustration"] as const) {
+        const custom = compileImagePrompt({
+          kind,
+          prompt,
+          styleProfiles: cloneProfiles,
+          styleProfileId: "auto-custom",
+        });
+        assert.match(custom.prompt, /watercolor, soft pastel palette/u, `${kind}: ${custom.prompt}`);
+      }
+    },
+  },
+  {
+    name: "Image prompt writers follow Style text and Image Prompting Instructions without pasting them (#7357)",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const danbooruStyle = styleProfiles.profiles.find((profile) => profile.id === "danbooru")!.styleText;
+      const instructions = "Write everything in capital letters. Use comma-separated Danbooru tags only.";
+      const quotedStyle = /Danbooru-tagged anime generation/iu;
+
+      // An Illustrator writer told to carry the style into its JSON "style" field echoes the Style
+      // text there and in its prompt. The Engine cleans the writer's own output before it adds
+      // configured text, so none of the guidance reaches the image model, but a configured positive
+      // prompt that happens to repeat an instruction stays as the user wrote it.
+      const writerGuidance = [danbooruStyle, instructions];
+      const echoedStyle = danbooruStyle.replace(/\.$/u, "");
+      const writerStyle = removeCopiedPromptGuidance(`${echoedStyle}, cel shading`, writerGuidance);
+      const writerPrompt = removeCopiedPromptGuidance(
+        `${echoedStyle}, 1GIRL, SOLO, SILVER HAIR, RAIN\n${instructions}`,
+        writerGuidance,
+      );
+      assert.equal(writerStyle, "cel shading");
+      const configuredPositive = "Write everything in capital letters";
+      const written = compileImagePrompt({
+        kind: "illustration",
+        prompt: [writerStyle, writerPrompt, configuredPositive].filter(Boolean).join(", "),
+        generatedStyle: writerStyle,
+        styleProfiles,
+        styleProfileId: "danbooru",
+        omitProfileStyleText: true,
+      });
+      assert.doesNotMatch(written.prompt, quotedStyle, written.prompt);
+      assert.doesNotMatch(written.prompt, /comma-separated Danbooru tags only/iu, written.prompt);
+      assert.match(written.prompt, /1GIRL, SOLO, SILVER HAIR, RAIN/u, written.prompt);
+      assert.match(written.prompt, /Write everything in capital letters$/u, "configured text stays: " + written.prompt);
+      assert.match(written.prompt, /^masterpiece, best quality/u, "literal profile tags stay: " + written.prompt);
+
+      // Tag lists and tag phrases are words for the image model, so a writer that uses them keeps them.
+      const tagGuidance = "masterpiece, best quality, absurdres";
+      assert.equal(removeCopiedPromptGuidance(`${tagGuidance}, 1girl`, [tagGuidance]), `${tagGuidance}, 1girl`);
+      const tagPhrase = "cold lighting with deep shadows, film grain";
+      assert.equal(removeCopiedPromptGuidance(`1girl, ${tagPhrase}`, [tagPhrase]), `1girl, ${tagPhrase}`);
+      assert.equal(
+        removeCopiedPromptGuidance(
+          "1girl, solo\n\nWRITE EVERYTHING IN CAPITAL LETTERS\n\nMira's Appearance: red hair",
+          ["Write everything in capital letters."],
+        ),
+        "1girl, solo\n\nMira's Appearance: red hair",
+      );
+      // A writer that returned nothing but the guidance keeps its text, so the image still has a subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle]), echoedStyle);
+      // A JSON "style" that was only the copied Style text is dropped; the prompt keeps the subject.
+      assert.equal(removeCopiedPromptGuidance(echoedStyle, [danbooruStyle], { allowEmpty: true }), "");
+      // A sentence the user wrapped over two lines is still one sentence.
+      assert.equal(
+        removeCopiedPromptGuidance("1girl, Use moody lighting and show long shadows in rain., solo", [
+          "Use moody lighting\nand show long shadows in rain.",
+        ]),
+        "1girl, solo",
+      );
+
+      // Every writer path cleans its own output before configured text is added.
+      const routeSource = (path: string) =>
+        readFileSync(new URL(`../../packages/server/src/${path}`, import.meta.url), "utf8");
+      const generateRoute = routeSource("routes/generate.routes.ts");
+      assert.match(generateRoute, /const writerPrompt = removeCopiedPromptGuidance\(imagePrompt, writerGuidance\);/u);
+      assert.match(
+        generateRoute,
+        /let fullPrompt = writerStyle \? `\$\{writerStyle\}, \$\{writerPrompt\}` : writerPrompt;/u,
+      );
+      assert.equal(generateRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      const retryRoute = routeSource("routes/generate/retry-agents-route.ts");
+      assert.match(
+        retryRoute,
+        /style: writerStyle,\s+imagePrompt: removeCopiedPromptGuidance\(imagePrompt, writerGuidance\),/u,
+      );
+      assert.equal(retryRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
+      for (const selfiePath of [
+        "routes/gallery.routes.ts",
+        "services/generation/conversation-selfie-command-runtime.ts",
+      ]) {
+        assert.match(
+          routeSource(selfiePath),
+          /removeCopiedPromptGuidance\(\(promptResult\.content \?\? ""\)\.trim\(\), \[/u,
+        );
+      }
+      assert.match(
+        routeSource("services/generation/illustrator-background-generation.ts"),
+        /sceneDescription: removeCopiedPromptGuidance\(plan\.prompt, \[styleInstruction, imagePromptInstructions\]\)/u,
+      );
+
+      // Without a prompt writer, the profile's Style text still applies as written (#7318).
+      const unwritten = compileImagePrompt({
+        kind: "illustration",
+        prompt: "1girl, solo",
+        styleProfiles,
+        styleProfileId: "danbooru",
+      });
+      assert.match(unwritten.prompt, quotedStyle, unwritten.prompt);
+
+      // Style text a user writes into Auto or a copy of it is guidance for selfie writers too,
+      // instead of being dropped; the built-in Auto sentence is not.
+      const autoProfile = styleProfiles.profiles.find((profile) => profile.id === "auto")!;
+      const cloneProfiles = {
+        ...styleProfiles,
+        profiles: [
+          ...styleProfiles.profiles,
+          { ...autoProfile, id: "auto-custom", builtIn: false, styleText: "watercolor" },
+        ],
+      };
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto-custom"), "watercolor");
+      assert.equal(resolveImageStyleGuidanceText(cloneProfiles, "auto"), "");
+
+      // The manual Illustration writer gets the instructions next to its request, as the automatic
+      // Illustrator does, not above the character cards and chat history.
+      const manualMessages = buildManualIllustratorPromptMessages({
+        context: {
+          chatId: "manual-instructions",
+          chatMode: "roleplay",
+          recentMessages: [{ role: "assistant", content: "Mira steps into the rain." }],
+          mainResponse: "Mira steps into the rain.",
+          gameState: null,
+          characters: [],
+          persona: null,
+          memory: {},
+          writableLorebookIds: null,
+          chatSummary: null,
+        },
+        contextSize: 1,
+        styleInstruction: danbooruStyle,
+        imagePromptInstructions: instructions,
+      });
+      const manualRequest = manualMessages.at(-1)!;
+      assert.equal(manualRequest.role, "user");
+      assert.match(manualRequest.content, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.doesNotMatch(manualMessages[0]!.content, /capital letters/u);
+
+      // The scene background writer gets them too.
+      const backgroundSystemPrompt = buildIllustratorBackgroundPlanSystemPrompt(danbooruStyle, instructions);
+      assert.match(backgroundSystemPrompt, /<image_prompting_instructions>[\s\S]*capital letters/u);
+      assert.match(backgroundSystemPrompt, /Visual style instruction for the image prompt you write/u);
+    },
+  },
+  {
     name: "avatar portrait and sprite prompts honor a profile's natural-language grammar",
     run() {
       const styleProfiles = createDefaultImageStyleProfileSettings();
@@ -4963,6 +5214,111 @@ const cases: RegressionCase[] = [
         }),
         ["Maukie"],
       );
+    },
+  },
+  {
+    name: "A character's sent selfie reaches later prompt history, Illustrator images do not",
+    run() {
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_1.png",
+            prompt: "Maukie grins at the camera,\n  holding a coffee\n\nAppearance notes: auburn hair",
+          },
+          { type: "image", filename: "illustration_1.png", prompt: "A dark forest." },
+          { type: "image/png", filename: "selfie_upload.png", prompt: null },
+        ]),
+        "\n[Sent a selfie: Maukie grins at the camera, holding a coffee]",
+      );
+      assert.equal(formatSentSelfieNotes([{ type: "image", filename: "selfie_maukie_2.png" }]), "\n[Sent a selfie]");
+      // Merged group replies hold several speakers, so the note names who sent each selfie.
+      assert.equal(
+        formatSentSelfieNotes([
+          { type: "image", filename: "selfie_maukie_1.png", prompt: "A mirror selfie.", characterName: "Maukie" },
+          { type: "image", filename: "selfie_dottore_1.png", prompt: "A lab selfie.", characterName: "Dottore" },
+        ]),
+        "\n[Maukie sent a selfie: A mirror selfie.]\n[Dottore sent a selfie: A lab selfie.]",
+      );
+      assert.equal(formatSentSelfieNotes(undefined), "");
+      assert.equal(
+        formatSentSelfieNotes([
+          {
+            type: "image",
+            filename: "selfie_maukie_3.png",
+            prompt: "Prompt text.",
+            imageCaption: "Maukie  in a\nred scarf.",
+            characterName: "Maukie",
+          },
+        ]),
+        "\n[Maukie sent a selfie: Maukie in a red scarf.]",
+      );
+    },
+  },
+  {
+    name: "Selfie captions are made once, cached, and never stop the turn",
+    async run() {
+      const calls: string[] = [];
+      const runtime = {
+        enabled: true,
+        connectionId: "cap-conn",
+        connection: { id: "cap-conn", provider: "openai", model: "vision-1" },
+        provider: {
+          chatComplete: async () => {
+            calls.push("caption");
+            return { content: "A smiling selfie." };
+          },
+        },
+        prompt: null,
+      } as any;
+      const readImageDataUrl = async () => "data:image/png;base64,AAAA";
+      const signal = new AbortController().signal;
+      const attachments = [
+        { type: "image", filename: "selfie_maukie_1.png", galleryId: "g1", prompt: "A selfie." },
+        { type: "image", filename: "illustration_1.png", galleryId: "g2" },
+      ];
+
+      const captioned = await captionSentSelfies({ attachments, imageCaptioning: runtime, readImageDataUrl, signal });
+      assert.ok(Array.isArray(captioned));
+      assert.equal(captioned[0]!.imageCaption, "A smiling selfie.");
+      assert.equal(captioned[0]!.imageCaptionConnectionId, "cap-conn");
+      assert.equal(captioned[1]!.imageCaption, undefined);
+      assert.equal(calls.length, 1);
+
+      assert.equal(
+        await captionSentSelfies({ attachments: captioned, imageCaptioning: runtime, readImageDataUrl, signal }),
+        null,
+      );
+      assert.equal(calls.length, 1);
+
+      const failingRuntime = {
+        ...runtime,
+        provider: {
+          chatComplete: async () => {
+            throw new Error("vision model down");
+          },
+        },
+      };
+      assert.equal(
+        await captionSentSelfies({ attachments, imageCaptioning: failingRuntime, readImageDataUrl, signal }),
+        null,
+      );
+
+      const disabledReads: string[] = [];
+      const disabledRuntime = { ...runtime, enabled: false };
+      assert.equal(
+        await captionSentSelfies({
+          attachments,
+          imageCaptioning: disabledRuntime,
+          readImageDataUrl: async () => {
+            disabledReads.push("read");
+            return null;
+          },
+          signal,
+        }),
+        null,
+      );
+      assert.equal(disabledReads.length, 0);
     },
   },
   {
@@ -9734,6 +10090,114 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(result.messages[1]?.contextKind, "history");
     },
   },
+  ...[false, true].map((explicitMarker): RegressionCase => ({
+    name: `95 manual roleplay summaries survive ${explicitMarker ? "explicit marker" : "fallback"} assembly with model room`,
+    async run() {
+      const entries = normalizeChatSummaryEntries([
+        ...Array.from({ length: 95 }, (_, index) => ({
+          id: `summary-${index + 1}`,
+          origin: "manual",
+          enabled: true,
+          content: `SUMMARY_${index + 1} {{char}} remembered ${"the laboratory detail. ".repeat(125)} END_${index + 1}`,
+          createdAt: new Date(Date.UTC(2026, 0, 1) + index * 60_000).toISOString(),
+        })),
+        { id: "disabled-summary", content: "DISABLED_SUMMARY_MUST_STAY_OUT", enabled: false },
+      ]);
+      const metadata = {
+        summaryEntries: entries,
+        summary: compileChatSummaryEntries(entries),
+        semanticSummaryRetrievalEnabled: false,
+      };
+      assert.ok(metadata.summary!.length > 200_000, "the fixture must cross the former macro output ceiling");
+      const activeSummary = await resolveRoleplayChatSummaryForPrompt({
+        chatMode: "roleplay",
+        chatMetadata: metadata,
+        messages: [{ role: "user", content: "Continue the scene." }],
+        vectorizerAvailable: true,
+      });
+      assert.equal(activeSummary, metadata.summary, "disabled semantic retrieval keeps every enabled summary");
+      const result = await assemblePrompt({
+        db: undefined as unknown as DB,
+        preset: {
+          id: "large-summary",
+          name: "Large Summary",
+          sectionOrder: JSON.stringify(explicitMarker ? ["main", "history", "summary"] : ["main", "history"]),
+          groupOrder: "[]",
+          wrapFormat: "xml",
+          parameters: "{}",
+          variableGroups: "[]",
+          variableValues: "{}",
+        },
+        sections: [
+          promptSection({ id: "main", identifier: "main", name: "Main", content: "Continue the scene." }),
+          promptSection({
+            id: "history",
+            identifier: "history",
+            name: "History",
+            isMarker: "true",
+            markerConfig: JSON.stringify({ type: "chat_history" }),
+            injectionOrder: 1,
+          }),
+          ...(explicitMarker
+            ? [
+                promptSection({
+                  id: "summary",
+                  identifier: "summary",
+                  name: "Chat Summary",
+                  isMarker: "true",
+                  markerConfig: JSON.stringify({ type: "chat_summary" }),
+                  injectionOrder: 2,
+                }),
+              ]
+            : []),
+        ],
+        groups: [],
+        choiceBlocks: [],
+        chatChoices: {},
+        chatId: "large-summary",
+        characterIds: [],
+        personaName: "Mari",
+        personaDescription: "",
+        chatMessages: [{ role: "user", content: "Continue." }],
+        chatSummary: activeSummary,
+        deferCharacterMacros: true,
+      });
+      const fitted = fitMessagesForModelAccess({
+        messages: result.messages.map((message) => ({
+          ...message,
+          content: resolveDeferredCharacterMacros(message.content, { name: "Dottore" }),
+        })),
+        policy: { suppressModelParameters: false, effectiveMaxContext: 1_000_000 },
+        maxTokens: 4096,
+      });
+      assert.equal(fitted.contextFit.trimmed, false, "the model has room for the complete summary and reply");
+      const text = fitted.messages.map((message) => message.content).join("\n");
+      for (let index = 1; index <= 95; index += 1) {
+        assert.ok(
+          text.includes(`SUMMARY_${index} Dottore remembered`),
+          `summary ${index} and its character macro survive`,
+        );
+        assert.ok(text.includes(`END_${index}`), `summary ${index} keeps its complete ending`);
+      }
+      assert.doesNotMatch(text, /DISABLED_SUMMARY_MUST_STAY_OUT/u);
+      const latestOnly = await resolveRoleplayChatSummaryForPrompt({
+        chatMode: "roleplay",
+        chatMetadata: {
+          ...metadata,
+          semanticSummaryRetrievalEnabled: true,
+          semanticSummaryRecentCount: 2,
+          semanticSummaryOlderCount: 0,
+        },
+        messages: [{ role: "user", content: "Continue the scene." }],
+        vectorizerAvailable: true,
+      });
+      assert.equal(
+        latestOnly,
+        compileChatSummaryEntries(entries.slice(93, 95)),
+        "enabled semantic retrieval still honors its recent-only selection",
+      );
+    },
+  })),
   {
     name: "preset-less roleplay summary creates a leading system block before history",
     run() {
@@ -10103,6 +10567,147 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(hasDeferredCharacterMacros(summaryText), true);
       assert.match(resolveDeferredCharacterMacros(summaryText, { name: "Powers That Be" }), /Powers-only memory\./);
       assert.doesNotMatch(resolveDeferredCharacterMacros(summaryText, { name: "Dottore" }), /Powers-only memory\./);
+    },
+  },
+  {
+    // Mari, 2026-10-14: a section for a character who is not replying is replaced with nothing, not an empty line.
+    name: "Chat Summary sections for someone who is not replying leave no empty line",
+    async run() {
+      const ctx = (char: string): MacroContext => ({ user: "Mari", char, characters: [char], variables: {} });
+      const section = (name: string, text: string) => `{{#if char == "${name}"}}\n${text}\n{{/if}}`;
+      const summary = `Shared opening.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\n${section("Tighnari", "Tighnari found the herb.")}\n\nShared closing.`;
+      const tighnari = "Shared opening.\n\nTighnari found the herb.\n\nShared closing.";
+      const nobody = "Shared opening.\n\nShared closing.";
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Tighnari")), tighnari, "one responder");
+      assert.equal(resolveChatSummaryMacros(summary, ctx("Maukie")), nobody, "a responder with no section");
+      // Individual replies in a Roleplay group defer the sections until each responder is known.
+      const deferred = resolveChatSummaryMacros(summary, ctx("Narrator"), { deferCharacterMacros: "all" });
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Tighnari" }), tighnari, "deferred, a reader");
+      assert.equal(resolveDeferredCharacterMacros(deferred, { name: "Maukie" }), nobody, "deferred, not a reader");
+      // A merged reply reads the summary for everyone present and marks who knows what.
+      assert.equal(
+        resolveChatSummaryMacros(summary, ctx("Narrator"), undefined, [{ name: "Tighnari" }, { name: "Maukie" }]),
+        "Shared opening.\n\n[Known only to Tighnari: Tighnari found the herb.]\n\nShared closing.",
+        "merged readers",
+      );
+
+      // Every reading agrees: now, or deferred and filled in for the responder.
+      const read = (template: string, who: string) => {
+        const now = resolveChatSummaryMacros(template, ctx(who), { trimResult: false });
+        const later = resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(template, ctx("Narrator"), { deferCharacterMacros: "all", trimResult: false }),
+          { name: who },
+        );
+        assert.equal(later, now, `${who} reads ${JSON.stringify(template)} the same now and deferred`);
+        return now;
+      };
+      const elseChain = `A\n{{#if char == "Cyno"}}\nc\n{{else if char == "Tighnari"}}\nt\n{{else}}\no\n{{/if}}\nB`;
+      const nested = `A\n\n{{#if char == "Cyno" || char == "Tighnari"}}\nBoth know.\n${section("Tighnari", "Tighnari more.")}\n{{/if}}\n\nB`;
+      const list = `List:\n  {{#if char == "Cyno"}}- c{{/if}}\n  {{#if char == "Tighnari"}}- t{{/if}}\n  {{#if char == "Cyno"}}\n  - standalone\n  {{/if}}\nEnd`;
+      const cases: Array<[string, Record<string, string>]> = [
+        [summary, { Cyno: "Shared opening.\n\nCyno alone saw the ruins.\n\nShared closing.", Maukie: nobody }],
+        // Sections written inline on lines of their own.
+        [
+          `A\n{{#if char == "Cyno"}}x{{/if}}\n{{#if char == "Tighnari"}}y{{/if}}\nB`,
+          { Tighnari: "A\ny\nB", Maukie: "A\nB" },
+        ],
+        // Tags on lines of their own, in a paragraph that goes on after a blank line.
+        [`A\n${section("Cyno", "x")}\n\nB`, { Cyno: "A\nx\n\nB", Maukie: "A\n\nB" }],
+        // Hidden at the start and at the end of the text, where deferred sections are filled in after the trim.
+        [
+          `${section("Cyno", "x")}\n\nMiddle.\n\n${section("Tighnari", "y")}`,
+          { Cyno: "x\n\nMiddle.", Tighnari: "Middle.\n\ny", Maukie: "Middle." },
+        ],
+        [elseChain, { Cyno: "A\nc\nB", Tighnari: "A\nt\nB", Maukie: "A\no\nB" }],
+        [`A\n{{#if char == "Cyno"}}{{else}}Not Cyno.{{/if}}\nB`, { Cyno: "A\nB", Maukie: "A\nNot Cyno.\nB" }],
+        [nested, { Cyno: "A\n\nBoth know.\n\nB", Tighnari: "A\n\nBoth know.\nTighnari more.\n\nB", Maukie: "A\n\nB" }],
+        [list, { Cyno: "List:\n  - c\n  - standalone\nEnd", Tighnari: "List:\n  - t\nEnd" }],
+        // A section that starts with a blank line keeps it.
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, { Cyno: "P\n\n\nx\n\nQ", Maukie: "P\n\nQ" }],
+        // A section at the top of another that is not a paragraph keeps the blank line written after it.
+        [
+          `A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "Tighnari note.")}\n\nShared by both.\n{{/if}}\nB`,
+          { Cyno: "A\n\nShared by both.\nB", Tighnari: "A\nTighnari note.\n\nShared by both.\nB", Maukie: "A\nB" },
+        ],
+        // A section that is all another one holds goes with that one's line break.
+        [`A\n{{#if char == "Cyno" || char == "Tighnari"}}\n${section("Tighnari", "t")}\n{{/if}}\nB`, { Cyno: "A\nB" }],
+        [
+          `A\n{{#if char == "Cyno"}}\nx\n{{#if char == "Tighnari"}}\nt\n{{else}}\n\no\n{{/if}}\n{{/if}}\nB`,
+          { Cyno: "A\nx\n\no\nB", Maukie: "A\nB" },
+        ],
+        // A comment line reads the same now and deferred.
+        [`A\n\n${section("Cyno", "c")}\n{{// note}}\n\nB`, { Cyno: "A\n\nc\n\n\nB", Maukie: "A\n\n\nB" }],
+        // A group block keeps its `[` and `]` lines, and the sections around and in it lose their lines too.
+        [
+          `A\n\n${section("Cyno", "c")}\n\n[\n{{char}}:\n${section("Cyno", "g")}\n]\nB`,
+          { Cyno: "A\n\nc\n\n[\nCyno:\ng\n]\nB", Maukie: "A\n\n[\nMaukie:\n]\nB" },
+        ],
+        // A section sharing its line with other text stays as written.
+        [`A {{#if char == "Cyno"}}x{{/if}} B\nC`, { Cyno: "A x B\nC", Maukie: "A  B\nC" }],
+      ];
+      for (const [template, expected] of cases) {
+        for (const [who, text] of Object.entries(expected))
+          assert.equal(read(template, who), text, `${who}: ${template}`);
+        const attached = attachConditionalLineBreaks(template);
+        assert.equal(attachConditionalLineBreaks(attached), attached, `rewriting is idempotent: ${template}`);
+      }
+      assert.equal(attachConditionalLineBreaks(cases.at(-1)![0]), cases.at(-1)![0], "a shared line is untouched");
+      // A section that renders reads exactly as before when nothing around it is hidden.
+      for (const [template, who] of [
+        [`A\n${section("Cyno", "x")}\n\nB`, "Cyno"],
+        [`Shared.\n\n${section("Cyno", "Cyno alone saw the ruins.")}\n\nEnd.`, "Cyno"],
+        [`A\n  {{#if char == "Cyno"}}\n  x\n  {{/if}}\nB`, "Cyno"],
+        [`P\n\n{{#if char == "Cyno"}}\n\nx\n{{/if}}\n\nQ`, "Cyno"],
+        ...["Cyno", "Tighnari", "Maukie"].map((who) => [elseChain, who]),
+        [nested, "Tighnari"],
+      ])
+        assert.equal(read(template!, who!), resolveMacros(template!, ctx(who!), { trimResult: false }), template);
+      const merged = (template: string) =>
+        resolveChatSummaryMacros(template, ctx("Narrator"), undefined, [{ name: "Cyno" }, { name: "Maukie" }]);
+      assert.equal(
+        merged(elseChain),
+        "A\n[Known only to Cyno: c]\n[Known only to Maukie: o]\nB",
+        "each reader's version of a section keeps its own line",
+      );
+      assert.equal(
+        merged(`T\n{{#if char == "Cyno"}}c{{else}}o{{/if}}`),
+        "T\n[Known only to Cyno: c]\n[Known only to Maukie: o]",
+        "at the end of the text too",
+      );
+      assert.equal(
+        merged(`T\n\n  {{#if char == "Cyno"}}\n  s\n  {{else}}\n  o\n  {{/if}}`),
+        "T\n\n  [Known only to Cyno: s]\n\n  [Known only to Maukie: o]",
+        "an indented section keeps its indent once",
+      );
+      // Windows line endings read as the same lines.
+      const windows = summary.replace(/\n/gu, "\r\n");
+      assert.equal(resolveChatSummaryMacros(windows, ctx("Tighnari")), tighnari, "Windows line endings");
+      assert.equal(
+        resolveDeferredCharacterMacros(
+          resolveChatSummaryMacros(windows, ctx("Narrator"), { deferCharacterMacros: "all" }),
+          { name: "Maukie" },
+        ),
+        nobody,
+        "Windows line endings, deferred",
+      );
+      // Filled in after the wrapper, the line after a section still starts its own line: Markdown escapes a
+      // heading there and XML indents it, whether the section shows or not.
+      const rules = `Shared.\n${section("Cyno", "Cyno saw the ruins.")}\n# Rules\nObey.`;
+      const wrapped = (format: "markdown" | "xml", who: string) =>
+        resolveDeferredCharacterMacros(
+          wrapContent(
+            sanitizePromptLeaf(
+              resolveChatSummaryMacros(rules, ctx("Narrator"), { deferCharacterMacros: "all" }),
+              format,
+            ),
+            "Chat Summary",
+            format,
+          ),
+          { name: who },
+        );
+      assert.equal(wrapped("markdown", "Cyno"), "## Chat Summary\nShared.\nCyno saw the ruins.\n\\# Rules\nObey.");
+      assert.equal(wrapped("markdown", "Maukie"), "## Chat Summary\nShared.\n\\# Rules\nObey.");
+      assert.equal(wrapped("xml", "Maukie"), "<chat_summary>\n    Shared.\n    # Rules\n    Obey.\n</chat_summary>");
     },
   },
   {
@@ -10793,6 +11398,131 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.doesNotMatch(scoped[0]?.content ?? "", /Pantalone card only\./u);
       assert.equal(scoped[1]?.role, "user");
       assert.match(scoped[1]?.content ?? "", /Pantalone spoke earlier/u);
+    },
+  },
+  {
+    name: "non-Latin names stay in prompt XML tags and Markdown headings",
+    run() {
+      assert.equal(nameToXmlTag("World Info (Before)"), "world_info_before");
+      assert.equal(nameToXmlTag("홍길동"), "홍길동");
+      assert.equal(nameToXmlTag("Dr. 김 철수"), "dr_김_철수");
+      assert.equal(nameToXmlTag("Amélie"), "amélie");
+      assert.equal(nameToXmlTag("राम"), "राम");
+      assert.equal(nameToXmlTag("\u0301Ana"), "ana");
+      assert.equal(nameToXmlTag("★\u0301Ana"), "ana");
+      assert.equal(wrapContent("Card.", "홍길동", "xml"), "<홍길동>\n    Card.\n</홍길동>");
+      assert.equal(wrapContent("Card.", "Dr. 김 철수", "markdown"), "## Dr 김 철수\nCard.");
+      assert.equal(
+        formatAgentInjections([{ agentType: "custom-memory", agentName: "기억 관리자", text: "Note." }], "xml"),
+        "<기억_관리자>\nNote.\n</기억_관리자>",
+      );
+
+      const messages = [{ content: "<홍길동>\n</홍길동>" }, { content: "<홍길동>\nCard.\n</홍길동>" }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, [{ content: "<홍길동>\nCard.\n</홍길동>" }]);
+    },
+  },
+  {
+    name: "emoji in names leave no invisible marks in prompt tags",
+    run() {
+      assert.equal(nameToXmlTag("Luna ❤️"), "luna");
+      assert.equal(nameToXmlTag("1️⃣ Ana"), "1_ana");
+      assert.equal(nameToXmlTag("สมศักดิ์"), "สมศักดิ์");
+      assert.equal(wrapContent("Card.", "Luna ❤️", "markdown"), "## Luna\nCard.");
+      assert.equal(
+        formatAgentInjections(
+          [
+            { agentType: "affection", agentName: "❤️ Affection Tracker", text: "Note." },
+            { agentType: "weather", agentName: "☀️", text: "Sunny." },
+          ],
+          "xml",
+        ),
+        "<affection_tracker>\nNote.\n</affection_tracker>\n\n<weather>\nSunny.\n</weather>",
+      );
+
+      const combatTag = nameToXmlTag("⚔️ Combat");
+      const messages = [{ content: `<${combatTag}>\n</${combatTag}>` }];
+      pruneEmptyPromptWrappers(messages);
+      assert.deepEqual(messages, []);
+
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Luna card only.", "Luna ❤️ Star", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "luna", name: "Luna ❤️ Star" },
+          ],
+        );
+
+        assert.match(scoped[0]?.content ?? "", /Hong card only\./u, format);
+        assert.doesNotMatch(scoped[0]?.content ?? "", /Luna card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "individual group turns drop other cards with non-Latin names",
+    run() {
+      for (const format of ["xml", "markdown"] as const) {
+        const scoped = scopeIndividualGroupMessagesForTarget(
+          [
+            {
+              role: "system",
+              content: [
+                wrapContent("Hong card only.", "홍길동", format, 1),
+                wrapContent("Kim card only.", "김 철수", format, 1),
+                wrapContent("Ram card only.", "Dr. राम", format, 1),
+              ].join("\n"),
+              contextKind: "prompt",
+            },
+          ],
+          "hong",
+          [
+            { id: "hong", name: "홍길동" },
+            { id: "kim", name: "김 철수" },
+            { id: "ram", name: "Dr. राम" },
+          ],
+        );
+
+        const content = scoped[0]?.content ?? "";
+        assert.match(content, /Hong card only\./u, format);
+        assert.doesNotMatch(content, /Kim card only\./u, format);
+        assert.doesNotMatch(content, /Ram card only\./u, format);
+      }
+    },
+  },
+  {
+    name: "a non-Latin character card does not hide a non-Latin persona",
+    run() {
+      const messages: ChatMLMessage[] = [
+        { role: "system", content: wrapContent("Hong card only.", "홍길동", "xml", 1) },
+        { role: "user", content: "Hello." },
+      ];
+
+      injectIdentityFallbackMessages({
+        messages,
+        charInfo: [],
+        promptTargetCharacterId: null,
+        promptMacroContext: { user: "김철수", char: "홍길동", characters: ["홍길동"], variables: {} },
+        wrapFormat: "xml",
+        personaName: "김철수",
+        personaDescription: "Kim persona only.",
+        personaFields: {},
+        persona: null,
+        resolvePromptMacros: (value) => value,
+      });
+
+      const promptText = messages.map((message) => message.content).join("\n");
+      assert.match(promptText, /<김철수>[\s\S]*Kim persona only\.[\s\S]*<\/김철수>/u);
     },
   },
   {
@@ -12783,6 +13513,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Updated.",
         "Edit applied.",
         "Done!",
+        "Before you ask: I created the entry.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(claim), true, claim);
       }
@@ -12795,6 +13526,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Set its type to Constant",
         "Added fields appear",
         "Removed entries cannot be restored",
+        // Slice 68: feature descriptions from a docs answer are not completion claims.
+        "A chunk needs at least 5 new messages before it's created.",
+        "It is enabled by default in Conversation chats.",
       ]) {
         assert.equal(workspaceTextClaimsMutationCompletion(text), false, text);
       }
@@ -12914,19 +13648,25 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "staged",
       );
       // ── Loop wiring pins: the pure function is only half the contract ────
-      const agentSourceForPins = readFileSync(
-        new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-        "utf8",
+      const agentSourceForPins = (
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
+          "utf8",
+        ) +
+        readFileSync(
+          new URL("../../packages/server/src/services/professor-mari/workspace-round-review.ts", import.meta.url),
+          "utf8",
+        )
       ).replace(/\s+/gu, " ");
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(action, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, lastPassedClaimText: state.lastPassedClaimText, })",
         ),
         "the loop audits against the live watermark, never from zero",
       );
       assert.ok(
         agentSourceForPins.includes(
-          "if (claimAudit.advanceWatermark) { claimAuditWatermark = commandResultsForContinuity.length; hadPassedClaimAudit = true; }",
+          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; state.lastPassedClaimText = action.visibleText; }",
         ),
         "a passing audit consumes its evidence and arms the summary allowance",
       );
@@ -12936,7 +13676,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: claimAuditWatermark, hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, lastPassedClaimText: reviewState.lastPassedClaimText, })",
         ),
         "the command-limit audit shares the run's scope state",
       );
@@ -12963,24 +13703,35 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const auditTwo = auditWorkspaceCompletionClaim(midRunClaimTwo, batchResults, { auditFrom: batchResults.length });
       assert.equal(auditTwo.issue, "none", "a skipped step's empty scope is challenged - the #5819 report");
 
-      // A recap claim is backable by the read the coaching demands, so an
-      // honest continuation converges instead of looping into the budget
-      // (#5830's sticky-none trap).
+      // A state recap is backable by a fresh read, but that read cannot establish
+      // authorship of a new mutation using an earlier scope's applied evidence.
       const recapResults = [...batchResults, { ...verificationResult, id: "recap-read" }];
       const recapAudit = auditWorkspaceCompletionClaim(midRunClaimTwo, recapResults, {
         auditFrom: batchResults.length,
       });
-      assert.equal(recapAudit.issue, null, "a successful read in scope backs a recap");
-      assert.equal(recapAudit.advanceWatermark, true, "and the read is consumed so it cannot vouch twice");
+      assert.equal(recapAudit.issue, "none", "an earlier mutation cannot back a later self-attributed claim");
+      assert.equal(recapAudit.advanceWatermark, false);
+      const stateRecap = { ...midRunClaimTwo, visibleText: "Both entries have been created." };
+      assert.deepEqual(auditWorkspaceCompletionClaim(stateRecap, recapResults, { auditFrom: batchResults.length }), {
+        issue: null,
+        advanceWatermark: true,
+      });
 
-      // A terminal summary right after a passed audit needs nothing new; the
-      // same empty scope WITHOUT a passed audit stays challenged.
+      // A passed audit permits a terminal summary, never a new self-attributed
+      // mutation claim with no evidence in scope.
       assert.equal(
         auditWorkspaceCompletionClaim(unsupportedCompletion, batchResults, {
           auditFrom: batchResults.length,
           hadPassedClaimAudit: true,
         }).issue,
-        null,
+        "none",
+      );
+      assert.deepEqual(
+        auditWorkspaceCompletionClaim({ ...unsupportedCompletion, visibleText: "Done." }, batchResults, {
+          auditFrom: batchResults.length,
+          hadPassedClaimAudit: true,
+        }),
+        { issue: null, advanceWatermark: false },
       );
       assert.equal(
         auditWorkspaceCompletionClaim(unsupportedCompletion, batchResults, {

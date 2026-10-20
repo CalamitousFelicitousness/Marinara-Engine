@@ -4,6 +4,7 @@
 import { TTS_DIALOGUE_PAUSE_MAX_SECONDS } from "@marinara-engine/shared";
 import { deleteCachedTTSAudioKeys, getOrCreateCachedTTSAudioBlob } from "./tts-audio-cache";
 import { SILENT_AUDIO_DATA_URI } from "./silent-audio";
+import { translate } from "../localization/i18n";
 
 export type TTSState = "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
 
@@ -11,6 +12,10 @@ type StateListener = (state: TTSState, activeId: string | null) => void;
 
 export interface TTSSpeakOptions {
   speaker?: string;
+  /** The character whose voice reads this text, so their avatar's mouth can follow it. */
+  characterId?: string;
+  /** The chat this reading belongs to. Only that chat's avatars follow the voice. */
+  chatId?: string;
   tone?: string;
   voice?: string;
   /** Explicit audio connection to synthesize with. Empty string forces the legacy TTS settings blob. */
@@ -28,6 +33,8 @@ export interface TTSSpeakRequest {
   text: string;
   paragraphIndex?: number;
   speaker?: string;
+  /** The character whose voice reads this line, so their avatar's mouth can follow it. */
+  characterId?: string;
   tone?: string;
   voice?: string;
   pauseAfterMs?: number;
@@ -36,10 +43,25 @@ export interface TTSSpeakRequest {
   activeId?: string | null;
 }
 
-export interface TTSSpeakSequenceOptions extends Pick<TTSSpeakOptions, "signal" | "throwOnError" | "volume" | "muted"> {
+export interface TTSSpeakSequenceOptions extends Pick<
+  TTSSpeakOptions,
+  "signal" | "throwOnError" | "volume" | "muted" | "chatId"
+> {
   progressive?: boolean;
   onChunkStart?: (request: TTSSpeakRequest, index: number) => void;
   onChunkEnd?: (request: TTSSpeakRequest, index: number) => void;
+}
+
+/** The clip on the playback element now. Avatar lip sync (features/avatars/audio) reads it to follow the voice
+ *  without touching the element, so playback and the autoplay handling below stay as they are. */
+export interface TTSPlayback {
+  readonly element: HTMLAudioElement;
+  readonly blob: Blob;
+  /** The chat the reading was requested in (TTSSpeakOptions.chatId), not the chat open when the clip plays. */
+  readonly chatId: string | null;
+  readonly characterId: string | null;
+  /** The text this clip reads, so an avatar's moods can follow the voice sentence by sentence. */
+  readonly text: string;
 }
 
 function clampPlaybackVolume(volume: number | undefined): number {
@@ -248,14 +270,33 @@ class TTSService {
   /** ID of the entity (e.g. message id) currently being spoken */
   private activeId: string | null = null;
   private listeners = new Set<StateListener>();
+  private blobListeners = new Set<(blob: Blob) => void>();
   private livePlaybackVolume: number | null = null;
   private livePlaybackMuted: boolean | null = null;
+  private playback: TTSPlayback | null = null;
 
   // ── Listeners ─────────────────────────────────
 
   subscribe(fn: StateListener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Consumers may prepare a clip before playback, without changing how or when it plays. */
+  subscribeBlobReady(listener: (blob: Blob) => void): () => void {
+    this.blobListeners.add(listener);
+    return () => this.blobListeners.delete(listener);
+  }
+
+  private blobReady(blob: Blob): Blob {
+    for (const listener of this.blobListeners) {
+      try {
+        listener(blob);
+      } catch (error) {
+        console.warn("[TTS] Audio preparation listener failed:", error);
+      }
+    }
+    return blob;
   }
 
   getState(): TTSState {
@@ -268,6 +309,10 @@ class TTSService {
 
   getLastError(): string | null {
     return this.lastError;
+  }
+
+  getPlayback(): TTSPlayback | null {
+    return this.playback;
   }
 
   private setState(s: TTSState, id: string | null = this.activeId) {
@@ -283,6 +328,13 @@ class TTSService {
 
     try {
       const data = JSON.parse(raw) as Record<string, unknown>;
+      // A timeout says where its limit is set: these settings, or the audio connection that was used.
+      if (data.code === "tts_timeout" && typeof data.timeoutSeconds === "number") {
+        const seconds = data.timeoutSeconds;
+        return typeof data.connectionName === "string" && data.connectionName
+          ? translate("tts.errors.timeoutConnection", { seconds, name: data.connectionName })
+          : translate("tts.errors.timeout", { seconds });
+      }
       const error = typeof data.error === "string" ? data.error : "";
       const detail = typeof data.detail === "string" ? data.detail : "";
       const message = typeof data.message === "string" ? data.message : "";
@@ -363,7 +415,7 @@ class TTSService {
       throw new Error(await this.readError(res));
     }
 
-    return res.blob();
+    return this.blobReady(await res.blob());
   }
 
   private async getAudioBlob(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
@@ -377,7 +429,7 @@ class TTSService {
         }),
       options.cacheAliases,
     );
-    return waitForBlobWithAbort(sharedPromise, options.signal);
+    return this.blobReady(await waitForBlobWithAbort(sharedPromise, options.signal));
   }
 
   /**
@@ -439,6 +491,13 @@ class TTSService {
     audio.src = objectUrl;
     this.applyPlaybackOptions(audio, options);
     this.audio = audio;
+    this.playback = {
+      element: audio,
+      blob,
+      chatId: options.chatId ?? null,
+      characterId: options.characterId ?? null,
+      text,
+    };
 
     audio.onended = () => {
       if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
@@ -552,6 +611,13 @@ class TTSService {
       audio.src = objectUrl;
       this.applyPlaybackOptions(audio, options);
       this.audio = audio;
+      this.playback = {
+        element: audio,
+        blob,
+        chatId: options.chatId ?? null,
+        characterId: request.characterId ?? null,
+        text: request.text,
+      };
       const runChunkStart = () => {
         try {
           options.onChunkStart?.(request, index);
@@ -819,6 +885,7 @@ class TTSService {
       this.playbackElement.load();
     }
     this.audio = null;
+    this.playback = null;
     if (this.currentObjectUrl) {
       URL.revokeObjectURL(this.currentObjectUrl);
       this.currentObjectUrl = null;

@@ -486,14 +486,19 @@ try {
         event.type === "condition" && event.condition === "rattled" ? [[event.active, event.reason]] : [],
       );
     };
-    assert.deepEqual(gripped([]), [[true, "applied"]]);
+    // The grip ends the fight, and the fight's own timed conditions come off with it (combat C6d).
+    assert.deepEqual(gripped([]), [
+      [true, "applied"],
+      [false, "expired"],
+    ]);
     assert.deepEqual(gripped([held(bell, "Dawn bell")]), [[false, "immune"]]);
 
     // Defense, speed, effects and failed saves, from worn items of Ember Roads.
     const vest = (effect: RulesetCatalogItem["worn"]) => held({ ...coat, worn: effect }, "Odd coat");
     const guarded = fight(ember, [vest({ modifiers: [{ to: "defense", flat: 2 }] })]);
     const plain = fight(ember, [vest(undefined)]);
-    const against = (state: RulesetEncounterState) => rulesetDefenseAgainst(ember, ember.combat!, state, ada(state));
+    const against = (state: RulesetEncounterState) =>
+      rulesetDefenseAgainst(ember, ember.combat!, state, ada(state), undefined);
     assert.equal(against(guarded).defense, against(plain).defense + 2, "on top of the coat's own guard");
     assert.deepEqual(against(guarded).guards, [{ condition: "Odd coat", item: true, value: 2 }]);
     const allowance = (state: RulesetEncounterState) =>

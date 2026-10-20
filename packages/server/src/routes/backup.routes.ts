@@ -45,13 +45,17 @@ import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { loadFeatureSettings } from "../services/features/feature-settings.js";
+import { TRIPO_API_KEY_SETTING } from "../services/avatars/generation/tripo-key.js";
 import {
   canReparentFolder,
+  CHAT_METADATA_LOCAL_DESTINATION_KEYS,
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
   normalizePersonalExtensionCapabilities,
+  TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   type ExportEnvelope,
   parseLorebookDecisionActivation,
+  restoreBakedGreetingImages,
 } from "@marinara-engine/shared";
 import { getDataDir } from "../utils/data-dir.js";
 import { uniqueExportName } from "../utils/export-stream.js";
@@ -94,6 +98,7 @@ const BACKUP_DIRS = [
   "storage",
   "avatars",
   "sprites",
+  "avatar-models",
   "backgrounds",
   "gallery",
   "game-scene-videos",
@@ -537,10 +542,12 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
-    const charData = await embedCharacterBookImages(
+    const embedded = await embedCharacterBookImages(
       typeof character.data === "string" ? JSON.parse(character.data) : character.data,
       exportBudget,
     );
+    // Compatible cards carry no gallery, so baked greeting images go back to their web links (#7221).
+    const charData = embedded ? restoreBakedGreetingImages(embedded) : embedded;
     zip.addFile(
       uniqueExportName(
         usedNames,
@@ -613,15 +620,22 @@ function resolveProfileExportFilePath(dataDir: string, filePath: unknown) {
   }
 }
 
-function redactAgentSecrets(agent: any) {
-  const SECRET_KEY_RE = /token|secret|password|api[_-]?key/i;
+// An agent setting is a credential when its name ENDS in a credential word, optionally stored
+// "Encrypted": token, spotifyAccessToken, youtubeApiKey, clientSecret, password, apiKeyEncrypted.
+// Token counts end in plural "Tokens" or put "Token" first (maxTokens, existingNoteTokenBudget), and
+// Secret Plot settings only start with "secret", so they export (#7661).
+// ponytail: name-based, so a credential saved under a name that doesn't end in a credential word
+// (e.g. "secretValue") still exports; give such a setting a credential-word ending or add it here.
+const AGENT_CREDENTIAL_KEY_RE =
+  /(?:token|(?:access|refresh|auth|api|bearer|session)[_-]?tokens|secrets?|passwords?|passwd|passphrase|credentials?|bearer|(?:api|access|private|secret)[_-]?keys?)(?:[_-]?encrypted)?$/i;
 
+function redactAgentSecrets(agent: any) {
   const redactSettings = (settings: unknown): unknown => {
     if (Array.isArray(settings)) return settings.map(redactSettings);
     if (!settings || typeof settings !== "object") return settings;
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(settings)) {
-      if (SECRET_KEY_RE.test(key)) {
+      if (AGENT_CREDENTIAL_KEY_RE.test(key)) {
         out[key] = null;
       } else if (value && typeof value === "object") {
         out[key] = redactSettings(value);
@@ -673,8 +687,56 @@ for (const candidate of Object.values(schema)) {
   }
 }
 
+/**
+ * Where profile rows hold the chat settings that stay on one install (CHAT_METADATA_LOCAL_DESTINATION_KEYS:
+ * the Discord mirror, translator address and key, haptics server): chat metadata, a settings profile's
+ * metadata and the translator defaults for new chats. Like the connection keys, profiles are exported
+ * without them and an import brings none; a row restored over this install's own keeps its values.
+ */
+const PROFILE_LOCAL_DESTINATION_ROWS: Record<string, { key: string; column: string }> = {
+  chats: { key: "id", column: "metadata" },
+  chat_presets: { key: "id", column: "settings" },
+  app_settings: { key: "key", column: "value" },
+};
+
+function readProfileLocalDestinations(tableName: string, row: Record<string, unknown> | undefined) {
+  const field = PROFILE_LOCAL_DESTINATION_ROWS[tableName];
+  if (!field || !row || (tableName === "app_settings" && row.key !== TRANSLATOR_DEFAULTS_SETTINGS_KEY)) return null;
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  let parsed: unknown;
+  try {
+    const value = row[field.column];
+    // Copied, so the row it came from is never changed.
+    parsed = JSON.parse(typeof value === "string" ? value : (JSON.stringify(value) ?? ""));
+  } catch {
+    return null;
+  }
+  const holder = tableName === "chat_presets" && isRecord(parsed) ? parsed.metadata : parsed;
+  return isRecord(parsed) && isRecord(holder) ? { column: field.column, parsed, holder } : null;
+}
+
+/** `row` with `local`'s values for the settings that stay on one install, or none when there is no `local`. */
+export function withProfileLocalDestinations(
+  tableName: string,
+  row: Record<string, unknown>,
+  local?: Record<string, unknown>,
+): Record<string, unknown> {
+  const target = readProfileLocalDestinations(tableName, row);
+  if (!target) return row;
+  const kept = readProfileLocalDestinations(tableName, local)?.holder;
+  for (const key of CHAT_METADATA_LOCAL_DESTINATION_KEYS) {
+    if (kept && Object.prototype.hasOwnProperty.call(kept, key)) target.holder[key] = kept[key];
+    else delete target.holder[key];
+  }
+  return { ...row, [target.column]: JSON.stringify(target.parsed) };
+}
+
 export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<string, unknown>>) {
   if (tableName === "noodler_fan_activity_state") return [];
+  if (PROFILE_LOCAL_DESTINATION_ROWS[tableName]) {
+    rows = rows.map((row) => withProfileLocalDestinations(tableName, row));
+  }
   if (tableName === "chats") {
     return rows.map((row) => {
       if (typeof row.metadata !== "string") return row;
@@ -695,6 +757,10 @@ export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<s
     // The saved model list is a cache the provider can rebuild, like Noodle fan activity above, so
     // it stays out of portable profiles. Pinned models are settings and travel with the row.
     return rows.map((row) => ({ ...row, apiKeyEncrypted: "", managementTokenEncrypted: "", savedModels: null }));
+  }
+  if (tableName === "app_settings") {
+    // The Tripo API key stays on this install too, like the connection keys blanked above.
+    return rows.filter((row) => row.key !== TRIPO_API_KEY_SETTING);
   }
   if (tableName === "agent_configs") {
     return rows.map((row) => redactAgentSecrets(row));
@@ -1141,6 +1207,7 @@ function previewProfileStorageSnapshotStats(
 ) {
   const tableCounts: Record<string, number> = {};
   for (const tableName of FILE_BACKED_TABLES) {
+    if (!profileTableObjects.has(tableName)) continue;
     const rows = snapshot.tables[tableName];
     tableCounts[tableName] = Array.isArray(rows) ? rows.length : 0;
   }
@@ -1198,6 +1265,7 @@ function previewLegacyProfileImportStats(
 
 function countProfileStorageSnapshotItems(snapshot: ProfileStorageSnapshot) {
   const tableRows = FILE_BACKED_TABLES.reduce((count, tableName) => {
+    if (!profileTableObjects.has(tableName)) return count;
     const rows = snapshot.tables[tableName];
     return count + (Array.isArray(rows) ? rows.length : 0);
   }, 0);
@@ -1220,7 +1288,8 @@ function validateProfileStorageTableInputs(snapshot: ProfileStorageSnapshot) {
     }
 
     const table = profileTableObjects.get(tableName);
-    if (!table) throw new ProfileImportRequestError(`Profile table ${tableName} is not supported.`);
+    // Package-registered tables are not profile data; the write step skips them too.
+    if (!table) continue;
     const primaryKey = schemaPrimaryKeyColumn(table);
     for (const row of rows) {
       if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -1356,8 +1425,24 @@ async function importProfileStorageSnapshot(
           }
 
           emit("tables", `Importing ${tableName.replace(/_/g, " ")}`);
+          const localDestinationField = PROFILE_LOCAL_DESTINATION_ROWS[tableName];
+          const localDestinationRows = localDestinationField
+            ? new Map(
+                ((await tx.select().from(table as any)) as Array<Record<string, unknown>>).map((local) => [
+                  local[localDestinationField.key],
+                  local,
+                ]),
+              )
+            : null;
           for (const [rowIndex, row] of rows.entries()) {
             let cleanRow = { ...row };
+            if (localDestinationField && localDestinationRows) {
+              cleanRow = withProfileLocalDestinations(
+                tableName,
+                cleanRow,
+                localDestinationRows.get(cleanRow[localDestinationField.key]),
+              );
+            }
             // A pre-rename snapshot carries `visibility`/`publicAccountId`. Inserting it raw
             // lets the column default fill `platform: "noodle"`, putting a restored NoodleR
             // account and its posts on the Noodle timeline.

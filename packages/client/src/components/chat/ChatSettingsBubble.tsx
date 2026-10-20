@@ -2,11 +2,12 @@
 // Chat Settings button: the way into Chat Settings, placed in the chat
 //
 // A bubble like the chat's other window buttons, shown while a chat is open. It
-// starts at the top right of the chat and can be dragged anywhere; its place
-// saves with the chat (a phone keeps its own). A click opens Chat Settings, or
-// closes it, and focus comes back here when the window closes. It never hides
-// while the chat is open, and shows a dot while the chat's agents run. A
-// Roleplay chat shows a one-time tip beside it until dismissed.
+// starts at the top right of the chat (left of a Tracker Panel docked there) and
+// can be dragged anywhere; its place saves with the chat (a phone keeps its own).
+// A click opens Chat Settings, or closes it, and focus comes back here when the
+// window closes. It never hides while the chat is open, and shows a dot while the
+// chat's agents run, and a steady accent dot while Advanced Memory needs attention.
+// A Roleplay chat shows a one-time tip beside it until dismissed.
 // ──────────────────────────────────────────────
 import { useId, useState } from "react";
 import { Settings2, X } from "lucide-react";
@@ -17,6 +18,7 @@ import { usePhoneBubbleBounds, useWindowBubbleBounds } from "../ui/FloatingWindo
 import { AgentsRunningDot } from "../agents/AgentsRunningDot";
 import { announceChatToolbarAction } from "./ChatToolbarControls";
 import { preloadChatSettingsDrawer } from "./ChatCommonOverlays";
+import { useTrackerPanelClearance } from "./chat-settings-window";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import {
   PHONE_BUBBLE_SIZE_PX,
@@ -34,11 +36,21 @@ import {
 } from "../../stores/floating-window.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useUIStore } from "../../stores/ui.store";
+import { useAdvancedMemoryAttention } from "../../hooks/use-advanced-memory";
 import { ChatToolsMenu } from "./ChatToolsMenu";
 
 const TIP_WIDTH_PX = 240;
 
-export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: ChatMode }) {
+export function ChatSettingsBubble({
+  chatId,
+  mode,
+  advancedMemory = false,
+}: {
+  chatId: string;
+  mode: ChatMode;
+  /** Advanced Memory is on for this chat: watch it for problems. */
+  advancedMemory?: boolean;
+}) {
   const { t } = useTranslation();
   const phone = useMatchMedia(PHONE_LAYOUT_QUERY);
   const phoneBounds = usePhoneBubbleBounds(phone);
@@ -54,9 +66,20 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
   const tipDismissed = useUIStore((state) => state.chatSettingsMoveTipDismissed);
   const dismissTip = useUIStore((state) => state.dismissChatSettingsMoveTip);
   const agentsRunningId = useId();
+  const memoryAttentionId = useId();
+  const memoryAttention = useAdvancedMemoryAttention(chatId, advancedMemory && mode === "roleplay", open);
   const label = t("chat.toolbar.settings");
-  // Saved places take precedence over the top-right default.
-  const point = clampWindowBubble(saved ?? getTopRightBubblePoint(bounds, size), bounds, size);
+  // A Tracker Panel docked on the right covers the top-right corner and its own buttons there, so the
+  // default place moves left of it: the slot the control bubbles already leave for Chat Settings.
+  const trackerClearance = Number.parseFloat(useTrackerPanelClearance(!phone)) || 0;
+  const trackerPanelOnRight = useUIStore((state) => state.trackerPanelSide === "right");
+  const defaultPoint = getTopRightBubblePoint(
+    bounds,
+    size,
+    trackerPanelOnRight ? bounds.right - trackerClearance : bounds.right,
+  );
+  // Saved places take precedence over the default.
+  const point = clampWindowBubble(saved ?? defaultPoint, bounds, size);
   const showTip = !phone && mode === "roleplay" && !tipDismissed;
   const tipLeft = Math.max(8, Math.min(point.x + size / 2 - 24, window.innerWidth - TIP_WIDTH_PX - 8));
 
@@ -73,7 +96,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
       {phone && <ChatToolsMenu key={chatId} />}
       <WindowBubble
         id={CHAT_SETTINGS_BUTTON_ID}
-        point={saved ?? { ...getTopRightBubblePoint(bounds, size), automatic: true }}
+        point={saved ?? { ...defaultPoint, automatic: true }}
         bounds={bounds}
         size={size}
         onSizeChange={setSize}
@@ -92,7 +115,11 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
           "data-chat-settings-button": true,
           "data-open": open ? "true" : undefined,
         }}
-        describedBy={agentsRunning ? agentsRunningId : undefined}
+        describedBy={
+          [agentsRunning ? agentsRunningId : null, memoryAttention ? memoryAttentionId : null]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
         onMove={(next) => {
           const windows = useFloatingWindowStore.getState();
           if (phone) windows.savePhoneBubble(CHAT_SETTINGS_BUTTON_ID, next);
@@ -101,6 +128,17 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
         onOpen={toggle}
       >
         {agentsRunning && <AgentsRunningDot id={agentsRunningId} className="right-0.5 top-0.5" />}
+        {memoryAttention && (
+          // The theme's accent held steady: a warning never pulses with Accent Pulse.
+          <span
+            data-advanced-memory-attention
+            className="pointer-events-none absolute left-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--marinara-app-accent-static)]"
+          >
+            <span id={memoryAttentionId} className="sr-only">
+              {t("chat.advancedMemory.fix.attention")}
+            </span>
+          </span>
+        )}
       </WindowBubble>
       {showTip && (
         // A one-time tip under the button; presses go through it except on its close button.

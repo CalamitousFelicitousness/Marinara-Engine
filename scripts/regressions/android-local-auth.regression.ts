@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   androidLocalAuthHook,
+  androidLocalAuthInjectHeaders,
   androidLocalAuthRoutes,
   androidLocalAuthTesting,
   androidLocalLoginRoute,
@@ -37,6 +38,12 @@ try {
 
   const rejected = await app.inject({ method: "GET", url: "/api/private" });
   assert.equal(rejected.statusCode, 401, "an unrelated localhost caller must not inherit loopback trust");
+  const serverOwnRequest = await app.inject({
+    method: "POST",
+    url: "/api/private-mutation",
+    headers: androidLocalAuthInjectHeaders(),
+  });
+  assert.equal(serverOwnRequest.statusCode, 200, "the server's own injected calls carry the local secret (#7475)");
 
   const health = await app.inject({ method: "GET", url: "/api/health" });
   assert.equal(health.statusCode, 200, "local readiness checks must remain available without a browser session");
@@ -442,7 +449,7 @@ try {
   );
   assert.match(
     wrapperProperties,
-    /distributionSha256Sum=bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c/u,
+    /distributionSha256Sum=dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f/u,
   );
 
   console.info("Android local authentication regressions passed.");

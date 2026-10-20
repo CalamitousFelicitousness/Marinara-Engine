@@ -1,10 +1,11 @@
-import { useMemo, type ComponentProps } from "react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
 import type { Message, SpriteSide } from "@marinara-engine/shared";
 import { ConversationPackageWindows, ConversationView } from "./ConversationView";
 import { ChatCommonOverlays } from "./ChatCommonOverlays";
 import { ChatConnectedChatWindow } from "./ChatControlWindow";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
+import type { ChatImage } from "../../hooks/use-gallery";
 import type { CharacterMap, MessageSelectionToggle, PeekPromptData, PersonaInfo } from "./chat-area.types";
 
 type SceneInfo =
@@ -53,6 +54,13 @@ type ConversationSurfaceProps = {
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  /** N1: the user message whose reply failed, if any — drives the "Failed · Retry" line. */
+  failedReplyMessageId?: string | null;
+  failedReplyReason?: string;
+  onRetryFailedReply?: () => void;
+  /** R2: the reply that gets the checkup's quiet line, and the line itself. */
+  replyCheckupMessageId?: string | null;
+  replyCheckup?: ReactNode;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
   onPeekPrompt: (messageId?: string) => void;
@@ -67,6 +75,8 @@ type ConversationSurfaceProps = {
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
+  onGenerateVideo?: (characterId?: string) => void | Promise<void>;
+  onAnimateImage?: (image: ChatImage, characterId?: string) => void | Promise<void>;
   onWizardFinish: () => void;
   onClosePeekPrompt: () => void;
   onResetSpritePlacements: () => void;
@@ -118,6 +128,11 @@ export function ChatConversationSurface({
   onDelete,
   onRegenerate,
   onEdit,
+  failedReplyMessageId,
+  failedReplyReason,
+  onRetryFailedReply,
+  replyCheckupMessageId,
+  replyCheckup,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
   onPeekPrompt,
@@ -132,6 +147,8 @@ export function ChatConversationSurface({
   onIllustrate,
   onIllustrateWithAgent,
   onGenerateSelfie,
+  onGenerateVideo,
+  onAnimateImage,
   onWizardFinish,
   onClosePeekPrompt,
   onResetSpritePlacements,
@@ -155,6 +172,8 @@ export function ChatConversationSurface({
       onIllustrate,
       onIllustrateWithAgent,
       onGenerateSelfie,
+      onGenerateVideo,
+      onAnimateImage,
       selfieCharacters: chatCharIds
         .map((id) => {
           const character = characterMap.get(id);
@@ -162,7 +181,7 @@ export function ChatConversationSurface({
         })
         .filter((character): character is { id: string; name: string } => Boolean(character)),
     }),
-    [characterMap, chatCharIds, onGenerateSelfie, onIllustrate, onIllustrateWithAgent],
+    [characterMap, chatCharIds, onAnimateImage, onGenerateSelfie, onGenerateVideo, onIllustrate, onIllustrateWithAgent],
   );
   useProvideChatGalleryActions(activeChatId, galleryActions);
   return (
@@ -185,11 +204,17 @@ export function ChatConversationSurface({
           onDelete={onDelete}
           onRegenerate={onRegenerate}
           onEdit={onEdit}
+          failedReplyMessageId={failedReplyMessageId}
+          failedReplyReason={failedReplyReason}
+          onRetryFailedReply={onRetryFailedReply}
+          replyCheckupMessageId={replyCheckupMessageId}
+          replyCheckup={replyCheckup}
           onSetActiveSwipe={onSetActiveSwipe}
           onToggleHiddenFromAI={onToggleHiddenFromAI}
           onPeekPrompt={onPeekPrompt}
           onIllustrate={onIllustrate}
           onGenerateSelfie={onGenerateSelfie}
+          onGenerateVideo={onGenerateVideo}
           lastAssistantMessageId={lastAssistantMessageId}
           onOpenSettings={onOpenSettings}
           onOpenScheduleEditor={onOpenScheduleEditor}

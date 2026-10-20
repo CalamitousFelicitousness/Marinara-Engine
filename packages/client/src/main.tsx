@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { App, AppRecoveryBoundary } from "./App";
 import { startKeepAlive } from "./lib/keep-alive";
 import { installCsrfFetchShim } from "./lib/csrf-fetch";
@@ -8,7 +8,9 @@ import { registerPreloadErrorRecovery } from "./lib/browser-runtime";
 import { showAppUpdatePrompt } from "./lib/app-update-prompt";
 import { initializeLocalization } from "./localization/i18n";
 import { LocalizationProvider } from "./localization/LocalizationProvider";
-import { useUIStore } from "./stores/ui.store";
+import { shownMariAppearancePack, useUIStore } from "./stores/ui.store";
+import { mariAssetUrls } from "./lib/mari-work-animations";
+import { queryClient } from "./lib/query-client";
 import { APP_VERSION } from "@marinara-engine/shared";
 import { formatRuntimeBuild } from "./lib/runtime-build";
 import { recordClientReload, registerClientRuntimeDiagnostics } from "./lib/client-runtime-diagnostics";
@@ -28,16 +30,13 @@ installCsrfFetchShim();
 // 404s after an update) instead of surfacing "Failed to fetch dynamically
 // imported module" to the user.
 registerPreloadErrorRecovery();
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+// M16 tier 1: Home's first-paint Mari sprites start with the page instead of after the lazy Home
+// chunk renders. Selected pack only. Kept referenced, so the <img> tags reuse these images instead of
+// fetching (or revalidating) them again.
+const firstPaintMariImages = mariAssetUrls(shownMariAppearancePack(useUIStore.getState()), 1).map((url) =>
+  Object.assign(new Image(), { fetchPriority: "high", src: url }),
+);
+Object.assign(globalThis, { __marinaraFirstPaintMari: firstPaintMariImages });
 
 function scheduleAfterFirstLoad(callback: () => void) {
   const schedule = () => {

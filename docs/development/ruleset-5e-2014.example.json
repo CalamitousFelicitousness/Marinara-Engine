@@ -1886,7 +1886,7 @@
       "adjacentFoe": "disadvantage"
     },
     "cover": {
-      "$comment": "Half cover. Three-quarters and total cover need terrain the Engine's own grid does not tell apart yet.",
+      "$comment": "Half cover only, one number. The 5e package grades it as well (threeQuarters, saves, creatures), which this example leaves out.",
       "bonus": 2
     },
     "opportunity": {

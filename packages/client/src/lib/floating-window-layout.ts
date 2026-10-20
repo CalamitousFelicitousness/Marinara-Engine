@@ -56,16 +56,31 @@ export const PHONE_BUBBLE_SIZE_PX = 36;
 /** Room between phone bubbles in their default row, the gap snapping leaves (their 44px tap areas meet). */
 export const PHONE_BUBBLE_GAP_PX = 8;
 
+/** A bubble's footprint: a square's side, or the width and height of a banner (a bubble showing a live summary). */
+export type BubbleSize = number | { width: number; height: number };
+
+function readBubbleSize(size: BubbleSize) {
+  return typeof size === "number" ? { width: size, height: size } : size;
+}
+
+/**
+ * Where a banner sits when its place was picked automatically, for a square button: it grows left from that
+ * slot, so it stays in its row (rows fill from the right) instead of dropping below it. A place the user chose
+ * stays its left edge.
+ */
+export function getBannerPoint(point: WindowPoint, size: { width: number; height: number }): WindowPoint {
+  return point.automatic ? { ...point, x: point.x + size.height - size.width } : point;
+}
+
 /** Keeps a bubble inside `bounds`, so it can never be lost off-screen. */
 export function clampWindowBubble(
   point: WindowPoint,
   bounds: WindowBounds,
-  size: number = WINDOW_BUBBLE_SIZE_PX,
+  size: BubbleSize = WINDOW_BUBBLE_SIZE_PX,
 ): WindowPoint {
-  return {
-    x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - size),
-    y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - size),
-  };
+  const { width, height } = readBubbleSize(size);
+  const x = clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - width);
+  return { x, y: clamp(finiteOr(point.y, bounds.top), bounds.top, readBottomLimit(bounds, x, x + width) - height) };
 }
 
 /**
@@ -77,26 +92,27 @@ function findFreeBubblePoint(
   point: WindowPoint,
   occupied: readonly BubbleRect[],
   bounds: WindowBounds,
-  size: number,
+  size: BubbleSize,
   near: WindowPoint = point,
 ): WindowPoint {
+  const { width, height } = readBubbleSize(size);
   const free = (candidate: WindowPoint) =>
     occupied.every(
       (other) =>
-        candidate.x + size <= other.x ||
+        candidate.x + width <= other.x ||
         candidate.x >= other.x + other.width ||
-        candidate.y + size <= other.y ||
+        candidate.y + height <= other.y ||
         candidate.y >= other.y + other.height,
     );
   if (free(point)) return point;
   // Keep the snapping gap when possible; a tight space should not hide a button just to keep the gap.
   for (const gap of [BUBBLE_SNAP_GAP_PX, 0]) {
-    const xs = new Set([point.x, bounds.left, bounds.right - size]);
-    const ys = new Set([point.y, bounds.top, bounds.bottom - size]);
+    const xs = new Set([point.x, bounds.left, bounds.right - width]);
+    const ys = new Set([point.y, bounds.top, bounds.bottom - height]);
     for (const other of occupied) {
-      xs.add(other.x - size - gap);
+      xs.add(other.x - width - gap);
       xs.add(other.x + other.width + gap);
-      ys.add(other.y - size - gap);
+      ys.add(other.y - height - gap);
       ys.add(other.y + other.height + gap);
     }
     const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
@@ -105,9 +121,9 @@ function findFreeBubblePoint(
     const available = candidates.find(
       (candidate) =>
         candidate.x >= bounds.left &&
-        candidate.x + size <= bounds.right &&
+        candidate.x + width <= bounds.right &&
         candidate.y >= bounds.top &&
-        candidate.y + size <= bounds.bottom &&
+        candidate.y + height <= readBottomLimit(bounds, candidate.x, candidate.x + width) &&
         free(candidate),
     );
     if (available) return available;
@@ -123,20 +139,20 @@ export function dropWindowBubble(
   raw: WindowPoint,
   others: readonly BubbleRect[],
   bounds: WindowBounds,
-  size: number,
+  size: BubbleSize,
 ): { point: WindowPoint; guides: SnapGuide[] } {
-  const snapped = snapBubble({ ...raw, width: size, height: size }, others);
+  const snapped = snapBubble({ ...raw, ...readBubbleSize(size) }, others);
   const point = clampWindowBubble(snapped, bounds, size);
   const free = findFreeBubblePoint(point, others, bounds, size, raw);
   if (free === point) return { point, guides: snapped.guides };
   // Moved aside: show the lines it keeps with its neighbours there.
-  const aside = snapBubble({ ...free, width: size, height: size }, others);
+  const aside = snapBubble({ ...free, ...readBubbleSize(size) }, others);
   return { point: free, guides: aside.x === free.x && aside.y === free.y ? aside.guides : [] };
 }
 
 /** Temporary visible positions: a closing sidebar restores the saved points, even for locked buttons. */
 export function placeWindowBubbles(
-  bubbles: ReadonlyMap<string, { point: WindowPoint; bounds: WindowBounds; size: number }>,
+  bubbles: ReadonlyMap<string, { point: WindowPoint; bounds: WindowBounds; size: BubbleSize }>,
 ): Map<string, WindowPoint> {
   const placed = new Map<string, WindowPoint>();
   const occupied: BubbleRect[] = [];
@@ -154,14 +170,17 @@ export function placeWindowBubbles(
   for (const { id, clamped, bounds, size, movable } of entries) {
     const next = movable ? findFreeBubblePoint(clamped, occupied, bounds, size) : clamped;
     placed.set(id, next);
-    occupied.push({ ...next, width: size, height: size });
+    occupied.push({ ...next, ...readBubbleSize(size) });
   }
   return placed;
 }
 
-/** The Chat Settings button's default place: the top-right slot of the chat area. */
-export function getTopRightBubblePoint(bounds: WindowBounds, size: number): WindowPoint {
-  return { x: bounds.right - size, y: bounds.top };
+/**
+ * The Chat Settings button's default place: the top-right slot of the chat area, or left of `right` when a
+ * docked Tracker Panel covers that corner.
+ */
+export function getTopRightBubblePoint(bounds: WindowBounds, size: number, right = bounds.right): WindowPoint {
+  return { x: right - size, y: bounds.top };
 }
 
 /**
@@ -226,6 +245,17 @@ export interface WindowBounds {
   top: number;
   right: number;
   bottom: number;
+  /**
+   * On a computer, `bottom` is the top of the message box. A window or button wholly left of `left` or right
+   * of `right` (the box's sides) may reach down to `bottom` here instead, beside the box (#7703).
+   */
+  besideComposer?: { left: number; right: number; bottom: number };
+}
+
+/** The lowest a window or button spanning `left` to `right` may reach. */
+function readBottomLimit(bounds: WindowBounds, left: number, right: number) {
+  const beside = bounds.besideComposer;
+  return beside && (right <= beside.left || left >= beside.right) ? beside.bottom : bounds.bottom;
 }
 
 export interface WindowSizeLimits {
@@ -258,15 +288,12 @@ export function clampWindowGeometry(
   limits: WindowSizeLimits,
 ): WindowGeometry {
   const availableWidth = Math.max(0, bounds.right - bounds.left);
-  const availableHeight = Math.max(0, bounds.bottom - bounds.top);
   const width = Math.max(limits.minWidth, Math.min(finiteOr(geometry.width, limits.minWidth), availableWidth));
+  const x = clamp(finiteOr(geometry.x, bounds.left), bounds.left, bounds.right - width);
+  const bottom = readBottomLimit(bounds, x, x + width);
+  const availableHeight = Math.max(0, bottom - bounds.top);
   const height = Math.max(limits.minHeight, Math.min(finiteOr(geometry.height, limits.minHeight), availableHeight));
-  return {
-    x: clamp(finiteOr(geometry.x, bounds.left), bounds.left, bounds.right - width),
-    y: clamp(finiteOr(geometry.y, bounds.top), bounds.top, bounds.bottom - height),
-    width,
-    height,
-  };
+  return { x, y: clamp(finiteOr(geometry.y, bounds.top), bounds.top, bottom - height), width, height };
 }
 
 export function moveWindowGeometry(
@@ -291,13 +318,20 @@ export function resizeWindowGeometry(
   const from = clampWindowGeometry(start, bounds, limits);
   const right = from.x + from.width;
   const bottom = from.y + from.height;
+  // Reaching down beside the message box, a side edge stops at the box instead of covering it.
+  const beside = bottom > bounds.bottom ? bounds.besideComposer : undefined;
   let { x, y, width, height } = from;
-  if (edge.includes("e")) width = clamp(from.width + dx, limits.minWidth, bounds.right - from.x);
+  if (edge.includes("e")) {
+    const limit = beside && right <= beside.left ? beside.left : bounds.right;
+    width = clamp(from.width + dx, limits.minWidth, limit - from.x);
+  }
   if (edge.includes("w")) {
-    x = clamp(from.x + dx, bounds.left, right - limits.minWidth);
+    x = clamp(from.x + dx, beside && from.x >= beside.right ? beside.right : bounds.left, right - limits.minWidth);
     width = right - x;
   }
-  if (edge.includes("s")) height = clamp(from.height + dy, limits.minHeight, bounds.bottom - from.y);
+  if (edge.includes("s")) {
+    height = clamp(from.height + dy, limits.minHeight, readBottomLimit(bounds, x, x + width) - from.y);
+  }
   if (edge.includes("n")) {
     y = clamp(from.y + dy, bounds.top, bottom - limits.minHeight);
     height = bottom - y;

@@ -89,7 +89,12 @@ export function buildRulesetCombatBossPrompt(
   const fight = state.rulesetFight!;
   const difficulty = normalizeGameDifficulty(state.difficulty);
   const view = directedRulesetView(definition, state)!;
-  const menu = new Map(rulesetMenu(definition, fight.encounter, window.actorId).map((option) => [option.id, option]));
+  const menu = new Map(
+    rulesetMenu(definition, fight.encounter, window.actorId, !!fight.encounter.window).map((option) => [
+      option.id,
+      option,
+    ]),
+  );
   const candidates = window.options.map((option) => {
     const entry = option.optionId ? menu.get(option.optionId) : undefined;
     return {
@@ -100,6 +105,7 @@ export function buildRulesetCombatBossPrompt(
       ...(entry?.cost ? { cost: entry.cost } : {}),
       ...(entry?.left !== undefined ? { usesLeft: entry.left } : {}),
       ...(entry?.forecast ? { forecast: entry.forecast } : {}),
+      ...(entry?.cancelSave ? { cancelSave: entry.cancelSave } : {}),
       // Where this candidate walks first, and where its shape lands. Both are cells of the board
       // the view already carries; neither is a die that has not been thrown.
       ...(option.to ? { moveTo: option.to } : {}),
@@ -161,11 +167,42 @@ export function buildRulesetCombatBossPrompt(
         actorId: window.actorId,
         order: view.order,
         candidates,
+        ...(view.window
+          ? {
+              moment: {
+                ...view.window,
+                source: view.combatants.find((one) => one.id === view.window!.sourceId)?.name,
+                targets: view.window.targetIds?.map((id) => view.combatants.find((one) => one.id === id)?.name ?? id),
+              },
+            }
+          : {}),
         units: view.combatants,
         ...(view.grid
           ? { board: { width: view.grid.width, height: view.grid.height, distance: view.grid.distance } }
           : {}),
         ...(positions ? { positions } : {}),
+        ...(definition.combat?.damage?.minimum ||
+        fight.encounter.combatants.some((unit) => unit.actions.some((action) => action.damage?.minimum !== undefined))
+          ? {
+              minimumDamage:
+                "The damage pool has an attacker or weapon minimum after soak; this is dice, not guaranteed wounds.",
+            }
+          : {}),
+        ...(definition.combat?.daze
+          ? {
+              daze: {
+                rule: "One hit strictly above the target's threshold skips exactly their next turn. The Engine applies and clears the condition; do not award an extra skip.",
+                ...(definition.combat.daze.text ? { text: definition.combat.daze.text } : {}),
+                pending: fight.encounter.combatants.filter((unit) => unit.dazed).map((unit) => unit.id),
+              },
+            }
+          : {}),
+        ...(definition.combat?.damageKinds?.remap
+          ? {
+              damageKinds:
+                "The target's first matching remap chooses the wound kind before soak. Events record the original and final kinds.",
+            }
+          : {}),
         recentEvents: fight.events.slice(-16),
       }),
     },

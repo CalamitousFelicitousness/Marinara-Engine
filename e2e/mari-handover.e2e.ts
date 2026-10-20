@@ -138,7 +138,11 @@ for (const [label, width, height] of [
     const provider = await startSilentProvider();
     const connectionId = await openMariWithFixture(page, request, provider.baseUrl, width, height);
     try {
-      await page.keyboard.press("Control+j");
+      const mariShortcut = await page.evaluate(async () => {
+        const { isApplePlatform } = await import("/src/lib/command-center.ts" as string);
+        return isApplePlatform() ? "Meta+j" : "Control+j";
+      });
+      await page.keyboard.press(mariShortcut);
       const mariPane = page.locator('[data-component="GlobalOmnibar.Mari"]');
       const composer = mariPane.locator("textarea:visible");
       await expect(composer).toBeVisible();
@@ -179,7 +183,11 @@ test("desktop: opening and closing Mari's window never shows a frame without Mar
     await homePortrait.evaluate((image) => (image as HTMLImageElement).decode());
 
     await startFrameSampler(page, ANY_MARI);
-    await page.keyboard.press("Control+j");
+    const mariShortcut = await page.evaluate(async () => {
+      const { isApplePlatform } = await import("/src/lib/command-center.ts" as string);
+      return isApplePlatform() ? "Meta+j" : "Control+j";
+    });
+    await page.keyboard.press(mariShortcut);
     await expect(mariPane).toHaveAttribute("aria-hidden", "false");
     await expect(mariPane.locator(SHEET_ONLY).first()).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");

@@ -137,7 +137,11 @@ async function openMariWithProvider(
 
 /** Opens her window and waits until her sheet is drawn, so the frames sampled later start with her on screen. */
 async function openWindowWithMari(page: Page) {
-  await page.keyboard.press("Control+j");
+  const mariShortcut = await page.evaluate(async () => {
+    const { isApplePlatform } = await import("/src/lib/command-center.ts" as string);
+    return isApplePlatform() ? "Meta+j" : "Control+j";
+  });
+  await page.keyboard.press(mariShortcut);
   const mariPane = page.locator('[data-component="GlobalOmnibar.Mari"]');
   await expect(mariPane.locator(SHEET_ONLY).first()).toBeVisible({ timeout: 30_000 });
   return mariPane;

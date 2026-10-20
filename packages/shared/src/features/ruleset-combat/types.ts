@@ -564,6 +564,8 @@ export interface RulesetStatBlockAction {
   targetTypes?: RulesetCombatAction["targetTypes"];
   /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
+  /** A leap onto whoever stands where it lands (1.672): a bulette's Deadly Leap. */
+  leapsOnto?: RulesetLeapsOnto;
   /** What a sequence does once every attack in it hit the one target (1.352): a shambling mound's. */
   allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327): the Hour Bell. */
@@ -1415,6 +1417,8 @@ export interface RulesetCombatAction {
   draws?: { spends: string };
   /** Engulf (1.350): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
+  /** A leap onto whoever stands where it lands (1.672): a bulette's Deadly Leap. */
+  leapsOnto?: RulesetLeapsOnto;
   /** What a sequence does once every attack in it hit the one target (1.352): a shambling mound's. */
   allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327). */
@@ -1789,6 +1793,13 @@ export interface RulesetCombatContest {
  *  makes `save` against `difficulty` or takes the action's damage and `applies`, and a condition
  *  with `inside` carries it along inside the actor. `ownMovement` spends the actor's own speed
  *  (otherwise the move is free, up to its speed); `atMost` caps how many it can hold at once. */
+/** A leap onto whoever stands where it lands (1.672): at least `atLeast` far, in the ruleset's
+ *  distance; `noRoom` on one who saved with nowhere to be set down. */
+export interface RulesetLeapsOnto {
+  atLeast: number;
+  noRoom?: string;
+}
+
 export interface RulesetEngulf {
   upToSize: string;
   save: { save: string; difficulty: number };
@@ -2890,6 +2901,8 @@ export interface RulesetWalkResume {
   /** An engulf (1.350): the action it is, and whoever it has entered so far, each taken in or pushed
    *  out of its way once the walk ends. */
   engulf?: { actionId: string; entered: string[] };
+  /** A leap onto whoever stands where it lands (1.672): the action it is, made once it lands. */
+  leap?: { actionId: string };
   /** A jump (1.446): a cell of movement a cell, touching the ground only where it lands. */
   jump?: true;
   /** Walked carefully (1.636): every step into ground that spares slow walkers costs double, and

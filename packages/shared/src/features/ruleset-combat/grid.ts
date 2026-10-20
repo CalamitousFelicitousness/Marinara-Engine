@@ -474,6 +474,9 @@ export function rulesetJumpCells(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
+  /** A leap onto others (1.672): only landings at least this many cells off, each in a space one
+   *  or more others fill, foes too. */
+  onto?: number,
 ): RulesetReachableCell[] {
   const combat = definition.combat;
   const grid = state.board?.grid;
@@ -502,7 +505,7 @@ export function rulesetJumpCells(
   const reach = rulesetJumpReach(definition, state, actor);
   const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
   const far = Math.min(reach?.long ?? 0, budget);
-  if (far < 2) return [];
+  if (far < 2 || (onto !== undefined && far < onto)) return [];
   const levelCells = state.board?.levelCells ?? 1;
   const ground = elevationAt(grid, from.x, from.y);
   const span = rulesetSpanOf(actor);
@@ -515,10 +518,10 @@ export function rulesetJumpCells(
       if (one.side !== actor.side) foes.add(`${cell.x},${cell.y}`);
     }
   }
-  const clears = (x: number, y: number) =>
+  const clears = (x: number, y: number, overFoes = false) =>
     inBounds(grid, x, y) &&
     (!rulesetCellBlocked(grid, x, y) || isWater(grid, x, y)) &&
-    !foes.has(`${x},${y}`) &&
+    (overFoes || !foes.has(`${x},${y}`)) &&
     (elevationAt(grid, x, y) - ground) * levelCells <= reach!.high;
   const threats = rulesetThreateningEnemies(definition, combat, state, actor);
   const out: RulesetReachableCell[] = [];
@@ -528,8 +531,25 @@ export function rulesetJumpCells(
       const x = from.x + dx * step;
       const y = from.y + dy * step;
       const cells = rulesetFootprintAt({ x, y }, span);
-      if (!cells.every((cell) => clears(cell.x, cell.y))) break;
+      const open = cells.every((cell) => clears(cell.x, cell.y));
       if (held.some((one) => rulesetGapFrom({ x, y }, span, one.source) < one.away)) break;
+      // Onto others (1.672): landing among foes too, and nowhere else.
+      if (onto !== undefined) {
+        if (!open && !cells.every((cell) => clears(cell.x, cell.y, true))) break;
+        path.push({ x, y });
+        const lands =
+          step >= Math.max(2, onto) &&
+          cells.some((cell) => occupied.has(`${cell.x},${cell.y}`)) &&
+          cells.every((cell) => {
+            const rise = elevationAt(grid, cell.x, cell.y) - ground;
+            return rise >= -1 && !rulesetCellSolidFor(grid, cell.x, cell.y, actor);
+          });
+        if (lands && !rulesetOnlyCrosses(grid, { x, y }, actor))
+          out.push({ x, y, cost: step, path: [...path], provokes: provokedBy(threats, from, path) });
+        if (!open) break;
+        continue;
+      }
+      if (!open) break;
       path.push({ x, y });
       if (step < 2) continue;
       const lands = cells.every((cell) => {

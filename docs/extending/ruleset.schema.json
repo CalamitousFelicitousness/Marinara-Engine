@@ -83027,6 +83027,26 @@
                           ],
                           "additionalProperties": false
                         },
+                        "leapsOnto": {
+                          "type": "object",
+                          "properties": {
+                            "atLeast": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 10000
+                            },
+                            "noRoom": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "atLeast"
+                          ],
+                          "additionalProperties": false
+                        },
                         "targetTypes": {
                           "type": "object",
                           "properties": {
@@ -102250,6 +102270,26 @@
                             "required": [
                               "upToSize",
                               "save"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "leapsOnto": {
+                            "type": "object",
+                            "properties": {
+                              "atLeast": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 10000
+                              },
+                              "noRoom": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "atLeast"
                             ],
                             "additionalProperties": false
                           },

@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A leap onto whoever stands where it lands (1.672): a bulette's Deadly Leap. */
+function carriesLeapsOnto672(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesLeapsOnto672(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.leapsOnto !== undefined) return true;
+  return featureValues(record).some((one) => carriesLeapsOnto672(one, depth + 1));
+}
+
 /** A save made with the better of two (1.671): a bulette's Deadly Leap. */
 function carriesSaveOr671(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8870,6 +8880,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A leap onto whoever stands where it lands, 1.672.
+  if (
+    !declaresApi(672) &&
+    (carriesLeapsOnto672(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesLeapsOnto672(document)))
+  )
+    return "A ruleset with a creature's leap onto others (leapsOnto) requires schemaVersion 2 and capabilityApi 1.672 or newer";
   // A save made with the better of two, 1.671.
   if (
     !declaresApi(671) &&

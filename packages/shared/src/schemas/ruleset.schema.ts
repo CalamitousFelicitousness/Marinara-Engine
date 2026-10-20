@@ -9036,6 +9036,18 @@ const creatureActionFullSchema = z
       })
       .strict()
       .optional(),
+    /** It leaps onto whoever stands where it lands (Capability API 1.672): 5e's bulette's Deadly
+     *  Leap. Picked as a cell on the board, it is a jump of at least `atLeast` (in the ruleset's
+     *  distance) on its own movement, as `combat.jumping` and its own `jump` say, landing in a space
+     *  one or more others fill. Each of them makes the action's save: the action's damage and
+     *  `applies` land on a failure as always, half on a success with `onSuccess: "half"`; then each is
+     *  set down out of its space, beside it. One who saved with no room to be set down takes
+     *  `noRoom` where it is: "falls prone in the bulette's space". Off a board it is aimed as the
+     *  action otherwise is. */
+    leapsOnto: z
+      .object({ atLeast: z.number().finite().min(0).max(10000), noRoom: sheetId.optional() })
+      .strict()
+      .optional(),
     /** Aimed only at a target that is this (Capability API 1.352), as a catalog entry's
      *  `targetTypes` reads: a behir's Constrict at "one Large or smaller creature". */
     targetTypes: catalogTargetTypesSchema.optional(),
@@ -20834,6 +20846,14 @@ function creatureIssues(
       insideRoomIssues(definition, action.engulf.room, [...path, "engulf", "room"], add);
       if (action.engulf.room && action.engulf.atMost !== undefined)
         add([...path, "engulf", "room"], 'An engulf says how much it holds with "room" or "atMost", not both');
+    }
+    // Leaping onto whoever stands where it lands (1.672): a jump, so the fight has jumping.
+    if (action.leapsOnto) {
+      if (!combat.jumping) add([...path, "leapsOnto"], 'A leap is a jump, so the combat block has "jumping"');
+      if (action.area || action.engulf)
+        add([...path, "leapsOnto"], "A leap lands on whoever stands where it does, so it has no area or engulf");
+      const noRoom = action.leapsOnto.noRoom;
+      if (noRoom && !conditions.has(noRoom)) add([...path, "leapsOnto", "noRoom"], `Unknown condition "${noRoom}"`);
     }
     // Aimed only at whoever is this (1.352), as an entry's own reads.
     if (action.targetTypes) targetTestIssues(definition, { targetTypes: action.targetTypes }, path, add);

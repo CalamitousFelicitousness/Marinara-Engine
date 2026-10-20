@@ -3966,6 +3966,64 @@ function engulfLands(
   }
 }
 
+/**
+ * A leap lands (1.672) on whoever stands where it did: each makes the action's save and takes what
+ * it does, then is set down out of its space, beside it, riders with their mounts. One who saved with
+ * no room to be set down takes the leap's `noRoom` where it is.
+ */
+function leapLands(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const covered = new Set(rulesetFootprint(actor).map((cell) => `${cell.x},${cell.y}`));
+  const under = (one: RulesetCombatant) =>
+    one.id !== actor.id &&
+    !one.insideOf &&
+    !!rulesetPositionOf(one) &&
+    rulesetFootprint(one).some((cell) => covered.has(`${cell.x},${cell.y}`));
+  const caught = ctx.state.combatants.filter((one) => rulesetCombatStanding(one) && under(one));
+  if (caught.length === 0) return;
+  const { leapsOnto: rule, ...rest } = action;
+  const from = ctx.events.length;
+  resolveAction(ctx, actor, rest, caught);
+  const saved = new Set(
+    ctx.events
+      .slice(from)
+      .flatMap((event) =>
+        event.type === "save" && event.sourceId === actor.id && event.success ? [event.actorId] : [],
+      ),
+  );
+  const grid = ctx.state.board?.grid;
+  if (!grid || !rulesetPositionOf(actor)) return;
+  for (const one of caught) {
+    if (one.mountedOn || !under(one)) continue;
+    const start = rulesetPositionOf(one)!;
+    // A cell's step out of its space, beside it.
+    const riders = ctx.state.combatants.filter((rider) => rider.mountedOn === one.id).map((rider) => rider.id);
+    let to: RulesetCombatCell | undefined;
+    for (let y = start.y - 1; y <= start.y + 1 && !to; y++) {
+      for (let x = start.x - 1; x <= start.x + 1 && !to; x++) {
+        const cell = { x, y };
+        if (x < 0 || y < 0 || x + rulesetSpanOf(one) > grid.width || y + rulesetSpanOf(one) > grid.height) continue;
+        if (rulesetGapFrom(cell, rulesetSpanOf(one), actor) !== 1) continue;
+        if (rulesetRoomAt(ctx.state, grid, one, cell, riders)) to = cell;
+      }
+    }
+    if (to) {
+      one.x = to.x;
+      one.y = to.y;
+      for (const rider of ctx.state.combatants) if (rider.mountedOn === one.id) placeInside(one, rider);
+      ctx.events.push({
+        type: "pushed",
+        actorId: actor.id,
+        targetId: one.id,
+        from: start,
+        to: { ...to },
+        path: [{ ...to }],
+      });
+    } else if (saved.has(one.id) && rule?.noRoom) {
+      applyConditionId(ctx, one, rule.noRoom, { condition: rule.noRoom, duration: "instant" }, {});
+    }
+  }
+}
+
 /** An engulf's walk (1.350): up to its maker's speed, lent for it, or on what is left of its own. */
 function engulfWalk(
   ctx: RulesetCombatContext,
@@ -7655,6 +7713,9 @@ function applyChoice(
   // Where an engulf walks to (1.350): a cell its option offered.
   const engulfTo = named?.engulf && option.cells ? destinationOf(option, choice.to) : undefined;
   if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
+  // Where a leap lands (1.672): a cell its option offered.
+  const leapTo = named?.leapsOnto && option.cells ? destinationOf(option, choice.to) : undefined;
+  if (named?.leapsOnto && option.cells && !leapTo) return refusal(state, choice.actorId, "unreachable", option.id);
   // Where a creature's move on its own turn goes (1.554): a cell its option offered.
   const ownMove = named?.move && !named.signature && rulesetMovesOnly(named) && option.cells;
   const moveTo = ownMove ? destinationOf(option, choice.to) : undefined;
@@ -8217,6 +8278,22 @@ function applyChoice(
   if (action.engulf) {
     if (engulfTo) engulfWalk(ctx, working, action, engulfTo.path);
     else engulfLands(ctx, working, action, workingTargets);
+    noteOutcome(ctx);
+    return finish();
+  }
+  // A leap (1.672): the jump, and whoever it lands on.
+  if (action.leapsOnto && leapTo) {
+    walkOn(ctx, working, {
+      kind: "walk",
+      actorId: working.id,
+      from: { x: working.x!, y: working.y! },
+      walked: [],
+      path: [...leapTo.path],
+      asked: [],
+      spent: 0,
+      jump: true,
+      leap: { actionId: action.id },
+    });
     noteOutcome(ctx);
     return finish();
   }
@@ -12035,6 +12112,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
+            ...(resume.leap ? { leap: { ...resume.leap } } : {}),
             ...(resume.jump ? { jump: true as const } : {}),
             ...(resume.careful ? { careful: true as const } : {}),
           },
@@ -12145,6 +12223,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
             ...(legendary ? { legendary } : {}),
             ...(outer ? { outer } : {}),
             ...(engulfing ? { engulf: { actionId: resume.engulf!.actionId, entered: [...engulfing.entered] } } : {}),
+            ...(resume.leap ? { leap: { ...resume.leap } } : {}),
             ...(resume.jump ? { jump: true as const } : {}),
             ...(resume.careful ? { careful: true as const } : {}),
           },
@@ -12222,6 +12301,11 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     hidingCheck(ctx, actor, landing.check).total < landing.difficulty
   ) {
     applyConditionId(ctx, actor, landing.applies, { condition: landing.applies, duration: "instant" }, {});
+  }
+  // Landed from a leap (1.672), all the way: whoever stands there.
+  const leapAction = resume.leap ? actor.actions.find((one) => one.id === resume.leap!.actionId) : undefined;
+  if (leapAction?.leapsOnto && !stopped && rest.length === 0 && rulesetCombatStanding(actor)) {
+    leapLands(ctx, actor, leapAction);
   }
   // Whoever an engulf walked into (1.350), once it has stopped.
   if (engulfing && engulfAction && rulesetCombatStanding(actor)) {

@@ -4867,6 +4867,8 @@ function blockActions(
     ...(action.draws ? { draws: { ...action.draws } } : {}),
     // Engulf and Whelm (1.350).
     ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
+    // Deadly Leap (1.672).
+    ...(action.leapsOnto ? { leapsOnto: { ...action.leapsOnto } } : {}),
     // Aimed only at whoever is this, and what a sequence does once all of it hit (1.352).
     ...(action.targetTypes ? { targetTypes: structuredClone(action.targetTypes) } : {}),
     ...(action.allHit ? { allHit: structuredClone(action.allHit) } : {}),

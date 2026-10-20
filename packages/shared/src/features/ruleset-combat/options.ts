@@ -3781,6 +3781,17 @@ function optionFrom(
     option.cells = cells;
     option.targets = { side: "self", count: 0 };
   }
+  // Where a leap may land on others (1.672): picked on the board as a jump is, aimed at nobody.
+  // With nowhere to land it is not offered.
+  if (action.leapsOnto && positioned(state)) {
+    const perCell = combat.distance?.perCell;
+    const cells = perCell
+      ? rulesetJumpCells(definition, state, actor.id, Math.ceil(action.leapsOnto.atLeast / perCell))
+      : [];
+    if (cells.length === 0) return null;
+    option.cells = cells;
+    option.targets = { side: "self", count: 0 };
+  }
   // The weapon's other ways to make this attack, each only while its holder has the shots for it,
   // and each with what it is expected to do. Not in a window: what is taken at its moment is made
   // as it is.

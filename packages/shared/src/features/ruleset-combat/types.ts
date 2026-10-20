@@ -566,6 +566,8 @@ export interface RulesetStatBlockAction {
   engulf?: RulesetEngulf;
   /** A leap onto whoever stands where it lands (1.672): a bulette's Deadly Leap. */
   leapsOnto?: RulesetLeapsOnto;
+  /** Kept up on its later turns with this budget (1.674): a harpy's Luring Song. */
+  sustains?: { budget: string };
   /** What a sequence does once every attack in it hit the one target (1.352): a shambling mound's. */
   allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327): the Hour Bell. */

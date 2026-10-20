@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's action kept up on its later turns (1.674): a harpy's Luring Song. A creature's
+ *  action has a `name`; a catalog entry's `sustains` (1.378) sits on its `mechanics`, which has none. */
+function carriesCreatureSustains674(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureSustains674(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.sustains !== undefined && typeof record.name === "string" && record.budget !== undefined) return true;
+  return featureValues(record).some((one) => carriesCreatureSustains674(one, depth + 1));
+}
+
 /** A change narrowed to the holder's attacks or damage at targets that are something (1.673): Demon
  *  Armor. Read on every `modifiers` list, where `at` means nothing else. */
 function carriesModifierAt673(value: unknown, depth = 0): boolean {
@@ -8898,6 +8909,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action kept up on later turns, 1.674.
+  if (
+    !declaresApi(674) &&
+    (carriesCreatureSustains674(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureSustains674(document)))
+  )
+    return "A ruleset with a creature's action kept up on later turns (actions[].sustains) requires schemaVersion 2 and capabilityApi 1.674 or newer";
   // A change at targets that are something, 1.673.
   if (
     !declaresApi(673) &&

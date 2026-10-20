@@ -9048,6 +9048,10 @@ const creatureActionFullSchema = z
       .object({ atLeast: z.number().finite().min(0).max(10000), noRoom: sheetId.optional() })
       .strict()
       .optional(),
+    /** Kept up on its later turns with `budget` (Capability API 1.674), as a catalog entry's
+     *  `sustains` (1.378): what it put on a creature, still on them, starts its rounds again. A
+     *  harpy's Luring Song, "must take a bonus action on its subsequent turns to continue singing". */
+    sustains: z.object({ budget: sheetId }).strict().optional(),
     /** Aimed only at a target that is this (Capability API 1.352), as a catalog entry's
      *  `targetTypes` reads: a behir's Constrict at "one Large or smaller creature". */
     targetTypes: catalogTargetTypesSchema.optional(),
@@ -20851,6 +20855,16 @@ function creatureIssues(
       insideRoomIssues(definition, action.engulf.room, [...path, "engulf", "room"], add);
       if (action.engulf.room && action.engulf.atMost !== undefined)
         add([...path, "engulf", "room"], 'An engulf says how much it holds with "room" or "atMost", not both');
+    }
+    // Kept up on a budget the fight has (1.674), starting again the rounds of what it puts on.
+    if (action.sustains) {
+      if (!budgets.has(action.sustains.budget))
+        add([...path, "sustains", "budget"], `Unknown budget "${action.sustains.budget}"`);
+      if (!action.applies?.some((one) => typeof one.duration === "object" && typeof one.duration.rounds === "number"))
+        add(
+          [...path, "sustains"],
+          '"sustains" starts again the rounds of what it puts on, so it applies a condition lasting some rounds',
+        );
     }
     // Leaping onto whoever stands where it lands (1.672): a jump, so the fight has jumping.
     if (action.leapsOnto) {

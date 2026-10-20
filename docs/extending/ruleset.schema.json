@@ -83265,6 +83265,21 @@
                           ],
                           "additionalProperties": false
                         },
+                        "sustains": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "budget"
+                          ],
+                          "additionalProperties": false
+                        },
                         "targetTypes": {
                           "type": "object",
                           "properties": {
@@ -102508,6 +102523,21 @@
                             },
                             "required": [
                               "atLeast"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sustains": {
+                            "type": "object",
+                            "properties": {
+                              "budget": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "budget"
                             ],
                             "additionalProperties": false
                           },

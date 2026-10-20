@@ -776,6 +776,15 @@ The manifest may declare `restartRequired` only when the host cannot safely relo
 
 Turn-game packages are hot-reloadable: installation registers their server engine and manual slash launcher immediately, and uninstallation detaches the runtime without an Engine restart. Per-chat Conversation Commands settings control only whether characters may emit the package's hidden command; they do not gate the user's slash launcher. Current official turn-game manifests retain their conservative legacy restart marker for Engine 2.x compatibility; Engine 3.x recognizes the `turn-game` kind, performs the safe hot activation, and returns the package as active and ready.
 
+### Disk use: runtime copies and kept versions
+
+A package server does not run from `DATA_DIR/capability-packages/versions/<id>/<version>`. Each activation verifies the installed files, copies them into a new folder under `DATA_DIR/capability-runtime-snapshots`, and imports the copy. The copy is deleted when that runtime stops.
+
+- **Runtime copies.** A copy holds every verified manifest file except the client entrypoint. The server never loads it, and the browser gets it from `versions/`. Assets stay, so a server can read files beside its `server.mjs`, as Quartermaster does with `icons/`. The copied files are read-only.
+- **Startup sweep.** A crash or a forced stop skips a copy's cleanup. At every start, before any package activates, the Engine deletes every entry in `capability-runtime-snapshots` except the shared `node_modules` links, because none of them can be in use by the new process. It makes read-only files writable first, which Windows needs, and never follows links. Only the process that holds the storage writer lease reaches this step, so a second Engine started on the same data folder stops when it opens storage and never deletes a running Engine's copies.
+- **Kept versions.** `versions/<id>` keeps the current version and `previousVersion`, which rollback restores when a new server runtime fails to start. Older versions, and a version a failed update was rolled back from, are deleted after an activation or an update succeeds and at startup. A package whose update waits for a restart (`restart-required`), or whose runtime has not started yet (`readiness: "pending"`), keeps every version until it has started.
+- **Never deleted:** package data (folders such as `DATA_DIR/long-term-memory` and the package's tables in `storage`), chats, settings, `installed.json`, update decisions, `.install-*` folders, and `versions/` folders of ids missing from the registry. Uninstall still removes the package's code and keeps its data.
+
 ## Compatibility migration
 
 On the first upgraded launch:

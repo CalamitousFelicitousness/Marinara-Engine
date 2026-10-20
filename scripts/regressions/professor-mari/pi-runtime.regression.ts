@@ -207,6 +207,152 @@ try {
     assert.equal(seen.closed, true);
   }
 
+  // #7879 investigation proof: real Pi tool execution against the real store,
+  // including a key added outside Mari between two runs. The provider is scripted;
+  // this proves persistence when the calls are made, not the reporter's model behavior.
+  {
+    const { createLorebooksStorage } =
+      await import("../../../packages/server/src/services/storage/lorebooks.storage.js");
+    const lorebooks = createLorebooksStorage(db);
+    const lorebookId = "pi-lorebook-7879";
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      name: index === 0 ? "Duke Gunterlie" : `Entry ${index}`,
+      content: `Lore for entry ${index}`,
+      keys: [`entry-${index}`, "gunterlie"],
+      secondaryKeys: ["gunterlie", `secondary-${index}`],
+    }));
+    const created = await start(
+      "create lorebook 7879",
+      [
+        reply("", [
+          {
+            id: "create-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.create",
+              lorebookId,
+              data: { name: "Pi lorebook proof", entries },
+              apply: true,
+            },
+          },
+        ]),
+        reply("Created the lorebook with 12 entries."),
+      ],
+      "pi",
+      service,
+      undefined,
+      "Create a lorebook with 12 entries.",
+    );
+    await created.done;
+    const before = await lorebooks.listEntries(lorebookId);
+    assert.equal(before.length, 12, "Pi creates exactly the requested entry count");
+    assert.equal((await lorebooks.countAllEntriesByLorebook())[lorebookId], 12);
+    const duke = before.find((entry) => entry.name === "Duke Gunterlie")!;
+    const keys = [...duke.keys, "wardrobe"];
+    await lorebooks.updateEntry(duke.id, { keys }); // Same store path used by manual editing.
+    const duplicate = await start(
+      "existing wardrobe",
+      [
+        reply("", [
+          {
+            id: "wardrobe-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.updateEntry",
+              entryId: duke.id,
+              patch: { keys },
+              apply: true,
+            },
+          },
+        ]),
+        reply("The wardrobe key is already present; nothing needed changing."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Add the wardrobe primary key to Duke Gunterlie.",
+    );
+    await duplicate.done;
+    assert.match(
+      toolMessages(requests[1]!.messages)[0]?.content ?? "",
+      /No changes: every row already has these values/,
+    );
+    assert.deepEqual((await lorebooks.getEntry(duke.id))?.keys, keys);
+    // A read that still shows Duke cannot prove the model's claim that it deleted him.
+    const falseDeletion = await start(
+      "unsupported deletion claim",
+      [
+        reply("", [
+          {
+            id: "read-duke-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.getEntry",
+              entryId: duke.id,
+            },
+          },
+        ]),
+        reply("I deleted Duke Gunterlie."),
+        reply("Duke Gunterlie is still present. No deletion was made."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Delete Duke Gunterlie.",
+    );
+    await falseDeletion.done;
+    assert.equal(
+      (await lastAssistant(created.chat.id))?.content,
+      "Duke Gunterlie is still present. No deletion was made.",
+    );
+    assert.ok(await lorebooks.getEntry(duke.id), "a read-only run never deleted the entry");
+    const deleted = await start(
+      "delete Duke and keys",
+      [
+        reply("", [
+          {
+            id: "delete-duke-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.deleteEntry",
+              entryId: duke.id,
+              apply: true,
+            },
+          },
+          ...before
+            .filter((entry) => entry.id !== duke.id)
+            .map((entry) => ({
+              id: `strip-${entry.id}`,
+              name: "app_data",
+              args: {
+                action: "lorebook.updateEntry",
+                entryId: entry.id,
+                apply: true,
+                patch: {
+                  keys: entry.keys.filter((key) => key !== "gunterlie"),
+                  secondaryKeys: entry.secondaryKeys.filter((key) => key !== "gunterlie"),
+                },
+              },
+            })),
+        ]),
+        reply("Deleted Duke Gunterlie and removed the gunterlie keys from the remaining entries."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Delete Duke Gunterlie and remove all gunterlie primary and secondary keys.",
+    );
+    await deleted.done;
+    assert.equal(await lorebooks.getEntry(duke.id), null);
+    const remaining = await lorebooks.listEntries(lorebookId);
+    assert.equal(remaining.length, 11);
+    assert.equal((await lorebooks.countAllEntriesByLorebook())[lorebookId], 11);
+    for (const entry of remaining) {
+      assert.equal(entry.keys.includes("gunterlie"), false);
+      assert.equal(entry.secondaryKeys.includes("gunterlie"), false);
+    }
+  }
+
   // The boundary check fails closed when an active tool is not Marinara's.
   {
     const mine = { name: "read", execute: async () => ({}) };

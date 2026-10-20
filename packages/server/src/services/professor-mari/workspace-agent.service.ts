@@ -2538,7 +2538,10 @@ export function resolveWorkspaceMutationVerification(
   return mutationSeen ? "verified" : "none";
 }
 
-export function workspaceTextClaimsMutationCompletion(text: string): boolean {
+export function workspaceTextClaimsMutationCompletion(
+  text: string,
+  options: { selfAttributedOnly?: boolean } = {},
+): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'").replace(/\s+/gu, " ");
   if (!normalized) return false;
   if (/^(?:have|has|did|is|are|was|were)\b[^.!]*\?$/iu.test(normalized)) return false;
@@ -2554,13 +2557,13 @@ export function workspaceTextClaimsMutationCompletion(text: string): boolean {
       normalized.slice(0, match.index),
     ) || /^\s*by default\b/iu.test(normalized.slice((match.index ?? 0) + match[0].length));
   const claims = (pattern: RegExp) => [...normalized.matchAll(pattern)].some((match) => !describesFeature(match));
+  const selfClaim = claims(
+    new RegExp(`\\b(?:i(?:'ve| have)?|we(?:'ve| have)?)\\s+${adverbs}(?:${completedMutation})\\b`, "giu"),
+  );
+  if (options.selfAttributedOnly) return selfClaim;
   return (
-    claims(
-      new RegExp(
-        `\\b(?:i(?:'ve| have)?|we(?:'ve| have)?|it(?:'s| is)?|that(?:'s| is)?)\\s+${adverbs}(?:${completedMutation})\\b`,
-        "giu",
-      ),
-    ) ||
+    selfClaim ||
+    claims(new RegExp(`\\b(?:it(?:'s| is)?|that(?:'s| is)?)\\s+${adverbs}(?:${completedMutation})\\b`, "giu")) ||
     claims(new RegExp(`\\b(?:is|are|was|were|has been|have been)\\s+${adverbs}(?:${completedMutation})\\b`, "giu")) ||
     new RegExp(`^(?:(?:the )?(?:edit|change|update)s?\\s+)${adverbs}(?:${completedMutation})\\b[^?]*[.!]?$`, "iu").test(
       normalized,
@@ -2684,7 +2687,16 @@ export function auditWorkspaceCompletionClaim(
     // escapes are denied outright there (strict: not clearable by a read,
     // because there is no applied evidence for the read to confirm).
     if (!scopeHasUnappliedMutationAttempt(results, auditFrom)) {
-      if (scopeHasSuccessfulStateRead(results, auditFrom)) return { issue: null, advanceWatermark: true };
+      // A read cannot establish that Mari performed a write (#7879). Read-only
+      // tasks may still conclude "Done", or report the observed state; first-person
+      // mutation claims need an actual applied mutation, including for recaps.
+      if (
+        scopeHasSuccessfulStateRead(results, auditFrom) &&
+        (!workspaceTextClaimsMutationCompletion(action.visibleText, { selfAttributedOnly: true }) ||
+          results.some(isAppliedWorkspaceMutation))
+      ) {
+        return { issue: null, advanceWatermark: true };
+      }
       if (isTerminal && hadPassedClaimAudit) return { issue: null, advanceWatermark: false };
     }
     return { issue: "none", advanceWatermark: false };
@@ -2960,6 +2972,12 @@ export function workspaceMutationTargetForPath(
 export class ProfessorMariWorkspaceService {
   private enabled = true;
   private lastError: string | null = null;
+  private piConsecutiveFailures = 0;
+
+  resetRuntimeFailures() {
+    this.piConsecutiveFailures = 0;
+  }
+
   private active = false;
   /** The newest run and how it ended; the top-bar pill and the window's timer both read it. */
   private latestRun: MariWorkspaceLatestRun | null = null;
@@ -3057,6 +3075,7 @@ export class ProfessorMariWorkspaceService {
       skills: skillsResponse.skills.map(({ content: _content, ...summary }) => summary),
       skillDiagnostics: skillsResponse.diagnostics,
       active: this.active,
+      piConsecutiveFailures: this.piConsecutiveFailures,
       ...(await (async () => {
         const runtime = await this.readRuntime(connection);
         return { runtimeSelected: runtime.selected, runtimeActive: runtime.active, runtimeNote: runtime.note };
@@ -3435,6 +3454,7 @@ export class ProfessorMariWorkspaceService {
     const workspaceTrace: MariWorkspaceTraceItem[] = [];
     /** R14: set when the run fails, so the saved turn says so instead of reading as a quiet stop. */
     let runError: { message: string } | null = null;
+    let runRuntime: MariRuntime | null = null;
     let assistantText = "";
     let thinkingText = "";
     let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -3567,6 +3587,7 @@ export class ProfessorMariWorkspaceService {
       this.activeDecisionContext = { db: this.app.db, chatId: args.chatId, userMessageId: userMessage.id };
       const provider = createProviderForConnection(connection);
       const runtime = await this.readRuntime(connection);
+      runRuntime = runtime.active;
       const usePi = runtime.active === "pi";
       if (runtime.note) {
         appendTraceStatus(workspaceTrace, runtime.note);
@@ -4192,6 +4213,7 @@ export class ProfessorMariWorkspaceService {
       }
 
       await persistAssistantMessage();
+      if (runRuntime === "pi") this.piConsecutiveFailures = 0;
       args.onEvent({ type: "metadata", data: { connection: connectionSummary(connection) ?? undefined } });
     } catch (err) {
       if (controller.signal.aborted) {
@@ -4221,6 +4243,7 @@ export class ProfessorMariWorkspaceService {
         }
       } else {
         this.lastError = err instanceof Error ? err.message : String(err);
+        if (runRuntime === "pi") this.piConsecutiveFailures += 1;
         runError = { message: compactTraceText(this.lastError, 600) };
         // Persist whatever completed rounds produced before this failure — e.g. a proxy rate limit
         // that outlasted the retries — so the user does not lose the work and can ask Mari to

@@ -193,6 +193,30 @@ try {
   refused(document({ oneCell: true, around: true }), /Only a single burst held at a point is one cell/);
   refused(document({ oneCell: true, copies: 2 }), /Only a single burst held at a point is one cell/);
 
+  // ── An item's use as well: the Sphere of Annihilation as a magic item ──
+  const withItem = (area: Record<string, unknown>) => {
+    const doc = document();
+    doc.items = { categories: [{ id: "gear", label: "Gear" }] };
+    doc.catalogs.push({
+      id: "magic",
+      label: "Magic items",
+      holds: "items",
+      entries: [
+        {
+          id: "sphere-item",
+          label: "Sphere of Annihilation",
+          item: {
+            category: "gear",
+            use: { budget: "action", kind: "utility", range: 60, area, zone: { rounds: 10, triggers: ["enter"] } },
+          },
+        },
+      ],
+    });
+    return doc;
+  };
+  parsed(withItem({ shape: "burst", size: 2, oneCell: true }));
+  refused(withItem({ shape: "cone", size: 15, oneCell: true }), /Only a single burst held at a point is one cell/);
+
   // ── The install gate ──
   {
     const gate =

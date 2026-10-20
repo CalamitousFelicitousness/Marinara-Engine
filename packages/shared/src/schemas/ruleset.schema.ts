@@ -11033,11 +11033,18 @@ export const rulesetItemUseSchema = catalogMechanicsObject
         around: z.literal(true).optional(),
         /** Walls and corners do not stop it (Capability API 1.479). Only with `around`. */
         throughWalls: z.literal(true).optional(),
+        /** Only the cell it is at (Capability API 1.649), as a catalog entry's: a Sphere of
+         *  Annihilation's use. Only a single burst held at a point. */
+        oneCell: z.literal(true).optional(),
       })
       .strict()
       .refine((area) => !area.around || (area.shape === "burst" && area.copies === undefined), {
         message: "Only a single burst is centred on its user",
         path: ["around"],
+      })
+      .refine((area) => !area.oneCell || (area.shape === "burst" && !area.around && area.copies === undefined), {
+        message: "Only a single burst held at a point is one cell",
+        path: ["oneCell"],
       })
       .refine((area) => !area.throughWalls || area.around, {
         message: "Only a burst centred on its user goes through walls",

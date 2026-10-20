@@ -115018,6 +115018,10 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "oneCell": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -137364,6 +137368,10 @@
                                     "const": true
                                   },
                                   "throughWalls": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "oneCell": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -159719,6 +159727,10 @@
                                     "const": true
                                   },
                                   "throughWalls": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "oneCell": {
                                     "type": "boolean",
                                     "const": true
                                   },

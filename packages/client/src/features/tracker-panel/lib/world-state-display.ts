@@ -77,96 +77,96 @@ const WORLD_TIME_TONE: Record<WorldTimeOfDay, string> = {
 };
 
 const WORLD_TIME_ACCENT: Record<WorldTimeOfDay, string> = {
-  dawn: "oklch(0.8 0.13 72)",
-  day: "oklch(0.82 0.055 225)",
-  dusk: "oklch(0.72 0.135 38)",
-  night: "oklch(0.7 0.12 255)",
+  dawn: "var(--marinara-app-accent-static)",
+  day: "var(--marinara-app-accent-static)",
+  dusk: "var(--marinara-app-accent-static)",
+  night: "var(--marinara-app-accent-static)",
   unknown: "var(--muted-foreground)",
 };
 
 const TRACKER_WEATHER_STYLES: Record<WorldWeatherFamily, TrackerWeatherStyle> = {
   thunder: {
     tone: "color-mix(in srgb, var(--muted-foreground) 16%, transparent)",
-    accent: "oklch(0.68 0.14 285)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "storm", tone: "muted" },
   },
   blizzard: {
     tone: "color-mix(in srgb, var(--foreground) 10%, transparent)",
-    accent: "oklch(0.86 0.07 220)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "snow", tone: "cool" },
   },
   "heavy-rain": {
     tone: "color-mix(in srgb, var(--muted-foreground) 16%, transparent)",
-    accent: "oklch(0.68 0.14 285)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "storm", tone: "muted" },
   },
   rain: {
     tone: "color-mix(in srgb, var(--primary) 10%, transparent)",
-    accent: "oklch(0.7 0.13 235)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "rain", tone: "cool" },
   },
   hail: {
     tone: "color-mix(in srgb, var(--foreground) 10%, transparent)",
-    accent: "oklch(0.86 0.07 220)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "snow", tone: "cool" },
   },
   snow: {
     tone: "color-mix(in srgb, var(--foreground) 10%, transparent)",
-    accent: "oklch(0.86 0.07 220)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "snow", tone: "cool" },
   },
   fog: {
     tone: "color-mix(in srgb, var(--muted-foreground) 12%, transparent)",
-    accent: "oklch(0.72 0.035 240)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "fog", tone: "muted" },
   },
   sand: {
     tone: "color-mix(in srgb, var(--destructive) 9%, transparent)",
-    accent: "oklch(0.76 0.12 72)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "wind", tone: "warm" },
   },
   ash: {
     tone: "color-mix(in srgb, var(--muted-foreground) 14%, transparent)",
-    accent: "oklch(0.62 0.025 250)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "fog", tone: "muted" },
   },
   fire: {
     tone: "color-mix(in srgb, var(--destructive) 12%, transparent)",
-    accent: "oklch(0.73 0.17 44)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "fire", tone: "warm" },
   },
   wind: {
     tone: "color-mix(in srgb, var(--foreground) 7%, transparent)",
-    accent: "oklch(0.76 0.09 210)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "wind", tone: "cool" },
   },
   blossom: {
     tone: "color-mix(in srgb, var(--primary) 10%, transparent)",
-    accent: "oklch(0.78 0.12 15)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "sun", tone: "warm" },
   },
   aurora: {
     tone: "color-mix(in srgb, var(--accent) 15%, transparent)",
-    accent: "oklch(0.76 0.13 190)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "moon", tone: "cool" },
   },
   cloud: {
     tone: "color-mix(in srgb, var(--muted-foreground) 10%, transparent)",
-    accent: "oklch(0.7 0.035 235)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "cloud", tone: "muted" },
   },
   clear: {
     tone: "color-mix(in srgb, var(--primary) 9%, transparent)",
-    accent: "oklch(0.81 0.12 85)",
+    accent: "var(--marinara-app-accent-static)",
   },
   heat: {
     tone: "color-mix(in srgb, var(--destructive) 12%, transparent)",
-    accent: "oklch(0.7 0.17 38)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "fire", tone: "warm" },
   },
   cold: {
     tone: "color-mix(in srgb, var(--primary) 9%, transparent)",
-    accent: "oklch(0.74 0.11 235)",
+    accent: "var(--marinara-app-accent-static)",
     scene: { glyph: "snow", tone: "cool" },
   },
   atmosphere: {
@@ -176,8 +176,8 @@ const TRACKER_WEATHER_STYLES: Record<WorldWeatherFamily, TrackerWeatherStyle> = 
 };
 
 const WORLD_SCENE_INK: Record<WorldSceneTone, string> = {
-  cool: "oklch(0.76 0.105 232)",
-  warm: "oklch(0.79 0.125 76)",
+  cool: "var(--marinara-app-accent-static)",
+  warm: "var(--marinara-app-accent-static)",
   muted: "color-mix(in oklch, var(--muted-foreground) 78%, var(--foreground) 22%)",
   neutral: "color-mix(in oklch, var(--muted-foreground) 64%, var(--foreground) 36%)",
 };

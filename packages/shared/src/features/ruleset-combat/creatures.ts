@@ -244,6 +244,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.push !== undefined ? { push: action.push } : {}),
     ...(action.pull !== undefined ? { pull: action.pull } : {}),
     ...(action.onFell ? { onFell: structuredClone(action.onFell) } : {}),
+    // A roar louder each time (1.634).
+    ...(action.byUse ? { byUse: [...action.byUse] } : {}),
     // Etherealness (1.632).
     ...(action.dismisses ? { dismisses: structuredClone(action.dismisses) } : {}),
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.

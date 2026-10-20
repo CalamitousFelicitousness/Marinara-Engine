@@ -517,6 +517,8 @@ export interface RulesetStatBlockAction {
   pull?: number;
   /** Whoever its blow drops (1.624): left stable, and what it puts on them. */
   onFell?: RulesetCombatOnFell;
+  /** What each use does, in turn (1.634): other actions of this block. */
+  byUse?: string[];
   /** Whoever it lands on leaves the fight (1.632), its own creature too, still taking its turns away;
    *  `carries.within` in the ruleset's own distance. */
   dismisses?:
@@ -1075,6 +1077,9 @@ export interface RulesetCombatAction {
   rollsAmong?: Array<{ weight: number; label: string; id?: string }>;
   /** Made only as a row another action rolled (1.506), never on a menu. */
   rolledPart?: true;
+  /** What each use does, in turn (1.634): the holder's actions by id, the nth use the nth, past the
+   *  end the last, counted by its `uses`. Those are marked `rolledPart`, never on a menu. */
+  byUse?: string[];
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
   /** What its holder does as it dies (1.487), never on a menu: a mephit's Death Burst. */

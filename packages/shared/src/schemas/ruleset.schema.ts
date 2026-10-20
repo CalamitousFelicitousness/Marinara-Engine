@@ -8673,6 +8673,11 @@ const creatureActionFullSchema = z
      *  offered there only the way back (the condition's `endable`): a ghost's Etherealness,
      *  `{"while": "ethereal", "turns": true}`, a phase spider's Ethereal Jaunt. */
     dismisses: creatureDismissesSchema.optional(),
+    /** What each use does, in turn (Capability API 1.634): other actions of this block, the first
+     *  use making the first, the second the second, and every use past the end the last, counted by
+     *  its `uses` (which it has). Each is made at whom this one was aimed, never on a menu itself.
+     *  An androsphinx's Roar, louder each time before it rests: `["roar_1", "roar_2", "roar_3"]`. */
+    byUse: z.array(sheetId).min(2).max(6).optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -8849,6 +8854,25 @@ const creatureActionFullSchema = z
         path: ["pull"],
         message: "An action pushes or pulls whoever it lands on, not both",
       });
+    }
+    // What each use does is in the actions it names (1.634), counted by its uses.
+    if (action.byUse) {
+      if (!action.uses) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["byUse"],
+          message: '"byUse" is counted by the action\'s own "uses", so it has them',
+        });
+      }
+      for (const key of ["toHit", "autoHit", "damage", "heal", "save", "applies", "sequence", "self"] as const) {
+        if (action[key] !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: 'An action made "byUse" does what the actions it names do, so it carries nothing of its own',
+          });
+        }
+      }
     }
     // Away while it holds what the same use puts on (1.632).
     const away = action.dismisses;
@@ -20435,6 +20459,15 @@ function creatureIssues(
           add([...path, "charge", "then", "targetHolds", index], `Unknown condition "${condition}"`);
       });
     }
+    // Each use's own action (1.634): another plain action of this block.
+    action.byUse?.forEach((id, idIndex) => {
+      const where: (string | number)[] = [...path, "byUse", idIndex];
+      const named = byId.get(id);
+      if (!named) return add(where, `Unknown action "${id}"`);
+      if (named.id === action.id) return add(where, "An action cannot name itself for a use");
+      if (named.byUse || named.sequence || named.reaction || named.lair || named.signature)
+        add(where, `"${id}" is not a plain action, so a use cannot make it`);
+    });
     action.sequence?.forEach((step, stepIndex) => {
       const where: (string | number)[] = [...path, "sequence", stepIndex, "action"];
       const named = byId.get(step.action);

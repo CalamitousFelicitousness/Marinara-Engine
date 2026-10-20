@@ -4678,6 +4678,8 @@ function blockActions(
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
+    // What each use does, in turn (1.634): an androsphinx's Roar.
+    ...(action.byUse ? { byUse: action.byUse.filter((id) => indexById.has(id)) } : {}),
     // Out of the fight, its own creature too (1.632): a ghost's Etherealness.
     ...(action.dismisses
       ? {
@@ -4838,6 +4840,13 @@ function blockActions(
         }
       : {}),
   }));
+  // What a use makes by its count (1.634) is never on a menu itself.
+  for (const action of built) {
+    for (const id of action.byUse ?? []) {
+      const part = built.find((one) => one.id === id);
+      if (part) part.rolledPart = true;
+    }
+  }
   // A sequence made without the steps its maker may leave out (1.590), one mode for each way.
   for (const action of built) {
     const optional = (action.sequence ?? []).flatMap((step, index) => (step.optional ? [index] : []));

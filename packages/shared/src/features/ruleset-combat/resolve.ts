@@ -14704,9 +14704,18 @@ function resolveActionBodyIn(
   if (action.summons?.strikesAtTurnStart && !ctx.summonStriking && !held) return null;
   // What it does, rolled for (1.506): a Wand of Wonder's row, at whom it was aimed, centred there
   // with an area, or on its user. A row that does nothing a fight can use is only told.
-  if (action.rollsAmong && !held) {
-    const row = rollWeighted(ctx, actor, action.label, action.rollsAmong);
-    const part = row?.id ? actor.actions.find((one) => one.id === row.id) : undefined;
+  // Or by how many times it has been used (1.634): an androsphinx's Roar, louder each time. Its uses
+  // are spent as it is made, so the count already holds this one.
+  if ((action.rollsAmong || action.byUse) && !held) {
+    let part: RulesetCombatAction | undefined;
+    if (action.byUse) {
+      const used = action.uses ? action.uses.count - rulesetActionUses(actor, action, ctx.state) : 1;
+      const step = Math.min(action.byUse.length - 1, Math.max(0, used - 1));
+      part = actor.actions.find((one) => one.id === action.byUse![step]);
+    } else {
+      const row = rollWeighted(ctx, actor, action.label, action.rollsAmong!);
+      part = row?.id ? actor.actions.find((one) => one.id === row.id) : undefined;
+    }
     if (!part || actor.defeated) return null;
     const aimedOne = targets.find((one) => one.id !== actor.id && !one.defeated) ?? targets[0];
     const at = (aimedOne && rulesetPositionOf(aimedOne)) || ctx.aimedAt;

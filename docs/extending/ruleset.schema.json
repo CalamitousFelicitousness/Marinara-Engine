@@ -77014,6 +77014,16 @@
                             }
                           ]
                         },
+                        "byUse": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 2,
+                          "maxItems": 6
+                        },
                         "reaps": {
                           "type": "boolean",
                           "const": true
@@ -94014,6 +94024,16 @@
                                 "additionalProperties": false
                               }
                             ]
+                          },
+                          "byUse": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 2,
+                            "maxItems": 6
                           },
                           "reaps": {
                             "type": "boolean",

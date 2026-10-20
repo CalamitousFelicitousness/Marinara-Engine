@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A creature's action whose uses each do something else (1.634): an androsphinx's Roar. */
+function carriesByUse634(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesByUse634(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.byUse !== undefined) return true;
+  return featureValues(record).some((one) => carriesByUse634(one, depth + 1));
+}
+
 /** More than 12 combat checks (1.633): 5e's thieves' tools beside its skills. */
 function carriesChecks16633(ruleset: unknown): boolean {
   const checks = plainRecord(plainRecord(ruleset)?.combat)?.checks;
@@ -8484,6 +8494,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action whose uses each do something else, 1.634.
+  if (
+    !declaresApi(634) &&
+    (carriesByUse634(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesByUse634(document)))
+  )
+    return "A ruleset with a creature's action whose uses each do something else (byUse) requires schemaVersion 2 and capabilityApi 1.634 or newer";
   // More than 12 combat checks, 1.633.
   if (!declaresApi(633) && carriesChecks16633(ruleset)) {
     return "A ruleset with more than 12 combat checks requires schemaVersion 2 and capabilityApi 1.633 or newer";

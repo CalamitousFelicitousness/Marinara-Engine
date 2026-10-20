@@ -75144,6 +75144,15 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "slaysHealthAtMost": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "dropsOnFailedSave": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "healsOnSlay": {
                           "type": "object",
                           "properties": {
@@ -91921,6 +91930,15 @@
                             "maxItems": 8
                           },
                           "slaysOnFailedSave": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "slaysHealthAtMost": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "dropsOnFailedSave": {
                             "type": "boolean",
                             "const": true
                           },

@@ -8622,6 +8622,12 @@ const creatureActionFullSchema = z
     /** A target that fails its save dies (Capability API 1.311), and with `healsOnSlay` the creature
      *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
     slaysOnFailedSave: z.literal(true).optional(),
+    /** Only a target with this much health or less as it fails is slain (Capability API 1.625); any
+     *  other takes the blow as if it had saved: a solar's Slaying Longbow, 190. */
+    slaysHealthAtMost: z.number().int().min(0).max(100000).optional(),
+    /** A target that fails its save drops to no health instead (Capability API 1.625), dying where
+     *  the ruleset has dying, as a catalog entry's `dropsOnFailedSave` does: a sea hag's Death Glare. */
+    dropsOnFailedSave: z.literal(true).optional(),
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
     /** Used on a creature, never on that one again (Capability API 1.621): with `whenSaved` only once
      *  it made its save, with `whenEnds` once what it put on ends, else once it is used on them at
@@ -8837,6 +8843,20 @@ const creatureActionFullSchema = z
         code: z.ZodIssueCode.custom,
         path: ["healsOnSlay"],
         message: '"healsOnSlay" is given back for a target slain, so it goes with "slaysOnFailedSave"',
+      });
+    }
+    if (action.slaysHealthAtMost !== undefined && !action.slaysOnFailedSave) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slaysHealthAtMost"],
+        message: '"slaysHealthAtMost" says whom "slaysOnFailedSave" slays, so it goes with it',
+      });
+    }
+    if (action.dropsOnFailedSave && (!action.save || action.slaysOnFailedSave)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dropsOnFailedSave"],
+        message: '"dropsOnFailedSave" follows the action\'s own save, and slays nobody beside',
       });
     }
     // A light switched (1.296) is nothing else.

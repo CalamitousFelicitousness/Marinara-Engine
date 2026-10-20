@@ -608,6 +608,10 @@ export interface RulesetStatBlockAction {
    *  `healsOnSlay` for each (1.311): Consume Life. */
   dyingOnly?: true;
   slaysOnFailedSave?: true;
+  /** Only a target with this much health or less is slain (1.625): a solar's Slaying Longbow. */
+  slaysHealthAtMost?: number;
+  /** A failed save drops them to no health instead (1.625): a sea hag's Death Glare. */
+  dropsOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
   /** Never on the same creature again (1.621). */
   oncePerTarget?: RulesetSparedAfter;
@@ -1149,6 +1153,8 @@ export interface RulesetCombatAction {
   dyingOnly?: true;
   /** A failed save kills its target, and its user regains this for each one (1.311): Consume Life. */
   slaysOnFailedSave?: true;
+  /** Only a target with this much health or less is slain (1.625): a solar's Slaying Longbow. */
+  slaysHealthAtMost?: number;
   /** A creature's (1.621): whom it spares once used on them, made their save, or what it put on
    *  ended, by its source's key. */
   sparedAfter?: RulesetSparedAfter;

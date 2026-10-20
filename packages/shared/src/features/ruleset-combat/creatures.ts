@@ -231,6 +231,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.inShape ? { inShape: [...action.inShape] } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
+    ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     // Who it fells on Held Ground stays down (1.323).
     ...(action.reaps ? { reaps: true as const } : {}),

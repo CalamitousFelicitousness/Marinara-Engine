@@ -4636,6 +4636,8 @@ function blockActions(
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.inShape ? { inShape: [...action.inShape] } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
+    ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
     // Never on the same creature again (1.621): Frightful Presence.
     ...(action.oncePerTarget ? { sparedAfter: { ...action.oncePerTarget } } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),

@@ -2741,6 +2741,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A creature's slaying held to the low, or a failed save that drops to no health (1.625): a solar's
+ *  Slaying Longbow, a sea hag's Death Glare. */
+function carriesCreatureSlaying625(value: unknown, depth = 0, creature = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureSlaying625(one, depth + 1, creature));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.slaysHealthAtMost !== undefined || (creature && record.dropsOnFailedSave !== undefined)) return true;
+  if (record.creature !== undefined && carriesCreatureSlaying625(record.creature, depth + 1, true)) return true;
+  return featureValues(record).some((one) => carriesCreatureSlaying625(one, depth + 1, creature));
+}
+
 /** A creature's blow that steadies, or puts something on, whoever it drops (1.624): a giant spider. */
 function carriesOnFell624(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8383,6 +8395,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's slaying held to the low, or its failed save dropping to no health, 1.625.
+  if (
+    !declaresApi(625) &&
+    (carriesCreatureSlaying625(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureSlaying625(document)))
+  )
+    return "A ruleset with a creature's slaying held to a health, or its failed save dropping to no health (slaysHealthAtMost, dropsOnFailedSave on a creature), requires schemaVersion 2 and capabilityApi 1.625 or newer";
   // A creature's blow that steadies or puts something on whoever it drops, 1.624.
   if (
     !declaresApi(624) &&

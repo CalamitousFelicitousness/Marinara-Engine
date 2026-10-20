@@ -15415,7 +15415,11 @@ function resolveActionBodyIn(
         continue;
       }
       // Failed, it dies (1.311), and its slayer gains what it says: Consume Life.
-      if (!saved && action.slaysOnFailedSave) {
+      // Only one this low as it fails (1.625): a solar's Slaying Longbow, 190 or fewer.
+      const slays =
+        action.slaysOnFailedSave &&
+        (action.slaysHealthAtMost === undefined || healthOf(ctx, target).value <= action.slaysHealthAtMost);
+      if (!saved && slays) {
         if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);
         if (action.healsOnSlay && target.defeated) {
           const thrown = rollHealing(ctx, actor, action.healsOnSlay);

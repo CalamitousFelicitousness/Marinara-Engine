@@ -1000,15 +1000,18 @@ export function rulesetItemNeedsMet(
   build: RulesetSheetBuild,
   evaluated: EvaluatedRulesetSheet,
   needs: ReadonlyArray<{ value: RulesetValueRef; atLeast?: number; atMost?: number }> | undefined,
+  any?: boolean,
 ): boolean {
   if (!needs?.length) return true;
   const read = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   const waiver = definition.items?.needsWaivedBy;
   if (waiver && read(waiver) > 0) return true;
-  return needs.every((need) => {
+  // Every one, or any one where the item says so (1.638).
+  const met = (need: (typeof needs)[number]) => {
     const value = read(need.value);
     return (need.atLeast === undefined || value >= need.atLeast) && (need.atMost === undefined || value <= need.atMost);
-  });
+  };
+  return any ? needs.some(met) : needs.every(met);
 }
 
 /** The items as worn as they are: one bound whose `binds.needs` the sheet does not meet (1.614)
@@ -1022,7 +1025,9 @@ export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
   if (!items.some((held) => held.worn && held.item.binds?.needs)) return items;
   const evaluated = evaluateRulesetSheetLive(definition, build, stored);
   return items.map((held) =>
-    held.worn && held.item.binds?.needs && !rulesetItemNeedsMet(definition, build, evaluated, held.item.binds.needs)
+    held.worn &&
+    held.item.binds?.needs &&
+    !rulesetItemNeedsMet(definition, build, evaluated, held.item.binds.needs, held.item.binds.needsAny)
       ? { ...held, worn: false }
       : held,
   );

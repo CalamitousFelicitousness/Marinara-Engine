@@ -99176,8 +99176,12 @@
                             "additionalProperties": false
                           },
                           "minItems": 1,
-                          "maxItems": 4,
+                          "maxItems": 8,
                           "uniqueItems": true
+                        },
+                        "needsAny": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "$comment": {}
                       },
@@ -99381,7 +99385,11 @@
                         "additionalProperties": false
                       },
                       "minItems": 1,
-                      "maxItems": 4
+                      "maxItems": 8
+                    },
+                    "userNeedsAny": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "worn": {
                       "type": "object",

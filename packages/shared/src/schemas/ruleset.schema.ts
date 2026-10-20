@@ -4713,11 +4713,15 @@ export interface RulesetItemBinds {
   cursed?: boolean;
   needsWorn?: Array<{ anyOf: string[] }>;
   needs?: RulesetSheetNeeds;
+  needsAny?: true;
 }
-/** What a sheet must meet, each a value with `atLeast` and/or `atMost` (Capability API 1.614). */
+/** What a sheet must meet, each a value with `atLeast` and/or `atMost` (Capability API 1.614); up
+ *  to 8 since 1.638, which a package naming more than 4 declares. */
 export type RulesetSheetNeeds = Array<{ value: RulesetValueRef; atLeast?: number; atMost?: number }>;
+export const RULESET_SHEET_NEEDS_MAX = 8;
+export const RULESET_SHEET_NEEDS_MAX_BEFORE_1638 = 4;
 function sheetNeedsSchema(key: string): z.ZodType<RulesetSheetNeeds, z.ZodTypeDef, unknown> {
-  return z.array(sheetBoundsSchema(key, "met")).min(1).max(4);
+  return z.array(sheetBoundsSchema(key, "met")).min(1).max(RULESET_SHEET_NEEDS_MAX);
 }
 
 /** A use that works only on a roll (Capability API 1.388): one die of `sides`, at most `atMost`, a
@@ -11155,6 +11159,9 @@ const catalogItemObjectSchema = z
            *  level of at least 1. Bound without them, it reads as not worn. `items.needsWaivedBy`
            *  waives them. */
           needs: sheetNeedsSchema("needs").optional(),
+          /** Met when any one of `needs` is, not all (Capability API 1.638): "requires attunement by a
+           *  cleric, druid, or warlock". */
+          needsAny: z.literal(true).optional(),
         })
         .strict() as z.ZodType<RulesetItemBinds, z.ZodTypeDef, unknown>
     ).optional(),
@@ -11162,6 +11169,9 @@ const catalogItemObjectSchema = z
      *  `binds.needs` says: a spell scroll read only by a class whose list has the spell.
      *  `items.needsWaivedBy` waives them. */
     userNeeds: sheetNeedsSchema("userNeeds").optional(),
+    /** Met when any one of `userNeeds` is, not all (Capability API 1.638): a scroll on the bard,
+     *  cleric and wizard lists, read by any of them. */
+    userNeedsAny: z.literal(true).optional(),
     /** What it does while worn: on, and bound where it binds. */
     worn: z.lazy(() => rulesetItemEffectSchema).optional(),
     /** What it does while it is only carried. */
@@ -22537,6 +22547,11 @@ export function rulesetCatalogEntryIssues(
       else if (readable(form.item) && !itemsByRef.has(form.item)) add(at, `Unknown item "${form.item}"`);
       else if (itemsByRef.get(form.item)?.forms) add(at, "A form is an item that does not change form itself");
     });
+    // Any one of what it asks (1.638) is said of something it asks.
+    if (entry.item?.binds?.needsAny && !entry.item.binds.needs)
+      add([index, "item", "binds", "needsAny"], '"needsAny" says how "needs" is met, so it needs "needs"');
+    if (entry.item?.userNeedsAny && !entry.item.userNeeds)
+      add([index, "item", "userNeedsAny"], '"userNeedsAny" says how "userNeeds" is met, so it needs "userNeeds"');
     // What its binding needs worn (1.313) are other items, each worn in its own right.
     entry.item?.binds?.needsWorn?.forEach((group, groupIndex) =>
       group.anyOf.forEach((ref, refIndex) => {

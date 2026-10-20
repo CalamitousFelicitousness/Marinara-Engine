@@ -142,9 +142,10 @@ export function useRulesetItemOutsideFight(input: {
   // Bound by somebody who does not meet what it asks, it is not worn; nor used by them (1.614).
   if (item.binds?.needs || item.userNeeds) {
     const bare = evaluateRulesetSheetLive(definition, user.build, user.live);
-    if (item.binds?.needs && !rulesetItemNeedsMet(definition, user.build, bare, item.binds.needs))
+    if (item.binds?.needs && !rulesetItemNeedsMet(definition, user.build, bare, item.binds.needs, item.binds.needsAny))
       return { ok: false, reason: "not-worn" };
-    if (!rulesetItemNeedsMet(definition, user.build, bare, item.userNeeds)) return { ok: false, reason: "needs-unmet" };
+    if (!rulesetItemNeedsMet(definition, user.build, bare, item.userNeeds, item.userNeedsAny))
+      return { ok: false, reason: "needs-unmet" };
   }
   // Nor while a condition they hold forbids it (1.472), as a fight keeps it off the menu.
   const holding = readRulesetLive(definition, user.build, user.live).conditions.filter((one) => one.active);

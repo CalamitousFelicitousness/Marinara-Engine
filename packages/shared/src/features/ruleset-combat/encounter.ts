@@ -2383,7 +2383,7 @@ function itemUseActions(
     const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
     // Nor one its user does not meet what it asks of them (1.614): a scroll off another class's list.
-    if (!rulesetItemNeedsMet(definition, build, evaluated, item.userNeeds)) return;
+    if (!rulesetItemNeedsMet(definition, build, evaluated, item.userNeeds, item.userNeedsAny)) return;
     const name =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??

@@ -2741,6 +2741,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** Items asking any one of what they name, or more than 4 things (1.638): attunement by a cleric,
+ *  druid, or warlock. */
+function carriesNeedsAny638(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesNeedsAny638(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const binds = plainRecord(record.binds);
+  if (binds && (binds.needsAny !== undefined || (Array.isArray(binds.needs) && binds.needs.length > 4))) return true;
+  if (
+    typeof record.category === "string" &&
+    (record.userNeedsAny !== undefined || (Array.isArray(record.userNeeds) && record.userNeeds.length > 4))
+  )
+    return true;
+  return featureValues(record).some((one) => carriesNeedsAny638(one, depth + 1));
+}
+
 /** A derived value read from the words of a text field (1.637): 5e's alignment. */
 function carriesWordsTable637(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8532,6 +8549,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Items asking any one of what they name, or more than 4 things, 1.638.
+  if (
+    !declaresApi(638) &&
+    (carriesNeedsAny638(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesNeedsAny638(document)))
+  )
+    return "A ruleset whose items ask any one of what they name, or more than 4 things (binds.needsAny, userNeedsAny), requires schemaVersion 2 and capabilityApi 1.638 or newer";
   // A derived value read from the words of a text field, 1.637.
   if (
     !declaresApi(637) &&

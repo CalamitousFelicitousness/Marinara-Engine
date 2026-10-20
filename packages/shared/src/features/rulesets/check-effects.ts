@@ -266,7 +266,8 @@ export function rulesetItemSources(
     // A fake does what it truly does (1.79), under the name it is shown by.
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
-    if (effect && !seen.has(effect)) {
+    // Worn by the mount its holder rides (1.664): nothing of it on them.
+    if (effect && !seen.has(effect) && !effect.wornBy) {
       seen.add(effect);
       sources.push(asSource(effect, name));
     }

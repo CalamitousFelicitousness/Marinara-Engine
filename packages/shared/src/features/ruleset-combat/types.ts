@@ -2033,6 +2033,8 @@ export interface RulesetCombatant {
    *  taking only the standard actions the ruleset names, and `mountWaits` the round it was mounted in
    *  after its own turn, so it does not act twice in it. */
   riddenBy?: string;
+  /** The conditions its rider's items worn by a mount keep on it (1.664): Horseshoes of Speed. */
+  mountWears?: string[];
   /** Carried along besides its rider (1.588), on a mount that carries by weight. */
   passengers?: string[];
   mountControlled?: true;

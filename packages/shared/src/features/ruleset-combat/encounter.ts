@@ -464,6 +464,8 @@ export function rulesetCombatConditions(
     if (combatant.sheet.items?.length)
       for (const source of heldSources(definition, combatant, hush)) for (const id of source.keepsOn ?? []) ids.add(id);
   }
+  // What its rider's horseshoes keep on a mount (1.664).
+  for (const id of combatant.mountWears ?? []) ids.add(id);
   return [...ids];
 }
 
@@ -613,6 +615,29 @@ function onGroundNamed(
       return feet.some((foot) => cells.some((cell) => cell.x === foot.x && cell.y === foot.y));
     }),
   );
+}
+
+/** What each mount wears of its rider's (1.664): the conditions the rider's worn items `wornBy` a
+ *  mount keep on, read afresh as riders mount and dismount. */
+function syncMountWears(definition: RulesetDefinition, state: RulesetEncounterState): void {
+  for (const mount of state.combatants) {
+    const rider = mount.riddenBy ? state.combatants.find((one) => one.id === mount.riddenBy) : undefined;
+    const sheet = rider?.sheet;
+    const dropped = rider ? rulesetDroppedItems(rider) : new Set<number>();
+    const ids = (sheet?.items ?? []).flatMap((held, index) => {
+      const worn = held.worn && !dropped.has(index) ? rulesetHeldItemDoes(held).worn : undefined;
+      if (worn?.wornBy !== "mount") return [];
+      return (worn.keepsOn ?? []).flatMap((kept) =>
+        typeof kept === "string"
+          ? [kept]
+          : resolveRulesetValueRef(definition, sheet!.build, kept.when) > 0
+            ? [kept.condition]
+            : [],
+      );
+    });
+    if (ids.length) mount.mountWears = [...new Set(ids)];
+    else delete mount.mountWears;
+  }
 }
 
 /** A prop's label or id loosely: lower case, a leading "the" dropped, and only letters and digits
@@ -6796,6 +6821,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // And the abilities the conditions they hold change (1.462).
   rulesetSyncAbilities(definition, state, true);
   placeRulesetCombatants(definition, combat, state, input.board);
+  // Mounted as the fight began: what the riders' items put on their mounts moves them (1.664).
+  if (state.combatants.some((one) => one.riddenBy)) rulesetSyncSpeeds(definition, state);
   // What auras spread from where everybody stands (1.263).
   rulesetSyncAuras(definition, state);
   // Hidden in plain sight from the start (1.292), from whoever's passive Perception does not beat
@@ -7560,6 +7587,7 @@ function syncBlockAbilities(
 export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetEncounterState): string[] {
   const combat = definition.combat;
   if (!combat) return [];
+  syncMountWears(definition, state);
   const changed: string[] = [];
   for (const combatant of state.combatants) {
     const grants = rulesetActiveConditions(definition, combat, combatant, state).filter(

@@ -14401,9 +14401,25 @@ const rulesetItemEffectObjectSchema = z
       .max(6)
       .refine((value) => value !== 0, "Adding 0 changes nothing")
       .optional(),
+    /** Worn by its holder's mount instead (Capability API 1.664): what it `keepsOn` goes on the
+     *  creature its holder rides, for as long as they ride it, and nothing of it on its holder. 5e's
+     *  Horseshoes of Speed, a condition giving the horse 30 more feet of walking speed. Only with
+     *  `keepsOn`, and nothing else. */
+    wornBy: z.literal("mount").optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
+    if (entry.wornBy !== undefined) {
+      const others = Object.keys(entry).filter((key) => key !== "wornBy" && key !== "keepsOn");
+      if (!entry.keepsOn || others.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["wornBy"],
+          message: 'What a mount wears keeps conditions on it: "wornBy" goes with "keepsOn" and nothing else',
+        });
+      }
+      return;
+    }
     const abilities = Object.entries(entry.abilities ?? {});
     const hide = entry.resist ?? entry.vulnerable ?? entry.immune ?? entry.conditionImmunities;
     if (
@@ -18513,7 +18529,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (kinds.tagsFrom !== undefined) {
         // One field, or a list of them (1.660).
         const many = Array.isArray(kinds.tagsFrom);
-        for (const [index, id] of (many ? kinds.tagsFrom : [kinds.tagsFrom]).entries()) {
+        const fields: string[] = Array.isArray(kinds.tagsFrom) ? kinds.tagsFrom : [kinds.tagsFrom];
+        for (const [index, id] of fields.entries()) {
           const path = many ? at("creatureTypes", "tagsFrom", index) : at("creatureTypes", "tagsFrom");
           const field = sheet.fields.find((one) => one.id === id);
           if (!field) issue(path, `Unknown field "${id}"`);

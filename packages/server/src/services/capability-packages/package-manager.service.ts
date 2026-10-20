@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item worn by its holder's mount (1.664): Horseshoes of Speed. */
+function carriesWornByMount664(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWornByMount664(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.wornBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesWornByMount664(one, depth + 1));
+}
+
 /** A creature's own jump (1.663): a bulette's Standing Leap. */
 function carriesCreatureJump663(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8805,6 +8815,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item worn by its holder's mount, 1.664.
+  if (
+    !declaresApi(664) &&
+    (carriesWornByMount664(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWornByMount664(document)))
+  )
+    return "A ruleset with an item worn by its holder's mount (wornBy) requires schemaVersion 2 and capabilityApi 1.664 or newer";
   // A creature's own jump, 1.663.
   if (
     !declaresApi(663) &&

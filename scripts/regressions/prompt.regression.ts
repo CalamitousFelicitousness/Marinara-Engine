@@ -13660,13 +13660,13 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       ).replace(/\s+/gu, " ");
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(action, args.commandResultsForContinuity, { auditFrom: state.claimAuditWatermark, hadPassedClaimAudit: state.hadPassedClaimAudit, lastPassedClaimText: state.lastPassedClaimText, })",
         ),
         "the loop audits against the live watermark, never from zero",
       );
       assert.ok(
         agentSourceForPins.includes(
-          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; }",
+          "if (claimAudit.advanceWatermark) { state.claimAuditWatermark = args.commandResultsForContinuity.length; state.hadPassedClaimAudit = true; state.lastPassedClaimText = action.visibleText; }",
         ),
         "a passing audit consumes its evidence and arms the summary allowance",
       );
@@ -13676,7 +13676,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.ok(
         agentSourceForPins.includes(
-          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, })",
+          "auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, { auditFrom: reviewState.claimAuditWatermark, hadPassedClaimAudit: reviewState.hadPassedClaimAudit, lastPassedClaimText: reviewState.lastPassedClaimText, })",
         ),
         "the command-limit audit shares the run's scope state",
       );

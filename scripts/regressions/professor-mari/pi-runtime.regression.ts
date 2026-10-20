@@ -207,6 +207,28 @@ try {
     assert.equal(seen.closed, true);
   }
 
+  // A verified claim survives the watermark as an exact terminal recap, including at the tool round limit.
+  for (const atLimit of [false, true]) {
+    mode = "auto";
+    maxToolRounds = atLimit ? 2 : undefined;
+    const path = `recap-${atLimit}.txt`;
+    const claim = `I wrote ${path}.`;
+    const { chat, events, done } = await start(`pi verified recap ${atLimit}`, [
+      reply("", [{ id: "recap-write", name: "write", args: { path, content: "verified recap", reason: "t" } }]),
+      reply(claim, [{ id: "recap-read", name: "read", args: { path } }]),
+      reply(claim),
+    ]);
+    await done;
+    maxToolRounds = undefined;
+    assert.equal(requests.length, 3, "a verified recap must not trigger another repair round");
+    assert.equal((await lastAssistant(chat.id))?.content.split("\n\n")[0], claim);
+    assert.equal(
+      statusTexts(events).some((text) => /Tool round limit reached/u.test(text)),
+      atLimit,
+    );
+    assert.ok(!statusTexts(events).some((text) => /unsupported completion claim/u.test(text)));
+  }
+
   // #7879 investigation proof: real Pi tool execution against the real store,
   // including a key added outside Mari between two runs. The provider is scripted;
   // this proves persistence when the calls are made, not the reporter's model behavior.

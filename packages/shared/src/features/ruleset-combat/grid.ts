@@ -1027,6 +1027,18 @@ export function rulesetThreateningEnemies(
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
     // Nor one who may harm nobody (1.404).
     if (effects.has("cannot-act") || effects.has("cannot-react") || effects.has("cannot-harm")) continue;
+    // Nor one hanging on to somebody (1.623): carried along with the mover, or kept to its holder.
+    if (
+      combat.conditions?.some((rule) => rule.attaches) &&
+      state.combatants.some((holder) =>
+        holder.tracked.some(
+          (entry) =>
+            entry.source === combatant.id &&
+            combat.conditions!.some((rule) => rule.condition === entry.condition && rule.attaches),
+        ),
+      )
+    )
+      continue;
     const at = rulesetPositionOf(combatant);
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;

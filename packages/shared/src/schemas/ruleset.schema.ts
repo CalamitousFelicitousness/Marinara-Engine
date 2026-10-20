@@ -5141,6 +5141,7 @@ export interface RulesetCatalogApplies {
   condition: string;
   duration: z.infer<typeof catalogDurationSchema>;
   chance?: number;
+  withAdvantage?: true;
   saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "own-hit" | "attacked" | "attacked-by-source" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
@@ -5205,6 +5206,9 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** Put on only on a d100 of this or lower (Capability API 1.593), rolled for each it would land
      *  on: 5e's Wish, "a 33 percent chance that you are unable to cast wish ever again". */
     chance: z.number().int().min(1).max(99).optional(),
+    /** Put on only by an attack rolled with advantage (Capability API 1.623): a cloaker's bite that
+     *  lands on its target's head, blinding them. */
+    withAdvantage: z.literal(true).optional(),
     /** Put on only when its entry is paid this many steps above its lowest cost, or more, or fewer
      *  (Capability API 1.464): 5e's Magic Weapon, +1 from a 2nd-level slot (`atMost: 1`), +2 from a
      *  4th (`atLeast: 2, atMost: 3`), +3 from a 6th (`atLeast: 4`), each its own condition. */
@@ -12983,6 +12987,19 @@ const conditionSealedSchema: z.ZodType<RulesetConditionSealed, z.ZodTypeDef, unk
   })
   .strict();
 
+/** Whoever put a condition on hangs on to its holder (Capability API 1.623). Typed by hand, so the
+ *  condition schema around it stays short enough to emit. */
+export interface RulesetConditionAttaches {
+  sourceAttacks: "none" | "holder";
+  endsAfterHarm?: number;
+}
+const conditionAttachesSchema: z.ZodType<RulesetConditionAttaches, z.ZodTypeDef, unknown> = z
+  .object({
+    sourceAttacks: z.enum(["none", "holder"]),
+    endsAfterHarm: z.number().int().min(1).max(10000).optional(),
+  })
+  .strict();
+
 const combatConditionSchema = z
   .object({
     /** Harm and conditions kept off while this applies (Capability API 1.132), as on a creature. */
@@ -13467,6 +13484,12 @@ const combatConditionSchema = z
      *  along wherever they go, until it ends and they are set down beside them: a gelatinous cube's
      *  engulfed. */
     inside: conditionInsideSchema.optional(),
+    /** Whoever put it on hangs on to its holder (Capability API 1.623): carried along beside them
+     *  wherever they walk or are pushed, attacking nobody (`"sourceAttacks": "none"`, a stirge) or
+     *  nobody else (`"holder"`, a cloaker or darkmantle), and let go once its `harms` have dealt
+     *  `endsAfterHarm` in all (a stirge's 10). Walking off ends it where it also says `endsAway`, and
+     *  anybody's action where its applies say `checkEnds` with `"by": "any"`. */
+    attaches: conditionAttachesSchema.optional(),
     /** Its holder takes this share of the damage dealt to whoever put it on, and they take only the
      *  rest, rounded down, while it holds (Capability API 1.354): a rug of smothering's Damage
      *  Transfer, `{"share": 0.5}` on what its Smother puts on. Read after their resistances; the
@@ -13616,6 +13639,13 @@ const combatConditionSchema = z
         code: z.ZodIssueCode.custom,
         path: ["suppresses"],
         message: "A condition holds off others, not itself",
+      });
+    }
+    if (entry.attaches?.endsAfterHarm !== undefined && !entry.harms) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["attaches", "endsAfterHarm"],
+        message: '"endsAfterHarm" counts what the condition\'s "harms" deal, so it harms',
       });
     }
     if (entry.orSourceWithin !== undefined && entry.whileSourceInSight === undefined) {

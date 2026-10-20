@@ -6,6 +6,7 @@ import { rulesetStepAverageTimes } from "./creatures.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
+  RulesetConditionAttaches,
   RulesetDefinition,
   RulesetTargetIs,
   RulesetValueRef,
@@ -2101,6 +2102,38 @@ export function rulesetActionHarms(action: RulesetCombatAction): boolean {
 
 /** Whoever this combatant may not point anything at: the source of a condition on them that says
  *  so. A charm keeps a character from turning on whoever charmed them, in the ruleset's own words. */
+/** Those `actor` hangs on to by a condition that `attaches` (1.623), with its rule. */
+export function rulesetAttachedHolds(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): Array<{ holder: RulesetCombatant; condition: string; rule: RulesetConditionAttaches }> {
+  const rules = definition.combat?.conditions;
+  if (!rules?.some((one) => one.attaches)) return [];
+  return state.combatants.flatMap((holder) =>
+    holder.tracked.flatMap((entry) => {
+      if (entry.source !== actor.id || holder.id === actor.id) return [];
+      const rule = rules.find((one) => one.condition === entry.condition)?.attaches;
+      return rule ? [{ holder, condition: entry.condition, rule }] : [];
+    }),
+  );
+}
+
+/** Whom somebody hanging on may not attack (1.623): anybody, for a stirge's `"none"`, or anybody
+ *  but whoever they hang on to, for a cloaker's `"holder"`. */
+export function rulesetAttachedOffLimits(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+): string[] {
+  const holds = rulesetAttachedHolds(definition, state, actor);
+  if (!holds.length) return [];
+  const none = holds.some((one) => one.rule.sourceAttacks === "none");
+  return state.combatants
+    .filter((one) => none || !holds.some((hold) => hold.holder.id === one.id))
+    .map((one) => one.id);
+}
+
 export function rulesetForbiddenTargets(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -2256,6 +2289,11 @@ export function rulesetOptionTargets(
   // it lands, and `rulesetAreaTargets` is the one place that answers it.
   if (positioned(state) && actionOf(actor, option.id)?.area) return [];
   const forbidden = rulesetForbiddenTargets(definition, state, actor);
+  // Hanging on to somebody (1.623): a stirge attacks nobody, a cloaker nobody but whoever it holds.
+  const attacking = actionOf(actor, option.id);
+  if (attacking && (rulesetIsAttack(attacking) || attacking.autoHit)) {
+    for (const id of rulesetAttachedOffLimits(definition, state, actor)) forbidden.add(id);
+  }
   const needs = actionOf(actor, option.id)?.needs;
   const targetTypes = actionOf(actor, option.id)?.targetTypes;
   const cure = actionOf(actor, option.id);

@@ -249,6 +249,8 @@ export {
   rulesetLentMovement,
   rulesetBorrowedTurn,
   rulesetAttackMode,
+  rulesetAttachedHolds,
+  rulesetAttachedOffLimits,
   rulesetWeaponNow,
   rulesetToHitAgainst,
   rulesetAgainstHere,

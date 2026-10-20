@@ -4769,6 +4769,14 @@ function conditionHarm(
     ...(harms.healedOnlyByRest ? { seals: true as const } : {}),
   });
   afterBlow(ctx, holder, dealt, false);
+  // Let go once it has dealt its most in all (1.623): a stirge full of blood.
+  const most = ctx.combat.conditions?.find((one) => one.condition === condition)?.attaches?.endsAfterHarm;
+  const entry =
+    most !== undefined ? holder.tracked.find((one) => one.condition === condition && one.source === source) : undefined;
+  if (entry && most !== undefined) {
+    entry.harmedTotal = (entry.harmedTotal ?? 0) + dealt;
+    if (entry.harmedTotal >= most) removeCondition(ctx, holder, condition, "spent");
+  }
 }
 
 /** A free cell beside the target, preferring the one nearest the weapon's previous cell. */
@@ -8809,7 +8817,26 @@ function pushTarget(
   const edge = path.length > 1 ? path[path.length - 2]! : from;
   const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
   if (levels >= 2) fall(ctx, actor, target, levels);
+  // Whoever hangs on to them is carried along (1.623), into the last cell they passed.
+  for (const id of attachedClingers(ctx, target)) {
+    const clinger = rulesetCombatant(ctx.state, id);
+    if (!clinger || clinger.id === actor.id) continue;
+    clinger.x = edge.x;
+    clinger.y = edge.y;
+  }
   return event;
+}
+
+/** Who hangs on to `holder` by a condition that `attaches` (1.623), still standing. */
+function attachedClingers(ctx: RulesetCombatContext, holder: RulesetCombatant): string[] {
+  const rules = ctx.combat.conditions;
+  if (!rules?.some((one) => one.attaches)) return [];
+  return holder.tracked.flatMap((entry) => {
+    if (!entry.source || entry.source === holder.id) return [];
+    if (!rules.some((one) => one.condition === entry.condition && one.attaches)) return [];
+    const source = rulesetCombatant(ctx.state, entry.source);
+    return source && rulesetCombatStanding(source) && !source.defeated ? [source.id] : [];
+  });
 }
 
 /** Somebody who saved against an area that pushes them out (1.578), pushed straight away from where it
@@ -11465,6 +11492,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   const readyAsked = new Set(resume.readyAsked ?? []);
   // Whom they drag as they go (1.444), as it stood when the walk began or picked up again.
   const draggingNow = rulesetDragging(ctx.definition, ctx.state, actor);
+  // Whoever hangs on to them (1.623) comes along as a dragged one does.
+  const clinging = attachedClingers(ctx, actor);
   // Only when somebody has readied something for an opponent coming near (1.288).
   const readying =
     !!ctx.combat.readying && ctx.state.combatants.some((one) => one.readied?.on === "comes" && one.side !== actor.side);
@@ -11567,7 +11596,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // whoever they drag (1.444).
     for (const carried of ctx.state.combatants) {
       const sealed = carried.carriedBy === actor.id && rulesetSealed(ctx.definition, carried, ctx.state);
-      if (!sealed && !draggingNow.ids.includes(carried.id)) continue;
+      if (!sealed && !draggingNow.ids.includes(carried.id) && !clinging.includes(carried.id)) continue;
       carried.x = at.x;
       carried.y = at.y;
     }
@@ -16066,6 +16095,13 @@ function resolveActionBodyIn(
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         if (applies.targetHealthAtMost !== undefined && healthNow > applies.targetHealthAtMost) continue;
+        // Only by an attack rolled with advantage (1.623): a cloaker's bite on the head.
+        if (applies.withAdvantage) {
+          const swing = [...ctx.events]
+            .reverse()
+            .find((event) => event.type === "attack" && event.actorId === actor.id && event.targetId === target.id);
+          if (swing?.type !== "attack" || swing.mode !== "advantage") continue;
+        }
         // Destroyed in its place, at or below the tier its applier reaches (1.266): Destroy Undead.
         if (destroyedByTier(ctx, actor, target, applies)) {
           if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);

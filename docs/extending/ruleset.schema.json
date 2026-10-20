@@ -40052,6 +40052,10 @@
                                     "minimum": 1,
                                     "maximum": 99
                                   },
+                                  "withAdvantage": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -45459,6 +45463,10 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 99
+                                      },
+                                      "withAdvantage": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -53415,6 +53423,10 @@
                             "minimum": 1,
                             "maximum": 99
                           },
+                          "withAdvantage": {
+                            "type": "boolean",
+                            "const": true
+                          },
                           "paidSteps": {
                             "type": "object",
                             "properties": {
@@ -55007,6 +55019,10 @@
                             "type": "integer",
                             "minimum": 1,
                             "maximum": 99
+                          },
+                          "withAdvantage": {
+                            "type": "boolean",
+                            "const": true
                           },
                           "paidSteps": {
                             "type": "object",
@@ -60563,6 +60579,10 @@
                                   "minimum": 1,
                                   "maximum": 99
                                 },
+                                "withAdvantage": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "paidSteps": {
                                   "type": "object",
                                   "properties": {
@@ -62184,6 +62204,10 @@
                                   "type": "integer",
                                   "minimum": 1,
                                   "maximum": 99
+                                },
+                                "withAdvantage": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "paidSteps": {
                                   "type": "object",
@@ -64865,6 +64889,10 @@
                                         "minimum": 1,
                                         "maximum": 99
                                       },
+                                      "withAdvantage": {
+                                        "type": "boolean",
+                                        "const": true
+                                      },
                                       "paidSteps": {
                                         "type": "object",
                                         "properties": {
@@ -66748,6 +66776,10 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 99
+                              },
+                              "withAdvantage": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "paidSteps": {
                                 "type": "object",
@@ -68774,6 +68806,10 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 99
+                                  },
+                                  "withAdvantage": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -73336,6 +73372,10 @@
                                             "minimum": 1,
                                             "maximum": 99
                                           },
+                                          "withAdvantage": {
+                                            "type": "boolean",
+                                            "const": true
+                                          },
                                           "paidSteps": {
                                             "type": "object",
                                             "properties": {
@@ -77103,6 +77143,10 @@
                                     "minimum": 1,
                                     "maximum": 99
                                   },
+                                  "withAdvantage": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -80016,6 +80060,10 @@
                                           "minimum": 1,
                                           "maximum": 99
                                         },
+                                        "withAdvantage": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
                                         "paidSteps": {
                                           "type": "object",
                                           "properties": {
@@ -81899,6 +81947,10 @@
                                   "type": "integer",
                                   "minimum": 1,
                                   "maximum": 99
+                                },
+                                "withAdvantage": {
+                                  "type": "boolean",
+                                  "const": true
                                 },
                                 "paidSteps": {
                                   "type": "object",
@@ -83925,6 +83977,10 @@
                                       "type": "integer",
                                       "minimum": 1,
                                       "maximum": 99
+                                    },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -88487,6 +88543,10 @@
                                               "minimum": 1,
                                               "maximum": 99
                                             },
+                                            "withAdvantage": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -92253,6 +92313,10 @@
                                       "type": "integer",
                                       "minimum": 1,
                                       "maximum": 99
+                                    },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -105287,6 +105351,10 @@
                                       "minimum": 1,
                                       "maximum": 99
                                     },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -109960,6 +110028,10 @@
                                         "type": "integer",
                                         "minimum": 1,
                                         "maximum": 99
+                                      },
+                                      "withAdvantage": {
+                                        "type": "boolean",
+                                        "const": true
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -115201,6 +115273,10 @@
                                             "type": "integer",
                                             "minimum": 1,
                                             "maximum": 99
+                                          },
+                                          "withAdvantage": {
+                                            "type": "boolean",
+                                            "const": true
                                           },
                                           "paidSteps": {
                                             "type": "object",
@@ -123057,6 +123133,10 @@
                                 "minimum": 1,
                                 "maximum": 99
                               },
+                              "withAdvantage": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -124649,6 +124729,10 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 99
+                              },
+                              "withAdvantage": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "paidSteps": {
                                 "type": "object",
@@ -131969,6 +132053,10 @@
                                               "minimum": 1,
                                               "maximum": 99
                                             },
+                                            "withAdvantage": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -137209,6 +137297,10 @@
                                                   "type": "integer",
                                                   "minimum": 1,
                                                   "maximum": 99
+                                                },
+                                                "withAdvantage": {
+                                                  "type": "boolean",
+                                                  "const": true
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -145065,6 +145157,10 @@
                                       "minimum": 1,
                                       "maximum": 99
                                     },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -146657,6 +146753,10 @@
                                       "type": "integer",
                                       "minimum": 1,
                                       "maximum": 99
+                                    },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -153983,6 +154083,10 @@
                                               "minimum": 1,
                                               "maximum": 99
                                             },
+                                            "withAdvantage": {
+                                              "type": "boolean",
+                                              "const": true
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -159223,6 +159327,10 @@
                                                   "type": "integer",
                                                   "minimum": 1,
                                                   "maximum": 99
+                                                },
+                                                "withAdvantage": {
+                                                  "type": "boolean",
+                                                  "const": true
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -167079,6 +167187,10 @@
                                       "minimum": 1,
                                       "maximum": 99
                                     },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -168671,6 +168783,10 @@
                                       "type": "integer",
                                       "minimum": 1,
                                       "maximum": 99
+                                    },
+                                    "withAdvantage": {
+                                      "type": "boolean",
+                                      "const": true
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -185934,6 +186050,10 @@
                           "minimum": 1,
                           "maximum": 99
                         },
+                        "withAdvantage": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -187575,6 +187695,10 @@
                           "minimum": 1,
                           "maximum": 99
                         },
+                        "withAdvantage": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -189202,6 +189326,10 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 99
+                        },
+                        "withAdvantage": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "paidSteps": {
                           "type": "object",
@@ -193128,6 +193256,28 @@
                   }
                 ]
               },
+              "attaches": {
+                "type": "object",
+                "properties": {
+                  "sourceAttacks": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "holder"
+                    ]
+                  },
+                  "endsAfterHarm": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "sourceAttacks"
+                ],
+                "additionalProperties": false
+              },
               "takesSourceHarm": {
                 "type": "object",
                 "properties": {
@@ -194259,6 +194409,10 @@
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 99
+                        },
+                        "withAdvantage": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "paidSteps": {
                           "type": "object",
@@ -196572,6 +196726,10 @@
                                 "minimum": 1,
                                 "maximum": 99
                               },
+                              "withAdvantage": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -198185,6 +198343,10 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 99
+                                  },
+                                  "withAdvantage": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -200510,6 +200672,10 @@
                           "minimum": 1,
                           "maximum": 99
                         },
+                        "withAdvantage": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -202337,6 +202503,10 @@
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 99
+                      },
+                      "withAdvantage": {
+                        "type": "boolean",
+                        "const": true
                       },
                       "paidSteps": {
                         "type": "object",

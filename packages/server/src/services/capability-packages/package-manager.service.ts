@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition whose source hangs on to its holder, or one put on only by an attack with advantage
+ *  (1.623): a stirge, a cloaker. */
+function carriesAttaches623(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAttaches623(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.attaches !== undefined || record.withAdvantage !== undefined) return true;
+  return featureValues(record).some((one) => carriesAttaches623(one, depth + 1));
+}
+
 /** Somebody pulled straight toward whoever pulls them (1.622): a balor's whip, Thorn Whip. */
 function carriesPull622(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8362,6 +8373,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A source hanging on to its holder, or a condition put on only with advantage, 1.623.
+  if (
+    !declaresApi(623) &&
+    (carriesAttaches623(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAttaches623(document)))
+  )
+    return "A ruleset with a condition whose source hangs on to its holder, or one put on only by an attack with advantage (attaches, withAdvantage), requires schemaVersion 2 and capabilityApi 1.623 or newer";
   // Somebody pulled toward whoever pulls them, 1.622.
   if (
     !declaresApi(622) &&

@@ -13176,8 +13176,12 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
     const navigationInput = omnibar.getByRole("searchbox", { name: "Search Marinara" });
     await expect(navigationInput).toBeFocused();
     await navigationInput.fill(resourceName);
+    // Enter acts on the selected row, so wait until the typed results select this character. The empty
+    // list's Try row can quote the newest character's name before those results arrive.
     await expect(
-      omnibar.locator("[data-command-center-result-row]").filter({ hasText: resourceName }).first(),
+      omnibar.locator(
+        `[data-command-center-result-row][data-result-id$=":${character.id}"]:has([data-selected='true'])`,
+      ),
     ).toBeVisible();
     await navigationInput.press("Enter");
     const editor = page.locator(".mari-editor-shell");

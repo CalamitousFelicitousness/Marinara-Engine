@@ -698,7 +698,7 @@ function TtsSearchableSelect({
         createPortal(
           <div
             ref={panelRef}
-            className="fixed z-[10001] flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-2xl shadow-black/40"
+            className="fixed z-[10001] flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-[var(--glass-strong-shadow)]"
             style={{
               left: position?.left ?? -9999,
               top: position?.top ?? -9999,
@@ -987,7 +987,7 @@ function NpcDefaultVoicePool({
           {options.map((option) => (
             <label
               key={option.id}
-              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg bg-black/10 px-2 py-1.5 text-xs transition-colors hover:bg-black/20"
+              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg bg-[var(--muted)]/30 px-2 py-1.5 text-xs transition-colors hover:bg-[var(--muted)]/50"
             >
               <input
                 type="checkbox"

@@ -22,27 +22,6 @@ interface GameElementReactionProps {
   onDismiss: () => void;
 }
 
-/** Element‐to‐color mapping used for the glow ring. */
-const ELEMENT_COLORS: Record<string, string> = {
-  fire: "#ff4500",
-  pyro: "#ff4500",
-  ice: "#00bfff",
-  cryo: "#00bfff",
-  lightning: "#8b5cf6",
-  electro: "#9b59b6",
-  hydro: "#4169e1",
-  anemo: "#77dd77",
-  wind: "#77dd77",
-  geo: "#daa520",
-  dendro: "#228b22",
-  poison: "#9400d3",
-  holy: "#fffacd",
-  shadow: "#4a0080",
-  physical: "#c0c0c0",
-  quantum: "#6a0dad",
-  imaginary: "#ffd700",
-};
-
 /** Element‐to‐emoji mapping. */
 const ELEMENT_EMOJI: Record<string, string> = {
   fire: "🔥",
@@ -79,9 +58,9 @@ export function GameElementReaction({ reaction, elements, onDismiss }: GameEleme
     };
   }, [reaction]);
 
-  // A setting kit's own colours and signs come first; a game without one draws them as it always did.
+  // A setting kit's own colours and signs come first; otherwise use the theme accent.
   const own = elements?.elements.find((element) => element.id === worldElementId(elements, reaction.element));
-  const glowColor = own?.color ?? (reaction.element ? (ELEMENT_COLORS[reaction.element] ?? "#ffffff") : "#ffffff");
+  const glowColor = own?.color ?? "var(--marinara-app-accent-static)";
   const emoji = own?.emoji ?? (reaction.element ? (ELEMENT_EMOJI[reaction.element] ?? "💥") : "💥");
   const multiplierText =
     reaction.damageMultiplier > 1
@@ -98,17 +77,21 @@ export function GameElementReaction({ reaction, elements, onDismiss }: GameEleme
     >
       <div
         data-game-section="element-reaction"
-        className={`${GAME_SECTION_CLASS} flex flex-col items-center gap-1.5 rounded-xl bg-black/85 px-6 py-3 shadow-lg shadow-black/40 backdrop-blur-md`}
-        style={{ boxShadow: `0 0 24px 4px ${glowColor}40, inset 0 0 12px ${glowColor}20` }}
+        className={`${GAME_SECTION_CLASS} flex flex-col items-center gap-1.5 rounded-xl bg-[var(--marinara-chat-chrome-panel-bg)] px-6 py-3 shadow-[var(--glass-strong-shadow)] backdrop-blur-md`}
+        style={{
+          boxShadow: `0 0 24px 4px color-mix(in srgb, ${glowColor} 25%, transparent), inset 0 0 12px color-mix(in srgb, ${glowColor} 12.5%, transparent)`,
+        }}
       >
         {/* Reaction name with emoji */}
         <div className="flex items-center gap-2">
           <span className="text-2xl game-dice-animate">{emoji}</span>
-          <span className="text-lg font-bold text-white tracking-wide">{reaction.reaction}</span>
+          <span className="text-lg font-bold text-[var(--marinara-chat-chrome-panel-title)] tracking-wide">
+            {reaction.reaction}
+          </span>
           {multiplierText && (
             <span
               className="rounded-md px-2 py-0.5 text-xs font-bold"
-              style={{ backgroundColor: `${glowColor}30`, color: glowColor }}
+              style={{ backgroundColor: `color-mix(in srgb, ${glowColor} 19%, transparent)`, color: glowColor }}
             >
               {multiplierText}
             </span>
@@ -116,14 +99,19 @@ export function GameElementReaction({ reaction, elements, onDismiss }: GameEleme
         </div>
 
         {/* Description */}
-        <p className="max-w-xs text-center text-xs text-white/70 leading-tight italic">{reaction.description}</p>
+        <p className="max-w-xs text-center text-xs text-[var(--marinara-chat-chrome-panel-text)]/70 leading-tight italic">
+          {reaction.description}
+        </p>
 
         {/* Target info */}
-        <div className="text-[10px] text-white/40">
+        <div className="text-[10px] text-[var(--marinara-chat-chrome-panel-muted)]">
           {reaction.attackerName} → {reaction.defenderName}
         </div>
 
-        <button onClick={onDismiss} className="absolute right-2 top-2 rounded p-0.5 text-white/30 hover:text-white">
+        <button
+          onClick={onDismiss}
+          className="absolute right-2 top-2 rounded p-0.5 text-[var(--marinara-chat-chrome-panel-muted)]/70 hover:text-[var(--marinara-chat-chrome-panel-text)]"
+        >
           <X size={12} />
         </button>
       </div>

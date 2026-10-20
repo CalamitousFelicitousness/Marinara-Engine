@@ -40332,6 +40332,11 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "or": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
                         "alliesMayFail": {
                           "type": "boolean",
                           "const": true
@@ -67245,6 +67250,11 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "or": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "alliesMayFail": {
                               "type": "boolean",
                               "const": true
@@ -86465,6 +86475,11 @@
                               "ignoresCover": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "or": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "alliesMayFail": {
                                 "type": "boolean",
@@ -122289,6 +122304,11 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "or": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
                             "alliesMayFail": {
                               "type": "boolean",
                               "const": true
@@ -146211,6 +146231,11 @@
                                   "ignoresCover": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "or": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "alliesMayFail": {
                                     "type": "boolean",
@@ -170140,6 +170165,11 @@
                                   "ignoresCover": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "or": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "alliesMayFail": {
                                     "type": "boolean",

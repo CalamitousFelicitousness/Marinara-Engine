@@ -5153,8 +5153,12 @@ export interface RulesetSaveExtras {
   succeeds?: { immune?: string[]; conditionImmune?: string[]; is?: RulesetTargetIs };
   modes?: Array<{ is: RulesetTargetIs; mode: (typeof RULESET_ROLL_MODES)[number] }>;
   alliesMayFail?: true;
+  or?: string;
 }
 const saveExtrasShape = {
+  /** Another save its target may make in its place, whichever is better for them (Capability API
+   *  1.671): 5e's bulette's Deadly Leap, "a Strength or Dexterity saving throw (target's choice)". */
+  or: sheetId.optional(),
   /** Its user's own side may choose to fail it (Capability API 1.278), and do: they fail without
    *  rolling, as a friend lets a spell in. 5e's Calm Emotions. */
   alliesMayFail: z.literal(true).optional(),
@@ -20903,6 +20907,7 @@ function creatureIssues(
     if (action.save && !saves.has(action.save.save)) {
       add([...path, "save", "save"], `Unknown save "${action.save.save}"`);
     }
+    if (action.save?.or && !saves.has(action.save.or)) add([...path, "save", "or"], `Unknown save "${action.save.or}"`);
     // A lowered maximum (1.203) is a save against a blow, and only health in points has one to lower.
     if (action.reducesMax) {
       reducesMaxIssues(definition, action.reducesMax, [...path, "reducesMax"], add);
@@ -23374,6 +23379,8 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.save && !saves.has(mechanics.save.save)) {
       add([index, "mechanics", "save", "save"], `Unknown save "${mechanics.save.save}"`);
     }
+    if (mechanics?.save?.or && !saves.has(mechanics.save.or))
+      add([index, "mechanics", "save", "or"], `Unknown save "${mechanics.save.or}"`);
     // The same names the first amount is held to. A clause's damage type is checked where the
     // ruleset says what its types are, exactly as a creature's is.
     const declaredTypes = definition.combat?.damageTypes

@@ -3988,6 +3988,7 @@ function mechanicsAction(
       ...(mechanics.save.modes ? { modes: structuredClone(mechanics.save.modes) } : {}),
       ...(mechanics.save.alliesMayFail ? { alliesMayFail: true as const } : {}),
       ...(mechanics.save.advantageIfFought ? { advantageIfFought: true as const } : {}),
+      ...(mechanics.save.or ? { or: mechanics.save.or } : {}),
       ...(mechanics.save.failedBy
         ? {
             failedBy: {

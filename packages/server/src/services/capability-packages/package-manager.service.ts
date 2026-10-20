@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A save made with the better of two (1.671): a bulette's Deadly Leap. */
+function carriesSaveOr671(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSaveOr671(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.save)?.or !== undefined) return true;
+  return featureValues(record).some((one) => carriesSaveOr671(one, depth + 1));
+}
+
 /** A carapace that turns entries back on a die (1.670): a tarrasque's. */
 function carriesReflects670(value: unknown): boolean {
   const conditions = plainRecord(plainRecord(value)?.combat)?.conditions;
@@ -8860,6 +8870,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A save made with the better of two, 1.671.
+  if (
+    !declaresApi(671) &&
+    (carriesSaveOr671(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSaveOr671(document)))
+  )
+    return "A ruleset with a save its target may make with another (save.or) requires schemaVersion 2 and capabilityApi 1.671 or newer";
   // A carapace that turns entries back on a die, 1.670.
   if (!declaresApi(670) && carriesReflects670(ruleset))
     return "A ruleset with a condition that turns entries back on a die (combat.conditions[].reflects) requires schemaVersion 2 and capabilityApi 1.670 or newer";

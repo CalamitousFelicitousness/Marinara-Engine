@@ -16013,7 +16013,10 @@ function resolveActionBodyIn(
         rollSave(
           ctx,
           target,
-          action.save.save,
+          // The target's choice of two (1.671): the better of them.
+          action.save.or && (target.saves[action.save.or] ?? 0) > (target.saves[action.save.save] ?? 0)
+            ? action.save.or
+            : action.save.save,
           action.save.difficulty,
           actor.id,
           action.save.ignoresCover ? null : saveFromFor(target),

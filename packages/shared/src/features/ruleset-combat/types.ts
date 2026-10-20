@@ -341,6 +341,8 @@ export interface RulesetCombatSaveRider {
   alliesMayFail?: true;
   /** A target on a side hostile to its user's rolls it with advantage (1.529): Charm Person. */
   advantageIfFought?: true;
+  /** Another save the target may make instead, the better of the two (1.671): Deadly Leap. */
+  or?: string;
   /** A failure by at least `atLeast` puts these on in place of the action's `applies` (1.539). */
   /** `resultAtMost` (1.620): a total of that or lower instead. */
   failedBy?: { atLeast?: number; resultAtMost?: number; applies: RulesetCombatApplies[] };

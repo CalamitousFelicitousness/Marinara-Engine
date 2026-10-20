@@ -934,6 +934,7 @@ import {
   applyIllustratorChatRunInterval,
   automaticVideoAllowed,
   claimAutomaticVideoRun,
+  type AutomaticVideoRunClaim,
   loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
@@ -12520,18 +12521,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   (async () => {
                     let videoRun: AutomaticVideoRunClaim | null = null;
                     try {
-                      // Re-checked here, as the clip starts: another clip may have started since [video] was offered.
-                      // The check and the Video Run Interval's new starting point are one step; the starting point is
-                      // given back if the clip fails.
-                      videoRun = await claimAutomaticVideoRun(chats, input.chatId, request.messageId, async (current) =>
-                        automaticVideoAllowed(
-                          await chats.listMessages(input.chatId),
-                          current,
-                          await loadVideoRunInterval(agentsStore, current),
-                          false,
-                          request.messageId,
-                        ),
-                      );
+                      // Re-checked here, as the clip starts: another clip may have started since [video] was offered,
+                      // or the reply may already have its Videos per reply clips.
+                      videoRun = await claimRoleplayClip(request.messageId);
                       if (!videoRun) return;
                       // The storyteller's subject and motion are the request; the Clip Director writes the clip to
                       // the video connection's instructions.
@@ -12555,6 +12547,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         appearanceBlock:
                           chatMeta.illustratorVideoIncludeCharacterAppearance === true ? cast.appearanceBlock : null,
                         queue: true,
+                        signal: agentSignal,
                         debugMode: input.debugMode,
                       });
                       // The clip is saved by now, so it counts as made: failing to add it to the reply only logs,

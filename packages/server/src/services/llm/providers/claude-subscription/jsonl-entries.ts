@@ -42,6 +42,7 @@ export interface ToolUseBlock {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  cache_control?: TextBlock["cache_control"];
 }
 export interface ToolResultBlock {
   type: "tool_result";
@@ -324,8 +325,12 @@ export function assembleEntries(
   for (let i = entries.length - 2; historyCacheControl && i >= 0; i--) {
     const entry = entries[i]!;
     if (entry.type !== "assistant") continue;
-    const textBlock = entry.message.content.filter((block) => block.type === "text" && block.text).at(-1);
-    if (textBlock?.type === "text") textBlock.cache_control = historyCacheControl;
+    // The last block caches the whole reply: tool calls follow the text, and a reply with
+    // neither holds only an empty placeholder, which can't take a marker.
+    const lastBlock = entry.message.content.at(-1);
+    if (lastBlock?.type === "tool_use" || (lastBlock?.type === "text" && lastBlock.text)) {
+      lastBlock.cache_control = historyCacheControl;
+    }
     break;
   }
   return entries;

@@ -147,6 +147,7 @@ import {
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
+  normalizeVideoPromptInstructions,
   normalizeIllustratorVideoMode,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
@@ -770,7 +771,11 @@ import {
   generateRoleplayClip,
   roleplayVideoFirstFrame,
 } from "../services/video/chat-video-generation.js";
-import { attachVideoToMessage, buildChatVideoAttachment } from "../services/video/chat-video-messages.js";
+import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveSceneVideoConnectionId,
+} from "../services/video/chat-video-messages.js";
 import {
   CONTINUE_ASSISTANT_MESSAGE_PROMPT,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,

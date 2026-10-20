@@ -107,7 +107,7 @@ try {
   await h.generate(roleplay.id, "James throws the bottles.");
   assert.match(
     requests.planner.at(-1) ?? "",
-    /If motion is the point of this moment/u,
+    /<optional_video>/u,
     "the planner is offered a clip",
   );
   assert.equal((await h.attachments(roleplay.id, "video")).length, 3, "[illustrate] became a clip");
@@ -118,7 +118,7 @@ try {
   replies.planner = { prompt: "an empty lab" };
   replies.main = 'Silence. [illustrate: subject="the empty lab"]';
   await h.generate(roleplay.id, "Look around.");
-  assert.doesNotMatch(requests.planner.at(-1) ?? "", /If motion is the point of this moment/u);
+  assert.doesNotMatch(requests.planner.at(-1) ?? "", /<optional_video>/u);
   assert.equal((await h.attachments(roleplay.id, "video")).length, 3);
 
   // A clip saved but not attached (the reply's stored data breaks meanwhile) still counts as made: no error.

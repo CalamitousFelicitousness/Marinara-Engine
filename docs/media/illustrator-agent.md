@@ -108,9 +108,9 @@ No setting is needed. The captions appear only for a NovelAI connection on its o
 
 The Illustrator card has an **Open Setup** button. It opens the agent's full setup screen, where you can set the default for how often the agent runs and give it its own image connection.
 
-Each Roleplay chat has its own **Run Interval** on the Illustrator card in **Chat Settings**. Its help text reads: "Messages between automatic images in this chat. 0 means only when you ask." A chat that hasn't set one uses the **Run Interval** from the setup screen, which is **5** unless you change it. The card shows **Using agent default** or **Chat override**. Press **Use agent default** to go back to the setup screen's value. When you add the Illustrator to a chat, the add window shows the same field and saves your choice to that chat only.
+Each Roleplay chat has its own **Image Run Interval** on the Illustrator card in **Chat Settings**. Its help text reads: "Messages between automatic images in this chat. 0 means only when you ask." A chat that hasn't set one uses the **Image Run Interval** from the setup screen, which is **5** unless you change it. The card shows **Using agent default** or **Chat override**. Press **Use agent default** to go back to the setup screen's value. When you add the Illustrator to a chat, the add window shows the same field and saves your choice to that chat only.
 
-Set **Run Interval** to **0** for manual-only generation. This stops automatic Illustrator runs, including its automatic scene backgrounds, while keeping the agent installed and available for Gallery actions. Set a positive interval to resume automatic runs.
+Set **Image Run Interval** to **0** for manual-only generation. This stops automatic Illustrator runs, including its automatic scene backgrounds, while keeping the agent installed and available for Gallery actions. Set a positive interval to resume automatic runs.
 
 You can also make a picture on demand instead of waiting. Open **Chat Settings**, expand the **Gallery** section, and use the **Illustrate** button. The Illustrator runs once right away and the button shows **Generating...** while it works. This is useful when you want a picture of the current moment and the agent has not drawn one yet.
 

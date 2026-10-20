@@ -6227,7 +6227,7 @@ function fillCatalogCallsAsWritten(
         : {}),
       ...(calls.commandedWith ? { commandedWith: calls.commandedWith } : {}),
       ...(calls.illusion ? { illusion: true as const } : {}),
-      ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
+      ...(calls.endsWithCaller ? { endsWithCaller: calls.endsWithCaller } : {}),
       ...(calls.cantCall ? { cantCall: true as const } : {}),
       ...(calls.leash ? { leash: calls.leash } : {}),
       ...(calls.commandedWithin ? { commandedWithin: calls.commandedWithin } : {}),

@@ -2741,6 +2741,21 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A catalog entry's or an item's call whose creatures leave with their caller (1.680): a Feather
+ *  Token's whip. A creature action's calls (1.393) sit on an action with a `name`, never on
+ *  `mechanics` or an item's `use`. */
+function carriesCallsEndWithCaller680(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallsEndWithCaller680(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.endsWithCaller === "incapacitated") return true;
+  for (const key of ["mechanics", "use"] as const) {
+    if (plainRecord(plainRecord(record[key])?.calls)?.endsWithCaller !== undefined) return true;
+  }
+  return featureValues(record).some((one) => carriesCallsEndWithCaller680(one, depth + 1));
+}
+
 /** Parts of an item's effect that hold only while charges or uses are left (1.679): a Helm of
  *  Brilliance. */
 function carriesWhileLeft679(value: unknown, depth = 0): boolean {
@@ -8960,6 +8975,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A catalog entry's or an item's call that ends with its caller, 1.680.
+  if (
+    !declaresApi(680) &&
+    (carriesCallsEndWithCaller680(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallsEndWithCaller680(document)))
+  )
+    return "A ruleset with a catalog entry's or an item's call that ends with its caller (calls.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.680 or newer";
   // What holds only while charges or uses are left, 1.679.
   if (
     !declaresApi(679) &&

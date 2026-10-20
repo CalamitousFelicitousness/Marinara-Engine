@@ -10863,7 +10863,7 @@ function callCreatures(
     if (!called) continue;
     called.calledWith = action.id;
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
-    if (action.calls.endsWithCaller) called.calledEndsWithCaller = true;
+    if (action.calls.endsWithCaller) called.calledEndsWithCaller = action.calls.endsWithCaller;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
     // Spent with them, or waiting on their departure (1.559): a Ring of Djinni Summoning.
     const item = action.itemUse?.item;
@@ -11155,11 +11155,22 @@ function rollWeighted<Row extends { weight: number; label: string }>(
   return row;
 }
 
-/** Those bound to their caller (1.393) leave once it is out: a demon's summoned kin. */
+/** Those bound to their caller (1.393) leave once it is out: a demon's summoned kin. Some also once
+ *  it is down or cannot act (1.680): a Feather Token's whip. */
 function leaveWithCallers(ctx: RulesetCombatContext): void {
   for (const caller of ctx.state.combatants) {
-    if (!caller.defeated) continue;
-    dismissCalled(ctx, caller, (one) => !!one.calledEndsWithCaller, "caller");
+    if (caller.defeated) {
+      dismissCalled(ctx, caller, (one) => !!one.calledEndsWithCaller, "caller");
+      continue;
+    }
+    if (
+      ctx.state.combatants.some((one) => one.calledBy === caller.id && one.calledEndsWithCaller === "incapacitated") &&
+      (!rulesetCombatStanding(caller) ||
+        rulesetActiveConditions(ctx.definition, ctx.combat, caller, ctx.state).some((entry) =>
+          entry.effects.includes("cannot-act"),
+        ))
+    )
+      dismissCalled(ctx, caller, (one) => one.calledEndsWithCaller === "incapacitated", "caller");
   }
   // And those held within so far of their caller (1.557), once it is farther: a treant's trees.
   for (const caller of ctx.state.combatants) {

@@ -53920,6 +53920,16 @@
                           "exclusiveMinimum": 0,
                           "maximum": 10000
                         },
+                        "endsWithCaller": {
+                          "type": [
+                            "boolean",
+                            "string"
+                          ],
+                          "enum": [
+                            true,
+                            "incapacitated"
+                          ]
+                        },
                         "commandedWithin": {
                           "type": "number",
                           "exclusiveMinimum": 0,
@@ -136668,6 +136678,16 @@
                               "exclusiveMinimum": 0,
                               "maximum": 10000
                             },
+                            "endsWithCaller": {
+                              "type": [
+                                "boolean",
+                                "string"
+                              ],
+                              "enum": [
+                                true,
+                                "incapacitated"
+                              ]
+                            },
                             "commandedWithin": {
                               "type": "number",
                               "exclusiveMinimum": 0,
@@ -160818,6 +160838,16 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "endsWithCaller": {
+                                    "type": [
+                                      "boolean",
+                                      "string"
+                                    ],
+                                    "enum": [
+                                      true,
+                                      "incapacitated"
+                                    ]
                                   },
                                   "commandedWithin": {
                                     "type": "number",
@@ -184975,6 +185005,16 @@
                                     "type": "number",
                                     "exclusiveMinimum": 0,
                                     "maximum": 10000
+                                  },
+                                  "endsWithCaller": {
+                                    "type": [
+                                      "boolean",
+                                      "string"
+                                    ],
+                                    "enum": [
+                                      true,
+                                      "incapacitated"
+                                    ]
                                   },
                                   "commandedWithin": {
                                     "type": "number",

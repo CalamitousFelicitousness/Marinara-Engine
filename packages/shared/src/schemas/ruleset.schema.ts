@@ -6604,6 +6604,10 @@ export const catalogCallsSchema = z
     /** They leave once their caller is farther from them than this, in the ruleset's distance
      *  (Capability API 1.557): a treant's animated trees, "more than 120 feet from the tree". */
     leash: z.number().finite().gt(0).max(10000).optional(),
+    /** They leave as soon as their caller is out (Capability API 1.680), as a creature's call's do
+     *  (1.393); `"incapacitated"` also as soon as their caller is down or cannot act: a Feather
+     *  Token's whip, which "vanishes when you are incapacitated or die". */
+    endsWithCaller: z.union([z.literal(true), z.literal("incapacitated")]).optional(),
     /** Their caller commands them only while within this distance of them and able to act (Capability
      *  API 1.567); otherwise each turn they act on their own, as the Engine runs them, defending
      *  themselves and going at their caller's foes, and their caller pays nothing for it. 5e's Staff of

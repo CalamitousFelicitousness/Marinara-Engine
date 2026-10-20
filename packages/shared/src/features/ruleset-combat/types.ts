@@ -583,7 +583,7 @@ export interface RulesetStatBlockAction {
     options?: RulesetCatalogCalls["options"];
     initiative?: "roll" | "after" | "none";
     rounds?: number;
-    endsWithCaller?: true;
+    endsWithCaller?: true | "incapacitated";
     cantCall?: true;
     /** Its caller may send them away as an action (1.396), or on another budget (1.557). */
     dismissible?: true | { budget: string };
@@ -1099,7 +1099,7 @@ export interface RulesetCombatAction {
   formsOf?: RulesetShapeForms;
   /** Who it calls as written (1.344), until the fight finds them in the bestiary; picked from its
    *  `modes` when it names options. */
-  callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true; callerAction?: string };
+  callsOf?: RulesetCatalogCalls & { cantCall?: true; callerAction?: string };
   callChoice?: true;
   /** Whichever of its options comes arrives after this many of its caller's turns (1.561). */
   callsArriveIn?: RulesetCombatAmount;
@@ -1484,8 +1484,8 @@ export interface RulesetCombatAction {
     /** Set down on open cells within `distance` of their caller, in the ruleset's distance, ones the
      *  caller sees with `seen`, nearest its foes first (1.568). */
     within?: { distance: number; seen?: true };
-    /** They leave as soon as their caller is out (1.393). */
-    endsWithCaller?: true;
+    /** They leave as soon as their caller is out (1.393), or down or unable to act (1.680). */
+    endsWithCaller?: true | "incapacitated";
     /** They come without any calling actions of their own (1.393). */
     cantCall?: true;
     /** Raised from a corpse that died within `withinRounds` and is `is` (1.501): Create Specter. */
@@ -2096,8 +2096,8 @@ export interface RulesetCombatant {
   calledWith?: string;
   /** The round, at their caller's turn, they leave in (1.344). */
   calledUntil?: number;
-  /** They leave as soon as their caller is out (1.393). */
-  calledEndsWithCaller?: true;
+  /** They leave as soon as their caller is out (1.393), or down or unable to act (1.680). */
+  calledEndsWithCaller?: true | "incapacitated";
   /** They turn on their caller's side when the concentration that holds them is broken (1.485). */
   calledHostileOnBreak?: true;
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes

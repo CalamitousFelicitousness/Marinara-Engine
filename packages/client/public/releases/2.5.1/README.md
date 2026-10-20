@@ -1,6 +1,6 @@
 # v2.5.1 announcement media
 
-Screenshots and recordings for the in-app What's New. All of them were captured from a build of `staging` (`pnpm build`, `2.5.0+25f8df7b0a38`), run with `pnpm start` on throwaway local instances. Each capture used its own copy of one seeded demo data folder (`DATA_DIR`/`FILE_STORAGE_DIR`), `MARINARA_GIT_BRANCH=staging`, and a local mock model instead of a real one: no real or paid model, image or video service was called. The browser was full Chromium, driven by Playwright, with onboarding, What's New, the intros, Professor Mari's visits and seasonal themes turned off beforehand, and the accent color held steady.
+Screenshots and recordings for the in-app What's New. All of them were captured from a build of `staging` (`pnpm build`, `2.5.0+25f8df7b0a38`), run with `pnpm start` on throwaway local instances. Each capture used its own copy of one seeded demo data folder (`DATA_DIR`/`FILE_STORAGE_DIR`), `MARINARA_GIT_BRANCH=staging`, and a local mock model instead of a real one: no real or paid model, image or video service was called. The browser was full Chromium, driven by Playwright, with onboarding, What's New, the intros and Professor Mari's visits turned off beforehand, and the accent color held steady.
 
 - **Stills:** captured at 1440×900 CSS px with device scale factor 2, then downscaled to 1600 px wide as JPEG (quality 85).
 - **Recordings:** captured with a Chrome DevTools screencast at 1440×900 and encoded to H.264 MP4 at 1280 px, 30 fps, with no audio. The visible cursor is a page overlay added for the recording.

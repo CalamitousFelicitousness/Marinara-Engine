@@ -19,9 +19,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 Final pass: this work had not merged when the release PR was opened. Replace each line with entries in the right section once it merges (or delete the line if it doesn't), then delete this whole block.
 
 - TODO: #7882 (Professor Mari's Pi runtime: verified change claims, **Switch to Classic** after failed runs, Pi as the default).
-- TODO: Marinara-Agents#1496 follow-ups to the shared-code rebuild (Noodle pickers, Slurp automatic posts, Calls volume and Local Model, Long-Term Memory guide pictures).
-- TODO: the Engine PR with the host findings from the agent de-duplication review.
-- TODO: Calls `[schedule_update]` reaching the character card (Engine `api.runtime` member plus the Calls package update).
+- TODO: the Marinara-Agents PR for the Marinara-Agents#1496 follow-ups to the shared-code rebuild (Noodle pickers, Slurp automatic posts, Calls volume and Local Model, Calls `[schedule_update]` reaching the character card through the host member from #7886, Long-Term Memory guide pictures).
 
 ### Works differently now
 
@@ -573,21 +571,13 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 ### Game Mode
 
-- A new game's **Party** step has a **GM intro message**: **None** lets the Game Master open the game as usual, **Defined** opens it with exactly the message you write, and **Guided** has the Game Master write the opening from your directions. A story can set its own intro and lock it. A defined intro is never rewritten by an agent or after a roll (#7589).
-
 - **Game controls → Edit game data** opens the State Editor on the game's own data. **Party Cards**, **NPCs**, **Journal**, **Player Notes**, **Story** and **Session Summaries** can be edited there; everything else is shown read-only, so you can still search it. Every change is checked before it saves: names can't change, party cards can't be added or removed, NPC reputation stays between -100 and 100, and a session summary changes only in its text. If a turn changes the same data while you edit, the save is refused with a **Reload** button. A warning at the top reminds you that hand edits can break a game (#7766).
 
 - **Edit game data** also covers the inventory, **World Edits**, the story script, the party sheet and the HUD widgets, each saved through the game's own checks. Before each save the game takes a checkpoint, marked **Before a State Editor save**, so a bad edit can be undone (#7773).
 
 - New **Game controls → Checkpoints** lists the game's checkpoints, newest first, with what took each one and when. **Load** takes the game back to that moment after you confirm: the party's cards and sheets, the NPCs, the journal, your notes, the inventory, the session summaries, the GM's story plans, the time, weather and morale, and the **World Edits** made in the Game data editor, together with the story from that same checkpoint. A companion recruited after the checkpoint leaves the party again, and your settings stay as they are. Checkpoints taken before this update rewind only the tracker and the map. **Delete** removes a checkpoint for good. Until now the app had no way to load a checkpoint (#7746, #7773, #7787).
 
-- Game Mode loot now fits the game's genre: a science-fiction or modern-day fight no longer drops Iron Shortswords, and a genre without its own loot drops plain things instead of fantasy gear. Elements come from one shared list, so a model's "pyro" counts as fire and its reactions and weather apply. The new-game wizard's setting and goal ideas come from eight kinds of setting in a new mix each time, and **Wuxia** joins the genres (#7471).
-
 - In Game Mode, when the Game Master adds an NPC to your party, Marinara no longer attaches a character card from your library, or brings in a different NPC, just because the name is similar, such as a **Samantha** card for an NPC named Sam. When the NPC and one of your cards, or several cards, have exactly the same name, a window shows each card's name, title and avatar so you can pick one, or keep the game's own character. Closing the window keeps the game's own character. A single card with that name and no NPC of that name still joins as before (#7335).
-
-- In a Game Mode game with money, the Game Master is now told when a purse is empty, and sees the player's bag even when it holds nothing. Before, an empty purse was left out of its prompt, so it could narrate a purchase as made and the game then refused it (#7466).
-
-- The Game Master now gets at most four rounds of tool calls, such as dice rolls, per Game Mode turn, then narrates with the results it has. Any agent gets at most sixteen (a lorebook backfill, sixty-four). A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. A lower `MAX_TOOL_ROUNDS` still applies. Game Mode's end-of-session, recruit and character-sheet prompts also no longer include each party member's whole ruleset sheet, so they are smaller (#7466).
 
 - Game Mode now follows **Settings → Advanced → Request timeouts → Text generation** (`CHAT_GENERATION_TIMEOUT_MS`) when starting a new game and for its other Game Master requests, instead of a fixed 5 minutes. As in chats, it is the longest wait for the model's first output and between outputs, and a reasoning model's thinking counts as output, so a slow local model that thinks for a long time no longer fails new-game setup at exactly 300 seconds (#7180).
 
@@ -615,6 +605,10 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 
 - The Agent updates dialog now shows the release notes of every version an update skips, not only the newest. For an Agent several versions behind, **What changed (N)** lists each version newest first, with each version's notes cut to two lines and a **More** button to read the rest. The dot now also shows when any of those versions is a change you will notice, not only the newest one (#7477).
 
+- Installing or updating an agent that needs a newer Marinara now says which Marinara or capability API version it needs, instead of "Internal Server Error" (#7886).
+
+- With a board or card game's agent on in a Conversation chat, the game's board now shows once instead of twice. On a phone, the extra board used to cover the whole screen (#7886).
+
 - Client extensions keep working after you switch to another tab, put the computer to sleep or leave the app in the background. Before, Safari and other browsers that slow down hidden tabs made Marinara stop the extension after a few seconds, so its panel and buttons stayed on screen but did nothing. If Marinara does have to stop an extension that froze, its buttons and panels now disappear and a notice offers **Restart**. In Safari, client extensions also start reliably; before, their top-bar buttons were often missing after the page loaded (#7262).
 
 - `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` now work in agent prompts, including custom agents, edited built-in agents and retried agents. They read the same lorebooks as the chat's own prompt, so one shared agent can pick up chat-specific instructions from an entry with the same name in each chat. Before, the macro reached the model as written (#7223; thanks @usagirei for the report).
@@ -630,6 +624,8 @@ Final pass: this work had not merged when the release PR was opened. Replace eac
 - For package developers: Capability API 1.71 adds `agentContent` to Roleplay messages, the message as built-in agents read it, with each whisper in its place. Packages that read the chat themselves can read whispers without parsing them out of `extra`. It is left out outside Roleplay and in hosted multiplayer rooms (#7488).
 
 - For package developers: Agent and capability packages can ask the user's Decision model their own yes/no and Choice questions about text they supply, through `api.runtime.decisions.evaluate(...)`. It uses the Decision model the user picked, returns nothing when none is set, never hands the package any keys, and stays within the user's **Decision statements per turn** limit. See `docs/development/optional-agent-packages.md` (#7369).
+
+- For package developers: `api.runtime.persistence.updateCharacterStatus(chatId, characterId, update)` changes a character's status on their card the way a `[schedule_update]` in a Conversation reply does, so the change lasts past the next presence read. It needs `chat-write`, works only for characters in a Conversation chat, and changes nothing in a shared room. It is an optional member of Capability API 1.341, so check for it before calling it (#7886).
 
 ### Long-Term Memory
 
@@ -757,6 +753,8 @@ These parts of Game Mode are still being built and may not work fully yet. Overw
 
 - **Overworld games (off by default):** Game Mode has the first parts of generated worlds. A **Setting kit** on the World step gives a world its words and the kinds of change it allows: pick one of eight starters, such as wuxia, modern day or space opera, have the model write one, or change any word. **Make a world** then lays out regions, settlements and the ways between them from a seed, starting from the places your lorebooks name, gives each settlement named residents, and runs the world's history from its founding. In play, the world moves on by itself as time passes, news reaches the party, and what the party does stays done, while a swipe takes it back. These stay off unless the server sets `MARINARA_OVERWORLD_GAMES=true`; until then new games start as Classic games and the wizard says why the world choices are greyed out (#7470).
 
+- Game Mode loot now fits the game's genre: a science-fiction or modern-day fight no longer drops Iron Shortswords, and a genre without its own loot drops plain things instead of fantasy gear. Elements come from one shared list, so a model's "pyro" counts as fire and its reactions and weather apply. The new-game wizard's setting and goal ideas come from eight kinds of setting in a new mix each time, and **Wuxia** joins the genres (#7471).
+
 - **Overworld games (off by default):** a setting kit also names its loot, money and everyday shop, elements, battlefields, and art and music family, so a game without a ruleset can buy, sell and earn in the kit's coin, and a cyberpunk fight no longer plays the fantasy battle track (#7471).
 
 - **Overworld games (off by default):** a game with a generated world gets a **World** tab in the journal (where the party is, how well known it is, its standing with each group, its deeds and the news it has heard), a World Maps map made straight from the world, and a pixel overworld where you pick a settlement and **Walk there** while the in-game clock runs. The party can **Enter** the town it is in and walk to its places and people. The overworld and towns are drawn from tile packs, which you can import, choose, export or remove under **Tile packs** in the Agents panel (#7472).
@@ -770,6 +768,10 @@ These parts of Game Mode are still being built and may not work fully yet. Overw
 - A game made without a world can be given one later with **Make a world for this game** on the journal's **World** tab, written for the game's own setting. The world starts from the next turn, and earlier turns stay as they are. The button is greyed out while Overworld games are off (#7568).
 
 - A long write in game setup now counts the seconds and says a model can take a few minutes. A market day where the world put the party now lasts across turns and counts what was bought (#7568).
+
+- In a Game Mode game with money, the Game Master is now told when a purse is empty, and sees the player's bag even when it holds nothing. Before, an empty purse was left out of its prompt, so it could narrate a purchase as made and the game then refused it (#7466).
+
+- The Game Master now gets at most four rounds of tool calls, such as dice rolls, per Game Mode turn, then narrates with the results it has. Any agent gets at most sixteen (a lorebook backfill, sixty-four). A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. A lower `MAX_TOOL_ROUNDS` still applies. Game Mode's end-of-session, recruit and character-sheet prompts also no longer include each party member's whole ruleset sheet, so they are smaller (#7466).
 
 - Game Mode ruleset markets can now have market days (capability API 1.69): sellers turn up rare stock, a place keeps only a few of some things each day, and the party can sell back to a seller who deals in that kind of thing. Prices are said in the coin the cost is written in, so a 5e potion costs 50 gold pieces. A ruleset rider such as 5e's Sneak Attack can now name the item tags it fires on (capability API 1.70), so it works with a weapon held from the bag (#7470).
 
@@ -790,6 +792,8 @@ These parts of Game Mode are still being built and may not work fully yet. Overw
 - Ruleset fights can now run more of 5e's monsters and magic items: large creatures that fill several squares, conditions that make a creature bigger or smaller, auras and gazes you can look away from, actions that recharge or charge up, pushes, and walls built in sections that break one section at a time. Attacks follow more of the rules around a blow: what is added once it hits, rerolls and dice taken off a roll, half damage on a miss, extra dice on a critical, opportunity attacks, and the Attack action with a held weapon. Conditions can decide what their holder does with their turn, lower a maximum, keep surprise off, or end by putting another condition on in their place, and a creature can take a second turn in the first round or roll initiative twice. Rulesets that use these need Capability API 1.182 to 1.270 (#7587).
 
 - Ruleset fights now have real hiding, searching and readying: a creature can hide behind a wall or with camouflage, others search for it or notice it with passive Perception, and starting hidden can bring surprise. Fights can be fought in darkness or sunlight, with lights that can be put out and lit again, fog that blocks sight and wind that clears it. Spells, items and creatures can teleport, and legendary creatures get legendary actions and legendary spellcasting. Charged items follow more of 5e's rules, such as an item that turns into another when its last charge is spent, and conditions can end when their holder moves, acts or gets too far from whoever put them on. Rulesets that use these need Capability API 1.271 to 1.314 (#7588).
+
+- A new game's **Party** step has a **GM intro message**: **None** lets the Game Master open the game as usual, **Defined** opens it with exactly the message you write, and **Guided** has the Game Master write the opening from your directions. A story can set its own intro and lock it. A defined intro is never rewritten by an agent or after a roll (#7589).
 
 - Ruleset fights can now have lairs and bosses: lair actions, Legendary Resistance, auras that grow or linger, creatures that call others into the fight or pull people toward them, and a creature that hangs on at 1 health. The board can change as rounds pass: props on it can be attacked and broken, growth spreads across it, and the ground can carry whoever stands on it toward an edge. A rest can spend dice to heal, as 5e's Hit Dice do, from more than one pool, and an item can be used as a reaction. A fight's board can be drawn from a board pack, and catalog entries and conditions can bring their own icons, which show on the board, in the fight menu, the inventory and the party bar. Rulesets that use these need Capability API 1.315 to 1.339 (#7589).
 

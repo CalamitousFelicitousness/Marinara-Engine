@@ -8934,6 +8934,14 @@ const creatureActionFullSchema = z
         /** No more than this many it called with this action stand at once (Capability API 1.501): a
          *  wraith's seven specters. */
         atMost: z.number().int().min(1).max(32).optional(),
+        /** They act only as their caller commands, as a catalog entry's do (Capability API 1.654): at
+         *  each of their turns but the first, their caller pays 1 of this budget, or the turn passes.
+         *  A solar's Flying Sword, a bonus action. */
+        commandedWith: sheetId.optional(),
+        /** Their attacks are made with their caller's own `action`'s bonus to hit and damage
+         *  (Capability API 1.654), one of the caller's actions by id: a solar's Flying Sword, "using
+         *  the solar's own greatsword attack". */
+        fromCaller: z.object({ action: sheetId }).strict().optional(),
       })
       .strict()
       .superRefine((calls, ctx) => {
@@ -20581,6 +20589,16 @@ function creatureIssues(
     const dismissal = action.calls?.dismissible;
     if (typeof dismissal === "object" && !budgets.has(dismissal.budget)) {
       add([...path, "calls", "dismissible", "budget"], `Unknown budget "${dismissal.budget}"`);
+    }
+    // Commanded on a budget, with the caller's own attack (1.654): a solar's Flying Sword.
+    if (action.calls?.commandedWith !== undefined && !budgets.has(action.calls.commandedWith)) {
+      add([...path, "calls", "commandedWith"], `Unknown budget "${action.calls.commandedWith}"`);
+    }
+    const struckWith = action.calls?.fromCaller?.action;
+    if (struckWith !== undefined) {
+      const own = byId.get(struckWith);
+      if (!own || own.toHit === undefined || !own.damage)
+        add([...path, "calls", "fromCaller", "action"], `"${struckWith}" is not one of its attacks`);
     }
     // Engulfing (1.350): sizes the fight has, and a save the sheet has.
     if (action.engulf) {

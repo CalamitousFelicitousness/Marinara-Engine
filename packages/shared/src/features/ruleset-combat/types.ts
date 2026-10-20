@@ -593,6 +593,10 @@ export interface RulesetStatBlockAction {
     atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
     /** No more than this many stand at once (1.501). */
     atMost?: number;
+    /** Commanded on this budget (1.654): a solar's Flying Sword. */
+    commandedWith?: string;
+    /** Their attacks made as this of their caller's own actions is (1.654). */
+    fromCaller?: { action: string };
   };
   /** The forms it changes into (1.342), found in the bestiary as the fight begins. */
   forms?: RulesetShapeForms;
@@ -1074,7 +1078,7 @@ export interface RulesetCombatAction {
   formsOf?: RulesetShapeForms;
   /** Who it calls as written (1.344), until the fight finds them in the bestiary; picked from its
    *  `modes` when it names options. */
-  callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true };
+  callsOf?: RulesetCatalogCalls & { endsWithCaller?: true; cantCall?: true; callerAction?: string };
   callChoice?: true;
   /** Whichever of its options comes arrives after this many of its caller's turns (1.561). */
   callsArriveIn?: RulesetCombatAmount;
@@ -1423,7 +1427,7 @@ export interface RulesetCombatAction {
     /** They turn on their caller's side when its concentration is broken (1.485), not leaving. */
     hostileOnBreak?: true;
     /** Built from their caller (1.505): health maximum, attack bonus and an amount added to damage. */
-    fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef };
+    fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef; action?: string };
     /** Acting only as their caller pays this budget for it (1.505). */
     commandedWith?: string;
     /** Images, not creatures (1.515): Mislead's double. */

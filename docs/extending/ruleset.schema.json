@@ -78907,6 +78907,26 @@
                               "minimum": 1,
                               "maximum": 32
                             },
+                            "commandedWith": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "fromCaller": {
+                              "type": "object",
+                              "properties": {
+                                "action": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "action"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "additionalProperties": false
@@ -96417,6 +96437,26 @@
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 32
+                              },
+                              "commandedWith": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "fromCaller": {
+                                "type": "object",
+                                "properties": {
+                                  "action": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "action"
+                                ],
+                                "additionalProperties": false
                               },
                               "$comment": {}
                             },

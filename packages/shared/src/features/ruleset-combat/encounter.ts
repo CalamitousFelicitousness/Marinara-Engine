@@ -6065,7 +6065,14 @@ function fillCatalogCallsAsWritten(
       ...((stepped.perStep ?? calls.perStep) ? { perStep: stepped.perStep ?? calls.perStep } : {}),
       ...(stepped.fromStep ? { fromStep: stepped.fromStep } : {}),
       ...(calls.hostileOnBreak ? { hostileOnBreak: true as const } : {}),
-      ...(calls.fromCaller ? { fromCaller: structuredClone(calls.fromCaller) } : {}),
+      ...(calls.fromCaller || calls.callerAction
+        ? {
+            fromCaller: {
+              ...structuredClone(calls.fromCaller ?? {}),
+              ...(calls.callerAction ? { action: calls.callerAction } : {}),
+            },
+          }
+        : {}),
       ...(calls.commandedWith ? { commandedWith: calls.commandedWith } : {}),
       ...(calls.illusion ? { illusion: true as const } : {}),
       ...(calls.endsWithCaller ? { endsWithCaller: true as const } : {}),
@@ -6558,6 +6565,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           ...(source.calls.cantCall ? { cantCall: true as const } : {}),
           ...(source.calls.leash ? { leash: source.calls.leash } : {}),
           ...(source.calls.within ? { within: { ...source.calls.within } } : {}),
+          ...(source.calls.commandedWith ? { commandedWith: source.calls.commandedWith } : {}),
+          ...(source.calls.fromCaller ? { callerAction: source.calls.fromCaller.action } : {}),
         };
         // They arrive after their caller's turns (1.561), whichever option comes.
         if (source.calls.arrivesIn) action.callsArriveIn = { ...source.calls.arrivesIn };
@@ -6586,6 +6595,9 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(source.calls.within ? { within: { ...source.calls.within } } : {}),
         ...(source.calls.onlyWhere ? { onlyWhere: structuredClone(source.calls.onlyWhere) } : {}),
         ...(source.calls.arrivesIn ? { arrivesIn: { ...source.calls.arrivesIn } } : {}),
+        // Commanded, with their caller's own attack (1.654): a solar's Flying Sword.
+        ...(source.calls.commandedWith ? { commandedWith: source.calls.commandedWith } : {}),
+        ...(source.calls.fromCaller ? { fromCaller: { action: source.calls.fromCaller.action } } : {}),
       };
       // Aimed at the corpse it rises from (1.501).
       if (source.calls.atCorpse) action.targets = { side: "any", count: 1 };

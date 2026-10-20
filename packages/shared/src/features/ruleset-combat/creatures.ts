@@ -340,6 +340,9 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
               : {}),
             ...(action.calls.atCorpse ? { atCorpse: structuredClone(action.calls.atCorpse) } : {}),
             ...(action.calls.atMost ? { atMost: action.calls.atMost } : {}),
+            // Commanded, with their caller's own attack (1.654): a solar's Flying Sword.
+            ...(action.calls.commandedWith ? { commandedWith: action.calls.commandedWith } : {}),
+            ...(action.calls.fromCaller ? { fromCaller: { action: action.calls.fromCaller.action } } : {}),
           },
         }
       : {}),

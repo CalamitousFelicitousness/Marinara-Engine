@@ -2740,6 +2740,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's call commanded on a budget, or striking with its caller's attack (1.654): a solar's
+ *  Flying Sword. */
+function carriesCreatureCallCommanded654(value: unknown, depth = 0, creature = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureCallCommanded654(one, depth + 1, creature));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (creature && calls && (calls.commandedWith !== undefined || calls.fromCaller !== undefined)) return true;
+  if (record.creature !== undefined && carriesCreatureCallCommanded654(record.creature, depth + 1, true)) return true;
+  return featureValues(record).some((one) => carriesCreatureCallCommanded654(one, depth + 1, creature));
+}
+
 /** A switch that frees its item's slots while on, or stays on only so long (1.653): an Animated
  *  Shield. */
 function carriesSlotsFreed653(value: unknown, depth = 0): boolean {
@@ -8716,6 +8729,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's call commanded on a budget, or striking with its caller's attack, 1.654.
+  if (
+    !declaresApi(654) &&
+    (carriesCreatureCallCommanded654(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureCallCommanded654(document)))
+  )
+    return "A ruleset with a creature's call commanded on a budget or striking with its caller's attack (calls.commandedWith or calls.fromCaller on a creature) requires schemaVersion 2 and capabilityApi 1.654 or newer";
   // A switch that frees its item's slots while on, or stays on only so long, 1.653.
   if (
     !declaresApi(653) &&

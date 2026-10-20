@@ -10656,10 +10656,19 @@ function callCreatures(
     };
     const toHit = read(from.toHit);
     const adds = read(from.adds);
+    // Their attacks made as one of their caller's own (1.654): the solar's greatsword, for its sword.
+    const own = from.action ? actor.actions.find((one) => one.id === from.action) : undefined;
     for (const id of ids) {
       const called = rulesetCombatant(ctx.state, id);
       if (!called) continue;
       if (from.health && called.health && most > 0) called.health = { value: most, max: most, temp: 0 };
+      if (own?.damage && own.toHit !== undefined) {
+        for (const one of called.actions) {
+          if (one.toHit === undefined || !one.damage) continue;
+          one.toHit = own.toHit;
+          one.damage = structuredClone(own.damage);
+        }
+      }
       for (const one of called.actions) {
         if (toHit !== undefined && one.toHit !== undefined) one.toHit = toHit;
         // Not on one that keeps it off (1.533): Arcane Hand's Clenched Fist.

@@ -60,6 +60,8 @@ export interface TTSPlayback {
   /** The chat the reading was requested in (TTSSpeakOptions.chatId), not the chat open when the clip plays. */
   readonly chatId: string | null;
   readonly characterId: string | null;
+  /** The text this clip reads, so an avatar's moods can follow the voice sentence by sentence. */
+  readonly text: string;
 }
 
 function clampPlaybackVolume(volume: number | undefined): number {
@@ -471,7 +473,13 @@ class TTSService {
     audio.src = objectUrl;
     this.applyPlaybackOptions(audio, options);
     this.audio = audio;
-    this.playback = { element: audio, blob, chatId: options.chatId ?? null, characterId: options.characterId ?? null };
+    this.playback = {
+      element: audio,
+      blob,
+      chatId: options.chatId ?? null,
+      characterId: options.characterId ?? null,
+      text,
+    };
 
     audio.onended = () => {
       if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
@@ -590,6 +598,7 @@ class TTSService {
         blob,
         chatId: options.chatId ?? null,
         characterId: request.characterId ?? null,
+        text: request.text,
       };
       const runChunkStart = () => {
         try {

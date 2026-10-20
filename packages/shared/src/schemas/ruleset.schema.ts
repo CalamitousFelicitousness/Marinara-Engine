@@ -11454,6 +11454,12 @@ const catalogItemObjectSchema = z
         /** The light it sheds while switched off (Capability API 1.296), in place of its effect's:
          *  a hooded lantern with its hood down, dim light 5 feet. */
         offLight: lightRadiusSchema.optional(),
+        /** While it is on, the slots it takes are free and it does all it does worn (Capability API
+         *  1.653): 5e's Animated Shield, hovering "as if you were wielding it, leaving your hands
+         *  free". It goes off after `rounds` of its holder's turns and as the fight ends; turned off
+         *  with no room for it, it falls. */
+        freesSlots: z.literal(true).optional(),
+        rounds: z.number().int().min(1).max(100).optional(),
       })
       .strict()
       .optional(),
@@ -21210,6 +21216,10 @@ function itemIssues(
   const toggle = item.toggle;
   if (toggle && definition.combat && !definition.combat.economy.budgets.some((one) => one.id === toggle.budget)) {
     add([...at, "toggle", "budget"], `Unknown budget "${toggle.budget}"`);
+  }
+  // Slots freed while on (1.653): only an item that takes some.
+  if (toggle?.freesSlots && !Object.values(item.slots ?? {}).some((count) => count > 0)) {
+    add([...at, "toggle", "freesSlots"], 'An item that frees its slots while on takes some: give it "slots"');
   }
   item.attack?.plus?.forEach((clause, index) => {
     if (clause.when === "toggled" && !toggle) {

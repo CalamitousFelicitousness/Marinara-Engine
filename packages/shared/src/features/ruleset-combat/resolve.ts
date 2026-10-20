@@ -306,6 +306,7 @@ import {
   rulesetNeededComponents,
   rulesetRowsReach,
   rulesetRaisableCorpse,
+  rulesetSlotUsed,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -3962,6 +3963,53 @@ function endShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason: "
   if (target.shape) leaveShape(ctx, target, reason);
 }
 
+/** What turning an item on or off does beyond the switch (1.653): a hovering shield's slots freed or
+ *  taken again, its holder's weapons' dice with them, and how long it stays on. */
+function itemSwitched(holder: RulesetCombatant, index: number, on: boolean): void {
+  const toggle = holder.sheet?.items?.[index]?.item.toggle;
+  if (!toggle) return;
+  for (const [id, damage] of Object.entries(holder.slotsFreed?.[index] ?? {})) {
+    const action = holder.actions.find((one) => one.id === id);
+    if (!action?.damage) continue;
+    const [from, to] = on ? [damage.off, damage.on] : [damage.on, damage.off];
+    // As a difference, so what else was added to the blow stays.
+    action.damage.count += to.count - from.count;
+    action.damage.sides = to.sides;
+    action.damage.flat += to.flat - from.flat;
+    if (to.reroll) action.damage.reroll = to.reroll;
+    else delete action.damage.reroll;
+  }
+  if (on && toggle.rounds) holder.onFor = { ...(holder.onFor ?? {}), [index]: toggle.rounds };
+  else if (!on && holder.onFor?.[index] !== undefined) {
+    const { [index]: _gone, ...rest } = holder.onFor;
+    if (Object.keys(rest).length) holder.onFor = rest;
+    else delete holder.onFor;
+  }
+}
+
+/** An item's switch going off by itself (1.653): its time up, or the fight over. One that freed its
+ *  slots falls where there is no room for it now, in the fight. */
+function switchOff(ctx: RulesetCombatContext, holder: RulesetCombatant, index: number, fight: boolean): void {
+  const held = holder.sheet?.items?.[index];
+  if (!held?.item.toggle || !rulesetItemOn(holder, index)) {
+    itemSwitched(holder, index, false);
+    return;
+  }
+  holder.on = { ...(holder.on ?? {}), [index]: false };
+  const label = holder.actions.find((one) => one.id === `switch:${index}`)?.label ?? held.item.toggle.label;
+  ctx.events.push({ type: "switch", actorId: holder.id, optionId: `switch:${index}`, label, on: false });
+  itemSwitched(holder, index, false);
+  if (!fight || !held.item.toggle.freesSlots) return;
+  const counts = new Map((ctx.definition.items?.slots ?? []).map((slot) => [slot.id, slot.count]));
+  const full = Object.entries(held.item.slots ?? {}).some(
+    ([slot, count]) => count > 0 && rulesetSlotUsed(holder, slot, index) + count > (counts.get(slot) ?? 0),
+  );
+  if (!full) return;
+  const name = held.name ?? label;
+  holder.dropped = [...(holder.dropped ?? []), { key: `item:${index}`, label: name }];
+  ctx.events.push({ type: "letFall", actorId: holder.id, condition: held.item.toggle.label, labels: [name] });
+}
+
 /** What a condition makes its holder let fall (1.266): it lies where they stand. */
 function letFall(
   ctx: RulesetCombatContext,
@@ -4403,6 +4451,13 @@ function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entr
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
   // Let out on what was dealt from inside this turn (1.352).
   if (at === "turn-end") releaseOnHurt(ctx);
+  // A switch that stays on only so long (1.653): an Animated Shield's minute.
+  if (at === "turn-end") {
+    for (const [key, left] of Object.entries(actor.onFor ?? {})) {
+      if (left > 1) actor.onFor = { ...actor.onFor, [key]: left - 1 };
+      else switchOff(ctx, actor, Number(key), true);
+    }
+  }
   // Off as its holder starts a turn unable to hear whoever put it on (1.565): the Pipes of the
   // Sewers' hold on a swarm that can't hear their music.
   if (at === "turn-start") unheardSources(ctx, actor);
@@ -7758,6 +7813,7 @@ function applyChoice(
       const on = !rulesetItemOn(working, switching.switches.item);
       working.on = { ...(working.on ?? {}), [switching.switches.item]: on };
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+      itemSwitched(working, switching.switches.item, on);
     }
     return finish();
   }
@@ -9332,6 +9388,10 @@ function noteOutcome(ctx: RulesetCombatContext): void {
  *  through here, so none of them leaves anybody crashed. */
 function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
   rollOutCountedSaves(ctx);
+  // A switch that stays on only so long goes off with the fight (1.653), and its stack with it.
+  for (const one of ctx.state.combatants) {
+    for (const key of Object.keys(one.onFor ?? {})) switchOff(ctx, one, Number(key), false);
+  }
   ctx.events.push(...liftRulesetFightEffects(ctx.definition, ctx.state));
   // Only a party that won holds the field long enough to pick up what it shot.
   if (outcome === "victory") ctx.events.push(...recoverRulesetAmmo(ctx.state));

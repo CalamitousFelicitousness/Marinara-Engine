@@ -2740,6 +2740,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A switch that frees its item's slots while on, or stays on only so long (1.653): an Animated
+ *  Shield. */
+function carriesSlotsFreed653(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSlotsFreed653(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const toggle = plainRecord(record.toggle);
+  if (toggle?.freesSlots !== undefined || toggle?.rounds !== undefined) return true;
+  return featureValues(record).some((one) => carriesSlotsFreed653(one, depth + 1));
+}
+
 /** Attacks that ignore some cover (1.652): a Wand of the War Mage. */
 function carriesCoverIgnored652(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8704,6 +8716,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A switch that frees its item's slots while on, or stays on only so long, 1.653.
+  if (
+    !declaresApi(653) &&
+    (carriesSlotsFreed653(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSlotsFreed653(document)))
+  )
+    return "A ruleset with an item switch that frees its slots or stays on only so long (toggle.freesSlots or toggle.rounds) requires schemaVersion 2 and capabilityApi 1.653 or newer";
   // Attacks that ignore some cover, 1.652.
   if (
     !declaresApi(652) &&

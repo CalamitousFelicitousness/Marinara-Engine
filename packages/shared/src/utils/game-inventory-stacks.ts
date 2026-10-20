@@ -158,7 +158,7 @@ export interface GameInventoryRulesetItem {
     };
   };
   /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
-  toggle?: { label: string };
+  toggle?: { label: string; freesSlots?: true };
   /** The forms it changes into (Capability API 1.522): what it is as made, then each form, by label. */
   forms?: string[];
 }
@@ -1331,7 +1331,10 @@ export function gameInventorySlotsUsed(
   const bag = { holder };
   for (const stack of stacks) {
     if (!stack.equipped || !inBag(stack, bag) || !stack.item) continue;
-    for (const [slot, count] of Object.entries(rules?.itemOf(stack.item)?.slots ?? {})) {
+    const known = rules?.itemOf(stack.item);
+    // Switched on to hover (1.653): an Animated Shield leaves its hand free.
+    if (stack.on && known?.toggle?.freesSlots) continue;
+    for (const [slot, count] of Object.entries(known?.slots ?? {})) {
       used[slot] = (used[slot] ?? 0) + count * stack.quantity;
     }
   }

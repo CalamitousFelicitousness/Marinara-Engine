@@ -180957,6 +180957,15 @@
                           ],
                           "additionalProperties": false
                         },
+                        "freesSlots": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "rounds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
                         "$comment": {}
                       },
                       "required": [

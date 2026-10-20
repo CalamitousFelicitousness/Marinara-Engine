@@ -1110,7 +1110,14 @@ export function rulesetItemBook(
           }
         : {}),
       ...(entry.item.service ? { service: true as const } : {}),
-      ...(entry.item.toggle ? { toggle: { label: entry.item.toggle.label } } : {}),
+      ...(entry.item.toggle
+        ? {
+            toggle: {
+              label: entry.item.toggle.label,
+              ...(entry.item.toggle.freesSlots ? { freesSlots: true as const } : {}),
+            },
+          }
+        : {}),
       ...(entry.item.forms
         ? { forms: [entry.item.forms.label, ...entry.item.forms.into.map((form) => form.label)] }
         : {}),

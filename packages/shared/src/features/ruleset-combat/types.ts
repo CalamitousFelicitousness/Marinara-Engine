@@ -86,6 +86,14 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
  *  block's resistances, so "Fire" and "fire" are one thing. */
+/** A weapon's own dice as one item is off or on (1.653). */
+export interface RulesetSlotsFreedDamage {
+  count: number;
+  sides: number;
+  flat: number;
+  reroll?: number;
+}
+
 export interface RulesetCombatDamage extends RulesetCombatAmount {
   type?: string;
   /** What gets it past a resistance or an immunity that names an exception: the tags of the weapon
@@ -2299,6 +2307,12 @@ export interface RulesetCombatant {
    *  `forms.into` from 1 (0 as it was made): the item then, and the actions it is made with. Keyed as
    *  the rest are. */
   itemFormed?: Record<string, Array<{ item: RulesetCatalogItem; actions: RulesetCombatAction[] }>>;
+  /** What each item that frees its slots while on (1.653) changes of its holder's weapons' damage,
+   *  by the item's place and the weapon action's id: the dice off and on. A versatile longsword's
+   *  1d8 and 1d10 either side of an Animated Shield. */
+  slotsFreed?: Record<string, Record<string, { off: RulesetSlotsFreedDamage; on: RulesetSlotsFreedDamage }>>;
+  /** How many more of their own turns each switch they turned on stays on (1.653), by item. */
+  onFor?: Record<string, number>;
   /** The side they fight on of their own, while something that `controls` them has them on another
    *  (1.524): Magic Jar. */
   ownSide?: "party" | "enemy";

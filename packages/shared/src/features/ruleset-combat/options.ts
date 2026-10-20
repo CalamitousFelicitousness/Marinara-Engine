@@ -5883,12 +5883,23 @@ export function rulesetRedirectTargets(
 function rulesetSlotFree(definition: RulesetDefinition, actor: RulesetCombatant, slot: string): boolean {
   if (!actor.sheet) return true;
   const count = definition.items?.slots?.find((one) => one.id === slot)?.count ?? 0;
+  return rulesetSlotUsed(actor, slot) < count;
+}
+
+/** How much of a slot a holder's worn items take (1.363): not what it has let fall, nor an item
+ *  switched on to hover (1.653), an Animated Shield. `except` leaves one item out. */
+export function rulesetSlotUsed(actor: RulesetCombatant, slot: string, except?: number): number {
   const down = new Set((actor.dropped ?? []).map((thing) => thing.key));
-  const used = (actor.sheet.items ?? []).reduce(
-    (sum, held, index) => (held.worn && !down.has(`item:${index}`) ? sum + (held.item.slots?.[slot] ?? 0) : sum),
+  return (actor.sheet?.items ?? []).reduce(
+    (sum, held, index) =>
+      held.worn &&
+      index !== except &&
+      !down.has(`item:${index}`) &&
+      !(held.item.toggle?.freesSlots && rulesetItemOn(actor, index))
+        ? sum + (held.item.slots?.[slot] ?? 0)
+        : sum,
     0,
   );
-  return used < count;
 }
 
 export function rulesetReactionsAt(

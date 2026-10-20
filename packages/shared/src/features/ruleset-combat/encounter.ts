@@ -126,6 +126,7 @@ import type {
   RulesetCombatantInput,
   RulesetCombatBoard,
   RulesetCombatDamage,
+  RulesetSlotsFreedDamage,
   RulesetCombatDamageAlternative,
   RulesetCombatDamageClause,
   RulesetCombatMode,
@@ -2988,7 +2989,8 @@ function itemAttackActions(
   // fight's items say only whether each is worn; passing "on" through is the upgrade.
   const used: Record<string, number> = {};
   for (const held of items) {
-    if (!held.worn) continue;
+    // Hovering, on (1.653): its slots are free.
+    if (!held.worn || (held.on && held.item.toggle?.freesSlots)) continue;
     for (const [slot, count] of Object.entries(held.item.slots ?? {}))
       used[slot] = (used[slot] ?? 0) + count * held.quantity;
   }
@@ -5321,6 +5323,47 @@ function sheetCombatant(
   for (const made of Object.values(conjurable)) amendAll(made.actions);
   const riders = abilities.flatMap((entry) => entry.riders);
   // What an item becomes on its last charge (1.272), read now with what it would do then.
+  // What each item that frees its slots while on changes of the weapons' dice (1.653).
+  const slotsFreed: NonNullable<RulesetCombatant["slotsFreed"]> = {};
+  input.items?.forEach((held, index) => {
+    if (!held.worn || held.quantity !== 1 || !held.item.toggle?.freesSlots) return;
+    const as = (on: boolean) =>
+      itemAttackActions(
+        definition,
+        combat,
+        input.items!.map((one, at) => {
+          if (at !== index) return one;
+          const { on: _on, ...rest } = one;
+          return on ? { ...rest, on: true as const } : rest;
+        }),
+        build,
+        evaluated,
+        perCell,
+        rowRules,
+      );
+    const off = new Map(as(false).map((action) => [action.id, action.damage]));
+    const changes: Record<string, { off: RulesetSlotsFreedDamage; on: RulesetSlotsFreedDamage }> = {};
+    for (const action of as(true)) {
+      const before = off.get(action.id);
+      const after = action.damage;
+      if (!before || !after) continue;
+      const of = (damage: RulesetCombatDamage): RulesetSlotsFreedDamage => ({
+        count: damage.count,
+        sides: damage.sides,
+        flat: damage.flat,
+        ...(damage.reroll ? { reroll: damage.reroll } : {}),
+      });
+      if (JSON.stringify(of(before)) !== JSON.stringify(of(after)))
+        changes[action.id] = { off: of(before), on: of(after) };
+    }
+    if (Object.keys(changes).length) slotsFreed[index] = changes;
+  });
+  // One left on that stays on only so long starts its clock as the fight does (1.653).
+  const onFor = Object.fromEntries(
+    (input.items ?? []).flatMap((held, index) =>
+      held.on && held.item.toggle?.rounds ? [[String(index), held.item.toggle.rounds]] : [],
+    ),
+  );
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
   input.items?.forEach((held, index) => {
     const ref = held.item.charges?.breaksOn?.becomes;
@@ -5400,16 +5443,20 @@ function sheetCombatant(
     // What each item that may be dropped adds to their defense (1.266), read once without it.
     ...(() => {
       const falls = (combat.conditions ?? []).flatMap((entry) => (entry.behavior?.drops ? [entry.behavior.drops] : []));
-      if (!falls.length || !input.items?.length) return {};
+      // And one that falls as it stops hovering with no room for it (1.653).
+      const hovers = (held: RulesetSheetItem) => !!held.item.toggle?.freesSlots;
+      if ((!falls.length && !input.items?.some(hovers)) || !input.items?.length) return {};
       const whole = Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated));
       const heldDefense: Record<string, number> = {};
       input.items.forEach((held, index) => {
         if (!held.worn) return;
-        const may = falls.some(
-          (drops) =>
-            drops.slots?.some((slot) => (held.item.slots?.[slot] ?? 0) > 0) ||
-            drops.tags?.some((tag) => held.item.tags?.includes(tag)),
-        );
+        const may =
+          hovers(held) ||
+          falls.some(
+            (drops) =>
+              drops.slots?.some((slot) => (held.item.slots?.[slot] ?? 0) > 0) ||
+              drops.tags?.some((tag) => held.item.tags?.includes(tag)),
+          );
         if (!may) return;
         const without = input.items!.filter((_, other) => other !== index);
         const less = Math.round(
@@ -5463,6 +5510,8 @@ function sheetCombatant(
     })(),
     sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
     ...(Object.keys(becomes).length ? { becomes } : {}),
+    ...(Object.keys(slotsFreed).length ? { slotsFreed } : {}),
+    ...(Object.keys(onFor).length ? { onFor } : {}),
     ...(Object.keys(itemFormed).length ? { itemFormed } : {}),
     ...(Object.keys(conjurable).length ? { conjurable } : {}),
   };

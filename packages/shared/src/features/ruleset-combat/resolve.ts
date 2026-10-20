@@ -4388,7 +4388,7 @@ function endConditionsOnHarm(
         tracked.source,
         undefined,
         { conditions: [condition], ...(tracked.action ? { action: tracked.action } : {}) },
-        leanInSight(ctx, target, tracked),
+        damagedLean(ctx, target, tracked, onDamage ? undefined : rule?.saveWhenDamaged),
       );
       if (savedAgainst(ctx, target, tracked, saved)) continue;
     }
@@ -4674,6 +4674,20 @@ function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, ent
 
 /** The lean a save that ends a condition is rolled with while its holder can see whoever put it on
  *  (1.268): a sea hag's Horrific Appearance, with disadvantage while she is in sight. */
+/** How a save on damage leans (1.659): the condition's own lean, and the lean of its maker in sight;
+ *  the two of them opposite, neither. */
+function damagedLean(
+  ctx: RulesetCombatContext,
+  holder: RulesetCombatant,
+  entry: RulesetTrackedCondition,
+  rule: true | { lean: "advantage" | "disadvantage" } | undefined,
+): "advantage" | "disadvantage" | undefined {
+  const seen = leanInSight(ctx, holder, entry);
+  const own = typeof rule === "object" ? rule.lean : undefined;
+  if (!own) return seen;
+  return seen && seen !== own ? undefined : own;
+}
+
 function leanInSight(
   ctx: RulesetCombatContext,
   holder: RulesetCombatant,

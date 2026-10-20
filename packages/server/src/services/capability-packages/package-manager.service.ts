@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A save on damage that leans (1.659): Hideous Laughter. */
+function carriesDamagedLean659(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDamagedLean659(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.saveWhenDamaged) !== undefined) return true;
+  return featureValues(record).some((one) => carriesDamagedLean659(one, depth + 1));
+}
+
 /** A target test of what is worn, or a creature's worn tags (1.658): Shocking Grasp, Heat Metal. */
 function carriesWears658(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8760,6 +8770,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A save on damage that leans, 1.659.
+  if (!declaresApi(659) && carriesDamagedLean659(ruleset))
+    return "A ruleset with a condition saved against on damage with a lean (saveWhenDamaged.lean) requires schemaVersion 2 and capabilityApi 1.659 or newer";
   // A target test of what is worn, or a creature's worn tags, 1.658.
   if (
     !declaresApi(658) &&

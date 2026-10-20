@@ -213261,8 +213261,29 @@
                 "maxItems": 8
               },
               "saveWhenDamaged": {
-                "type": "boolean",
-                "const": true
+                "anyOf": [
+                  {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "lean": {
+                        "type": "string",
+                        "enum": [
+                          "advantage",
+                          "disadvantage"
+                        ]
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "lean"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
               },
               "shakeOff": {
                 "type": "object",

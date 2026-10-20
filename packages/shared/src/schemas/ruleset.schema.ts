@@ -13871,8 +13871,12 @@ const combatConditionSchema = z
      *  waits for the step, as source-side harm does. */
     endsWhenHarmedFrom: uniqueIds(8).optional(),
     /** Damage above zero repeats the applies' saveEnds with its stored DC (Capability API 1.125).
-     *  A holder with no saveEnds or DC has nothing to roll. */
-    saveWhenDamaged: z.literal(true).optional(),
+     *  A holder with no saveEnds or DC has nothing to roll. From Capability API 1.659 it may say
+     *  how that save leans, `{"lean": "advantage"}`: 5e's Hideous Laughter, saved against at the end
+     *  of each turn and, with advantage, each time it takes damage. */
+    saveWhenDamaged: z
+      .union([z.literal(true), z.object({ lean: z.enum(["advantage", "disadvantage"]) }).strict()])
+      .optional(),
     /** Another combatant on the holder's side can spend this budget on their turn to end it
      *  (Capability API 1.125). Reach is in the ruleset's unit; omitted, it is one cell. `self`: its
      *  holder may too (Capability API 1.320), with no check: the showcase's Seed Hopper, torn free

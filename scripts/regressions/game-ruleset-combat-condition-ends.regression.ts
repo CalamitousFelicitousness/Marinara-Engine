@@ -611,8 +611,18 @@ try {
       refused(withKeys({ endsWhen: value }), /endsWhen|unique/);
     }
     refused(
-      withKeys({ endsWhen: ["damaged", "harmed-by-source-side", "attacked", "ally-harmed-in-sight", "damaged"] }),
-      /at most 4/,
+      withKeys({
+        endsWhen: [
+          "damaged",
+          "harmed-by-source-side",
+          "attacked",
+          "ally-harmed-in-sight",
+          "healed",
+          "healed-by-magic",
+          "damaged",
+        ],
+      }),
+      /at most 6/,
     );
     refused(withKeys({ shakeOff: {} }), /Required/);
     for (const value of [false, "true", 1, null]) refused(withKeys({ saveWhenDamaged: value }), /saveWhenDamaged/);
@@ -641,9 +651,11 @@ try {
       "harmed-by-source-side",
       "attacked",
       "ally-harmed-in-sight",
+      "healed",
+      "healed-by-magic",
     ]);
     assert.equal(condition.endsWhen.minItems, 1);
-    assert.equal(condition.endsWhen.maxItems, 4);
+    assert.equal(condition.endsWhen.maxItems, 6);
     assert.equal(condition.endsWhen.uniqueItems, true);
     assert.equal(condition.saveWhenDamaged.const, true);
     assert.deepEqual(condition.shakeOff.required, ["budget"]);

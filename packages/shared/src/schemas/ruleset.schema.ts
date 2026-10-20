@@ -13425,11 +13425,15 @@ const combatConditionSchema = z
     /** What ends this condition (Capability API 1.125): any damage, or harm from whoever applied
      *  it or their side. Source-side harm finishes resolving before the condition ends. Or
      *  (Capability API 1.278) an attack roll at its holder, from anybody, or harm to one of its
-     *  holder's friends that its holder sees: 5e's Calm Emotions. Those too wait for the step. */
+     *  holder's friends that its holder sees: 5e's Calm Emotions. Those too wait for the step. Or
+     *  (Capability API 1.631) its holder regaining health, `healed` (caltrops' slowed walk), or
+     *  regaining it from magic, `healed-by-magic` (an Infernal Wound). */
     endsWhen: z
-      .array(z.enum(["damaged", "harmed-by-source-side", "attacked", "ally-harmed-in-sight"]))
+      .array(
+        z.enum(["damaged", "harmed-by-source-side", "attacked", "ally-harmed-in-sight", "healed", "healed-by-magic"]),
+      )
       .min(1)
-      .max(4)
+      .max(6)
       .refine((entries) => new Set(entries).size === entries.length, { message: "Condition endings must be unique" })
       .optional(),
     /** Harm from anything cast out of these catalogs ends it, from anybody (Capability API 1.278),

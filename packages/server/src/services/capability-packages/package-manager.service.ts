@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition that ends when its holder is healed, or healed by magic (1.631). */
+function carriesEndsHealed631(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEndsHealed631(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.endsWhen) && record.endsWhen.some((one) => one === "healed" || one === "healed-by-magic"))
+    return true;
+  return featureValues(record).some((one) => carriesEndsHealed631(one, depth + 1));
+}
+
 /** A condition's hits that deal damage, ask a save, or read the blow's damage type (1.630): a poison
  *  on a weapon. */
 function carriesOnHitDamage630(value: unknown, depth = 0): boolean {
@@ -8454,6 +8465,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that ends when its holder is healed, 1.631.
+  if (
+    !declaresApi(631) &&
+    (carriesEndsHealed631(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEndsHealed631(document)))
+  )
+    return "A ruleset with a condition that ends when its holder regains health (endsWhen healed, healed-by-magic) requires schemaVersion 2 and capabilityApi 1.631 or newer";
   // A condition's hits that deal damage, ask a save, or read the blow's damage type, 1.630.
   if (
     !declaresApi(630) &&

@@ -1862,6 +1862,15 @@ function dealHeal(
     maxHealth: after.max,
     ...(blocked ? { blocked: true as const } : {}),
   });
+  // Health regained, from anything or from magic, ends what lasts only until then (1.631): caltrops'
+  // slowed walk, an Infernal Wound.
+  if (after.value > before.value) {
+    for (const condition of rulesetCombatConditions(ctx.definition, target)) {
+      const endsWhen = ctx.combat.conditions?.find((one) => one.condition === condition)?.endsWhen;
+      if (endsWhen?.includes("healed") || (input.magical && endsWhen?.includes("healed-by-magic")))
+        removeCondition(ctx, target, condition, "recovered");
+    }
+  }
   // Back at full health, what lasts only until then ends (1.490): Berserk.
   if (amount > 0 && after.value >= after.max) {
     for (const condition of rulesetCombatConditions(ctx.definition, target)) {

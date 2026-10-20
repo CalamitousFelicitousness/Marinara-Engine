@@ -197343,11 +197343,13 @@
                     "damaged",
                     "harmed-by-source-side",
                     "attacked",
-                    "ally-harmed-in-sight"
+                    "ally-harmed-in-sight",
+                    "healed",
+                    "healed-by-magic"
                   ]
                 },
                 "minItems": 1,
-                "maxItems": 4,
+                "maxItems": 6,
                 "uniqueItems": true
               },
               "endsWhenHarmedFrom": {

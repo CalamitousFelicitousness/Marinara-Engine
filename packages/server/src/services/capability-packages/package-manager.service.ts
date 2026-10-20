@@ -2742,6 +2742,26 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Further uses' counts rolled for each stack (1.693): a Necklace of Prayer Beads. */
+function carriesMoreUsesRolled693(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMoreUsesRolled693(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.item)?.moreUsesRolled !== undefined) return true;
+  return featureValues(record).some((one) => carriesMoreUsesRolled693(one, depth + 1));
+}
+
+/** An item use that makes items (1.692): a scroll of Goodberry. */
+function carriesUseMakesItems692(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUseMakesItems692(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.use)?.makesItems !== undefined) return true;
+  return featureValues(record).some((one) => carriesUseMakesItems692(one, depth + 1));
+}
+
 /** An item use that costs something used again before a rest (1.691): a Ring of X-ray Vision. */
 function carriesAgainBeforeRest691(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9090,6 +9110,20 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item whose further uses' counts are rolled for each stack, 1.693.
+  if (
+    !declaresApi(693) &&
+    (carriesMoreUsesRolled693(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMoreUsesRolled693(document)))
+  )
+    return "A ruleset with an item whose further uses' counts are rolled (item.moreUsesRolled) requires schemaVersion 2 and capabilityApi 1.693 or newer";
+  // An item whose use makes items, 1.692.
+  if (
+    !declaresApi(692) &&
+    (carriesUseMakesItems692(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUseMakesItems692(document)))
+  )
+    return "A ruleset with an item whose use makes items (use.makesItems) requires schemaVersion 2 and capabilityApi 1.692 or newer";
   // An item that costs something used again before a rest, 1.691.
   if (
     !declaresApi(691) &&

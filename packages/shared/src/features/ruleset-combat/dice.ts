@@ -35,7 +35,14 @@ export function rulesetOwnUsesMax(
   uses: { max: number; rolled?: string },
   stackId: string | undefined,
   place: number | string,
+  /** Its item's `moreUsesRolled` (1.693): its count is how many of the pieces rolled for the stack
+   *  were picked for it, none at all where none was. A Necklace of Prayer Beads' beads. */
+  rolledKinds?: { dice: string; weights: readonly number[] },
 ): number {
+  if (rolledKinds && typeof place === "number") {
+    const pieces = rulesetRolledPieces(rolledKinds, stackId);
+    return Math.min(uses.max, pieces.filter((kind) => kind === place - 1).length);
+  }
   const dice = uses.rolled ? parseRulesetCombatDice(uses.rolled) : null;
   if (!dice) return uses.max;
   let total = dice.flat;
@@ -46,6 +53,33 @@ export function rulesetOwnUsesMax(
     total += 1 + (hash % Math.max(1, dice.sides));
   }
   return Math.max(1, Math.min(uses.max, total));
+}
+
+/** The pieces rolled for one stack of an item with `moreUsesRolled` (1.693), each the place (from 0) of
+ *  the further use it was picked for: the count thrown and each pick made from the stack's id, so the
+ *  stack keeps what it was made with. */
+export function rulesetRolledPieces(
+  rolled: { dice: string; weights: readonly number[] },
+  stackId: string | undefined,
+): number[] {
+  const dice = parseRulesetCombatDice(rolled.dice);
+  const total = rolled.weights.reduce((sum, weight) => sum + Math.max(0, weight), 0);
+  if (!dice || total <= 0) return [];
+  // FNV-1a over what names each throw, as a stack's own uses are rolled.
+  const face = (name: string, sides: number) => {
+    let hash = 0x811c9dc5;
+    for (const char of `${stackId ?? ""}:${name}`) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    return 1 + (hash % Math.max(1, sides));
+  };
+  let count = dice.flat;
+  for (let at = 0; at < dice.count; at++) count += face(`pieces:${at}`, dice.sides);
+  const pieces: number[] = [];
+  for (let piece = 0; piece < Math.max(0, Math.min(100, count)); piece++) {
+    let pick = face(`piece:${piece}`, total);
+    const kind = rolled.weights.findIndex((weight) => (pick -= Math.max(0, weight)) <= 0);
+    pieces.push(kind);
+  }
+  return pieces;
 }
 
 /** What a stack of an item with charges starts with (1.520): its `rolled` dice where it has them,

@@ -2442,7 +2442,9 @@ function itemUseActions(
         more.use,
         more.label,
         // Its own count, rolled for its stack where it is (1.483).
-        more.uses ? { more: n + 1, max: rulesetOwnUsesMax(more.uses, held.stack?.id, n + 1) } : undefined,
+        more.uses
+          ? { more: n + 1, max: rulesetOwnUsesMax(more.uses, held.stack?.id, n + 1, item.moreUsesRolled) }
+          : undefined,
       ),
     );
     // Other uses' effects beside one (1.482), by the ids they were built under: Thunder and Lightning.
@@ -5269,9 +5271,7 @@ function sheetCombatant(
   // What their entries make (1.668), held from the start as none of it, so a cast has its uses ready:
   // in a stack they already carry of it, or in one of its own, in their bag where it is known.
   const heldItems = [...(input.items ?? [])];
-  for (const action of abilities.flatMap((entry) => entry.actions)) {
-    const makes = action.makesItems;
-    if (!makes) continue;
+  const placeMade = (makes: NonNullable<RulesetCombatAction["makesItems"]>) => {
     const entry = byRef.get(makes.ref);
     let at = heldItems.findIndex((held) => held.stack?.ref === makes.ref || held.made === makes.ref);
     if (at < 0 && entry?.item) {
@@ -5294,6 +5294,12 @@ function sheetCombatant(
       });
     }
     if (at >= 0) makes.at = at;
+  };
+  for (const action of abilities.flatMap((entry) => entry.actions)) if (action.makesItems) placeMade(action.makesItems);
+  // And what an item's use makes (1.692), its place held before the items' own uses are read.
+  for (const owned of input.items ?? []) {
+    for (const use of [owned.item.use, ...(owned.item.moreUses ?? []).map((more) => more.use)])
+      if (use?.makesItems) placeMade({ ref: use.makesItems.item, count: use.makesItems.count });
   }
   // What an item's call lends its user to wield while it stands (1.686): a goat of terror's horns.
   (input.items ?? []).forEach((owned, index) => {
@@ -5333,6 +5339,9 @@ function sheetCombatant(
     // What the items they hold store (1.471), each cast once.
     ...storedItemActions(definition, input.items, byRef, build, evaluated, perCell),
   ];
+  // What an item's use makes (1.692), held a place for as a cast's is: a scroll of Goodberry.
+  for (const action of actions)
+    if (action.makesItems && action.makesItems.at === undefined) placeMade(action.makesItems);
   // What a spell glyph may store (1.401): each of its caster's own entries paid off the sheet, as a
   // mode; its level, the first or higher and no higher than the glyph is paid at, is checked as it is
   // cast.

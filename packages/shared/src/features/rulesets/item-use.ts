@@ -102,6 +102,8 @@ export interface RulesetItemUseSaid {
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
+  /** What its use made (1.692), into its user's bag: a scroll of Goodberry's berries. */
+  made?: { name: string; count: number };
   /** Used again before its user rested (1.691): the save they rolled, and what failing it did. */
   again?: { save: string; total: number; difficulty: number; success: boolean; rolls: number[]; harms: string[] };
 }
@@ -171,7 +173,7 @@ export function useRulesetItemOutsideFight(input: {
   // Its own uses (1.466), kept on the stack by its place.
   const own = chosen?.uses;
   // Its most, rolled for this stack where it is (1.483).
-  const ownMax = own ? rulesetOwnUsesMax(own, stack.id, input.more!) : undefined;
+  const ownMax = own ? rulesetOwnUsesMax(own, stack.id, input.more!, item.moreUsesRolled) : undefined;
   const ownNow = own ? Math.min(ownMax!, stack.usesLeft?.[String(input.more)] ?? ownMax!) : undefined;
   if (ownNow !== undefined && ownNow < 1) return { ok: false, reason: "none-left" };
 
@@ -377,7 +379,25 @@ export function useRulesetItemOutsideFight(input: {
   const becomes = turnsInto && breaks?.becomes ? { ref: breaks.becomes, name: turnsInto.name } : undefined;
   const broke = becomes ? undefined : cracked;
   const after = recharged ? recharged.amount : charges;
+  // What it makes (1.692), into its user's bag beside it, as a fight writes what a cast made.
+  const makes = works ? use.makesItems : undefined;
+  const madeEntry = makes ? input.itemOf(makes.item) : undefined;
+  const madeInto =
+    makes && madeEntry
+      ? (stacks.find(
+          (one) => one.item === makes.item && gameInventoryBagKey(one.holder) === gameInventoryBagKey(stack.holder),
+        )?.id ?? `${stack.id}-made-${makes.item.replace(/[^a-zA-Z0-9_-]/g, "-")}`)
+      : undefined;
   const spent = applyRulesetFightItemChanges(stacks, [
+    ...(makes && madeEntry && madeInto
+      ? [
+          {
+            stack: { id: madeInto, ref: makes.item, ...(stack.holder ? { holder: stack.holder } : {}) },
+            name: madeEntry.name,
+            taken: -makes.count,
+          },
+        ]
+      : []),
     {
       stack: { id: stack.id, ref: stack.item, ...(stack.holder ? { holder: stack.holder } : {}) },
       name: stack.name,
@@ -408,6 +428,7 @@ export function useRulesetItemOutsideFight(input: {
       ...(becomes ? { becomes: { name: becomes.name, roll: cracked! } } : {}),
       ...(gate ? { gate } : {}),
       ...(againSaid ? { again: againSaid } : {}),
+      ...(makes && madeEntry ? { made: { name: madeEntry.name, count: makes.count } } : {}),
       left:
         ownNow !== undefined && own
           ? { uses: ownNow - 1, max: ownMax! }
@@ -582,8 +603,8 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
       ? "it is used up for nothing"
       : said.aimed
         ? `aimed at somebody else, so nothing was applied: ${said.aimed}`
-        : parts.length > 0
-          ? parts.join(", ")
+        : parts.length > 0 || said.made
+          ? [...parts, ...(said.made ? [`makes ${said.made.count} ${said.made.name}`] : [])].join(", ")
           : "nothing changed";
   const left =
     said.broke !== undefined
@@ -646,7 +667,7 @@ export function rechargeRulesetItems(input: {
       const key = String(n + 1);
       if (!own?.recharge?.rests.includes(input.rest)) return;
       // Back to its stack's own count, rolled where it is (1.483).
-      const most = rulesetOwnUsesMax(own, stack.id, n + 1);
+      const most = rulesetOwnUsesMax(own, stack.id, n + 1, item.moreUsesRolled);
       const before = Math.min(most, next.usesLeft?.[key] ?? most);
       if (before >= most) return;
       const now = Math.max(before, Math.min(most, before + gain(own.recharge.amount, most)));
@@ -752,7 +773,7 @@ export function passRulesetItemTime(input: {
         counts.push({
           key: String(n + 1),
           rule: more.uses.recharge,
-          max: rulesetOwnUsesMax(more.uses, stack.id, n + 1),
+          max: rulesetOwnUsesMax(more.uses, stack.id, n + 1, item.moreUsesRolled),
           label: `${entry!.name}: ${more.label}`,
           uses: true,
         });

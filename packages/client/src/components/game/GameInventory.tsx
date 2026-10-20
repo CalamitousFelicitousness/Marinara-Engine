@@ -1374,7 +1374,7 @@ function RulesetItemDetails({
       )}
       {details.entry.item?.moreUses?.map((more, n) => {
         if (!more.uses) return null;
-        const most = rulesetOwnUsesMax(more.uses, stackId, n + 1);
+        const most = rulesetOwnUsesMax(more.uses, stackId, n + 1, details.entry.item?.moreUsesRolled);
         return (
           <div key={more.label} className="text-[0.65rem] leading-tight text-white/70">
             {localizeUi("ui.game.gameinventory.usesLeft", {

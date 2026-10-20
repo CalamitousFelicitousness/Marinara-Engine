@@ -11138,7 +11138,6 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     summons: true,
     scales: true,
     conjures: true,
-    makesItems: true,
     standard: true,
     rider: true,
   })
@@ -11398,11 +11397,13 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.duplicates &&
       // Or stops what it answers (1.677): a scroll of Counterspell.
       !(typeof use.reaction === "object" && use.reaction.cancels) &&
+      // Or makes items (1.692): a scroll of Goodberry.
+      !use.makesItems &&
       (!use.zone || !use.area)
     ) {
       issue(
         "kind",
-        "A utility use leaves an area standing, clears growth, teleports, calls creatures, casts other entries or stops what it answers, so it has an area and a zone, clears, a teleport, calls, duplicates or a reaction that cancels",
+        "A utility use leaves an area standing, clears growth, teleports, calls creatures, casts other entries, stops what it answers or makes items, so it has an area and a zone, clears, a teleport, calls, duplicates, a reaction that cancels or makesItems",
       );
     }
     // What it stops it reads against the level it casts at (1.677).
@@ -11610,6 +11611,15 @@ const catalogItemObjectSchema = z
      *  from the same charges (Capability API 1.267), or from its own `uses` (1.466): a wand of fear's
      *  Command beside its cone, a staff's spells. Only beside a `use`. Up to 8, or 16 (1.466). */
     moreUses: z.array(itemMoreUseSchema).min(1).max(16).optional(),
+    /** Its further uses' counts rolled for each stack (Capability API 1.693): `dice` many pieces, each
+     *  one of the further uses picked by `weights` (one per `moreUses`, in order, each as likely as its
+     *  weight against the rest), each adding one to that use's `uses` (never past its `max`, and none
+     *  where none was picked). Thrown once for the stack and the same at every reading. 5e's Necklace
+     *  of Prayer Beads, `{ "dice": "1d4+2", "weights": [6, 6, 4, 2, 1, 1] }`. */
+    moreUsesRolled: z
+      .object({ dice: catalogDice, weights: z.array(z.number().int().min(0).max(100)).min(1).max(16) })
+      .strict()
+      .optional(),
     /** How many charges it holds, which its use spends. The count is kept on its stack. */
     charges: z
       .object({
@@ -21744,6 +21754,16 @@ function itemIssues(
   }
   if (item.carried?.absorbs?.lifetime !== undefined)
     add([...at, "carried", "absorbs", "lifetime"], "What it ever took in is counted on a worn item");
+  // Rolled counts (1.693): a weight for each further use, each of which counts its own uses.
+  const rolledKinds = item.moreUsesRolled;
+  if (rolledKinds) {
+    if (!item.moreUses || rolledKinds.weights.length !== item.moreUses.length)
+      add([...at, "moreUsesRolled", "weights"], "Rolled counts weigh each further use, one weight apiece");
+    else if (item.moreUses.some((more) => !more.uses))
+      add([...at, "moreUsesRolled"], "Rolled counts are counts of further uses that count their own uses");
+    if (rolledKinds.weights.every((weight) => weight === 0))
+      add([...at, "moreUsesRolled", "weights"], "Rolled counts weigh some further use above nothing");
+  }
   item.moreUses?.forEach((more, index) => {
     if (more.use.label !== undefined)
       add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");
@@ -22269,6 +22289,18 @@ function useIssues(
     add([...at, "teleport"], '"teleport" is measured in cells, so the combat block declares "distance" too');
   if (use.temporary && (track?.levels?.length || track?.boxes)) {
     add([...at, "temporary"], `Health is the wound track "${track.id}", which carries no buffer for temporary points`);
+  }
+  // What its use makes is an item (1.692): a scroll of Goodberry's berries.
+  const madeRef = use.makesItems?.item;
+  if (madeRef !== undefined) {
+    const catalogId = madeRef.slice(0, madeRef.indexOf("/"));
+    const catalog = definition.catalogs?.find((one) => one.id === catalogId);
+    if (!catalog) add([...at, "makesItems", "item"], `Unknown entry "${madeRef}"`);
+    else if (catalog.entries && !catalog.from) {
+      const made = catalog.entries.find((one) => `${catalogId}/${one.id}` === madeRef);
+      if (!made) add([...at, "makesItems", "item"], `Unknown entry "${madeRef}"`);
+      else if (!made.item) add([...at, "makesItems", "item"], `"${madeRef}" is not an item`);
+    }
   }
   // Used again before a rest (1.691): its rests, save, tracks and conditions are the ruleset's.
   const again = use.againBeforeRest;

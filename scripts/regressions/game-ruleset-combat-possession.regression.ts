@@ -6,7 +6,8 @@
  *   - Failed, the target holds the condition and fights on the ghost's side; the ghost is away.
  *   - Made, nothing happens and the ghost stays.
  *   - The body dropping to nothing ends it: the ghost comes back beside it, the body back on its own side.
- *   - The condition ended any other way brings the ghost back the same.
+ *   - The condition ended any other way brings the ghost back the same: `endable` lets the ghost leave
+ *     at will, as a bonus action taken through the body.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -167,6 +168,49 @@ try {
     assert.ok(Math.max(Math.abs(ghost.x! - knight.x!), Math.abs(ghost.y! - knight.y!)) <= 1, "beside the body");
     assert.equal(knight.side, "party", "back on its own side");
     assert.ok(of(step.events, "returned").some((one) => one.targetId === "ghost"));
+  }
+
+  // ── The ghost ending it at will, as a bonus action, through the body it holds ──
+  {
+    const doc = fiveE();
+    doc.combat.conditions.find((one: { condition: string }) => one.condition === "possessed").endable = {
+      budget: "bonus",
+    };
+    const endable = parsed(doc);
+    const state = createRulesetEncounter({
+      definition: endable,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        { id: "ghost", name: "Ghost", side: "enemy", block: block({ actions: [possession()] }) },
+        { id: "knight", name: "Knight", side: "party", block: block({ saves: { cha_save: 0 } }) },
+      ],
+      board: {
+        grid: { width: 12, height: 3, tiles: Array.from({ length: 3 }, () => Array(12).fill("plains")) },
+        placements: { ghost: { x: 5, y: 1 }, knight: { x: 6, y: 1 } },
+      },
+    } as never);
+    state.order = ["ghost", "knight"];
+    state.turn = 0;
+    const went = applyRulesetCombatChoice(
+      endable,
+      state,
+      { actorId: "ghost", optionId: "possession", targetIds: ["knight"] },
+      () => 10,
+    );
+    assert.equal(rulesetCombatant(went.state, "ghost")!.away?.possessing, "knight");
+    const next = structuredClone(went.state);
+    next.turn = next.order.indexOf("knight");
+    rulesetCombatant(next, "knight")!.budgets.bonus = 1;
+    const step = applyRulesetCombatChoice(
+      endable,
+      next,
+      { actorId: "knight", optionId: "end-condition:possessed", targetIds: [] },
+      () => 10,
+    );
+    assert.deepEqual(of(step.events, "refused"), [], JSON.stringify(step.events));
+    assert.equal(rulesetCombatant(step.state, "ghost")!.away, undefined, "the ghost comes out");
+    assert.equal(rulesetCombatant(step.state, "knight")!.side, "party");
   }
 
   // ── Refused ──

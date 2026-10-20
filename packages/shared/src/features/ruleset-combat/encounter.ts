@@ -1310,10 +1310,22 @@ function heldSources(
   if (!sheet?.items?.length) return [];
   // What lies where it was dropped (1.266) does nothing for them, nor what is suppressed (1.468).
   const dropped = rulesetDroppedItems(combatant);
-  const items =
+  const items = (
     dropped.size || hush?.tags.size
       ? sheet.items.filter((held, index) => !dropped.has(index) && !rulesetItemSuppressed(hush, held.item))
-      : sheet.items;
+      : sheet.items
+  ).map((held) => {
+    // What holds only while charges or uses are left reads them as this fight left them (1.679).
+    const index = sheet.items!.indexOf(held);
+    const does = held.truly?.item ?? held.item;
+    if (!does.worn?.whileLeft && !does.carried?.whileLeft) return held;
+    const usesLeft = { ...held.usesLeft };
+    for (const [key, value] of Object.entries(combatant.usesLeft ?? {})) {
+      const [at, more] = key.split(":");
+      if (Number(at) === index && more !== undefined) usesLeft[more] = value;
+    }
+    return { ...held, charges: combatant.charges?.[index] ?? held.charges, usesLeft };
+  });
   let evaluated: EvaluatedRulesetSheet | undefined;
   return rulesetItemSources(
     definition,

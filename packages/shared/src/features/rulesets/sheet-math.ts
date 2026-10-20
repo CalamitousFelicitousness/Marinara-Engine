@@ -340,7 +340,32 @@ export function rulesetReadsItems(definition: RulesetDefinition): boolean {
 /** The item whose effects and stats a held item brings to the sheet: a fake's true item (1.79, the
  *  user's ruling: a worn or carried fake does what it truly does), else the item itself. */
 export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["item"] {
-  return held.truly?.item ?? held.item;
+  return rulesetItemWhileLeft(held.truly?.item ?? held.item, held);
+}
+
+/** An item without the parts of its effects that hold only while something of it is left (1.679),
+ *  once that has run out: its charges, or a further use's own count, as `left` keeps them (absent
+ *  reads as full). The item itself where nothing has run out. */
+export function rulesetItemWhileLeft(
+  item: RulesetCatalogItem,
+  left: { charges?: number; usesLeft?: Record<string, number> },
+): RulesetCatalogItem {
+  let changed: RulesetCatalogItem | undefined;
+  for (const side of ["worn", "carried"] as const) {
+    const effect = item[side];
+    if (!effect?.whileLeft) continue;
+    const gone = effect.whileLeft.filter((line) => {
+      if (line.charges) return left.charges !== undefined && left.charges <= 0;
+      const more = item.moreUses?.findIndex((one) => one.label === line.uses) ?? -1;
+      const now = more < 0 ? undefined : left.usesLeft?.[String(more)];
+      return now !== undefined && now <= 0;
+    });
+    if (gone.length === 0) continue;
+    const kept: Record<string, unknown> = { ...effect };
+    for (const line of gone) for (const key of line.keys) delete kept[key];
+    changed = { ...(changed ?? item), [side]: kept };
+  }
+  return changed ?? item;
 }
 
 /** What a character's items do to their abilities: each ability's highest `set` and the sum of its

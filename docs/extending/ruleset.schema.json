@@ -108845,6 +108845,40 @@
                           "minItems": 1,
                           "maxItems": 4
                         },
+                        "whileLeft": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "keys": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "charges": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "uses": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "keys"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
                         "absorbs": {
                           "type": "object",
                           "properties": {
@@ -111778,6 +111812,40 @@
                                 "additionalProperties": false
                               }
                             ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "whileLeft": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "keys": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "charges": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "uses": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "keys"
+                            ],
+                            "additionalProperties": false
                           },
                           "minItems": 1,
                           "maxItems": 4
@@ -114902,6 +114970,40 @@
                                       "additionalProperties": false
                                     }
                                   ]
+                                },
+                                "minItems": 1,
+                                "maxItems": 4
+                              },
+                              "whileLeft": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "keys": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 40
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "charges": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "uses": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "keys"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "minItems": 1,
                                 "maxItems": 4

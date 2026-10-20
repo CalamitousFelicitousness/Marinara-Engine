@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Parts of an item's effect that hold only while charges or uses are left (1.679): a Helm of
+ *  Brilliance. */
+function carriesWhileLeft679(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWhileLeft679(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.whileLeft !== undefined) return true;
+  return featureValues(record).some((one) => carriesWhileLeft679(one, depth + 1));
+}
+
 /** A guided-builder catalog step's filter that is a list of values, matching any (1.678): a bard's
  *  Magical Secrets, `{"kind": ["spell", "cantrip"]}`. */
 function carriesStepFilterList678(value: unknown, depth = 0): boolean {
@@ -8949,6 +8960,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What holds only while charges or uses are left, 1.679.
+  if (
+    !declaresApi(679) &&
+    (carriesWhileLeft679(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWhileLeft679(document)))
+  )
+    return "A ruleset with an item's effect that holds only while charges or uses are left (whileLeft) requires schemaVersion 2 and capabilityApi 1.679 or newer";
   // A builder step's filter that is a list, 1.678.
   if (
     !declaresApi(678) &&

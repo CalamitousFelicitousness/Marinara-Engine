@@ -14503,6 +14503,27 @@ const rulesetItemEffectObjectSchema = z
      *  id, "when": valueRef }` (Capability API 1.600), kept on only while that reads above zero off
      *  the wearer's sheet: a Holy Avenger's 30-foot aura for a paladin of level 17 or higher. */
     keepsOn: keptOnSchema.optional(),
+    /** Parts of this effect that hold only while something of the item is left (Capability API
+     *  1.679): its `keys`, while it has `charges` left, or while its further use of that label
+     *  (`uses`, one counting its own uses, 1.466) has any. 5e's Helm of Brilliance, `[{"keys":
+     *  ["resist"], "uses": "Wall of Fire"}, {"keys": ["keepsOn"], "charges": true}]`: fire resistance
+     *  while a ruby is left, the undead-burning light while a diamond is. */
+    whileLeft: z
+      .array(
+        z
+          .object({
+            keys: z.array(z.string().trim().min(1).max(40)).min(1).max(8),
+            charges: z.literal(true).optional(),
+            uses: promptSafeText(40).optional(),
+          })
+          .strict()
+          .refine((line) => (line.charges === true) !== (line.uses !== undefined), {
+            message: 'A "whileLeft" line holds while the item\'s "charges" or one of its "uses" last, one of them',
+          }),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     /** A foe's entry aimed at its holder alone, taken in (Capability API 1.469): 5e's Rod of
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 9, "charges": "gains" }`, and Ioun Stone of
      *  Absorption, `{ "catalogs": ["spells"], "maxLevel": 4, "charges": "spends" }`. */
@@ -21581,6 +21602,20 @@ function itemIssues(
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
   if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  // What holds only while something of the item is left (1.679).
+  for (const side of ["worn", "carried"] as const) {
+    const effect = item[side];
+    effect?.whileLeft?.forEach((line, index) => {
+      const path = [...at, side, "whileLeft", index];
+      for (const key of line.keys) {
+        if (key === "whileLeft" || (effect as Record<string, unknown>)[key] === undefined)
+          add([...path, "keys"], `"${key}" is not something this effect does`);
+      }
+      if (line.charges && !item.charges) add([...path, "charges"], "The item has no charges to hold it");
+      if (line.uses !== undefined && !item.moreUses?.some((more) => more.label === line.uses && more.uses))
+        add([...path, "uses"], `No further use "${line.uses}" that counts its own uses`);
+    });
+  }
   // What a use rolls for (1.506): its rows are uses of their own, none rolling again.
   item.useTable?.forEach((row, index) => {
     if (!row.use) return;

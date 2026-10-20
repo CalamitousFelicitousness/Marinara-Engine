@@ -2549,6 +2549,8 @@ export function rulesetZoneAction(
               ...(move.check.failsToward !== undefined
                 ? { failsToward: rulesetInCells(move.check.failsToward, perCell ?? 1) }
                 : {}),
+              // What holding a talisman does (1.650).
+              ...(move.check.holding ? { holding: structuredClone(move.check.holding) } : {}),
             },
           }
         : {}),

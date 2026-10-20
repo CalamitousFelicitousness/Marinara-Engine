@@ -42,7 +42,7 @@ import {
   rulesetHeldChargesMax,
   RULESET_ITEM_SLOT_PREFIX,
 } from "./ammo.js";
-import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
+import { resolveRulesetValueRef, rulesetAbilityModifier, rulesetHeldItemDoes } from "../rulesets/sheet-math.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
@@ -4829,7 +4829,7 @@ export function rulesetUncompelledOptions(
     const move = action.zone?.move;
     if (!move?.check || !zone.at || (actor.budgets[move.budget] ?? 0) < 1) continue;
     if (rulesetCellDistance(standingAt!, zone.at) > move.check.within) continue;
-    const cells = rulesetZoneMoveCells(state, zone, rulesetZoneCheckReach(definition, actor, move));
+    const cells = rulesetZoneMoveCells(state, zone, rulesetZoneCheckReach(definition, actor, move, zone));
     if (cells.length === 0) continue;
     options.push({
       id: `${RULESET_ZONE_CHECK_OPTION_PREFIX}${caster.id}|${zone.actionId}`,
@@ -5396,13 +5396,35 @@ export function rulesetZoneCheckReach(
   definition: RulesetDefinition,
   mover: RulesetCombatant,
   move: NonNullable<NonNullable<RulesetCombatAction["zone"]>["move"]>,
+  /** The zone, for whom it is held by: a talisman's farther reach for one already in control (1.650). */
+  zone?: { heldBy?: string },
 ): number {
-  const by = move.check?.distanceBy;
+  const held = move.check?.holding;
+  const by =
+    held?.distanceBy && zone?.heldBy === mover.id && rulesetHoldsTagged(mover, held.tags)
+      ? held.distanceBy
+      : move.check?.distanceBy;
   if (!by || !move.check) return move.distance;
   const score = mover.sheet?.build.abilities?.[by.abilityMod] ?? mover.block?.abilities?.[by.abilityMod];
   const mod = typeof score === "number" ? rulesetAbilityModifier(definition, score) : 0;
-  const feet = Math.max(by.atLeast ?? 0, by.times * mod);
+  const add = "add" in by && typeof by.add === "number" ? by.add : 0;
+  const feet = Math.max(by.atLeast ?? 0, add + by.times * mod);
   return feet > 0 ? Math.max(0, Math.floor(feet / move.check.perCell)) : 0;
+}
+
+/** Whether somebody holds something with one of these item tags (1.650): an item of their sheet worn
+ *  and not dropped, or a thing a creature holds. */
+export function rulesetHoldsTagged(combatant: RulesetCombatant, tags: readonly string[]): boolean {
+  const dropped = rulesetDroppedItems(combatant);
+  const items = combatant.sheet?.items ?? [];
+  if (
+    items.some(
+      (held, index) =>
+        held.worn && !dropped.has(index) && (rulesetHeldItemDoes(held).tags ?? []).some((tag) => tags.includes(tag)),
+    )
+  )
+    return true;
+  return (combatant.block?.held ?? []).some((thing) => thing.tags.some((tag) => tags.includes(tag)));
 }
 
 /** The mode a repeat is made in (1.639): the one its cast was made in, while its user concentrates

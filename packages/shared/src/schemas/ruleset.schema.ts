@@ -3397,6 +3397,12 @@ export interface RulesetCatalogZone {
       within: number;
       distanceBy?: { abilityMod: string; times: number; atLeast?: number };
       failsToward?: number;
+      holding?: {
+        tags: string[];
+        adds?: RulesetValueRef;
+        advantage?: true;
+        distanceBy?: { abilityMod: string; times: number; add?: number; atLeast?: number };
+      };
     };
   };
   drift?: { distance: number };
@@ -3724,6 +3730,31 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
               .strict()
               .optional(),
             failsToward: z.number().finite().gt(0).max(10000).optional(),
+            /** What a mover holding an item with one of `tags` (worn or held) does better
+             *  (Capability API 1.650): `adds` read off their sheet on the check, it thrown with
+             *  `advantage`, and, while they already control it, as far as `distanceBy` times their
+             *  ability modifier plus `add`. 5e's Talisman of the Sphere: proficiency doubled on the
+             *  Arcana check, and 10 feet plus 10 × Intelligence modifier for one in control. */
+            holding: z
+              .object({
+                tags: z.array(sheetId).min(1).max(8),
+                adds: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+                advantage: z.literal(true).optional(),
+                distanceBy: z
+                  .object({
+                    abilityMod: sheetId,
+                    times: z.number().finite().min(0).max(1000),
+                    add: z.number().finite().min(0).max(10000).optional(),
+                    atLeast: z.number().finite().gt(0).max(10000).optional(),
+                  })
+                  .strict()
+                  .optional(),
+              })
+              .strict()
+              .refine((holding) => holding.adds !== undefined || holding.advantage || holding.distanceBy, {
+                message: "Holding it does something: adds, advantage or distanceBy",
+              })
+              .optional(),
           })
           .strict()
           .optional(),
@@ -23590,6 +23621,18 @@ export function rulesetCatalogEntryIssues(
       if (ability !== undefined && !definition.sheet.abilities.some((one) => one.id === ability)) {
         add([index, "mechanics", "zone", "move", "check", "distanceBy", "abilityMod"], `Unknown ability "${ability}"`);
       }
+      // What holding something does (1.650): items' own tags, an ability of the mover's.
+      const holding = moveCheck.holding;
+      holding?.tags.forEach((tag, tagIndex) => {
+        if (!definition.items?.tags?.some((one) => one.id === tag))
+          add([index, "mechanics", "zone", "move", "check", "holding", "tags", tagIndex], `Unknown item tag "${tag}"`);
+      });
+      const heldAbility = holding?.distanceBy?.abilityMod;
+      if (heldAbility !== undefined && !definition.sheet.abilities.some((one) => one.id === heldAbility))
+        add(
+          [index, "mechanics", "zone", "move", "check", "holding", "distanceBy", "abilityMod"],
+          `Unknown ability "${heldAbility}"`,
+        );
     }
     // A trap is disarmed with one of the fight's checks, by the "disarm" standard action (1.616).
     const disarm = mechanics?.zone?.disarm;

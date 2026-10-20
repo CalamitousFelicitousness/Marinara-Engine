@@ -251,6 +251,7 @@ import {
   rulesetCombatOptions,
   rulesetUncompelledOptions,
   rulesetContestCheck,
+  rulesetHoldsTagged,
   rulesetEscapeDc,
   rulesetHoldsFor,
   rulesetCostSteps,
@@ -7168,6 +7169,9 @@ function applyChoice(
     const holder =
       zone.heldBy !== undefined && zone.heldBy !== working.id ? rulesetCombatant(ctx.state, zone.heldBy) : undefined;
     const rival = holder && rulesetCombatStanding(holder) ? holder : undefined;
+    // Holding a talisman (1.650): what it adds, and advantage.
+    const holding = check.holding && rulesetHoldsTagged(working, check.holding.tags) ? check.holding : undefined;
+    const adds = holding?.adds ? (rulesetCombatValue(ctx.definition, working, holding.adds) ?? 0) : 0;
     const before = ctx.events.length;
     resolveContest(
       ctx,
@@ -7179,6 +7183,8 @@ function applyChoice(
         defender: [check.check],
         ties: "defender",
         ...(rival ? {} : { difficulty: check.difficulty }),
+        ...(adds ? { attackerAdds: adds } : {}),
+        ...(holding?.advantage ? { attackerAdvantage: true as const } : {}),
       },
       rival ?? working,
     );
@@ -8751,14 +8757,16 @@ function resolveContest(
   // after the dice. A side nothing leans or adds to is written exactly as it always was. In a pool
   // fight each side throws its check as a pool and the one with more net successes wins.
   const thrown = (who: RulesetCombatant, check: string, modifier: number) => throwCheck(ctx, who, check, modifier);
-  const mine = rulesetContestCheck(actor, contest, "attacker");
+  const picked = rulesetContestCheck(actor, contest, "attacker");
+  // What it adds to the actor's own check (1.650): a Talisman of the Sphere's.
+  const mine = contest.attackerAdds ? { ...picked, modifier: picked.modifier + contest.attackerAdds } : picked;
   // With advantage at one no bigger than it says (1.534): the Forceful Hand at a Medium creature.
   const atMost = contest.advantageAtMostSize
     ? ctx.combat.sizes?.order.findIndex((one) => one.id === contest.advantageAtMostSize)
     : undefined;
   const targetSize = atMost !== undefined && atMost >= 0 ? rulesetSizeRank(ctx.combat, target) : undefined;
   const attacker =
-    targetSize !== undefined && atMost !== undefined && targetSize <= atMost
+    (targetSize !== undefined && atMost !== undefined && targetSize <= atMost) || contest.attackerAdvantage
       ? throwCheck(ctx, actor, mine.check, mine.modifier, { advantage: true, disadvantage: false })
       : thrown(actor, mine.check, mine.modifier);
   // Breaking free of a hold that names its escape DC (1.103): nobody throws for the holder, and the

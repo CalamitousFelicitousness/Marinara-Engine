@@ -1736,6 +1736,10 @@ export interface RulesetCombatContest {
   actorHolds?: string[];
   /** The actor rolls with advantage at a target no bigger than this size (1.534). */
   advantageAtMostSize?: string;
+  /** Added to the actor's check, and the actor's check thrown with advantage (1.650): a Talisman of
+   *  the Sphere's hold on a Sphere of Annihilation. */
+  attackerAdds?: number;
+  attackerAdvantage?: true;
   /** Added to `push`, read off the actor's sheet or its caller's, in the ruleset's distance (1.534). */
   pushRead?: RulesetValueRef;
   /** The winner moves with the one it pushed (1.545): Forceful Hand. */
@@ -4334,6 +4338,14 @@ export interface RulesetCombatZoneRule {
       perCell: number;
       distanceBy?: { abilityMod: string; times: number; atLeast?: number };
       failsToward?: number;
+      /** What a mover holding an item with one of these tags does better (1.650): `distanceBy` in
+       *  the ruleset's distance, read only while they already control it. */
+      holding?: {
+        tags: string[];
+        adds?: RulesetValueRef;
+        advantage?: true;
+        distanceBy?: { abilityMod: string; times: number; add?: number; atLeast?: number };
+      };
     };
   };
   /** Cells it moves straight away from its caster as each of their turns starts (1.173). */

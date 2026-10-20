@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A zone moved on a check that a mover holding something does better (1.650): a Talisman of the
+ *  Sphere. */
+function carriesZoneHolding650(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneHolding650(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(plainRecord(record.move)?.check)?.holding !== undefined) return true;
+  return featureValues(record).some((one) => carriesZoneHolding650(one, depth + 1));
+}
+
 /** An area of only the cell it is at (1.649): a Sphere of Annihilation. */
 function carriesOneCell649(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8673,6 +8684,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone moved on a check that a mover holding something does better, 1.650.
+  if (
+    !declaresApi(650) &&
+    (carriesZoneHolding650(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneHolding650(document)))
+  )
+    return "A ruleset with a zone moved on a check that a mover holding something does better (zone.move.check.holding) requires schemaVersion 2 and capabilityApi 1.650 or newer";
   // An area of only the cell it is at, 1.649.
   if (
     !declaresApi(649) &&

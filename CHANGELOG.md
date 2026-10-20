@@ -420,6 +420,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Install, updates and security
 
+- Marinara refuses HTTPS certificates from eight eMudhra certificate authorities whose private keys were stolen, so whoever holds those keys can't pose as your AI provider or any other site Marinara connects to. Browsers already block them, and Node.js will in a coming release (#7900).
+
 - On Windows, Marinara starts again after a crash or power cut instead of refusing to start because another copy seemed to be using your data, which used to mean deleting `data/storage/.writer-lease` by hand. This covers data on the computer's own drive. Data on a network drive or shared folder stays locked, so two computers never write to it at once (#7804, #7812).
 
 - Building the app on a computer now needs about 2.5 GiB of memory for Node.js, where a 2048 MiB limit was enough for 2.5.0. If `NODE_OPTIONS` sets a lower limit, the build still stops with `JavaScript heap out of memory`, but it now says how to raise or remove the limit instead of showing only Node.js's crash report. Marinara never raises a limit you set. Android (Termux) builds are not affected (#7838).

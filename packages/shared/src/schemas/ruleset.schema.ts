@@ -4701,6 +4701,12 @@ const useChanceSchema: z.ZodType<RulesetUseChance, z.ZodTypeDef, unknown> = z
   })
   .strict();
 /** A creature's (Capability API 1.388): a printed chance, nothing off a sheet. */
+/** What a creature's action does to whoever its blow drops (Capability API 1.624). */
+export interface RulesetCreatureOnFell {
+  stabilizes?: true;
+  applies?: RulesetCatalogApplies[];
+}
+
 interface CreatureOncePerTarget {
   whenSaved?: true;
   whenEnds?: true;
@@ -8201,6 +8207,14 @@ const creatureDamageSchema = z
 
 /** A save the action itself forces. The difficulty is the action's own, because a stat block is not
  *  a sheet and has no abilities list to read one off. */
+const creatureOnFellSchema: z.ZodType<RulesetCreatureOnFell, z.ZodTypeDef, unknown> = z
+  .object({
+    stabilizes: z.literal(true).optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+  })
+  .strict()
+  .refine((fell) => fell.stabilizes || fell.applies, { message: '"onFell" stabilizes, applies, or both' });
+
 const creatureSaveSchema = z
   .object({
     save: sheetId,
@@ -8615,6 +8629,11 @@ const creatureActionFullSchema = z
      *  take that rest. `shared` makes every creature whose action says the same one source: 5e's
      *  dragons' Frightful Presence, 24 hours, and the Dreadful Glare "of all mummies". */
     oncePerTarget: creatureOncePerTargetSchema.optional(),
+    /** Whoever its blow drops to nothing (Capability API 1.624), not already down: left stable where
+     *  it `stabilizes`, with what it `applies`. A giant spider's bite, "the target is stable but
+     *  poisoned for 1 hour, even after regaining hit points, and is paralyzed while poisoned in this
+     *  way". */
+    onFell: creatureOnFellSchema.optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -20173,6 +20192,15 @@ function creatureIssues(
     const sparedUntil = action.oncePerTarget?.until;
     if (sparedUntil && !definition.rests.some((rest) => rest.id === sparedUntil)) {
       add([...path, "oncePerTarget", "until"], `Unknown rest "${sparedUntil}"`);
+    }
+    // What it puts on whoever it drops (1.624), held to the same names; steadying needs dying rules.
+    action.onFell?.applies?.forEach((applies, appliesIndex) => {
+      const where = [...path, "onFell", "applies", appliesIndex];
+      if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
+      if (applies.when) add([...where, "when"], 'A creature has no sheet to read "when" off');
+    });
+    if (action.onFell?.stabilizes && !definition.combat?.dying) {
+      add([...path, "onFell", "stabilizes"], "Steadying the dying needs a combat block with a dying rule");
     }
     // What a bad failure puts on instead (1.620), held to the same names.
     action.save?.failedBy?.applies.forEach((applies, appliesIndex) => {

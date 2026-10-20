@@ -239,6 +239,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // In the ruleset's distance, as reach is: the encounter turns both into cells (1.184).
     ...(action.push !== undefined ? { push: action.push } : {}),
     ...(action.pull !== undefined ? { pull: action.pull } : {}),
+    ...(action.onFell ? { onFell: structuredClone(action.onFell) } : {}),
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),

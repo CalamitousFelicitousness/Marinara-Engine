@@ -8737,6 +8737,27 @@ function resolveContest(
   }
 }
 
+/** What a blow does to whoever it dropped (1.624): left stable, then what it puts on them. */
+function fellByBlow(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): void {
+  const rule = action.onFell!;
+  if (rule.stabilizes && target.dying && !target.stable) {
+    target.stable = true;
+    clearDyingTracks(ctx, target);
+    ctx.events.push({ type: "stabilized", targetId: target.id, sourceId: actor.id });
+  }
+  for (const applies of rule.applies ?? []) {
+    applyConditionId(ctx, target, applies.condition, applies, {
+      sourceId: actor.id,
+      action: [action.id, action.label],
+    });
+  }
+}
+
 /** Whether `actor` wins the contest an action is decided by against `target` (1.512): Telekinesis. */
 function wonContest(
   ctx: RulesetCombatContext,
@@ -15570,6 +15591,9 @@ function resolveActionBodyIn(
     const land = (part: RulesetDamageInput) => (modifiers.length ? parts.push(part) : landNow(part));
     // Whether it was hurt as the blow came (1.343), before any of the blow lands: Colossus Slayer.
     const hurtBefore = rulesetCombatHurt(ctx.definition, ctx.combat, target);
+    // Whether they were down already (1.624), so a blow that drops them is told from one that lands
+    // on somebody lying there.
+    const downBefore = !!target.down;
     if (pooled && action.damage && spends && target.hardness !== undefined && spends.number < target.hardness) {
       // A number below the target's hardness lands and does nothing: the maker's number still goes
       // back to the base, as it does for any spending blow that landed.
@@ -15851,6 +15875,8 @@ function resolveActionBodyIn(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // Dropped by this blow (1.624): a giant spider's poison leaves them stable, poisoned and paralyzed.
+    if (action.onFell && !downBefore && target.down && !target.defeated) fellByBlow(ctx, actor, action, target);
     // A weapon that hit it corroded (1.498): a rust monster's Rust Metal.
     if (dealt > 0) corrodeOnHit(ctx, actor, action, target);
     // Caught (1.363): a weapon's missile its target took all of away, to be thrown back with the

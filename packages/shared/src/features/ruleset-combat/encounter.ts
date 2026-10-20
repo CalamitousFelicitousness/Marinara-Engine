@@ -4735,6 +4735,7 @@ function blockActions(
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(perCell !== undefined && action.pull !== undefined ? { pull: rulesetInCells(action.pull, perCell) } : {}),
+    ...(action.onFell ? { onFell: structuredClone(action.onFell) } : {}),
     ...(action.teleport && (perCell !== undefined || action.teleport.leaves)
       ? { teleport: rulesetTeleportInCells(action.teleport, perCell ?? 1) }
       : {}),

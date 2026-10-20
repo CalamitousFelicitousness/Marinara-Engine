@@ -156,6 +156,12 @@ export interface RulesetDroppedThing {
 }
 
 /** A condition a hit or a failed save puts on its target. */
+/** What a blow does to whoever it drops (1.624): left stable, and what it puts on them. */
+export interface RulesetCombatOnFell {
+  stabilizes?: true;
+  applies?: RulesetCombatApplies[];
+}
+
 export interface RulesetCombatApplies {
   condition: string;
   /** The creature type its user named as they used it (1.270), remembered by what it puts on. */
@@ -509,6 +515,8 @@ export interface RulesetStatBlockAction {
   /** Pulled this far straight toward the creature, stopping beside it, in the ruleset's own distance,
    *  on a failed save when it has one (1.622). */
   pull?: number;
+  /** Whoever its blow drops (1.624): left stable, and what it puts on them. */
+  onFell?: RulesetCombatOnFell;
   /** The creature teleports, in the ruleset's own distance (1.276). */
   teleport?: RulesetTeleport;
   /** A move bought with points (1.283): `share` of its speed or `distance` in the ruleset's own unit. */
@@ -1308,6 +1316,8 @@ export interface RulesetCombatAction {
   push?: number;
   /** Cells they are pulled straight toward its maker instead, stopping beside them (1.622). */
   pull?: number;
+  /** Whoever its blow drops, not already down (1.624): a giant spider's poison. */
+  onFell?: RulesetCombatOnFell;
   /** Whoever its area catches and saves is pushed away from where it was aimed until out of it
    *  (1.578): a Bead of Force. */
   pushesOutSaved?: true;

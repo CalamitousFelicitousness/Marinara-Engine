@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ErrorInfo,
@@ -67,6 +68,7 @@ import { installLongTaskWarner } from "./lib/perf-diagnostics";
 import { getStoreBackLayers } from "./lib/back-layers";
 import { initBackNavigation, syncBackNavigation } from "./lib/back-navigation";
 import { setCustomNotificationSoundUrl } from "./lib/notification-sound";
+import { PHONE_TOAST_TOP_VARIABLE, watchPhoneToastTop } from "./lib/phone-toast-top";
 
 const VERSION_CHECK_INTERVAL_MS = 5 * 60_000;
 // Against a frozen host the connection opens but is never answered; without a
@@ -560,6 +562,14 @@ export function App() {
       window.removeEventListener("resize", handler);
     };
   }, []);
+
+  // A phone toast sits below the header rows at the top, never over their controls (lib/phone-toast-top).
+  const toasterHostRef = useRef<HTMLDivElement>(null);
+  const phoneToastsAtTop = isMobileShell && (omnibarOpen || notificationPosition !== "bottom");
+  useEffect(() => {
+    if (!phoneToastsAtTop || !toasterHostRef.current) return;
+    return watchPhoneToastTop(toasterHostRef.current);
+  }, [phoneToastsAtTop]);
 
   // Hardware / gesture back dismisses the topmost overlay instead of exiting.
   useEffect(() => {
@@ -1268,6 +1278,7 @@ export function App() {
       <AppDialogRenderer />
       <CsrfOriginWarningBanner />
       <div
+        ref={toasterHostRef}
         // Interacting with a toast (including its close button) must not count
         // as an outside click for chat floating panels — otherwise dismissing
         // a toast closes the settings/gallery drawer (and any modal inside it).
@@ -1298,8 +1309,12 @@ export function App() {
           mobileOffset={{
             // On the mobile omnibar the toast sits under the omnibar's own header
             // (search field + status row) instead of the app's top bar, so it
-            // needs more clearance than the app-shell top offset below.
-            top: omnibarOpen ? "calc(env(safe-area-inset-top) + 5rem)" : "calc(env(safe-area-inset-top) + 3.5rem)",
+            // needs more clearance than the app-shell top offset below. Elsewhere
+            // it sits below the window, editor, panel or chat header rows, and
+            // never higher than under the top bar.
+            top: omnibarOpen
+              ? "calc(env(safe-area-inset-top) + 5rem)"
+              : `max(calc(env(safe-area-inset-top) + 3.5rem), var(${PHONE_TOAST_TOP_VARIABLE}, 0px))`,
             bottom: "1rem",
           }}
           theme={theme}

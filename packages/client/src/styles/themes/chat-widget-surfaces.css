@@ -530,8 +530,8 @@
   --mari-chat-existing-border: var(--marinara-chat-chrome-panel-border);
 }
 .mari-game-side-line {
-  --mari-chat-existing-bg: color-mix(in oklab, var(--background) 75%, transparent);
-  --mari-chat-existing-border: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --mari-chat-existing-bg: color-mix(in oklab, var(--card) 95%, transparent);
+  --mari-chat-existing-border: var(--border);
 }
 /* Game sections keep their own fills under cut corners (below); the frame outline keeps
    each section's own outline color under Shape alone. */

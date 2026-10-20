@@ -59,6 +59,35 @@ try {
   }
   await provider.chatComplete([{ role: "user", content: "Hello" }], { model: "claude-opus-5" });
   assert.deepEqual(sdkOptions.settings, { fastMode: false }, "off preserves Claude's account-dependent default TTL");
+
+  // The resumed history carries one cache marker, on the newest reply that isn't the last
+  // history entry: that entry holds the moving </chat_history> close.
+  const history = [
+    { role: "system" as const, content: "System" },
+    { role: "user" as const, content: "<chat_history>\nOne" },
+    { role: "assistant" as const, content: "Reply one" },
+    { role: "user" as const, content: "Two" },
+    { role: "assistant" as const, content: "Reply two" },
+    { role: "user" as const, content: "Three" },
+    { role: "assistant" as const, content: "Reply three\n</chat_history>" },
+    { role: "user" as const, content: "<context>per turn</context>\n<last_message>\nFour\n</last_message>" },
+  ];
+  for (const [extended, expected] of [
+    [true, { type: "ephemeral", ttl: "1h" }],
+    [false, { type: "ephemeral" }],
+  ] as const) {
+    await provider.chatComplete(history, { model: "claude-opus-5", anthropicExtendedCacheTtl: extended });
+    const store = sdkOptions.sessionStore as { load(key: { sessionId: string }): Promise<unknown[] | null> };
+    const entries = (await store.load({ sessionId: sdkOptions.resume as string })) as {
+      message: { content: string | { text?: string; cache_control?: unknown }[] };
+    }[];
+    const marked = entries.flatMap((entry) =>
+      Array.isArray(entry.message.content)
+        ? entry.message.content.filter((block) => block.cache_control).map((block) => [block.text, block.cache_control])
+        : [],
+    );
+    assert.deepEqual(marked, [["Reply two", expected]], "one history marker, before the moving wrapper close");
+  }
 } finally {
   logger.debug = originalDebug;
   __setSdkForTesting(null);

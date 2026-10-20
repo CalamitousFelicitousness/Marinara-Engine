@@ -30,6 +30,7 @@ import { logger } from "../../../../lib/logger.js";
 export interface TextBlock {
   type: "text";
   text: string;
+  cache_control?: { type: "ephemeral"; ttl?: "1h" };
 }
 export interface ThinkingBlock {
   type: "thinking";
@@ -290,11 +291,19 @@ export function buildAssistantEntry(args: {
  * System messages are excluded — they ride the SDK's `systemPrompt` option,
  * not the transcript. Each entry points its `parentUuid` at the prior entry's
  * `uuid` so the SDK can walk the conversation back to its root.
+ *
+ * `historyCacheControl` marks the newest assistant reply that is not the last
+ * history entry. Claude Code only marks the system prompt and the current
+ * turn, and Marinara's current turn carries per-turn blocks that are gone from
+ * it a turn later, so without a history marker the next request can only reuse
+ * the system prompt. The last history entry is skipped because prompt
+ * wrappers (the xml `</chat_history>` close) ride on it and move every turn.
  */
 export function assembleEntries(
   history: readonly ChatMessage[],
   meta: CommonSessionMeta,
   model: string,
+  historyCacheControl?: TextBlock["cache_control"],
 ): SyntheticEntry[] {
   const entries: SyntheticEntry[] = [];
   let parentUuid: string | null = null;
@@ -311,6 +320,13 @@ export function assembleEntries(
       entries.push(entry);
       parentUuid = entry.uuid;
     }
+  }
+  for (let i = entries.length - 2; historyCacheControl && i >= 0; i--) {
+    const entry = entries[i]!;
+    if (entry.type !== "assistant") continue;
+    const textBlock = entry.message.content.filter((block) => block.type === "text" && block.text).at(-1);
+    if (textBlock?.type === "text") textBlock.cache_control = historyCacheControl;
+    break;
   }
   return entries;
 }

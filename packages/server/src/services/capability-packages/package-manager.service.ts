@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item use whose call lends weapons while it stands (1.686): a goat of terror's horns. */
+function carriesWieldsWhileCalled686(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWieldsWhileCalled686(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.use)?.wieldsWhileCalled !== undefined) return true;
+  return featureValues(record).some((one) => carriesWieldsWhileCalled686(one, depth + 1));
+}
+
 /** A catalog entry's or an item use's `against` (1.685): Shocking Grasp at metal armor. */
 function carriesEntryAgainst685(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9038,6 +9048,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item use whose call lends weapons while it stands, 1.686.
+  if (
+    !declaresApi(686) &&
+    (carriesWieldsWhileCalled686(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWieldsWhileCalled686(document)))
+  )
+    return "A ruleset with an item use whose call lends weapons while it stands (use.wieldsWhileCalled) requires schemaVersion 2 and capabilityApi 1.686 or newer";
   // An entry's attack that rolls differently against a target that is something, 1.685.
   if (
     !declaresApi(685) &&

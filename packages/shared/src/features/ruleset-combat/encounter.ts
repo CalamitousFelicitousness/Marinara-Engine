@@ -3037,6 +3037,24 @@ function itemFormActions(items: readonly RulesetSheetItem[] | undefined): Rulese
   });
 }
 
+/** Taking in hand a weapon a call lends (1.686), on its budget: a goat of terror's horn. */
+function lentTakeActions(items: readonly RulesetSheetItem[]): RulesetCombatAction[] {
+  return items.flatMap((held, index) =>
+    held.lent?.takes !== undefined
+      ? [
+          {
+            id: `take:${index}`,
+            kind: "switch" as const,
+            label: `Take ${held.name ?? "weapon"}`,
+            budget: held.lent.takes,
+            targets: { side: "self" as const, count: 0 },
+            switches: { take: index },
+          },
+        ]
+      : [],
+  );
+}
+
 /** Some of a weapon's bonus to its wielder's defense (1.684), each amount its own choice, for nothing
  *  before their first attack with it on a turn: a Defender's. */
 function bonusShiftActions(
@@ -3122,8 +3140,8 @@ function itemAttackActions(
   // fight's items say only whether each is worn; passing "on" through is the upgrade.
   const used: Record<string, number> = {};
   for (const held of items) {
-    // Hovering, on (1.653): its slots are free.
-    if (!held.worn || (held.on && held.item.toggle?.freesSlots)) continue;
+    // Hovering, on (1.653): its slots are free. Lent by a call (1.686), taken only as it comes.
+    if (!held.worn || held.lent || (held.on && held.item.toggle?.freesSlots)) continue;
     for (const [slot, count] of Object.entries(held.item.slots ?? {}))
       used[slot] = (used[slot] ?? 0) + count * held.quantity;
   }
@@ -5266,11 +5284,34 @@ function sheetCombatant(
     }
     if (at >= 0) makes.at = at;
   }
+  // What an item's call lends its user to wield while it stands (1.686): a goat of terror's horns.
+  (input.items ?? []).forEach((owned, index) => {
+    const uses = [
+      { id: `use:${index}`, use: owned.item.use },
+      ...(owned.item.moreUses ?? []).map((more, n) => ({ id: `use:${index}:${n + 1}`, use: more.use })),
+    ];
+    for (const { id, use } of uses) {
+      const lends = use?.wieldsWhileCalled;
+      if (!lends) continue;
+      for (const ref of lends.items) {
+        const entry = byRef.get(ref);
+        if (!entry?.item?.attack) continue;
+        heldItems.push({
+          item: entry.item,
+          quantity: 1,
+          worn: true,
+          name: entry.label,
+          lent: { by: id, ...(lends.takes !== undefined ? { takes: lends.takes } : {}) },
+        });
+      }
+    }
+  });
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
       attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
     ),
-    ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
+    ...itemAttackActions(definition, combat, heldItems, build, evaluated, perCell, rowRules),
+    ...lentTakeActions(heldItems),
     ...itemSwitchActions(input.items),
     ...itemFormActions(input.items),
     ...bonusShiftActions(combat, input.items),

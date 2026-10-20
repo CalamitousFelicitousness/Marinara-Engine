@@ -144599,6 +144599,31 @@
                             "utility"
                           ]
                         },
+                        "wieldsWhileCalled": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 121,
+                                "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 4
+                            },
+                            "takes": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "items"
+                          ],
+                          "additionalProperties": false
+                        },
                         "level": {
                           "type": "integer",
                           "minimum": 0,
@@ -169014,6 +169039,31 @@
                                   "debuff",
                                   "utility"
                                 ]
+                              },
+                              "wieldsWhileCalled": {
+                                "type": "object",
+                                "properties": {
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 121,
+                                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "takes": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "items"
+                                ],
+                                "additionalProperties": false
                               },
                               "level": {
                                 "type": "integer",
@@ -193436,6 +193486,31 @@
                                   "debuff",
                                   "utility"
                                 ]
+                              },
+                              "wieldsWhileCalled": {
+                                "type": "object",
+                                "properties": {
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 121,
+                                      "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  },
+                                  "takes": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "items"
+                                ],
+                                "additionalProperties": false
                               },
                               "level": {
                                 "type": "integer",

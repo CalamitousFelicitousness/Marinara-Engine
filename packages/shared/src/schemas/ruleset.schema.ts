@@ -11129,6 +11129,15 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** `utility` (Capability API 1.181) is a use that only leaves an area standing: a scroll of Fog
      *  Cloud, Darkness or Silence; or one that teleports (1.276): a cape's Dimension Door. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
+    /** Weapons of the ruleset (`<catalog>/<entry>`, items with an `attack`) its user wields only
+     *  while a creature this use `calls` stands (Capability API 1.686), each first taken on `takes`
+     *  where it says. Never written to their bag. A Figurine of Wondrous Power's goat of terror, whose
+     *  horns become a +1 lance and a +2 longsword: `{"items": ["gear/goat-horn-lance",
+     *  "gear/goat-horn-longsword"], "takes": "action"}`. */
+    wieldsWhileCalled: z
+      .object({ items: z.array(catalogEntryRef).min(1).max(4), takes: sheetId.optional() })
+      .strict()
+      .optional(),
     /** The level it casts at (Capability API 1.677): a scroll's spell's. Whatever reads the level an
      *  entry is paid at reads this, a reaction's `"upTo": "paid"` among them: a scroll of
      *  Counterspell, 3, stops a spell of 3rd level or lower outright. */
@@ -22230,6 +22239,22 @@ function useIssues(
   const combat = definition.combat;
   if (!combat) return;
   if (!use.free && use.budget === undefined) add([...at, "budget"], "A use spends a budget, or is free");
+  // Weapons wielded while what it calls stands (1.686): it calls, they are weapons, and the budget is.
+  const lends = use.wieldsWhileCalled;
+  if (lends) {
+    if (!use.calls) add([...at, "wieldsWhileCalled"], 'Weapons wielded while called come with a "calls"');
+    if (lends.takes !== undefined && !combat.economy.budgets.some((budget) => budget.id === lends.takes))
+      add([...at, "wieldsWhileCalled", "takes"], `Unknown budget "${lends.takes}"`);
+    lends.items.forEach((ref, n) => {
+      const catalog = definition.catalogs?.find((one) => one.id === ref.slice(0, ref.indexOf("/")));
+      if (!catalog) add([...at, "wieldsWhileCalled", "items", n], `Unknown entry "${ref}"`);
+      else if (catalog.entries && !catalog.from) {
+        const entry = catalog.entries.find((one) => one.id === ref.slice(ref.indexOf("/") + 1));
+        if (!entry) add([...at, "wieldsWhileCalled", "items", n], `Unknown entry "${ref}"`);
+        else if (!entry.item?.attack) add([...at, "wieldsWhileCalled", "items", n], `"${ref}" is not a weapon`);
+      }
+    });
+  }
   if (use.budget !== undefined && !combat.economy.budgets.some((budget) => budget.id === use.budget)) {
     add([...at, "budget"], `Unknown budget "${use.budget}"`);
   }

@@ -1541,7 +1541,9 @@ export interface RulesetCombatAction {
     /** Into another of an item's forms (1.522), 0 as it was made. */
     | { form: { item: number; to: number } }
     /** Some of a weapon's bonus to its wielder's defense (1.684): a Defender's. */
-    | { shift: { item: number; amount: number } };
+    | { shift: { item: number; amount: number } }
+    /** A weapon lent by a call taken in hand (1.686), its place in `sheet.items`: a goat's horn. */
+    | { take: number };
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -2409,6 +2411,9 @@ export interface RulesetCombatant {
   /** Some of a weapon's bonus moved to their defense (1.684), its place in `sheet.items` and how
    *  much, until the start of their next turn: a Defender's. */
   bonusShift?: { item: number; amount: number };
+  /** Weapons lent by a call they have taken (1.686), by place in `sheet.items`: the id of the called
+   *  creature they were taken from, theirs while it stands. */
+  lentTaken?: Record<number, string>;
   /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
    *  it out (1.296). */
   shedding?: RulesetLightRadius | "out";

@@ -2839,6 +2839,19 @@ export function rulesetActionAvailable(
     if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
   }
+  // Lent by a call (1.686): only while it stands, and where it is taken first, taken once and then
+  // wielded. A goat of terror's horns.
+  const lentAt = rulesetActionItemIndex(action);
+  const lent = lentAt !== undefined ? actor.sheet?.items?.[lentAt]?.lent : undefined;
+  if (lent && lentAt !== undefined) {
+    const standing = (state?.combatants ?? [])
+      .filter((one) => one.calledBy === actor.id && one.calledWith === lent.by && !one.dismissed && !one.defeated)
+      .map((one) => one.id);
+    if (!standing.length) return false;
+    const taken = actor.lentTaken?.[lentAt];
+    const taking = !!action.switches && "take" in action.switches;
+    if (lent.takes !== undefined && taking === (taken !== undefined && standing.includes(taken))) return false;
+  }
   // A weapon's bonus to defense (1.684): once, before their first attack with it this turn.
   if (
     action.switches &&
@@ -3639,7 +3652,7 @@ function optionFrom(
             on:
               "item" in action.switches
                 ? rulesetItemOn(actor, action.switches.item)
-                : "shift" in action.switches
+                : "shift" in action.switches || "take" in action.switches
                   ? false
                   : !actor.doused,
           }

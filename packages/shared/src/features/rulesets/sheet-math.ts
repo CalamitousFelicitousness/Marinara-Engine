@@ -294,6 +294,9 @@ export interface RulesetSheetItem {
   stack?: { id: string; ref: string; holder?: string };
   /** Held for what a cast makes (1.668): the item it makes, by reference, none of it held yet. */
   made?: string;
+  /** Wielded only while what an item's use (`by`, its action id) called stands (1.686), first taken
+   *  on `takes` where it says: a goat of terror's horns. Never written to the bag. */
+  lent?: { by: string; takes?: string };
   /** What a weapon with a clip has loaded, as the stack keeps it. Absent reads as full. */
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */

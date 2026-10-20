@@ -659,7 +659,7 @@ export const RULESET_SLIP_OPTION_PREFIX = "slip:";
 /** An attack given up for one by a creature its maker called (1.435): `lend:<called id>:<action id>`. */
 export const RULESET_LEND_OPTION_PREFIX = "lend:";
 
-const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend|form|shift):(\d+)(?::\d+)?$/;
+const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend|form|shift|take):(\d+)(?::\d+)?$/;
 
 /** The place in its holder's items of the item an action is made with, when it is one: a weapon's
  *  blow, its off-hand blow, a use, a switch, a reload or charges spent on a hit (1.273). */

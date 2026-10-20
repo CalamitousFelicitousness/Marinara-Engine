@@ -8007,6 +8007,21 @@ function applyChoice(
       else working.doused = true;
       if (switching.free) working.flags.lightSwitched = true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
+    } else if (switching?.switches && "take" in switching.switches) {
+      // A weapon a call lends taken in hand (1.686), theirs while that one stands.
+      const index = switching.switches.take;
+      const lent = working.sheet?.items?.[index]?.lent;
+      const from = ctx.state.combatants.find(
+        (one) => one.calledBy === working.id && one.calledWith === lent?.by && !one.dismissed && !one.defeated,
+      );
+      if (from) (working.lentTaken ??= {})[index] = from.id;
+      ctx.events.push({
+        type: "switch",
+        actorId: working.id,
+        optionId: switching.id,
+        label: switching.label,
+        on: true,
+      });
     } else if (switching?.switches && "shift" in switching.switches) {
       // Some of a weapon's bonus to their defense (1.684), until the start of their next turn.
       const { item, amount } = switching.switches.shift;

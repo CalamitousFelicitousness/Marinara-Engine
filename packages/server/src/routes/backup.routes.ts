@@ -1286,7 +1286,8 @@ function validateProfileStorageTableInputs(snapshot: ProfileStorageSnapshot) {
     }
 
     const table = profileTableObjects.get(tableName);
-    if (!table) throw new ProfileImportRequestError(`Profile table ${tableName} is not supported.`);
+    // Package-registered tables are not profile data; the write step skips them too.
+    if (!table) continue;
     const primaryKey = schemaPrimaryKeyColumn(table);
     for (const row of rows) {
       if (!row || typeof row !== "object" || Array.isArray(row)) {

@@ -63,6 +63,11 @@ const RELEASE_ANNOUNCEMENTS: Record<string, ReleaseAnnouncement> = {
             altKey: "ui.modals.whatsnewmodal.release251.media.avatars2d",
             kind: "video",
           },
+          {
+            url: "/releases/2.5.1/avatar-mesh.mp4",
+            altKey: "ui.modals.whatsnewmodal.release251.media.avatarsMesh",
+            kind: "video",
+          },
         ],
       },
       {

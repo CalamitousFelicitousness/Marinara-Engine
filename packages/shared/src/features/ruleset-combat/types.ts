@@ -664,6 +664,9 @@ export interface RulesetStatBlockAction {
     shape: RulesetCombatArea["shape"];
     size: number;
     width?: number;
+    /** A wall laid as a ring instead, this many across (1.675). */
+    ring?: number;
+    ringOnly?: true;
     friendlyFire?: boolean;
     around?: true;
     throughWalls?: true;

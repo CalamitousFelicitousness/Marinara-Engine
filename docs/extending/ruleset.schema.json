@@ -71805,7 +71805,8 @@
                                 "burst",
                                 "cone",
                                 "line",
-                                "box"
+                                "box",
+                                "wall"
                               ]
                             },
                             "size": {
@@ -71816,6 +71817,15 @@
                             "width": {
                               "type": "number",
                               "exclusiveMinimum": 0
+                            },
+                            "ring": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "ringOnly": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "friendlyFire": {
                               "type": "boolean"
@@ -91066,7 +91076,8 @@
                                   "burst",
                                   "cone",
                                   "line",
-                                  "box"
+                                  "box",
+                                  "wall"
                                 ]
                               },
                               "size": {
@@ -91077,6 +91088,15 @@
                               "width": {
                                 "type": "number",
                                 "exclusiveMinimum": 0
+                              },
+                              "ring": {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 10000
+                              },
+                              "ringOnly": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "friendlyFire": {
                                 "type": "boolean"

@@ -8643,10 +8643,18 @@ const creatureActionFullSchema = z
      *  off it may be aimed, and a shape with none is aimed from where the creature stands. */
     area: z
       .object({
-        shape: z.enum(["burst", "cone", "line", "box"]),
+        /** A wall (Capability API 1.675) stands as a catalog entry's does, so it has a `zone`: an ice
+         *  devil's Wall of Ice. */
+        shape: z.enum(["burst", "cone", "line", "box", "wall"]),
         size: z.number().finite().gt(0).max(10000),
-        /** A line's width in the same unit as its size (Capability API 1.128). Without it, one cell. */
+        /** A line's width in the same unit as its size (Capability API 1.128), or a wall's thickness
+         *  (1.675). Without it, one cell. */
         width: z.number().finite().gt(0).optional(),
+        /** A wall its creature may lay as a ring instead (Capability API 1.675), this many across: an
+         *  ice devil's Wall of Ice, a 20-foot dome. */
+        ring: z.number().finite().gt(0).max(10000).optional(),
+        /** Always laid as its ring, never as a straight wall (Capability API 1.675). */
+        ringOnly: z.literal(true).optional(),
         /** False spares the creature's own side, as a catalog entry's does. */
         friendlyFire: z.boolean().optional(),
         /** Centred on its user and never aimed (Capability API 1.282): everybody within `size` of them
@@ -8665,9 +8673,17 @@ const creatureActionFullSchema = z
         message: '"aroundProp" is a burst around the props, never centred on its user',
         path: ["aroundProp"],
       })
-      .refine((area) => area.width === undefined || area.shape === "line", {
-        message: "Only a line area may carry width",
+      .refine((area) => area.width === undefined || area.shape === "line" || area.shape === "wall", {
+        message: "Only a line or a wall may carry width",
         path: ["width"],
+      })
+      .refine((area) => area.ring === undefined || area.shape === "wall", {
+        message: "Only a wall is a ring",
+        path: ["ring"],
+      })
+      .refine((area) => !area.ringOnly || area.ring !== undefined, {
+        message: '"ringOnly" lays it as its ring, so it has "ring"',
+        path: ["ringOnly"],
       })
       .refine((area) => !area.around || area.shape === "burst", {
         message: "Only a single burst is centred on its user",
@@ -9088,6 +9104,25 @@ const creatureActionFullSchema = z
           code: z.ZodIssueCode.custom,
           path: [key],
           message: `A creature action's "${key}" is where its "area" is aimed, so it has one`,
+        });
+      }
+    }
+    // A wall it lays (1.675) stands, as a catalog entry's does.
+    if (action.area?.shape === "wall") {
+      if (!action.zone) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["area", "shape"],
+          message: "A wall only ever stays, so it needs a zone",
+        });
+      } else if (action.zone.anchor === "caster" || action.zone.move || action.zone.drift) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["zone"], message: "A wall stays where it is cast" });
+      }
+      if (action.zone?.sections?.broken?.save && !action.save && action.saveDifficulty === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["zone", "sections", "broken", "save"],
+          message: "A broken section's save is rolled against the action's own difficulty, so it has one",
         });
       }
     }

@@ -2740,6 +2740,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A wall a creature's action lays (1.675): an ice devil's Wall of Ice. A creature's action has a
+ *  `name`; a catalog entry's area sits on its `mechanics`, which has none. */
+function carriesCreatureWall675(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureWall675(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const area = plainRecord(record.area);
+  if (typeof record.name === "string" && area && (area.shape === "wall" || area.ring !== undefined || area.ringOnly))
+    return true;
+  return featureValues(record).some((one) => carriesCreatureWall675(one, depth + 1));
+}
+
 /** A creature's action kept up on its later turns (1.674): a harpy's Luring Song. A creature's
  *  action has a `name`; a catalog entry's `sustains` (1.378) sits on its `mechanics`, which has none. */
 function carriesCreatureSustains674(value: unknown, depth = 0): boolean {
@@ -8909,6 +8922,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A wall a creature's action lays, 1.675.
+  if (
+    !declaresApi(675) &&
+    (carriesCreatureWall675(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureWall675(document)))
+  )
+    return 'A ruleset with a wall a creature\'s action lays (actions[].area.shape "wall") requires schemaVersion 2 and capabilityApi 1.675 or newer';
   // A creature's action kept up on later turns, 1.674.
   if (
     !declaresApi(674) &&

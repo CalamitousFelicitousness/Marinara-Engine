@@ -5003,6 +5003,8 @@ function blockActions(
             shape: action.area.shape,
             size: rulesetInCells(action.area.size, perCell),
             ...(action.area.width !== undefined ? { width: rulesetInCells(action.area.width, perCell) } : {}),
+            ...(action.area.ring !== undefined ? { ring: rulesetInCells(action.area.ring, perCell) } : {}),
+            ...(action.area.ringOnly ? { ringOnly: true as const } : {}),
             ...(action.area.friendlyFire === false ? { friendlyFire: false } : {}),
             ...(action.area.aroundProp ? { aroundProp: action.area.aroundProp } : {}),
           },

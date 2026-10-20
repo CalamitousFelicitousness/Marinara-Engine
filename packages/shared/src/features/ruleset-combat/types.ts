@@ -463,6 +463,14 @@ export interface RulesetTeleport {
   familiar?: number;
 }
 
+/** A creature's action never used on the same creature again (1.621). */
+export interface RulesetSparedAfter {
+  whenSaved?: true;
+  whenEnds?: true;
+  until?: string;
+  shared?: string;
+}
+
 /** One thing a stat block can do. `reach` and `range` are in the ruleset's own distance unit; a
  *  positioned fight turns them into cells when it starts. */
 export interface RulesetStatBlockAction {
@@ -588,6 +596,8 @@ export interface RulesetStatBlockAction {
   dyingOnly?: true;
   slaysOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
+  /** Never on the same creature again (1.621). */
+  oncePerTarget?: RulesetSparedAfter;
   /** Who it fells on Held Ground is reaped (1.323). */
   reaps?: true;
   /** It works only on a roll (1.388): a demon's 30 percent summoning. */
@@ -1126,6 +1136,9 @@ export interface RulesetCombatAction {
   dyingOnly?: true;
   /** A failed save kills its target, and its user regains this for each one (1.311): Consume Life. */
   slaysOnFailedSave?: true;
+  /** A creature's (1.621): whom it spares once used on them, made their save, or what it put on
+   *  ended, by its source's key. */
+  sparedAfter?: RulesetSparedAfter;
   healsOnSlay?: RulesetCombatAmount;
   /** Who it fells on Held Ground is reaped there and then (1.323): a Reaping Hook. */
   reaps?: true;

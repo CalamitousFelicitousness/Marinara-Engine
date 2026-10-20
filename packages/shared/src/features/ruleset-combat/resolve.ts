@@ -264,6 +264,7 @@ import {
   rulesetOptionTargets,
   rulesetUsedOn,
   rulesetUsedOnKey,
+  rulesetSparedKey,
   rulesetUsedOnMarks,
   rulesetProneCondition,
   rulesetReactionPointsAtSource,
@@ -4080,9 +4081,7 @@ function removeCondition(
     else letOut(ctx, target);
   }
   // What an aura put on, ended, keeps that aura off them where it says so (1.269).
-  if (removed?.auraSafeOnEnd && !target.auraSafe?.includes(removed.auraSafeOnEnd)) {
-    target.auraSafe = [...(target.auraSafe ?? []), removed.auraSafeOnEnd];
-  }
+  if (removed?.auraSafeOnEnd) keepOff(target, removed.auraSafeOnEnd);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
   ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
   // What is left of the temporary points it gave is lost with it (1.274): Heroism's. Points the
@@ -6323,6 +6322,23 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
 }
 
+/** Kept off by what ended (1.269), and spared a creature's action (1.621). */
+function keepOff(target: RulesetCombatant, key: string): void {
+  if (key.startsWith("spared|")) spare(target, key);
+  else if (!target.auraSafe?.includes(key)) target.auraSafe = [...(target.auraSafe ?? []), key];
+}
+
+/** Spared a creature's action (1.621): for the fight, and on a sheet until the rest its key names. */
+function spare(target: RulesetCombatant, key: string): void {
+  if (!target.auraSafe?.includes(key)) target.auraSafe = [...(target.auraSafe ?? []), key];
+  const until = key.split("|")[1];
+  if (!until || !target.sheet) return;
+  target.sheet.live = {
+    ...target.sheet.live,
+    usedOn: { ...target.sheet.live.usedOn, [`${until}|${key}`]: ["spared"] },
+  };
+}
+
 /** Who succeeded on a save against a cast its maker concentrates on, or against a repeat of it
  *  (1.310): Eyebite never picks them again. */
 function noteSaved(
@@ -6333,6 +6349,8 @@ function noteSaved(
 ): void {
   // Spared it until the rest that frees it (1.378): Intimidating Presence's 24 hours.
   if (action.oncePerTarget?.whenSaved) markUsedOn(state, actor, action, [target], true);
+  // A creature's, spared once saved against (1.621).
+  if (action.sparedAfter?.whenSaved) spare(target, rulesetSparedKey(actor, action));
   const held = actor.concentrating;
   if (!held || (held.actionId !== action.id && !(action.again && rulesetRepeatsHeld(actor, action.again)))) return;
   if (!held.saved?.includes(target.id)) held.saved = [...(held.saved ?? []), target.id];
@@ -7725,6 +7743,10 @@ function applyChoice(
   if (following?.uncharged) ctx.uncharged = true;
   if (!following?.paid) spendAvailability(ctx, working, action);
   markUsedOn(ctx.state, working, action, workingTargets);
+  // A creature's, spared once used on them at all (1.621).
+  if (action.sparedAfter && !action.sparedAfter.whenSaved && !action.sparedAfter.whenEnds) {
+    for (const target of workingTargets) spare(target, rulesetSparedKey(working, action));
+  }
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
@@ -13906,8 +13928,7 @@ function endConditionsOf(
     if (target.tracked.some((entry) => entry.condition === condition && !by(entry))) {
       for (const entry of target.tracked.filter(by)) {
         // Cured, what an aura put on keeps that aura off them where it says so (1.269).
-        if (entry.auraSafeOnEnd && !target.auraSafe?.includes(entry.auraSafeOnEnd))
-          target.auraSafe = [...(target.auraSafe ?? []), entry.auraSafeOnEnd];
+        if (entry.auraSafeOnEnd) keepOff(target, entry.auraSafeOnEnd);
       }
       target.tracked = target.tracked.filter((entry) => !by(entry));
     } else removeCondition(ctx, target, condition, "cured");
@@ -16078,6 +16099,11 @@ function resolveActionBodyIn(
               : {}),
           ...(action.concentration ? { concentration: true } : {}),
         });
+        // Spared once what it put on ends (1.621): a dragon's Frightful Presence.
+        if (action.sparedAfter?.whenEnds) {
+          const on = target.tracked.find((entry) => entry.condition === applies.condition && entry.source === actor.id);
+          if (on) on.auraSafeOnEnd = rulesetSparedKey(actor, action);
+        }
       }
       // Pushed away from its maker (1.182), once whatever else it does has landed, and farther for
       // each charge more spent on it (1.271): a Ring of the Ram's.

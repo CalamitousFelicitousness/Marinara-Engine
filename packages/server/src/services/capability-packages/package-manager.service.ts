@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+function carriesCreatureOncePerTarget621(value: unknown, depth = 0, creature = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureOncePerTarget621(one, depth + 1, creature));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (creature && record.oncePerTarget !== undefined) return true;
+  if (record.creature !== undefined && carriesCreatureOncePerTarget621(record.creature, depth + 1, true)) return true;
+  return featureValues(record).some((one) => carriesCreatureOncePerTarget621(one, depth + 1, creature));
+}
+
 /** A save failed badly on a creature's action, or by a total that low anywhere (1.620): a mummy's
  *  Dreadful Glare, a sprite's arrow. */
 function carriesFailedBy620(value: unknown, depth = 0, creature = false): boolean {
@@ -8341,6 +8352,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action never used on the same creature again, 1.621.
+  if (
+    !declaresApi(621) &&
+    (carriesCreatureOncePerTarget621(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureOncePerTarget621(document)))
+  )
+    return "A ruleset with a creature's action used once on each creature (oncePerTarget on a creature) requires schemaVersion 2 and capabilityApi 1.621 or newer";
   // A save failed badly on a creature's action, or by a total that low, 1.620.
   if (
     !declaresApi(620) &&

@@ -274,6 +274,8 @@ export {
   rulesetOptionTargets,
   rulesetUsedOn,
   rulesetUsedOnKey,
+  rulesetSparedKey,
+  rulesetSparedFrom,
   rulesetUsedOnMarks,
   rulesetUsedOnMeans,
   rulesetUsedOnName,

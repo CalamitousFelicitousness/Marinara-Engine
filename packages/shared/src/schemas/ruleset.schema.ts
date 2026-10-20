@@ -4701,6 +4701,22 @@ const useChanceSchema: z.ZodType<RulesetUseChance, z.ZodTypeDef, unknown> = z
   })
   .strict();
 /** A creature's (Capability API 1.388): a printed chance, nothing off a sheet. */
+interface CreatureOncePerTarget {
+  whenSaved?: true;
+  whenEnds?: true;
+  until?: string;
+  shared?: string;
+}
+
+const creatureOncePerTargetSchema: z.ZodType<CreatureOncePerTarget, z.ZodTypeDef, unknown> = z
+  .object({
+    whenSaved: z.literal(true).optional(),
+    whenEnds: z.literal(true).optional(),
+    until: sheetId.optional(),
+    shared: sheetId.optional(),
+  })
+  .strict();
+
 const creatureChanceSchema = z
   .object({ sides: z.number().int().min(2).max(100), atMost: z.number().int().min(1).max(100) })
   .strict();
@@ -8284,7 +8300,7 @@ const creatureSpellcastingSchema = z
       });
   });
 
-const creatureActionSchema = z
+const creatureActionFullSchema = z
   .object({
     id: sheetId,
     name: promptSafeText(80),
@@ -8574,6 +8590,12 @@ const creatureActionSchema = z
      *  regains that much for each one that does: Consume Life's "or die ... regains 10 (3d6)". */
     slaysOnFailedSave: z.literal(true).optional(),
     healsOnSlay: z.object(catalogAmountShape).strict().optional(),
+    /** Used on a creature, never on that one again (Capability API 1.621): with `whenSaved` only once
+     *  it made its save, with `whenEnds` once what it put on ends, else once it is used on them at
+     *  all. For the rest of the fight, and with `until` (a rest) on a character's sheet until they
+     *  take that rest. `shared` makes every creature whose action says the same one source: 5e's
+     *  dragons' Frightful Presence, 24 hours, and the Dreadful Glare "of all mummies". */
+    oncePerTarget: creatureOncePerTargetSchema.optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -8743,6 +8765,20 @@ const creatureActionSchema = z
           message: `A creature action's "${key}" is where its "area" is aimed, so it has one`,
         });
       }
+    }
+    if (action.oncePerTarget?.whenSaved && !action.save) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["oncePerTarget", "whenSaved"],
+        message: '"whenSaved" follows the action\'s own save, so it has one',
+      });
+    }
+    if (action.oncePerTarget?.whenEnds && !action.applies?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["oncePerTarget", "whenEnds"],
+        message: '"whenEnds" follows what the action puts on, so it has "applies"',
+      });
     }
     if (action.slaysOnFailedSave && !action.save) {
       ctx.addIssue({
@@ -9005,6 +9041,10 @@ const creatureActionSchema = z
       });
     }
   });
+
+/** Typed by its output so the ruleset schema's inferred type stays small enough to serialize. */
+export interface RulesetCreatureActionParsed extends z.output<typeof creatureActionFullSchema> {}
+const creatureActionSchema: z.ZodType<RulesetCreatureActionParsed, z.ZodTypeDef, unknown> = creatureActionFullSchema;
 
 /** How many riders one creature may carry. Four, for the same reason a blow carries three clauses:
  *  past that nobody at a table could hold the creature in their head. */
@@ -20077,6 +20117,11 @@ function creatureIssues(
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
     });
+    // The rest that frees what it spares on a sheet (1.621).
+    const sparedUntil = action.oncePerTarget?.until;
+    if (sparedUntil && !definition.rests.some((rest) => rest.id === sparedUntil)) {
+      add([...path, "oncePerTarget", "until"], `Unknown rest "${sparedUntil}"`);
+    }
     // What a bad failure puts on instead (1.620), held to the same names.
     action.save?.failedBy?.applies.forEach((applies, appliesIndex) => {
       const where = [...path, "save", "failedBy", "applies", appliesIndex];

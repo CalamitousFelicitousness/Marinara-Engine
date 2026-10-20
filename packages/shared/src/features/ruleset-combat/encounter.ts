@@ -4633,6 +4633,8 @@ function blockActions(
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.inShape ? { inShape: [...action.inShape] } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
+    // Never on the same creature again (1.621): Frightful Presence.
+    ...(action.oncePerTarget ? { sparedAfter: { ...action.oncePerTarget } } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),
     // A printed chance (1.388): a demon's summoning.
     ...(action.chance ? { chance: { ...action.chance } } : {}),

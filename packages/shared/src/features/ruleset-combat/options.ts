@@ -1189,6 +1189,7 @@ export function rulesetAreaTargets(
       if (action.area?.friendlyFire === false && combatant.side === actor.side) return false;
       // Passed over where it was spent on them already since the rest that frees it (1.575).
       if (action.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, action), combatant)) return false;
+      if (rulesetSparedFrom(actor, action, combatant)) return false;
       // Something that MENDS lands only on whom its author pointed it at. A blast catches everybody
       // in its cells because fire does not ask; a healing word that also closed the enemy's wounds
       // would be the rules being read by a machine rather than by a table.
@@ -1221,6 +1222,7 @@ export function rulesetAroundTargets(
     if (around.friendlyFire === false && sameSide) return false;
     // Passed over where it was spent on them already (1.575): the Pipes of Haunting's 24 hours.
     if (action.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, action), combatant)) return false;
+    if (rulesetSparedFrom(actor, action, combatant)) return false;
     if (action.heal && !sameSide) return false;
     if (!grid) return true;
     if (!rulesetPositionOf(actor) || !rulesetPositionOf(combatant)) return false;
@@ -2024,6 +2026,30 @@ export function rulesetUsedOn(
   return (actor.sheet ? actor.sheet.live.usedOn?.[key] : actor.usedOn?.[key]) ?? [];
 }
 
+/** The key a creature's action spares by (1.621): its `shared` source, or its maker's name and the
+ *  action, with the rest that frees it on a sheet. */
+export function rulesetSparedKey(
+  actor: Pick<RulesetCombatant, "name">,
+  action: Pick<RulesetCombatAction, "id" | "sparedAfter">,
+): string {
+  const rule = action.sparedAfter!;
+  return `spared|${rule.until ?? ""}|${rule.shared ?? `${normalizeCharacterLookupName(actor.name)}/${action.id}`}`;
+}
+
+/** Whether a creature's action spares this one now (1.621): in this fight, or on their sheet until the
+ *  rest that frees it. */
+export function rulesetSparedFrom(
+  actor: Pick<RulesetCombatant, "name">,
+  action: Pick<RulesetCombatAction, "id" | "sparedAfter">,
+  target: RulesetCombatant,
+): boolean {
+  if (!action.sparedAfter) return false;
+  const key = rulesetSparedKey(actor, action);
+  if (target.auraSafe?.includes(key)) return true;
+  const until = action.sparedAfter.until;
+  return !!until && !!target.sheet?.live.usedOn?.[`${until}|${key}`];
+}
+
 /** Keyed by the entry it was built from, which outlasts the fight's action ids. */
 export function rulesetUsedOnKey(action: Pick<RulesetCombatAction, "id" | "entry" | "oncePerTarget">): string {
   return `${action.oncePerTarget!.until}|${action.entry ?? action.id}`;
@@ -2324,6 +2350,8 @@ export function rulesetOptionTargets(
         if (cure?.sustain && !rulesetSustainedOn(actor, cure.sustain.of, combatant)) return false;
         // Used on them already since the rest that frees it (1.304).
         if (cure?.oncePerTarget && rulesetUsedOnMeans(state, rulesetUsedOn(actor, cure), combatant)) return false;
+        // A creature's, spared once used on them (1.621): Frightful Presence.
+        if (cure && rulesetSparedFrom(actor, cure, combatant)) return false;
         if (option.targets.side === "self") return combatant.id === actor.id;
         // A strike the dice aimed (1.264) is at whoever they picked, friend or foe.
         if (

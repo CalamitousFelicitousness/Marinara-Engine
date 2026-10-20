@@ -75109,6 +75109,31 @@
                           },
                           "additionalProperties": false
                         },
+                        "oncePerTarget": {
+                          "type": "object",
+                          "properties": {
+                            "whenSaved": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "whenEnds": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "until": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "shared": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
+                        },
                         "reaps": {
                           "type": "boolean",
                           "const": true
@@ -90225,6 +90250,31 @@
                               },
                               "flat": {
                                 "type": "integer"
+                              },
+                              "$comment": {}
+                            },
+                            "additionalProperties": false
+                          },
+                          "oncePerTarget": {
+                            "type": "object",
+                            "properties": {
+                              "whenSaved": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "whenEnds": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "until": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "shared": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "$comment": {}
                             },

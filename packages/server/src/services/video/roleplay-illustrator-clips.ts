@@ -81,9 +81,10 @@ export function createRoleplayClipTools(args: {
       includePersonaWhenMentionedInPrompt: false,
       maxReferences: 12,
     });
+    // The avatar of the first person named; when that person has no picture, no one else's face stands in.
     const first = names[0]?.trim().toLowerCase();
-    const index = Math.max(0, first ? cast.referenceNames.findIndex((name) => name.trim().toLowerCase() === first) : 0);
-    const base64 = cast.referenceImages[index];
+    const index = first ? cast.referenceNames.findIndex((name) => name.trim().toLowerCase() === first) : 0;
+    const base64 = index >= 0 ? cast.referenceImages[index] : undefined;
     return {
       // The persona too when the clip names them, so it shows in their gallery.
       characterIds: cast.personaId ? [...cast.characterIds, cast.personaId] : cast.characterIds,

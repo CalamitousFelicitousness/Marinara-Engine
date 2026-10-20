@@ -182,11 +182,20 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
   id: ConversationCommandKey;
   label: string;
   description: string;
+  /** Catalog keys for the label and description; entries without them still show their English text. */
+  labelKey?: string;
+  descriptionKey?: string;
 }> = [
   { id: "schedule_update", label: "Schedule Updates", description: "Let characters change their current status." },
   { id: "cross_post", label: "Cross-Post", description: "Let characters redirect a message into another chat." },
   { id: "selfie", label: "Selfies", description: "Let characters request generated selfies." },
-  { id: "video", label: "Videos", description: "Let characters send short video messages." },
+  {
+    id: "video",
+    label: "Videos",
+    description: "Let characters send short video messages.",
+    labelKey: "ui.chat.conversationcommands.videos",
+    descriptionKey: "ui.chat.conversationcommands.videosDescription",
+  },
   { id: "memory", label: "Memories", description: "Let characters create memories for other characters." },
   { id: "scene", label: "Scenes", description: "Let characters start an immersive scene." },
   { id: "music", label: "Music", description: "Let characters play songs through the active Music Player." },
@@ -2008,9 +2017,11 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
                 )}
               >
                 <div className="min-w-0 flex-1">
-                  <span className="block text-[0.6875rem] font-medium text-[var(--foreground)]">{command.label}</span>
+                  <span className="block text-[0.6875rem] font-medium text-[var(--foreground)]">
+                    {command.labelKey ? localizeUi(command.labelKey) : command.label}
+                  </span>
                   <p className="mt-0.5 text-[0.59375rem] leading-snug text-[var(--muted-foreground)]">
-                    {command.description}
+                    {command.descriptionKey ? localizeUi(command.descriptionKey) : command.description}
                   </p>
                 </div>
                 <div

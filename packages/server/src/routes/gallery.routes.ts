@@ -28,6 +28,7 @@ import { createGameSceneVideosStorage } from "../services/storage/game-scene-vid
 import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { loadGameVideoPrompt } from "../services/video/game-video-prompt.js";
+import { buildRoleplayVideoSettingLine } from "../services/video/roleplay-clip-writer.js";
 import { removeSavedVideoFromDisk, type VideoReferenceImage } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime } from "../services/video/game-video-runtime.js";
 import { generateImage, removeSavedImageFromDisk, saveImageToDisk } from "../services/image/image-generation.js";
@@ -119,7 +120,6 @@ const SCENE_VIDEO_FILENAME_RE = /^[A-Za-z0-9_-]+\.mp4$/;
 const SCENE_VIDEO_GENERATION_TIMEOUT_MS = 31 * 60 * 1000;
 
 type ChatGalleryImageRow = NonNullable<Awaited<ReturnType<ReturnType<typeof createGalleryStorage>["getById"]>>>;
-type ChatRow = NonNullable<Awaited<ReturnType<ReturnType<typeof createChatsStorage>["getById"]>>>;
 
 interface ChatAssetBrowserItem {
   id: string;
@@ -426,18 +426,6 @@ function sceneTitleFromGalleryImage(image: ChatGalleryImageRow): string {
 
 function sourceGalleryImagePathForMetadata(image: ChatGalleryImageRow): string {
   return `gallery/${image.filePath.replace(/\\/g, "/")}`;
-}
-
-function buildRoleplayVideoSettingLine(chat: ChatRow, meta: Record<string, unknown>, maxPartLength: number): string {
-  const parts = [
-    readTrimmedString(meta.groupScenarioText),
-    readTrimmedString(meta.scenario),
-    readTrimmedString(meta.sceneInstructions),
-    readTrimmedString(meta.background),
-    chat.name,
-  ].filter((part): part is string => Boolean(part));
-  const setting = Array.from(new Set(parts.map((part) => compactVideoPromptText(part, maxPartLength)).filter(Boolean)));
-  return setting.length ? setting.join("; ") : "Current roleplay scene";
 }
 
 function createResponseAbortSignal(reply: FastifyReply, timeoutMs: number, label: string): AbortSignal {

@@ -604,6 +604,9 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
   id: ConversationCommandKey;
   label: string;
   description: string;
+  /** Catalog keys for the label and description; entries without them still show their English text. */
+  labelKey?: string;
+  descriptionKey?: string;
 }> = [
   {
     id: "schedule_update",
@@ -624,6 +627,8 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
     id: "video",
     label: "Videos",
     description: "Let characters send short video messages.",
+    labelKey: "ui.chat.conversationcommands.videos",
+    descriptionKey: "ui.chat.conversationcommands.videosDescription",
   },
   {
     id: "memory",
@@ -7332,8 +7337,10 @@ export function ChatSettingsDrawer({
                             return (
                               <SettingsSwitch
                                 key={command.id}
-                                label={command.label}
-                                description={command.description}
+                                label={command.labelKey ? localizeUi(command.labelKey) : command.label}
+                                description={
+                                  command.descriptionKey ? localizeUi(command.descriptionKey) : command.description
+                                }
                                 checked={enabled}
                                 onChange={(nextEnabled) =>
                                   updateMeta.mutate({

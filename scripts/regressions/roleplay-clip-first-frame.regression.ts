@@ -175,6 +175,39 @@ try {
   await h.generate(pair.id, "Once more.");
   assert.equal(h.lastComfyInputs()?.image, bramPng.toString("base64"), "or from the character named first");
 
+  // The Avatar first frame never borrows someone else's face: when the first person named has no picture, the clip
+  // gets no avatar (Avatar then fails clearly, and avatar-or-none makes a prompt-only clip).
+  const { createRoleplayClipTools } =
+    await import("../../packages/server/src/services/video/roleplay-illustrator-clips.js");
+  const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+  const cyra = await h.characters.create(characterDataSchema.parse({ name: "Cyra" }));
+  assert.ok(cyra);
+  const tools = createRoleplayClipTools({
+    db: h.db,
+    chat: roleplay,
+    chatMeta: {},
+    chatId: roleplay.id,
+    characterNames: ["Aster", "Cyra"],
+    cast: () => ({
+      chatCharacters: [
+        { id: h.aster.id, name: "Aster", avatarPath: "/api/avatars/file/aster.png" },
+        { id: cyra.id, name: "Cyra", avatarPath: null },
+      ],
+      persona: null,
+    }),
+    charactersStore: h.characters,
+  });
+  assert.equal(
+    (await tools.resolveClipCast(["Cyra", "Aster"], "Cyra and Aster", true)).avatar,
+    null,
+    "no stand-in face",
+  );
+  assert.equal(
+    (await tools.resolveClipCast(["Aster"], "Aster", true)).avatar?.base64,
+    avatarPng.toString("base64"),
+    "the named person's own avatar",
+  );
+
   console.log("roleplay-clip-first-frame regression passed");
 } finally {
   await h.close();

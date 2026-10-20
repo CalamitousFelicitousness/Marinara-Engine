@@ -7624,6 +7624,8 @@
   "ui.chat.contextBudget.label": "Context",
   "ui.chat.contextBudget.value": "{{used}} / {{maximum}} tokens",
   "ui.chat.conversationautonomouseffects.messagedYou": "messaged you!",
+  "ui.chat.conversationcommands.videos": "Videos",
+  "ui.chat.conversationcommands.videosDescription": "Let characters send short video messages.",
   "ui.chat.conversationgamespicker.noConversationGamesAreInstalledOpenAgentsDownloadAgents": "No conversation games are installed. Open Agents → Download Agents to add one.",
   "ui.chat.conversationgamespicker.startAGame": "Start a game",
   "ui.chat.conversationgamespicker.youCanAlsoStartTheseDirectlyWith": "You can also start these directly with",

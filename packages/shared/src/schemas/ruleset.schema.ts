@@ -13654,6 +13654,11 @@ const combatConditionSchema = z
     /** Its holder, with a flying speed, draws no opportunity attacks leaving anybody's reach
      *  (Capability API 1.626): it flies out of it. 5e's Flyby, kept on an owl with `keepsOn`. */
     flyby: z.literal(true).optional(),
+    /** Actions, by id or label, that never hinder its holder (Capability API 1.651): a lasting area
+     *  one of them leaves does not catch them, so its ground is no hard going and it strikes and puts
+     *  nothing on them, and what one of them puts on them does not go on. 5e's Web Walker, `["Web"]`:
+     *  "ignores movement restrictions caused by webbing", the spell's and a giant spider's. */
+    unhinderedBy: z.array(promptSafeText(60)).min(1).max(12).optional(),
     /** Its holder stands on water and walks across it as if it were solid ground (Capability API
      *  1.476), stopping there if they like, and is never under it: 5e's Water Walk, a Ring of Water
      *  Walking kept on with `keepsOn`. Unlike `runsAcross`, no wall is climbed. */

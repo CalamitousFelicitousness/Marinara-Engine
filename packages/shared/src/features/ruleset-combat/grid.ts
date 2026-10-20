@@ -1762,11 +1762,20 @@ export function rulesetZoneCatches(
 ): boolean {
   if (combatant.defeated) return false;
   if (zone.anchor === "caster" && combatant.id === caster.id) return false;
+  // Left by an action that never hinders them (1.651): a web, to a spider.
+  if (rulesetUnhinderedBy(combatant, [action.id, action.label])) return false;
   const sameSide = combatant.side === caster.side;
   if (action.area?.friendlyFire === false && sameSide) return false;
   // A mend, or a blessing pointed at allies, stays on the caster's own side.
   if ((action.heal || action.targets.side === "ally") && !sameSide) return false;
   return true;
+}
+
+/** Whether an action, by its id or label, never hinders this combatant (1.651): Web Walker. */
+export function rulesetUnhinderedBy(combatant: RulesetCombatant, action: readonly (string | undefined)[]): boolean {
+  const names = combatant.unhinderedBy;
+  if (!names?.length) return false;
+  return action.some((name) => !!name && names.includes(name.trim().toLowerCase()));
 }
 
 /** How a zone slows a cell for one mover: the plain steps moving into it costs at least (1.173, 1.175),

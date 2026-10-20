@@ -2390,6 +2390,9 @@ export interface RulesetCombatant {
   runsAcross?: true;
   /** They stand on water and walk across it as on solid ground (1.476): 5e's Water Walk. */
   walksOnLiquid?: true;
+  /** Actions, by id or label in lower case, that never hinder them (1.651): their lasting areas do
+   *  not catch them, and what they put on does not go on. 5e's Web Walker. */
+  unhinderedBy?: string[];
   /** Where their climb is no good (1.618): these tiles, and with `slippery` slippery zones. Only
    *  while every climb they have says so: Slippers of Spider Climbing. */
   climbNotOn?: { terrain: string[]; slippery?: true };

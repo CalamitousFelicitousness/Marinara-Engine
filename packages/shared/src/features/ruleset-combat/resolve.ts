@@ -203,6 +203,7 @@ import {
   rulesetWalkingDistances,
   rulesetWardedFrom,
   rulesetKeptOutIs,
+  rulesetUnhinderedBy,
 } from "./grid.js";
 import {
   rulesetAttackModifierReaches,
@@ -3320,6 +3321,11 @@ function applyConditionId(
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
   // Only on a roll (1.593): Wish lost, 33 in 100.
   if (applies.chance !== undefined && ctx.roll(100) > applies.chance) return;
+  // Put on by an action that never hinders them (1.651): a web's restraint, on a spider.
+  if (extra.action && rulesetUnhinderedBy(target, extra.action)) {
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
+    return;
+  }
   // Only on a target already holding what it asks, as it stands now (1.354): a kraken's swallow.
   if (applies.targetHolds && !rulesetHoldsFor(ctx.definition, target, extra.sourceId ?? "", applies.targetHolds))
     return;

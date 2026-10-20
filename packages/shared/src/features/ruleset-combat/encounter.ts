@@ -7474,7 +7474,8 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
         entry.walksOnLiquid ||
         entry.climbNotOn ||
         entry.passesCreatures ||
-        entry.passesObjects,
+        entry.passesObjects ||
+        entry.unhinderedBy,
     );
     // Ways over the ground (1.379): held only while what gives them holds.
     if (grants.some((entry) => entry.ignoresHardGround)) combatant.ignoresHardGround = true;
@@ -7484,6 +7485,12 @@ export function rulesetSyncSpeeds(definition: RulesetDefinition, state: RulesetE
     // On water as on ground (1.476).
     if (grants.some((entry) => entry.walksOnLiquid)) combatant.walksOnLiquid = true;
     else delete combatant.walksOnLiquid;
+    // Actions that never hinder them (1.651): Web Walker's webs.
+    const unhindered = [
+      ...new Set(grants.flatMap((entry) => (entry.unhinderedBy ?? []).map((name) => name.trim().toLowerCase()))),
+    ];
+    if (unhindered.length) combatant.unhinderedBy = unhindered;
+    else delete combatant.unhinderedBy;
     // Through others' spaces, and through solid ground (1.442): anybody's over only larger ones.
     const passes = grants.flatMap((entry) => (entry.passesCreatures ? [entry.passesCreatures] : []));
     if (passes.length) combatant.passesCreatures = passes.includes("any") ? "any" : "larger";

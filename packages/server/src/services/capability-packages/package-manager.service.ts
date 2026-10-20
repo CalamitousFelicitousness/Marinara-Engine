@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Actions that never hinder a condition's holder (1.651): Web Walker. */
+function carriesUnhinderedBy651(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUnhinderedBy651(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.unhinderedBy !== undefined) return true;
+  return featureValues(record).some((one) => carriesUnhinderedBy651(one, depth + 1));
+}
+
 /** A zone moved on a check that a mover holding something does better (1.650): a Talisman of the
  *  Sphere. */
 function carriesZoneHolding650(value: unknown, depth = 0): boolean {
@@ -8684,6 +8694,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Actions that never hinder a condition's holder, 1.651.
+  if (
+    !declaresApi(651) &&
+    (carriesUnhinderedBy651(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUnhinderedBy651(document)))
+  )
+    return "A ruleset with a condition whose holder some actions never hinder (unhinderedBy) requires schemaVersion 2 and capabilityApi 1.651 or newer";
   // A zone moved on a check that a mover holding something does better, 1.650.
   if (
     !declaresApi(650) &&

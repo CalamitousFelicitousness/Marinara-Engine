@@ -25,7 +25,6 @@ const NOTE_STYLES = [
     border: "border-2 border-[#c4a76c]",
     accent: "bg-[#c4a76c]/20",
     heading: "text-[#6b4423] font-serif",
-    closeBtn: "text-[#6b4423]/60 hover:text-[#6b4423]",
   },
   {
     name: "torn",
@@ -34,7 +33,6 @@ const NOTE_STYLES = [
     border: "border border-[#b8a88a] border-dashed",
     accent: "bg-[#b8a88a]/15",
     heading: "text-[#7a5c3a] font-mono uppercase tracking-[0.2em]",
-    closeBtn: "text-[#7a5c3a]/60 hover:text-[#7a5c3a]",
   },
   {
     name: "wax-sealed",
@@ -43,7 +41,6 @@ const NOTE_STYLES = [
     border: "border-2 border-[#8b4513]/30 rounded-sm",
     accent: "bg-[#8b4513]/5",
     heading: "text-[#8b4513] font-serif tracking-wide",
-    closeBtn: "text-[#8b4513]/50 hover:text-[#8b4513]",
   },
   {
     name: "charred",
@@ -52,7 +49,6 @@ const NOTE_STYLES = [
     border: "border border-[#c9a96e]/20",
     accent: "bg-[#c9a96e]/5",
     heading: "text-[#c9a96e] font-serif",
-    closeBtn: "text-[#c9a96e]/50 hover:text-[#c9a96e]",
   },
   {
     name: "official",
@@ -61,7 +57,6 @@ const NOTE_STYLES = [
     border: "border border-[#1a1a2e]/30 ring-1 ring-[#1a1a2e]/10",
     accent: "bg-[#1a1a2e]/5",
     heading: "text-[#1a1a2e] font-sans font-bold uppercase tracking-wide",
-    closeBtn: "text-[#1a1a2e]/40 hover:text-[#1a1a2e]",
   },
 ];
 
@@ -73,7 +68,6 @@ const BOOK_STYLES = [
     border: "border-2 border-[#8b6914]/40 rounded-lg",
     accent: "bg-[#8b6914]/10",
     heading: "text-[#d4a574] font-serif italic",
-    closeBtn: "text-[#d4a574]/50 hover:text-[#d4a574]",
   },
   {
     name: "arcane",
@@ -82,7 +76,6 @@ const BOOK_STYLES = [
     border: "border border-[#6c5ce7]/30",
     accent: "bg-[#6c5ce7]/10",
     heading: "text-[#a29bfe] font-serif",
-    closeBtn: "text-[#a29bfe]/40 hover:text-[#a29bfe]",
   },
   {
     name: "ancient-tome",
@@ -91,7 +84,6 @@ const BOOK_STYLES = [
     border: "border-2 border-[#a08850]/30",
     accent: "bg-[#a08850]/10",
     heading: "text-[#c9a96e] font-serif tracking-wider",
-    closeBtn: "text-[#c9a96e]/50 hover:text-[#c9a96e]",
   },
   {
     name: "fairy-tale",
@@ -101,7 +93,6 @@ const BOOK_STYLES = [
     border: "border-2 border-[#d4a574]/40 rounded-xl",
     accent: "bg-[#d4a574]/10",
     heading: "text-[#8b4513] font-serif italic",
-    closeBtn: "text-[#8b4513]/50 hover:text-[#8b4513]",
   },
   {
     name: "forbidden",
@@ -110,7 +101,6 @@ const BOOK_STYLES = [
     border: "border border-[#cc3333]/20",
     accent: "bg-[#cc3333]/5",
     heading: "text-[#ff4444] font-mono uppercase tracking-[0.3em]",
-    closeBtn: "text-[#cc3333]/40 hover:text-[#cc3333]",
   },
 ];
 
@@ -164,7 +154,7 @@ export function GameReadableDisplay({ type, content, onClose }: GameReadableDisp
         {/* Close button */}
         <button
           onClick={onClose}
-          className={cn("absolute right-3 top-3 z-10 rounded-lg p-1.5 transition-colors", style.closeBtn)}
+          className="absolute right-3 top-3 z-10 rounded-lg bg-[var(--card)]/90 p-1.5 text-[var(--foreground)]/70 transition-colors hover:text-[var(--foreground)]"
         >
           <X size={16} />
         </button>

@@ -1459,7 +1459,7 @@ export function TacticalCombatUI({
                     onClick={() => onTileClick(x, y)}
                     className={cn(
                       "group relative overflow-hidden rounded-[3px] transition-all duration-150",
-                      isInspected && "ring-1 ring-white/70",
+                      isInspected && "ring-1 ring-[var(--ring)]",
                     )}
                     style={{ backgroundColor: palette[terrain] + TILE_ALPHA, boxShadow: tileShadow(terrain) }}
                     title={tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
@@ -1516,7 +1516,7 @@ export function TacticalCombatUI({
                     {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
                     {height > 0 && (
                       <span className="pointer-events-none absolute inset-0" style={heightWash(height)}>
-                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-[var(--foreground)]/75">
                           {"▲".repeat(Math.min(height, 3))}
                         </span>
                       </span>
@@ -1637,12 +1637,12 @@ export function TacticalCombatUI({
                   exit={{ opacity: 0, y: -38 }}
                   transition={{ duration: 0.5 }}
                   className={cn(
-                    "pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
-                    p.tone === "damage" && "text-red-300",
-                    p.tone === "crit" && "text-amber-300",
-                    p.tone === "heal" && "text-emerald-300",
-                    p.tone === "miss" && "text-white/70 italic",
-                    p.tone === "status" && "text-violet-300 text-xs",
+                    "pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black [text-shadow:0_1px_2px_var(--background)]",
+                    p.tone === "damage" && "text-[var(--destructive)]",
+                    p.tone === "crit" && "text-[var(--warning)]",
+                    p.tone === "heal" && "text-[var(--success)]",
+                    p.tone === "miss" && "text-[var(--foreground)]/70 italic",
+                    p.tone === "status" && "text-[var(--primary)] text-xs",
                   )}
                   style={{ left: `${left}%`, top: `${top}%` }}
                 >
@@ -1663,10 +1663,10 @@ export function TacticalCombatUI({
               exit={{ x: "100%", opacity: 0 }}
               transition={{ duration: 0.45 }}
               className={cn(
-                "pointer-events-none absolute left-0 right-0 top-1/2 z-30 -translate-y-1/2 py-4 text-center text-2xl font-black uppercase tracking-widest text-white drop-shadow-lg",
+                "pointer-events-none absolute left-0 right-0 top-1/2 z-30 -translate-y-1/2 py-4 text-center text-2xl font-black uppercase tracking-widest drop-shadow-lg",
                 banner.tone === "enemy"
-                  ? "bg-gradient-to-r from-[var(--destructive)]/0 via-[var(--destructive)]/70 to-[var(--destructive)]/0"
-                  : "bg-gradient-to-r from-[var(--primary)]/0 via-[var(--primary)]/70 to-[var(--primary)]/0",
+                  ? "bg-gradient-to-r from-[var(--destructive)]/0 via-[var(--destructive)]/70 to-[var(--destructive)]/0 text-[var(--destructive-foreground)]"
+                  : "bg-gradient-to-r from-[var(--primary)]/0 via-[var(--primary)]/70 to-[var(--primary)]/0 text-[var(--primary-foreground)]",
               )}
             >
               {banner.text}
@@ -1773,14 +1773,14 @@ export function TacticalCombatUI({
                   <ActionButton
                     icon={Backpack}
                     label={localizeUi("ui.game.tacticalcombatui.item")}
-                    color="text-emerald-300"
+                    color="text-[var(--success)]"
                     onClick={() => chooseAction("item")}
                     disabled={animating || (directed && directed.items.length === 0)}
                   />
                   <ActionButton
                     icon={Shield}
                     label={localizeUi("ui.game.tacticalcombatui.defend")}
-                    color="text-amber-300"
+                    color="text-[var(--warning)]"
                     onClick={() => chooseAction("defend")}
                     disabled={animating}
                   />
@@ -1861,14 +1861,14 @@ export function TacticalCombatUI({
                         <span className="flex items-center gap-1.5 text-[0.65rem] text-[var(--foreground)]/60">
                           <span className="uppercase">{skill.type}</span>
                           {(skill.slotLevel || skill.mpCost > 0) && (
-                            <span className="text-sky-300">
+                            <span className="text-[var(--primary)]">
                               {skill.slotLevel
                                 ? localizeUi("game.combat.director.slotCost", { level: skill.slotLevel })
                                 : localizeUi("game.combat.director.mpCost", { amount: skill.mpCost })}
                             </span>
                           )}
                           {cd > 0 && (
-                            <span className="text-amber-300">
+                            <span className="text-[var(--warning)]">
                               {localizeUi("ui.game.tacticalcombatui.cd")} {cd}
                             </span>
                           )}
@@ -1998,10 +1998,10 @@ export function TacticalCombatUI({
                   key={i}
                   className={cn(
                     "border-b border-[var(--border)] py-1",
-                    ev.kind === "phase" && "font-bold text-amber-200",
-                    ev.kind === "crit" && "font-semibold text-amber-300",
-                    ev.kind === "defeat" && "text-red-300",
-                    ev.kind === "heal" && "text-emerald-300",
+                    ev.kind === "phase" && "font-bold text-[var(--warning)]",
+                    ev.kind === "crit" && "font-semibold text-[var(--warning)]",
+                    ev.kind === "defeat" && "text-[var(--destructive)]",
+                    ev.kind === "heal" && "text-[var(--success)]",
                     ev.kind === "miss" && "italic text-[var(--foreground)]/50",
                   )}
                 >
@@ -2191,7 +2191,7 @@ function UnitToken({
   const ring = ringColorFor(unit.id, unit.side);
   const ClassIcon = CLASS_ICONS[unitClassOf(unit)];
   const hpPct = unit.maxHp > 0 ? Math.max(0, (hp / unit.maxHp) * 100) : 0;
-  const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 25 ? "bg-amber-500" : "bg-red-500";
+  const hpColor = hpPct > 60 ? "bg-[var(--success)]" : hpPct > 25 ? "bg-[var(--warning)]" : "bg-[var(--destructive)]";
   const mpPct = unit.maxMp > 0 ? Math.max(0, (unit.mp / unit.maxMp) * 100) : 0;
 
   const style: CSSProperties = {
@@ -2225,15 +2225,15 @@ function UnitToken({
     >
       <div
         className={cn(
-          "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
-          selected && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
+          "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-[var(--marinara-editor-shadow)]",
+          selected && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--background)]",
           targetable && "ring-2 ring-[var(--destructive)] animate-pulse",
-          forecastTarget && "ring-2 ring-[var(--destructive)] ring-offset-1 ring-offset-slate-900",
+          forecastTarget && "ring-2 ring-[var(--destructive)] ring-offset-1 ring-offset-[var(--background)]",
           preview && "outline-dashed outline-2 outline-offset-2 outline-[var(--primary)]",
         )}
         style={{
           borderColor: ring,
-          backgroundColor: unit.side === "party" ? "rgba(30,58,90,0.9)" : "rgba(90,30,40,0.9)",
+          backgroundColor: "var(--card)",
           animation: ready ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
         }}
       >
@@ -2245,10 +2245,10 @@ function UnitToken({
         ) : sprite.kind === "emoji" ? (
           <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
         ) : (
-          <span className="text-[min(3vw,0.9rem)] font-black text-white/90">{initialsOf(unit.name)}</span>
+          <span className="text-[min(3vw,0.9rem)] font-black text-[var(--foreground)]/90">{initialsOf(unit.name)}</span>
         )}
         {unit.isPlayer && (
-          <Crown className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-amber-300 drop-shadow" />
+          <Crown className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--warning)] drop-shadow" />
         )}
         {unit.isBoss && (
           <Skull className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
@@ -2257,20 +2257,20 @@ function UnitToken({
         <span
           className="absolute -bottom-0.5 -right-0.5 flex h-[13px] w-[13px] items-center justify-center rounded-full border shadow-sm"
           style={{
-            backgroundColor: unit.side === "party" ? "rgba(30,58,90,0.95)" : "rgba(90,30,40,0.95)",
+            backgroundColor: "var(--card)",
             borderColor: ring,
           }}
         >
-          <ClassIcon className="h-2 w-2 text-white/90" />
+          <ClassIcon className="h-2 w-2 text-[var(--foreground)]/90" />
         </span>
       </div>
       {/* HP bar */}
-      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-black/60">
+      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-[var(--muted)]">
         <div className={cn("h-full transition-all duration-300", hpColor)} style={{ width: `${hpPct}%` }} />
       </div>
       {unit.maxMp > 0 && (
-        <div className="mt-[1px] h-[2px] w-full overflow-hidden rounded-full bg-black/60">
-          <div className="h-full bg-sky-400 transition-all duration-300" style={{ width: `${mpPct}%` }} />
+        <div className="mt-[1px] h-[2px] w-full overflow-hidden rounded-full bg-[var(--muted)]">
+          <div className="h-full bg-[var(--primary)] transition-all duration-300" style={{ width: `${mpPct}%` }} />
         </div>
       )}
     </motion.button>
@@ -2387,7 +2387,7 @@ function ForecastSide({
           <span>
             {localizeUi("ui.game.forecastside.hit")} {Math.round(hit)}%
           </span>
-          <span className="text-amber-300/80">
+          <span className="text-[var(--warning)]/80">
             {localizeUi("ui.game.forecastside.crit")} {Math.round(crit)}%
           </span>
         </div>
@@ -2463,7 +2463,9 @@ function TileInspect({
           <span>{localizeUi("ui.game.tileinspect.height", { height: elevationAt(state.grid, tile.x, tile.y) })}</span>
         )}
         {info.impassable ? (
-          <span className="font-semibold text-red-300/80">{localizeUi("ui.game.tileinspect.blocksWalking")}</span>
+          <span className="font-semibold text-[var(--destructive)]/80">
+            {localizeUi("ui.game.tileinspect.blocksWalking")}
+          </span>
         ) : (
           <>
             <span>
@@ -2480,7 +2482,7 @@ function TileInspect({
       {unit && (
         <div className="mt-2 border-t border-[var(--border)] pt-2">
           <div className="flex items-center gap-1 font-semibold text-[var(--foreground)]">
-            {unit.isPlayer && <Crown className="h-3 w-3 text-amber-300" />}
+            {unit.isPlayer && <Crown className="h-3 w-3 text-[var(--warning)]" />}
             {unit.isBoss && <Skull className="h-3 w-3 text-[var(--destructive)]" />}
             <span className="truncate">{unit.name}</span>
             <span className="ml-auto text-[0.6rem] text-[var(--foreground)]/40">
@@ -2494,11 +2496,11 @@ function TileInspect({
             </span>
           </div>
           <div className="mt-1 flex items-center gap-1 text-[0.65rem] text-[var(--foreground)]/70">
-            <Heart className="h-3 w-3 text-red-400" />
+            <Heart className="h-3 w-3 text-[var(--destructive)]" />
             {unit.hp}/{unit.maxHp}
             {unit.maxMp > 0 && (
               <>
-                <Droplets className="ml-1 h-3 w-3 text-sky-400" />
+                <Droplets className="ml-1 h-3 w-3 text-[var(--primary)]" />
                 {unit.mp}/{unit.maxMp}
               </>
             )}
@@ -2520,7 +2522,7 @@ function TileInspect({
           {unit.statusEffects.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {unit.statusEffects.map((e, i) => (
-                <span key={i} className="rounded bg-violet-500/20 px-1 text-[0.55rem] text-violet-200">
+                <span key={i} className="rounded bg-[var(--primary)]/20 px-1 text-[0.55rem] text-[var(--primary)]">
                   {e.name} ({e.turnsLeft})
                 </span>
               ))}

@@ -707,7 +707,7 @@ export function ConversationMessageLightbox({
   const backdropDismiss = useBackdropDismiss(onClose);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/80 p-4 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
       {...backdropDismiss}
     >
       <div

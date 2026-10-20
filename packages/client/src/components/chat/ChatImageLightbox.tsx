@@ -89,7 +89,7 @@ export function ChatImageLightbox({
   return createPortal(
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
@@ -220,7 +220,7 @@ export function ChatVideoLightbox({
   return createPortal(
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[var(--background)]/80 max-md:pt-[env(safe-area-inset-top)]"
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.chat.chatvideolightbox.videoPreview")}

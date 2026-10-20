@@ -935,8 +935,8 @@ assert.throws(
   /Widget IDs must be unique/u,
 );
 assert.deepEqual(HOME_CHAT_MODE_ACCENTS, {
-  conversation: "oklch(0.79 0.16 205)",
-  roleplay: "oklch(0.76 0.19 52)",
+  conversation: "var(--primary)",
+  roleplay: "var(--primary)",
   game: "var(--marinara-mode-game-accent)",
 });
 

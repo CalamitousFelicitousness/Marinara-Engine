@@ -79,7 +79,7 @@ export function GameQteOverlay({ actions, timerSeconds, onSelect, onTimeout, onD
         className={cn(
           "absolute inset-0 backdrop-blur-[2px] transition-colors duration-300",
           isUrgent ? "bg-[var(--destructive)]/75" : "bg-[var(--card)]/75",
-          flash && "bg-white/30",
+          flash && "bg-[var(--foreground)]/30",
         )}
       />
 

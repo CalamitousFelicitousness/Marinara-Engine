@@ -332,13 +332,19 @@ const HOME_WIDGET_MANAGER_LABEL_KEYS: Record<BuiltInHomeWidgetId, { name: string
 const HOME_WIDGET_MIN_ROW_HEIGHT = 208;
 const HOME_WIDGET_MAX_ROW_HEIGHT = 640;
 const ENGINE_RELEASE_URL = `https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v${encodeURIComponent(APP_VERSION)}`;
-const HOME_MODULE_ACCENTS = {
+const HOME_CUSTOM_WIDGET_ACCENTS = {
   cyan: "oklch(0.79 0.16 205)",
   orange: "oklch(0.76 0.19 52)",
-  // Explicit custom-widget palette choice; built-in interface accents follow the theme.
   pink: "oklch(0.73 0.21 345)",
   accent: "var(--marinara-chat-chrome-accent)",
   violet: "oklch(0.72 0.17 303)",
+} as const;
+const HOME_MODULE_ACCENTS = {
+  cyan: "var(--primary)",
+  orange: "var(--warning)",
+  pink: "var(--primary)",
+  accent: "var(--marinara-chat-chrome-accent)",
+  violet: "var(--primary)",
 } as const;
 
 const HOME_CUSTOM_WIDGET_ICONS = {
@@ -360,7 +366,7 @@ const HOME_STARS = Array.from({ length: 42 }, (_, index) => ({
   size: 1 + ((index * 13) % 4),
   delay: -((index * 0.71) % 8),
   duration: 4.8 + ((index * 0.43) % 5),
-  color: [HOME_MODULE_ACCENTS.cyan, HOME_MODULE_ACCENTS.orange, HOME_MODULE_ACCENTS.accent, "oklch(0.92 0.04 303)"][
+  color: [HOME_MODULE_ACCENTS.cyan, HOME_MODULE_ACCENTS.orange, HOME_MODULE_ACCENTS.accent, "var(--foreground)"][
     index % 4
   ],
 }));
@@ -1546,9 +1552,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
           style={{ "--widget-tone": tone } as CSSProperties}
           aria-hidden="true"
         >
-          <i className="rounded-[0.12rem] bg-[oklch(0.79_0.16_205)]" />
-          <i className="rounded-[0.12rem] bg-[oklch(0.76_0.19_52)]" />
-          <i className="rounded-[0.12rem] bg-[oklch(0.73_0.21_345)]" />
+          <i className="rounded-[0.12rem] bg-[var(--primary)]" />
+          <i className="rounded-[0.12rem] bg-[var(--warning)]" />
+          <i className="rounded-[0.12rem] bg-[var(--primary)]" />
           <i className="rounded-[0.12rem] bg-[var(--widget-tone)]" />
         </span>
         <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--foreground)]">{label}</span>
@@ -1605,7 +1611,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
       className="mari-chrome-token-scope relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]"
       data-component="HomeBrowserHub"
     >
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--card)]/65 shadow-2xl shadow-black/25 sm:rounded-xl">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--card)]/65 shadow-2xl shadow-[var(--background)]/25 sm:rounded-xl">
         <header className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[var(--marinara-editor-shadow)] backdrop-blur-sm">
           <div className="flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
             <div
@@ -1661,7 +1667,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 aria-selected={activeTab === "home"}
                 onClick={() => selectTab("home")}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
                   activeTab === "home" ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                   activeTab === "home"
                     ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
@@ -1755,7 +1761,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   type="button"
                   onClick={() => selectTab("home")}
                   disabled={activeTab === "home"}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.79_0.16_205)] disabled:opacity-30"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-30"
                   aria-label={t("home.browser.back")}
                 >
                   <ArrowLeft size="0.9rem" />
@@ -1815,7 +1821,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   href="https://discord.com/invite/KdAkTg94ME"
                   onClick={() => trackHomeAction("discord_clicked")}
                   icon={<img src="/home/tab-icons/discord.svg" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#5865F2"
+                  tone="var(--primary)"
                 >
                   {t("home.browser.bookmarks.discord")}
                 </BrowserBookmark>
@@ -1823,7 +1829,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   href="https://ko-fi.com/marinara_spaghetti"
                   onClick={() => trackHomeAction("kofi_clicked")}
                   icon={<img src="/home/tab-icons/kofi.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#ff6433"
+                  tone="var(--primary)"
                 >
                   {t("home.actions.support")}
                 </BrowserBookmark>
@@ -1902,7 +1908,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     trackHomeAction("discord_clicked");
                   }}
                   icon={<img src="/home/tab-icons/discord.svg" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#5865F2"
+                  tone="var(--primary)"
                 >
                   {t("home.browser.bookmarks.discord")}
                 </MobileBrowserBookmark>
@@ -1913,7 +1919,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     trackHomeAction("kofi_clicked");
                   }}
                   icon={<img src="/home/tab-icons/kofi.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#ff6433"
+                  tone="var(--primary)"
                 >
                   {t("home.actions.support")}
                 </MobileBrowserBookmark>
@@ -2054,7 +2060,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
             </div>
           ) : (
             <div
-              className="relative min-h-full overflow-hidden bg-[radial-gradient(circle_at_12%_8%,oklch(0.79_0.16_205/0.14),transparent_27%),radial-gradient(circle_at_87%_12%,oklch(0.73_0.21_345/0.14),transparent_29%),radial-gradient(circle_at_72%_76%,oklch(0.76_0.19_52/0.08),transparent_28%),var(--background)]"
+              className="relative min-h-full overflow-hidden bg-[radial-gradient(circle_at_12%_8%,color-mix(in_srgb,var(--primary)_14%,transparent),transparent_27%),radial-gradient(circle_at_87%_12%,color-mix(in_srgb,var(--primary)_14%,transparent),transparent_29%),radial-gradient(circle_at_72%_76%,color-mix(in_srgb,var(--primary)_8%,transparent),transparent_28%),var(--background)]"
               data-component="HomeBrowserHub.HomePage"
             >
               <HomeStarfield />
@@ -2573,7 +2579,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                           <FeedModule
                             eyebrow={t("home.widgets.customEyebrow")}
                             title={widget.title}
-                            accent={HOME_MODULE_ACCENTS[widget.accent]}
+                            accent={HOME_CUSTOM_WIDGET_ACCENTS[widget.accent]}
                             className="h-full"
                           >
                             <div className="flex h-full min-h-0 items-center gap-3">

@@ -649,8 +649,8 @@ export function WorldOverworld({
                 {(tier >= 2 || isHere || selected === place.id) && (
                   <span
                     className={cn(
-                      "pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded px-1 text-[0.625rem] font-semibold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]",
-                      isHere && "bg-black/45",
+                      "pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded px-1 text-[0.625rem] font-semibold text-[var(--foreground)] [text-shadow:0_1px_2px_var(--background)]",
+                      isHere && "bg-[var(--card)]/90",
                     )}
                     aria-hidden="true"
                   >

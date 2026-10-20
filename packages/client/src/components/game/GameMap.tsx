@@ -40,10 +40,10 @@ function getMobileMapLayout(bounds: WindowBounds): WindowLayout {
 }
 
 const STATE_CONFIG: Record<GameActiveState, { icon: typeof Compass; label: string; color: string }> = {
-  exploration: { icon: Compass, label: "Exploration", color: "text-emerald-300" },
-  dialogue: { icon: MessageCircle, label: "Dialogue", color: "text-sky-300" },
-  combat: { icon: Swords, label: "Combat", color: "text-red-300" },
-  travel_rest: { icon: Moon, label: "Travel & Rest", color: "text-amber-300" },
+  exploration: { icon: Compass, label: "Exploration", color: "text-[var(--primary)]" },
+  dialogue: { icon: MessageCircle, label: "Dialogue", color: "text-[var(--primary)]" },
+  combat: { icon: Swords, label: "Combat", color: "text-[var(--destructive)]" },
+  travel_rest: { icon: Moon, label: "Travel & Rest", color: "text-[var(--warning)]" },
 };
 
 const MAP_ZOOM_MIN = 0.75;
@@ -51,7 +51,7 @@ const MAP_ZOOM_MAX = 1.8;
 const MAP_ZOOM_STEP = 0.25;
 // The panel shares the narration box's colors, so it reuses that box's chat style owner.
 const GAME_MAP_PANEL_CLASS =
-  "mari-chat-style-surface mari-game-narration-surface rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md dark:border-white/15 dark:bg-black/50";
+  "mari-chat-style-surface mari-game-narration-surface rounded-lg border border-[var(--border)] bg-[var(--card)]/90 text-[var(--foreground)] shadow-lg backdrop-blur-md";
 const GAME_MAP_DIVIDER_CLASS = "border-[var(--border)]";
 const GAME_MAP_FIELD_CLASS =
   "rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50";
@@ -193,7 +193,7 @@ function TimeOfDayIndicator({ timeOfDay, size = "desktop", className }: TimeOfDa
     return (
       <span
         className={cn(
-          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/55 text-[0.625rem] font-bold leading-none text-white/75 shadow-[0_2px_8px_rgba(0,0,0,0.24)]",
+          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--card)]/90 text-[0.625rem] font-bold leading-none text-[var(--foreground)]/75 shadow-[var(--marinara-editor-shadow)]",
           size === "mobile" ? "h-3.5 w-6" : "h-4 w-7",
           className,
         )}
@@ -211,7 +211,7 @@ function TimeOfDayIndicator({ timeOfDay, size = "desktop", className }: TimeOfDa
   return (
     <span
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-full border border-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.24)]",
+        "relative shrink-0 overflow-hidden rounded-full border border-[var(--border)] shadow-[var(--marinara-editor-shadow)]",
         size === "mobile" ? "h-3.5 w-6" : "h-4 w-7",
         getSkyClasses(phase),
         className,

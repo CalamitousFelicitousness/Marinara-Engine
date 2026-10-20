@@ -785,7 +785,7 @@ export function BackgroundPicker({
               loading="lazy"
               decoding="async"
             />
-            <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
+            <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[var(--background)]/70 to-transparent" />
             <span className="absolute bottom-2 left-2 rounded-md bg-[var(--card)]/90 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--foreground)]/90 backdrop-blur-sm">
               {localizeUi(
                 background.source === "game_asset"

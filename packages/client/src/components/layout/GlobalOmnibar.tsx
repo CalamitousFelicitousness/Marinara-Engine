@@ -1987,7 +1987,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-44 bg-[radial-gradient(120%_100%_at_12%_0%,oklch(0.72_0.16_255/0.12),transparent_60%),radial-gradient(120%_100%_at_88%_0%,oklch(0.73_0.21_345/0.11),transparent_60%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-44 bg-[radial-gradient(120%_100%_at_12%_0%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_60%),radial-gradient(120%_100%_at_88%_0%,color-mix(in_srgb,var(--primary)_11%,transparent),transparent_60%)]"
         />
         <h2 id="global-omnibar-title" className="sr-only">
           {mariSurface ? t("commandCenter.workTitle", "Professor Mari") : t("omnibar.title", "Search Marinara")}

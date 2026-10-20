@@ -270,6 +270,7 @@ class TTSService {
   /** ID of the entity (e.g. message id) currently being spoken */
   private activeId: string | null = null;
   private listeners = new Set<StateListener>();
+  private blobListeners = new Set<(blob: Blob) => void>();
   private livePlaybackVolume: number | null = null;
   private livePlaybackMuted: boolean | null = null;
   private playback: TTSPlayback | null = null;
@@ -279,6 +280,23 @@ class TTSService {
   subscribe(fn: StateListener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Consumers may prepare a clip before playback, without changing how or when it plays. */
+  subscribeBlobReady(listener: (blob: Blob) => void): () => void {
+    this.blobListeners.add(listener);
+    return () => this.blobListeners.delete(listener);
+  }
+
+  private blobReady(blob: Blob): Blob {
+    for (const listener of this.blobListeners) {
+      try {
+        listener(blob);
+      } catch (error) {
+        console.warn("[TTS] Audio preparation listener failed:", error);
+      }
+    }
+    return blob;
   }
 
   getState(): TTSState {
@@ -397,7 +415,7 @@ class TTSService {
       throw new Error(await this.readError(res));
     }
 
-    return res.blob();
+    return this.blobReady(await res.blob());
   }
 
   private async getAudioBlob(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
@@ -411,7 +429,7 @@ class TTSService {
         }),
       options.cacheAliases,
     );
-    return waitForBlobWithAbort(sharedPromise, options.signal);
+    return this.blobReady(await waitForBlobWithAbort(sharedPromise, options.signal));
   }
 
   /**

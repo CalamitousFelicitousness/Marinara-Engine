@@ -130,6 +130,8 @@ Avatars react on their own; there is nothing to set up for this part.
 
 When text to speech reads the reply aloud, the faces follow the voice instead; see **When the reply is read aloud** below.
 
+With streaming off, each sentence still gets its own mood. The faces change in order over the reply's speaking time instead of averaging the whole reply into one mood.
+
 A PNGTuber avatar with faces for [more feelings](#pngtuber-sprites) can also show the more specific feeling a sentence reads as, such as Amusement while it is happy. That face follows the same rules: it needs a clear reading and stays for at least two seconds, and a feeling without its own face shows its main feeling's face. Expression Engine and Game Master picks work the same way: when the avatar has no face with the picked name, such as `scared`, it shows that feeling's face, here Fear. 3D and mesh avatars show the six feelings only.
 
 **How the mood is read.** Your chat connection is not asked. Your chat text stays with your own Marinara Engine and is never sent to an outside service.
@@ -137,7 +139,7 @@ A PNGTuber avatar with faces for [more feelings](#pngtuber-sprites) can also sho
 - A built-in word list answers at once, everywhere, and knows common mood words in several languages.
 - On computers that can run it, Marinara Engine reads the sentences with a small emotion model instead, the mood reader. It understands 36 languages. It downloads once, about 300 MB, the first time you open a Roleplay chat with 2D Avatars or 3D Avatars turned on. It does not download while both agents are off. Each avatar agent's page in **Agents** shows the download's progress, and a failed download tries again by itself about 10 minutes later. The word list answers until the mood reader is ready, and after the download it works offline. It uses about 1 GB of memory while in use and unloads after 10 idle minutes. Lite installs, Android and computers with less than 3 GB of memory keep the word list.
 
-**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. A character's inner thoughts change the face but not the mouth.
+**Faces in Game mode.** Each line the Game Master shows comes with an expression, and the speaking character's avatar takes it. The Game Master chooses the face even when a voice reads the line. A character's inner thoughts change the face but not the mouth.
 
 **The Expression Engine.** When it is on in the chat, its pick after the reply is the final face for that reply. A pick that arrives after you sent your next message stays with the reply it was for. When text to speech reads the reply aloud, the pick shows when the voice finishes. Avatars work without it too.
 
@@ -164,9 +166,9 @@ When text to speech reads a Roleplay reply, the avatar of the character who is s
 - **Faces:** the face changes as the voice reaches each sentence, with **Auto-play** and with the **Speak** button, unless the Expression Engine has already picked the face for that reply.
 - **Volume:** the **Line volume** slider changes how loud the voice is, not how wide the mouth opens.
 - **Personas:** a persona's mouth does not move for your own messages, with or without text to speech.
-- **Game Mode:** Game narration plays through Game Mode's own audio, so in Game Mode avatar mouths follow the text for now.
+- **Game Mode:** with text to speech and **Auto-play** on, avatar mouths wait for their character's voice and follow it. Pausing, stopping or switching chats stops the mouth. Lines without a voice keep their text animation, and a voice that fails or never starts falls back to the text once. Narrator and player voices move no character's mouth; inner thoughts stay unspoken.
 
-Lip sync does not change how the voice plays. Marinara Engine reads a separate copy of each voice clip to time the mouth, so playback works as before, including in Safari and on iPhone and iPad. If your browser cannot read a clip, the voice still plays and only the mouth stops following it.
+Lip sync does not change how the voice plays. Marinara Engine reads a separate copy of each voice clip to time the mouth, so playback works as before, including in Safari and on iPhone and iPad. It prepares the mouth timing as clips arrive while an avatar is present. If the first clip starts before that timing is ready, its text moves the mouth until the voice timing takes over. If your browser cannot read a clip, the voice still plays and only the mouth stops following it.
 
 ## Making an avatar from a sprite
 

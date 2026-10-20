@@ -181,7 +181,8 @@ export function AvatarStage({
   }, [director, participants]);
   // Read the way ChatArea decides to auto-play a Roleplay reply: the avatar then waits for the voice.
   const { data: ttsConfig } = useTTSConfig();
-  const voiceAutoplay = mode === "roleplay" && !!ttsConfig?.enabled && !!ttsConfig.autoplayRP;
+  const voiceAutoplay =
+    !!ttsConfig?.enabled && (mode === "roleplay" ? !!ttsConfig.autoplayRP : !!ttsConfig.autoplayGame);
   useEffect(() => {
     director?.setVoiceAutoplay(voiceAutoplay);
   }, [director, voiceAutoplay]);

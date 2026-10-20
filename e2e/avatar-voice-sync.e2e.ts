@@ -116,14 +116,40 @@ function avatarPackage(kind: Kind) {
 }
 
 /** Records the stage's director frames for the character and what its renderer drew, from now on. */
-async function record(page: Page, ownerId: string, chatId: string, kind: Kind, sprites: Record<string, Rgb>) {
+async function record(
+  page: Page,
+  ownerId: string,
+  chatId: string,
+  kind: Kind,
+  sprites: Record<string, Rgb>,
+  game = false,
+) {
   await page.evaluate(
-    async ({ ownerId, chatId, kind, sprites }) => {
+    async ({ ownerId, chatId, kind, sprites, game }) => {
       type Loose = any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const started = performance.now();
       const at = () => Math.round(performance.now() - started);
       const recording = { frames: [], drawn: [], tts: [], generating: [] } as Loose;
       (window as Loose).__voiceRecording = recording;
+      if (game) {
+        window.Audio = new Proxy(window.Audio, {
+          construct(target, args) {
+            const audio = Reflect.construct(target, args) as HTMLAudioElement;
+            if (audio.src.startsWith("blob:")) {
+              (window as Loose).__gameVoiceAudio = audio;
+              for (const [event, state] of [
+                ["playing", "playing"],
+                ["pause", "paused"],
+                ["ended", "idle"],
+                ["error", "error"],
+              ]) {
+                audio.addEventListener(event!, () => recording.tts.push([at(), state]));
+              }
+            }
+            return audio;
+          },
+        });
+      }
       // The stage keeps its director and renderers in React state; find them from its element.
       const stage = document.querySelector("[data-avatar-stage]") as Loose;
       let fiber = stage[Object.keys(stage).find((key) => key.startsWith("__reactFiber$"))!];
@@ -182,11 +208,20 @@ async function record(page: Page, ownerId: string, chatId: string, kind: Kind, s
         }
       }, 50);
     },
-    { ownerId, chatId, kind, sprites },
+    { ownerId, chatId, kind, sprites, game },
   );
 }
 
 const read = (page: Page) => page.evaluate(() => (window as any).__voiceRecording as Recording); // eslint-disable-line @typescript-eslint/no-explicit-any
+const clipMouthDelays = (recording: Recording) =>
+  recording.tts
+    .filter(([, state]) => state === "playing")
+    .map(([started]) => {
+      const mouth = recording.frames.find(
+        ([at, , , state, open]) => at >= started && state === "talking" && open > 0.1,
+      );
+      return mouth ? mouth[0] - started : null;
+    });
 
 /** When each feeling first shows, in the director's frames and in what was drawn, from `after` on. */
 function firstFaces(recording: Recording, after = 0) {
@@ -198,8 +233,14 @@ function firstFaces(recording: Recording, after = 0) {
 }
 
 for (const kind of ["2d", "3d"] as const) {
-  for (const voice of ["off", "late", "fails"] as const satisfies readonly Voice[]) {
-    test(`a ${kind.toUpperCase()} avatar follows the reply with the voice ${voice}`, async ({
+  const cases: Array<{ voice: Voice; mode: "roleplay" | "game"; streaming: boolean }> = [
+    ...(["off", "late", "fails"] as const).map((voice) => ({ voice, mode: "roleplay" as const, streaming: true })),
+    { voice: "off", mode: "roleplay", streaming: false },
+    { voice: "late", mode: "roleplay", streaming: false },
+    { voice: "late", mode: "game", streaming: true },
+  ];
+  for (const { voice, mode, streaming } of cases) {
+    test(`a ${kind.toUpperCase()} avatar follows the ${mode} reply with the voice ${voice}, streaming ${streaming ? "on" : "off"}`, async ({
       page,
       request,
     }, info) => {
@@ -215,8 +256,15 @@ for (const kind of ["2d", "3d"] as const) {
       };
       // A model that streams the reply a word every 80 ms.
       const provider = createServer(async (incoming, response) => {
-        await new Promise((resolve) => incoming.resume().on("end", resolve));
+        let body = "";
+        for await (const chunk of incoming) body += String(chunk);
         if (!incoming.url?.endsWith("/chat/completions")) return void response.writeHead(404).end();
+        if (!JSON.parse(body).stream) {
+          response.writeHead(200, { "content-type": "application/json" });
+          return void response.end(
+            JSON.stringify({ choices: [{ message: { role: "assistant", content: REPLY }, finish_reason: "stop" }] }),
+          );
+        }
         response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
         for (const word of REPLY.split(/(?<=\s)/u)) {
           response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: word } }] })}\n\n`);
@@ -259,15 +307,34 @@ for (const kind of ["2d", "3d"] as const) {
         const { agent, installed } = avatarPackage(kind);
         const chat = await create("/api/chats", {
           name: `Avatar voice ${kind} ${voice}`,
-          mode: "roleplay",
+          mode,
           connectionId: connection.id,
           characterIds: [character.id],
         });
         const saved = await request.patch(`/api/chats/${chat.id}/metadata`, {
-          data: { enableAgents: true, activeAgentIds: [agent.id], enableTools: false },
+          data: {
+            enableAgents: true,
+            activeAgentIds: [agent.id],
+            enableTools: false,
+            ...(mode === "game"
+              ? {
+                  gameId: chat.id,
+                  gameSessionStatus: "active",
+                  gameSessionNumber: 1,
+                  gameIntroPresented: true,
+                  gameImageAutoGenerationEnabled: false,
+                }
+              : {}),
+          },
         });
         expect(saved.ok(), await saved.text()).toBeTruthy();
-        await create(`/api/chats/${chat.id}/messages`, { role: "assistant", content: "Maukie waits by the window." });
+        await create(`/api/chats/${chat.id}/messages`, {
+          role: "assistant",
+          content:
+            mode === "game"
+              ? '[Maukie] [happy]: "Ah, I am so happy you came. This is wonderful, and I have so much to tell you about today."'
+              : "Maukie waits by the window.",
+        });
 
         await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
         await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [installed] }));
@@ -292,8 +359,11 @@ for (const kind of ["2d", "3d"] as const) {
             response,
             json: {
               ...config,
+              // Each case synthesizes its fixture rather than inheriting another run's persistent audio.
+              model: `avatar-voice-fixture-${chat.id}`,
               enabled: on,
               autoplayRP: on,
+              autoplayGame: on,
               progressivePlayback: false,
               dialogueOnly: false,
               roleplaySpeakerExtractorEnabled: false,
@@ -301,9 +371,12 @@ for (const kind of ["2d", "3d"] as const) {
           });
         });
         const spoken: string[] = [];
+        let releaseGameVoice = () => {};
+        const gameVoiceGate = new Promise<void>((resolve) => (releaseGameVoice = resolve));
         await page.route("**/api/tts/speak", async (route) => {
           const { text } = JSON.parse(route.request().postData() ?? "{}") as { text: string };
           spoken.push(text);
+          if (mode === "game") await gameVoiceGate;
           // The voice arrives 3 s after it was asked for, or fails after 1 s.
           await new Promise((resolve) => setTimeout(resolve, voice === "fails" ? 1_000 : 3_000));
           if (voice === "fails") return route.fulfill({ status: 500, json: { error: "Fixture voice failed" } });
@@ -313,10 +386,10 @@ for (const kind of ["2d", "3d"] as const) {
           hasCompletedOnboarding: true,
           sidebarOpen: false,
           rightPanelOpen: false,
-          chatHelpSeenModes: ["roleplay"],
+          chatHelpSeenModes: ["roleplay", "game"],
           trackerPanelEnabled: false,
           appAccentPulseMode: false,
-          enableStreaming: true,
+          enableStreaming: streaming,
           streamingSpeed: 100,
         });
         await page.addInitScript(
@@ -331,17 +404,21 @@ for (const kind of ["2d", "3d"] as const) {
         await expect(avatar).toHaveAttribute("data-avatar-kind", kind === "2d" ? "pngtuber" : "vrm", {
           timeout: 60_000,
         });
-        await record(page, character.id, chat.id, kind, SPRITES);
+        await record(page, character.id, chat.id, kind, SPRITES, mode === "game");
         await expect.poll(async () => (await read(page)).drawn.length, { timeout: 30_000 }).toBeGreaterThan(5);
 
-        await page.locator("textarea[data-chat-composer]").fill("Hi Maukie.");
-        await page.locator("button.mari-chat-send-btn").click();
+        if (mode === "game") releaseGameVoice();
+        else {
+          await page.locator("textarea[data-chat-composer]").fill("Hi Maukie.");
+          await page.locator("button.mari-chat-send-btn").click();
+        }
         const sentAt = (await read(page)).frames.at(-1)?.[0] ?? 0;
-        await expect
-          .poll(async () => (await read(page)).generating.some(([, busy]) => !busy), { timeout: 30_000 })
-          .toBe(true);
+        if (mode !== "game")
+          await expect
+            .poll(async () => (await read(page)).generating.some(([, busy]) => !busy), { timeout: 30_000 })
+            .toBe(true);
         let recording = await read(page);
-        const streamEnd = recording.generating.find(([, busy]) => !busy)![0];
+        const streamEnd = mode === "game" ? sentAt : recording.generating.find(([, busy]) => !busy)![0];
         const talking = ([, , , state, open]: Recording["frames"][number]) => state === "talking" && open > 0.3;
         const relaxed = () =>
           expect
@@ -358,11 +435,43 @@ for (const kind of ["2d", "3d"] as const) {
             )
             .toBe(true);
 
-        if (voice === "off") {
+        if (mode === "game") {
+          await expect
+            .poll(
+              async () => {
+                recording = await read(page);
+                return recording.tts.some(([, state]) => state === "idle");
+              },
+              { timeout: 45_000 },
+            )
+            .toBe(true);
+          const start = recording.tts.find(([, state]) => state === "playing")![0];
+          const end = recording.tts.find(([, state]) => state === "idle")![0];
+          expect(
+            recording.frames.filter(([at]) => at >= sentAt && at < start).some(talking),
+            "Game text waits for its delayed voice",
+          ).toBe(false);
+          expect(
+            recording.frames.some(([at, , , , open]) => at >= start && at < end && open > 0.3),
+            "Game audio moves the mouth",
+          ).toBe(true);
+          expect(
+            recording.drawn.some(([at, , mouth]) => at >= start && at < end && mouth),
+            "the Game mouth is drawn",
+          ).toBe(true);
+          expect(
+            recording.frames.filter(([at]) => at >= start && at < end).every(([, , label]) => label === "happy"),
+            "Game keeps its authored expression",
+          ).toBe(true);
+          expect(
+            clipMouthDelays(recording).every((delay) => delay !== null && delay < 200),
+            "Game mouth moves from the clip's first spoken frames",
+          ).toBe(true);
+        } else if (voice === "off") {
           await relaxed();
           const { frame, drawn } = firstFaces(recording, sentAt);
           expect(
-            frame.every((at) => at !== undefined && at < streamEnd + 3_000),
+            frame.every((at) => at !== undefined && at < streamEnd + (streaming ? 3_000 : 9_000)),
             `faces with the text: ${frame}`,
           ).toBe(true);
           expect(frame[0]! < frame[1]! && frame[1]! < frame[2]!, "in the reply's order").toBe(true);
@@ -371,11 +480,11 @@ for (const kind of ["2d", "3d"] as const) {
             `and drawn: ${drawn}`,
           ).toBe(true);
           expect(
-            recording.frames.some((frame) => frame[0] < streamEnd + 3_000 && talking(frame)),
+            recording.frames.some((frame) => frame[0] < streamEnd + (streaming ? 3_000 : 9_000) && talking(frame)),
             "talks with the text",
           ).toBe(true);
           expect(
-            recording.drawn.some(([at, , mouth]) => at < streamEnd + 3_000 && mouth),
+            recording.drawn.some(([at, , mouth]) => at < streamEnd + (streaming ? 3_000 : 9_000) && mouth),
             "and draws it",
           ).toBe(true);
           expect(spoken, "no voice was asked for").toEqual([]);
@@ -409,6 +518,10 @@ for (const kind of ["2d", "3d"] as const) {
             "the voice moves the mouth",
           ).toBe(true);
           expect(recording.drawn.some(([at, , mouth]) => at >= voiceFrom && at <= voiceTo + 200 && mouth)).toBe(true);
+          expect(
+            clipMouthDelays(recording).every((delay) => delay !== null && delay < 200),
+            "each clip starts without a decode gap",
+          ).toBe(true);
           const { frame, drawn } = firstFaces(recording, voiceFrom);
           expect(
             frame.every((at) => at !== undefined && at <= voiceTo),
@@ -443,7 +556,10 @@ for (const kind of ["2d", "3d"] as const) {
           ).toBe(true);
         }
         await page.screenshot({ path: info.outputPath(`${kind}-${voice}.png`) });
-        writeFileSync(info.outputPath("timeline.json"), JSON.stringify({ sentAt, streamEnd, ...recording }));
+        writeFileSync(
+          info.outputPath("timeline.json"),
+          JSON.stringify({ sentAt, streamEnd, clipMouthDelays: clipMouthDelays(recording), ...recording }),
+        );
       } finally {
         await page.close();
         for (const path of created) await request.delete(path).catch(() => undefined);

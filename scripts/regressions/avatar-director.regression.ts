@@ -7,7 +7,7 @@
  *     150 ms after the last character with a 50 ms attack and an 80 ms release;
  *   - classifier calls go out at most every 1.2 s with a per-sentence cache; faces switch only on a 0.45 score
  *     with a 0.15 lead, hold 2 s, need two neutral sentences, and relax 4 s after the reply unless the Expression
- *     Engine settled them; a reply that arrives whole is classified whole and spoken within 8 s;
+ *     Engine settled them; a reply that arrives whole keeps per-sentence moods and is spoken within 8 s;
  *   - a more specific feeling inside the same emotion changes on a 0.45 score and holds 2 s on its own clock, so it
  *     never delays the emotion; an emotion change takes its result's feeling, relaxing clears it, and Expression
  *     Engine and Game Master labels carry the feeling they name when it belongs to their emotion;
@@ -331,7 +331,7 @@ endReply("(final)");
 await step(6_000);
 assert.equal(frames.alice!.emotion, "sad", "a settled face does not relax");
 
-// Streaming off: the reply arrives whole, is classified whole, and its dialogue is spoken within 8 s.
+// Streaming off deliberately uses sentence classifications too; whole-text mixed moods average away.
 useUIStore.setState({ enableStreaming: false });
 store().setAbortController(chatId, new AbortController());
 await step(32);
@@ -342,12 +342,31 @@ store().setAbortController(chatId, null);
 await step(1_000);
 assert.equal(frames.alice!.state, "talking", "a whole reply is spoken");
 await waitFor("the whole-reply request", () => calls.length > wholeCalls, 1_500);
-assert.equal(calls.at(-1)!.texts.length, 1, "a whole reply is classified once, as a whole");
-assert.ok(calls.at(-1)!.texts[0]!.includes("sobs quietly"));
+const wholeTexts = calls.slice(wholeCalls).flatMap((call) => call.texts);
+assert.ok(wholeTexts.includes("Alice sobs quietly by the window."), "a whole reply classifies individual sentences");
+assert.ok(
+  wholeTexts.every((text) => !text.includes("window.\n")),
+  "narration and dialogue are not averaged together",
+);
 await step(6_600);
 assert.equal(frames.alice!.state, "talking", "still speaking just before 8 s");
 await step(600);
 assert.notEqual(frames.alice!.state, "talking", "done speaking by 8 s even though the line is longer");
+store().setAbortController(chatId, new AbortController());
+await step(32);
+messageReady(`Alice beams. "${"This is wonderful! ".repeat(8)}"\n\nAlice sobs. "${"I miss him so much. ".repeat(8)}"`);
+store().setAbortController(chatId, null);
+const mixedFrom = t;
+const mixedFaces = new Map<string, number>();
+await step(8_300, () => {
+  const emotion = frames.alice!.emotion;
+  if ((emotion === "happy" || mixedFaces.has("happy")) && !mixedFaces.has(emotion))
+    mixedFaces.set(emotion, t - mixedFrom);
+});
+assert.ok(mixedFaces.has("happy") && mixedFaces.has("sad"), "a streaming-off reply shows both moods");
+console.info("Streaming-off mood timeline (ms):", Object.fromEntries(mixedFaces));
+assert.ok(mixedFaces.get("sad")! >= mixedFaces.get("happy")! + 2_000, "the second mood respects the two-second dwell");
+assert.ok(mixedFaces.get("sad")! >= 3_000, "the later sentence waits for the speaking timeline");
 useUIStore.setState({ enableStreaming: true });
 
 // Text-to-speech: the voice level drives the mouth while it plays.
@@ -468,6 +487,70 @@ afterNarration.dispose();
 await flush();
 
 // A Game thought (or the player's own input) changes the face, never the mouth: Game voices skip those lines too.
+{
+  const voicedGame = director.createAvatarDirector(
+    { chatId: "game-voice-wait", mode: "game", reducedMotion: false },
+    { classify: async () => assert.fail("Game faces must never use the classifier") },
+  );
+  voicedGame.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  voicedGame.setVoiceAutoplay(true);
+  let time = 120_000;
+  const line = {
+    id: "voiced",
+    speakerName: "Alice",
+    ownerId: "alice",
+    expression: "furious_glare",
+    text: "I am speaking now.",
+    voiceExpected: true,
+    voicePending: true,
+  };
+  voicedGame.pushGameLine(line);
+  const advance = (ms: number) => {
+    let frame = voicedGame.frame("alice", time);
+    const end = time + ms;
+    while (time < end) frame = voicedGame.frame("alice", (time += 16));
+    return frame;
+  };
+  assert.equal(advance(3_000).mouthOpen, 0, "Game waits while eligible voice generation is still pending");
+  voicedGame.pushGameLine({ ...line, voicePending: false });
+  assert.equal(advance(500).mouthOpen, 0, "a ready voice gets time to start");
+  voicedGame.setAudioSource("alice", {
+    ownerId: "alice",
+    level: () => 0.8,
+    isPlaying: () => true,
+    line: () => ({ text: "I am happy.", progress: 1 }),
+  });
+  let frame = advance(200);
+  assert.ok(frame.mouthOpen > 0.7, "Game mouth follows the voice");
+  assert.equal(frame.label, "furious_glare", "the Game Master's face wins over the spoken text's mood");
+  voicedGame.setAudioSource("alice", null);
+  assert.equal(advance(200).mouthOpen, 0, "Game never speaks the same text again after its voice");
+  voicedGame.pushGameLine({ ...line, id: "fast" });
+  voicedGame.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  voicedGame.setAudioSource("alice", null);
+  voicedGame.pushGameLine({ ...line, id: "fast", voicePending: false });
+  assert.equal(advance(3_000).mouthOpen, 0, "a clip that finishes between frames is not replayed by late readiness");
+  voicedGame.pushGameLine({ ...line, id: "missing", voicePending: false });
+  assert.ok(advance(2_300).mouthOpen > 0, "a voice that never starts gets one text fallback after the grace time");
+  assert.equal(advance(9_000).mouthOpen, 0, "the fallback ends instead of repeating");
+  voicedGame.setVoiceAutoplay(false);
+  voicedGame.pushGameLine({ ...line, id: "no-voice", voiceExpected: false, voicePending: false });
+  assert.ok(advance(200).mouthOpen > 0, "a line with no eligible voice never waits for autoplay");
+  voicedGame.setVoiceAutoplay(true);
+  voicedGame.pushGameLine({ ...line, id: "no-voice", voiceExpected: true, voicePending: true });
+  assert.equal(advance(3_000).mouthOpen, 0, "late voice configuration cancels an already queued text mouth");
+  voicedGame.pushGameLine({ ...line, id: "thought", text: "", voiceExpected: false, voicePending: false });
+  assert.notEqual(advance(200).state, "talking", "an unspoken line cancels the old line's text fallback");
+  assert.equal(advance(400).mouthOpen, 0, "the old mouth finishes its normal closing fade");
+  voicedGame.pushGameLine({ ...line, id: "covered" });
+  time += 120_000;
+  assert.equal(advance(2_000).mouthOpen, 0, "a covered stage starts its new voice wait when frames resume");
+  console.info(
+    "Game voice proof: a 3000 ms generation wait stays silent, audio drives the mouth, and an absent voice falls back after its 2000 ms grace",
+  );
+  voicedGame.dispose();
+}
+
 const thoughts = director.createAvatarDirector(
   { chatId: gameChatId, mode: "game", reducedMotion: false },
   { classify: async () => Promise.reject(new Error("unused")), prepareModel },
@@ -1105,6 +1188,49 @@ const scene = (id: string, names: string[]) => {
   await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
   assert.ok(t - spokeEnd >= 4_000, "a spoken message's mood relaxes about 4 s after its voice");
   voiced.dispose();
+}
+
+// A whole group reply may get audio for only one member. The other's mood fallback starts its own
+// timeline when the reading ends, rather than jumping over every sentence spent waiting for that voice.
+{
+  useUIStore.setState({ enableStreaming: false });
+  const id = "director-unvoiced-member";
+  const group = scene(id, ["Alice", "Bob"]);
+  group.scened.setVoiceAutoplay(true);
+  await group.play(16);
+  group.start();
+  group.scened.pushStreamText({
+    chatId: id,
+    messageId: "group-voice",
+    speakerOwnerId: null,
+    done: true,
+    text: `Alice beams. "Wonderful."\n\nBob beams. "${"This is wonderful. ".repeat(8)}"\n\nBob sobs. "${"I miss him so much. ".repeat(8)}"`,
+  });
+  const announce = (pending: boolean) =>
+    window.dispatchEvent(
+      new CustomEvent(TTS_AUTOPLAY_VOICE_EVENT, {
+        detail: { chatId: id, messageId: "group-voice", readingId: "group-reading", pending },
+      }),
+    );
+  announce(true);
+  group.end();
+  await group.play(3_000);
+  group.scened.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  await group.play(3_000);
+  group.scened.setAudioSource("alice", null);
+  announce(false);
+  const readingEnded = t;
+  const bobFaces = new Map<string, number>();
+  for (let index = 0; index < 520; index += 1) {
+    await group.play(16);
+    const mood = group.last.bob!.emotion;
+    if (!bobFaces.has(mood)) bobFaces.set(mood, t - readingEnded);
+  }
+  console.info("Unvoiced group-member timeline after reading (ms):", Object.fromEntries(bobFaces));
+  assert.ok(bobFaces.has("happy") && bobFaces.has("sad"), "an unvoiced group member keeps both sentence moods");
+  assert.ok(bobFaces.get("sad")! >= 3_000, "the voice wait is not counted as that member's text speaking time");
+  group.scened.dispose();
+  useUIStore.setState({ enableStreaming: true });
 }
 
 // A swipe in an Individual group gets no group_turn from the server; use-generate names the swiped member as the

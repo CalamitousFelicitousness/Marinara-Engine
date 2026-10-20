@@ -113,10 +113,14 @@ export interface AvatarExpressionPick {
 
 /** Game mode: the Game Master line now on screen, with its per-line expression. */
 export interface AvatarGameLine {
+  id?: string;
   speakerName: string;
   ownerId: string | null;
   expression: string | null;
   text: string;
+  /** Whether Game actually has a voice request for this displayed line, and is still generating it. */
+  voiceExpected?: boolean;
+  voicePending?: boolean;
 }
 
 /** Live loudness of a voice that is playing for one owner (text-to-speech). */

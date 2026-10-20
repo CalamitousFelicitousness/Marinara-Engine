@@ -166,7 +166,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Search and Professor Mari's window can be resized on big screens. Professor Mari's window is a little taller on computers, and height and width sliders in **Search and Professor Mari settings** set how big each one is. Both keep their current size until you move a slider, and phones keep the full-screen window (#7398, #7501).
 
-- Professor Mari has an experimental **Pi** runtime. In **Search and Professor Mari settings**, change **Runtime** (below **Permissions mode**) from **Classic** to **Pi (experimental)**. On Pi she keeps your connection's reasoning settings, can work through long tasks without the 12-round limit, and works with every connection, including the local model. Your permissions mode, change cards and Undo work the same in both, and in Manual mode **Accept** applies exactly the held changes without asking the model again. Classic stays the default (#7570).
+- Professor Mari has a new, experimental **Pi** runtime, and she uses it by default, also after updating from 2.5.0. On Pi she keeps your connection's reasoning settings, can work through long tasks without the 12-round limit, and works with every connection, including the local model. Your permissions mode, change cards and Undo work the same in both, and in Manual mode **Accept** applies exactly the held changes without asking the model again. To go back to the original runtime, change **Runtime** (below **Permissions mode**) in **Search and Professor Mari settings** to **Classic**. Marinara keeps that choice (#7570, #7882).
+
+- If Pi fails three times in a row, Professor Mari's message box offers **Switch to Classic**, and while Classic is chosen it offers **Try Pi again**. Switching keeps the conversation and sends nothing again; it applies to your next question (#7882).
+
+- Professor Mari no longer says she changed or deleted something when she only looked at it. She can say she made a change only after actually making it in that answer (#7882).
+
+- The grey name suggestions in Search and Professor Mari's message box no longer stop at a space: after `Lady `, the rest of **Lady Celeste** still appears (#7882).
 
 - Professor Mari's words now show while she writes, and a step that created or changed several items lists their names on its row. Tool calls that DeepSeek, Kimi K2, GLM, Qwen3-Coder, MiniMax M2 and Mistral models write as text are now read correctly, and in Roleplay chats with function calling, the text a model writes beside such a call is kept (#7570).
 
@@ -397,6 +403,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - With **Enable emotion indicators** on, text in square brackets now reaches the speech service even when **Skip text inside square brackets** is on, so voice directions such as `[Low, steady voice, restrained urgency]` are no longer thrown away. This can let other bracketed notes through as well; turn emotion indicators off to filter brackets again. The **Roleplay speaker extractor** adds sparing, more descriptive directions without changing the dialogue's words, and a long line split for speech no longer cuts a direction in half. With **Enable TTS**, **Game narration** and emotion indicators on, Game scene, party and combat dialogue can carry these directions too. After you change these settings, playback uses them instead of audio saved from before (#7765).
 
 - Calls can now send your voice to your own speech-to-text server, such as a self-hosted Whisper server or a provider, instead of Local Whisper. This helps when Local Whisper struggles with your language. Set it up in the new **Speech to Text** card in **Connections**, which appears once Calls is installed: enter the server's address, an API key if it needs one, the model and your language, then press **Test**. Calls 1.1.0 and newer use it. A server on the same computer works as is; one elsewhere on your home network needs `STT_LOCAL_URLS_ENABLED=true` (#7353).
+
+- On a phone, closing **Connections** while a **Speech to Text** change is still being saved no longer saves it twice (#7891).
 
 - **Calls** keeps what you say while it is still transcribing your last clip. Anything said in that time used to be thrown away with "Still processing your last voice message". Up to three clips now wait their turn and are answered in the order you spoke. Calls also uses the **Speech to Text** server set in **Connections** when there is one, and falls back to Local Whisper when there isn't or it fails. Speech that finishes transcribing after you hang up is no longer saved into the ended call or answered (Marinara-Agents#1281).
 

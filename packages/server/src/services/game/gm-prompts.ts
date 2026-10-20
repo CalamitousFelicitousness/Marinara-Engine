@@ -1953,6 +1953,7 @@ export function buildGmFormatReminder(
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
     `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened. When two tracked people share a name, add the one you mean: id="..." as listed.`,
     `- [party_change: character="Exact Character Name" change="add|remove"] - only when someone truly joins or leaves the party. Use remove when a party member dies, permanently departs, or is no longer traveling with the player.`,
+    `- [party_change: character="New Name" change="add" copy_of="Party Member" condition="Condition"] - a copy of that party member joins under the new name, with their sheet, holding the ruleset's condition from the start (a Simulacrum). condition is optional.`,
     `- [session_end: reason="goal achieved|good place to pause"] - only when the current session truly ends.`,
   );
 

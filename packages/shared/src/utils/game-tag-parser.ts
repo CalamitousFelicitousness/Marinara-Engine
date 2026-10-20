@@ -66,6 +66,10 @@ export interface SegmentInventoryUpdate {
 export interface PartyChangeTag {
   characterName: string;
   change: "add" | "remove";
+  /** Joins as a copy of this party member (5e's Simulacrum). */
+  copyOf?: string;
+  /** A condition of the game's ruleset the copy holds from the start. */
+  condition?: string;
 }
 
 export interface ReadableTag {
@@ -344,7 +348,7 @@ function parsePartyCharacterName(body: string): string {
   const unquoted = quoted ? null : /(?:character|name)\s*=\s*([^,\]]+)/i.exec(body);
   const rawName = quoted?.[1] ?? unquoted?.[1] ?? body;
   return rawName
-    .replace(/\s+change\s*=\s*"?(?:add|remove)"?.*$/i, "")
+    .replace(/\s+(?:change|copy_of|condition)\s*=.*$/i, "")
     .trim()
     .replace(/^["']|["']$/g, "");
 }
@@ -354,7 +358,12 @@ function parsePartyChangeTagBody(body: string, fallbackChange?: "add" | "remove"
   const change = (changeMatch?.[1]?.toLowerCase() as "add" | "remove" | undefined) ?? fallbackChange;
   if (!change) return null;
   const characterName = parsePartyCharacterName(body);
-  return characterName ? { characterName, change } : null;
+  if (!characterName) return null;
+  const attribute = (name: string) =>
+    (new RegExp(`${name}\\s*=\\s*"([^"]+)"`, "i").exec(body)?.[1] ?? "").trim() || undefined;
+  const copyOf = change === "add" ? attribute("copy_of") : undefined;
+  const condition = copyOf ? attribute("condition") : undefined;
+  return { characterName, change, ...(copyOf ? { copyOf } : {}), ...(condition ? { condition } : {}) };
 }
 
 /** Match a legacy flat-tag body with one forward scan, including malformed input. */

@@ -12,6 +12,9 @@ import {
   normalizeWeatherType,
   combatWeatherSchema,
   readImageAppearanceOverride,
+  applyRulesetSheetOp,
+  type RulesetLiveStates,
+  type RulesetSheetEnvelope,
 } from "@marinara-engine/shared";
 import {
   checkStoryScript,
@@ -77,7 +80,11 @@ import {
 } from "../services/game/world-brief-writer.js";
 import { registerSequentialGameTasks, retainSequentialGameTask } from "../services/game/sequential-tasks.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
-import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
+import {
+  createChatsStorage,
+  METADATA_WRITE_ORDINALS_KEY,
+  withChatMetadataPatchQueue,
+} from "../services/storage/chats.storage.js";
 import { createGameWorldSnapshotsStorage } from "../services/storage/game-world-snapshots.storage.js";
 import { loadGameWorld, saveGameWorldSnapshot } from "../services/game/game-world.service.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -2174,6 +2181,10 @@ const recruitPartyMemberSchema = z.object({
   /** The player's pick when several characters share the name: a library card id, or null for the game's own. */
   characterId: z.string().min(1).max(500).nullable().optional(),
   connectionId: z.string().optional(),
+  /** A copy of this party member joins instead (5e's Simulacrum): their card and sheet, under the new name. */
+  copyOf: z.string().min(1).max(200).optional(),
+  /** A condition of the pinned ruleset the copy holds from the start: Simulacrum's halved health. */
+  condition: z.string().min(1).max(80).optional(),
 });
 
 const regenerateCharacterSheetSchema = z.object({
@@ -2646,6 +2657,98 @@ function findGameNpcByName(npcs: GameNpc[], requestedName: string): GameNpc | nu
     matches = npcs.filter((npc) => characterNamesLikelyMatch(npc.name, requestedName));
   }
   return matches.length === 1 ? matches[0]! : null;
+}
+
+/**
+ * A copy of a party member joins the party (5e's Simulacrum): a game character of the new name whose
+ * card is the member's, with the member's sheet in a game on a ruleset, fresh but for `condition`, a
+ * condition of that ruleset it holds from the start. Nothing is generated: the copy is the member.
+ */
+async function recruitPartyCopy(args: {
+  chats: ReturnType<typeof createChatsStorage>;
+  stateStore: ReturnType<typeof createGameStateStorage>;
+  chat: NonNullable<StoredChatRecord>;
+  meta: Record<string, unknown>;
+  setupConfig: GameSetupConfig;
+  chatCharacterIds: string[];
+  currentPartyIds: string[];
+  requestedName: string;
+  trackedNpc: GameNpc | null;
+  copyOf: string;
+  condition: string | undefined;
+}) {
+  const { chats, stateStore, chat, meta, setupConfig, chatCharacterIds, currentPartyIds, requestedName } = args;
+  const currentCards = (meta.gameCharacterCards as Array<Record<string, unknown>>) ?? [];
+  const sourceIndex = findExistingGameCharacterCardIndex(currentCards, args.copyOf);
+  if (sourceIndex < 0) throw new Error(`No party member named "${args.copyOf}" to copy.`);
+  const source = currentCards[sourceIndex]!;
+  const pinned = meta.gameRuleset != null ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
+  const definition = pinned?.status === "ok" ? pinned.definition : null;
+  const condition = args.condition;
+  if (condition && !definition?.sheet.live.conditions.some((one) => one.id === condition)) {
+    throw new Error(`The game's ruleset has no condition "${condition}".`);
+  }
+  const npc = args.trackedNpc ?? buildFallbackTrackedGameNpc(requestedName);
+  const recruitId = buildPartyNpcId(npc.name);
+  // Its own card by its exact name only: "Lia's Simulacrum" is never Lia.
+  const exactCardIndex = (cards: Array<Record<string, unknown>>) =>
+    cards.findIndex(
+      (card) =>
+        typeof card.name === "string" &&
+        normalizeCharacterLookupName(card.name) === normalizeCharacterLookupName(npc.name),
+    );
+  const existingCardIndex = exactCardIndex(currentCards);
+  if (currentPartyIds.includes(recruitId) && existingCardIndex >= 0) {
+    return { sessionChat: chat, added: false, characterName: npc.name, cardCreated: false };
+  }
+  const sourceName = typeof source.name === "string" ? source.name.trim() : args.copyOf;
+  const sheet = source.rulesetSheet as RulesetSheetEnvelope | undefined;
+  const nextCard: Record<string, unknown> = {
+    ...structuredClone(source),
+    name: npc.name,
+    shortDescription: `${npc.name}, a copy of ${sourceName}.`,
+    ...(sheet ? { rulesetSheet: { v: sheet.v, build: structuredClone(sheet.build) } } : {}),
+  };
+  let added = false;
+  const updatedSession = await chats.patchMetadataWithCharacterIds(chat.id, (current) => {
+    const merged = mergeRecruitIntoGameMetadata({
+      current,
+      recruitId,
+      recruitName: npc.name,
+      nextCard,
+      existingCardIndex,
+      fallbackSetupConfig: setupConfig,
+      chatCharacterIds,
+      npcToTrack: args.trackedNpc ? null : npc,
+    });
+    // Written over its own card, if it has one, and never over the member's.
+    const freshCards = (current.gameCharacterCards as Array<Record<string, unknown>>) ?? [];
+    const own = exactCardIndex(freshCards);
+    merged.patch.gameCharacterCards = own >= 0 ? freshCards : [...freshCards, nextCard];
+    added = merged.added;
+    return { metadata: merged.patch, characterIds: merged.mergedChatCharacterIds };
+  });
+  if (!updatedSession) throw new Error("Failed to update game session");
+  // Fresh, but for what it holds from the start.
+  if (definition && sheet) {
+    const key = normalizeCharacterLookupName(npc.name);
+    const held = condition
+      ? applyRulesetSheetOp(definition, sheet.build, {}, { op: "condition", condition, active: true })
+      : null;
+    await withChatMetadataPatchQueue(chat.id, async () => {
+      const visibleAnchor = resolveVisibleGameStateAnchor(await chats.listMessages(chat.id));
+      const row = await stateStore.getForGeneration(chat.id, { preferLatestVisible: true, visibleAnchor });
+      if (!row) return;
+      const stored: RulesetLiveStates = parseStoredRulesetLive(row.rulesetLive) ?? {};
+      const next: RulesetLiveStates = { ...stored, [key]: held?.ok ? held.live : {} };
+      (visibleAnchor
+        ? await stateStore.updateByMessage(visibleAnchor.messageId, visibleAnchor.swipeIndex, chat.id, {
+            rulesetLive: next,
+          })
+        : null) ?? (await stateStore.updateLatest(chat.id, { rulesetLive: next }));
+    });
+  }
+  return { sessionChat: updatedSession, added, characterName: npc.name, cardCreated: existingCardIndex < 0 };
 }
 
 function buildFallbackTrackedGameNpc(name: string): GameNpc {
@@ -9561,6 +9664,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const currentPartyIds = getStoredPartyCharacterIds(meta, setupConfig, chatCharacterIds);
     const gameNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
     const trackedNpc = findGameNpcByName(gameNpcs, requestedName);
+    if (input.copyOf) {
+      return recruitPartyCopy({
+        chats,
+        stateStore,
+        chat,
+        meta,
+        setupConfig,
+        chatCharacterIds,
+        currentPartyIds,
+        requestedName,
+        trackedNpc,
+        copyOf: input.copyOf.trim(),
+        condition: input.condition?.trim() || undefined,
+      });
+    }
     // An NPC met this session may not be tracked yet, but the journal's NPC log already has them.
     const journalNpcLog = (meta.gameJournal as Journal | null)?.npcLog;
     const gameHasOwnCharacter =

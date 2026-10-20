@@ -523,8 +523,14 @@ export function useRecruitPartyMember() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { chatId: string; characterName: string; characterId?: string | null; connectionId?: string }) =>
-      api.post<RecruitPartyMemberResponse>("/game/party/recruit", data),
+    mutationFn: (data: {
+      chatId: string;
+      characterName: string;
+      characterId?: string | null;
+      connectionId?: string;
+      copyOf?: string;
+      condition?: string;
+    }) => api.post<RecruitPartyMemberResponse>("/game/party/recruit", data),
     onMutate: (variables) => ({ metadataVersion: captureChatMetadataVersion(variables.chatId) }),
     onSuccess: (res, variables, context) => {
       const guardedChat = guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0);

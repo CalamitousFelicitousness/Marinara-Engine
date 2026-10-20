@@ -3139,7 +3139,12 @@ function GameSurfaceComponent({
         const commandKey = `${messageId}:${partyChange.change}:${normalizeTextForMatch(characterName)}`;
         if (processedPartyChangeCommandsRef.current.has(commandKey)) continue;
         processedPartyChangeCommandsRef.current.add(commandKey);
-        const variables = { chatId: activeChatId, characterName };
+        const variables = {
+          chatId: activeChatId,
+          characterName,
+          ...(partyChange.copyOf ? { copyOf: partyChange.copyOf } : {}),
+          ...(partyChange.condition ? { condition: partyChange.condition } : {}),
+        };
         const forgetCommand = () => processedPartyChangeCommandsRef.current.delete(commandKey);
         if (partyChange.change !== "add") {
           removePartyMember.mutate(variables, { onError: forgetCommand });

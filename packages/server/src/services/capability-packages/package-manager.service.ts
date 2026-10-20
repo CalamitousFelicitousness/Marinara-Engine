@@ -2740,6 +2740,11 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Massive damage killing outright (1.656). */
+function carriesMassiveDamage656(ruleset: unknown): boolean {
+  return plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.dying)?.instantDeath !== undefined;
+}
+
 /** Easy going on some tiles, or harm walking into some (1.655): Ice Walk, Water Susceptibility. */
 function carriesGroundByTile655(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8739,6 +8744,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Massive damage killing outright, 1.656.
+  if (!declaresApi(656) && carriesMassiveDamage656(ruleset))
+    return "A ruleset whose massive damage kills outright (combat.dying.instantDeath) requires schemaVersion 2 and capabilityApi 1.656 or newer";
   // Easy going on some tiles, or harm walking into some, 1.655.
   if (
     !declaresApi(655) &&

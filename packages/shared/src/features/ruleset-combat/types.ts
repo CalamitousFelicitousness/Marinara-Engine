@@ -3756,6 +3756,8 @@ export type RulesetCombatEvent =
   | { type: "fell"; targetId: string; levels: number }
   /** Killed outright by a blow that slays (1.187). */
   | { type: "slain"; actorId: string; targetId: string; label: string }
+  /** Killed outright by massive damage (1.656). */
+  | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */
   | { type: "dropped"; actorId: string; targetId: string; label: string }
   /** A save made against something that deals half, taken as nothing at all (1.250): Evasion. */

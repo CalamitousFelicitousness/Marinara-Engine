@@ -14856,6 +14856,7 @@ export interface RulesetCombatDyingSaves {
   criticalWhileDown: "one-failure" | "two-failures" | "none";
   condition?: string;
   asSave?: true;
+  instantDeath?: "overflow-at-least-max";
 }
 const combatDyingSchema: z.ZodType<RulesetCombatDyingSaves, z.ZodTypeDef, unknown> = z.discriminatedUnion("kind", [
   z
@@ -14881,6 +14882,10 @@ const combatDyingSchema: z.ZodType<RulesetCombatDyingSaves, z.ZodTypeDef, unknow
        *  narrowed to none, changes it too, its numbers and its advantage alike. 5e's death saving
        *  throw, which Bless and a paladin's Aura of Protection add to. */
       asSave: z.literal(true).optional(),
+      /** Massive damage (Capability API 1.656): a blow whose damage left past 0 is at least their
+       *  hit point maximum kills one who would lie dying outright, and so does a blow that much while
+       *  they are down. Only a ward against being slain outright (`hangsOn.outright`) holds. */
+      instantDeath: z.literal("overflow-at-least-max").optional(),
     })
     .strict(),
 ]);

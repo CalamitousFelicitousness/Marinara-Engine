@@ -217826,6 +217826,10 @@
                   "type": "boolean",
                   "const": true
                 },
+                "instantDeath": {
+                  "type": "string",
+                  "const": "overflow-at-least-max"
+                },
                 "$comment": {}
               },
               "required": [

@@ -817,6 +817,8 @@ export function rulesetCombatEventLine(
         label: event.label,
         items: event.labels.join(", "),
       });
+    case "massiveDeath":
+      return key("massiveDeath", { actor: names.combatant(event.actorId) });
     case "letFall":
       return key("letFall", {
         actor: names.combatant(event.actorId),

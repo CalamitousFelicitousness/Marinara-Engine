@@ -404,6 +404,9 @@ interface RulesetCombatContext {
    *  what a creature splits on (1.422) though it is immune to it, as a Black Pudding is to lightning.
    *  Read and cleared as the blow ends. */
   blowSubjected: Map<string, Set<string>>;
+  /** What each target's own health was dealt past 0 in the blow being dealt (1.656): what massive
+   *  damage reads. Read and cleared as the blow ends. */
+  blowOverflow: Map<string, number>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
   /** Mounts moved against their will this step (1.443), whose riders may come off. */
@@ -508,6 +511,7 @@ function begin(
     overwhelmed: new Set(),
     blowTypes: new Map(),
     blowSubjected: new Map(),
+    blowOverflow: new Map(),
     harmEndings: [],
     ...(borrowedOuter ? { outer: borrowedOuter } : {}),
   };
@@ -1119,6 +1123,9 @@ function applyDamage(
     if (form.value <= 0) {
       endShape(ctx, target, "damage");
       if (over > 0) {
+        // Back in their own form, what is left past their own health (1.656).
+        const own = healthOf(ctx, target);
+        noteOverflow(ctx, target, over - own.temp - own.value);
         if (target.sheet) {
           if (!deferWound)
             writeHealthLoss(ctx, target, over, input.damageType, input.seals, input.lasting, input.pool?.kind);
@@ -1130,6 +1137,7 @@ function applyDamage(
       }
     }
   } else if (dealt > 0) {
+    noteOverflow(ctx, target, dealt - toTemp - before.value);
     if (target.sheet) {
       if (!deferWound)
         writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting, input.pool?.kind);
@@ -1361,6 +1369,12 @@ function harmSharer(
   return undefined;
 }
 
+/** Damage past a target's own health in the blow being dealt (1.656), summed over its amounts. */
+function noteOverflow(ctx: RulesetCombatContext, target: RulesetCombatant, past: number): void {
+  if (past <= 0) return;
+  ctx.blowOverflow.set(target.id, (ctx.blowOverflow.get(target.id) ?? 0) + past);
+}
+
 /**
  * What a whole blow does once every amount on it has landed: the conditions any damage ends, ONE
  * check against concentration for the summed damage, and one check for going down.
@@ -1376,6 +1390,8 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   ctx.blowTypes.delete(target.id);
   const subjected = ctx.blowSubjected.get(target.id) ?? new Set<string>();
   ctx.blowSubjected.delete(target.id);
+  const overflow = ctx.blowOverflow.get(target.id) ?? 0;
+  ctx.blowOverflow.delete(target.id);
   if (dealt <= 0) {
     // Split by what it shrugged off (1.422): an ooze immune to the lightning it splits on.
     splitOnHarm(ctx, target, subjected);
@@ -1393,8 +1409,17 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   if (!out) splitOnHarm(ctx, target, new Set([...kinds, ...subjected]));
   // What the harm puts on it (1.489): a flesh golem's Aversion of Fire.
   if (!out) harmedInto(ctx, target, kinds);
+  // Massive damage (1.656): what is left past 0 at least their most kills one who would lie dying,
+  // and so does as much taken while down.
+  const massive =
+    ctx.combat.dying?.instantDeath === "overflow-at-least-max" &&
+    !rulesetDiesAtZero(target) &&
+    !target.object &&
+    overflow > 0 &&
+    overflow >= after.max;
   if (out) {
-    if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds });
+    if (!wasDown) dropToZero(ctx, target, false, { dealt, critical, kinds, ...(massive ? { massive } : {}) });
+    else if (massive && target.dying && !target.defeated) killedOutright(ctx, target);
     else if (target.dying && !target.defeated) {
       // Already down: a blow while down costs the rule's own number of failures.
       const rule = critical ? ctx.combat.dying?.criticalWhileDown : ctx.combat.dying?.damageWhileDown;
@@ -2120,6 +2145,8 @@ interface RulesetDroppingBlow {
   dealt: number;
   critical: boolean;
   kinds: Set<string>;
+  /** Past 0 by at least their most (1.656): only a ward against being slain outright holds. */
+  massive?: true;
 }
 
 /** A pool on a combatant's own sheet, or undefined with no sheet or no such pool. */
@@ -2234,6 +2261,8 @@ function dropToZero(
   const pool = target.sheet && !target.health && !("track" in health) ? health.pool : undefined;
   if (!slain && (target.health || pool)) {
     for (const { from, hangs } of rulesetHangsOn(ctx.definition, ctx.combat, target, ctx.state)) {
+      // Massive damage slays outright (1.656): Death Ward holds, Relentless Endurance does not.
+      if (blow?.massive && !hangs.outright) continue;
       const held = hangsOnNow(ctx, target, from, hangs, blow);
       if (!held) continue;
       if (target.health) target.health.value = 1;
@@ -2265,6 +2294,10 @@ function dropToZero(
       }
       return;
     }
+  }
+  if (blow?.massive && !slain) {
+    killedOutright(ctx, target);
+    return;
   }
   // Down, they are themselves again (1.342): a shapechanger dies in its true form.
   if (target.shape) endShape(ctx, target, "damage");
@@ -14606,6 +14639,21 @@ function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: str
     return;
   }
   ctx.events.push({ type: "slain", actorId: sourceId, targetId: target.id, label });
+  dieNow(ctx, target);
+}
+
+/** Killed by massive damage (1.656): dead, never dying. Nobody dies on Held Ground: felled. */
+function killedOutright(ctx: RulesetCombatContext, target: RulesetCombatant): void {
+  if (ctx.state.heldGround) {
+    if (!target.down) dropToZero(ctx, target, true);
+    return;
+  }
+  ctx.events.push({ type: "massiveDeath", actorId: target.id });
+  dieNow(ctx, target);
+}
+
+/** Down and dead at once, never dying: what slaying does once it is told. */
+function dieNow(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   if (!target.down) dropToZero(ctx, target, true);
   if (target.defeated) return;
   target.defeated = true;

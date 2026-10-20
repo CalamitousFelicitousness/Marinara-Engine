@@ -2183,6 +2183,7 @@
   "game.combat.ruleset.event.lowered": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s {{to}}, to {{total}}.",
   "game.combat.ruleset.event.loweredCheck": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s check for {{to}}, to {{total}}.",
   "game.combat.ruleset.event.loweredDamage": "{{actor}}'s {{label}} takes {{by}} off {{target}}'s {{to}} damage, to {{total}}.",
+  "game.combat.ruleset.event.massiveDeath": "{{actor}} is killed outright by massive damage.",
   "game.combat.ruleset.event.missileKept": "{{actor}} catches the {{label}} and keeps it.",
   "game.combat.ruleset.event.mounted": "{{rider}} mounts {{mount}}.",
   "game.combat.ruleset.event.move": "{{actor}} moves to {{x}}, {{y}} for {{cost}} and has {{left}} left.",

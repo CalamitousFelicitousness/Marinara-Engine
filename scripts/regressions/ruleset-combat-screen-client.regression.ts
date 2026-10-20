@@ -867,6 +867,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       "wasted",
       say({ type: "wasted", actorId: "lurker", condition: "incapacitated", budget: "action", label: "Action" }),
     ],
+    ["massiveDeath", say({ type: "massiveDeath", actorId: "brenna" })],
     ["letFall", say({ type: "letFall", actorId: "brenna", condition: "incapacitated", labels: ["Mace", "Shield"] })],
     ["pickedUp", say({ type: "pickedUp", actorId: "brenna", label: "Mace" })],
     [
@@ -1487,6 +1488,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Thorn Lurker rolls 9 for Incapacitated and acts normally.",
   );
   assert.equal(printed.get("letFall"), "Brenna drops Mace, Shield (Incapacitated).");
+  assert.equal(printed.get("massiveDeath"), "Brenna is killed outright by massive damage.");
   assert.equal(printed.get("pickedUp"), "Brenna picks up Mace.");
   assert.equal(printed.get("takenAway"), "Brenna takes Mace from Thorn Lurker with Telekinesis.");
   assert.equal(printed.get("averted"), "Brenna averts their eyes from Thorn Lurker.");

@@ -206,7 +206,7 @@ const PARTY_TYPE_ICONS: Record<string, string> = {
 };
 
 const GAME_DIALOGUE_AVATAR_CLASS =
-  "h-[calc(4rem*var(--game-avatar-scale))] w-[calc(4rem*var(--game-avatar-scale))] max-h-[min(8.5rem,32vw)] max-w-[min(8.5rem,32vw)] rounded-xl border-2 border-white/15 shadow-xl sm:h-[calc(5rem*var(--game-avatar-scale))] sm:w-[calc(5rem*var(--game-avatar-scale))] sm:max-h-[min(9.5rem,26vw)] sm:max-w-[min(9.5rem,26vw)]";
+  "h-[calc(4rem*var(--game-avatar-scale))] w-[calc(4rem*var(--game-avatar-scale))] max-h-[min(8.5rem,32vw)] max-w-[min(8.5rem,32vw)] rounded-xl border-2 border-[var(--border)] shadow-xl sm:h-[calc(5rem*var(--game-avatar-scale))] sm:w-[calc(5rem*var(--game-avatar-scale))] sm:max-h-[min(9.5rem,26vw)] sm:max-w-[min(9.5rem,26vw)]";
 
 function isMobileGameViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
@@ -1232,7 +1232,7 @@ export function GameNarration({
   const theme = useUIStore((s) => s.theme);
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
   const personaDialogueColor =
-    personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "#a5b4fc";
+    personaInfo?.dialogueColor || fallbackDialogueColor || personaInfo?.nameColor || "var(--foreground)";
   // Speaker colors are a card's own dialogue color or the fallback. Only an own color outranks
   // Apply preset colors (chat-widget-surfaces.css); the fallback follows the preset text.
   // ponytail: an own color identical to the fallback follows the preset too; track own colors per speaker if that matters.
@@ -3731,19 +3731,26 @@ export function GameNarration({
         translatedText = undefined;
       if (!message || (!translatedText && !isTranslating)) return null;
       return (
-        <div className={cn("rounded-xl border border-sky-400/15 bg-sky-500/8 px-3 py-2.5", className)}>
-          <div className="mb-1 text-[0.625rem] font-semibold uppercase tracking-wide text-sky-200/70">
+        <div
+          className={cn(
+            "rounded-xl border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/8 px-3 py-2.5",
+            className,
+          )}
+        >
+          <div className="mb-1 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--marinara-app-accent-static)]/70">
             {localizeUi("ui.game.gamenarration.translation")}
           </div>
           {translatedText ? (
             <div
-              className="game-narration-prose text-sm leading-relaxed text-sky-50/85"
+              className="game-narration-prose text-sm leading-relaxed text-[var(--foreground)]/85"
               dangerouslySetInnerHTML={{
                 __html: getGameTranslationHtml(message, translatedText, gameTextEffectsEnabled),
               }}
             />
           ) : (
-            <div className="text-xs text-sky-200/60">{localizeUi("ui.game.gamenarration.translating")}</div>
+            <div className="text-xs text-[var(--marinara-app-accent-static)]/60">
+              {localizeUi("ui.game.gamenarration.translating")}
+            </div>
           )}
         </div>
       );
@@ -3975,15 +3982,15 @@ export function GameNarration({
   }, [gameNarrationCollapsed, requestsCollapsedNarration, setGameNarrationCollapsed]);
 
   const NARRATION_ACTION_BTN =
-    "mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white";
+    "mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]";
   const NARRATION_META_BTN =
-    "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10";
+    "mari-chat-style-control mari-game-meta flex min-h-7 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40";
   const NARRATION_COUNT_BADGE =
-    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 [-webkit-text-fill-color:currentColor] dark:bg-white/90 dark:text-black dark:ring-black/20";
+    "absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[0.55rem] font-bold text-[var(--background)] ring-1 ring-[var(--background)]/20 [-webkit-text-fill-color:currentColor]";
   const ACTIVE_SEGMENT_ACTION_BTN =
-    "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
+    "mari-chat-style-control mari-game-active-action inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)]";
   const LOG_SEGMENT_ACTION_BTN =
-    "mari-chat-style-control mari-game-log-action rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white/70";
+    "mari-chat-style-control mari-game-log-action rounded p-1 text-[var(--foreground)]/45 opacity-100 transition-all hover:bg-[var(--muted)]/35 hover:text-[var(--foreground)]/70 md:opacity-0 md:group-hover/logseg:opacity-100";
   const LOG_DELETE_ACTION_BTN =
     "text-[var(--marinara-chat-message-action-text)] hover:bg-[var(--marinara-chat-message-action-bg-hover)] hover:text-[var(--marinara-chat-message-action-text-hover)] dark:text-[var(--marinara-chat-message-action-text)] dark:hover:bg-[var(--marinara-chat-message-action-bg-hover)] dark:hover:text-[var(--marinara-chat-message-action-text-hover)]";
   const combatMetaButton = onRequestCombatStart ? (
@@ -3996,7 +4003,7 @@ export function GameNarration({
         "relative",
         combatGenerationFailed
           ? "border-[var(--destructive)]/30 bg-[var(--destructive)]/15 text-[var(--destructive)] hover:bg-[var(--destructive)]/25"
-          : "border-amber-300/20 bg-amber-500/10 text-amber-100/90 hover:bg-amber-500/20",
+          : "border-[var(--marinara-app-accent-static)]/20 bg-[var(--marinara-app-accent-static)]/10 text-[var(--marinara-app-accent-static)]/90 hover:bg-[var(--marinara-app-accent-static)]/20",
         combatStarting && "cursor-wait opacity-80",
       )}
       title={
@@ -4020,7 +4027,7 @@ export function GameNarration({
           "mt-2 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
           combatGenerationFailed
             ? "border-[var(--destructive)]/25 bg-[var(--destructive)]/10 text-[var(--destructive)]"
-            : "border-amber-300/20 bg-amber-500/10 text-amber-100",
+            : "border-[var(--marinara-app-accent-static)]/20 bg-[var(--marinara-app-accent-static)]/10 text-[var(--marinara-app-accent-static)]",
         )}
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -4035,7 +4042,7 @@ export function GameNarration({
           <button
             type="button"
             onClick={onRetryCombatGeneration}
-            className="shrink-0 rounded-md bg-white/10 px-2 py-1 font-semibold text-white/85 transition-colors hover:bg-white/15 hover:text-white"
+            className="shrink-0 rounded-md bg-[var(--muted)]/30 px-2 py-1 font-semibold text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
           >
             {localizeUi("ui.game.gamesurfacecomponent.retry")}
           </button>
@@ -4236,7 +4243,7 @@ export function GameNarration({
         {showInterruptControls && !interruptCommitted && (
           <button
             onClick={handleInterrupt}
-            className="mari-chat-style-control mari-game-nav flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
+            className="mari-chat-style-control mari-game-nav flex h-full w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
             title={localizeUi("ui.game.gamenarration.pauseTheGmSoYouCanWriteBackNothing")}
             aria-label={localizeUi("ui.game.gamenarration.interrupt")}
           >
@@ -4246,7 +4253,7 @@ export function GameNarration({
         {showInterruptControls && interruptCommitted && (
           <button
             onClick={handleResume}
-            className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+            className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-[var(--marinara-app-accent-static)]/40 bg-[var(--marinara-app-accent-static)]/15 px-2 text-xs font-semibold text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/25 hover:text-[var(--foreground)] sm:px-2.5"
             title={localizeUi("ui.game.gamenarration.resumeNarrationYourInterruptHasNotBeenCommitted")}
             aria-label={localizeUi("ui.game.gamenarration.resume")}
           >
@@ -4264,7 +4271,7 @@ export function GameNarration({
                   "mari-chat-style-control mari-game-nav mari-game-autoplay-control flex items-center justify-center self-stretch rounded-lg border px-2 text-xs transition-colors",
                   autoPlay
                     ? "border-[var(--primary)]/40 bg-[var(--primary)]/20 text-[var(--primary)]"
-                    : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/70 hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10",
+                    : "border-[var(--border)] bg-[var(--muted)]/20 text-[var(--foreground)]/70 hover:bg-[var(--muted)]/40",
                 )}
                 title={
                   autoPlay
@@ -4278,7 +4285,7 @@ export function GameNarration({
             {reviewingPast && onJumpToLatest && (
               <button
                 onClick={onJumpToLatest}
-                className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-amber-400/40 bg-amber-400/15 px-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/25 hover:text-amber-50 sm:px-2.5 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/25"
+                className="mari-chat-style-control mari-game-amber-control flex items-center gap-1 self-stretch rounded-lg border border-[var(--marinara-app-accent-static)]/40 bg-[var(--marinara-app-accent-static)]/15 px-2 text-xs font-semibold text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/25 hover:text-[var(--foreground)] sm:px-2.5"
                 title={localizeUi("ui.game.gamenarration.jumpBackToThePresent")}
                 aria-label={localizeUi("ui.game.gamenarration.returnToPresent")}
               >
@@ -4288,7 +4295,7 @@ export function GameNarration({
             )}
             <button
               onClick={nextSegment}
-              className="mari-chat-style-control mari-game-nav flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40 dark:border-white/10 dark:bg-white/5 dark:text-white/75 dark:hover:bg-white/10"
+              className="mari-chat-style-control mari-game-nav flex items-center justify-center self-stretch rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 text-xs font-semibold text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/40"
             >
               {!doneTyping ? localizeUi("ui.game.gamenarration.reveal") : localizeUi("onboarding.actions.next")}
             </button>
@@ -4308,7 +4315,7 @@ export function GameNarration({
       data-game-skip-bg-nav="true"
       data-component="GameNarration.CollapsedHandle"
       aria-expanded={false}
-      className="mari-chat-style-control mari-game-collapsed-handle flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)] dark:border-white/15 dark:bg-black/40 dark:text-white/70 dark:hover:bg-black/60 dark:hover:text-white"
+      className="mari-chat-style-control mari-game-collapsed-handle flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 shadow-[var(--glass-strong-shadow)] backdrop-blur-md transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)]"
       title={localizeUi("ui.game.gamenarration.expandNarration")}
       aria-label={
         narrationNeedsAttention
@@ -4419,7 +4426,7 @@ export function GameNarration({
       <button
         type="button"
         onClick={handleSaveActiveSegmentEdit}
-        className="inline-flex items-center justify-center rounded bg-emerald-500/20 p-1 text-emerald-300 transition-colors hover:bg-emerald-500/30"
+        className="inline-flex items-center justify-center rounded bg-[var(--marinara-app-accent-static)]/20 p-1 text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/30"
         title={localizeUi("ui.noodle.noodlehome.save")}
       >
         <Check size={11} />
@@ -4652,7 +4659,7 @@ export function GameNarration({
                 fallbackSpeaker: seg.speaker,
               });
             }}
-            className="rounded bg-emerald-500/20 p-1 text-emerald-300 transition-colors hover:bg-emerald-500/30"
+            className="rounded bg-[var(--marinara-app-accent-static)]/20 p-1 text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/30"
             title={localizeUi("ui.noodle.noodlehome.save")}
           >
             <Check size={11} />
@@ -4679,7 +4686,7 @@ export function GameNarration({
       isEditingThis && seg.type === "dialogue" && canEditSegment ? (
         <input
           key={`${sourceMessageId}:${sourceSegmentIndex}:speaker`}
-          className="mb-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-[0.7rem] font-semibold text-[var(--foreground)] outline-none focus:border-[var(--primary)]/45 dark:border-white/10 dark:bg-black/40 dark:text-white/90 dark:focus:border-white/30"
+          className="mb-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-[0.7rem] font-semibold text-[var(--foreground)] outline-none focus:border-[var(--primary)]/45"
           defaultValue={editingLogSeg?.speaker ?? ""}
           placeholder={localizeUi("ui.game.gamenarration.speakerName")}
           onChange={(e) => {
@@ -4694,7 +4701,7 @@ export function GameNarration({
       <textarea
         key={`${sourceMessageId}:${sourceSegmentIndex}:content`}
         ref={logEditTextareaRef}
-        className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]/45 dark:border-white/10 dark:bg-black/40 dark:text-white/90 dark:focus:border-white/30"
+        className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]/45"
         style={narrationFontStyle}
         defaultValue={editingLogSeg.content}
         rows={3}
@@ -4725,9 +4732,12 @@ export function GameNarration({
         <span
           className={cn(
             "ml-1.5 rounded-full px-1.5 py-0.5 text-[0.45rem] font-semibold uppercase tracking-wide",
-            seg.partyType === "side" && "bg-sky-500/15 text-sky-200/70",
-            seg.partyType === "extra" && "bg-sky-500/15 text-sky-200/70",
-            seg.partyType === "thought" && "bg-purple-500/15 text-purple-200/70",
+            seg.partyType === "side" &&
+              "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
+            seg.partyType === "extra" &&
+              "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
+            seg.partyType === "thought" &&
+              "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
             seg.partyType === "whisper" &&
               "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
           )}
@@ -4754,8 +4764,8 @@ export function GameNarration({
             onClick={(event) => handleGameVoiceButtonClick(event, voiceKey)}
             disabled={voiceEntry.status === "loading"}
             className={cn(
-              "inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--foreground)]/45 transition-colors hover:bg-[var(--muted)]/40 hover:text-sky-200 disabled:cursor-wait disabled:opacity-60 dark:text-white/45 dark:hover:bg-white/10",
-              voiceActive && "bg-sky-400/15 text-sky-200 dark:text-sky-200",
+              "inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--foreground)]/45 transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--marinara-app-accent-static)] disabled:cursor-wait disabled:opacity-60",
+              voiceActive && "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]",
             )}
             title={
               voiceEntry.status === "loading"
@@ -4784,7 +4794,7 @@ export function GameNarration({
               <button
                 type="button"
                 onClick={(event) => handleRestartGameVoiceButtonClick(event, voiceKey)}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-sky-200 transition-colors hover:bg-[var(--muted)]/40 dark:hover:bg-white/10"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--muted)]/40"
                 title={localizeUi("ui.game.gamenarration.restartVoiceOver")}
               >
                 <RotateCcw size={11} />
@@ -4792,7 +4802,7 @@ export function GameNarration({
               <button
                 type="button"
                 onClick={handleStopGameVoiceButtonClick}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-sky-200 transition-colors hover:bg-[var(--muted)]/40 dark:hover:bg-white/10"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--muted)]/40"
                 title={localizeUi("ui.game.gamenarration.stopVoiceOver")}
               >
                 <VolumeX size={11} />
@@ -4813,12 +4823,12 @@ export function GameNarration({
           className={cn(
             "group/logseg relative flex gap-2 rounded-lg border px-2.5 py-2 pr-20",
             seg.partyType === "thought"
-              ? "border-purple-400/10 bg-purple-950/15"
+              ? "border-[var(--marinara-app-accent-static)]/10 bg-[var(--marinara-app-accent-static)]/15"
               : seg.partyType === "whisper"
                 ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)]"
                 : seg.partyType === "side" || seg.partyType === "extra"
-                  ? "border-sky-400/10 bg-sky-950/15"
-                  : "border-[var(--border)] bg-[var(--muted)]/20 dark:border-white/5 dark:bg-black/20",
+                  ? "border-[var(--marinara-app-accent-static)]/10 bg-[var(--marinara-app-accent-static)]/15"
+                  : "border-[var(--border)] bg-[var(--muted)]/20",
           )}
         >
           {actionButtons}
@@ -4827,7 +4837,7 @@ export function GameNarration({
               <button
                 type="button"
                 onClick={(event) => handleNpcPortraitAvatarClick(event, seg.speaker)}
-                className="rounded-lg transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/25 dark:focus:ring-white/20"
+                className="rounded-lg transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/25"
                 title={localizeUi("ui.game.npcsview.uploadOrReplaceNpcPortrait")}
               >
                 {logAvatar ? (
@@ -4835,7 +4845,7 @@ export function GameNarration({
                     src={logAvatar.url}
                     alt={seg.speaker || ""}
                     crop={logAvatar.crop}
-                    className="h-7 w-7 rounded-lg border border-[var(--border)] transition-colors hover:border-[var(--primary)]/35 dark:border-white/10 dark:hover:border-white/25"
+                    className="h-7 w-7 rounded-lg border border-[var(--border)] transition-colors hover:border-[var(--primary)]/35"
                     onLoadError={
                       canGenerateLogPortrait && seg.speaker
                         ? () => onNpcPortraitLoadError?.(seg.speaker as string)
@@ -4843,7 +4853,7 @@ export function GameNarration({
                     }
                   />
                 ) : (
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold transition-colors hover:border-[var(--primary)]/35 dark:border-white/10 dark:hover:border-white/25">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold transition-colors hover:border-[var(--primary)]/35">
                     {(seg.speaker || "?")[0]}
                   </div>
                 )}
@@ -4857,7 +4867,7 @@ export function GameNarration({
                   }}
                   disabled={logPortraitGenerating}
                   className={cn(
-                    "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-[var(--primary)] opacity-0 ring-1 ring-white/15 transition-opacity disabled:cursor-wait md:group-hover/log-avatar:opacity-100",
+                    "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--background)]/75 text-[var(--primary)] opacity-0 ring-1 ring-[var(--ring)]/15 transition-opacity disabled:cursor-wait md:group-hover/log-avatar:opacity-100",
                     (logPortraitGenerating || isMobilePortraitActionsVisible(seg.speaker)) && "max-md:opacity-100",
                   )}
                   title={localizeUi("ui.game.npcsview.generateNpcPortrait")}
@@ -4871,7 +4881,7 @@ export function GameNarration({
               src={logAvatar.url}
               alt={seg.speaker || ""}
               crop={logAvatar.crop}
-              className="h-7 w-7 shrink-0 rounded-lg border border-[var(--border)] dark:border-white/10"
+              className="h-7 w-7 shrink-0 rounded-lg border border-[var(--border)]"
               onLoadError={
                 canGenerateLogPortrait && seg.speaker
                   ? () => onNpcPortraitLoadError?.(seg.speaker as string)
@@ -4879,7 +4889,7 @@ export function GameNarration({
               }
             />
           ) : (
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold dark:border-white/10">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold">
               {(seg.speaker || "?")[0]}
             </div>
           )}
@@ -4889,7 +4899,7 @@ export function GameNarration({
                 className={cn("min-w-0 truncate text-[0.6875rem] font-bold", nameColorClass(seg.speaker))}
                 style={
                   nameColorStyle(findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color) ?? {
-                    color: "rgb(186 230 253)",
+                    color: "var(--foreground)",
                   }
                 }
               >
@@ -4906,7 +4916,7 @@ export function GameNarration({
             ) : (
               <div
                 className={cn(
-                  "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
+                  "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80",
                   seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
                   dialogueColorClass(seg.color),
                 )}
@@ -4927,10 +4937,10 @@ export function GameNarration({
       return (
         <div
           key={seg.id}
-          className="group/logseg relative rounded-lg border border-cyan-400/15 bg-cyan-950/15 px-2.5 py-2 pr-20 text-[var(--foreground)]/80 dark:text-cyan-50/80"
+          className="group/logseg relative rounded-lg border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/15 px-2.5 py-2 pr-20 text-[var(--foreground)]/80"
         >
           {actionButtons}
-          <div className="mb-1 text-[0.6rem] font-semibold uppercase tracking-wide text-cyan-800 dark:text-cyan-200/80">
+          <div className="mb-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--marinara-app-accent-static)]">
             {localizeUi("ui.characters.advancedtab.system")}
           </div>
           {isEditingThis ? (
@@ -4952,10 +4962,10 @@ export function GameNarration({
       return (
         <div
           key={seg.id}
-          className="group/logseg relative rounded-lg border border-amber-400/15 bg-amber-950/15 px-2.5 py-2 pr-20"
+          className="group/logseg relative rounded-lg border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/15 px-2.5 py-2 pr-20"
         >
           {actionButtons}
-          <div className="mb-1 text-[0.6rem] font-semibold uppercase tracking-wide text-amber-300/80">
+          <div className="mb-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--marinara-app-accent-static)]/80">
             {seg.readableType === "book"
               ? localizeUi("ui.game.libraryview.book")
               : localizeUi("ui.game.libraryview.note")}
@@ -4964,7 +4974,7 @@ export function GameNarration({
             editTextarea
           ) : (
             <div
-              className="text-xs italic leading-relaxed text-amber-200/70"
+              className="text-xs italic leading-relaxed text-[var(--foreground)]/70"
               style={narrationFontStyle}
               dangerouslySetInnerHTML={{
                 __html: animateTextHtml(formatNarration(segmentDisplayContent, false), gameTextEffectsEnabled),
@@ -4980,11 +4990,11 @@ export function GameNarration({
     return (
       <div
         key={seg.id}
-        className="group/logseg relative rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-2 pr-20 dark:border-white/5 dark:bg-black/20"
+        className="group/logseg relative rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-2 pr-20"
       >
         {actionButtons}
         <div className="mb-1 flex items-center">
-          <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/75 dark:text-white/80">
+          <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/75">
             {localizeUi("ui.game.gamenarration.narration")}
           </span>
           {voiceButton}
@@ -4993,7 +5003,7 @@ export function GameNarration({
           editTextarea
         ) : (
           <div
-            className="text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80"
+            className="text-xs leading-relaxed text-[var(--foreground)]/80"
             style={narrationStyle}
             dangerouslySetInnerHTML={{
               __html: animateTextHtml(formatNarration(segmentDisplayContent, false), gameTextEffectsEnabled),
@@ -5042,7 +5052,7 @@ export function GameNarration({
             (stackedLogEntries.length > 0 || stackedLogHeldHeight !== null) && (
               <div
                 ref={stackedLogShellRef}
-                className="mari-chat-style-surface mari-game-narration-surface mari-game-stacked-log mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[0_16px_38px_rgba(0,0,0,0.35)] backdrop-blur-md [overflow-anchor:none] dark:border-white/10 dark:bg-black/40"
+                className="mari-chat-style-surface mari-game-narration-surface mari-game-stacked-log mb-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-2 shadow-[var(--glass-strong-shadow)] backdrop-blur-md [overflow-anchor:none]"
                 style={stackedLogHeldHeight !== null ? { minHeight: `${stackedLogHeldHeight}px` } : undefined}
                 data-game-skip-bg-nav="true"
               >
@@ -5126,8 +5136,9 @@ export function GameNarration({
                         onClick={(event) => handleGameVoiceButtonClick(event, sideVoiceKey)}
                         disabled={voiceEntry.status === "loading"}
                         className={cn(
-                          "inline-flex h-5 w-5 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-sky-200 disabled:cursor-wait disabled:opacity-60",
-                          voiceActive && "bg-sky-400/15 text-sky-200",
+                          "inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--foreground)]/55 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--marinara-app-accent-static)] disabled:cursor-wait disabled:opacity-60",
+                          voiceActive &&
+                            "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]",
                         )}
                         title={
                           voiceEntry.status === "loading"
@@ -5185,9 +5196,9 @@ export function GameNarration({
 
           {/* Party turn loading indicator — only show as banner when player input isn't the active VN segment */}
           {partyTurnPending && !scenePreparing && !active?.id?.startsWith("party-chat-input-") && (
-            <div className="mb-2 flex shrink-0 items-center gap-1.5 rounded-xl border border-sky-500/15 bg-sky-500/5 px-3 py-1.5 backdrop-blur-md">
-              <MessageCircle size={12} className="animate-pulse text-sky-300/70" />
-              <span className="text-[0.6875rem] text-sky-200/60">
+            <div className="mb-2 flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/5 px-3 py-1.5 backdrop-blur-md">
+              <MessageCircle size={12} className="animate-pulse text-[var(--marinara-app-accent-static)]/70" />
+              <span className="text-[0.6875rem] text-[var(--marinara-app-accent-static)]/60">
                 {localizeUi("ui.game.gamenarration.thePartyIsReacting")}
               </span>
             </div>
@@ -5221,13 +5232,13 @@ export function GameNarration({
             ref={activePanelRef}
             data-game-skip-bg-nav="true"
             data-component="GameNarration.ActivePanel"
-            className="pointer-events-auto mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[0_16px_38px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/15 dark:bg-black/50"
+            className="pointer-events-auto mari-chat-style-surface mari-game-narration-surface shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--card)]/90 p-3 shadow-[var(--glass-strong-shadow)] backdrop-blur-md"
           >
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
               <div className="flex items-center gap-2 py-3">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70 dark:border-white/30 dark:border-t-white" />
-                <span className="text-sm text-[var(--muted-foreground)] dark:text-white/70">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70" />
+                <span className="text-sm text-[var(--muted-foreground)]">
                   {assetsGenerating
                     ? localizeUi("ui.game.gamenarration.generatingSprites")
                     : localizeUi("ui.game.gamenarration.preparingScene")}
@@ -5280,7 +5291,7 @@ export function GameNarration({
                 </span>
                 <button
                   onClick={onRetryGeneration}
-                  className="mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
+                  className="mari-chat-style-control mari-game-action flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/30 px-3 py-1.5 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
                 >
                   <RefreshCw size={12} />
                   {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -5311,7 +5322,7 @@ export function GameNarration({
                             <button
                               type="button"
                               onClick={(event) => handleNpcPortraitAvatarClick(event, active.speaker)}
-                              className="rounded-xl transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-white/30"
+                              className="rounded-xl transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/30"
                               title={localizeUi("ui.game.npcsview.uploadOrReplaceNpcPortrait")}
                             >
                               {activeAvatar ? (
@@ -5319,7 +5330,10 @@ export function GameNarration({
                                   src={activeAvatar.url}
                                   alt={active.speaker || ""}
                                   crop={activeAvatar.crop}
-                                  className={cn(GAME_DIALOGUE_AVATAR_CLASS, "transition-colors hover:border-white/30")}
+                                  className={cn(
+                                    GAME_DIALOGUE_AVATAR_CLASS,
+                                    "transition-colors hover:border-[var(--marinara-app-accent-static)]/35",
+                                  )}
                                   onLoadError={
                                     activeCanGeneratePortrait && active.speaker
                                       ? () => onNpcPortraitLoadError?.(active.speaker as string)
@@ -5338,7 +5352,7 @@ export function GameNarration({
                                       alt={active.speaker || "?"}
                                       className={cn(
                                         GAME_DIALOGUE_AVATAR_CLASS,
-                                        "object-cover transition-colors hover:border-white/30",
+                                        "object-cover transition-colors hover:border-[var(--marinara-app-accent-static)]/35",
                                       )}
                                     />
                                   }
@@ -5354,7 +5368,7 @@ export function GameNarration({
                                 }}
                                 disabled={activePortraitGenerating}
                                 className={cn(
-                                  "absolute right-0.5 top-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-[var(--primary)] opacity-0 shadow-lg ring-1 ring-white/15 transition-opacity hover:bg-black/85 disabled:cursor-wait md:group-hover/avatar:opacity-100",
+                                  "absolute right-0.5 top-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--background)]/70 text-[var(--primary)] opacity-0 shadow-lg ring-1 ring-[var(--ring)]/15 transition-opacity hover:bg-[var(--background)]/85 disabled:cursor-wait md:group-hover/avatar:opacity-100",
                                   (activePortraitGenerating || isMobilePortraitActionsVisible(active.speaker)) &&
                                     "max-md:opacity-100",
                                 )}
@@ -5412,7 +5426,7 @@ export function GameNarration({
                               style={
                                 nameColorStyle(
                                   findNamedMapValue(speakerNameColors, active.speaker ?? "") ?? active.color,
-                                ) ?? { color: "rgb(186 230 253)" }
+                                ) ?? { color: "var(--foreground)" }
                               }
                             >
                               <span>{active.speaker || "Dialogue"}</span>
@@ -5421,7 +5435,8 @@ export function GameNarration({
                               <span
                                 className={cn(
                                   "rounded-full px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide",
-                                  active.partyType === "thought" && "bg-purple-500/15 text-purple-200/70",
+                                  active.partyType === "thought" &&
+                                    "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
                                   active.partyType === "whisper" &&
                                     "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
                                 )}
@@ -5448,10 +5463,10 @@ export function GameNarration({
                             className={cn(
                               "game-narration-prose max-h-[45svh] overflow-y-auto rounded-xl border px-3 py-2.5 md:max-h-48",
                               active.partyType === "thought"
-                                ? "border-purple-400/10 bg-purple-950/20"
+                                ? "border-[var(--marinara-app-accent-static)]/10 bg-[var(--marinara-app-accent-static)]/20"
                                 : active.partyType === "whisper"
                                   ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)]"
-                                  : "experience-dialogue-bubble border-[var(--border)] bg-[var(--muted)]/20 dark:border-white/10 dark:bg-black/35",
+                                  : "experience-dialogue-bubble border-[var(--border)] bg-[var(--muted)]/20",
                               activeSegmentActionButtons && "pr-16",
                             )}
                           >
@@ -5473,7 +5488,7 @@ export function GameNarration({
                                   dialogueColorClass(active.color),
                                   doneTyping
                                     ? ""
-                                    : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
+                                    : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle",
                                 )}
                                 style={
                                   active.color
@@ -5503,8 +5518,8 @@ export function GameNarration({
                 {/* Inline party loading indicator — shown beneath the player's input dialogue */}
                 {partyTurnPending && active.id?.startsWith("party-chat-input-") && (
                   <div className="mt-1.5 flex items-center gap-1.5">
-                    <MessageCircle size={12} className="animate-pulse text-sky-300/70" />
-                    <span className="text-xs text-sky-200/60">
+                    <MessageCircle size={12} className="animate-pulse text-[var(--marinara-app-accent-static)]/70" />
+                    <span className="text-xs text-[var(--marinara-app-accent-static)]/60">
                       {localizeUi("ui.game.gamenarration.thePartyIsReacting")}
                     </span>
                   </div>
@@ -5546,7 +5561,7 @@ export function GameNarration({
               <>
                 {/* Narration: centered, no avatar */}
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="rounded-full bg-[var(--muted)]/30 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/90 dark:bg-white/10 dark:text-white/90">
+                  <span className="rounded-full bg-[var(--muted)]/30 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/90">
                     {localizeUi("ui.game.gamenarration.narration")}
                   </span>
                 </div>
@@ -5556,7 +5571,7 @@ export function GameNarration({
                   onPointerDown={(event) => handleMobileSegmentPointerDown(event, active)}
                   onPointerUp={(event) => handleMobileSegmentTapToEdit(event, active)}
                   className={cn(
-                    "relative game-narration-prose max-h-[45svh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2.5 md:max-h-48 dark:border-white/10 dark:bg-black/35",
+                    "relative game-narration-prose max-h-[45svh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2.5 md:max-h-48",
                     activeSegmentActionButtons && "pr-16",
                   )}
                 >
@@ -5576,7 +5591,7 @@ export function GameNarration({
                         "text-sm leading-relaxed",
                         doneTyping
                           ? ""
-                          : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle dark:after:bg-white/60",
+                          : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--foreground)]/60 after:align-middle",
                       )}
                       style={narrationStyle}
                       dangerouslySetInnerHTML={{
@@ -5623,7 +5638,7 @@ export function GameNarration({
             {!scenePreparing && active && active.type === "readable" && (
               <>
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="rounded-full bg-[var(--muted)]/30 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70 dark:bg-white/10 dark:text-white/70">
+                  <span className="rounded-full bg-[var(--muted)]/30 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
                     {active.readableType === "book"
                       ? localizeUi("ui.game.libraryview.book")
                       : localizeUi("ui.game.libraryview.note")}
@@ -5633,16 +5648,16 @@ export function GameNarration({
                 <div
                   ref={activeSegmentScrollRef}
                   className={cn(
-                    "relative game-narration-prose max-h-[45svh] overflow-y-auto rounded-xl border border-amber-400/20 bg-amber-950/20 px-3 py-2.5 md:max-h-48",
+                    "relative game-narration-prose max-h-[45svh] overflow-y-auto rounded-xl border border-[var(--marinara-app-accent-static)]/20 bg-[var(--marinara-app-accent-static)]/20 px-3 py-2.5 md:max-h-48",
                     (activeCopyButton || activeTranslateButton) && "pr-16",
                   )}
                 >
                   <div
                     className={cn(
-                      "text-sm italic leading-relaxed text-amber-200/80",
+                      "text-sm italic leading-relaxed text-[var(--foreground)]/80",
                       doneTyping
                         ? ""
-                        : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-amber-200/60 after:align-middle",
+                        : "after:ml-0.5 after:inline-block after:h-4 after:w-[1px] after:animate-pulse after:bg-[var(--marinara-app-accent-static)]/60 after:align-middle",
                     )}
                     style={narrationFontStyle}
                     dangerouslySetInnerHTML={{
@@ -5704,7 +5719,7 @@ export function GameNarration({
                     <button
                       onClick={() => setLogsOpen(true)}
                       aria-label={localizeUi("ui.game.gamesurfacecomponent.logs")}
-                      className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/75 transition-colors hover:bg-white/10"
+                      className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-2.5 py-1 text-xs text-[var(--foreground)]/75 transition-colors hover:bg-[var(--muted)]/30"
                     >
                       <ScrollText size={12} />
                       <span className="hidden sm:inline">{localizeUi("ui.game.gamesurfacecomponent.logs")}</span>
@@ -5723,7 +5738,7 @@ export function GameNarration({
       {/* Logs modal */}
       {logsOpen && showLogsButton && (
         <div
-          className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-[var(--background)]/80"
           data-game-skip-bg-nav="true"
           role="dialog"
           aria-modal="true"
@@ -5733,11 +5748,11 @@ export function GameNarration({
             data-game-section="logs"
             className={cn(
               GAME_SECTION_CLASS,
-              "relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/15 bg-[var(--card)] shadow-2xl",
+              "relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl",
             )}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-[var(--foreground)]">
                   {localizeUi("ui.game.gamenarration.sessionLogs")}
@@ -5906,7 +5921,7 @@ export function GameNarration({
                           }
                         : null;
                       const jumpRowClasses = canJumpToSeg
-                        ? "cursor-pointer hover:ring-1 hover:ring-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                        ? "cursor-pointer hover:ring-1 hover:ring-[var(--ring)]/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]/30"
                         : "";
                       const canEditMessage = !!onEditMessage && !!sourceMessageId && isUserAuthoredSource;
                       const canEditSegment =
@@ -6048,9 +6063,12 @@ export function GameNarration({
                           <span
                             className={cn(
                               "ml-1.5 rounded-full px-1.5 py-0.5 text-[0.45rem] font-semibold uppercase tracking-wide",
-                              seg.partyType === "side" && "bg-sky-500/15 text-sky-200/70",
-                              seg.partyType === "extra" && "bg-sky-500/15 text-sky-200/70",
-                              seg.partyType === "thought" && "bg-purple-500/15 text-purple-200/70",
+                              seg.partyType === "side" &&
+                                "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
+                              seg.partyType === "extra" &&
+                                "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
+                              seg.partyType === "thought" &&
+                                "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]/70",
                               seg.partyType === "whisper" &&
                                 "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]",
                             )}
@@ -6077,8 +6095,9 @@ export function GameNarration({
                               onClick={(event) => handleGameVoiceButtonClick(event, voiceKey)}
                               disabled={voiceEntry.status === "loading"}
                               className={cn(
-                                "inline-flex h-5 w-5 items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/10 hover:text-sky-200 disabled:cursor-wait disabled:opacity-60",
-                                voiceActive && "bg-sky-400/15 text-sky-200",
+                                "inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--foreground)]/45 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--marinara-app-accent-static)] disabled:cursor-wait disabled:opacity-60",
+                                voiceActive &&
+                                  "bg-[var(--marinara-app-accent-static)]/15 text-[var(--marinara-app-accent-static)]",
                               )}
                               title={
                                 voiceEntry.status === "loading"
@@ -6107,7 +6126,7 @@ export function GameNarration({
                                 <button
                                   type="button"
                                   onClick={(event) => handleRestartGameVoiceButtonClick(event, voiceKey)}
-                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-sky-200 transition-colors hover:bg-white/10"
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--muted)]/30"
                                   title={localizeUi("ui.game.gamenarration.restartVoiceOver")}
                                 >
                                   <RotateCcw size={11} />
@@ -6115,7 +6134,7 @@ export function GameNarration({
                                 <button
                                   type="button"
                                   onClick={handleStopGameVoiceButtonClick}
-                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-sky-200 transition-colors hover:bg-white/10"
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--muted)]/30"
                                   title={localizeUi("ui.game.gamenarration.stopVoiceOver")}
                                 >
                                   <VolumeX size={11} />
@@ -6177,7 +6196,7 @@ export function GameNarration({
                                 });
                                 restoreLogScrollTop(scrollTop);
                               }}
-                              className="rounded bg-emerald-500/20 p-1 text-emerald-300 transition-colors hover:bg-emerald-500/30"
+                              className="rounded bg-[var(--marinara-app-accent-static)]/20 p-1 text-[var(--marinara-app-accent-static)] transition-colors hover:bg-[var(--marinara-app-accent-static)]/30"
                               title={localizeUi("ui.noodle.noodlehome.save")}
                             >
                               <Check size={11} />
@@ -6211,7 +6230,7 @@ export function GameNarration({
                         isEditingThis && seg.type === "dialogue" && canEditSegment ? (
                           <input
                             key={`${sourceMessageId}:${sourceSegmentIndex}:speaker`}
-                            className="mb-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-[0.7rem] font-semibold text-white/90 outline-none focus:border-white/30"
+                            className="mb-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-[0.7rem] font-semibold text-[var(--foreground)]/90 outline-none focus:border-[var(--ring)]"
                             defaultValue={editingLogSeg?.speaker ?? ""}
                             placeholder={localizeUi("ui.game.gamenarration.speakerName")}
                             onChange={(e) => {
@@ -6227,7 +6246,7 @@ export function GameNarration({
                         <textarea
                           key={`${sourceMessageId}:${sourceSegmentIndex}:content`}
                           ref={logEditTextareaRef}
-                          className="mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/90 outline-none focus:border-white/30"
+                          className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)]/55 px-2 py-1 text-xs text-[var(--foreground)]/90 outline-none focus:border-[var(--ring)]"
                           style={narrationFontStyle}
                           defaultValue={editingLogSeg.content}
                           rows={3}
@@ -6267,12 +6286,12 @@ export function GameNarration({
                             className={cn(
                               "group/logseg relative flex gap-2 rounded-lg border px-3 py-2",
                               seg.partyType === "thought"
-                                ? "border-purple-400/10 bg-purple-950/15"
+                                ? "border-[var(--marinara-app-accent-static)]/10 bg-[var(--marinara-app-accent-static)]/15"
                                 : seg.partyType === "whisper"
                                   ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)]"
                                   : seg.partyType === "side" || seg.partyType === "extra"
-                                    ? "border-sky-400/10 bg-sky-950/15"
-                                    : "border-[var(--border)] bg-[var(--muted)]/20 dark:border-white/5 dark:bg-black/20",
+                                    ? "border-[var(--marinara-app-accent-static)]/10 bg-[var(--marinara-app-accent-static)]/15"
+                                    : "border-[var(--border)] bg-[var(--muted)]/20",
                               isActiveSeg && "ring-1 ring-[var(--primary)]/40",
                               isSelectedForDeletion && MESSAGE_SELECTION_SURFACE_CLASS,
                               jumpRowClasses,
@@ -6284,7 +6303,7 @@ export function GameNarration({
                                 <button
                                   type="button"
                                   onClick={(event) => handleNpcPortraitAvatarClick(event, seg.speaker)}
-                                  className="rounded-lg transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-white/20"
+                                  className="rounded-lg transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
                                   title={localizeUi("ui.game.npcsview.uploadOrReplaceNpcPortrait")}
                                 >
                                   {logAvatar ? (
@@ -6292,7 +6311,7 @@ export function GameNarration({
                                       src={logAvatar.url}
                                       alt={seg.speaker || ""}
                                       crop={logAvatar.crop}
-                                      className="h-8 w-8 rounded-lg border border-white/10 transition-colors hover:border-white/25"
+                                      className="h-8 w-8 rounded-lg border border-[var(--border)] transition-colors hover:border-[var(--marinara-app-accent-static)]/35"
                                       onLoadError={
                                         canGenerateLogPortrait && seg.speaker
                                           ? () => onNpcPortraitLoadError?.(seg.speaker as string)
@@ -6300,7 +6319,7 @@ export function GameNarration({
                                       }
                                     />
                                   ) : (
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[var(--accent)] text-[0.5rem] font-bold transition-colors hover:border-white/25">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold transition-colors hover:border-[var(--marinara-app-accent-static)]/35">
                                       {(seg.speaker || "?")[0]}
                                     </div>
                                   )}
@@ -6314,7 +6333,7 @@ export function GameNarration({
                                     }}
                                     disabled={logPortraitGenerating}
                                     className={cn(
-                                      "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-[var(--primary)] opacity-0 ring-1 ring-white/15 transition-opacity disabled:cursor-wait md:group-hover/log-avatar:opacity-100",
+                                      "absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--background)]/75 text-[var(--primary)] opacity-0 ring-1 ring-[var(--ring)]/15 transition-opacity disabled:cursor-wait md:group-hover/log-avatar:opacity-100",
                                       (logPortraitGenerating || isMobilePortraitActionsVisible(seg.speaker)) &&
                                         "max-md:opacity-100",
                                     )}
@@ -6333,7 +6352,7 @@ export function GameNarration({
                                 src={logAvatar.url}
                                 alt={seg.speaker || ""}
                                 crop={logAvatar.crop}
-                                className="h-8 w-8 shrink-0 rounded-lg border border-white/10"
+                                className="h-8 w-8 shrink-0 rounded-lg border border-[var(--border)]"
                                 onLoadError={
                                   canGenerateLogPortrait && seg.speaker
                                     ? () => onNpcPortraitLoadError?.(seg.speaker as string)
@@ -6341,7 +6360,7 @@ export function GameNarration({
                                 }
                               />
                             ) : (
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[var(--accent)] text-[0.5rem] font-bold">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--accent)] text-[0.5rem] font-bold">
                                 {(seg.speaker || "?")[0]}
                               </div>
                             )}
@@ -6352,7 +6371,7 @@ export function GameNarration({
                                   style={
                                     nameColorStyle(
                                       findNamedMapValue(speakerNameColors, seg.speaker ?? "") ?? seg.color,
-                                    ) ?? { color: "rgb(186 230 253)" }
+                                    ) ?? { color: "var(--foreground)" }
                                   }
                                 >
                                   {seg.speaker || "Dialogue"}
@@ -6368,7 +6387,7 @@ export function GameNarration({
                               ) : (
                                 <div
                                   className={cn(
-                                    "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80",
+                                    "mt-0.5 text-xs leading-relaxed text-[var(--foreground)]/80",
                                     seg.partyType === "thought" ? "italic opacity-80" : "font-semibold",
                                     dialogueColorClass(seg.color),
                                   )}
@@ -6399,7 +6418,7 @@ export function GameNarration({
                             {...(jumpRowProps ?? {})}
                             data-log-anchor-key={logAnchorKey}
                             className={cn(
-                              "group/logseg relative rounded-lg border border-cyan-400/15 bg-cyan-950/15 px-3 py-2",
+                              "group/logseg relative rounded-lg border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/15 px-3 py-2",
                               isActiveSeg && "ring-1 ring-[var(--primary)]/40",
                               isSelectedForDeletion && MESSAGE_SELECTION_SURFACE_CLASS,
                               jumpRowClasses,
@@ -6407,12 +6426,12 @@ export function GameNarration({
                           >
                             {actionButtons}
                             <div className="mb-1 flex items-center">
-                              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-cyan-800 dark:text-cyan-200/80">
+                              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--marinara-app-accent-static)]">
                                 {localizeUi("ui.characters.advancedtab.system")}
                               </span>
                             </div>
                             <div
-                              className="whitespace-pre-wrap break-words pr-6 text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-cyan-50/80"
+                              className="whitespace-pre-wrap break-words pr-6 text-xs leading-relaxed text-[var(--foreground)]/80"
                               style={narrationFontStyle}
                               dangerouslySetInnerHTML={{
                                 __html: animateTextHtml(
@@ -6431,7 +6450,7 @@ export function GameNarration({
                             {...(jumpRowProps ?? {})}
                             data-log-anchor-key={logAnchorKey}
                             className={cn(
-                              "group/logseg relative rounded-lg border border-amber-400/15 bg-amber-950/15 px-3 py-2",
+                              "group/logseg relative rounded-lg border border-[var(--marinara-app-accent-static)]/15 bg-[var(--marinara-app-accent-static)]/15 px-3 py-2",
                               isActiveSeg && "ring-1 ring-[var(--primary)]/40",
                               isSelectedForDeletion && MESSAGE_SELECTION_SURFACE_CLASS,
                               jumpRowClasses,
@@ -6439,7 +6458,7 @@ export function GameNarration({
                           >
                             {actionButtons}
                             <div className="mb-1 flex items-center">
-                              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-amber-300/80">
+                              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--marinara-app-accent-static)]/80">
                                 {seg.readableType === "book"
                                   ? localizeUi("ui.game.libraryview.book")
                                   : localizeUi("ui.game.libraryview.note")}
@@ -6449,7 +6468,7 @@ export function GameNarration({
                               editTextarea
                             ) : (
                               <div
-                                className="text-xs italic leading-relaxed text-amber-200/70"
+                                className="text-xs italic leading-relaxed text-[var(--foreground)]/70"
                                 style={narrationFontStyle}
                                 dangerouslySetInnerHTML={{
                                   __html: animateTextHtml(
@@ -6475,7 +6494,7 @@ export function GameNarration({
                           {...(jumpRowProps ?? {})}
                           data-log-anchor-key={logAnchorKey}
                           className={cn(
-                            "group/logseg relative rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 dark:border-white/5 dark:bg-black/20 px-3 py-2",
+                            "group/logseg relative rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2",
                             isActiveSeg && "ring-1 ring-[var(--primary)]/40",
                             isSelectedForDeletion && MESSAGE_SELECTION_SURFACE_CLASS,
                             jumpRowClasses,
@@ -6483,7 +6502,7 @@ export function GameNarration({
                         >
                           {actionButtons}
                           <div className="mb-1 flex items-center">
-                            <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/80 dark:text-white/80">
+                            <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/80">
                               {localizeUi("ui.game.gamenarration.narration")}
                             </span>
                             {voiceButton}
@@ -6492,7 +6511,7 @@ export function GameNarration({
                             editTextarea
                           ) : (
                             <div
-                              className="text-xs leading-relaxed text-[var(--foreground)]/80 dark:text-white/80"
+                              className="text-xs leading-relaxed text-[var(--foreground)]/80"
                               style={narrationStyle}
                               dangerouslySetInnerHTML={{
                                 __html: animateTextHtml(
@@ -6512,7 +6531,7 @@ export function GameNarration({
                         </div>
                       );
                     })}
-                    <div className="border-b border-white/5" />
+                    <div className="border-b border-[var(--border)]" />
                   </div>
                 );
               })}

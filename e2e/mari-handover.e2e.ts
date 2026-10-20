@@ -170,7 +170,11 @@ test("desktop: opening and closing Mari's window never shows a frame without Mar
   const connectionId = await openMariWithFixture(page, request, provider.baseUrl, 1440, 900);
   try {
     const mariPane = page.locator('[data-component="GlobalOmnibar.Mari"]');
-    await expect(page.locator(ANY_MARI).first()).toBeVisible({ timeout: 30_000 });
+    const homePortrait = page.locator('[data-home-professor-art] img[data-part="sprite"]');
+    await expect(homePortrait).toBeVisible({ timeout: 30_000 });
+    // A visible <img> box can still be loading. Start the hand-over only once its source is drawn;
+    // the unopened window's target sheets stay cold and every transition frame is still sampled.
+    await homePortrait.evaluate((image) => (image as HTMLImageElement).decode());
 
     await startFrameSampler(page, ANY_MARI);
     await page.keyboard.press("Control+j");

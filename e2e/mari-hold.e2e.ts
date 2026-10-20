@@ -256,22 +256,62 @@ test("two fast hits on opposite edges make her dizzy", async ({ page }) => {
   await page.mouse.up();
 });
 
-// Slice 85 hover: a mouse resting on Mari swaps to her hover pose with nothing moving. Touch has no hover.
-test("hovering the Home Mari card swaps to her hover pose without moving her", async ({ page, isMobile }) => {
+// The pose swap (69e6e5231) keeps both image boxes identical. Home's parent-card hover lift (#4780)
+// deliberately transforms the viewport box, so compare local layout and both layers in the same frame.
+test("hovering the Home Mari card swaps her pose without changing its layout or image box", async ({
+  page,
+  isMobile,
+}) => {
   await page.goto("/");
   const art = page.locator("[data-home-professor-art]");
   await expect(art).toBeVisible({ timeout: 30_000 });
   const hoverPose = art.locator('img[src*="portrait-hover"]');
+  const localLayout = () =>
+    art.evaluate((element) => {
+      const box = element as HTMLElement;
+      const style = getComputedStyle(box);
+      return {
+        left: box.offsetLeft,
+        top: box.offsetTop,
+        width: box.offsetWidth,
+        height: box.offsetHeight,
+        transform: style.transform,
+        translate: style.translate,
+        rotate: style.rotate,
+        scale: style.scale,
+      };
+    });
+  const finishCardMotion = () =>
+    art.evaluate(async (element) => {
+      element.getBoundingClientRect();
+      await Promise.all(
+        (element.closest(".mari-home-widget")?.getAnimations({ subtree: true }) ?? [])
+          .filter(
+            (animation) =>
+              animation instanceof CSSTransition && Number.isFinite(animation.effect?.getComputedTiming().endTime),
+          )
+          .map((animation) => animation.finished.catch(() => undefined)),
+      );
+    });
   const before = await art.boundingBox();
+  const beforeLayout = await localLayout();
   await art.hover();
   if (isMobile) {
     await expect(hoverPose).toHaveCSS("opacity", "0");
     return;
   }
   await expect(hoverPose).toHaveCSS("opacity", "1");
-  expect(await art.boundingBox()).toEqual(before);
+  await finishCardMotion();
+  expect(await localLayout()).toEqual(beforeLayout);
+  const layers = await art.evaluate((element) => ({
+    idle: element.querySelector('[data-part="sprite"]')!.getBoundingClientRect().toJSON(),
+    hover: element.querySelector('img[src*="portrait-hover"]')!.getBoundingClientRect().toJSON(),
+  }));
+  expect(layers.hover).toEqual(layers.idle);
   await page.mouse.move(0, 0);
   await expect(hoverPose).toHaveCSS("opacity", "0");
+  await finishCardMotion();
+  expect(await art.boundingBox()).toEqual(before);
 });
 
 test("hovering the omnibar door swaps to her hover pose", async ({ page, isMobile }) => {

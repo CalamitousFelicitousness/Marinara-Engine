@@ -79,6 +79,11 @@ async function expectToastClearsHeaders(page: Page, label: string, extraControls
   const { overlaps, bottom, viewport } = await headerOverlaps(await showToast(page, label), extraControls);
   expect(overlaps, `${label}: the toast covers header controls`).toEqual([]);
   expect(bottom, `${label}: the toast stays on screen`).toBeLessThan(viewport);
+  for (const selector of extraControls) {
+    for (const control of await page.locator(selector).all()) {
+      if ((await control.isVisible()) && (await control.isEnabled())) await control.click({ trial: true });
+    }
+  }
   await dismissToast(page);
 }
 
@@ -121,6 +126,7 @@ async function prepare(page: Page, chatId: string) {
     hasCompletedOnboarding: true,
     sidebarOpen: false,
     rightPanelOpen: false,
+    notificationPosition: "top",
     chatSettingsMoveTipDismissed: true,
     chatHelpSeenModes: ["conversation", "roleplay", "game"],
   });
@@ -149,8 +155,25 @@ test("desktop toasts keep their top-centre place", async ({ page, request }, tes
 });
 
 test.describe("phone toasts", () => {
-  test.beforeEach(({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name.includes("desktop"), "Desktop toasts keep their place.");
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  test("clear phone headers above Sonner's 600px breakpoint", async ({ page, request }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    const chatId = await createChat(request, "conversation", []);
+    try {
+      await prepare(page, chatId);
+      await page.goto("/");
+      await openChatSettings(page);
+      await expectToastClearsHeaders(page, "Landscape Chat Settings", [
+        '[data-chat-settings-control="favorite-layout"]',
+        '[data-window="chat-settings"] [data-window-control="close"]',
+      ]);
+    } finally {
+      await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+    }
   });
 
   test("clear the chat, window, drawer and editor headers", async ({ page, request }) => {
@@ -211,9 +234,7 @@ test.describe("phone toasts", () => {
         useUIStore.getState().openCharacterDetail(id);
       }, characterId);
       await expect(page.locator(".mari-editor-header")).toBeVisible({ timeout: 60_000 });
-      await expect
-        .poll(async () => (await headerOverlaps(lingering, [".mari-editor-header button"])).overlaps)
-        .toEqual([]);
+      expect((await headerOverlaps(lingering, [".mari-editor-header button"])).overlaps).toEqual([]);
       await dismissToast(page);
 
       await clickTopbarPanel(page, "lorebooks");

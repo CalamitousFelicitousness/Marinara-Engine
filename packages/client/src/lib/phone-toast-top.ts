@@ -20,13 +20,24 @@ const PHONE_HEADER_ROWS = [
 // 8px under the top bar); anything further down, such as a chat button moved lower, does not.
 const STACK_GAP_PX = 16;
 const TOAST_GAP_PX = 8;
-const REMEASURE_MS = 250;
+const TOP_BAR = '[data-component="TopBar"]';
+const HEADERS = `${TOP_BAR},${PHONE_HEADER_ROWS}`;
 
 /** The top for a phone toast in px: under the top bar and every header row stacked below it. */
 export function phoneToastTop(): number {
-  let bottom = document.querySelector('[data-component="TopBar"]')?.getBoundingClientRect().bottom ?? 0;
-  const rows = Array.from(document.querySelectorAll(PHONE_HEADER_ROWS), (row) => row.getBoundingClientRect())
-    .filter((rect) => rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < window.innerWidth)
+  let bottom = document.querySelector(TOP_BAR)?.getBoundingClientRect().bottom ?? 0;
+  const rows = Array.from(document.querySelectorAll(PHONE_HEADER_ROWS))
+    .filter((row) => getComputedStyle(row).visibility === "visible")
+    .map((row) => row.getBoundingClientRect())
+    .filter(
+      (rect) =>
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.right > 0 &&
+        rect.left < window.innerWidth &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight,
+    )
     .sort((a, b) => a.top - b.top);
   for (const rect of rows) {
     if (rect.top <= bottom + STACK_GAP_PX) bottom = Math.max(bottom, rect.bottom);
@@ -36,35 +47,69 @@ export function phoneToastTop(): number {
 
 /**
  * Keeps PHONE_TOAST_TOP_VARIABLE on the toaster's host current while a toast shows: measured as a toast
- * mounts (before it paints) and again while it stays, so a window or editor opened under it moves it down.
+ * mounts (before it paints) and when headers change, so a window or editor opened under it moves it down.
  * Returns the cleanup.
  */
 export function watchPhoneToastTop(host: HTMLElement): () => void {
-  let timer: number | undefined;
+  let watching = false;
+  const observedHeaders = new Set<Element>();
   const place = () => {
-    const showing = host.querySelector("[data-sonner-toast]") !== null;
-    if (showing) {
-      const top = `${phoneToastTop()}px`;
-      if (host.style.getPropertyValue(PHONE_TOAST_TOP_VARIABLE) !== top) {
-        host.style.setProperty(PHONE_TOAST_TOP_VARIABLE, top);
-      }
-    }
-    // ponytail: a short poll while a toast shows instead of observing the whole app for headers that
-    // open under it; a moved header can sit under the toast for up to REMEASURE_MS. Upgrade to a
-    // ResizeObserver plus a scoped MutationObserver if that delay shows.
-    if (showing && timer === undefined) timer = window.setInterval(place, REMEASURE_MS);
-    if (!showing && timer !== undefined) {
-      window.clearInterval(timer);
-      timer = undefined;
+    const top = `${phoneToastTop()}px`;
+    if (host.style.getPropertyValue(PHONE_TOAST_TOP_VARIABLE) !== top) {
+      host.style.setProperty(PHONE_TOAST_TOP_VARIABLE, top);
     }
   };
+  const resizeObserver = new ResizeObserver(place);
+  const refreshHeaders = () => {
+    const headers = new Set(document.querySelectorAll(HEADERS));
+    for (const header of observedHeaders) {
+      if (headers.has(header)) continue;
+      resizeObserver.unobserve(header);
+      observedHeaders.delete(header);
+    }
+    for (const header of headers) {
+      if (observedHeaders.has(header)) continue;
+      resizeObserver.observe(header);
+      observedHeaders.add(header);
+    }
+    place();
+  };
+  const layoutObserver = new MutationObserver((records) => {
+    // Toast animation and our own offset changes do not change the app's headers.
+    if (records.every((record) => host.contains(record.target))) return;
+    refreshHeaders();
+  });
+  const stopWatching = () => {
+    watching = false;
+    layoutObserver.disconnect();
+    resizeObserver.disconnect();
+    observedHeaders.clear();
+    window.removeEventListener("resize", refreshHeaders);
+    host.style.removeProperty(PHONE_TOAST_TOP_VARIABLE);
+  };
+  const sync = () => {
+    if (!host.querySelector("[data-sonner-toast]")) {
+      if (watching) stopWatching();
+      return;
+    }
+    if (!watching) {
+      watching = true;
+      layoutObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden", "data-chat-covered"],
+      });
+      window.addEventListener("resize", refreshHeaders);
+    }
+    refreshHeaders();
+  };
   // Mutation callbacks run before the next paint, so a new toast never shows at the old place first.
-  const observer = new MutationObserver(place);
+  const observer = new MutationObserver(sync);
   observer.observe(host, { childList: true, subtree: true });
-  place();
+  sync();
   return () => {
     observer.disconnect();
-    if (timer !== undefined) window.clearInterval(timer);
-    host.style.removeProperty(PHONE_TOAST_TOP_VARIABLE);
+    stopWatching();
   };
 }

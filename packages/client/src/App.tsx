@@ -8,6 +8,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -566,7 +567,10 @@ export function App() {
   // A phone toast sits below the header rows at the top, never over their controls (lib/phone-toast-top).
   const toasterHostRef = useRef<HTMLDivElement>(null);
   const phoneToastsAtTop = isMobileShell && (omnibarOpen || notificationPosition !== "bottom");
-  useEffect(() => {
+  const phoneToastOffsetTop = omnibarOpen
+    ? "calc(env(safe-area-inset-top) + 5rem)"
+    : `max(calc(env(safe-area-inset-top) + 3.5rem), var(${PHONE_TOAST_TOP_VARIABLE}, 0px))`;
+  useLayoutEffect(() => {
     if (!phoneToastsAtTop || !toasterHostRef.current) return;
     return watchPhoneToastTop(toasterHostRef.current);
   }, [phoneToastsAtTop]);
@@ -1305,16 +1309,21 @@ export function App() {
             "right",
             omnibarOpen ? (isMobileShell ? "top" : "bottom") : notificationPosition === "bottom" ? "bottom" : "top",
           ]}
-          offset="4rem"
+          // Sonner's mobileOffset applies only up to 600px; wider touch shells and phone landscape
+          // need the same clearance without changing desktop placement or bottom notifications.
+          offset={{
+            top: phoneToastsAtTop ? phoneToastOffsetTop : "4rem",
+            bottom: "4rem",
+            left: "4rem",
+            right: "4rem",
+          }}
           mobileOffset={{
             // On the mobile omnibar the toast sits under the omnibar's own header
             // (search field + status row) instead of the app's top bar, so it
             // needs more clearance than the app-shell top offset below. Elsewhere
             // it sits below the window, editor, panel or chat header rows, and
             // never higher than under the top bar.
-            top: omnibarOpen
-              ? "calc(env(safe-area-inset-top) + 5rem)"
-              : `max(calc(env(safe-area-inset-top) + 3.5rem), var(${PHONE_TOAST_TOP_VARIABLE}, 0px))`,
+            top: phoneToastOffsetTop,
             bottom: "1rem",
           }}
           theme={theme}

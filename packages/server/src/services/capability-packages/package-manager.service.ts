@@ -2740,7 +2740,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
-/** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A zone keeping out more than 8 conditions from whoever is inside (1.644): Magic Circle and
+ *  Hallow's "charmed, frightened, or possessed" beside the rest. */
+function carriesKeepsOutTwelve644(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesKeepsOutTwelve644(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const keeps = plainRecord(record.keepsOut);
+  if (
+    keeps &&
+    ((Array.isArray(keeps.cantGive) && keeps.cantGive.length > 8) ||
+      (Array.isArray(keeps.frees) && keeps.frees.length > 8))
+  )
+    return true;
+  return featureValues(record).some((one) => carriesKeepsOutTwelve644(one, depth + 1));
+}
+
 /** A creature that goes into whom it lands on (1.643): a ghost's Possession. */
 function carriesPossesses643(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2991,6 +3007,7 @@ function carriesPull622(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesPull622(one, depth + 1));
 }
 
+/** A creature's action never used on the same creature again (1.621): Frightful Presence. */
 function carriesCreatureOncePerTarget621(value: unknown, depth = 0, creature = false): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesCreatureOncePerTarget621(one, depth + 1, creature));
@@ -8602,6 +8619,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone keeping out more than 8 conditions, 1.644.
+  if (
+    !declaresApi(644) &&
+    (carriesKeepsOutTwelve644(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesKeepsOutTwelve644(document)))
+  )
+    return "A ruleset with a zone keeping out more than 8 conditions (keepsOut.cantGive, keepsOut.frees) requires schemaVersion 2 and capabilityApi 1.644 or newer";
   // A creature that goes into whom it lands on, 1.643.
   if (
     !declaresApi(643) &&

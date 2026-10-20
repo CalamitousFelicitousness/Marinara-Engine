@@ -45520,7 +45520,7 @@
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "minItems": 1,
-                              "maxItems": 8
+                              "maxItems": 12
                             },
                             "frees": {
                               "type": "array",
@@ -45530,7 +45530,7 @@
                                 "pattern": "^[a-z][a-z0-9_]*$"
                               },
                               "minItems": 1,
-                              "maxItems": 8
+                              "maxItems": 12
                             },
                             "reach": {
                               "type": "boolean",
@@ -73519,7 +73519,7 @@
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "minItems": 1,
-                                  "maxItems": 8
+                                  "maxItems": 12
                                 },
                                 "frees": {
                                   "type": "array",
@@ -73529,7 +73529,7 @@
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "minItems": 1,
-                                  "maxItems": 8
+                                  "maxItems": 12
                                 },
                                 "reach": {
                                   "type": "boolean",
@@ -90638,7 +90638,7 @@
                                       "pattern": "^[a-z][a-z0-9_]*$"
                                     },
                                     "minItems": 1,
-                                    "maxItems": 8
+                                    "maxItems": 12
                                   },
                                   "frees": {
                                     "type": "array",
@@ -90648,7 +90648,7 @@
                                       "pattern": "^[a-z][a-z0-9_]*$"
                                     },
                                     "minItems": 1,
-                                    "maxItems": 8
+                                    "maxItems": 12
                                   },
                                   "reach": {
                                     "type": "boolean",
@@ -119325,7 +119325,7 @@
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "minItems": 1,
-                                  "maxItems": 8
+                                  "maxItems": 12
                                 },
                                 "frees": {
                                   "type": "array",
@@ -119335,7 +119335,7 @@
                                     "pattern": "^[a-z][a-z0-9_]*$"
                                   },
                                   "minItems": 1,
-                                  "maxItems": 8
+                                  "maxItems": 12
                                 },
                                 "reach": {
                                   "type": "boolean",
@@ -141440,7 +141440,7 @@
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "minItems": 1,
-                                        "maxItems": 8
+                                        "maxItems": 12
                                       },
                                       "frees": {
                                         "type": "array",
@@ -141450,7 +141450,7 @@
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "minItems": 1,
-                                        "maxItems": 8
+                                        "maxItems": 12
                                       },
                                       "reach": {
                                         "type": "boolean",
@@ -163561,7 +163561,7 @@
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "minItems": 1,
-                                        "maxItems": 8
+                                        "maxItems": 12
                                       },
                                       "frees": {
                                         "type": "array",
@@ -163571,7 +163571,7 @@
                                           "pattern": "^[a-z][a-z0-9_]*$"
                                         },
                                         "minItems": 1,
-                                        "maxItems": 8
+                                        "maxItems": 12
                                       },
                                       "reach": {
                                         "type": "boolean",

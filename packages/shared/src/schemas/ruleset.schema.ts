@@ -3304,12 +3304,13 @@ const zoneKeepsOutSchema: z.ZodType<RulesetZoneKeepsOut, z.ZodTypeDef, unknown> 
     way: z.enum(["in", "out"]).optional(),
     /** Their attacks at whoever stands inside have disadvantage. */
     attacksInto: z.literal("disadvantage").optional(),
-    /** These conditions they cannot put on whoever stands inside: charmed, frightened, possessed. */
-    cantGive: uniqueIds(8).optional(),
+    /** These conditions they cannot put on whoever stands inside: charmed, frightened, possessed.
+     *  Up to 12 (8 before Capability API 1.644). */
+    cantGive: uniqueIds(12).optional(),
     /** These conditions, put on by one of those it keeps out, come off whoever steps into it
      *  (Capability API 1.406): Hallow's "no longer charmed, frightened, or possessed upon entering
-     *  the area". */
-    frees: uniqueIds(8).optional(),
+     *  the area". Up to 12 (8 before Capability API 1.644). */
+    frees: uniqueIds(12).optional(),
     /** Nor do they reach through it (Capability API 1.542): a melee attack of theirs with no more than
      *  the least reach, not a spell, at whoever it holds, nor an opportunity attack. 5e's Antilife
      *  Shell, "prevents an affected creature from passing or reaching through"; their ranged and

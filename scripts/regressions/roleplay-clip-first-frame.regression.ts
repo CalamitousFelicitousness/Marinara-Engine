@@ -95,8 +95,8 @@ try {
   assert.doesNotMatch(noVideoBody, /video_error/u, "no video error");
   await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.video.id });
 
-  // A storyteller's [illustrate] asks for its clip, so the Video Run Interval doesn't hold it back, while an automatic
-  // clip inside the interval is skipped and the stream says so.
+  // A storyteller's [illustrate] asks for its clip, so the Video Run Interval doesn't hold it back. Inside the interval,
+  // Clips only doesn't run Illustrator on its own at all (the interval paces it), so no automatic clip is made.
   const commanded = await h.createRoleplay("Commanded clip");
   await h.saveChatSettings(commanded.id, {
     enableAgents: true,
@@ -118,6 +118,11 @@ try {
   const skippedBody = await h.generate(commanded.id, "Again?");
   assert.equal((await h.attachments(commanded.id, "video")).length, commandedClips, "inside the interval: no clip");
   assert.doesNotMatch(skippedBody, /"type":"video","data"/u);
+  const intervalAnchor = async () => {
+    const raw = (await h.chats.getById(commanded.id))?.metadata;
+    return ((typeof raw === "string" ? JSON.parse(raw) : raw) as Record<string, unknown>).lastAutomaticVideoMessageId;
+  };
+  const anchorBefore = await intervalAnchor();
   replies.main = '[illustrate: subject="Aster waves from the porch" characters="Aster"] Aster waves.';
   await h.generate(commanded.id, "Show me!");
   assert.equal(
@@ -125,6 +130,8 @@ try {
     commandedClips + 1,
     "the storyteller's [illustrate] makes its clip anyway",
   );
+  // The requested clip doesn't move the interval, so an automatic clip on the same reply would still be checked.
+  assert.equal(await intervalAnchor(), anchorBefore, "a requested clip leaves the interval where it was");
 
   // ── Re-running Illustrator on a reply (the Illustrate button) follows Illustrator makes and First frame too ──
   const rerun = async () => {

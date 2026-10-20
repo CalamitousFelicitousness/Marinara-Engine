@@ -13833,18 +13833,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       try {
                         // The Video Run Interval is checked and counts from this reply as the clip starts, in one
                         // step, so two replies can't both start a clip; it is given back if the clip fails. A clip a
-                        // command asked for ([illustrate]) is not paced by the interval.
-                        videoRun = await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
-                          commandTarget
-                            ? true
-                            : automaticVideoAllowed(
+                        // command asked for ([illustrate]) is neither paced by the interval nor moves it, so an
+                        // automatic clip on the same reply is still checked.
+                        videoRun = commandTarget
+                          ? { settle: async () => undefined }
+                          : await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+                              automaticVideoAllowed(
                                 await chats.listMessages(input.chatId),
                                 current,
                                 await loadVideoRunInterval(agentsStore, current),
                                 false,
                                 messageId,
                               ),
-                        );
+                            );
                         if (!videoRun) {
                           logger.info("[illustrator] Skipped a clip: the Video Run Interval has not passed");
                           sendSseEvent(reply, { type: "video_skipped", data: { messageId } });
@@ -14266,20 +14267,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       // Re-checked here, as the clip starts: another clip may have started since the agent was offered
                       // one. The check and the Video Run Interval's new starting point are one step, so two replies
                       // can't both start a clip; the starting point is given back if the clip fails.
-                      // A clip a command asked for ([illustrate]) is not paced by the interval.
+                      // A clip a command asked for ([illustrate]) is neither paced by the interval nor moves it, so an
+                      // automatic clip on the same reply is still checked.
                       const videoRun =
                         wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay"
-                          ? await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
-                              commandTarget
-                                ? true
-                                : automaticVideoAllowed(
-                                    await chats.listMessages(input.chatId),
-                                    current,
-                                    await loadVideoRunInterval(agentsStore, current),
-                                    false,
-                                    messageId,
-                                  ),
-                            )
+                          ? commandTarget
+                            ? { settle: async () => undefined }
+                            : await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+                                automaticVideoAllowed(
+                                  await chats.listMessages(input.chatId),
+                                  current,
+                                  await loadVideoRunInterval(agentsStore, current),
+                                  false,
+                                  messageId,
+                                ),
+                              )
                           : null;
                       if (wantsVideo && !videoRun) {
                         logger.info("[illustrator] Skipped a clip: the Video Run Interval has not passed");

@@ -2341,6 +2341,10 @@ const restDiceSchema = z
     add: rulesetValueRefSchema.optional(),
     heals: sheetId,
     extra: z.object({ die: rulesetValueRefSchema, add: rulesetValueRefSchema.optional() }).strict().optional(),
+    /** What each die heals, its `add` included, is multiplied by this (Capability API 1.635), never
+     *  less than once: 5e's Periapt of Wound Closure doubling the hit points a Hit Die restores,
+     *  `{"itemStat": {"stat": "hit_die_times", "from": "worn", "pick": "max", "default": 1}}`. */
+    times: rulesetValueRefSchema.optional(),
   })
   .strict();
 
@@ -13415,6 +13419,9 @@ const combatConditionSchema = z
     /** Its holder's dying rolls are made with this (Capability API 1.447): 5e's Beacon of Hope,
      *  `"advantage"`. */
     deathSaves: z.enum(["advantage", "disadvantage"]).optional(),
+    /** Its holder, dying as a turn of theirs starts, is stable in place of rolling (Capability API
+     *  1.635): 5e's Periapt of Wound Closure, kept on by the worn periapt. */
+    stabilizesWhenDying: z.literal(true).optional(),
     /** Healing its holder gets is at its most (Capability API 1.447), every die of it its highest
      *  face: 5e's Beacon of Hope. */
     healedMax: z.literal(true).optional(),
@@ -16682,6 +16689,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     });
     rest.clear.text.forEach((id, index) => {
       if (!liveText.has(id)) issue(["rests", restIndex, "clear", "text", index], `Unknown live text "${id}"`);
+    });
+    // What its dice heal is made more by a value of the sheet's own (1.635).
+    (Array.isArray(rest.dice) ? rest.dice : rest.dice ? [rest.dice] : []).forEach((entry, entryIndex) => {
+      if (!entry.times) return;
+      const names = rulesetSheetNames(def.sheet, def.items);
+      const at = Array.isArray(rest.dice) ? ["rests", restIndex, "dice", entryIndex] : ["rests", restIndex, "dice"];
+      for (const found of rulesetValueRefIssues(entry.times, names, names.derived)) {
+        issue([...at, "times", found.key], found.message);
+      }
     });
     if (rest.clear.conditions !== "all") {
       rest.clear.conditions.forEach((id, index) => {

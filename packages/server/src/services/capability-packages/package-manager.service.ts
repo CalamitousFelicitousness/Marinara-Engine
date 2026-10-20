@@ -2741,6 +2741,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition that stabilizes its dying holder, or rest dice that heal more (1.635): a Periapt of
+ *  Wound Closure. */
+function carriesWoundClosure635(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWoundClosure635(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.stabilizesWhenDying !== undefined) return true;
+  const dice = record.dice;
+  if (
+    record.restore !== undefined &&
+    (Array.isArray(dice) ? dice : [dice]).some((one) => plainRecord(one)?.times !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesWoundClosure635(one, depth + 1));
+}
+
 /** A creature's action whose uses each do something else (1.634): an androsphinx's Roar. */
 function carriesByUse634(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8494,6 +8511,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that stabilizes its dying holder, or rest dice that heal more, 1.635.
+  if (
+    !declaresApi(635) &&
+    (carriesWoundClosure635(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWoundClosure635(document)))
+  )
+    return "A ruleset with a condition that stabilizes its dying holder, or rest dice that heal more (stabilizesWhenDying, a rest's dice times) requires schemaVersion 2 and capabilityApi 1.635 or newer";
   // A creature's action whose uses each do something else, 1.634.
   if (
     !declaresApi(634) &&

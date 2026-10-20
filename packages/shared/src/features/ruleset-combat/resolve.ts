@@ -2465,6 +2465,24 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
 function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const dying = ctx.combat.dying;
   if (!dying) return;
+  // Stable in place of the roll (1.635): a Periapt of Wound Closure.
+  if (
+    rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some((entry) => entry.stabilizesWhenDying)
+  ) {
+    actor.stable = true;
+    clearDyingTracks(ctx, actor);
+    ctx.events.push({
+      type: "dying",
+      actorId: actor.id,
+      rolls: [],
+      kept: 0,
+      difficulty: dying.succeedAt,
+      successes: trackValue(ctx, actor, dying.successes),
+      failures: trackValue(ctx, actor, dying.failures),
+      result: "stable",
+    });
+    return;
+  }
   // Rolled twice where a condition says (1.447): Beacon of Hope; and, as a save, as every save is.
   const leans = new Set(
     rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).flatMap((entry) =>

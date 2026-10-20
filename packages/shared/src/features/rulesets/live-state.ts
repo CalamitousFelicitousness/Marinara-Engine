@@ -2299,6 +2299,9 @@ function rulesetSpendRestDice(
     if (sides < 1) return { ok: false, reason: "malformed" };
     const addRead = step.entry.add ? resolveRulesetValueRef(definition, build, step.entry.add, evaluated) : 0;
     const add = Number.isFinite(addRead) ? Math.trunc(addRead) : 0;
+    // Each die's healing made more (1.635): a Periapt of Wound Closure doubles it.
+    const timesRead = step.entry.times ? resolveRulesetValueRef(definition, build, step.entry.times, evaluated) : 1;
+    const times = Number.isFinite(timesRead) ? Math.max(1, timesRead) : 1;
     const spent = applyRulesetSheetOp(definition, build, live, {
       op: "spend",
       pool: step.entry.pool,
@@ -2309,7 +2312,7 @@ function rulesetSpendRestDice(
     last = spent;
     const thrown = Array.from({ length: step.count }, () => throwOne(sides));
     rolls.push(...thrown);
-    const each = thrown.map((rolled) => Math.max(0, (rolled ?? (sides + 1) / 2) + add));
+    const each = thrown.map((rolled) => Math.max(0, (rolled ?? (sides + 1) / 2) + add) * times);
     healing.set(step.entry.heals, (healing.get(step.entry.heals) ?? 0) + each.reduce((sum, one) => sum + one, 0));
   }
   // The extra die once, whatever pools paid (Song of Rest), onto what the first of them heals.

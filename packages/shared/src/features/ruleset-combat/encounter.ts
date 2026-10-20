@@ -6957,7 +6957,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           label: action.label,
           kind: action.kind,
           budget: action.sustains.budget,
-          targets: { ...action.targets },
+          // An area's (1.674) keeps up what it put on everybody still holding it, aimed at nobody.
+          targets: action.area || action.around ? { side: "self", count: 0 } : { ...action.targets },
           ...(action.range ? { range: { ...action.range } } : {}),
           ...(action.reach !== undefined ? { reach: action.reach } : {}),
           ...(action.catalog ? { catalog: action.catalog } : {}),

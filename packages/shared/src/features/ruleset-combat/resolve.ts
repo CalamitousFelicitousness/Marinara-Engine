@@ -288,6 +288,7 @@ import {
   rulesetStandardBudget,
   rulesetStandardName,
   rulesetTargetRefusal,
+  rulesetImposes,
   rulesetWindowMoment,
   rulesetWindowOptions,
   countRulesetSpend,
@@ -13548,7 +13549,14 @@ function resolveSequence(
         : followed
           ? [rulesetCombatant(ctx.state, followed)].filter((one): one is RulesetCombatant => !!one)
           : [];
-    const chosen = offered.filter((target) => !target.defeated || rulesetCanRevive(ctx.state, part, target));
+    const chosen = offered.filter(
+      (target) =>
+        (!target.defeated || rulesetCanRevive(ctx.state, part, target)) &&
+        // Only at whom this part reaches itself: a Multiattack's claws at the foe beside it, its bite
+        // farther.
+        (target.id === actor.id ||
+          !rulesetTargetRefusal(ctx.state, actor.id, part.id, target.id, undefined, ctx.definition)),
+    );
     cursor += count;
     // A sequence picked up after one of its parts was held starts at that part, which was paid for
     // and has its roll already: every part before it has happened.
@@ -15439,7 +15447,11 @@ function resolveActionBodyIn(
   // What it put on them kept up (1.378), its rounds started again as if put on now, and nothing else:
   // Intimidating Presence on a later turn.
   if (action.sustain && !held) {
-    for (const target of targets) {
+    // An area's (1.674): everybody still holding what it put on, the area not read again. A harpy's
+    // Luring Song.
+    const sustained = actor.actions.find((one) => one.id === action.sustain!.of);
+    const keeping = sustained?.area || sustained?.around ? ctx.state.combatants : targets;
+    for (const target of keeping) {
       for (const entry of target.tracked) {
         if (entry.source !== actor.id || entry.action?.[0] !== action.sustain.of) continue;
         const rounds = action.sustain.rounds[entry.condition];
@@ -16925,8 +16937,25 @@ function resolveActionBodyIn(
         ((failedBy.atLeast !== undefined && missed.difficulty - missed.total >= failedBy.atLeast) ||
           (failedBy.resultAtMost !== undefined && missed.total <= failedBy.resultAtMost));
       const putting = worse ? failedBy.applies : (action.applies ?? []);
+      // Not while its applier already holds what it names on somebody (1.687), nor what ends with it:
+      // a chain devil already grappling, and the restraint of its grapple.
+      const imposing = new Set(
+        putting
+          .filter((one) => one.unlessImposing && rulesetImposes(ctx.state, actor, one.unlessImposing))
+          .map((one) => one.condition),
+      );
+      for (let grew = imposing.size > 0; grew;) {
+        grew = false;
+        for (const one of putting) {
+          if (one.endsWith !== undefined && imposing.has(one.endsWith) && !imposing.has(one.condition)) {
+            imposing.add(one.condition);
+            grew = true;
+          }
+        }
+      }
       // Not on whoever it catches where it goes on what it calls (1.426).
       for (const applies of slain || warded || riderless || action.appliesToCalled ? [] : putting) {
+        if (imposing.has(applies.condition)) continue;
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;

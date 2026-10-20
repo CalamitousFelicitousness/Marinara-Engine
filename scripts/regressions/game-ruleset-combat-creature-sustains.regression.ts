@@ -131,6 +131,69 @@ try {
   );
   assert.equal(charmed(kept.state)!.rounds, 2, "started again");
 
+  // ── An area's kept up on everybody still holding it, aimed at nobody ──
+  {
+    const doc = fiveE();
+    Object.assign(
+      doc.catalogs.find((one: { id: string }) => one.id === "creatures").entries[0].creature.actions.at(-1),
+      {
+        area: { shape: "burst", size: 300, around: true },
+      },
+    );
+    const area = parsed(doc);
+    const block = rulesetStatBlockFromCreature(
+      area,
+      area.catalogs!.find((one) => one.id === "creatures")!.entries![0]!.creature!,
+    )!;
+    let wide = createRulesetEncounter({
+      definition: area,
+      seed: 1,
+      roller: () => 1,
+      combatants: [
+        { id: "harpy", name: "Harpy", side: "enemy", block: { ...block, health: 40 } },
+        {
+          id: "sailor",
+          name: "Sailor",
+          side: "party",
+          block: {
+            health: 20,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [],
+          } as unknown as RulesetStatBlock,
+        },
+      ],
+    });
+    wide.order = ["harpy", "sailor"];
+    wide.turn = 0;
+    const options = () => rulesetCombatOptions(area, wide, "harpy").filter((one) => one.label === "Luring Song");
+    const cast = applyRulesetCombatChoice(
+      area,
+      wide,
+      { actorId: "harpy", optionId: options().find((one) => !one.sustain)!.id, targetIds: [] },
+      () => 1,
+    );
+    assert.deepEqual(of(cast.events, "refused"), [], JSON.stringify(cast.events));
+    wide = cast.state;
+    assert.ok(charmed(wide), "the song charms");
+    wide.round += 1;
+    wide.turn = 0;
+    charmed(wide)!.rounds = 1;
+    const again = applyRulesetCombatChoice(
+      area,
+      wide,
+      { actorId: "harpy", optionId: options().find((one) => one.sustain)!.id, targetIds: [] },
+      () => 1,
+    );
+    assert.deepEqual(of(again.events, "refused"), [], JSON.stringify(again.events));
+    assert.deepEqual(
+      of(again.events, "sustained").map((one) => [one.targetId, one.condition]),
+      [["sailor", "charmed"]],
+    );
+    assert.equal(charmed(again.state)!.rounds, 2, "started again");
+  }
+
   // ── Refusals and the install gate ──
   refused(fiveE({ budget: "nothing_here" }), /Unknown budget "nothing_here"/);
   {

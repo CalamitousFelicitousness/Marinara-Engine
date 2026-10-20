@@ -5288,6 +5288,7 @@ export interface RulesetCatalogApplies {
   duration: z.infer<typeof catalogDurationSchema>;
   chance?: number;
   withAdvantage?: true;
+  unlessImposing?: string[];
   saveEnds?: RulesetCatalogSaveEnds;
   endsAfter?: "own-attack" | "own-hit" | "attacked" | "attacked-by-source" | "own-save";
   endsWhenHolder?: RulesetHolderEnding;
@@ -5355,6 +5356,10 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** Put on only by an attack rolled with advantage (Capability API 1.623): a cloaker's bite that
      *  lands on its target's head, blinding them. */
     withAdvantage: z.literal(true).optional(),
+    /** Put on only while its applier holds none of these on anybody (Capability API 1.687), and with
+     *  it whatever of the same list `endsWith` it: a chain devil's Chain, grappled "if the devil isn't
+     *  already grappling a creature", `["grappled"]`. */
+    unlessImposing: uniqueIds(8).optional(),
     /** Put on only when its entry is paid this many steps above its lowest cost, or more, or fewer
      *  (Capability API 1.464): 5e's Magic Weapon, +1 from a 2nd-level slot (`atMost: 1`), +2 from a
      *  4th (`atLeast: 2, atMost: 3`), +3 from a 6th (`atLeast: 4`), each its own condition. */

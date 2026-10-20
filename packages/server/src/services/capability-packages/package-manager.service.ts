@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition put on only while its applier holds none of some on anybody (1.687): a chain devil's
+ *  grapple. */
+function carriesAppliesUnlessImposing687(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAppliesUnlessImposing687(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.unlessImposing !== undefined) return true;
+  return featureValues(record).some((one) => carriesAppliesUnlessImposing687(one, depth + 1));
+}
+
 /** An item use whose call lends weapons while it stands (1.686): a goat of terror's horns. */
 function carriesWieldsWhileCalled686(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9048,6 +9059,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition put on only while its applier holds none of some on anybody, 1.687.
+  if (
+    !declaresApi(687) &&
+    (carriesAppliesUnlessImposing687(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAppliesUnlessImposing687(document)))
+  )
+    return "A ruleset with a condition put on only while its applier holds none of some on anybody (applies[].unlessImposing) requires schemaVersion 2 and capabilityApi 1.687 or newer";
   // An item use whose call lends weapons while it stands, 1.686.
   if (
     !declaresApi(686) &&

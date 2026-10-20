@@ -634,6 +634,18 @@ export function rulesetOptionReach(
   const found = actionOf(actor, optionId);
   const action = found && range ? { ...found, range } : found;
   if (!action) return { max: 1, normal: 1, shot: false, swing: 1 };
+  // A sequence with no reach of its own reaches as far as its farthest part: a dragon's Multiattack,
+  // whose bite reaches 10 feet. Each part is made only at whom it reaches itself.
+  if (action.sequence && action.reach === undefined && !action.range && !action.area) {
+    let farthest: RulesetOptionReach | null = null;
+    for (const step of action.sequence) {
+      const part = actor.actions.find((entry) => entry.id === step.actionId);
+      if (!part || part.sequence) continue;
+      const reach = rulesetOptionReach(state, actorId, part.id);
+      if (reach && (!farthest || reach.max > farthest.max)) farthest = reach;
+    }
+    if (farthest) return farthest;
+  }
   // Breaking free of a hold that names its escape DC is a struggle against the hold itself, which
   // its holder throws nothing for, so it is not limited by how far away they stand (1.175).
   if (action.contest?.from && rulesetEscapeDc(actor, action.contest) !== undefined) return null;

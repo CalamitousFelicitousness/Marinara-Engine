@@ -41272,6 +41272,16 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "unlessImposing": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -47621,6 +47631,16 @@
                                       "withAdvantage": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "unlessImposing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -55982,6 +56002,16 @@
                             "type": "boolean",
                             "const": true
                           },
+                          "unlessImposing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
+                          },
                           "paidSteps": {
                             "type": "object",
                             "properties": {
@@ -57698,6 +57728,16 @@
                           "withAdvantage": {
                             "type": "boolean",
                             "const": true
+                          },
+                          "unlessImposing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
                           },
                           "paidSteps": {
                             "type": "object",
@@ -63623,6 +63663,16 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "unlessImposing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
+                                },
                                 "paidSteps": {
                                   "type": "object",
                                   "properties": {
@@ -65368,6 +65418,16 @@
                                 "withAdvantage": {
                                   "type": "boolean",
                                   "const": true
+                                },
+                                "unlessImposing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
                                 },
                                 "paidSteps": {
                                   "type": "object",
@@ -68418,6 +68478,16 @@
                                         "type": "boolean",
                                         "const": true
                                       },
+                                      "unlessImposing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
+                                      },
                                       "paidSteps": {
                                         "type": "object",
                                         "properties": {
@@ -70435,6 +70505,16 @@
                               "withAdvantage": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "unlessImposing": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
                               },
                               "paidSteps": {
                                 "type": "object",
@@ -72655,6 +72735,16 @@
                                   "withAdvantage": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "unlessImposing": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -77941,6 +78031,16 @@
                                             "type": "boolean",
                                             "const": true
                                           },
+                                          "unlessImposing": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 8
+                                          },
                                           "paidSteps": {
                                             "type": "object",
                                             "properties": {
@@ -79988,6 +80088,16 @@
                                   "withAdvantage": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "unlessImposing": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -84428,6 +84538,16 @@
                                     "type": "boolean",
                                     "const": true
                                   },
+                                  "unlessImposing": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
                                   "paidSteps": {
                                     "type": "object",
                                     "properties": {
@@ -87710,6 +87830,16 @@
                                           "type": "boolean",
                                           "const": true
                                         },
+                                        "unlessImposing": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
                                         "paidSteps": {
                                           "type": "object",
                                           "properties": {
@@ -89727,6 +89857,16 @@
                                 "withAdvantage": {
                                   "type": "boolean",
                                   "const": true
+                                },
+                                "unlessImposing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 8
                                 },
                                 "paidSteps": {
                                   "type": "object",
@@ -91947,6 +92087,16 @@
                                     "withAdvantage": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -97233,6 +97383,16 @@
                                               "type": "boolean",
                                               "const": true
                                             },
+                                            "unlessImposing": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 8
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -99280,6 +99440,16 @@
                                     "withAdvantage": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -103719,6 +103889,16 @@
                                     "withAdvantage": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -119013,6 +119193,16 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -124634,6 +124824,16 @@
                                       "withAdvantage": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "unlessImposing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 8
                                       },
                                       "paidSteps": {
                                         "type": "object",
@@ -130817,6 +131017,16 @@
                                           "withAdvantage": {
                                             "type": "boolean",
                                             "const": true
+                                          },
+                                          "unlessImposing": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[a-z][a-z0-9_]*$"
+                                            },
+                                            "minItems": 1,
+                                            "maxItems": 8
                                           },
                                           "paidSteps": {
                                             "type": "object",
@@ -139057,6 +139267,16 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "unlessImposing": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -140773,6 +140993,16 @@
                               "withAdvantage": {
                                 "type": "boolean",
                                 "const": true
+                              },
+                              "unlessImposing": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
                               },
                               "paidSteps": {
                                 "type": "object",
@@ -149076,6 +149306,16 @@
                                               "type": "boolean",
                                               "const": true
                                             },
+                                            "unlessImposing": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 8
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -155258,6 +155498,16 @@
                                                 "withAdvantage": {
                                                   "type": "boolean",
                                                   "const": true
+                                                },
+                                                "unlessImposing": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 8
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -163498,6 +163748,16 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -165214,6 +165474,16 @@
                                     "withAdvantage": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -173523,6 +173793,16 @@
                                               "type": "boolean",
                                               "const": true
                                             },
+                                            "unlessImposing": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "minItems": 1,
+                                              "maxItems": 8
+                                            },
                                             "paidSteps": {
                                               "type": "object",
                                               "properties": {
@@ -179705,6 +179985,16 @@
                                                 "withAdvantage": {
                                                   "type": "boolean",
                                                   "const": true
+                                                },
+                                                "unlessImposing": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                                  },
+                                                  "minItems": 1,
+                                                  "maxItems": 8
                                                 },
                                                 "paidSteps": {
                                                   "type": "object",
@@ -187945,6 +188235,16 @@
                                       "type": "boolean",
                                       "const": true
                                     },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
                                     "paidSteps": {
                                       "type": "object",
                                       "properties": {
@@ -189661,6 +189961,16 @@
                                     "withAdvantage": {
                                       "type": "boolean",
                                       "const": true
+                                    },
+                                    "unlessImposing": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
                                     },
                                     "paidSteps": {
                                       "type": "object",
@@ -207810,6 +208120,16 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "unlessImposing": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -209584,6 +209904,16 @@
                         "withAdvantage": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "unlessImposing": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
                         },
                         "paidSteps": {
                           "type": "object",
@@ -211378,6 +211708,16 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "unlessImposing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
                             "paidSteps": {
                               "type": "object",
                               "properties": {
@@ -213143,6 +213483,16 @@
                         "withAdvantage": {
                           "type": "boolean",
                           "const": true
+                        },
+                        "unlessImposing": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
                         },
                         "paidSteps": {
                           "type": "object",
@@ -218722,6 +219072,16 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "unlessImposing": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -221282,6 +221642,16 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "unlessImposing": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
                               "paidSteps": {
                                 "type": "object",
                                 "properties": {
@@ -223019,6 +223389,16 @@
                                   "withAdvantage": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "unlessImposing": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "paidSteps": {
                                     "type": "object",
@@ -225528,6 +225908,16 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "unlessImposing": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "paidSteps": {
                           "type": "object",
                           "properties": {
@@ -227539,6 +227929,16 @@
                       "withAdvantage": {
                         "type": "boolean",
                         "const": true
+                      },
+                      "unlessImposing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 8
                       },
                       "paidSteps": {
                         "type": "object",

@@ -236,6 +236,8 @@ export interface RulesetCombatApplies {
   chance?: number;
   /** Only by an attack rolled with advantage (1.623): a cloaker's bite on the head. */
   withAdvantage?: true;
+  /** Only while its applier holds none of these on anybody (1.687): a chain devil's grapple. */
+  unlessImposing?: string[];
   /** It goes on only when its entry is paid this many steps above its lowest cost (1.464). */
   paidSteps?: { atLeast?: number; atMost?: number };
   /** It ends whenever this other condition put on with it ends (1.202). */

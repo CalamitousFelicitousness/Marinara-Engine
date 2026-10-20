@@ -4734,8 +4734,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               messageId,
             ),
           );
-          if (!claim) roleplayClipsStarted -= 1;
-          return claim;
+          if (!claim) {
+            roleplayClipsStarted -= 1;
+            return null;
+          }
+          // A clip that fails gives its place in the reply back, as it gives back the interval.
+          let settled = false;
+          return {
+            settle: async (made: boolean) => {
+              if (settled) return;
+              settled = true;
+              if (!made) roleplayClipsStarted -= 1;
+              await claim.settle(made);
+            },
+          };
         };
         const roleplayRollParticipants = identity
           ? [

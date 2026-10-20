@@ -1554,3 +1554,63 @@ Server packages can call `api.runtime.integrations` to use the current Engine's 
 - `speech.transcribe(audio, { filename, mimeType, signal })` sends recorded audio to the speech-to-text server the user set in **Connections → Speech to Text** and resolves the transcript, or `null` while that server is off, so the package keeps its own transcription. It applies the host's URL policy (`STT_LOCAL_URLS_ENABLED`), size and time limits, and never exposes the saved key. `speech` is optional and needs no newer capability API: check `typeof api.runtime.integrations?.speech?.transcribe === "function"` and fall back on older Engines.
 
 Shared request/result types are exported by `@marinara-engine/shared`. Keep package-specific prompt building and orchestration in the package; call these host entrypoints for provider I/O instead of copying Engine service implementations. Pure helpers and types may still be bundled.
+
+### Capability API 1.341: host runtime services and shared server libraries
+
+A package server that bundles its own copy of an Engine service runs a second instance of it, with its own state:
+its own Intiface connection, its own connection admission, its own chat metadata queue and its own service registry.
+Capability API 1.341 adds `api.runtime` members that reach the Engine's live instances instead, and lets package
+servers take a few libraries from the Engine instead of bundling them. Every new member is optional in
+`CapabilityRuntimeHost`, so check that it exists before using it.
+
+- `runtime.services.get(key)` returns a service a package registered with `api.registerService`, or `null` while it is
+  absent or during a shared-room generation. It reads the Engine's own registry, so every package sees it.
+- `runtime.commands.parse(content)`, `strip(content)` and `instructions()` read conversation commands with the
+  Engine's grammar and every package's registered tags.
+- `runtime.logger.isLevelEnabled(level)` says whether the Engine logger writes that level now.
+- `runtime.persistence.patchChatMetadata(chatId, patch, { touchUpdatedAt })` is the Engine's queued metadata patch,
+  with one queue per chat shared with the Engine's own writers, the shared-room guard and write ordinals. Keys in the
+  patch replace those keys and every other key stays. `patch` may be a function of the current metadata. Inside
+  `withChatLock` for the same chat it runs within that lock. Like `updateChatMetadata`, it refuses a new reference to
+  a Global Gallery image that no longer exists.
+- `runtime.persistence.appendMessages(chatId, messages)` adds messages, each with its first swipe, in one batch and
+  returns them. `createChatNote` and `createChatInfluence` add a note or a one-time influence from a conversation to
+  its connected roleplay. These four persistence members need `chat-write`.
+- `runtime.integrations.admission` is the Engine's connection admission, so a package's background work waits for the
+  user's own requests on the same connection. `withProvider(provider, connectionId, mode)` wraps a provider created by
+  the same package's integrations, `run(connectionId, mode, operation)` runs one attempt, `tryBackground(connectionId)`
+  takes the background slot when the connection is idle, and `isFailure(error)` recognizes the Engine's busy and
+  rejected errors. It needs no permission because it only books slots.
+- `runtime.integrations.haptics` (`status`, `connect`, `executeCommand`) uses the Engine's one Intiface Central
+  connection. It needs `network`.
+- `runtime.integrations.spotify` (`commandsAvailable`, `playSong`) uses the Music DJ agent's Spotify account.
+  `playSong` rejects with `ConversationSpotifyCommandError`; the codes `spotify_unavailable` and
+  `missing_playback_scope` mean Spotify is not set up, so drop the command quietly. It needs `network`.
+- `runtime.integrations.speech.transcribeLocal(wav)` transcribes a PCM WAV recording with the Local Whisper model
+  downloaded in **Connections**, and rejects with the Engine's message when it is not downloaded. It needs `network`.
+- `runtime.integrations.images.addToChatGallery(input)` lists an image saved with `images.save` in the chat's
+  gallery, and `images.persistToEntityGalleries(input)` lists it in the galleries of the characters and personas it
+  shows, as Engine-generated images are. Both need `storage`.
+
+**Never a bundled copy.** When one of these members is missing, the package reports the feature as needing a newer
+Marinara Engine. It never falls back to a bundled copy of a stateful Engine service, such as the provider registry,
+the local sidecar, connection admission, haptics, Spotify, the logger, a registry or a storage queue, because a second
+copy splits state the Engine keeps in one place. Pure helpers and types may still be bundled.
+
+**Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
+its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
+`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them from the package's runtime copy
+through two links, `<runtime copy>/node_modules` to `DATA_DIR/capability-packages/node_modules` to the Engine's
+`packages/server/node_modules`, so the package gets the very module instance the Engine uses. pnpm keeps only the
+server's direct dependencies there, so only those names resolve; a dependency of a dependency, such as `ws`, does not.
+The Engine keeps the names above as direct production dependencies of `packages/server`, and every install keeps that
+layout: source and launcher installs, Windows (where the data link is a junction), Android and Termux, and both
+Docker images. When it starts or activates a package, the Engine rebuilds a data link that points anywhere else,
+including one left dangling by a data folder moved from another install path. Anything there that is not a link is
+left alone.
+
+**Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
+and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the
+capability API, so it moves to version 2. The capability API is the gate, not the Engine version: an Engine without
+these members refuses the install or update ("Package requires capability API 1.341; this Engine supports ..."),
+leaves the package out of its update list, and keeps the installed version running.

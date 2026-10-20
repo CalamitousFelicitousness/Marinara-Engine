@@ -22,16 +22,22 @@ import { parseGameJsonish } from "../game/jsonish.js";
 import { createAgentsStorage } from "../storage/agents.storage.js";
 import { capabilityPackageManager } from "./package-manager.service.js";
 import {
+  listCapabilityConversationCommandInstructions,
+  parseCapabilityConversationCommands,
   registerCapabilityConversationCommand,
+  stripCapabilityConversationCommands,
   type CapabilityConversationCommandRegistration,
 } from "./capability-command-registry.service.js";
-import { registerCapabilityService } from "./capability-service-registry.service.js";
+import { getCapabilityService, registerCapabilityService } from "./capability-service-registry.service.js";
 import { assertCapabilityAgentRuntimeServiceRegistration } from "./capability-agent-runtime.service.js";
 import { assertCapabilityMariActionsServiceRegistration } from "./capability-mari-actions.service.js";
 import { createCapabilityDecisionHost } from "./capability-decision.service.js";
 import { createCapabilityIntegrationHost } from "./capability-integrations.service.js";
 import { createCapabilityLanguageModelHost } from "./capability-language-model.service.js";
-import { linkCapabilityNativeDependencies } from "./capability-native-dependencies.service.js";
+import {
+  linkCapabilityNativeDependencies,
+  linkCapabilityPackageDependencies,
+} from "./capability-native-dependencies.service.js";
 import {
   createCapabilityEmbeddingHost,
   createConfiguredCapabilityEmbeddingHost,
@@ -131,11 +137,18 @@ async function createCapabilityRuntimeHost(
         Reflect.apply(logger.error, logger, [error, message, ...args]),
       debugOverride: (overrideEnabled: boolean, message: string, ...args: CapabilityRuntimeLogArgument[]) =>
         logDebugOverride(overrideEnabled, message, ...args),
+      isLevelEnabled: (level: "trace" | "debug" | "info" | "warn" | "error" | "fatal") => logger.isLevelEnabled(level),
     }),
     achievements: createCapabilityAchievementHost(app.db, packageId, permissions),
     decisions: createCapabilityDecisionHost(app.db),
     persistence: createCapabilityPersistenceHost(app.db, permissions),
     resources: createCapabilityResourceHost(app.db),
+    services: Object.freeze({ get: <T>(key: string) => getCapabilityService<T>(key) }),
+    commands: Object.freeze({
+      parse: (content: string) => parseCapabilityConversationCommands(content),
+      strip: (content: string) => stripCapabilityConversationCommands(content),
+      instructions: () => listCapabilityConversationCommandInstructions(),
+    }),
   });
 }
 type CapabilityModule = {
@@ -197,17 +210,10 @@ class CapabilityModuleRuntime {
     } catch (error) {
       logger.warn(error, "Could not link native package runtime dependencies");
     }
-    const packageRoot = join(DATA_DIR, "capability-packages");
-    const link = join(packageRoot, "node_modules");
-    if (existsSync(link)) return;
-    const serverNodeModules = resolve(dirname(fileURLToPath(import.meta.url)), "../../../node_modules");
-    if (!existsSync(serverNodeModules)) return;
-    await mkdir(packageRoot, { recursive: true });
-    try {
-      await symlink(serverNodeModules, link, process.platform === "win32" ? "junction" : "dir");
-    } catch (error) {
-      if (!existsSync(link)) logger.warn(error, "Could not link package runtime dependencies");
-    }
+    await linkCapabilityPackageDependencies(
+      join(DATA_DIR, "capability-packages"),
+      resolve(dirname(fileURLToPath(import.meta.url)), "../../../node_modules"),
+    );
   }
 
   private async createVerifiedRuntimeSnapshot(

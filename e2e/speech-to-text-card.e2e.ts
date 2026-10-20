@@ -23,6 +23,9 @@ const callsManifest = {
 test("Speech to Text keeps an edit made just before leaving Connections", async ({ page }, testInfo) => {
   const saved = { enabled: false, baseUrl: "", apiKey: "", model: "", language: "" };
   const saves: Array<Record<string, unknown>> = [];
+  await page.route("**/api/app-settings/ui", (route) =>
+    route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
+  );
   await page.route("**/api/capability-packages/installed", (route) =>
     route.fulfill({
       json: [
@@ -72,6 +75,72 @@ test("Speech to Text keeps an edit made just before leaving Connections", async 
   };
 
   await openCard();
+  const ttsCard = page.locator('[data-component="TTSConfigCard"]');
+  const expandTts = ttsCard.getByTitle("Expand", { exact: true });
+  if (await expandTts.count()) await expandTts.click();
+  const surfaceStyle = (locator: typeof card) =>
+    locator.evaluate((element) => {
+      const icon = element.querySelector("svg.lucide-mic, svg.lucide-volume-2")!;
+      const surface = getComputedStyle(element);
+      const tile = getComputedStyle(icon.parentElement!);
+      return {
+        background: surface.backgroundImage,
+        border: surface.borderColor,
+        tile: tile.backgroundImage,
+        icon: tile.color,
+      };
+    });
+  const expectMatchingSurfaces = () =>
+    expect
+      .poll(
+        async () => {
+          const speechToText = await surfaceStyle(card);
+          const textToSpeech = await surfaceStyle(ttsCard);
+          return JSON.stringify(speechToText) === JSON.stringify(textToSpeech) ? null : { speechToText, textToSpeech };
+        },
+        { message: "Speech to Text uses the same Connections theme as Text to Speech" },
+      )
+      .toBeNull();
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate(async (theme) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      const settings = useUIStore.getState();
+      settings.setAppAccentColor("#22c55e");
+      settings.setAppAccentRgbMode(false);
+      settings.setAppAccentPulseMode(false);
+      settings.setTheme(theme);
+    }, theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expectMatchingSurfaces();
+    await card.screenshot({
+      path: testInfo.outputPath(`speech-to-text-connections-${theme}.png`),
+      animations: "disabled",
+    });
+    const original = await surfaceStyle(card);
+    const override = await page.addStyleTag({
+      content: `
+      .mari-panel-gradient--connections {
+        --mari-panel-gradient-start: rgb(180 80 200);
+        --mari-panel-gradient-end: rgb(20 130 120);
+        --mari-panel-gradient-text: rgb(245 235 180);
+      }
+    `,
+    });
+    for (const key of Object.keys(original) as Array<keyof typeof original>) {
+      await expect
+        .poll(async () => (await surfaceStyle(card))[key], { message: `${key} follows a Connections theme override` })
+        .not.toBe(original[key]);
+    }
+    await expectMatchingSurfaces();
+    await card.screenshot({
+      path: testInfo.outputPath(`speech-to-text-custom-connections-${theme}.png`),
+      animations: "disabled",
+    });
+    await override.evaluate((element) => {
+      element.parentNode?.removeChild(element);
+    });
+    await expectMatchingSurfaces();
+  }
   await serverUrl.fill("http://localhost:9000/v1");
   // Leave before the autosave delay runs out.
   await leaveConnections();

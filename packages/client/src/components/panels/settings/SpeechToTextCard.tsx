@@ -141,12 +141,12 @@ export function SpeechToTextCard() {
     <div
       data-component="SpeechToTextCard"
       className={cn(
-        "rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 transition-all",
-        expanded && "border-sky-400/30",
+        "mari-panel-gradient--connections rounded-xl border border-[var(--mari-panel-gradient-start)]/20 bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/5 to-[var(--mari-panel-gradient-end)]/5 p-3 transition-all",
+        expanded && "border-[var(--mari-panel-gradient-start)]/30",
       )}
     >
       <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
           <Mic size="1rem" />
         </div>
         <div className="min-w-0 flex-1">
@@ -182,14 +182,18 @@ export function SpeechToTextCard() {
       </div>
 
       {expanded && (
-        <div className="mt-3 space-y-4 border-t border-sky-400/10 pt-3">
+        <div className="mt-3 space-y-4 border-t border-[var(--mari-panel-gradient-start)]/10 pt-3">
           <p className="text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]">
             {t("connections.speechToText.intro")}
           </p>
 
           <Field label={t("connections.speechToText.serverUrl")} help={t("connections.speechToText.serverUrlHelp")}>
             <span className="relative block">
-              <Globe size="0.875rem" className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-400" aria-hidden />
+              <Globe
+                size="0.875rem"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mari-panel-gradient-start)]"
+                aria-hidden
+              />
               <input
                 value={draft.baseUrl}
                 onChange={(event) => change({ baseUrl: event.target.value })}
@@ -204,7 +208,11 @@ export function SpeechToTextCard() {
 
           <Field label={t("connections.speechToText.apiKey")} help={t("connections.speechToText.apiKeyHelp")}>
             <span className="relative block">
-              <Key size="0.875rem" className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-400" aria-hidden />
+              <Key
+                size="0.875rem"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mari-panel-gradient-start)]"
+                aria-hidden
+              />
               <input
                 value={draft.apiKey}
                 onChange={(event) => change({ apiKey: event.target.value })}

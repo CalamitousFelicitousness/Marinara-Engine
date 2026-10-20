@@ -60,7 +60,7 @@ function watchTripoRequests(page: Page): string[] {
   return seen;
 }
 
-async function openSetup(page: Page, characterId: string) {
+async function openSetup(page: Page, characterId: string | null) {
   await page.route("**/api/app-settings/ui", (route) =>
     route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
   );
@@ -86,7 +86,7 @@ async function openSetup(page: Page, characterId: string) {
   await page.goto("/");
   const setup = page.locator('[data-avatar-setup="3d-avatars"]');
   await expect(setup).toBeVisible({ timeout: FIRST_LOAD_TIMEOUT_MS });
-  await setup.getByLabel("Character or persona").selectOption(`character:${characterId}`);
+  if (characterId) await setup.getByLabel("Character or persona").selectOption(`character:${characterId}`);
   return setup;
 }
 
@@ -158,6 +158,47 @@ test("Import VRM explains a VRoid Studio project file and never uploads it", asy
   }
 });
 
+test("dropping a VRoid project anywhere in 3D Avatars explains it before choosing an owner", async ({ page }) => {
+  const uploads: string[] = [];
+  page.on("request", (sent) => {
+    if (sent.method() === "POST" && new URL(sent.url()).pathname.endsWith("/import")) uploads.push(sent.url());
+  });
+  const setup = await openSetup(page, null);
+  await expect(setup.getByLabel("Character or persona")).toHaveValue("");
+  const result = await setup.evaluate((element) => {
+    const other = new DataTransfer();
+    other.setData("text/plain", "an unrelated resource");
+    const otherDrag = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: other });
+    const otherDrop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: other });
+    element.dispatchEvent(otherDrag);
+    element.dispatchEvent(otherDrop);
+    const files = new DataTransfer();
+    files.items.add(new File(["VRoid Studio project"], "Maukie.VROID", { type: "application/octet-stream" }));
+    const drag = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: files });
+    const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: files });
+    element.dispatchEvent(drag);
+    element.dispatchEvent(drop);
+    return {
+      fileDragAccepted: drag.defaultPrevented,
+      projectDropHandled: drop.defaultPrevented,
+      otherDragHandled: otherDrag.defaultPrevented,
+      otherDropHandled: otherDrop.defaultPrevented,
+    };
+  });
+  expect(result).toEqual({
+    fileDragAccepted: true,
+    projectDropHandled: true,
+    otherDragHandled: false,
+    otherDropHandled: false,
+  });
+  await expect(
+    page.getByText("That's a VRoid Studio project. In VRoid Studio, choose Export as VRM, then import the .vrm file.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(uploads, "a dropped project is never uploaded").toEqual([]);
+});
+
 test("A model made earlier with Tripo still loads in setup as body only", async ({ page, request }, info) => {
   const characterResponse = await request.post("/api/characters", { data: { data: { name: "Maukie fixture" } } });
   expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
@@ -177,6 +218,27 @@ test("A model made earlier with Tripo still loads in setup as body only", async 
     await expect(setup.getByText("Make one in VRoid Studio, then add it with Replace model above.")).toBeVisible();
     await setup.screenshot({ path: info.outputPath("vrm-tripo-made-model.png"), animations: "disabled" });
     expect(tripoRequests).toEqual([]);
+
+    const uploads: string[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "POST" && new URL(sent.url()).pathname.endsWith("/import")) uploads.push(sent.url());
+    });
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      setup.getByRole("button", { name: "Replace model", exact: true }).click(),
+    ]);
+    await chooser.setFiles({
+      name: "Maukie.vroid",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from("project"),
+    });
+    await expect(
+      page.getByText(
+        "That's a VRoid Studio project. In VRoid Studio, choose Export as VRM, then import the .vrm file.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(uploads, "a project cannot replace the saved model").toEqual([]);
 
     const saved = (await (await request.get(`/api/avatar-models/character/${character.id}`)).json()) as {
       activeKind: string;

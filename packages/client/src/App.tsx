@@ -398,7 +398,7 @@ function getThemeAccentPulseConfig(css: string | null | undefined) {
 
   return {
     enabled,
-    source: enabled ? getFirstThemeAccentSource(normalizedCss) : "",
+    source: getFirstThemeAccentSource(normalizedCss),
   };
 }
 
@@ -758,7 +758,7 @@ export function App() {
     const accent = appAccentColor.trim();
     const defaultAccent = getDefaultAppAccentColor();
     const defaultSolidAccent = getCssColorFallback(defaultAccent, "currentColor");
-    const accentSource = themeAccentPulseConfig.source || accent || defaultAccent;
+    const accentSource = accent || themeAccentPulseConfig.source || defaultAccent;
     const solidAccent = getCssColorFallback(accentSource, defaultSolidAccent);
     const accentIsGradient = isCssGradient(accentSource);
     const animatedAccentSource = appAccentRgbMode ? RAINBOW_GRADIENT_PRESET : accentSource;

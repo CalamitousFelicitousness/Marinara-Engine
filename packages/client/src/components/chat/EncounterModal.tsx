@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Combat Encounter Modal — Full turn-based combat UI
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo, Component, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, Component, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
@@ -773,7 +773,6 @@ function EncounterModalInner() {
   const party = useEncounterStore((s) => s.party);
   const enemies = useEncounterStore((s) => s.enemies);
   const environment = useEncounterStore((s) => s.environment);
-  const styleNotes = useEncounterStore((s) => s.styleNotes);
   const combatResult = useEncounterStore((s) => s.combatResult);
   const { sendAction, concludeEncounter, closeEncounter, initEncounter } = useEncounter();
   const settings = useEncounterStore((s) => s.settings);
@@ -827,30 +826,6 @@ function EncounterModalInner() {
     [sendAction],
   );
 
-  // Environment-based gradient
-  const envGradient = useMemo(() => {
-    const t = styleNotes?.environmentType?.toLowerCase() ?? "default";
-    const grads: Record<string, string> = {
-      forest: "from-green-950/80 to-emerald-900/60",
-      dungeon: "from-gray-950/80 to-purple-950/60",
-      desert: "from-amber-950/80 to-orange-900/60",
-      cave: "from-slate-950/80 to-gray-900/60",
-      city: "from-zinc-950/80 to-slate-900/60",
-      ruins: "from-stone-950/80 to-amber-950/60",
-      snow: "from-blue-950/80 to-cyan-900/60",
-      water: "from-blue-950/80 to-teal-900/60",
-      castle: "from-purple-950/80 to-indigo-900/60",
-      wasteland: "from-amber-950/80 to-red-950/60",
-      plains: "from-lime-950/80 to-green-900/60",
-      mountains: "from-slate-950/80 to-blue-950/60",
-      swamp: "from-green-950/80 to-yellow-950/60",
-      volcanic: "from-red-950/80 to-orange-950/60",
-      spaceship: "from-indigo-950/80 to-violet-900/60",
-      mansion: "from-rose-950/80 to-pink-900/60",
-    };
-    return grads[t] ?? "from-slate-950/80 to-indigo-950/60";
-  }, [styleNotes]);
-
   return (
     <AnimatePresence>
       {/* Config Modal */}
@@ -873,10 +848,7 @@ function EncounterModalInner() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="encounter-title"
-            className={cn(
-              "relative flex h-[85dvh] w-[37.5rem] max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-[var(--marinara-chat-chrome-panel-border)] bg-gradient-to-b shadow-2xl",
-              envGradient,
-            )}
+            className="relative flex h-[85dvh] w-[37.5rem] max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] shadow-2xl"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}

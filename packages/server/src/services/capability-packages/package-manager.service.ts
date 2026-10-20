@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item that harms whoever it comes into the hands of (1.648): a Talisman of Pure Good. */
+function carriesTouchHarms648(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTouchHarms648(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.category === "string" && record.touchHarms !== undefined) return true;
+  return featureValues(record).some((one) => carriesTouchHarms648(one, depth + 1));
+}
+
 /** An item's stats added to while its wearer meets what a line asks (1.647): a Talisman of Pure
  *  Good's +2 to a good cleric's or paladin's spell attacks. */
 function carriesStatsIf647(value: unknown, depth = 0): boolean {
@@ -8653,6 +8663,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item that harms whoever it comes into the hands of, 1.648.
+  if (
+    !declaresApi(648) &&
+    (carriesTouchHarms648(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTouchHarms648(document)))
+  )
+    return "A ruleset with an item that harms whoever it comes into the hands of (touchHarms) requires schemaVersion 2 and capabilityApi 1.648 or newer";
   // An item's stats added to while its wearer meets what a line asks, 1.647.
   if (
     !declaresApi(647) &&

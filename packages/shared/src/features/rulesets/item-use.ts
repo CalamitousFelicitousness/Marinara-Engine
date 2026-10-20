@@ -379,6 +379,45 @@ export function useRulesetItemOutsideFight(input: {
  * its `unless` holds; undefined when its difficulty is read off a stat the item does not give, a use
  * the Engine cannot make. `holder` is the bag whose worn items count toward the check.
  */
+/** What an item deals whoever it comes into the hands of (Capability API 1.648), on their sheet
+ *  outside a fight: the first of its `touchHarms` lines whose needs they meet, rolled, off their
+ *  health pool (or one mark of a wound track's lightest kind). Null when nothing lands. */
+export function rulesetItemTouchHarm(input: {
+  definition: RulesetDefinition;
+  item: RulesetCatalogItem;
+  user: { build: RulesetSheetBuild; live: unknown };
+  roll: (sides: number) => number;
+}): { amount: number; type?: string; rolls: number[]; live: RulesetLiveState; now?: string } | null {
+  const { definition, item, user, roll } = input;
+  if (!item.touchHarms?.length) return null;
+  const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live);
+  const line = item.touchHarms.find((one) =>
+    rulesetItemNeedsMet(definition, user.build, evaluated, one.needs, one.needsAny),
+  );
+  const health = definition.combat?.health ?? definition.battle?.health;
+  if (!line || !health) return null;
+  const dice = line.dice ? parseRulesetCombatDice(line.dice) : null;
+  const rolls = Array.from({ length: dice?.count ?? 0 }, () => roll(dice!.sides));
+  const amount = Math.max(0, rolls.reduce((sum, face) => sum + face, 0) + (dice?.flat ?? 0) + (line.flat ?? 0));
+  if (amount < 1) return null;
+  let op: RulesetSheetOp;
+  if ("track" in health) {
+    const declared = definition.sheet.live.tracks.find((entry) => entry.id === health.track);
+    const lightest = [...(declared?.kinds ?? [])].sort((a, b) => a.severity - b.severity)[0];
+    if (!lightest) return null;
+    op = { op: "damage", track: health.track, kind: lightest.id, amount: 1 };
+  } else op = { op: "damage", pool: health.pool, amount };
+  const result = applyRulesetSheetOp(definition, user.build, user.live, op);
+  if (!result.ok) return null;
+  return {
+    amount,
+    ...(line.type !== undefined ? { type: line.type } : {}),
+    rolls,
+    live: result.live,
+    ...(result.now !== undefined ? { now: result.now } : {}),
+  };
+}
+
 export function rollRulesetItemGate(input: {
   definition: RulesetDefinition;
   itemOf: (ref: string) => RulesetItemBookEntry | undefined;

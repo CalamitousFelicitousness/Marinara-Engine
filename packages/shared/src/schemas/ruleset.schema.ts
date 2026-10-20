@@ -11336,6 +11336,31 @@ const catalogItemObjectSchema = z
       .optional(),
     /** What it does while it is only carried. */
     carried: z.lazy(() => rulesetItemEffectSchema).optional(),
+    /** What it deals whoever it comes into the hands of (Capability API 1.648): added to their bag,
+     *  given to them or more of it gained. The first line whose `needs` their sheet meets (all of
+     *  them, or any one with `needsAny`; a line with none meets anybody) rolls `dice` and `flat` of
+     *  `type` off their health. 5e's Talisman of Pure Good, 8d6 radiant to the evil and 6d6 to who
+     *  is neither good nor evil. Up to 4 lines. */
+    touchHarms: z
+      .array(
+        z
+          .object({
+            needs: sheetNeedsSchema("needs").optional(),
+            needsAny: z.literal(true).optional(),
+            ...catalogAmountShape,
+            type: promptSafeText(40).optional(),
+          })
+          .strict()
+          .refine((line) => line.dice !== undefined || line.flat !== undefined, {
+            message: "What it deals names dice, a flat amount, or both",
+          })
+          .refine((line) => !line.needsAny || line.needs !== undefined, {
+            message: '"needsAny" says how "needs" is met, so it needs "needs"',
+          }),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     /** What it asks of whoever wears it, and what applies while they fall short. */
     requires: z.lazy(() => z.array(rulesetItemRequirementSchema).min(1).max(4)).optional(),
     /** What it does as a weapon in a fight, while it is worn. */
@@ -21037,6 +21062,14 @@ function itemIssues(
   for (const message of rulesetListRowIssues({ columns: items.stats ?? [] }, item.stats ?? {}, "Stat")) {
     add([...at, "stats"], message);
   }
+  // What it deals whoever takes it up (1.648) comes off their health, in a type of the ruleset's.
+  item.touchHarms?.forEach((line, index) => {
+    const types = definition.combat?.damageTypes;
+    if (line.type !== undefined && types && !types.some((one) => one.toLowerCase() === line.type!.toLowerCase()))
+      add([...at, "touchHarms", index, "type"], `Unknown damage type "${line.type}"`);
+  });
+  if (item.touchHarms && !(definition.combat?.health ?? definition.battle?.health))
+    add([...at, "touchHarms"], "What an item deals comes off health, so the ruleset says what health is");
   // What it adds while its wearer meets what a line asks (1.647): number stats of the ruleset's.
   item.statsIf?.forEach((line, index) => {
     for (const id of Object.keys(line.add)) {

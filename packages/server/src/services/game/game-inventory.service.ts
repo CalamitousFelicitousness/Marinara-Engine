@@ -31,6 +31,7 @@ import {
   worldKitItems,
   rulesetLayerOptionKey,
   rulesetLiveWornOff,
+  rulesetItemTouchHarm,
   gameInventoryWearMet,
   gameInventoryWearNeeds,
   type RulesetLayerOptions,
@@ -365,10 +366,21 @@ export async function applyGameInventoryChangeHeld<T>(
       logger.warn(error, "[game/inventory] Could not tell whether a fake shows on a sheet in chat %s", chatId);
     }
   }
-  const outcome = found ? withFoundOut(changed, found) : changed;
+  let outcome = found ? withFoundOut(changed, found) : changed;
   if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
+  // What an item deals whoever it comes into the hands of (1.648), said in the same write and taken
+  // off their sheet once it is saved. Never at the cost of the change itself.
+  let touched: Awaited<ReturnType<typeof harmWhoTouched>> = null;
+  if (outcome.stacks !== before) {
+    try {
+      touched = await harmWhoTouched(db, chatId, metadata, before, outcome.stacks);
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not work out what an item dealt whoever took it in chat %s", chatId);
+    }
+  }
+  if (touched) outcome = { ...outcome, events: [...(outcome.events ?? []), ...touched.events] };
 
   await chats.patchMetadata(
     chatId,
@@ -387,6 +399,13 @@ export async function applyGameInventoryChangeHeld<T>(
     },
     { metadataQueueHeld: true },
   );
+  if (touched) {
+    try {
+      await touched.write();
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not take what an item dealt off a sheet in chat %s", chatId);
+    }
+  }
   // What only a worn item kept on (1.611) comes off with the change that took the item off. Never at
   // the cost of the change itself.
   if (outcome.stacks !== before) {
@@ -445,6 +464,75 @@ async function endWhatWornItemsKept(
     }),
   );
   if (changed) await states.updateByMessage(row.messageId, row.swipeIndex, chatId, { rulesetLive: next });
+}
+
+/**
+ * What an item deals whoever it comes into the hands of (Capability API 1.648): every stack that is new,
+ * changed hands, or grew, of an item with `touchHarms`, rolled for whoever now carries it on the row the
+ * sheet shows. The journal's lines, and the write that takes it off their sheets.
+ */
+async function harmWhoTouched(
+  db: DB,
+  chatId: string,
+  metadata: Record<string, unknown>,
+  before: readonly GameInventoryStack[],
+  after: readonly GameInventoryStack[],
+): Promise<{ events: Array<{ title: string; content: string }>; write: () => Promise<void> } | null> {
+  if (metadata.gameRuleset == null) return null;
+  const was = new Map(before.map((stack) => [stack.id, stack]));
+  const taken = after.filter((stack) => {
+    const had = was.get(stack.id);
+    return !had || (had.holder ?? "") !== (stack.holder ?? "") || stack.quantity > had.quantity;
+  });
+  if (!taken.length) return null;
+  const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  if (resolved.status !== "ok") return null;
+  const book = await loadGameInventoryItemBook(db, { metadata, resolved }, "player");
+  if (!book) return null;
+  // What it truly is touches them (1.79): a fake of a talisman is no talisman.
+  const harming = taken.flatMap((stack) => {
+    const ref = stack.truly ?? stack.item;
+    const found = ref ? book.itemOf(ref) : undefined;
+    return found?.entry.item?.touchHarms?.length ? [{ stack, item: found.entry.item, name: found.name }] : [];
+  });
+  if (!harming.length) return null;
+  const context = await loadGameRulesetSheetContext(db, chatId, resolved);
+  if (!context) return null;
+  const states = createGameStateStorage(db);
+  const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
+  const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+  if (!row) return null;
+  let stored = parseStoredRulesetLive(row.rulesetLive) ?? {};
+  const events: Array<{ title: string; content: string }> = [];
+  const named = (name: string) =>
+    context.cards.find((each) => normalizeCharacterLookupName(each.name) === normalizeCharacterLookupName(name));
+  for (const { stack, item, name } of harming) {
+    // The player's own bag is the player's sheet, as an item's use reads it.
+    const card = stack.holder
+      ? named(stack.holder)
+      : ((context.playerName ? named(context.playerName) : undefined) ?? context.cards[0]);
+    if (!card) continue;
+    const key = normalizeCharacterLookupName(card.name);
+    const harm = rulesetItemTouchHarm({
+      definition: resolved.definition,
+      item,
+      user: { build: card.build, live: stored[key] },
+      roll: rollDieSecurely,
+    });
+    if (!harm) continue;
+    stored = { ...stored, [key]: harm.live };
+    events.push({
+      title: `${name} harms ${card.name}`,
+      content: `${card.name} took ${harm.amount}${harm.type ? ` ${harm.type}` : ""} damage taking up ${name}${harm.now ? ` (${harm.now})` : ""}.`,
+    });
+  }
+  if (!events.length) return null;
+  return {
+    events,
+    write: async () => {
+      await states.updateByMessage(row.messageId, row.swipeIndex, chatId, { rulesetLive: stored });
+    },
+  };
 }
 
 /** A change with what it found out: the revealed stacks, the journal's lines, and a telling's record (a

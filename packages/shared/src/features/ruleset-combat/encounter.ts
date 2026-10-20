@@ -2514,6 +2514,21 @@ export function rulesetZoneAction(
       budget: move.budget,
       distance: rulesetInCells(move.distance, perCell ?? 1),
       ...(move.ram ? { ram: true } : {}),
+      // Moved on a check by anybody near (1.641).
+      ...(move.check
+        ? {
+            check: {
+              check: move.check.check,
+              difficulty: move.check.difficulty,
+              within: rulesetInCells(move.check.within, perCell ?? 1),
+              perCell: perCell ?? 1,
+              ...(move.check.distanceBy ? { distanceBy: { ...move.check.distanceBy } } : {}),
+              ...(move.check.failsToward !== undefined
+                ? { failsToward: rulesetInCells(move.check.failsToward, perCell ?? 1) }
+                : {}),
+            },
+          }
+        : {}),
     };
   }
   if (drift) out.drift = rulesetInCells(drift.distance, perCell ?? 1);

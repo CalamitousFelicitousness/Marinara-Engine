@@ -4303,7 +4303,21 @@ export interface RulesetCombatZoneRule {
   atCast: boolean;
   /** Its caster may move it on their turn, spending `budget`, up to `distance` cells (1.173); `ram`
    *  stops it on the first creature it reaches and catches them (1.175). */
-  move?: { budget: string; distance: number; ram?: boolean };
+  move?: {
+    budget: string;
+    distance: number;
+    ram?: boolean;
+    /** Moved by anybody near on a check (1.641), in cells: a Sphere of Annihilation. `perCell` turns
+     *  the mover's ability's feet into cells. */
+    check?: {
+      check: string;
+      difficulty: number;
+      within: number;
+      perCell: number;
+      distanceBy?: { abilityMod: string; times: number; atLeast?: number };
+      failsToward?: number;
+    };
+  };
   /** Cells it moves straight away from its caster as each of their turns starts (1.173). */
   drift?: number;
   /** A line or cone held by its caster that they may turn to face another way, spending `budget`
@@ -4540,6 +4554,8 @@ export interface RulesetCombatZone {
   dealt?: number;
   /** The turn ("round:turn") it was rammed into somebody, and moves no more in (1.175). */
   rammed?: string;
+  /** Who last moved it on its check (1.641): whom anybody else contests to move it. */
+  heldBy?: string;
   /** How many of its caster's turns have ended since it was cast, each adding its `grows` (1.183). */
   grown?: number;
   /** Cells its burst has widened by (1.584), and its caster's turns ended toward the next widening. */

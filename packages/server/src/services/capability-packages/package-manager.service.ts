@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A zone anybody near may move on a check (1.641): a Sphere of Annihilation. */
+function carriesZoneCheck641(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneCheck641(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const move = plainRecord(plainRecord(record.zone)?.move);
+  if (move?.check !== undefined) return true;
+  return featureValues(record).some((one) => carriesZoneCheck641(one, depth + 1));
+}
+
 /** A use whose user saves against what it puts on them (1.640): Dust of Sneezing and Choking. */
 function carriesSelfSave640(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8569,6 +8580,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone anybody near may move on a check, 1.641.
+  if (
+    !declaresApi(641) &&
+    (carriesZoneCheck641(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneCheck641(document)))
+  )
+    return "A ruleset with a zone anybody near may move on a check (zone.move.check) requires schemaVersion 2 and capabilityApi 1.641 or newer";
   // A use whose user saves against what it puts on them, 1.640.
   if (
     !declaresApi(640) &&

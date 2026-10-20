@@ -12,6 +12,7 @@ import {
   RULESET_FLY_UP_OPTION,
   RULESET_MOVE_OPTION,
   RULESET_CAREFUL_OPTION,
+  RULESET_ZONE_CHECK_OPTION_PREFIX,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_STAND_OPTION,
@@ -161,6 +162,9 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       return t("game.combat.ruleset.menu.turnZone", { zone: option.label });
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
+    // Moving one anybody near may move on a check (1.641).
+    if (option.id.startsWith(RULESET_ZONE_CHECK_OPTION_PREFIX))
+      return t("game.combat.ruleset.menu.controlZone", { zone: option.label });
     // Mounting a creature, named by it, and getting down (1.443).
     if (option.id.startsWith(RULESET_MOUNT_OPTION_PREFIX) && option.mounts)
       return t("game.combat.ruleset.board.mount", { name: option.mounts });

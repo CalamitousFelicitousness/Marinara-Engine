@@ -44262,6 +44262,64 @@
                               "type": "boolean",
                               "const": true
                             },
+                            "check": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "difficulty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "within": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "distanceBy": {
+                                  "type": "object",
+                                  "properties": {
+                                    "abilityMod": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "times": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 1000
+                                    },
+                                    "atLeast": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "abilityMod",
+                                    "times"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "failsToward": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "check",
+                                "difficulty",
+                                "within"
+                              ],
+                              "additionalProperties": false
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -72203,6 +72261,64 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "check": {
+                                  "type": "object",
+                                  "properties": {
+                                    "check": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "difficulty": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    },
+                                    "within": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "distanceBy": {
+                                      "type": "object",
+                                      "properties": {
+                                        "abilityMod": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "times": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "atLeast": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "abilityMod",
+                                        "times"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "failsToward": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "check",
+                                    "difficulty",
+                                    "within"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -89221,6 +89337,64 @@
                                   "ram": {
                                     "type": "boolean",
                                     "const": true
+                                  },
+                                  "check": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "difficulty": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100
+                                      },
+                                      "within": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "distanceBy": {
+                                        "type": "object",
+                                        "properties": {
+                                          "abilityMod": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "times": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 1000
+                                          },
+                                          "atLeast": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "abilityMod",
+                                          "times"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "failsToward": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "check",
+                                      "difficulty",
+                                      "within"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -117809,6 +117983,64 @@
                                   "type": "boolean",
                                   "const": true
                                 },
+                                "check": {
+                                  "type": "object",
+                                  "properties": {
+                                    "check": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "difficulty": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    },
+                                    "within": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "distanceBy": {
+                                      "type": "object",
+                                      "properties": {
+                                        "abilityMod": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "times": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 1000
+                                        },
+                                        "atLeast": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "abilityMod",
+                                        "times"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "failsToward": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "check",
+                                    "difficulty",
+                                    "within"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -139865,6 +140097,64 @@
                                       "ram": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "check": {
+                                        "type": "object",
+                                        "properties": {
+                                          "check": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "difficulty": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 100
+                                          },
+                                          "within": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "distanceBy": {
+                                            "type": "object",
+                                            "properties": {
+                                              "abilityMod": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "times": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0,
+                                                "maximum": 1000
+                                              },
+                                              "atLeast": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "abilityMod",
+                                              "times"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          "failsToward": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "check",
+                                          "difficulty",
+                                          "within"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       "$comment": {}
                                     },
@@ -161928,6 +162218,64 @@
                                       "ram": {
                                         "type": "boolean",
                                         "const": true
+                                      },
+                                      "check": {
+                                        "type": "object",
+                                        "properties": {
+                                          "check": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "difficulty": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 100
+                                          },
+                                          "within": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "distanceBy": {
+                                            "type": "object",
+                                            "properties": {
+                                              "abilityMod": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[a-z][a-z0-9_]*$"
+                                              },
+                                              "times": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0,
+                                                "maximum": 1000
+                                              },
+                                              "atLeast": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "abilityMod",
+                                              "times"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          "failsToward": {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "check",
+                                          "difficulty",
+                                          "within"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       "$comment": {}
                                     },

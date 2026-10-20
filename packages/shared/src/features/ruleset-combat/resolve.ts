@@ -217,6 +217,7 @@ import {
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
+  RULESET_ZONE_CHECK_OPTION_PREFIX,
   RULESET_ZONE_CLOSE_OPTION_PREFIX,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
@@ -7135,6 +7136,57 @@ function applyChoice(
       zone.closed = true;
       zone.rounds = Math.min(zone.rounds, lingers);
     } else endZones(ctx, working, actionId);
+    noteOutcome(ctx);
+    return finish();
+  }
+
+  // Moving a zone anybody near may move (1.641): its check thrown against its difficulty, or against
+  // whoever else moved it last; won, it goes to the cell picked and is theirs, failed against the
+  // difficulty, it comes at them. A Sphere of Annihilation.
+  if (option.id.startsWith(RULESET_ZONE_CHECK_OPTION_PREFIX)) {
+    const cell = destinationOf(option, choice.to);
+    if (!cell) return refusal(state, choice.actorId, "unreachable", option.id);
+    const { ctx, finish } = begin(definition, combat, state, roller);
+    const working = rulesetCombatant(ctx.state, actor.id)!;
+    spendBudget(ctx, working, option.budget!);
+    const [casterId, actionId] = option.id.slice(RULESET_ZONE_CHECK_OPTION_PREFIX.length).split("|");
+    const caster = rulesetCombatant(ctx.state, casterId!)!;
+    const zone = caster.zones!.find((entry) => entry.actionId === actionId)!;
+    const action = caster.actions.find((entry) => entry.id === actionId)!;
+    const check = action.zone!.move!.check!;
+    const holder =
+      zone.heldBy !== undefined && zone.heldBy !== working.id ? rulesetCombatant(ctx.state, zone.heldBy) : undefined;
+    const rival = holder && rulesetCombatStanding(holder) ? holder : undefined;
+    const before = ctx.events.length;
+    resolveContest(
+      ctx,
+      working,
+      { ...action, id: option.id, label: zone.label },
+      {
+        id: option.id,
+        attacker: [check.check],
+        defender: [check.check],
+        ties: "defender",
+        ...(rival ? {} : { difficulty: check.difficulty }),
+      },
+      rival ?? working,
+    );
+    const thrown = ctx.events.slice(before).find((event) => event.type === "contest");
+    if (thrown?.type === "contest" && thrown.winner === "actor") {
+      zone.heldBy = working.id;
+      moveZone(ctx, caster, zone, cell, "moved");
+    } else if (!rival && check.failsToward && zone.at) {
+      // Drawn at whoever failed, a cell at a time, as far as it says.
+      const from = rulesetPositionOf(working);
+      const grid = ctx.state.board?.grid;
+      if (from && grid) {
+        let at = { ...zone.at };
+        for (let step = 0; step < check.failsToward && (at.x !== from.x || at.y !== from.y); step++) {
+          at = { x: at.x + Math.sign(from.x - at.x), y: at.y + Math.sign(from.y - at.y) };
+        }
+        moveZone(ctx, caster, zone, at, "moved");
+      }
+    }
     noteOutcome(ctx);
     return finish();
   }

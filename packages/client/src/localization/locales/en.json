@@ -2397,6 +2397,7 @@
   "game.combat.ruleset.menu.again": "{{label}} again",
   "game.combat.ruleset.menu.avert": "Avert eyes from {{target}}",
   "game.combat.ruleset.menu.cancelSave": "Cancel on a successful {{save}} save against {{dc}}",
+  "game.combat.ruleset.menu.controlZone": "Control {{zone}}",
   "game.combat.ruleset.menu.defies": "Breaks a command they are under, and hurts them for it",
   "game.combat.ruleset.menu.defiesCells": "Some places break a command they are under, and hurt them for it",
   "game.combat.ruleset.menu.disarm": "Disarm {{zone}}",

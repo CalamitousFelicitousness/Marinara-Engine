@@ -3386,7 +3386,18 @@ export interface RulesetCatalogZone {
   carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast?: boolean;
-  move?: { budget: string; distance: number; ram?: true };
+  move?: {
+    budget: string;
+    distance: number;
+    ram?: true;
+    check?: {
+      check: string;
+      difficulty: number;
+      within: number;
+      distanceBy?: { abilityMod: string; times: number; atLeast?: number };
+      failsToward?: number;
+    };
+  };
   drift?: { distance: number };
   turn?: { budget: string };
   close?: { budget: string; lingers?: number };
@@ -3692,6 +3703,29 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
         /** Moved into a creature, it stops for the turn and catches them (Capability API 1.175),
          *  in place of `enter`: 5e's Flaming Sphere rammed into a creature. */
         ram: z.literal(true).optional(),
+        /** Moved by anybody within `within` of its middle, its caster too, only on a `check` (one of
+         *  `combat.checks`) meeting `difficulty`; while somebody else last moved it, contested by
+         *  theirs, the tie theirs (Capability API 1.641). As far as `distance`, or `distanceBy` times
+         *  the mover's ability modifier and at least `atLeast`; a failure against the difficulty
+         *  moves it `failsToward` the mover. 5e's Sphere of Annihilation: DC 25 Arcana within 60
+         *  feet, 5 × Intelligence modifier feet (at least 5), 10 feet toward a mover who fails. */
+        check: z
+          .object({
+            check: sheetId,
+            difficulty: z.number().int().min(1).max(100),
+            within: z.number().finite().gt(0).max(10000),
+            distanceBy: z
+              .object({
+                abilityMod: sheetId,
+                times: z.number().finite().gt(0).max(1000),
+                atLeast: z.number().finite().gt(0).max(10000).optional(),
+              })
+              .strict()
+              .optional(),
+            failsToward: z.number().finite().gt(0).max(10000).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -23382,6 +23416,17 @@ export function rulesetCatalogEntryIssues(
       }
       if (!definition.combat?.standard?.includes("search")) {
         add([index, "mechanics", "zone", "hidden"], 'A hidden zone is found with the "search" standard action');
+      }
+    }
+    // Moved on a check of the fight's (1.641), as far as an ability of the mover's says.
+    const moveCheck = mechanics?.zone?.move?.check;
+    if (moveCheck) {
+      if (!definition.combat?.checks?.some((check) => check.id === moveCheck.check)) {
+        add([index, "mechanics", "zone", "move", "check", "check"], `Unknown check "${moveCheck.check}"`);
+      }
+      const ability = moveCheck.distanceBy?.abilityMod;
+      if (ability !== undefined && !definition.sheet.abilities.some((one) => one.id === ability)) {
+        add([index, "mechanics", "zone", "move", "check", "distanceBy", "abilityMod"], `Unknown ability "${ability}"`);
       }
     }
     // A trap is disarmed with one of the fight's checks, by the "disarm" standard action (1.616).

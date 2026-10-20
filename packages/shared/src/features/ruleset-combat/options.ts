@@ -556,6 +556,8 @@ export const RULESET_ZONE_OPTION_PREFIX = "zone:";
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 /** Closing a zone its caster holds (1.584): an Eversmoking Bottle stoppered. */
 export const RULESET_ZONE_CLOSE_OPTION_PREFIX = "zone-close:";
+/** Moving a zone anybody near may move on a check (1.641), its caster's id and its action's after. */
+export const RULESET_ZONE_CHECK_OPTION_PREFIX = "zone-check:";
 export const RULESET_STAND_OPTION = "move:stand";
 /** Climbing out of whoever it was inside, once they have fallen (1.352): a purple worm's corpse. */
 export const RULESET_CLIMB_OUT_OPTION = "move:climb-out";
@@ -4806,13 +4808,31 @@ export function rulesetUncompelledOptions(
   // Moving a lasting area its caster holds at a point (1.173): picked on the board as a walk is.
   for (const zone of actor.zones ?? []) {
     const move = actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.move;
-    if (!move || (actor.budgets[move.budget] ?? 0) < 1) continue;
+    // One moved on a check is moved by anybody near, its caster too, below.
+    if (!move || move.check || (actor.budgets[move.budget] ?? 0) < 1) continue;
     // Rammed into somebody, it has stopped for the turn (1.175).
     if (zone.rammed === `${state.round}:${state.turn}`) continue;
     const cells = rulesetZoneMoveCells(state, zone, move.distance);
     if (cells.length === 0) continue;
     options.push({
       id: `${RULESET_ZONE_OPTION_PREFIX}${zone.actionId}`,
+      kind: "move",
+      label: zone.label,
+      budget: move.budget,
+      targets: { side: "self", count: 0 },
+      cells,
+    });
+  }
+  // Moving a zone anybody near may move, on a check (1.641): a Sphere of Annihilation.
+  const standingAt = rulesetPositionOf(actor);
+  for (const { caster, zone, action } of standingAt ? rulesetStandingZones(state) : []) {
+    const move = action.zone?.move;
+    if (!move?.check || !zone.at || (actor.budgets[move.budget] ?? 0) < 1) continue;
+    if (rulesetCellDistance(standingAt!, zone.at) > move.check.within) continue;
+    const cells = rulesetZoneMoveCells(state, zone, rulesetZoneCheckReach(definition, actor, move));
+    if (cells.length === 0) continue;
+    options.push({
+      id: `${RULESET_ZONE_CHECK_OPTION_PREFIX}${caster.id}|${zone.actionId}`,
       kind: "move",
       label: zone.label,
       budget: move.budget,
@@ -5368,6 +5388,21 @@ function endingOptions(
     }
   }
   return options;
+}
+
+/** How many cells a mover may move a zone moved on a check (1.641): its `distanceBy` times their
+ *  ability modifier, at least its `atLeast`, else its own distance. */
+export function rulesetZoneCheckReach(
+  definition: RulesetDefinition,
+  mover: RulesetCombatant,
+  move: NonNullable<NonNullable<RulesetCombatAction["zone"]>["move"]>,
+): number {
+  const by = move.check?.distanceBy;
+  if (!by || !move.check) return move.distance;
+  const score = mover.sheet?.build.abilities?.[by.abilityMod] ?? mover.block?.abilities?.[by.abilityMod];
+  const mod = typeof score === "number" ? rulesetAbilityModifier(definition, score) : 0;
+  const feet = Math.max(by.atLeast ?? 0, by.times * mod);
+  return feet > 0 ? Math.max(0, Math.floor(feet / move.check.perCell)) : 0;
 }
 
 /** The mode a repeat is made in (1.639): the one its cast was made in, while its user concentrates

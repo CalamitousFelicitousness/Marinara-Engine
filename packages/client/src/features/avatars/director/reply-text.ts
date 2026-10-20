@@ -35,7 +35,7 @@ const SENTENCE_END = /[.!?…]+["'”’»)\]*_]*(?=\s)|[。！？]+[」』”�
 const CLAUSE_BREAK = /[,;:—–、，；：]\s*/gu;
 const HAS_LETTER = /\p{L}/u;
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
-const INCOMPLETE_TAG = /<\/?\p{L}[^>]*$/u;
+const INCOMPLETE_TAG = /<\/?\p{L}[^<>\r\n]*(?:[\r\n]\s*)?$/u;
 
 function namePattern(name: string): RegExp | null {
   const full = name.trim();

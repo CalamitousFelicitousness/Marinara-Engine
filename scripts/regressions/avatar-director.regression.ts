@@ -113,6 +113,38 @@ for (const dialogue of ["I <3 you. See you tomorrow.", "a < b, as I told you."])
     "heart emoticons and comparisons remain in the speaker's dialogue",
   );
 }
+for (const text of [
+  'Alice smiles. "x<y is true."\n[Bob]: "Hi."',
+  'Alice smiles. "x<y is true." <speaker="Bob">"Hi."</speaker>',
+]) {
+  const attributed = replyText.attributeReplyParagraphs(text, [alice, bob], null, "alice");
+  assert.equal(attributed.at(-1)?.ownerId, "bob", "a partial tag cannot consume a later line or speaker tag");
+  assert.equal(
+    replyText.collectReplyDialogue(text, attributed, [alice, bob]).get("bob"),
+    "Hi.",
+    "a less-than sign in earlier prose never hides a later speaker's dialogue",
+  );
+}
+const laterPartialTag = 'Alice smiles. "x<y is true." <speaker="Bob';
+assert.equal(
+  replyText.attributeReplyParagraphs(laterPartialTag, [alice, bob], null, "alice").at(-1)?.end,
+  laterPartialTag.lastIndexOf("<speaker"),
+  "a later partial tag is trimmed from its own opening bracket",
+);
+for (const ending of ["\n", "\r\n", "\n\n", "\r\n\r\n"]) {
+  const text = `A greeting. "Hello there." <speaker="Bob${ending}`;
+  const attributed = replyText.attributeReplyParagraphs(text, [alice, bob], null, "alice");
+  assert.deepEqual(
+    attributed.map((paragraph) => paragraph.ownerId),
+    ["alice"],
+    "trailing line breaks in a partial tag never assign earlier narration to its unfinished speaker",
+  );
+  assert.deepEqual(
+    Object.fromEntries(replyText.collectReplyDialogue(text, attributed, [alice, bob])),
+    { alice: "Hello there." },
+    "earlier dialogue keeps its fallback speaker when a partial tag ends in line breaks",
+  );
+}
 
 const inlineTagged = 'Alice waits. <speaker="Bob">"This is wonderful!"</speaker> Alice sobs.';
 const inlineParagraphs = replyText.attributeReplyParagraphs(inlineTagged, [alice, bob], null, "alice");

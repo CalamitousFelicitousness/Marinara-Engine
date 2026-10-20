@@ -354,7 +354,7 @@ function buildResumeSelection(messages: ChatMessage[], model: string, extendedCa
     split.shape,
     sessionId,
     split.history.length,
-    markedEntry >= 0 ? `entry ${markedEntry} of ${entries.length}` : "none",
+    markedEntry >= 0 ? `entry ${markedEntry + 1} of ${entries.length}` : "none",
   );
   return {
     promptArg: singleMessageIterable(currentToSdkUserMessage(split.current)),

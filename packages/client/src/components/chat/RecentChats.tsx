@@ -189,7 +189,7 @@ export function RecentChats() {
   if (recentChats.length === 0) {
     return (
       <div className="flex h-full min-h-36 flex-col justify-end rounded-2xl border border-dashed border-[var(--border)]/70 p-4">
-        <MessageSquare className="mb-3 text-[oklch(0.79_0.16_205)]" size="1.25rem" aria-hidden="true" />
+        <MessageSquare className="mb-3 text-[var(--primary)]" size="1.25rem" aria-hidden="true" />
         <p className="text-sm font-semibold text-[var(--foreground)]">{t("home.recentChats.emptyTitle")}</p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--muted-foreground)]">
           {t("home.recentChats.emptyDescription")}
@@ -272,12 +272,12 @@ export function RecentChats() {
                 loading="lazy"
                 decoding="async"
                 className={cn(
-                  "absolute bottom-0 right-0 origin-bottom object-contain object-bottom object-center opacity-95 drop-shadow-[0_10px_18px_rgba(0,0,0,0.48)]",
+                  "absolute bottom-0 right-0 origin-bottom object-contain object-bottom object-center opacity-95 drop-shadow-[0_10px_18px_color-mix(in_srgb,var(--marinara-shadow-color)_48%,transparent)]",
                   sprite.layout === "full-body" ? "h-[96%] w-[46%] px-1 pt-1" : "h-[90%] w-[44%] pb-1 pr-1",
                 )}
               />
             ) : character?.avatarUrl ? (
-              <span className="absolute bottom-2 right-2 h-14 w-14 overflow-hidden rounded-full border-2 border-[var(--recent-chat-accent)]/60 bg-[var(--card)] shadow-lg shadow-black/30 md:bottom-3 md:right-3 md:h-20 md:w-20">
+              <span className="absolute bottom-2 right-2 h-14 w-14 overflow-hidden rounded-full border-2 border-[var(--recent-chat-accent)]/60 bg-[var(--card)] shadow-lg shadow-[color:var(--marinara-shadow-color)]/30 md:bottom-3 md:right-3 md:h-20 md:w-20">
                 <img
                   src={character.avatarUrl}
                   alt=""

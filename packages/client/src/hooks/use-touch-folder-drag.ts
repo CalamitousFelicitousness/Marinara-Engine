@@ -138,7 +138,7 @@ function createPreviewElement(drag: TouchFolderDragState) {
   clone.style.opacity = "0.96";
   clone.style.backgroundColor = "var(--sidebar)";
   clone.style.borderRadius = computedStyle.borderRadius;
-  clone.style.boxShadow = "0 18px 44px rgba(0, 0, 0, 0.34)";
+  clone.style.boxShadow = "0 18px 44px color-mix(in srgb, var(--marinara-shadow-color) 34%, transparent)";
   clone.style.transformOrigin = "top left";
   clone.style.transition = "none";
   clone.style.willChange = "transform";
@@ -159,7 +159,7 @@ function updateStackPreview(drag: TouchFolderDragState) {
       "absolute right-1 top-1 rounded-full bg-[var(--primary)] px-2 py-0.5 text-xs font-semibold text-[var(--primary-foreground)] shadow-sm";
     drag.previewElement.appendChild(badge);
     drag.previewElement.style.boxShadow =
-      "0 4px 0 -1px var(--sidebar), 0 4px 0 var(--border), 0 8px 0 -1px var(--sidebar), 0 8px 0 var(--border), 0 18px 44px rgba(0, 0, 0, 0.34)";
+      "0 4px 0 -1px var(--sidebar), 0 4px 0 var(--border), 0 8px 0 -1px var(--sidebar), 0 8px 0 var(--border), 0 18px 44px color-mix(in srgb, var(--marinara-shadow-color) 34%, transparent)";
   }
   badge.textContent = String(drag.ids.length);
 }

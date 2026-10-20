@@ -324,7 +324,7 @@ export function usePullToOpenOmnibar({
     const solidTo = barY + 4;
     const clearAt = Math.max(solidTo + 24, ey - ry * 0.2);
     glass.style.background =
-      `radial-gradient(${px(rx * 0.95)}px ${px(ry * 0.95)}px at ${px(ex)}px ${px(ey - ry * 0.15)}px, rgb(255 255 255 / ${px(glow * 100) / 100}), rgb(255 255 255 / 0)),` +
+      `radial-gradient(${px(rx * 0.95)}px ${px(ry * 0.95)}px at ${px(ex)}px ${px(ey - ry * 0.15)}px, color-mix(in srgb, var(--foreground) ${px(glow * 100)}%, transparent), color-mix(in srgb, var(--foreground) 0%, transparent)),` +
       (tint > 0.2
         ? `radial-gradient(${px(rx * 1.6)}px ${px(ry * 1.6)}px at ${px(ex)}px ${px(ey)}px, color-mix(in srgb, var(--primary) ${px(tint)}%, transparent), transparent),`
         : "") +

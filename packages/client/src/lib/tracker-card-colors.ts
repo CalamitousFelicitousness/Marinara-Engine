@@ -918,7 +918,7 @@ export function getTrackerCardStyleVars({
     surfaceLayer: palette.boxLayer,
     surfaceSolid: applyTrackerCardMaterialBrightness(effectiveBox, materialBrightness),
     slotRule: `color-mix(in srgb, color-mix(in srgb, ${effectiveBox} 50%, var(--foreground) 50%) ${finish.slotRuleOpacity}%, transparent)`,
-    slotShadow: `rgba(0, 0, 0, ${finish.slotShadowOpacity})`,
+    slotShadow: `color-mix(in srgb, var(--marinara-shadow-color) ${Number(finish.slotShadowOpacity) * 100}%, transparent)`,
     slotSurface: fieldInsetBackground,
     slotSurfaceBlend: getTrackerCardBackgroundBlendMode(slotPaintLayers, "soft-light"),
     tintOpacity: scaleOpacity(finish.tintOpacity, surfaceOpacity),
@@ -936,7 +936,7 @@ export function getTrackerCardStyleVars({
     statTrack: statTrackBackground,
     statTrackBlend: getTrackerCardBackgroundBlendMode(statTrackPaintLayers, "overlay"),
     statTrackRing: `color-mix(in srgb, color-mix(in srgb, ${palette.accent} 52%, var(--foreground) 48%) ${scalePercent(finish.statTrackRingOpacity, accentOpacity)}%, transparent)`,
-    statTrackShadow: `rgba(0, 0, 0, ${finish.statTrackShadowOpacity})`,
+    statTrackShadow: `color-mix(in srgb, var(--marinara-shadow-color) ${Number(finish.statTrackShadowOpacity) * 100}%, transparent)`,
     text: materialReadableForeground,
     background: getTrackerCardPaintedBackground(
       applyTrackerCardMaterialBrightness(backgroundBase, materialBrightness),

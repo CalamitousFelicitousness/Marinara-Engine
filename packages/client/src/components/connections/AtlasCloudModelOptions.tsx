@@ -14,7 +14,7 @@ import { useAtlasCloudVideoModelSchema } from "../../hooks/use-atlas-cloud-model
 
 const LABEL_CLASS = "text-[0.625rem] font-medium text-[var(--muted-foreground)]";
 const INPUT_CLASS =
-  "mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50";
+  "mt-1 w-full rounded-lg bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]";
 const MODEL_DEFAULT = "__model_default__";
 const MODEL_INPUT_DEBOUNCE_MS = 400;
 
@@ -153,7 +153,7 @@ function ModelLimits({ limits }: { limits: AtlasCloudModelLimits }) {
   return (
     <div className="space-y-1">
       {!limits.acceptsReferenceImage && (
-        <p className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-[0.625rem] font-medium text-amber-400">
+        <p className="flex items-start gap-1.5 rounded-md bg-[var(--warning)]/10 px-2 py-1.5 text-[0.625rem] font-medium text-[var(--warning)]">
           <AlertTriangle size="0.75rem" className="mt-0.5 shrink-0" />
           {t("connections.mediaSources.atlas.modelOptions.noReferenceImage")}
         </p>
@@ -234,7 +234,9 @@ function OptionField({
       <span className={LABEL_CLASS}>
         <code className="text-[var(--foreground)]">{field.name}</code>
         {field.required && (
-          <span className="ml-1 text-amber-400">{t("connections.mediaSources.atlas.modelOptions.required")}</span>
+          <span className="ml-1 text-[var(--warning)]">
+            {t("connections.mediaSources.atlas.modelOptions.required")}
+          </span>
         )}
       </span>
       {control}

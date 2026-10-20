@@ -298,7 +298,7 @@ export function RulesetCombatBoard({
   const hint = readingHint ?? (rulesetNothingInReach(view) ? t("game.combat.ruleset.board.nothingInReach") : "");
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-white">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-[var(--foreground)]">
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
       {/* Radial vignette so the grid reads against the scene art without an opaque fill. */}
       <div
@@ -313,10 +313,10 @@ export function RulesetCombatBoard({
         data-game-section="ruleset-status"
         className={cn(
           GAME_SECTION_CLASS,
-          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-black/40 px-3 py-1.5 text-xs backdrop-blur",
+          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-[var(--card)]/90 px-3 py-1.5 text-xs backdrop-blur",
         )}
       >
-        <span className="font-semibold text-white/80">
+        <span className="font-semibold text-[var(--foreground)]/80">
           {actor
             ? t("game.combat.ruleset.board.turnOf", { name: actor.name })
             : t("game.combat.ruleset.menu.waitingAnybody")}
@@ -717,7 +717,7 @@ export function RulesetCombatBoard({
         data-game-section="ruleset-hint"
         className={cn(
           GAME_SECTION_CLASS,
-          "z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur",
+          "z-10 min-h-[1.5rem] shrink-0 border-t border-[var(--border)] bg-[var(--card)]/90 px-3 py-1 text-[0.65rem] leading-snug text-[var(--foreground)]/70 backdrop-blur",
         )}
       >
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
@@ -725,7 +725,10 @@ export function RulesetCombatBoard({
 
       <div
         data-game-section="ruleset-actions"
-        className={cn(GAME_SECTION_CLASS, "z-10 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur")}
+        className={cn(
+          GAME_SECTION_CLASS,
+          "z-10 shrink-0 border-t border-[var(--border)] bg-[var(--card)]/90 backdrop-blur",
+        )}
       >
         <RulesetCombatMenu
           view={view}

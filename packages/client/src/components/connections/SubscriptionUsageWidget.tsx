@@ -47,7 +47,7 @@ function formatTokens(value: number | null): string {
  */
 function barFill(percent: number, useAccentColor: boolean): string {
   if (percent >= 90) return "bg-[var(--marinara-editor-accent)]";
-  if (percent >= 70 && !useAccentColor) return "bg-amber-400";
+  if (percent >= 70 && !useAccentColor) return "bg-[var(--warning)]";
   return "bg-[var(--marinara-chat-chrome-accent)]";
 }
 

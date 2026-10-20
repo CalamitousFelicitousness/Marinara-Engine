@@ -601,7 +601,7 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
   return (
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 max-md:pt-[env(safe-area-inset-top)]"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]/50 max-md:pt-[env(safe-area-inset-top)]"
       {...backdropDismiss}
     >
       <div
@@ -689,7 +689,7 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
           {data.decisions && data.decisions.unanswered.length > 0 && (
             <div
               role="status"
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
+              className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
             >
               <p>
                 {localizeUi(
@@ -711,7 +711,7 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
           {data.decisions?.dropped && data.decisions.dropped.length > 0 && (
             <div
               role="status"
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
+              className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
             >
               <p>{localizeUi("ui.chat.peekpromptmodal.decisionsDropped", { count: data.decisions.dropped.length })}</p>
               <ul className="mt-1 list-disc pl-4 text-[var(--muted-foreground)]">

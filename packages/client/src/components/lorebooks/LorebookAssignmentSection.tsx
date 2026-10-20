@@ -269,7 +269,7 @@ export function LorebookAssignmentSection({
                 key={lorebook.id}
                 className="flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2.5"
               >
-                <BookOpen size="0.875rem" className="shrink-0 text-amber-400" />
+                <BookOpen size="0.875rem" className="shrink-0 text-[var(--primary)]" />
                 <button
                   type="button"
                   onClick={() => openLorebookDetail(lorebook.id)}
@@ -290,7 +290,7 @@ export function LorebookAssignmentSection({
                 {ownerType === "character" &&
                   (lorebook.id === embeddedLorebookId ? (
                     <>
-                      <span className="rounded-lg bg-emerald-500/15 px-2 py-1 text-[0.625rem] font-medium text-emerald-500">
+                      <span className="rounded-lg bg-[var(--success)]/15 px-2 py-1 text-[0.625rem] font-medium text-[var(--success)]">
                         {localizeUi("ui.lorebooks.lorebookassignmentsection.embedded")}
                       </span>
                       <button

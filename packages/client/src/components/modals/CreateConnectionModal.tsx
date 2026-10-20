@@ -60,8 +60,8 @@ export function CreateConnectionModal({ open, onClose, initialProvider }: Props)
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 shadow-lg shadow-sky-400/20">
-            <Link size="1.375rem" className="text-white" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl mari-panel-gradient-surface mari-panel-gradient--connections">
+            <Link size="1.375rem" className="text-current" />
           </div>
           <div className="flex-1">
             <p className="text-xs text-[var(--muted-foreground)]">
@@ -102,7 +102,7 @@ export function CreateConnectionModal({ open, onClose, initialProvider }: Props)
                 className={cn(
                   "rounded-md px-2.5 py-2 text-left text-[0.6875rem] font-medium transition-all",
                   provider === key
-                    ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                 )}
               >

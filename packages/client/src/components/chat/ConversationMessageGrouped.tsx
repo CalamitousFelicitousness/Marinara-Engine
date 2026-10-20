@@ -166,7 +166,7 @@ export function ConversationMessageGrouped({
       )}
 
       {hiddenFromAIHeader && !isHiddenCollapsed && (
-        <div className="mb-1 flex items-center gap-1 pl-14 text-[0.6875rem] text-amber-500/80">
+        <div className="mb-1 flex items-center gap-1 pl-14 text-[0.6875rem] text-[var(--warning)]/80">
           {hiddenFromAIHeader}
           <span>{localizeUi("ui.chat.conversationmessagegrouped.hiddenFromAi")}</span>
         </div>

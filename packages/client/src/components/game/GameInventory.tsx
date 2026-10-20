@@ -566,7 +566,7 @@ export function GameInventory({
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.game.gamecharactersheet.inventory")}
-      className="fixed inset-y-0 z-[80] flex items-center justify-center bg-black/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
+      className="fixed inset-y-0 z-[80] flex items-center justify-center bg-[var(--card)]/70 p-3 pb-[max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.75rem)] pt-[max(env(safe-area-inset-top),0.75rem)] backdrop-blur-sm sm:p-4"
       style={{
         left: "var(--mari-chat-ui-inset-left, 0px)",
         right: "var(--mari-chat-ui-inset-right, 0px)",
@@ -576,17 +576,17 @@ export function GameInventory({
         data-game-section="inventory"
         className={cn(
           GAME_SECTION_CLASS,
-          "relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] supports-[height:100dvh]:max-h-[85dvh]",
+          "relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-[var(--marinara-editor-shadow)] supports-[height:100dvh]:max-h-[85dvh]",
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/8 bg-white/[0.02] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--foreground)]/[0.02] px-4 py-3">
           <div className="flex items-center gap-2">
-            <Package size={15} className="text-amber-400/80" />
-            <h2 className="text-sm font-semibold tracking-wide text-white/90">
+            <Package size={15} className="text-[var(--primary)]/80" />
+            <h2 className="text-sm font-semibold tracking-wide text-[var(--foreground)]/90">
               {localizeUi("ui.game.gamecharactersheet.inventory")}
             </h2>
-            <span className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/80">
+            <span className="rounded bg-[var(--foreground)]/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-[var(--foreground)]/80">
               {visibleItems.length}{" "}
               {visibleItems.length === 1
                 ? localizeUi("ui.game.gameinventory.item")
@@ -596,7 +596,7 @@ export function GameInventory({
           <button
             onClick={onClose}
             aria-label={localizeUi("navigation.common.close")}
-            className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+            className="rounded p-1 text-[var(--foreground)]/40 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]/70"
           >
             <X size={14} />
           </button>
@@ -605,7 +605,7 @@ export function GameInventory({
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
           {/* Bags: the shared view, then one tab per party member. A stack dropped on a tab is given. */}
           {showBags && (
-            <div className="overflow-x-auto border-b border-white/8 px-3 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
+            <div className="overflow-x-auto border-b border-[var(--border)] px-3 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
               <div className="flex w-max min-w-full gap-1">
                 <button
                   type="button"
@@ -614,8 +614,8 @@ export function GameInventory({
                   className={cn(
                     "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.625rem] font-medium transition-colors",
                     activeView.kind === "all"
-                      ? "bg-white/10 text-white/85"
-                      : "text-white/50 hover:bg-white/5 hover:text-white/70",
+                      ? "bg-[var(--foreground)]/10 text-[var(--foreground)]/85"
+                      : "text-[var(--foreground)]/50 hover:bg-[var(--foreground)]/5 hover:text-[var(--foreground)]/70",
                   )}
                 >
                   {localizeUi("ui.game.gameinventory.all")}
@@ -641,7 +641,7 @@ export function GameInventory({
               several bags, each bag's load. */}
           {bagStatus && <BearerStatusLine status={bagStatus} bindingLabel={bindingLabel} />}
           {!bagStatus && activeView.kind === "all" && showBags && itemBook?.bearer && (
-            <div className="flex flex-wrap gap-1 border-b border-white/8 px-3 py-1.5">
+            <div className="flex flex-wrap gap-1 border-b border-[var(--border)] px-3 py-1.5">
               {bags.map((bag) => {
                 const status = statusOf(bag.holder);
                 if (!status || status.encumberedAbove === undefined) return null;
@@ -650,7 +650,9 @@ export function GameInventory({
                     key={gameInventoryBagKey(bag.holder) || "player"}
                     className={cn(
                       "rounded px-1.5 py-0.5 text-[0.6rem] tabular-nums",
-                      status.encumbered ? "bg-amber-500/15 text-amber-300" : "bg-white/8 text-white/70",
+                      status.encumbered
+                        ? "bg-[var(--warning)]/15 text-[var(--warning)]"
+                        : "bg-[var(--foreground)]/8 text-[var(--foreground)]/70",
                     )}
                   >
                     {localizeUi("ui.game.gameinventory.bagLoad", {
@@ -667,11 +669,11 @@ export function GameInventory({
           {/* The coins in view, family by family, and what they are worth: the purse of the bag in view,
               or the whole party's in the shared view. */}
           {purse.length > 0 && (
-            <div className="flex flex-wrap gap-1 border-b border-white/8 px-3 py-1.5">
+            <div className="flex flex-wrap gap-1 border-b border-[var(--border)] px-3 py-1.5">
               {purse.map((family) => (
                 <span
                   key={family.id}
-                  className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/70"
+                  className="rounded bg-[var(--foreground)]/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-[var(--foreground)]/70"
                 >
                   {localizeUi("ui.game.gameinventory.purse", {
                     family: family.label,
@@ -691,11 +693,11 @@ export function GameInventory({
             {visibleItems.length > 0 ? (
               <>
                 {pageCount > 1 && (
-                  <div className="mb-2 flex items-center justify-between gap-2 text-[0.625rem] text-white/45">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[0.625rem] text-[var(--foreground)]/45">
                     <button
                       onClick={() => setPageIndex((page) => Math.max(0, page - 1))}
                       disabled={pageIndex === 0}
-                      className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+                      className="flex h-6 w-6 items-center justify-center rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] transition-colors hover:bg-[var(--foreground)]/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
                       title={localizeUi("ui.game.gameinventory.previousInventoryPage")}
                     >
                       <ChevronLeft size={12} />
@@ -706,7 +708,7 @@ export function GameInventory({
                     <button
                       onClick={() => setPageIndex((page) => Math.min(pageCount - 1, page + 1))}
                       disabled={pageIndex >= pageCount - 1}
-                      className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+                      className="flex h-6 w-6 items-center justify-center rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] transition-colors hover:bg-[var(--foreground)]/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
                       title={localizeUi("ui.game.gameinventory.nextInventoryPage")}
                     >
                       <ChevronRight size={12} />
@@ -733,19 +735,19 @@ export function GameInventory({
                 </div>
               </>
             ) : activeBag && items.length > 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
-                <Package size={18} className="mb-2 text-white/25" />
-                <div className="text-[0.75rem] font-medium text-white/55">
+              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-[var(--border)] bg-[var(--foreground)]/[0.02] px-4 text-center">
+                <Package size={18} className="mb-2 text-[var(--foreground)]/25" />
+                <div className="text-[0.75rem] font-medium text-[var(--foreground)]/55">
                   {localizeUi("ui.game.gameinventory.bagEmpty", { value1: activeBag.name })}
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
-                <Package size={18} className="mb-2 text-white/25" />
-                <div className="text-[0.75rem] font-medium text-white/55">
+              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-[var(--border)] bg-[var(--foreground)]/[0.02] px-4 text-center">
+                <Package size={18} className="mb-2 text-[var(--foreground)]/25" />
+                <div className="text-[0.75rem] font-medium text-[var(--foreground)]/55">
                   {localizeUi("ui.game.gameinventory.inventoryEmpty")}
                 </div>
-                <div className="mt-1 text-[0.65rem] text-white/35">
+                <div className="mt-1 text-[0.65rem] text-[var(--foreground)]/35">
                   {localizeUi("ui.game.gameinventory.addAnItemToStartTrackingSupplies")}
                 </div>
               </div>
@@ -755,17 +757,17 @@ export function GameInventory({
 
         {/* Action bar */}
         {(selectedItem || typesItems || picksItems) && (
-          <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
+          <div className="border-t border-[var(--border)] bg-[var(--foreground)]/[0.02] px-4 py-2.5">
             {selectedInventoryItem && (
-              <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">
+              <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-[var(--foreground)]/60 [overflow-wrap:anywhere]">
                 {selectedLabel}
                 {selectedInventoryItem.nickname && (
-                  <span className="ml-1.5 font-normal text-white/40">
+                  <span className="ml-1.5 font-normal text-[var(--foreground)]/40">
                     {localizeUi("ui.game.gameinventory.ownNameValue1", { value1: selectedInventoryItem.name })}
                   </span>
                 )}
                 {showBags && (
-                  <span className="ml-1.5 font-normal text-white/40">
+                  <span className="ml-1.5 font-normal text-[var(--foreground)]/40">
                     {localizeUi("ui.game.gameinventory.carriedBy", { value1: bagName(selectedInventoryItem.holder) })}
                   </span>
                 )}
@@ -794,7 +796,7 @@ export function GameInventory({
                     }
                   }}
                   disabled={renamePending}
-                  className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--card)]/40 px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--primary)]/40"
                   aria-label={localizeUi("ui.game.gameinventory.nicknameValue1", {
                     value1: selectedInventoryItem.name,
                   })}
@@ -804,7 +806,7 @@ export function GameInventory({
                 <button
                   onClick={() => void handleRename(selectedInventoryItem)}
                   disabled={renamePending || !renameDraft.trim() || renameDraft.trim() === selectedLabel}
-                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2 py-1.5 text-[0.7rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Check size={12} />
                   {localizeUi("ui.noodle.noodlehome.save")}
@@ -815,7 +817,7 @@ export function GameInventory({
               <div className="mb-2.5 flex items-center gap-1.5">
                 <label
                   htmlFor="game-inventory-split-size"
-                  className="min-w-0 flex-1 text-[0.65rem] leading-tight text-white/55"
+                  className="min-w-0 flex-1 text-[0.65rem] leading-tight text-[var(--foreground)]/55"
                 >
                   {localizeUi("ui.game.gameinventory.splitHowMany", { max: selectedInventoryItem.quantity - 1 })}
                 </label>
@@ -836,21 +838,21 @@ export function GameInventory({
                     }
                   }}
                   disabled={splitPending}
-                  className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                  className="w-16 rounded border border-[var(--border)] bg-[var(--card)]/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--primary)]/40"
                 />
                 <button
                   onClick={() => void commitSplit(selectedInventoryItem)}
                   disabled={
                     splitPending || parseInventoryCount(splitDraft, selectedInventoryItem.quantity - 1) === null
                   }
-                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2 py-1.5 text-[0.7rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Scissors size={12} />
                   {localizeUi("ui.game.gameinventory.split")}
                 </button>
                 <button
                   onClick={() => setSplitDraft(null)}
-                  className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                  className="rounded p-1 text-[var(--foreground)]/40 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]/70"
                   aria-label={localizeUi("ui.game.gameinventory.cancelSplit")}
                   title={localizeUi("ui.game.gameinventory.cancelSplit")}
                 >
@@ -860,7 +862,10 @@ export function GameInventory({
             )}
             {onGiveItem && selectedInventoryItem && giveDraft !== null && (
               <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                <label htmlFor="game-inventory-give-to" className="text-[0.65rem] leading-tight text-white/55">
+                <label
+                  htmlFor="game-inventory-give-to"
+                  className="text-[0.65rem] leading-tight text-[var(--foreground)]/55"
+                >
                   {localizeUi("ui.game.gameinventory.giveTo")}
                 </label>
                 <select
@@ -875,7 +880,7 @@ export function GameInventory({
                     }
                   }}
                   disabled={givePending}
-                  className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                  className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--card)]/40 px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--primary)]/40"
                 >
                   {bags
                     .filter(
@@ -907,7 +912,7 @@ export function GameInventory({
                       max: selectedInventoryItem.quantity,
                     })}
                     title={localizeUi("ui.game.gameinventory.giveHowMany", { max: selectedInventoryItem.quantity })}
-                    className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                    className="w-16 rounded border border-[var(--border)] bg-[var(--card)]/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--primary)]/40"
                   />
                 )}
                 <button
@@ -915,14 +920,14 @@ export function GameInventory({
                   disabled={
                     givePending || parseInventoryCount(giveDraft.count, selectedInventoryItem.quantity) === null
                   }
-                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2 py-1.5 text-[0.7rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Gift size={12} />
                   {localizeUi("ui.game.gameinventory.give")}
                 </button>
                 <button
                   onClick={() => setGiveDraft(null)}
-                  className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                  className="rounded p-1 text-[var(--foreground)]/40 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]/70"
                   aria-label={localizeUi("ui.game.gameinventory.cancelGive")}
                   title={localizeUi("ui.game.gameinventory.cancelGive")}
                 >
@@ -933,7 +938,7 @@ export function GameInventory({
             <div className="flex flex-wrap gap-1.5">
               {selectedInventoryItem && onSetItemQuantity && (
                 <div
-                  className="flex h-7 shrink-0 items-center overflow-hidden rounded border border-white/8 bg-white/[0.03]"
+                  className="flex h-7 shrink-0 items-center overflow-hidden rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03]"
                   aria-label={localizeUi("ui.game.gameinventory.value1AmountControls", {
                     value1: selectedLabel,
                   })}
@@ -942,7 +947,7 @@ export function GameInventory({
                     type="button"
                     onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity - 1)}
                     disabled={amountPending}
-                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-full w-7 items-center justify-center text-[var(--foreground)]/65 transition-colors hover:bg-[var(--foreground)]/[0.07] hover:text-[var(--foreground)]/90 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={
                       selectedInventoryItem.quantity > 1
                         ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
@@ -977,13 +982,13 @@ export function GameInventory({
                       value1: selectedLabel,
                     })}
                     title={localizeUi("ui.game.gameinventory.amountHint")}
-                    className="h-full w-14 border-x border-white/8 bg-transparent px-1 text-center text-[0.7rem] font-semibold tabular-nums text-white/80 outline-none focus:bg-white/[0.05]"
+                    className="h-full w-14 border-x border-[var(--border)] bg-transparent px-1 text-center text-[0.7rem] font-semibold tabular-nums text-[var(--foreground)]/80 outline-none focus:bg-[var(--foreground)]/[0.05]"
                   />
                   <button
                     type="button"
                     onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity + 1)}
                     disabled={amountPending}
-                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-full w-7 items-center justify-center text-[var(--foreground)]/65 transition-colors hover:bg-[var(--foreground)]/[0.07] hover:text-[var(--foreground)]/90 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
                       value1: selectedLabel,
                     })}
@@ -1000,7 +1005,7 @@ export function GameInventory({
                     setGiveDraft(null);
                     setSplitDraft(String(defaultInventorySplitSize(selectedInventoryItem.quantity)));
                   }}
-                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] px-2 text-[0.7rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/[0.06]"
                   aria-label={localizeUi("ui.game.gameinventory.splitValue1", { value1: selectedLabel })}
                   title={localizeUi("ui.game.gameinventory.splitStack")}
                 >
@@ -1023,7 +1028,7 @@ export function GameInventory({
                       });
                     }
                   }}
-                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] px-2 text-[0.7rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/[0.06]"
                   aria-label={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedLabel })}
                   title={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedLabel })}
                 >
@@ -1042,8 +1047,8 @@ export function GameInventory({
                   className={cn(
                     "flex h-7 shrink-0 items-center justify-center gap-1 rounded border px-2 text-[0.7rem] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                     selectedInventoryItem.equipped
-                      ? "border-amber-500/20 bg-amber-500/10 font-semibold text-amber-300 hover:bg-amber-500/15"
-                      : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
+                      ? "border-[var(--primary)]/20 bg-[var(--primary)]/10 font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/15"
+                      : "border-[var(--border)] bg-[var(--foreground)]/[0.03] text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/[0.06]",
                   )}
                   title={localizeUi("ui.game.gameinventory.equippedHint")}
                 >
@@ -1062,8 +1067,8 @@ export function GameInventory({
                   className={cn(
                     "flex h-7 shrink-0 items-center justify-center gap-1 rounded border px-2 text-[0.7rem] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                     selectedInventoryItem.bound
-                      ? "border-amber-500/20 bg-amber-500/10 font-semibold text-amber-300 hover:bg-amber-500/15"
-                      : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
+                      ? "border-[var(--primary)]/20 bg-[var(--primary)]/10 font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/15"
+                      : "border-[var(--border)] bg-[var(--foreground)]/[0.03] text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/[0.06]",
                   )}
                   title={localizeUi("ui.game.gameinventory.boundHint")}
                 >
@@ -1083,8 +1088,8 @@ export function GameInventory({
                     className={cn(
                       "flex h-7 shrink-0 items-center justify-center gap-1 rounded border px-2 text-[0.7rem] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                       selectedInventoryItem.on
-                        ? "border-amber-500/20 bg-amber-500/10 font-semibold text-amber-300 hover:bg-amber-500/15"
-                        : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
+                        ? "border-[var(--primary)]/20 bg-[var(--primary)]/10 font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/15"
+                        : "border-[var(--border)] bg-[var(--foreground)]/[0.03] text-[var(--foreground)]/70 hover:bg-[var(--foreground)]/[0.06]",
                     )}
                     title={localizeUi("ui.game.gameinventory.switchHint")}
                   >
@@ -1104,7 +1109,7 @@ export function GameInventory({
                         : selectedLabel,
                     )
                   }
-                  className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
+                  className="flex flex-1 items-center justify-center gap-1 rounded border border-[var(--primary)]/20 bg-[var(--primary)]/10 py-1.5 text-[0.7rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15"
                 >
                   <Wand2 size={12} />
                   {localizeUi("ui.agents.agenteditor.use")}
@@ -1128,12 +1133,12 @@ export function GameInventory({
                       disabled={addPending}
                       aria-label={localizeUi("ui.game.gameinventory.newItemName")}
                       placeholder={localizeUi("ui.game.gameinventory.itemName")}
-                      className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                      className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--card)]/40 px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/85 outline-none transition-colors focus:border-[var(--primary)]/40"
                     />
                     <button
                       onClick={() => void handleAdd()}
                       disabled={addPending || !newItemName.trim()}
-                      className="flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex shrink-0 items-center justify-center gap-1 rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Plus size={12} />
                       {localizeUi("ui.characters.metadatatab.add")}
@@ -1146,7 +1151,7 @@ export function GameInventory({
                     onClick={() => setPickerOpen(true)}
                     disabled={addPending}
                     className={cn(
-                      "flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40",
+                      "flex shrink-0 items-center justify-center gap-1 rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/[0.06] disabled:cursor-not-allowed disabled:opacity-40",
                       !typesItems && "flex-1",
                     )}
                     title={localizeUi("ui.game.gameinventory.fromRulesetHint")}
@@ -1162,7 +1167,7 @@ export function GameInventory({
                 type="button"
                 onClick={() => setGearOpen(true)}
                 disabled={addPending}
-                className="mt-1.5 flex w-full items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-1.5 flex w-full items-center justify-center gap-1 rounded border border-[var(--border)] bg-[var(--foreground)]/[0.03] px-2 py-1.5 text-[0.7rem] text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
                 title={localizeUi("game.ruleset.startingGear.buttonHint")}
               >
                 <Backpack size={12} />
@@ -1210,11 +1215,11 @@ function roundLoad(value: number): string {
 /** One bag's load against what its bearer carries, its bound items and the slots its worn items take. */
 function BearerStatusLine({ status, bindingLabel }: { status: GameInventoryBearerStatus; bindingLabel?: string }) {
   const { t: localizeUi } = useUiTranslation();
-  const chip = "rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/70";
+  const chip = "rounded bg-[var(--foreground)]/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-[var(--foreground)]/70";
   return (
-    <div className="flex flex-wrap gap-1 border-b border-white/8 px-3 py-1.5">
+    <div className="flex flex-wrap gap-1 border-b border-[var(--border)] px-3 py-1.5">
       {status.encumberedAbove !== undefined && (
-        <span className={cn(chip, status.encumbered && "bg-amber-500/15 text-amber-300")}>
+        <span className={cn(chip, status.encumbered && "bg-[var(--warning)]/15 text-[var(--warning)]")}>
           {status.limit !== undefined
             ? localizeUi("ui.game.gameinventory.loadWithLimit", {
                 load: roundLoad(status.load),
@@ -1270,33 +1275,38 @@ function RulesetItemDetails({
     <div className="mb-2.5 space-y-1">
       <div className="flex flex-wrap gap-1">
         {kind.map((word) => (
-          <span key={word} className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] text-white/80">
+          <span
+            key={word}
+            className="rounded bg-[var(--foreground)]/8 px-1.5 py-0.5 text-[0.6rem] text-[var(--foreground)]/80"
+          >
             {word}
           </span>
         ))}
       </div>
-      {stats && <div className="text-[0.65rem] leading-tight text-white/70">{stats}</div>}
+      {stats && <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/70">{stats}</div>}
       {rulesetItemEffectLines(facts, localizeUi).map((line) => (
-        <div key={line} className="text-[0.65rem] leading-tight text-white/70">
+        <div key={line} className="text-[0.65rem] leading-tight text-[var(--foreground)]/70">
           {line}
         </div>
       ))}
       {clip && (
-        <div className="text-[0.65rem] leading-tight text-white/70">
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/70">
           {localizeUi("ui.game.gameinventory.loaded", { now: Math.min(loaded ?? clip.max, clip.max), max: clip.max })}
         </div>
       )}
       {chargesMax !== undefined && (
-        <div className="text-[0.65rem] leading-tight text-white/70">
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/70">
           {localizeUi("ui.game.gameinventory.chargesLeft", {
             now: Math.min(charges ?? chargesMax, chargesMax),
             max: chargesMax,
           })}
         </div>
       )}
-      {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
+      {details.summary && (
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/55">{details.summary}</div>
+      )}
       {details.invented && (
-        <div className="text-[0.65rem] leading-tight text-white/45">
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/45">
           <div>{localizeUi("ui.game.gameinventory.invented")}</div>
           {details.invented.notes.length > 0 && (
             <details className="mt-0.5">
@@ -1311,13 +1321,15 @@ function RulesetItemDetails({
         </div>
       )}
       {details.stack !== undefined && (
-        <div className="text-[0.65rem] leading-tight text-white/45">
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/45">
           {localizeUi("ui.game.gameinventory.stackHolds", { max: details.stack })}
         </div>
       )}
-      {binds?.restriction && <div className="text-[0.65rem] leading-tight text-white/45">{binds.restriction}</div>}
+      {binds?.restriction && (
+        <div className="text-[0.65rem] leading-tight text-[var(--foreground)]/45">{binds.restriction}</div>
+      )}
       {bound && binds?.cursed && (
-        <div className="text-[0.65rem] font-semibold leading-tight text-amber-300">
+        <div className="text-[0.65rem] font-semibold leading-tight text-[var(--primary)]">
           {localizeUi("ui.game.gameinventory.cursed")}
         </div>
       )}
@@ -1355,8 +1367,10 @@ function BagTab({
       title={dropEnabled ? localizeUi("ui.game.gameinventory.dropToGiveValue1", { value1: name }) : undefined}
       className={cn(
         "flex max-w-[9rem] shrink-0 items-center gap-1.5 truncate rounded-md px-2.5 py-1.5 text-[0.625rem] font-medium transition-colors",
-        active ? "bg-white/10 text-white/85" : "text-white/50 hover:bg-white/5 hover:text-white/70",
-        isOver && "ring-2 ring-amber-400/60",
+        active
+          ? "bg-[var(--foreground)]/10 text-[var(--foreground)]/85"
+          : "text-[var(--foreground)]/50 hover:bg-[var(--foreground)]/5 hover:text-[var(--foreground)]/70",
+        isOver && "ring-2 ring-[var(--primary)]/60",
       )}
     >
       <span className="truncate">{name}</span>
@@ -1473,16 +1487,16 @@ function InventorySlot({
         enabled && "touch-none",
         item
           ? selected
-            ? "border-amber-500/50 bg-amber-500/10 shadow-[inset_0_0_12px_rgba(245,158,11,0.08)]"
-            : "border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]"
-          : "cursor-default border-white/5 bg-white/[0.015]",
+            ? "border-[var(--primary)]/50 bg-[var(--primary)]/10 shadow-[var(--marinara-editor-shadow)]"
+            : "border-[var(--border)] bg-[var(--foreground)]/[0.03] hover:border-[var(--border)] hover:bg-[var(--foreground)]/[0.06]"
+          : "cursor-default border-[var(--border)] bg-[var(--foreground)]/[0.015]",
         enabled && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
-        isOver && !isDragging && "border-amber-400/70 ring-2 ring-amber-400/60",
+        isOver && !isDragging && "border-[var(--primary)]/70 ring-2 ring-[var(--primary)]/60",
       )}
     >
       {item && (item.equipped || item.bound) && (
-        <span aria-hidden="true" className="absolute right-0.5 top-0.5 flex gap-0.5 text-amber-300/90">
+        <span aria-hidden="true" className="absolute right-0.5 top-0.5 flex gap-0.5 text-[var(--primary)]/90">
           {item.equipped && <Shirt size={9} />}
           {item.bound && <Link2 size={9} />}
         </span>
@@ -1490,7 +1504,7 @@ function InventorySlot({
       {item && holderName && (
         <span
           aria-hidden="true"
-          className="absolute left-0.5 top-0.5 max-w-[calc(100%-0.25rem)] truncate rounded bg-white/15 px-1 text-[0.5rem] font-semibold leading-tight text-white/75"
+          className="absolute left-0.5 top-0.5 max-w-[calc(100%-0.25rem)] truncate rounded bg-[var(--foreground)]/15 px-1 text-[0.5rem] font-semibold leading-tight text-[var(--foreground)]/75"
         >
           {holderName}
         </span>
@@ -1501,18 +1515,18 @@ function InventorySlot({
             ids={icons ?? []}
             className="h-8 w-8"
             fallback={
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-white/8 to-white/[0.02] text-sm font-bold text-amber-400/80 ring-1 ring-white/8">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-[var(--foreground)]/8 to-[var(--foreground)]/[0.02] text-sm font-bold text-[var(--primary)]/80 ring-1 ring-[var(--ring)]">
                 {label.charAt(0).toUpperCase()}
               </div>
             }
           />
           <div className="mt-1 flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center px-1">
             <div className="flex max-h-full min-h-0 w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain max-md:touch-pan-y">
-              <span className="block w-full whitespace-normal break-words text-center text-[0.58rem] font-medium leading-tight text-white/80 [overflow-wrap:anywhere]">
+              <span className="block w-full whitespace-normal break-words text-center text-[0.58rem] font-medium leading-tight text-[var(--foreground)]/80 [overflow-wrap:anywhere]">
                 {label}
               </span>
               {item.quantity > 1 && (
-                <span className="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-[0.55rem] font-semibold tabular-nums text-white">
+                <span className="shrink-0 rounded bg-[var(--foreground)]/15 px-1.5 py-0.5 text-[0.55rem] font-semibold tabular-nums text-[var(--foreground)]">
                   {localizeUi("ui.panels.imagedimensionrow.x")}
                   {item.quantity}
                 </span>

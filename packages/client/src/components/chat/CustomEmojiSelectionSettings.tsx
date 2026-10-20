@@ -67,7 +67,7 @@ export function CustomEmojiSelectionSettings() {
             className={cn(
               "flex-1 rounded px-2 py-1 text-xs capitalize transition-colors",
               draftPrefs.mode === mode
-                ? "bg-[var(--primary)] text-white"
+                ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                 : "bg-foreground/5 text-foreground/60 ring-1 ring-foreground/10 hover:bg-foreground/10",
             )}
           >
@@ -97,7 +97,7 @@ export function CustomEmojiSelectionSettings() {
             ))}
           </select>
           {!draftPrefs.toolConnectionId && (
-            <p className="mt-1 text-[0.625rem] text-amber-400/80">
+            <p className="mt-1 text-[0.625rem] text-[var(--warning)]/80">
               {localizeUi("ui.chat.customemojiselectionsettings.noConnectionSetThisFallsBackToSemanticSelection")}
             </p>
           )}

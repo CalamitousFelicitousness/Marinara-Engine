@@ -95,7 +95,7 @@ export function ConversationAutonomousEffects({
       {notification && (
         <div
           key={notification.id}
-          className="pointer-events-auto absolute right-4 top-14 z-20 flex animate-slide-in-right items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-white shadow-lg"
+          className="pointer-events-auto absolute right-4 top-14 z-20 flex animate-slide-in-right items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg"
         >
           <span>
             {notification.name} {localizeUi("ui.chat.conversationautonomouseffects.messagedYou")}

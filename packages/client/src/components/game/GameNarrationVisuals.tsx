@@ -75,9 +75,24 @@ export function PartyOverlayBox({
   translation?: ReactNode;
 }) {
   const styleByType: Record<string, { border: string; bg: string; icon: string; labelColor: string }> = {
-    side: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
-    extra: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
-    thought: { border: "border-purple-400/20", bg: "bg-purple-950/70", icon: "💭", labelColor: "text-purple-200/80" },
+    side: {
+      border: "border-[var(--border)]",
+      bg: "bg-[var(--card)]/95",
+      icon: "💬",
+      labelColor: "text-[var(--foreground)]/85",
+    },
+    extra: {
+      border: "border-[var(--border)]",
+      bg: "bg-[var(--card)]/95",
+      icon: "💬",
+      labelColor: "text-[var(--foreground)]/85",
+    },
+    thought: {
+      border: "border-[var(--primary)]/20",
+      bg: "bg-[var(--primary)]/8",
+      icon: "💭",
+      labelColor: "text-[var(--primary)]/80",
+    },
     whisper: {
       border: "border-[var(--marinara-chat-chrome-button-border)]",
       bg: "bg-[var(--marinara-chat-chrome-panel-bg)]",
@@ -92,7 +107,7 @@ export function PartyOverlayBox({
       className={cn(
         "experience-side-line isolate flex w-fit min-w-0 max-w-full transform-gpu items-start gap-2 rounded-xl border bg-clip-padding px-3 py-2 sm:max-w-[75%]",
         (line.type === "side" || line.type === "extra") &&
-          "mari-chat-style-surface mari-game-side-line shadow-[0_16px_38px_rgba(0,0,0,0.45)]",
+          "mari-chat-style-surface mari-game-side-line shadow-[var(--marinara-editor-shadow)]",
         style.border,
         style.bg,
       )}
@@ -103,13 +118,13 @@ export function PartyOverlayBox({
           src={avatar.url}
           alt={line.character}
           crop={avatar.crop}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15"
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[var(--border)]"
         />
       ) : (
         <img
           src="/npc-silhouette.svg"
           alt={line.character}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15 object-cover"
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[var(--border)] object-cover"
         />
       )}
       <div className="min-w-0 flex-1">
@@ -126,14 +141,14 @@ export function PartyOverlayBox({
             {line.character}
           </span>
           {line.type === "whisper" && line.target && (
-            <span className="min-w-0 truncate text-[0.5625rem] text-white/40">→ {line.target}</span>
+            <span className="min-w-0 truncate text-[0.5625rem] text-[var(--foreground)]/40">→ {line.target}</span>
           )}
           {voiceControl}
         </div>
         <div className="mt-0.5 min-w-0">
           <p
             className={cn(
-              "text-xs leading-relaxed text-white/75 whitespace-normal break-words [overflow-wrap:anywhere]",
+              "text-xs leading-relaxed text-[var(--foreground)]/75 whitespace-normal break-words [overflow-wrap:anywhere]",
               line.type === "thought" && "italic opacity-80",
               line.type === "whisper" && "italic",
               (line.type === "side" || line.type === "extra") && colorClassName,

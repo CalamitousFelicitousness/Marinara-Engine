@@ -104,7 +104,7 @@ export function NewChatConnectionGate({ mode, onClose }: NewChatConnectionGatePr
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[3px]" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-[var(--background)]/40 backdrop-blur-[3px]" onClick={onClose} />
       <div
         data-new-chat-connection-gate={mode}
         className="mari-chrome-token-scope mari-chrome-text-accent-scope fixed inset-0 z-50 flex items-center justify-center p-3 max-md:pt-[max(0.75rem,env(safe-area-inset-top))] max-md:pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] sm:p-4"

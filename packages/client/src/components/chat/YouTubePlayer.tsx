@@ -47,7 +47,7 @@ const MUSIC_NEUTRAL_ICON_CLASS = "text-[var(--marinara-music-player-icon)]";
 const MUSIC_NEUTRAL_ICON_HOVER_CLASS =
   "hover:bg-[var(--marinara-music-player-button-bg-hover)] hover:text-[var(--marinara-music-player-icon-hover)]";
 const MUSIC_NEUTRAL_PROGRESS_BG_CLASS = "bg-[var(--marinara-music-player-progress-bg)]";
-const MUSIC_NEUTRAL_PROGRESS_FILL_CLASS = "bg-[#FF0000]";
+const MUSIC_NEUTRAL_PROGRESS_FILL_CLASS = "bg-[var(--primary)]";
 const MUSIC_NEUTRAL_ACTION_BG_CLASS = "bg-[var(--marinara-music-player-action-bg)]";
 const MUSIC_NEUTRAL_ACTION_TEXT_CLASS = "text-[var(--marinara-music-player-action-text)]";
 const YOUTUBE_LOGO_CLASS = "text-[#FF0000]";
@@ -472,7 +472,7 @@ export function YouTubePlayer({ mobile = false }: { mobile?: boolean } = {}) {
           type="button"
           onClick={togglePlay}
           className={cn(
-            "inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[0_1px_8px_rgba(255,255,255,0.18)] transition-transform hover:scale-105 active:scale-95",
+            "inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[var(--marinara-editor-shadow)] transition-transform hover:scale-105 active:scale-95",
             MUSIC_NEUTRAL_ACTION_BG_CLASS,
             MUSIC_NEUTRAL_ACTION_TEXT_CLASS,
           )}
@@ -519,7 +519,7 @@ export function YouTubePlayer({ mobile = false }: { mobile?: boolean } = {}) {
   const videoPanel = (
     <div
       className={cn(
-        "fixed top-14 z-40 w-[calc(100vw-1rem)] max-w-80 overflow-hidden rounded-xl border shadow-[0_18px_50px_rgba(0,0,0,0.35)] transition-opacity",
+        "fixed top-14 z-40 w-[calc(100vw-1rem)] max-w-80 overflow-hidden rounded-xl border shadow-[var(--marinara-editor-shadow)] transition-opacity",
         MUSIC_NEUTRAL_SHELL_BORDER_CLASS,
         MUSIC_NEUTRAL_SHELL_BG_CLASS,
         active && hasPlayerContent && showVideo ? "left-2 opacity-100" : "pointer-events-none -left-[9999px] opacity-0",

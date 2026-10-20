@@ -1774,7 +1774,7 @@ export function GameSetupWizard({
   return (
     <>
       <div
-        className="fixed inset-0 z-[10000] bg-black/45 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[10000] bg-[var(--card)]/45 backdrop-blur-[2px]"
         onClick={isLoading ? undefined : onCancel}
       />
       <div className="fixed inset-0 z-[10001] flex items-center justify-center p-3 pointer-events-none max-md:pt-[max(0.75rem,env(safe-area-inset-top))] max-md:pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] sm:p-4">
@@ -1955,7 +1955,7 @@ export function GameSetupWizard({
                           >
                             <div
                               className={cn(
-                                "h-4 w-4 rounded-full bg-white transition-transform",
+                                "h-4 w-4 rounded-full bg-[var(--background)] transition-transform",
                                 customizeParameters && "translate-x-3.5",
                               )}
                             />
@@ -3141,7 +3141,7 @@ export function GameSetupWizard({
                                   ))}
                                 </select>
                                 {imageConnections.length === 0 && (
-                                  <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
+                                  <p className="mt-1 text-[0.55rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
                                     {localizeUi(
                                       "ui.game.gamesetupwizard.noImageGenerationConnectionsFoundAddOneInSettings",
                                     )}
@@ -3195,7 +3195,7 @@ export function GameSetupWizard({
                                     ))}
                                   </select>
                                   {videoConnections.length === 0 && (
-                                    <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
+                                    <p className="mt-1 text-[0.55rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
                                       {localizeUi(
                                         "ui.game.gamesetupwizard.noVideoGenerationConnectionsFoundAddOneInSettings",
                                       )}
@@ -3243,7 +3243,7 @@ export function GameSetupWizard({
                           ))}
                         </select>
                         {audioConnections.length === 0 && (
-                          <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
+                          <p className="mt-1 text-[0.55rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
                             {localizeUi("ui.game.gamesetupwizard.noAudioConnectionsFoundAddOneInSettings")}
                           </p>
                         )}
@@ -3290,7 +3290,7 @@ export function GameSetupWizard({
                       </button>
                       {resolvedAudioConnection != null &&
                         (!audioConnectionSupportsSfx || !audioConnectionSupportsMusic) && (
-                          <p className="mt-2 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
+                          <p className="mt-2 text-[0.55rem] text-[var(--warning)] dark:text-[var(--warning)]/80">
                             {localizeUi(
                               "ui.game.gamesetupwizard.soundEffectAndMusicGenerationRequiresAnElevenlabsAudio",
                             )}
@@ -4114,7 +4114,7 @@ export function GameSetupWizard({
                           >
                             <div
                               className={cn(
-                                "h-4 w-4 rounded-full bg-white transition-transform",
+                                "h-4 w-4 rounded-full bg-[var(--background)] transition-transform",
                                 customGamePromptEnabled && "translate-x-3.5",
                               )}
                             />

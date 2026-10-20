@@ -461,7 +461,7 @@ export function STBulkImportModal({ open, onClose }: Props) {
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--accent)]"
                       >
-                        <Folder size="0.8125rem" className="shrink-0 text-sky-400" />
+                        <Folder size="0.8125rem" className="shrink-0 text-[var(--primary)]" />
                         <span className="truncate">{name}</span>
                         <ChevronRight size="0.6875rem" className="ml-auto shrink-0 text-[var(--muted-foreground)]" />
                       </button>
@@ -509,7 +509,7 @@ export function STBulkImportModal({ open, onClose }: Props) {
 
         {phase === "preview" && scanResult && (
           <>
-            <div className="flex items-start gap-2 rounded-lg bg-emerald-500/10 p-2.5 text-xs text-emerald-400">
+            <div className="flex items-start gap-2 rounded-lg bg-[var(--success)]/10 p-2.5 text-xs text-[var(--success)]">
               <CheckCircle size="0.875rem" className="mt-0.5 shrink-0" />
               <span>
                 {localizeUi("ui.modals.stbulkimportmodal.foundSillytavernDataIn")}{" "}
@@ -518,7 +518,7 @@ export function STBulkImportModal({ open, onClose }: Props) {
             </div>
 
             {builtinPresetCount > 0 && (
-              <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-400">
+              <div className="flex items-start gap-2 rounded-lg bg-[var(--warning)]/10 p-2.5 text-xs text-[var(--warning)]">
                 <AlertTriangle size="0.875rem" className="mt-0.5 shrink-0" />
                 <span>
                   {localizeUi("ui.modals.stbulkimportmodal.builtInPresetsDetectedAndUnchecked", {
@@ -716,7 +716,7 @@ export function STBulkImportModal({ open, onClose }: Props) {
                 }}
                 renderBadge={(item) =>
                   item.isBuiltin ? (
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.5625rem] font-medium text-amber-400">
+                    <span className="rounded-full bg-[var(--warning)]/15 px-2 py-0.5 text-[0.5625rem] font-medium text-[var(--warning)]">
                       {localizeUi("ui.modals.stbulkimportmodal.builtIn")}
                     </span>
                   ) : null
@@ -912,7 +912,7 @@ export function STBulkImportModal({ open, onClose }: Props) {
               className={cn(
                 "flex items-center gap-2 rounded-lg p-3 text-xs",
                 importResult.success
-                  ? "bg-emerald-500/10 text-emerald-400"
+                  ? "bg-[var(--success)]/10 text-[var(--success)]"
                   : "bg-[var(--destructive)]/10 text-[var(--destructive)]",
               )}
             >
@@ -965,8 +965,8 @@ export function STBulkImportModal({ open, onClose }: Props) {
             )}
 
             {importResult.errors.length > 0 && (
-              <div className="flex flex-col gap-1.5 rounded-lg bg-amber-500/10 p-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
+              <div className="flex flex-col gap-1.5 rounded-lg bg-[var(--warning)]/10 p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--warning)]">
                   <AlertTriangle size="0.75rem" />
                   {localizeUi("ui.modals.stbulkimportmodal.importWarnings", {
                     count: importResult.errors.length,

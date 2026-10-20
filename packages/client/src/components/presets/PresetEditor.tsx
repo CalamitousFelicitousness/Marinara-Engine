@@ -112,8 +112,8 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 const ROLE_COLORS: Record<string, string> = {
-  system: "text-blue-400",
-  user: "text-green-400",
+  system: "text-[var(--primary)]",
+  user: "text-[var(--primary)]",
   assistant: "mari-chrome-accent-text mari-accent-animated",
 };
 
@@ -1094,7 +1094,7 @@ function PresetPictureField({ preset }: { preset: PromptPreset }) {
         ) : (
           <FileText size="1.5rem" />
         )}
-        <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+        <span className="absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
           <Camera size="1.125rem" />
         </span>
       </button>
@@ -1909,7 +1909,7 @@ function SectionsTab({
                         }
                       >
                         {isEnabled ? (
-                          <Eye size="0.75rem" className="text-green-400" />
+                          <Eye size="0.75rem" className="text-[var(--primary)]" />
                         ) : (
                           <EyeOff size="0.75rem" className="text-[var(--muted-foreground)]" />
                         )}
@@ -2013,7 +2013,7 @@ function SectionsTab({
                                 {localizeUi("ui.presets.sectionstab.agentSection")} <strong>{section.name}</strong>
                                 <p className="mt-1 text-[var(--muted-foreground)]">
                                   {localizeUi("ui.presets.sectionstab.the")}{" "}
-                                  <code className="rounded bg-black/20 px-1 py-0.5 text-[0.625rem] font-mono text-[var(--marinara-chat-chrome-panel-text)]">
+                                  <code className="rounded bg-[var(--muted)]/20 px-1 py-0.5 text-[0.625rem] font-mono text-[var(--marinara-chat-chrome-panel-text)]">
                                     {"{{agent::" + (mc.agentType ?? "agent") + "}}"}
                                   </code>{" "}
                                   {localizeUi("ui.presets.sectionstab.macroWillBeReplacedWithTheLatestOutputFrom")}

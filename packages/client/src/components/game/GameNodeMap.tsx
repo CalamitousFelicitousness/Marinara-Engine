@@ -135,7 +135,11 @@ export function GameNodeMap({
                   y1={from.y}
                   x2={to.x}
                   y2={to.y}
-                  stroke={isTraversed ? "rgba(168, 162, 158, 0.5)" : "rgba(100, 100, 100, 0.2)"}
+                  stroke={
+                    isTraversed
+                      ? "color-mix(in srgb, var(--muted-foreground) 50%, transparent)"
+                      : "color-mix(in srgb, var(--border) 20%, transparent)"
+                  }
                   strokeWidth={edgeStrokeWidth}
                   strokeDasharray={isTraversed ? "none" : "4 4"}
                 />
@@ -165,22 +169,22 @@ export function GameNodeMap({
                     r={nodeRadius}
                     fill={
                       isCurrent
-                        ? "rgba(255, 255, 255, 0.2)"
+                        ? "color-mix(in srgb, var(--primary) 20%, transparent)"
                         : isSelected
-                          ? "rgba(56, 189, 248, 0.18)"
+                          ? "color-mix(in srgb, var(--primary) 18%, transparent)"
                           : node.discovered
-                            ? "rgba(100, 100, 100, 0.3)"
-                            : "rgba(50, 50, 50, 0.4)"
+                            ? "color-mix(in srgb, var(--card) 60%, transparent)"
+                            : "color-mix(in srgb, var(--card) 90%, transparent)"
                     }
                     stroke={
                       isCurrent
-                        ? "#ffffff"
+                        ? "var(--primary)"
                         : isSelected
-                          ? "#38bdf8"
+                          ? "var(--primary)"
                           : isAdjacent && !disabled
-                            ? "#a8a29e"
+                            ? "var(--muted-foreground)"
                             : isDiscovered && !disabled
-                              ? "rgba(148, 163, 184, 0.45)"
+                              ? "color-mix(in srgb, var(--muted-foreground) 45%, transparent)"
                               : "transparent"
                     }
                     strokeWidth={(isCurrent || isSelected ? 2 : 1) * visualScale}
@@ -205,8 +209,8 @@ export function GameNodeMap({
                         width={tooltipWidth}
                         height={tooltipHeight}
                         rx={tooltipRadius}
-                        fill="rgba(0, 0, 0, 0.85)"
-                        stroke="rgba(255, 255, 255, 0.15)"
+                        fill="var(--popover)"
+                        stroke="var(--border)"
                         strokeWidth={0.5 * visualScale}
                         className="pointer-events-none"
                       />
@@ -215,7 +219,7 @@ export function GameNodeMap({
                         y={node.y - tooltipLabelOffset}
                         textAnchor="middle"
                         fontSize={tooltipFontSize}
-                        fill="rgba(255, 255, 255, 0.9)"
+                        fill="var(--popover-foreground)"
                         className="pointer-events-none"
                       >
                         {node.label.length > 16 ? node.label.slice(0, 15) + "…" : node.label}

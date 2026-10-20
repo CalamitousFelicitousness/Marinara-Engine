@@ -250,7 +250,7 @@ export function ProfessorMariSkillsMenu({
         </div>
 
         {diagnostics.length > 0 && (
-          <div className="mx-2 mb-2 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-2 text-[0.6875rem] text-amber-200">
+          <div className="mx-2 mb-2 rounded-lg border border-[var(--warning)]/25 bg-[var(--warning)]/10 px-2.5 py-2 text-[0.6875rem] text-[var(--warning)]">
             {diagnostics[0]}
           </div>
         )}

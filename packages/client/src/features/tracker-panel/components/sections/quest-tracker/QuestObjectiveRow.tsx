@@ -13,7 +13,7 @@ const OBJECTIVE_ROW_CLASS =
 const OBJECTIVE_ROW_WRAPPED_CLASS = "items-start py-0.5 leading-[1.15]";
 const OBJECTIVE_ROW_SINGLE_LINE_CLASS = "items-center leading-4";
 const OBJECTIVE_TOGGLE_BUTTON_CLASS =
-  "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-emerald-400/60 transition-colors hover:bg-emerald-400/10 hover:text-emerald-300";
+  "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[var(--success)]/60 transition-colors hover:bg-[var(--success)]/10 hover:text-[var(--success)]";
 const OBJECTIVE_EDIT_CLASS = "w-full min-w-0 overflow-hidden px-0.5 py-0 text-[0.6875rem] hover:bg-[var(--accent)]/20";
 const OBJECTIVE_EDIT_WRAPPED_CLASS = "min-h-4 py-0.5 leading-[1.15]";
 const OBJECTIVE_EDIT_SINGLE_LINE_CLASS = "h-4 leading-4";
@@ -64,8 +64,8 @@ export function QuestObjectiveRow({
           className={cn(
             OBJECTIVE_TOGGLE_BUTTON_CLASS,
             wrapsText && "mt-px",
-            objective.completed && !lockMode && "text-emerald-300",
-            completedLocked && "ring-1 ring-emerald-300/35",
+            objective.completed && !lockMode && "text-[var(--success)]",
+            completedLocked && "ring-1 ring-[var(--success)]/35",
           )}
           title={
             lockMode
@@ -100,9 +100,9 @@ export function QuestObjectiveRow({
           )}
         </button>
       ) : objective.completed ? (
-        <CheckCircle2 size="0.6875rem" className={cn("shrink-0 text-emerald-300", wrapsText && "mt-0.5")} />
+        <CheckCircle2 size="0.6875rem" className={cn("shrink-0 text-[var(--success)]", wrapsText && "mt-0.5")} />
       ) : (
-        <Circle size="0.6875rem" className={cn("shrink-0 text-emerald-400/45", wrapsText && "mt-0.5")} />
+        <Circle size="0.6875rem" className={cn("shrink-0 text-[var(--success)]/45", wrapsText && "mt-0.5")} />
       )}
       {onUpdateText ? (
         <InlineEdit

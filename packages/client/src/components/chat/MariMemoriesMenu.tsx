@@ -219,7 +219,7 @@ export function ProfessorMariMemoriesMenu({
                       className="space-y-2 border-t border-[var(--mari-divider)] px-3 py-3"
                     >
                       {!memory.enabled && (
-                        <div className="rounded-md border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5 text-[0.65rem] text-amber-200">
+                        <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-2.5 py-1.5 text-[0.65rem] text-[var(--warning)]">
                           {localizeUi("ui.chat.professormarimemoriesmenu.disabledHint")}
                         </div>
                       )}

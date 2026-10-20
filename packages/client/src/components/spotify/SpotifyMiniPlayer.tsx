@@ -147,8 +147,8 @@ const spotifyKeys = {
   devices: ["spotify", "devices"] as const,
 };
 
-const SPOTIFY_GREEN_CLASS = "text-[#1DB954]";
-const SPOTIFY_GREEN_BG_CLASS = "bg-[#1DB954]";
+const SPOTIFY_GREEN_CLASS = "text-[var(--primary)]";
+const SPOTIFY_GREEN_BG_CLASS = "bg-[var(--primary)]";
 const MUSIC_PLAYER_SHELL_BORDER_CLASS = "border-[var(--marinara-music-player-shell-border)]";
 const MUSIC_PLAYER_SHELL_BG_CLASS = "bg-[var(--marinara-music-player-shell-bg)]";
 const MUSIC_PLAYER_BORDER_CLASS = "border-[var(--marinara-music-player-button-border)]";
@@ -884,9 +884,9 @@ export function SpotifyMiniPlayer({
   const spotifyVolumeStyle: RangeCssProperties = useMemo(
     () => ({
       "--range-progress": `${volumeDraft}%`,
-      "--range-track-color": "color-mix(in srgb, #1DB954 26%, transparent)",
-      "--range-fill-color": "#1DB954",
-      "--range-thumb-color": "#1DB954",
+      "--range-track-color": "color-mix(in srgb, var(--primary) 26%, transparent)",
+      "--range-fill-color": "var(--primary)",
+      "--range-thumb-color": "var(--primary)",
       "--range-thumb-size": "0.6875rem",
       "--range-track-height": "0.25rem",
       "--range-thumb-shadow": "0 0 0 0.125rem var(--marinara-music-player-shell-bg)",
@@ -1041,7 +1041,7 @@ export function SpotifyMiniPlayer({
             type="button"
             onClick={() => void handlePlayPause()}
             className={cn(
-              "inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[0_1px_8px_rgba(255,255,255,0.18)] transition-transform hover:scale-105 active:scale-95",
+              "inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[var(--marinara-editor-shadow)] transition-transform hover:scale-105 active:scale-95",
               MUSIC_PLAYER_ACTION_BG_CLASS,
               MUSIC_PLAYER_ACTION_TEXT_CLASS,
             )}

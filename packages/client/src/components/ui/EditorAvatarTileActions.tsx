@@ -11,8 +11,8 @@ export function EditorAvatarTileActions({ generationAvailable, onGenerate }: Edi
 
   return (
     <>
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-        <Camera size="0.75rem" className="text-white" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover:opacity-100">
+        <Camera size="0.75rem" className="text-[var(--foreground)]" />
       </div>
       {generationAvailable && (
         <button

@@ -32,7 +32,7 @@ export function StoryboardBackgroundControls({
         GAME_WINDOW_CONTENT_CLASS,
         "flex items-center",
         CHAT_TOOLBAR_ICON_GAP_CLASS,
-        mobile ? "" : "rounded-lg bg-black/45 p-1 shadow-sm ring-1 ring-white/10",
+        mobile ? "" : "rounded-lg bg-[var(--card)]/45 p-1 shadow-sm ring-1 ring-[var(--ring)]",
       )}
       role="group"
       aria-label={localizeUi("ui.game.storyboardbackgroundcontrols.storyboardBackgroundAnimation")}

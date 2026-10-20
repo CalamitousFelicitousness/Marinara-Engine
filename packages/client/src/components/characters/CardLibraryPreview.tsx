@@ -52,7 +52,7 @@ export function CardLibraryPreview({
       data-card-library-card={card.id}
       onClick={onClick}
       className={cn(
-        "group flex w-full items-stretch overflow-hidden rounded-[1.25rem] border bg-[var(--card)]/70 text-left shadow-[0_20px_50px_-32px_rgba(15,23,42,0.75)] transition-[border-color,box-shadow] hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--marinara-chat-chrome-accent)_35%,transparent)]",
+        "group flex w-full items-stretch overflow-hidden rounded-[1.25rem] border bg-[var(--card)]/70 text-left shadow-[var(--marinara-editor-shadow)] transition-[border-color,box-shadow] hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--marinara-chat-chrome-accent)_35%,transparent)]",
         compact ? "min-h-0 flex-1" : "sm:flex-col sm:rounded-[1.75rem]",
         isSelected
           ? "border-[var(--marinara-chat-chrome-button-border-active)] ring-1 ring-[var(--marinara-chat-chrome-focus-ring)]"

@@ -418,7 +418,7 @@ export function FunctionCallingSection({
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
                           selected
-                            ? "border-[var(--primary)] bg-[var(--primary)] text-white"
+                            ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                             : "border-[var(--border)]",
                         )}
                       >

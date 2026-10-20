@@ -32,14 +32,17 @@ export function ImagePromptPanel({ prompt, meta, className }: ImagePromptPanelPr
 
   return (
     <div
-      className={cn("rounded-lg border border-white/10 bg-neutral-950/95 px-3 py-2 text-left shadow-2xl", className)}
+      className={cn(
+        "rounded-lg border border-[var(--border)] bg-[var(--popover)]/95 px-3 py-2 text-left shadow-2xl",
+        className,
+      )}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
       {promptText && (
         <>
           <div className="mb-1 flex items-center justify-between gap-2">
-            <div className="text-[0.6875rem] font-semibold text-white/55">
+            <div className="text-[0.6875rem] font-semibold text-[var(--foreground)]/55">
               {localizeUi("ui.agents.customagentrepositoriesmodal.prompt")}
             </div>
             <button
@@ -50,7 +53,7 @@ export function ImagePromptPanel({ prompt, meta, className }: ImagePromptPanelPr
                 event.stopPropagation();
                 void handleCopyPrompt();
               }}
-              className="flex shrink-0 items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[0.6875rem] font-medium text-white/75 transition-colors hover:bg-white/20 hover:text-white"
+              className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--foreground)]/10 px-2 py-1 text-[0.6875rem] font-medium text-[var(--foreground)]/75 transition-colors hover:bg-[var(--foreground)]/20 hover:text-[var(--foreground)]"
             >
               {copied ? <Check size="0.75rem" /> : <Copy size="0.75rem" />}
               {copied
@@ -58,13 +61,18 @@ export function ImagePromptPanel({ prompt, meta, className }: ImagePromptPanelPr
                 : localizeUi("ui.chat.chatgallery.copyPrompt")}
             </button>
           </div>
-          <p className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[0.75rem] leading-relaxed text-white/85">
+          <p className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[0.75rem] leading-relaxed text-[var(--foreground)]/85">
             {promptText}
           </p>
         </>
       )}
       {metaText && (
-        <p className={cn("text-[0.6875rem] text-white/45", promptText && "mt-1.5 border-t border-white/10 pt-1.5")}>
+        <p
+          className={cn(
+            "text-[0.6875rem] text-[var(--foreground)]/45",
+            promptText && "mt-1.5 border-t border-[var(--border)] pt-1.5",
+          )}
+        >
           {metaText}
         </p>
       )}

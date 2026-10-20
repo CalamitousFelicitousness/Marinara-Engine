@@ -945,7 +945,7 @@ export function ChatGallery({
                             "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
                             selected
                               ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                              : "border-white/65 bg-black/55 text-transparent",
+                              : "border-[var(--foreground)]/65 bg-[var(--card)]/90 text-transparent",
                           )}
                         >
                           <Check size="0.9rem" />
@@ -1076,7 +1076,7 @@ export function ChatGallery({
                           "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
                           selectedImageIds.has(img.id)
                             ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                            : "border-white/65 bg-black/55 text-transparent hover:bg-black/75",
+                            : "border-[var(--foreground)]/65 bg-[var(--card)]/90 text-transparent hover:bg-[var(--card)]/90",
                         )}
                       >
                         <Check size="0.9rem" />
@@ -1106,14 +1106,14 @@ export function ChatGallery({
                     </button>
                     {/* Overlay */}
                     {!selectingImages && (
-                      <div className="pointer-events-none absolute inset-0 flex items-end bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
+                      <div className="pointer-events-none absolute inset-0 flex items-end bg-gradient-to-t from-[var(--card)]/95 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
                         <div className="mari-gallery-image-actions flex w-full items-center justify-between p-2">
                           <div className="flex gap-1 max-md:contents">
                             <button
                               type="button"
                               onClick={() => handlePinImage(img)}
                               aria-label={localizeUi("ui.chat.chatgallery.pinImageToChat")}
-                              className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30"
+                              className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30"
                               title={localizeUi("ui.chat.chatgallery.pinToChat")}
                             >
                               <Pin size="0.75rem" />
@@ -1122,7 +1122,7 @@ export function ChatGallery({
                               type="button"
                               onClick={() => void handleDownloadImage(img)}
                               aria-label={localizeUi("ui.chat.chatgallery.downloadGalleryImage")}
-                              className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30"
+                              className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30"
                               title={localizeUi("ui.chat.chatgallery.downloadImage")}
                             >
                               <Download size="0.75rem" />
@@ -1133,7 +1133,7 @@ export function ChatGallery({
                                 onClick={() => void handleAnimateImage(img)}
                                 disabled={isGeneratingVideo}
                                 aria-label={localizeUi("ui.chat.chatgallery.animateGalleryIllustration")}
-                                className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30 disabled:cursor-wait disabled:opacity-60"
+                                className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30 disabled:cursor-wait disabled:opacity-60"
                                 title={localizeUi("ui.chat.chatgallery.animateIllustration")}
                               >
                                 {isGeneratingVideo ? (
@@ -1152,7 +1152,7 @@ export function ChatGallery({
                               }}
                               disabled={!img.prompt.trim()}
                               aria-label={localizeUi("ui.chat.chatgallery.copyImagePrompt")}
-                              className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-45"
+                              className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30 disabled:cursor-not-allowed disabled:opacity-45"
                               title={
                                 img.prompt.trim()
                                   ? localizeUi("ui.chat.chatgallery.copyPrompt")
@@ -1232,21 +1232,21 @@ export function ChatGallery({
                           className="aspect-video w-full bg-black object-contain"
                         />
                       </button>
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-[var(--card)]/95 via-[var(--card)]/50 to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
                         <div className="flex w-full items-center justify-between gap-2 p-2">
-                          <div className="min-w-0 text-white">
+                          <div className="min-w-0 text-[var(--foreground)]">
                             <div className="truncate text-[0.6875rem] font-medium">
                               {video.durationSeconds}
                               {localizeUi("ui.chat.chatgallery.sSceneVideo")}
                             </div>
-                            <div className="truncate text-[0.625rem] text-white/70">{video.model}</div>
+                            <div className="truncate text-[0.625rem] text-[var(--foreground)]/70">{video.model}</div>
                           </div>
                           <div className="flex shrink-0 gap-1">
                             <button
                               type="button"
                               onClick={() => handlePinVideo(video)}
                               aria-label={localizeUi("ui.chat.chatgallery.pinVideoToChat")}
-                              className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30"
+                              className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30"
                               title={localizeUi("ui.chat.chatgallery.pinToChat")}
                             >
                               <Pin size="0.75rem" />
@@ -1255,7 +1255,7 @@ export function ChatGallery({
                               href={video.url}
                               download={getSceneVideoDownloadName(video)}
                               aria-label={localizeUi("ui.chat.chatgallery.downloadSceneVideo")}
-                              className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30"
+                              className="pointer-events-auto rounded-md bg-[var(--foreground)]/20 p-1.5 text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/30"
                               title={localizeUi("ui.chat.chatgallery.downloadVideo")}
                             >
                               <Download size="0.75rem" />
@@ -1292,7 +1292,7 @@ export function ChatGallery({
         createPortal(
           <div
             data-chat-floating-panel
-            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-[var(--card)]/90 backdrop-blur-sm max-md:pt-[env(safe-area-inset-top)]"
           >
             <div className="mx-4 rounded-xl bg-[var(--background)] p-5 shadow-2xl ring-1 ring-[var(--border)]">
               <p className="mb-4 text-sm font-medium">{localizeUi("ui.chat.chatgallery.deleteThisImage")}</p>

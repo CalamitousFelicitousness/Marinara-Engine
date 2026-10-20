@@ -193,7 +193,7 @@ export function LorebookTextImportDialog({ open, onClose, lorebookId }: Props) {
                 </span>
               ) : null}
               {warnings.length > 0 ? (
-                <span className="text-amber-500">
+                <span className="text-[var(--warning)]">
                   {t("lorebook.textImport.warningCount", { count: warnings.length })}
                 </span>
               ) : null}
@@ -205,7 +205,7 @@ export function LorebookTextImportDialog({ open, onClose, lorebookId }: Props) {
                     {issue.severity === "error" ? (
                       <XCircle size="0.75rem" className="mt-0.5 shrink-0 text-[var(--destructive)]" />
                     ) : (
-                      <AlertTriangle size="0.75rem" className="mt-0.5 shrink-0 text-amber-500" />
+                      <AlertTriangle size="0.75rem" className="mt-0.5 shrink-0 text-[var(--warning)]" />
                     )}
                     <span className="min-w-0 break-words">
                       {issue.line !== null ? (

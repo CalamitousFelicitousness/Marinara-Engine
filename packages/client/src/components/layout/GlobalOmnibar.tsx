@@ -1948,7 +1948,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       data-over-dialog={overDialog ? "true" : undefined}
       data-pane={pane}
       data-mode={pane === "mari" ? "work" : "find"}
-      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-black/55 backdrop-blur-sm motion-safe:transition-[padding] motion-safe:duration-300 sm:px-6 sm:pt-[var(--omnibar-top)]"
+      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-[var(--background)]/55 backdrop-blur-sm motion-safe:transition-[padding] motion-safe:duration-300 sm:px-6 sm:pt-[var(--omnibar-top)]"
       // An empty bar sits lower, near the middle, so the hint field below it has
       // room; it rides back up as soon as results need the space.
       style={{ "--omnibar-top": idle && !mariSurface ? "26vh" : "10vh" } as React.CSSProperties}
@@ -1975,7 +1975,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
             "--omnibar-window-height": `${omnibarWindowHeightRem ?? 0}rem`,
           } as React.CSSProperties
         }
-        className={`relative isolate flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--card)] shadow-2xl ${fromPull ? "" : "motion-safe:animate-omnibar-in"} ${pane === "mari" ? "sm:max-w-[max(44rem,min(var(--mari-window-width),92vw))]" : "sm:max-w-[max(44rem,min(var(--omnibar-window-width),92vw))]"} sm:rounded-2xl sm:shadow-[0_24px_60px_-12px_rgba(0,0,0,0.55)] sm:ring-1 sm:ring-[var(--border)]/60 sm:motion-safe:transition-[height,max-height,max-width] sm:motion-safe:duration-300 sm:motion-safe:ease-out motion-reduce:transition-none ${
+        className={`relative isolate flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--card)] shadow-2xl ${fromPull ? "" : "motion-safe:animate-omnibar-in"} ${pane === "mari" ? "sm:max-w-[max(44rem,min(var(--mari-window-width),92vw))]" : "sm:max-w-[max(44rem,min(var(--omnibar-window-width),92vw))]"} sm:rounded-2xl sm:shadow-[var(--marinara-editor-shadow)] sm:ring-1 sm:ring-[var(--border)]/60 sm:motion-safe:transition-[height,max-height,max-width] sm:motion-safe:duration-300 sm:motion-safe:ease-out motion-reduce:transition-none ${
           pane === "mari"
             ? "mari-workspace-shell sm:h-[min(var(--mari-window-height),var(--mari-window-viewport-height))] sm:max-h-[min(var(--mari-window-height),var(--mari-window-viewport-height))]"
             : omnibarWindowHeightRem !== null

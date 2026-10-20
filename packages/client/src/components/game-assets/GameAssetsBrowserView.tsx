@@ -1104,7 +1104,7 @@ export function GameAssetsBrowserView({
           data-chat-floating-panel
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--background)]/40 backdrop-blur-sm"
         >
           <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-xl">
             <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">

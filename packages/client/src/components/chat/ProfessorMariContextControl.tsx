@@ -145,7 +145,12 @@ export function ProfessorMariContextControl({
   const totalCount = professorMariContextCount(attachedContextCount, context);
   const panel = (
     <>
-      {mobile && <div className="fixed inset-0 z-[calc(var(--mari-layer-omnibar)+1)] bg-black/50" aria-hidden="true" />}
+      {mobile && (
+        <div
+          className="fixed inset-0 z-[calc(var(--mari-layer-omnibar)+1)] bg-[var(--background)]/50"
+          aria-hidden="true"
+        />
+      )}
       <div
         ref={panelRef}
         id={panelId}

@@ -372,7 +372,7 @@ export function RoleplayHUDActionsMenu({
           )}
           {showRetryFailedAction && displayedFailures.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
-              <div className="flex items-center gap-1.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-amber-300/90">
+              <div className="flex items-center gap-1.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-[var(--warning)]/90">
                 <AlertTriangle size="0.625rem" />
                 {localizeUi("ui.chat.roleplayhudactionsmenu.failedAgents")}
               </div>
@@ -380,11 +380,11 @@ export function RoleplayHUDActionsMenu({
                 {displayedFailures.map((failure) => (
                   <div
                     key={`${failure.agentType}:${failure.retryTarget ?? "agent"}`}
-                    className="rounded-md border border-amber-400/15 bg-amber-500/10 px-2 py-1.5 text-[0.625rem]"
+                    className="rounded-md border border-[var(--warning)]/15 bg-[var(--warning)]/10 px-2 py-1.5 text-[0.625rem]"
                     title={failure.error ?? undefined}
                   >
-                    <div className="font-semibold text-amber-200">{formatAgentFailureTitle(failure)}</div>
-                    <div className="mt-0.5 whitespace-pre-wrap break-words text-amber-100/65">
+                    <div className="font-semibold text-[var(--warning)]">{formatAgentFailureTitle(failure)}</div>
+                    <div className="mt-0.5 whitespace-pre-wrap break-words text-[var(--warning)]/65">
                       {formatAgentFailureDetail(failure)}
                     </div>
                   </div>
@@ -443,7 +443,7 @@ export function RoleplayHUDActionsMenu({
               }}
               disabled={isGenerationBusy}
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-[0.625rem] font-medium text-amber-300 transition-colors hover:bg-amber-500/10 disabled:opacity-50",
+                "flex w-full items-center gap-2 px-3 py-2 text-[0.625rem] font-medium text-[var(--warning)] transition-colors hover:bg-[var(--warning)]/10 disabled:opacity-50",
                 trackerPanel && TRACKER_ACTIVITY_ACTION_CLASS,
               )}
             >

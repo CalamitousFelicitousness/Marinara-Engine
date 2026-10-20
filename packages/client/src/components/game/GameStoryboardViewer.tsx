@@ -20,7 +20,7 @@ import { getChatToolbarButtonClass } from "../chat/ChatToolbarControls";
 import { getStoryboardViewerWidthBounds } from "./game-storyboard-ui";
 
 const STORYBOARD_VIEWER_CONTROL_BUTTON =
-  "flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/10 text-white/70 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/10";
+  "flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--foreground)]/10 text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/20 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-[var(--foreground)]/10";
 
 const STORYBOARD_KEYFRAME_STATUS_KEYS = {
   planned: "game.storyboard.status.planned",
@@ -121,31 +121,31 @@ export function GameStoryboardInlineViewer({
           data-game-section="storyboard"
           className={cn(
             GAME_SECTION_CLASS,
-            "overflow-hidden rounded-xl border border-white/15 bg-black/75 shadow-2xl backdrop-blur-md",
+            "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/75 shadow-2xl backdrop-blur-md",
           )}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-            <div className="flex min-w-0 cursor-grab items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-white/75 active:cursor-grabbing">
-              <GripHorizontal size={13} className="shrink-0 text-white/45" />
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+            <div className="flex min-w-0 cursor-grab items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/75 active:cursor-grabbing">
+              <GripHorizontal size={13} className="shrink-0 text-[var(--foreground)]/45" />
               <PanelsTopLeft size={13} className="shrink-0 text-[var(--primary)]" />
               <span className="truncate">{localizeUi("ui.game.gamesurfacecomponent.storyboard")}</span>
             </div>
-            <span className="shrink-0 text-[0.625rem] text-white/45">
+            <span className="shrink-0 text-[0.625rem] text-[var(--foreground)]/45">
               {frame ? frameSectionLabel : localizeUi("ui.game.gamesurfacecomponent.rendering")}
             </span>
           </div>
 
           {storyboard?.error ? (
             <div
-              className="flex items-start gap-2 border-b border-amber-200/20 bg-amber-300/12 px-3 py-2 text-amber-50"
+              className="flex items-start gap-2 border-b border-[var(--warning)]/20 bg-[var(--warning)]/12 px-3 py-2 text-[var(--warning)]"
               role="status"
             >
-              <TriangleAlert size={14} className="mt-0.5 shrink-0 text-amber-200" />
+              <TriangleAlert size={14} className="mt-0.5 shrink-0 text-[var(--warning)]" />
               <div className="min-w-0">
                 <p className="text-[0.6875rem] font-semibold">
                   {localizeUi("ui.game.gamesurfacecomponent.storyboardDegradedResult")}
                 </p>
-                <p className="line-clamp-3 text-[0.625rem] leading-4 text-amber-50/75">{storyboard.error}</p>
+                <p className="line-clamp-3 text-[0.625rem] leading-4 text-[var(--warning)]/75">{storyboard.error}</p>
               </div>
             </div>
           ) : null}
@@ -178,7 +178,7 @@ export function GameStoryboardInlineViewer({
               draggable={false}
             />
           ) : (
-            <div className="flex aspect-video w-full items-center justify-center gap-2 bg-black/45 text-xs text-white/55">
+            <div className="flex aspect-video w-full items-center justify-center gap-2 bg-[var(--card)]/45 text-xs text-[var(--foreground)]/55">
               {generating ? <Loader2 size={14} className="animate-spin" /> : null}
               {frame
                 ? localizeUi(STORYBOARD_KEYFRAME_STATUS_KEYS[frame.status])
@@ -188,7 +188,7 @@ export function GameStoryboardInlineViewer({
 
           <div className="space-y-2 px-3 py-2.5">
             <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 truncate text-xs font-semibold text-white/90">
+              <p className="min-w-0 truncate text-xs font-semibold text-[var(--foreground)]/90">
                 {frame?.title || storyboard?.title || localizeUi("ui.game.gamesurfacecomponent.storyboardTurn")}
               </p>
               <div className="flex shrink-0 items-center gap-1">
@@ -239,13 +239,13 @@ export function GameStoryboardInlineViewer({
                   <Maximize2 size={13} />
                 </button>
                 {storyboard?.keyframes.length ? (
-                  <span className="ml-1 text-[0.625rem] text-white/45">
+                  <span className="ml-1 text-[0.625rem] text-[var(--foreground)]/45">
                     {framePosition + 1}/{storyboard.keyframes.length}
                   </span>
                 ) : null}
               </div>
             </div>
-            <p className="line-clamp-2 text-[0.6875rem] leading-4 text-white/58">
+            <p className="line-clamp-2 text-[0.6875rem] leading-4 text-[var(--foreground)]/58">
               {frame?.anchorQuote || frame?.narrationBeat || localizeUi("game.storyboard.generatingKeyframes")}
             </p>
             {storyboard?.keyframes.length ? (
@@ -255,7 +255,7 @@ export function GameStoryboardInlineViewer({
                     key={item.id}
                     className={cn(
                       "h-1 flex-1 rounded-full transition-colors",
-                      frame?.id === item.id ? "bg-[var(--primary)]" : "bg-white/15",
+                      frame?.id === item.id ? "bg-[var(--primary)]" : "bg-[var(--foreground)]/15",
                     )}
                   />
                 ))}

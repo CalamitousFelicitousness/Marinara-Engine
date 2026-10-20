@@ -2010,7 +2010,7 @@ export function ChatSummaryPanel({
                       {templateSelectOpen && (
                         <div
                           role="listbox"
-                          className="mt-1 max-h-40 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--popover)] p-1 text-[var(--popover-foreground)] shadow-xl shadow-black/25"
+                          className="mt-1 max-h-40 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--popover)] p-1 text-[var(--popover-foreground)] shadow-xl shadow-[var(--background)]/25"
                         >
                           <SummaryPromptSelectOption
                             active={!normalizedActivePromptTemplateId}
@@ -2562,7 +2562,7 @@ export function ChatSummaryPanel({
                               className={cn(
                                 "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60 max-sm:[appearance:textfield] max-sm:[&::-webkit-inner-spin-button]:appearance-none max-sm:[&::-webkit-outer-spin-button]:appearance-none",
                                 validationMessage || inspection?.overlaps
-                                  ? "ring-amber-500/70"
+                                  ? "ring-[var(--warning)]/70"
                                   : "ring-[var(--border)]",
                               )}
                               aria-label={localizeUi("ui.chat.summarypopover.batchRangeFrom", {
@@ -2596,7 +2596,7 @@ export function ChatSummaryPanel({
                               className={cn(
                                 "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60 max-sm:[appearance:textfield] max-sm:[&::-webkit-inner-spin-button]:appearance-none max-sm:[&::-webkit-outer-spin-button]:appearance-none",
                                 validationMessage || inspection?.overlaps
-                                  ? "ring-amber-500/70"
+                                  ? "ring-[var(--warning)]/70"
                                   : "ring-[var(--border)]",
                               )}
                               aria-label={localizeUi("ui.chat.summarypopover.batchRangeTo", {
@@ -2607,7 +2607,7 @@ export function ChatSummaryPanel({
                           {/* One slot for every row, so a status icon never narrows its row's fields. */}
                           <div className="flex w-4 shrink-0 justify-center">
                             {range.status === "success" && (
-                              <Check size="0.8125rem" className="text-emerald-500" aria-label={statusMessage} />
+                              <Check size="0.8125rem" className="text-[var(--success)]" aria-label={statusMessage} />
                             )}
                             {range.status === "failed" && (
                               <div
@@ -2659,7 +2659,7 @@ export function ChatSummaryPanel({
                             <X size="0.75rem" />
                           </button>
                         </div>
-                        <div className="flex min-w-0 items-start gap-1.5 text-[0.625rem] leading-snug text-amber-700 dark:text-amber-400">
+                        <div className="flex min-w-0 items-start gap-1.5 text-[0.625rem] leading-snug text-[var(--warning)] dark:text-[var(--warning)]">
                           {(validationMessage || overlapMessage) && (
                             <>
                               <AlertTriangle size="0.75rem" className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -2690,7 +2690,7 @@ export function ChatSummaryPanel({
                       type="button"
                       onClick={handleClearCompletedRanges}
                       disabled={isBatchGenerating}
-                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[0.625rem] font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/10 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400 dark:hover:text-emerald-300"
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[0.625rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--primary)] dark:hover:text-[var(--primary)]"
                       title={localizeUi("ui.chat.summarypopover.batchClearCompleted")}
                     >
                       <CheckCheck size="0.6875rem" />
@@ -2932,7 +2932,7 @@ function SummaryEntryRow({
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       className={cn(
-        "group overflow-hidden rounded-lg border shadow-sm shadow-black/10 ring-1 ring-[var(--border)]/25 transition-all",
+        "group overflow-hidden rounded-lg border shadow-sm shadow-[var(--background)]/10 ring-1 ring-[var(--border)]/25 transition-all",
         dockedToFooter && "rounded-b-none border-b-0",
         expanded
           ? "border-[var(--primary)]/45 bg-[var(--accent)]/22 ring-[var(--primary)]/20"

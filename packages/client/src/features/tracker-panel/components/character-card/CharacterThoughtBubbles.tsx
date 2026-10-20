@@ -189,7 +189,7 @@ function ThoughtBubble({
       />
       <div
         className={cn(
-          "relative z-[2] overflow-hidden border border-[var(--foreground)]/16 bg-[color-mix(in_srgb,var(--card)_86%,var(--background)_14%)] text-[var(--foreground)] shadow-[0_0_16px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-xl [container-type:inline-size]",
+          "relative z-[2] overflow-hidden border border-[var(--foreground)]/16 bg-[color-mix(in_srgb,var(--card)_86%,var(--background)_14%)] text-[var(--foreground)] shadow-[var(--marinara-editor-shadow)] backdrop-blur-xl [container-type:inline-size]",
           thoughtBubbleSize === "short" &&
             "inline-flex min-h-10 w-fit min-w-[4.5rem] max-w-[9.5rem] rounded-full px-4 py-2",
           thoughtBubbleSize === "medium" &&

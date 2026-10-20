@@ -105,8 +105,8 @@ export function CreateCharacterModal({ open, onClose, defaultName = "" }: Props)
           ) : (
             <User size="2.25rem" className="text-current" />
           )}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-            <Camera size="1.25rem" className="text-white" />
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover:opacity-100">
+            <Camera size="1.25rem" className="text-[var(--foreground)]" />
           </div>
         </button>
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />

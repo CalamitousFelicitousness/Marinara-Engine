@@ -539,7 +539,7 @@ export function TownView({
               type="button"
               onClick={() => setSelected(selected === spot.id ? null : spot.id)}
               className={cn(
-                "absolute rounded-sm outline-none transition-shadow hover:ring-2 hover:ring-white/50 focus-visible:ring-2 focus-visible:ring-white",
+                "absolute rounded-sm outline-none transition-shadow hover:ring-2 hover:ring-[var(--ring)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
                 selected === spot.id && "ring-2 ring-[var(--primary)]",
               )}
               style={{ left: spot.x * cell, top: spot.y * cell, width: spot.w * cell, height: spot.h * cell }}
@@ -559,44 +559,48 @@ export function TownView({
             data-game-section="town-card"
             className={cn(
               GAME_SECTION_CLASS,
-              "pointer-events-auto absolute z-10 w-60 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
+              "pointer-events-auto absolute z-10 w-60 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-3 text-xs text-[var(--foreground)]/85 shadow-xl backdrop-blur-md",
               !cardAt.below && "-translate-y-full",
             )}
             style={{ left: cardAt.left, top: cardAt.top }}
             data-component="TownView.Card"
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 truncate text-sm font-semibold text-white">{spotTitle(selected)}</div>
+              <div className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
+                {spotTitle(selected)}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded p-0.5 text-white/50 hover:text-white"
+                className="rounded p-0.5 text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
                 aria-label={t("game.overworld.close")}
               >
                 <X size={12} />
               </button>
             </div>
-            <div className="mt-2 text-[0.625rem] font-semibold uppercase tracking-wide text-white/45">
+            <div className="mt-2 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/45">
               {t("game.town.hereNow")}
             </div>
             {chosenPeople.length ? (
               <ul className="mt-1 space-y-0.5">
                 {chosenPeople.slice(0, 6).map((person) => (
                   <li key={person.id}>
-                    <span className="text-white">{person.name}</span>
-                    <span className="text-white/50"> · {person.role}</span>
+                    <span className="text-[var(--foreground)]">{person.name}</span>
+                    <span className="text-[var(--foreground)]/50"> · {person.role}</span>
                   </li>
                 ))}
                 {chosenPeople.length > 6 && (
-                  <li className="text-white/50">{t("game.town.more", { count: chosenPeople.length - 6 })}</li>
+                  <li className="text-[var(--foreground)]/50">
+                    {t("game.town.more", { count: chosenPeople.length - 6 })}
+                  </li>
                 )}
               </ul>
             ) : (
-              <div className="mt-1 text-white/50">{t("game.town.nobody")}</div>
+              <div className="mt-1 text-[var(--foreground)]/50">{t("game.town.nobody")}</div>
             )}
             {selected === town.at ? (
               <>
-                <div className="mt-2 text-white/60">{t("game.town.partyHere")}</div>
+                <div className="mt-2 text-[var(--foreground)]/60">{t("game.town.partyHere")}</div>
                 {canGoIn(selected) && (
                   <button
                     type="button"
@@ -635,7 +639,7 @@ export function TownView({
               </>
             ) : (
               <>
-                <div className="mt-2 text-white/60">
+                <div className="mt-2 text-[var(--foreground)]/60">
                   {t("game.town.minutes", { count: worldTownMinutes(town, town.at, selected) })}
                 </div>
                 <button
@@ -658,7 +662,7 @@ export function TownView({
               <button
                 type="button"
                 onClick={() => setInside(null)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/85 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]/65 px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]/85 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--card)]/80 hover:text-[var(--foreground)]"
               >
                 <ArrowLeft size={13} />
                 {t("game.town.goOutside")}
@@ -667,7 +671,7 @@ export function TownView({
             <button
               type="button"
               onClick={onLeave}
-              className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/85 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]/65 px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]/85 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--card)]/80 hover:text-[var(--foreground)]"
             >
               <ArrowLeft size={13} />
               {t("game.town.leave")}
@@ -675,7 +679,7 @@ export function TownView({
             <button
               type="button"
               onClick={() => setPlacesOpen((open) => !open)}
-              className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/85 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]/65 px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]/85 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--card)]/80 hover:text-[var(--foreground)]"
               aria-expanded={placesOpen}
             >
               <MapPin size={13} />
@@ -684,7 +688,7 @@ export function TownView({
           </div>
           {placesOpen && (
             <ul
-              className="max-h-[45vh] w-60 overflow-y-auto rounded-xl border border-white/15 bg-black/80 p-1 text-xs text-white/85 shadow-xl backdrop-blur-md"
+              className="max-h-[45vh] w-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-1 text-xs text-[var(--foreground)]/85 shadow-xl backdrop-blur-md"
               aria-label={t("game.town.places")}
             >
               {listed.map(({ at, title }) => (
@@ -696,10 +700,10 @@ export function TownView({
                       setSelected(at);
                       setPlacesOpen(false);
                     }}
-                    className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/10"
+                    className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[var(--foreground)]/10"
                   >
-                    <span className="min-w-0 truncate font-medium text-white">{title}</span>
-                    <span className="shrink-0 text-[0.625rem] text-white/50">
+                    <span className="min-w-0 truncate font-medium text-[var(--foreground)]">{title}</span>
+                    <span className="shrink-0 text-[0.625rem] text-[var(--foreground)]/50">
                       {at === town.at
                         ? t("game.overworld.youAreHere")
                         : t("game.town.minutes", { count: worldTownMinutes(town, town.at, at) })}
@@ -711,14 +715,14 @@ export function TownView({
           )}
         </div>
 
-        <div className="pointer-events-none absolute left-1/2 top-16 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-center text-xs font-semibold text-white shadow-lg">
+        <div className="pointer-events-none absolute left-1/2 top-16 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-[var(--card)]/70 px-3 py-1 text-center text-xs font-semibold text-[var(--foreground)] shadow-lg">
           {inside
             ? t("game.town.insideOf", { name: spotTitle(inside), town: settlement?.name ?? "" })
             : settlement?.name}
         </div>
         {!walking && visited && (
           <div
-            className="pointer-events-none absolute left-1/2 top-24 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-center text-xs text-white/85 shadow-lg"
+            className="pointer-events-none absolute left-1/2 top-24 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-[var(--card)]/70 px-3 py-1 text-center text-xs text-[var(--foreground)]/85 shadow-lg"
             role="status"
           >
             {t("game.town.walked", { name: visited })}

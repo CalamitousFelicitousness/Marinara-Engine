@@ -147,7 +147,7 @@ export function LorebookScanTest({ lorebookId, text, activeChat, entryNameById, 
                     onClick={() => onJumpToEntry(item.entryId)}
                     className="flex w-full min-w-0 items-start gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--accent)]/40"
                   >
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[0.6875rem] font-medium">
                         {nameOf(item.entryId, item.name)}
@@ -174,7 +174,7 @@ export function LorebookScanTest({ lorebookId, text, activeChat, entryNameById, 
                       onClick={() => onJumpToEntry(item.entryId)}
                       className="flex w-full min-w-0 items-start gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-[var(--accent)]/40"
                     >
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--warning)]" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[0.6875rem] font-medium">
                           {nameOf(item.entryId, item.name)}

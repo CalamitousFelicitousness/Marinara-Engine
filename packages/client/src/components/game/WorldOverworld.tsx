@@ -636,7 +636,7 @@ export function WorldOverworld({
                   onFocus={() => setLookAt(centre(place))}
                   className={cn(
                     // The hit area reaches past the cell, so a small village is easy to tap on a phone.
-                    "absolute inset-0 rounded-sm outline-none transition-shadow before:absolute before:-inset-2 before:content-[''] hover:ring-2 hover:ring-white/60 focus-visible:ring-2 focus-visible:ring-white",
+                    "absolute inset-0 rounded-sm outline-none transition-shadow before:absolute before:-inset-2 before:content-[''] hover:ring-2 hover:ring-[var(--ring)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
                     selected === place.id && "ring-2 ring-[var(--primary)]",
                   )}
                   aria-label={
@@ -669,7 +669,7 @@ export function WorldOverworld({
             data-game-section="world-card"
             className={cn(
               GAME_SECTION_CLASS,
-              "pointer-events-auto absolute z-10 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
+              "pointer-events-auto absolute z-10 w-56 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-3 text-xs text-[var(--foreground)]/85 shadow-xl backdrop-blur-md",
               !cardAt.below && "-translate-y-full",
             )}
             style={{ left: cardAt.left - restingCamera.x, top: cardAt.top - restingCamera.y }}
@@ -677,13 +677,13 @@ export function WorldOverworld({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{chosen.name}</div>
-                <div className="text-white/55">{placeWords(chosen)}</div>
+                <div className="truncate text-sm font-semibold text-[var(--foreground)]">{chosen.name}</div>
+                <div className="text-[var(--foreground)]/55">{placeWords(chosen)}</div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded p-0.5 text-white/50 hover:text-white"
+                className="rounded p-0.5 text-[var(--foreground)]/50 hover:text-[var(--foreground)]"
                 aria-label={t("game.overworld.close")}
               >
                 <X size={12} />
@@ -691,7 +691,7 @@ export function WorldOverworld({
             </div>
             {chosen.id === here ? (
               <>
-                <div className="mt-2 text-white/60">{t("game.overworld.here")}</div>
+                <div className="mt-2 text-[var(--foreground)]/60">{t("game.overworld.here")}</div>
                 {siteIds.has(chosen.id) ? (
                   <button
                     type="button"
@@ -728,11 +728,11 @@ export function WorldOverworld({
                 )}
               </>
             ) : sealed(chosen.id) ? (
-              <div className="mt-2 text-white/60">{t("game.overworld.sealed")}</div>
+              <div className="mt-2 text-[var(--foreground)]/60">{t("game.overworld.sealed")}</div>
             ) : route ? (
               <>
                 <div className="mt-2">{tripText(route.days)}</div>
-                <div className="text-white/55">
+                <div className="text-[var(--foreground)]/55">
                   {t("game.overworld.tripBy", {
                     ways: [
                       ...new Set(
@@ -752,7 +752,7 @@ export function WorldOverworld({
                 </button>
               </>
             ) : (
-              <div className="mt-2 text-white/60">{t("game.overworld.noWay")}</div>
+              <div className="mt-2 text-[var(--foreground)]/60">{t("game.overworld.noWay")}</div>
             )}
           </div>
         )}
@@ -762,7 +762,7 @@ export function WorldOverworld({
           <button
             type="button"
             onClick={() => setPlacesOpen((open) => !open)}
-            className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-3 py-1.5 text-xs font-semibold text-white/85 shadow-lg backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white"
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)]/65 px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]/85 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--card)]/80 hover:text-[var(--foreground)]"
             aria-expanded={placesOpen}
           >
             <MapPin size={13} />
@@ -770,7 +770,7 @@ export function WorldOverworld({
           </button>
           {placesOpen && (
             <ul
-              className="max-h-[45vh] w-60 overflow-y-auto rounded-xl border border-white/15 bg-black/80 p-1 text-xs text-white/85 shadow-xl backdrop-blur-md"
+              className="max-h-[45vh] w-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-1 text-xs text-[var(--foreground)]/85 shadow-xl backdrop-blur-md"
               aria-label={t("game.overworld.places")}
             >
               {settlements.map(({ place, days }) => (
@@ -781,10 +781,10 @@ export function WorldOverworld({
                       choose(place.id);
                       setPlacesOpen(false);
                     }}
-                    className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/10"
+                    className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[var(--foreground)]/10"
                   >
-                    <span className="min-w-0 truncate font-medium text-white">{place.name}</span>
-                    <span className="shrink-0 text-[0.625rem] text-white/50">
+                    <span className="min-w-0 truncate font-medium text-[var(--foreground)]">{place.name}</span>
+                    <span className="shrink-0 text-[0.625rem] text-[var(--foreground)]/50">
                       {place.id === here ? t("game.overworld.youAreHere") : Number.isFinite(days) ? tripText(days) : ""}
                     </span>
                   </button>
@@ -795,13 +795,13 @@ export function WorldOverworld({
         </div>
 
         {walking && (
-          <div className="pointer-events-none absolute left-1/2 top-16 z-10 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white shadow-lg">
+          <div className="pointer-events-none absolute left-1/2 top-16 z-10 -translate-x-1/2 rounded-full bg-[var(--card)]/70 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-lg">
             <span ref={walkChipRef} />
           </div>
         )}
         {!walking && walkedTo && (
           <div
-            className="pointer-events-none absolute left-1/2 top-16 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-center text-xs text-white/85 shadow-lg"
+            className="pointer-events-none absolute left-1/2 top-16 z-10 max-w-[60%] -translate-x-1/2 rounded-full bg-[var(--card)]/70 px-3 py-1 text-center text-xs text-[var(--foreground)]/85 shadow-lg"
             role="status"
           >
             {t("game.overworld.walked", { name: walkedTo.name })}

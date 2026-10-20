@@ -95,7 +95,7 @@ export function NewGameExperienceChooser({
                     >
                       <div
                         className={cn(
-                          "h-4 w-4 rounded-full bg-white transition-transform",
+                          "h-4 w-4 rounded-full bg-[var(--background)] transition-transform",
                           isActive && "translate-x-3.5",
                         )}
                       />

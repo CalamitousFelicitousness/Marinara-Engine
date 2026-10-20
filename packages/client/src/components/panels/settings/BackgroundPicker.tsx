@@ -786,7 +786,7 @@ export function BackgroundPicker({
               decoding="async"
             />
             <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
-            <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[0.5625rem] font-medium text-white/90 backdrop-blur-sm">
+            <span className="absolute bottom-2 left-2 rounded-md bg-[var(--card)]/90 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--foreground)]/90 backdrop-blur-sm">
               {localizeUi(
                 background.source === "game_asset"
                   ? "ui.panels.backgroundpicker.gameAsset"
@@ -796,7 +796,7 @@ export function BackgroundPicker({
             {showRoleplayDefault && isDefaultRoleplay && (
               <span
                 data-background-default-indicator
-                className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[0.5rem] font-medium text-[var(--primary)] md:group-hover:opacity-0"
+                className="absolute bottom-2 right-2 rounded-md bg-[var(--card)]/90 px-1.5 py-0.5 text-[0.5rem] font-medium text-[var(--primary)] md:group-hover:opacity-0"
               >
                 {localizeUi("ui.panels.backgroundpicker.roleplayDefaultShort")}
               </span>
@@ -821,10 +821,10 @@ export function BackgroundPicker({
               toggleFavorite.mutate({ backgroundId: background.id, favorite: !background.favorite });
             }}
             className={cn(
-              "absolute left-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm transition-colors md:h-7 md:w-7",
+              "absolute left-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card)]/90 backdrop-blur-sm transition-colors md:h-7 md:w-7",
               background.favorite
                 ? "text-[var(--primary)]"
-                : "text-white/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-md:opacity-100",
+                : "text-[var(--foreground)]/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-md:opacity-100",
             )}
             title={localizeUi(
               background.favorite
@@ -851,7 +851,7 @@ export function BackgroundPicker({
             className={cn(
               "flex flex-wrap items-center justify-end gap-0.5 px-1.5 pb-0.5 pt-1.5",
               isFloatingActions &&
-                "md:absolute md:bottom-2 md:right-2 md:flex-nowrap md:rounded-lg md:bg-black/60 md:px-0.5 md:pb-0.5 md:pt-0.5 md:opacity-0 md:backdrop-blur-sm md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100",
+                "md:absolute md:bottom-2 md:right-2 md:flex-nowrap md:rounded-lg md:bg-[var(--card)]/90 md:px-0.5 md:pb-0.5 md:pt-0.5 md:opacity-0 md:backdrop-blur-sm md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100",
             )}
           >
             <ChatResourceActionButton

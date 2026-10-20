@@ -113,10 +113,10 @@ import { createLocalSidecarConnectionOption, isLanguageGenerationConnection } fr
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
 
 const CONNECTION_ICON_COLORS = {
-  from: "from-sky-400",
-  to: "to-blue-500",
-  ring: "ring-sky-400/40",
-  badge: "bg-sky-400",
+  from: "from-[var(--mari-panel-gradient-start)]",
+  to: "to-[var(--mari-panel-gradient-end)]",
+  ring: "ring-[var(--mari-panel-gradient-start)]/40",
+  badge: "bg-[var(--mari-panel-gradient-start)]",
 };
 const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; badge: string }> = {
   openai: CONNECTION_ICON_COLORS,
@@ -426,8 +426,8 @@ function SidecarCard() {
   return (
     <div
       className={cn(
-        "rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 transition-all",
-        expanded && "border-sky-400/30",
+        "mari-panel-gradient--connections rounded-xl border border-[var(--mari-panel-gradient-start)]/20 bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/5 to-[var(--mari-panel-gradient-end)]/5 p-3 transition-all",
+        expanded && "border-[var(--mari-panel-gradient-start)]/30",
       )}
     >
       <div
@@ -440,7 +440,7 @@ function SidecarCard() {
           setExpanded((current) => !current);
         }}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
           <BrainCircuit size="1rem" />
         </div>
         <div className="min-w-0 flex-1">
@@ -496,9 +496,9 @@ function SidecarCard() {
             </p>
           </div>
           {callsPackageInstalled && (
-            <div className="mt-2.5 rounded-lg border border-sky-400/15 bg-sky-400/5 p-2.5">
+            <div className="mt-2.5 rounded-lg border border-[var(--mari-panel-gradient-start)]/15 bg-[var(--mari-panel-gradient-start)]/5 p-2.5">
               <div className="flex items-start gap-2">
-                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
                   <Mic size="0.875rem" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -588,9 +588,9 @@ function SidecarCard() {
                   )}
                   {speechDownloading && speechDownloadProgress && (
                     <div className="mt-2">
-                      <div className="h-1.5 overflow-hidden rounded-full bg-sky-400/10">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mari-panel-gradient-start)]/10">
                         <div
-                          className="h-full rounded-full bg-sky-300 transition-[width]"
+                          className="h-full rounded-full bg-[var(--mari-panel-gradient-start)] transition-[width]"
                           style={{
                             width: `${
                               speechDownloadProgress.total > 0
@@ -620,7 +620,7 @@ function SidecarCard() {
             </div>
           )}
           {isDownloaded && (
-            <div className="mt-2.5 flex flex-col gap-1.5 border-t border-sky-400/10 pt-2.5">
+            <div className="mt-2.5 flex flex-col gap-1.5 border-t border-[var(--mari-panel-gradient-start)]/10 pt-2.5">
               <button
                 type="button"
                 onClick={() => void handleModelLoadToggle()}
@@ -655,9 +655,9 @@ function SidecarCard() {
                   </div>
                 </div>
                 {assigningTrackers ? (
-                  <BrainCircuit size="0.875rem" className="animate-pulse text-sky-300" />
+                  <BrainCircuit size="0.875rem" className="animate-pulse text-[var(--mari-panel-gradient-start)]" />
                 ) : (
-                  <Link size="0.875rem" className="text-sky-300" />
+                  <Link size="0.875rem" className="text-[var(--mari-panel-gradient-start)]" />
                 )}
               </button>
               <p className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
@@ -691,7 +691,7 @@ function SidecarCard() {
             {localizeUi("ui.panels.sidecarcard.decisionSidecar")}
           </button>
           {!isDownloaded && (
-            <div className="mt-2.5 flex flex-col gap-2 border-t border-sky-400/10 pt-2.5">
+            <div className="mt-2.5 flex flex-col gap-2 border-t border-[var(--mari-panel-gradient-start)]/10 pt-2.5">
               <button
                 type="button"
                 onClick={handleDownloadNow}
@@ -713,8 +713,8 @@ function SidecarCard() {
           )}
           <DecisionModelModal open={decisionModalOpen} onClose={() => setDecisionModalOpen(false)} />
           {status === "server_error" && (
-            <div className="mt-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
-              <div className="text-[0.6875rem] font-medium text-amber-200">
+            <div className="mt-2.5 rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/5 p-2.5">
+              <div className="text-[0.6875rem] font-medium text-[var(--warning)]">
                 {localizeUi("ui.panels.sidecarcard.localRuntimeUnavailable")}
               </div>
               <div className="mt-1 text-[0.6875rem] text-[var(--muted-foreground)]/75">
@@ -915,7 +915,7 @@ function ConnectionDefaultPair({
 
   return (
     <div className="grid gap-2 px-3 py-3 sm:grid-cols-[2.25rem_minmax(0,1fr)]">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
         {icon}
       </div>
       <div className="min-w-0 space-y-2">
@@ -1143,12 +1143,12 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 transition-all",
-        open && "border-sky-400/30",
+        "mari-panel-gradient--connections overflow-hidden rounded-xl border border-[var(--mari-panel-gradient-start)]/20 bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/5 to-[var(--mari-panel-gradient-end)]/5 p-3 transition-all",
+        open && "border-[var(--mari-panel-gradient-start)]/30",
       )}
     >
       <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)] text-[var(--mari-panel-gradient-text)] shadow-sm">
           <Settings2 size="1rem" />
         </div>
         <div className="min-w-0 flex-1">
@@ -1176,7 +1176,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
         </button>
       </div>
       <SmoothFolderContent open={open}>
-        <div id="connection-defaults-content" className="mt-3 divide-y divide-sky-400/10 border-t border-sky-400/10">
+        <div
+          id="connection-defaults-content"
+          className="mt-3 divide-y divide-[var(--mari-panel-gradient-start)]/10 border-t border-[var(--mari-panel-gradient-start)]/10"
+        >
           <ConnectionDefaultPair
             title={localizeUi("ui.panels.connectiondefaultssection.main")}
             icon={<MessageSquareText size="0.875rem" />}
@@ -1276,7 +1279,7 @@ function ConnectionRow({
     getConnectionFallbackIcon(conn.provider)
   );
   const iconFrameClasses = cn(
-    "relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-white shadow-sm",
+    "relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-[var(--mari-panel-gradient-text)] shadow-sm",
     conn.imagePath ? "bg-[var(--muted)]" : `${colors.from} ${colors.to}`,
   );
 
@@ -1338,7 +1341,7 @@ function ConnectionRow({
           onImagePick();
         }}
         className={cn(
-          "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-xl text-white",
+          "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-xl text-[var(--mari-panel-gradient-text)]",
           "transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--marinara-chat-chrome-focus-ring)]",
         )}
         title={
@@ -1354,7 +1357,7 @@ function ConnectionRow({
       >
         <span className={iconFrameClasses}>
           {iconContent}
-          <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size="0.875rem" />
           </span>
         </span>
@@ -1365,7 +1368,7 @@ function ConnectionRow({
               colors.badge,
             )}
           >
-            <Check size="0.625rem" className="text-white" />
+            <Check size="0.625rem" className="text-[var(--mari-panel-gradient-text)]" />
           </div>
         )}
       </button>
@@ -2074,7 +2077,7 @@ export function ConnectionsPanel() {
   };
 
   return (
-    <div className="flex min-h-full flex-col gap-2 p-3">
+    <div className="mari-panel-gradient--connections flex min-h-full flex-col gap-2 p-3">
       <input
         ref={connectionImageInputRef}
         type="file"
@@ -2199,8 +2202,8 @@ export function ConnectionsPanel() {
 
       {!isLoading && (!connections || (connections as unknown[]).length === 0) && (
         <div className="flex flex-col items-center gap-2 py-8 text-center">
-          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400/20 to-blue-500/20">
-            <Link size="1.25rem" className="text-sky-400" />
+          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/20 to-[var(--mari-panel-gradient-end)]/20">
+            <Link size="1.25rem" className="text-[var(--mari-panel-gradient-start)]" />
           </div>
           <p className="mari-chrome-text-muted text-xs">{localizeUi("ui.panels.connectionspanel.noConnectionsYet")}</p>
         </div>
@@ -2219,14 +2222,14 @@ export function ConnectionsPanel() {
 
       {/* LinkAPI recommendation banner */}
       {!isLoading && (!connections || (connections as unknown[]).length === 0) && !linkApiBannerDismissed && (
-        <div className="rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 flex flex-col gap-2">
+        <div className="mari-panel-gradient--connections rounded-xl border border-[var(--mari-panel-gradient-start)]/20 bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/5 to-[var(--mari-panel-gradient-end)]/5 p-3 flex flex-col gap-2">
           <p className="text-xs text-[var(--muted-foreground)]">
             {localizeUi("ui.panels.connectionspanel.lookingToTryNewModelsFromATrustedProvider")}{" "}
             <a
               href="https://linkapi.ai/"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-sky-400 underline decoration-sky-400/30 hover:text-sky-300 transition-colors"
+              className="font-medium text-[var(--mari-panel-gradient-start)] underline decoration-[var(--mari-panel-gradient-start)]/30 hover:text-[var(--mari-panel-gradient-start)] transition-colors"
             >
               {localizeUi("ui.panels.connectionspanel.linkapi")}
             </a>

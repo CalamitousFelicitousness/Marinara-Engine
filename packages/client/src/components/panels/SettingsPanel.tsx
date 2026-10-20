@@ -2212,7 +2212,7 @@ function DocsLanguageSetting() {
       {!integrityOk ? (
         <div className="flex flex-col gap-1.5 rounded-lg bg-[var(--background)]/60 p-2 ring-1 ring-[var(--border)]">
           <div className="flex items-start gap-1.5">
-            <AlertTriangle size="0.8125rem" className="mt-0.5 shrink-0 text-amber-500" />
+            <AlertTriangle size="0.8125rem" className="mt-0.5 shrink-0 text-[var(--warning)]" />
             <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
               {localizeUi("settings.application.docsLanguage.fixNeeded")}
             </span>
@@ -5019,40 +5019,40 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       <div className="w-full overflow-hidden rounded-md bg-[var(--secondary)]/80 ring-1 ring-[var(--border)]/70">
                         {opt.id === "none" ? (
                           <div className="flex h-14 items-center px-3">
-                            <div className="flex-1 rounded-2xl bg-black/25 px-3 py-2">
-                              <div className="h-1.5 w-16 rounded-full bg-white/20" />
-                              <div className="mt-1.5 h-1.5 w-24 rounded-full bg-white/12" />
+                            <div className="flex-1 rounded-2xl bg-[var(--card)]/25 px-3 py-2">
+                              <div className="h-1.5 w-16 rounded-full bg-[var(--foreground)]/20" />
+                              <div className="mt-1.5 h-1.5 w-24 rounded-full bg-[var(--foreground)]/12" />
                             </div>
                           </div>
                         ) : opt.id === "circles" ? (
                           <div className="flex h-14 items-center px-3">
-                            <div className="relative flex-1 rounded-2xl rounded-tl-sm bg-black/25 px-3 py-2">
-                              <div className="mari-settings-accent-dot absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[0_0_0_2px_rgba(255,255,255,0.16)]" />
-                              <div className="ml-4 h-1.5 w-14 rounded-full bg-white/20" />
-                              <div className="mt-1.5 ml-4 h-1.5 w-20 rounded-full bg-white/12" />
+                            <div className="relative flex-1 rounded-2xl rounded-tl-sm bg-[var(--card)]/25 px-3 py-2">
+                              <div className="mari-settings-accent-dot absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[var(--marinara-editor-shadow)]" />
+                              <div className="ml-4 h-1.5 w-14 rounded-full bg-[var(--foreground)]/20" />
+                              <div className="mt-1.5 ml-4 h-1.5 w-20 rounded-full bg-[var(--foreground)]/12" />
                             </div>
                           </div>
                         ) : opt.id === "rectangles" ? (
                           <div className="flex h-14 items-center px-3">
-                            <div className="relative flex-1 rounded-2xl rounded-tl-sm bg-black/25 py-2 pl-8 pr-3">
-                              <div className="mari-settings-portrait-preview absolute left-2 top-2 h-4 w-4 overflow-hidden rounded ring-1 ring-white/20">
+                            <div className="relative flex-1 rounded-2xl rounded-tl-sm bg-[var(--card)]/25 py-2 pl-8 pr-3">
+                              <div className="mari-settings-portrait-preview absolute left-2 top-2 h-4 w-4 overflow-hidden rounded ring-1 ring-[var(--border)]">
                                 <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.24),transparent_58%)]" />
                               </div>
-                              <div className="h-1.5 w-14 rounded-full bg-white/20" />
-                              <div className="mt-1.5 h-1.5 w-20 rounded-full bg-white/12" />
+                              <div className="h-1.5 w-14 rounded-full bg-[var(--foreground)]/20" />
+                              <div className="mt-1.5 h-1.5 w-20 rounded-full bg-[var(--foreground)]/12" />
                             </div>
                           </div>
                         ) : (
-                          <div className="flex h-14 items-stretch overflow-hidden bg-black/25">
+                          <div className="flex h-14 items-stretch overflow-hidden bg-[var(--card)]/25">
                             <div className="mari-settings-scene-preview relative flex w-[42%] shrink-0 items-end justify-center overflow-hidden">
                               <div className="absolute left-1/2 top-2 h-4 w-4 -translate-x-1/2 rounded-full bg-orange-50/45 shadow-[0_0_12px_rgba(255,237,213,0.35)]" />
                               <div className="h-8 w-8 rounded-t-full bg-zinc-950/35" />
                               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[32%] backdrop-blur-[4px] [mask-image:linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.25)_28%,rgba(0,0,0,0.8)_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.25)_28%,rgba(0,0,0,0.8)_100%)]" />
-                              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0)_0%,rgba(255,255,255,0)_72%,rgba(113,113,122,0.84)_92%,rgba(113,113,122,1)_100%)]" />
+                              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,transparent_72%,color-mix(in_srgb,var(--card)_84%,transparent)_92%,var(--card)_100%)]" />
                             </div>
                             <div className="flex-1 px-3 py-2">
-                              <div className="h-1.5 w-14 rounded-full bg-white/20" />
-                              <div className="mt-1.5 h-1.5 w-20 rounded-full bg-white/12" />
+                              <div className="h-1.5 w-14 rounded-full bg-[var(--foreground)]/20" />
+                              <div className="mt-1.5 h-1.5 w-20 rounded-full bg-[var(--foreground)]/12" />
                             </div>
                           </div>
                         )}
@@ -5064,10 +5064,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 </div>
                 <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                    <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-black/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
+                    <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-[var(--card)]/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
                       {roleplayAvatarStyle === "none" ? (
                         <div
-                          className="flex shrink-0 items-center justify-center rounded-md border border-dashed border-white/20 px-2 text-[0.625rem] font-medium text-white/35"
+                          className="flex shrink-0 items-center justify-center rounded-md border border-dashed border-[var(--border)] px-2 text-[0.625rem] font-medium text-[var(--muted-foreground)]/35"
                           style={{
                             width: toPreviewRem(roleplayAvatarPreview.width),
                             height: toPreviewRem(roleplayAvatarPreview.height),
@@ -5078,7 +5078,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       ) : (
                         <div
                           className={cn(
-                            "mari-settings-portrait-preview shrink-0 border border-white/20 shadow-lg transition-all",
+                            "mari-settings-portrait-preview shrink-0 border border-[var(--border)] shadow-lg transition-all",
                             roleplayAvatarStyle === "circles"
                               ? "rounded-full"
                               : roleplayAvatarStyle === "rectangles"
@@ -5092,7 +5092,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                         />
                       )}
                       <div
-                        className="mari-settings-scene-preview shrink-0 rounded-full border border-white/20 shadow-lg transition-all"
+                        className="mari-settings-scene-preview shrink-0 rounded-full border border-[var(--border)] shadow-lg transition-all"
                         style={{
                           width: toPreviewRem(roleplaySpritePreview.width),
                           height: toPreviewRem(roleplaySpritePreview.height),
@@ -5180,16 +5180,16 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 </div>
                 <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                    <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-black/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
+                    <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-[var(--card)]/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
                       <div
-                        className="shrink-0 rounded-lg border border-white/20 bg-gradient-to-b from-sky-300/80 via-cyan-200/65 to-slate-800/90 shadow-lg transition-all"
+                        className="shrink-0 rounded-lg border border-[var(--border)] bg-gradient-to-b from-sky-300/80 via-cyan-200/65 to-slate-800/90 shadow-lg transition-all"
                         style={{
                           width: toPreviewRem(gameAvatarPreview.width),
                           height: toPreviewRem(gameAvatarPreview.height),
                         }}
                       />
                       <div
-                        className="mari-settings-portrait-preview shrink-0 rounded-full border border-white/20 shadow-lg transition-all"
+                        className="mari-settings-portrait-preview shrink-0 rounded-full border border-[var(--border)] shadow-lg transition-all"
                         style={{
                           width: toPreviewRem(gameFullBodyPreview.width),
                           height: toPreviewRem(gameFullBodyPreview.height),
@@ -5633,7 +5633,7 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
           value={themeCss}
           onChange={(e) => setThemeCss(e.target.value)}
           spellCheck={false}
-          className="min-h-[22.5rem] resize-y rounded-lg border border-[var(--border)] bg-[#0d1117] p-3 font-mono text-[0.6875rem] leading-relaxed text-emerald-300 outline-none transition-colors focus:border-[var(--primary)]/50 placeholder:text-white/20"
+          className="min-h-[22.5rem] resize-y rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 font-mono text-[0.6875rem] leading-relaxed text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50 placeholder:text-[var(--muted-foreground)]/60"
           placeholder={localizeUi("settings.placeholders.themeCss")}
         />
 
@@ -5645,33 +5645,61 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
           <div className="border-t border-[var(--border)] px-3 py-2 font-mono text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
               <span>{localizeUi("ui.panels.themessettings.background")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.pageBackground")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.pageBackground")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.foreground")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.mainText")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.mainText")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.primary")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.accentButtons")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.accentButtons")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.primaryForeground")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.textOnPrimary")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.textOnPrimary")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.secondary")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.cardsInputs")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.cardsInputs")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.card")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.cardBackground")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.cardBackground")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.border")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.borders")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.borders")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.mutedForeground")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.dimmedText")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.dimmedText")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.sidebar")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.sidebarBg")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.sidebarBg")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.sidebarBorder")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.sidebarBorder_26eaad1")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.sidebarBorder_26eaad1")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.marinaraShellEdgeBorder")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.leftRightShellEdge")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.leftRightShellEdge")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.destructive")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.errorDelete")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.errorDelete")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.popover")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.dropdownBg")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.dropdownBg")}
+              </span>
               <span>{localizeUi("ui.panels.themessettings.accent")}</span>
-              <span className="text-white/40">{localizeUi("ui.panels.themessettings.hoverHighlights")}</span>
+              <span className="text-[var(--muted-foreground)]/80">
+                {localizeUi("ui.panels.themessettings.hoverHighlights")}
+              </span>
             </div>
           </div>
         </details>
@@ -6565,10 +6593,10 @@ function ImportSettings() {
                 profileImportProgress.status === "error"
                   ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/10 text-[var(--destructive)]"
                   : profileImportProgress.status === "success" && profileImportProgress.warnings?.length
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                    ? "border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--warning)] dark:text-[var(--warning)]"
                     : profileImportProgress.status === "success"
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                      : "border-emerald-500/30 bg-emerald-500/10 text-[var(--foreground)]",
+                      ? "border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--success)] dark:text-[var(--success)]"
+                      : "border-[var(--success)]/30 bg-[var(--success)]/10 text-[var(--foreground)]",
               )}
             >
               <div className="flex items-center justify-between gap-3">
@@ -6580,7 +6608,7 @@ function ImportSettings() {
                   ) : profileImportProgress.status === "error" ? (
                     <AlertTriangle size="0.875rem" className="shrink-0" />
                   ) : (
-                    <Loader2 size="0.875rem" className="shrink-0 animate-spin text-emerald-500" />
+                    <Loader2 size="0.875rem" className="shrink-0 animate-spin text-[var(--success)]" />
                   )}
                   <span className="truncate font-medium">{profileImportProgress.label}</span>
                 </div>
@@ -6596,10 +6624,10 @@ function ImportSettings() {
                       className={cn(
                         "h-full rounded-full transition-all duration-300",
                         profileImportProgress.status === "success" && profileImportProgress.warnings?.length
-                          ? "bg-amber-500"
+                          ? "bg-[var(--warning)]"
                           : profileImportProgress.status === "success"
-                            ? "bg-emerald-500"
-                            : "bg-emerald-400",
+                            ? "bg-[var(--success)]"
+                            : "bg-[var(--success)]",
                       )}
                       style={{ width: `${getProfileImportPercent(profileImportProgress)}%` }}
                     />
@@ -6625,12 +6653,12 @@ function ImportSettings() {
                     </div>
                   )}
                   {profileImportProgress.warnings?.length ? (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[0.6875rem] text-amber-700 dark:text-amber-200">
+                    <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-2 py-1.5 text-[0.6875rem] text-[var(--warning)] dark:text-[var(--warning)]">
                       <div className="font-medium">
                         {formatProfileImportWarningSummary(profileImportProgress.warnings, profileImportWarningCopy)}
                       </div>
                       {formatProfileImportWarningDetails(profileImportProgress.warnings, profileImportWarningCopy) && (
-                        <div className="mt-0.5 break-words text-amber-700/80 dark:text-amber-100/80">
+                        <div className="mt-0.5 break-words text-[var(--warning)]/80 dark:text-[var(--warning)]/80">
                           {formatProfileImportWarningDetails(profileImportProgress.warnings, profileImportWarningCopy)}
                         </div>
                       )}
@@ -7559,7 +7587,7 @@ function AdvancedSettings() {
 
           {updateCheck.data && !updateCheck.data.updateAvailable && (
             <div className="flex items-center gap-1.5 rounded-lg bg-[var(--secondary)] px-2.5 py-2 ring-1 ring-[var(--border)]">
-              <Check size="0.8125rem" className="text-green-500 shrink-0" />
+              <Check size="0.8125rem" className="text-[var(--success)] shrink-0" />
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs">
                   {localizeUi("ui.panels.advancedsettings.youReOnTheLatest")}{" "}
@@ -7645,7 +7673,7 @@ function AdvancedSettings() {
               ) : (
                 <div className="flex flex-col gap-1.5 rounded-lg bg-[var(--background)]/60 p-2 ring-1 ring-[var(--border)]">
                   <div className="flex items-start gap-1.5">
-                    <AlertTriangle size="0.8125rem" className="mt-0.5 shrink-0 text-amber-500" />
+                    <AlertTriangle size="0.8125rem" className="mt-0.5 shrink-0 text-[var(--warning)]" />
                     <span className="text-[0.6875rem] text-[var(--muted-foreground)]">{applyUnavailableCopy}</span>
                   </div>
                   {updateCheck.data.versionUpdate && (

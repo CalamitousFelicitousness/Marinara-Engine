@@ -60,7 +60,7 @@ export function ImagePreviewModal({ node, onClose }: { node: TreeNode; onClose: 
               e.stopPropagation();
               setShowInfo(!showInfo);
             }}
-            className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white"
+            className="absolute right-2 top-2 rounded-full bg-[var(--card)]/90 p-1.5 text-[var(--foreground)]/80 backdrop-blur-sm transition-colors hover:bg-[var(--card)]/90 hover:text-[var(--foreground)]"
             title={localizeUi("ui.gameAssets.imagepreviewmodal.fileInfo")}
           >
             <Info size="0.875rem" />
@@ -110,7 +110,7 @@ export function ImagePreviewModal({ node, onClose }: { node: TreeNode; onClose: 
           </div>
         )}
       </div>
-      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-white/80">{node.name}</p>
+      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-[var(--foreground)]/80">{node.name}</p>
     </div>
   );
 }

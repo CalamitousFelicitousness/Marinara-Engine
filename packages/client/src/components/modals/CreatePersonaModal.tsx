@@ -54,8 +54,8 @@ export function CreatePersonaModal({ open, onClose, defaultName = "" }: Props) {
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-lg shadow-emerald-400/20">
-            <User size="1.375rem" className="text-white" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl mari-panel-gradient-surface mari-panel-gradient--personas">
+            <User size="1.375rem" className="text-current" />
           </div>
           <div className="flex-1">
             <p className="text-xs text-[var(--muted-foreground)]">

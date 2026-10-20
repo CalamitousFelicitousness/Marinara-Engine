@@ -87,7 +87,7 @@ function AchievementBadge({ achievement, locked }: { achievement: AchievementDef
         <Icon className="relative z-10 h-5 w-5 sm:h-[1.65rem] sm:w-[1.65rem]" />
       )}
       {!locked && achievement.rankLabel && (
-        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/35 px-1 text-[0.55rem] font-bold text-white">
+        <span className="absolute bottom-1.5 right-1.5 rounded bg-[var(--card)]/90 px-1 text-[0.55rem] font-bold text-[var(--foreground)]">
           {achievement.rankLabel}
         </span>
       )}

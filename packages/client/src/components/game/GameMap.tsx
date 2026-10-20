@@ -281,7 +281,7 @@ function DayTimeIndicator({
   const editableTimeValue = selectedPhase && selectedPhase !== "noon" ? selectedPhase : "";
   const timeLabel = getTimeOfDayStatusLabel(timeOfDay);
   const rootClassName = cn(
-    "inline-flex shrink-0 items-stretch overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-[var(--marinara-chat-chrome-button-text-hover)] shadow-[0_2px_8px_rgba(0,0,0,0.2)]",
+    "inline-flex shrink-0 items-stretch overflow-hidden rounded-lg border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] text-[var(--marinara-chat-chrome-button-text-hover)] shadow-[var(--marinara-editor-shadow)]",
     size === "mobile" ? "h-7 text-[0.6875rem]" : "h-5 text-[0.625rem]",
     className,
   );
@@ -469,7 +469,7 @@ function MapZoomControls({ zoom, onZoomOut, onZoomIn }: MapZoomControlsProps) {
 
   return (
     <div
-      className="absolute right-1.5 top-1.5 z-20 flex h-6 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] shadow-lg shadow-black/35 backdrop-blur-md"
+      className="absolute right-1.5 top-1.5 z-20 flex h-6 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-button-bg)] shadow-lg shadow-[var(--background)]/35 backdrop-blur-md"
       onPointerDown={stopPointer}
       title={localizeUi("ui.game.mapzoomcontrols.mapZoomValue1", { value1: Math.round(zoom * 100) })}
     >
@@ -598,7 +598,7 @@ function MapGenerateButton({ onGenerateMap, disabled, onAfterGenerate }: MapGene
         compact: true,
         sizeClassName: "h-6 w-6",
         className:
-          "absolute left-1.5 top-1.5 z-20 shadow-lg shadow-black/35 disabled:cursor-not-allowed disabled:opacity-45",
+          "absolute left-1.5 top-1.5 z-20 shadow-lg shadow-[var(--background)]/35 disabled:cursor-not-allowed disabled:opacity-45",
       })}
       title={localizeUi("ui.game.mapgeneratebutton.generateAnotherMap")}
       aria-label={localizeUi("ui.game.mapgeneratebutton.generateAnotherMap")}
@@ -1204,7 +1204,7 @@ export function MobileMapButton({
               </button>
             )}
             {selectedNode === currentNode?.id && (
-              <span className="shrink-0 text-[0.625rem] text-emerald-400/70">
+              <span className="shrink-0 text-[0.625rem] text-[var(--success)]/70">
                 {localizeUi("ui.game.mobilemapbutton.youAreHere")}
               </span>
             )}

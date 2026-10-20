@@ -25,6 +25,7 @@ import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { showAlertDialog, showConfirmDialog } from "../../lib/app-dialogs";
+import { getCssColorFallback, MARINARA_GRADIENT_PRESET } from "../../lib/css-colors";
 import { MultiplayerGuestFrame } from "./MultiplayerGuestFrame";
 import { MultiplayerGuestView } from "./MultiplayerGuestView";
 import {
@@ -172,7 +173,10 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
           state={state}
           labels={labels}
           title={t("multiplayer.title")}
-          theme={{ mode, accent: /^#[0-9a-f]{6}$/iu.test(accent) ? accent : "#ec4b97" }}
+          theme={{
+            mode,
+            accent: /^#[0-9a-f]{6}$/iu.test(accent) ? accent : getCssColorFallback(MARINARA_GRADIENT_PRESET, ""),
+          }}
           onAction={onAction}
           onProtocolError={() => {
             void disconnect.mutateAsync().catch(() => undefined);

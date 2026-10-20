@@ -85,12 +85,12 @@ const PRIMARY_CATEGORIES = CATEGORIES.filter((category) => category.id === "all"
 const TAGGED_CATEGORIES = CATEGORIES.filter((category) => category.id !== "all" && category.id !== "active");
 
 const CATEGORY_COLORS: Record<string, string> = {
-  world: "from-amber-400 to-orange-500",
-  character: "from-amber-400 to-orange-500",
-  npc: "from-amber-400 to-orange-500",
-  spellbook: "from-amber-400 to-orange-500",
-  uncategorized: "from-amber-400 to-orange-500",
-  all: "from-amber-400 to-orange-500",
+  world: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
+  character: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
+  npc: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
+  spellbook: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
+  uncategorized: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
+  all: "from-[var(--mari-panel-gradient-start)] to-[var(--mari-panel-gradient-end)]",
 };
 
 function usePanelMobileOverlay() {
@@ -745,7 +745,7 @@ export function LorebooksPanel() {
   );
 
   return (
-    <div className="flex min-h-full flex-col gap-2 p-3">
+    <div className="mari-panel-gradient--lorebooks flex min-h-full flex-col gap-2 p-3">
       <input
         ref={lorebookImageInputRef}
         type="file"
@@ -1068,7 +1068,7 @@ export function LorebooksPanel() {
                       }}
                       onClick={(event) => event.stopPropagation()}
                       onBlur={() => handleRenameFolder(folder.id)}
-                      className="w-full rounded bg-transparent px-1 py-0.5 text-xs font-medium outline-none ring-1 ring-amber-400/30"
+                      className="w-full rounded bg-transparent px-1 py-0.5 text-xs font-medium outline-none ring-1 ring-[var(--mari-panel-gradient-start)]/30"
                     />
                   ) : (
                     <div className="mari-chrome-text-muted truncate text-xs font-medium">{folder.name}</div>
@@ -1147,8 +1147,8 @@ export function LorebooksPanel() {
       {/* Empty state */}
       {!isLoading && sorted.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-8 text-center">
-          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400/20 to-orange-500/20">
-            <BookOpen size="1.25rem" className="text-amber-400" />
+          <div className="animate-float flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--mari-panel-gradient-start)]/20 to-[var(--mari-panel-gradient-end)]/20">
+            <BookOpen size="1.25rem" className="text-[var(--mari-panel-gradient-start)]" />
           </div>
           <p className="mari-chrome-text-muted text-xs">
             {searchQuery
@@ -1173,7 +1173,7 @@ export function LorebooksPanel() {
                 const payload = event.dataTransfer.getData("application/x-marinara-lorebook-ids");
                 handleLorebookDrop(null, payload ? (JSON.parse(payload) as string[]) : undefined);
               }}
-              className="rounded-xl border border-dashed border-amber-400/35 bg-amber-400/5 px-3 py-2 text-[0.625rem] text-amber-300"
+              className="rounded-xl border border-dashed border-[var(--mari-panel-gradient-start)]/35 bg-[var(--mari-panel-gradient-start)]/5 px-3 py-2 text-[0.625rem] text-[var(--mari-panel-gradient-start)]"
             >
               {localizeUi("ui.panels.agentspanel.dropHereToMoveOutOfFolder")}
             </div>
@@ -1249,7 +1249,7 @@ function LorebookRow({
     <BookOpen size="1rem" />
   );
   const imageClasses = cn(
-    "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white shadow-sm",
+    "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl text-[var(--mari-panel-gradient-text)] shadow-sm",
     lorebook.imagePath ? "bg-[var(--muted)]" : `bg-gradient-to-br ${gradient}`,
   );
 
@@ -1324,7 +1324,7 @@ function LorebookRow({
           }
         >
           {imageContent}
-          <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="absolute inset-0 flex items-center justify-center bg-[var(--card)]/90 opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size="0.875rem" />
           </span>
         </button>

@@ -96,10 +96,10 @@ export function CsrfOriginWarningBanner() {
         left: 0,
         right: 0,
         zIndex: 9999,
-        background: "var(--destructive, #b91c1c)",
-        color: "var(--destructive-foreground, #fff)",
-        borderBottom: "2px solid color-mix(in srgb, var(--destructive, #b91c1c) 60%, black)",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)",
+        background: "var(--destructive)",
+        color: "var(--destructive-foreground)",
+        borderBottom: "2px solid color-mix(in srgb, var(--destructive) 60%, var(--foreground))",
+        boxShadow: "0 4px 12px color-mix(in srgb, var(--foreground) 25%, transparent)",
         paddingTop: "max(0.75rem, env(safe-area-inset-top))",
         paddingBottom: "0.75rem",
         paddingLeft: "1rem",
@@ -125,7 +125,7 @@ export function CsrfOriginWarningBanner() {
             {localizeUi("ui.diagnostics.csrforiginwarningbanner.marinaraSCsrfProtectionRejectsUnsafeApiRequestsFrom")}{" "}
             <code
               style={{
-                background: "rgba(0,0,0,0.25)",
+                background: "color-mix(in srgb, var(--destructive-foreground) 10%, transparent)",
                 padding: "0 0.3rem",
                 borderRadius: "3px",
                 fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -150,8 +150,8 @@ export function CsrfOriginWarningBanner() {
               <code
                 style={{
                   flex: "1 1 auto",
-                  background: "rgba(0,0,0,0.3)",
-                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "color-mix(in srgb, var(--destructive-foreground) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--destructive-foreground) 18%, transparent)",
                   padding: "0.35rem 0.55rem",
                   borderRadius: "4px",
                   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -166,8 +166,8 @@ export function CsrfOriginWarningBanner() {
                 type="button"
                 onClick={copyEnv}
                 style={{
-                  background: "rgba(255,255,255,0.18)",
-                  border: "1px solid rgba(255,255,255,0.35)",
+                  background: "color-mix(in srgb, var(--destructive-foreground) 18%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--destructive-foreground) 35%, transparent)",
                   color: "inherit",
                   padding: "0.35rem 0.7rem",
                   borderRadius: "4px",
@@ -202,7 +202,7 @@ export function CsrfOriginWarningBanner() {
           style={{
             flexShrink: 0,
             background: "transparent",
-            border: "1px solid rgba(255,255,255,0.4)",
+            border: "1px solid color-mix(in srgb, var(--destructive-foreground) 40%, transparent)",
             color: "inherit",
             width: "2rem",
             height: "2rem",

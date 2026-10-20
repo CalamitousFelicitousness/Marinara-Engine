@@ -28,15 +28,15 @@ function choiceStateClassName(
   selectionMade: boolean,
 ): string {
   if (selected) {
-    return "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-white ring-2 ring-[var(--primary)]/30 scale-[0.98]";
+    return "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-[var(--foreground)] ring-2 ring-[var(--primary)]/30 scale-[0.98]";
   }
   if (replayMode && recordedChoice) {
-    return "border-[var(--primary)]/35 bg-[var(--primary)]/12 text-white hover:border-[var(--primary)]/55 hover:bg-[var(--primary)]/20";
+    return "border-[var(--primary)]/35 bg-[var(--primary)]/12 text-[var(--foreground)] hover:border-[var(--primary)]/55 hover:bg-[var(--primary)]/20";
   }
   if (selectionMade || (replayMode && !recordedChoice)) {
-    return "border-white/5 bg-white/3 text-white/30 opacity-50";
+    return "border-[var(--border)] bg-[var(--foreground)]/3 text-[var(--foreground)]/30 opacity-50";
   }
-  return "border-white/10 bg-white/5 text-white/90 hover:border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 hover:text-white";
+  return "border-[var(--border)] bg-[var(--foreground)]/5 text-[var(--foreground)]/90 hover:border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 hover:text-[var(--foreground)]";
 }
 
 export function GameChoiceCards({ choices, onSelect, onDismiss, disabled, replayChoice }: GameChoiceCardsProps) {
@@ -62,11 +62,11 @@ export function GameChoiceCards({ choices, onSelect, onDismiss, disabled, replay
         data-game-section="choices"
         className={cn(
           GAME_SECTION_CLASS,
-          "flex h-full max-h-[clamp(8rem,30svh,14rem)] min-h-0 w-full flex-col rounded-2xl border border-white/15 bg-black/50 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.3)] backdrop-blur-md sm:max-h-[clamp(9rem,36svh,20rem)] md:max-h-[min(52dvh,32rem)]",
+          "flex h-full max-h-[clamp(8rem,30svh,14rem)] min-h-0 w-full flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)]/50 p-3 shadow-[var(--marinara-editor-shadow)] backdrop-blur-md sm:max-h-[clamp(9rem,36svh,20rem)] md:max-h-[min(52dvh,32rem)]",
         )}
       >
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-white/90">
+          <span className="rounded-full bg-[var(--foreground)]/10 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/90">
             {replayMode
               ? localizeUi("ui.game.gamechoicecards.recordedChoice")
               : localizeUi("ui.game.gamechoicecards.chooseYourAction")}
@@ -75,7 +75,7 @@ export function GameChoiceCards({ choices, onSelect, onDismiss, disabled, replay
             <button
               type="button"
               onClick={onDismiss}
-              className="rounded-lg p-1 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-lg p-1 text-[var(--foreground)]/55 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]"
               title={localizeUi("ui.game.gamechoicecards.closeChoices")}
               aria-label={localizeUi("ui.game.gamechoicecards.closeChoices")}
             >
@@ -114,10 +114,10 @@ export function GameChoiceCards({ choices, onSelect, onDismiss, disabled, replay
                   className={cn(
                     "mr-2.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[0.625rem] font-bold transition-colors",
                     selected === i
-                      ? "bg-[var(--primary)] text-white"
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                       : hoveredIndex === i
                         ? "bg-[var(--primary)]/30 text-[var(--primary)]"
-                        : "bg-white/10 text-white/60",
+                        : "bg-[var(--foreground)]/10 text-[var(--foreground)]/60",
                   )}
                 >
                   {i + 1}
@@ -127,7 +127,7 @@ export function GameChoiceCards({ choices, onSelect, onDismiss, disabled, replay
                 {/* Hover shine effect */}
                 <div
                   className={cn(
-                    "pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 transition-opacity duration-300",
+                    "pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-[var(--foreground)]/5 to-transparent opacity-0 transition-opacity duration-300",
                     hoveredIndex === i && selected === null && "opacity-100",
                   )}
                 />

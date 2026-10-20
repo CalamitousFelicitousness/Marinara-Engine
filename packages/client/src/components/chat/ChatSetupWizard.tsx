@@ -443,7 +443,7 @@ function normalizeAgentMaxTokensInputValue(value: unknown): number {
 }
 
 function WizardBackdrop({ onClose }: { onClose: () => void }) {
-  return <div className="absolute inset-0 z-40 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />;
+  return <div className="absolute inset-0 z-40 bg-[var(--background)]/45 backdrop-blur-[2px]" onClick={onClose} />;
 }
 
 function SetupWizardShell({
@@ -914,7 +914,12 @@ function SetupGenerationParametersPanel({
             enabled ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
           )}
         >
-          <div className={cn("h-4 w-4 rounded-full bg-white transition-transform", enabled && "translate-x-3.5")} />
+          <div
+            className={cn(
+              "h-4 w-4 rounded-full bg-[var(--background)] transition-transform",
+              enabled && "translate-x-3.5",
+            )}
+          />
         </div>
       </button>
       {enabled && (
@@ -1649,7 +1654,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
             >
               <div
                 className={cn(
-                  "h-4 w-4 rounded-full bg-white transition-transform",
+                  "h-4 w-4 rounded-full bg-[var(--background)] transition-transform",
                   customConversationPromptEnabled && "translate-x-3.5",
                 )}
               />
@@ -1897,7 +1902,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
         >
           <div
             className={cn(
-              "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+              "h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
               autonomousEnabled && "translate-x-3.5",
             )}
           />
@@ -1934,7 +1939,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
           >
             <div
               className={cn(
-                "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                "h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
                 generateSchedule && "translate-x-3.5",
               )}
             />
@@ -1976,7 +1981,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
           >
             <div
               className={cn(
-                "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                "h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
                 commandsEnabled && "translate-x-3.5",
               )}
             />
@@ -2018,7 +2023,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
                 >
                   <div
                     className={cn(
-                      "h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+                      "h-3 w-3 rounded-full bg-[var(--background)] shadow-sm transition-transform",
                       enabled && "translate-x-3",
                     )}
                   />
@@ -2069,8 +2074,8 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
       </div>
     ) : scheduleState === "done" ? (
       <div className="flex items-center justify-center gap-2 py-1">
-        <Check size="0.875rem" className="text-emerald-400" />
-        <span className="text-xs text-emerald-400">
+        <Check size="0.875rem" className="text-[var(--success)]" />
+        <span className="text-xs text-[var(--success)]">
           {localizeUi("ui.chat.conversationquicksetup.readySayHiToStartTheConversation")}
         </span>
       </div>
@@ -3433,7 +3438,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
           >
             <div
               className={cn(
-                "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                "h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
                 agentsEnabled && "translate-x-3.5",
               )}
             />

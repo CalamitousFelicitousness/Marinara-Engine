@@ -66,7 +66,7 @@ const REPLAY_STORYBOARD_PRESET_WIDTH: Record<ReplayStoryboardViewerSize, number>
   large: 544,
 };
 const REPLAY_STORYBOARD_CONTROL_BUTTON =
-  "flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/10 text-white/70 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/10";
+  "flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--foreground)]/10 text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/20 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-[var(--foreground)]/10";
 
 function clampReplayStoryboardWidth(width: number): number {
   const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
@@ -259,19 +259,21 @@ function ReplayStoryboardMedia({
         data-game-section="replay-storyboard"
         className={cn(
           GAME_SECTION_CLASS,
-          "overflow-hidden rounded-xl border border-white/15 bg-black/80 text-white shadow-2xl backdrop-blur-md",
+          "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/80 text-[var(--foreground)] shadow-2xl backdrop-blur-md",
         )}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-          <span className="truncate text-[0.6875rem] font-semibold uppercase tracking-wide text-white/75">
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+          <span className="truncate text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--foreground)]/75">
             {localizeUi("ui.game.gamesurfacecomponent.storyboard")}
           </span>
-          <span className="shrink-0 text-[0.625rem] text-white/45">{formatReplayStoryboardSectionLabel(frame)}</span>
+          <span className="shrink-0 text-[0.625rem] text-[var(--foreground)]/45">
+            {formatReplayStoryboardSectionLabel(frame)}
+          </span>
         </div>
         <div className="bg-black">{media}</div>
         <div className="space-y-1.5 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="min-w-0 truncate text-xs font-semibold text-white/90">
+            <p className="min-w-0 truncate text-xs font-semibold text-[var(--foreground)]/90">
               {frame.title || storyboard?.title || "Storyboard turn"}
             </p>
             <div className="flex shrink-0 items-center gap-1">
@@ -342,14 +344,14 @@ function ReplayStoryboardMedia({
                 <Maximize2 size={13} />
               </button>
               {storyboard?.keyframes.length ? (
-                <span className="ml-1 shrink-0 text-[0.625rem] text-white/45">
+                <span className="ml-1 shrink-0 text-[0.625rem] text-[var(--foreground)]/45">
                   {framePosition + 1}/{storyboard.keyframes.length}
                 </span>
               ) : null}
             </div>
           </div>
           {frame.anchorQuote || frame.narrationBeat ? (
-            <p className="line-clamp-2 text-[0.6875rem] leading-4 text-white/60">
+            <p className="line-clamp-2 text-[0.6875rem] leading-4 text-[var(--foreground)]/60">
               {frame.anchorQuote || frame.narrationBeat}
             </p>
           ) : null}
@@ -361,7 +363,7 @@ function ReplayStoryboardMedia({
                   className={
                     candidate.id === frame.id
                       ? "h-1 flex-1 rounded-full bg-[var(--primary)]"
-                      : "h-1 flex-1 rounded-full bg-white/15"
+                      : "h-1 flex-1 rounded-full bg-[var(--foreground)]/15"
                   }
                 />
               ))}
@@ -535,7 +537,7 @@ export function GameSessionReplay({
           data-game-section="replay-status"
           className={cn(
             GAME_SECTION_CLASS,
-            "flex items-center gap-2 rounded-xl border border-white/15 bg-black/70 px-4 py-3 text-sm text-white/80 shadow-lg",
+            "flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/70 px-4 py-3 text-sm text-[var(--foreground)]/80 shadow-lg",
           )}
         >
           <Loader2 size={15} className="animate-spin" />
@@ -560,14 +562,14 @@ export function GameSessionReplay({
           data-game-section="replay-status"
           className={cn(
             GAME_SECTION_CLASS,
-            "max-w-md rounded-xl border border-white/15 bg-black/75 px-5 py-4 text-center shadow-lg",
+            "max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)]/75 px-5 py-4 text-center shadow-lg",
           )}
         >
-          <History size={22} className="mx-auto text-white/55" />
-          <h2 className="mt-3 text-sm font-semibold text-white">
+          <History size={22} className="mx-auto text-[var(--foreground)]/55" />
+          <h2 className="mt-3 text-sm font-semibold text-[var(--foreground)]">
             {localizeUi("ui.game.gamesessionreplay.replayUnavailable")}
           </h2>
-          <p className="mt-1 text-xs leading-relaxed text-white/60">
+          <p className="mt-1 text-xs leading-relaxed text-[var(--foreground)]/60">
             {replayError?.message || "This session does not contain any replayable GM turns."}
           </p>
           <button
@@ -603,8 +605,8 @@ export function GameSessionReplay({
   const inputSlot = turnComplete ? (
     replayComplete ? (
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--foreground)]/75 dark:text-white/75">
-          <Check size={13} className="text-emerald-400" />
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--foreground)]/75 dark:text-[var(--foreground)]/75">
+          <Check size={13} className="text-[var(--success)]" />
           {localizeUi("ui.game.gamesessionreplay.sessionReplayComplete")}
         </div>
         <div className="flex items-center gap-2">
@@ -624,7 +626,7 @@ export function GameSessionReplay({
     ) : hasChoices ? (
       !recordedChoiceLabel ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <span className="text-xs text-amber-300/80">
+          <span className="text-xs text-[var(--warning)]/80">
             {localizeUi("ui.game.gamesessionreplay.theOriginalChoiceWasNotRecordedForThisTurn")}
           </span>
           <button type="button" onClick={advance} className="mari-chrome-control px-3 py-1.5 text-xs">
@@ -662,7 +664,7 @@ export function GameSessionReplay({
           data-game-section="replay-bar"
           className={cn(
             GAME_SECTION_CLASS,
-            "flex min-w-0 items-center gap-2 rounded-xl border border-white/15 bg-black/70 px-3 py-2 text-white shadow-lg backdrop-blur-md",
+            "flex min-w-0 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/70 px-3 py-2 text-[var(--foreground)] shadow-lg backdrop-blur-md",
           )}
         >
           <History size={14} className="shrink-0 text-[var(--primary)]" />
@@ -670,7 +672,7 @@ export function GameSessionReplay({
             <div className="truncate text-xs font-semibold">
               {localizeUi("game.toolbar.session")} {sessionNumber} {localizeUi("ui.game.gamesessionreplay.replay")}
             </div>
-            <div className="text-[0.625rem] text-white/55">
+            <div className="text-[0.625rem] text-[var(--foreground)]/55">
               {localizeUi("ui.game.gamesurfacecomponent.turn")} {turnIndex + 1} {localizeUi("ui.noodle.noodlehome.of")}{" "}
               {turns.length} {localizeUi("ui.game.gamesessionreplay.readOnly")}
             </div>
@@ -679,7 +681,7 @@ export function GameSessionReplay({
         <button
           type="button"
           onClick={exitReplay}
-          className="mari-chat-style-control mari-game-scene-control flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-black/70 text-white/70 shadow-lg backdrop-blur-md transition-colors hover:bg-black/85 hover:text-white"
+          className="mari-chat-style-control mari-game-scene-control flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card)]/70 text-[var(--foreground)]/70 shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--card)]/85 hover:text-[var(--foreground)]"
           title={localizeUi("ui.game.gamesessionreplay.returnToCurrentSession")}
           aria-label={localizeUi("ui.game.gamesessionreplay.returnToCurrentSession")}
         >

@@ -95,7 +95,11 @@ test("a long Mari chat opens at its newest turn and reopens at once", async ({ p
       await route.continue();
       chatsListAnsweredAt = Date.now();
     });
-    await page.keyboard.press("Control+j");
+    const mariShortcut = await page.evaluate(async () => {
+      const { isApplePlatform } = await import("/src/lib/command-center.ts" as string);
+      return isApplePlatform() ? "Meta+j" : "Control+j";
+    });
+    await page.keyboard.press(mariShortcut);
     const pane = page.locator('[data-component="GlobalOmnibar.Mari"]');
     await expect(pane.getByText(NEWEST)).toBeInViewport({ timeout: 20_000 });
     expect(messagesRequestedAt, "the messages were requested").toBeGreaterThan(0);
@@ -111,7 +115,7 @@ test("a long Mari chat opens at its newest turn and reopens at once", async ({ p
       await new Promise((resolve) => setTimeout(resolve, 5_000));
       await route.continue().catch(() => undefined);
     });
-    await page.keyboard.press("Control+j");
+    await page.keyboard.press(mariShortcut);
     await expect(pane.getByText(NEWEST)).toBeInViewport({ timeout: 2_500 });
     await expect(pane.locator('.mari-transcript-stack[data-history="loading"]')).toHaveCount(0);
     // No skeleton to cross-fade from, so the cached thread does not fade in again.

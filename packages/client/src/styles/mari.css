@@ -1223,9 +1223,10 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 
 /* The omnibar and Professor Mari sit above every app overlay (the game setup wizard, lightboxes,
    dialogs, capability screens, help overlays). Their own portalled popovers use this layer + 1; a
-   `Modal` opened while the omnibar is open uses this layer and wins by DOM order. Only the sonner
-   toaster (999999999, so Undo stays visible) and user extension windows/menus (~2^31) sit higher.
-   Pinned by scripts/regressions/command-center.regression.ts. */
+   `Modal` opened while the omnibar is open, and every app dialog (alert, confirm, prompt, choice,
+   so one a package opens shows above the package's own screen), uses this layer and wins by DOM
+   order. Only the sonner toaster (999999999, so Undo stays visible) and user extension
+   windows/menus (~2^31) sit higher. Pinned by scripts/regressions/command-center.regression.ts. */
 :root {
   --mari-layer-omnibar: 100000;
 }

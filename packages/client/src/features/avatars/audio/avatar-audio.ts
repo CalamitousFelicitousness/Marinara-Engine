@@ -6,7 +6,8 @@
 // voice lookup resolved for the line (TTSSpeakRequest.characterId). Lines read by the narrator or by a speaker
 // who is not a chat character move no mouth. A reading moves avatars only in the chat it was requested in
 // (TTSSpeakOptions.chatId), whichever chat is open when the clip starts playing; a reading with no chat moves none.
-// The level is the clip's loudness track (voice-envelope.ts) read at the playback element's current time. The
+// The level is the clip's loudness track (voice-envelope.ts) read at the playback element's current time, and the
+// line is the clip's text with how far through it the voice is, so moods can follow the voice. The
 // element is never connected to Web Audio, so playback and the Safari/iOS autoplay handling in lib/tts-service.ts
 // stay as they are. The director subscribes; nothing else does.
 import type { AvatarAudioLevelSource, AvatarAudioListener } from "../contract";
@@ -40,7 +41,7 @@ function createSource(ownerId: string): AvatarAudioLevelSource {
     const playback = ttsService.getPlayback();
     if (published !== source || !playback || speakingCharacter(playback) !== ownerId) return null;
     const envelope = envelopeFor(playback.blob);
-    return envelope && envelope !== "pending" ? { element: playback.element, envelope } : null;
+    return envelope && envelope !== "pending" ? { element: playback.element, envelope, text: playback.text } : null;
   };
   const source: AvatarAudioLevelSource = {
     ownerId,
@@ -51,6 +52,13 @@ function createSource(ownerId: string): AvatarAudioLevelSource {
     viseme: () => {
       const clip = current();
       return clip ? voiceVisemeAt(clip.envelope, clip.element.currentTime) : null;
+    },
+    // How far through the clip the voice is, by the decoded length (the element's duration can be Infinity).
+    line: () => {
+      const clip = current();
+      const seconds = clip ? clip.envelope.levels.length * clip.envelope.stepSeconds : 0;
+      if (!clip || seconds <= 0) return null;
+      return { text: clip.text, progress: Math.min(1, Math.max(0, clip.element.currentTime / seconds)) };
     },
     // False while the clip decodes or when it cannot be decoded, so the director keeps its own mouth timing.
     isPlaying: () => {

@@ -1271,6 +1271,7 @@ export function TacticalCombatUI({
       <div
         ref={chromeRef}
         data-game-section="tactical-status"
+        data-chat-window-top-obstacle
         className={cn(GAME_SECTION_CLASS, "z-20 flex shrink-0 flex-col")}
       >
         {/* Top bar: round/phase + controls */}

@@ -8927,8 +8927,6 @@ function GameSurfaceComponent({
   }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
   const topOverlayOffsetClass = "top-3";
-  // Tactical combat's bar takes the top of the chat (top-14 against top-3): the control bubbles start below it.
-  const controlRowOffset = tacticalCombatActive ? 44 : 0;
   const queuedCombatMatchesLatest =
     !!queuedCombatGeneration?.messageId &&
     !!latestAssistantMsg?.id &&
@@ -13946,7 +13944,6 @@ function GameSurfaceComponent({
 
       {!introCinematicActive && !replayActive && !experienceOwnsGame && (
         <MobileMapButton
-          rowOffset={controlRowOffset}
           chatId={activeChatId}
           map={viewedMap}
           maps={availableMaps}
@@ -13971,7 +13968,6 @@ function GameSurfaceComponent({
       {!introCinematicActive && !replayActive && !experienceOwnsGame && (
         <GamePartyBar
           key={activeChatId}
-          rowOffset={controlRowOffset}
           partyMembers={partyMembers}
           partyCards={partyCards}
           onRemovePartyMember={handleRemovePartyMemberFromBar}
@@ -13984,7 +13980,6 @@ function GameSurfaceComponent({
       {!introCinematicActive && !replayActive && (
         <>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.gameControls}
             title={t("chat.controls.gameControls")}
             icon={
@@ -14033,7 +14028,6 @@ function GameSurfaceComponent({
             </div>
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.session}
             title={t("game.toolbar.session")}
             icon={<Feather size={14} />}
@@ -14046,7 +14040,6 @@ function GameSurfaceComponent({
             {renderSessionPanel()}
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.volume}
             title={t("game.toolbar.volume")}
             icon={audioMuted || masterVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -14072,7 +14065,6 @@ function GameSurfaceComponent({
             />
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.assets}
             title={t("game.toolbar.assets")}
             icon={<Folder size={14} />}
@@ -14085,11 +14077,7 @@ function GameSurfaceComponent({
             {renderGameAssetsPanel()}
           </ChatControlWindow>
           {onSwitchChat ? (
-            <ChatConnectedChatWindow
-              name={connectedChatName}
-              onSwitch={handleSwitchConnectedChat}
-              rowOffset={controlRowOffset}
-            />
+            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} />
           ) : null}
         </>
       )}

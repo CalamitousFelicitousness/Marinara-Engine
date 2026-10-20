@@ -4018,6 +4018,8 @@ function mechanicsAction(
   if (mechanics.drain) action.drain = { ...mechanics.drain };
   if (mechanics.leavesAtLeast !== undefined) action.leavesAtLeast = mechanics.leavesAtLeast;
   if (mechanics.targetHolds) action.targetHolds = structuredClone(mechanics.targetHolds);
+  // Not while it holds somebody so (1.662): not while grappling.
+  if (mechanics.unlessImposing) action.unlessImposing = [...mechanics.unlessImposing];
   // One cure of several (1.204), picked like a weapon's mode: a condition, a track, or the maximum.
   if (mechanics.cureOneOf) {
     action.cureOneOf = true;
@@ -4903,6 +4905,7 @@ function blockActions(
         }
       : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
+    ...(action.unlessImposing ? { unlessImposing: [...action.unlessImposing] } : {}),
     ...(perCell !== undefined && action.push !== undefined ? { push: rulesetInCells(action.push, perCell) } : {}),
     ...(perCell !== undefined && action.pull !== undefined ? { pull: rulesetInCells(action.pull, perCell) } : {}),
     ...(action.onFell ? { onFell: structuredClone(action.onFell) } : {}),

@@ -263,6 +263,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // What it dealt comes back to it (1.281): an aboleth's Psychic Drain.
     ...(action.drain ? { drain: { ...action.drain } } : {}),
     ...(action.targetHolds ? { targetHolds: structuredClone(action.targetHolds) } : {}),
+    ...(action.unlessImposing ? { unlessImposing: [...action.unlessImposing] } : {}),
     ...(action.range !== undefined ? { range: action.range } : {}),
     ...(action.area ? { area: { ...action.area } } : {}),
     ...(action.uses ? { uses: { ...action.uses } } : {}),

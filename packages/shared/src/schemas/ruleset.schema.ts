@@ -7168,6 +7168,9 @@ const catalogMechanicsObject = z
     leavesAtLeast: z.number().int().min(1).max(100000).optional(),
     /** Offered only on a target that holds one of these (Capability API 1.235). */
     targetHolds: targetHoldsSchema.optional(),
+    /** Offered only while its user has put none of these on anybody still holding it (Capability API
+     *  1.662): not while grappling, `["grappled"]`. */
+    unlessImposing: uniqueIds(8).optional(),
     /** Brings back whoever died no more than `withinRounds` rounds ago, with `health` (1.176): 5e's
      *  Revivify, within 10 rounds with 1 hit point. It is pointed only at them. */
     revives: z
@@ -8607,6 +8610,9 @@ const creatureActionFullSchema = z
     drain: drainSchema.optional(),
     /** Offered only on a target that holds one of these (Capability API 1.235). */
     targetHolds: targetHoldsSchema.optional(),
+    /** Offered only while the creature has put none of these on anybody still holding it (Capability
+     *  API 1.662): an ankheg's Acid Spray, "only while not grappling", `["grappled"]`. */
+    unlessImposing: uniqueIds(8).optional(),
     /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
      *  own to borrow the number from. */
     saveDifficulty: z.number().int().min(0).max(1000).optional(),

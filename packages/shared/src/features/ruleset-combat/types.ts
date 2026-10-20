@@ -625,6 +625,8 @@ export interface RulesetStatBlockAction {
   drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.235). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
+  /** Offered only while its maker has put none of these on anybody still holding it (1.662). */
+  unlessImposing?: string[];
   /** What it adds after a straight run at its target this turn (1.186). */
   charge?: RulesetCombatCharge;
   /** What a save that ENDS one of `applies` is rolled against, when the action has no save of its
@@ -932,6 +934,9 @@ export interface RulesetCombatAction {
   drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.235). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
+  /** Offered only while its user has put none of these on anybody still holding it (1.662): an
+   *  ankheg's Acid Spray, not while grappling. */
+  unlessImposing?: string[];
   toHit?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */

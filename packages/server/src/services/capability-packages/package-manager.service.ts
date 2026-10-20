@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An action offered only while its user holds nobody so (1.662): an ankheg's Acid Spray. */
+function carriesUnlessImposing662(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUnlessImposing662(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.unlessImposing !== undefined) return true;
+  return featureValues(record).some((one) => carriesUnlessImposing662(one, depth + 1));
+}
+
 /** A condition held only on ground it names (1.661): a vampire in running water. */
 function carriesHeldOnGround661(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8785,6 +8795,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An action offered only while its user holds nobody so, 1.662.
+  if (
+    !declaresApi(662) &&
+    (carriesUnlessImposing662(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUnlessImposing662(document)))
+  )
+    return "A ruleset with an action offered only while its user holds nobody so (unlessImposing) requires schemaVersion 2 and capabilityApi 1.662 or newer";
   // A condition held only on ground it names, 1.661.
   if (
     !declaresApi(661) &&

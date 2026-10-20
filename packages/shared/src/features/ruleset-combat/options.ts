@@ -1738,6 +1738,21 @@ export function rulesetPaidLevel(
   return at < 0 ? 0 : at + 1;
 }
 
+/** Whether somebody has put one of these conditions on anybody else still holding it (1.662): who
+ *  is grappling. */
+export function rulesetImposes(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  conditions: readonly string[],
+): boolean {
+  return state.combatants.some(
+    (one) =>
+      one.id !== actor.id &&
+      !one.defeated &&
+      one.tracked.some((entry) => entry.source === actor.id && conditions.includes(entry.condition)),
+  );
+}
+
 /** How a cast counts under the bonus-action spell rule (1.657): with the rule's own budget, as what
  *  it still allows, or otherwise; undefined for no spell of its catalogs, or with no rule. */
 export function rulesetBonusSpellKind(
@@ -3499,6 +3514,8 @@ function optionFrom(
     })
   )
     return null;
+  // Not while its user holds somebody so (1.662): an ankheg's Acid Spray, not while grappling.
+  if (action.unlessImposing && rulesetImposes(state, actor, action.unlessImposing)) return null;
   // Only once the attack action has been taken this turn (1.242): Flurry of Blows.
   if (action.afterAttack && !rulesetTookAttackAction(actor, action.afterAttack)) return null;
   // Only on its holder's own turn before they have attacked in it (1.247): Reckless Attack.

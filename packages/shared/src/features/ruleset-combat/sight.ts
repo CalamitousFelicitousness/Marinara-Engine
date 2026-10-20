@@ -798,9 +798,13 @@ function sees(
     if (light === "dim") return dark.seeIn || !clearly;
     return dark.seeIn && !clearly;
   };
+  // A sense that sees through solid matter (1.666) looks past the walls within its range.
+  const xray = (combat.senses ?? []).some(
+    (sense) => sense.throughWalls && (!sightless || sense.blind) && (ranges[sense.id] ?? 0) >= away,
+  );
   // Any cell the viewer fills to any cell the seen one does (1.194): one clear line is enough.
   const clear = (a: RulesetCombatCell, b: RulesetCombatCell) => {
-    if (!rulesetLineOfSight(grid, a, b) || !lit(b)) return false;
+    if ((!xray && !rulesetLineOfSight(grid, a, b)) || !lit(b)) return false;
     if (fogs.length === 0) return true;
     const line = cellsBetween(a, b).map((cell) => `${cell.x},${cell.y}`);
     return fogs.every((fog) => !line.some((key) => fog.cells.has(key)) || pierces(fog.pierced));

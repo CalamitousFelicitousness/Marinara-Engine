@@ -2740,6 +2740,13 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A sense that sees through walls (1.666): 5e's X-ray vision. */
+function carriesThroughWalls666(value: unknown): boolean {
+  const combat = plainRecord(plainRecord(value)?.combat);
+  const senses = combat?.senses;
+  return Array.isArray(senses) && senses.some((sense) => plainRecord(sense)?.throughWalls !== undefined);
+}
+
 /** A condition braced against forced movement (1.665): Dwarven Plate. */
 function carriesPushReduced665(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8825,6 +8832,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A sense that sees through walls, 1.666.
+  if (
+    !declaresApi(666) &&
+    (carriesThroughWalls666(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesThroughWalls666(document)))
+  )
+    return "A ruleset with a sense that sees through walls (combat.senses[].throughWalls) requires schemaVersion 2 and capabilityApi 1.666 or newer";
   // A condition braced against forced movement, 1.665.
   if (
     !declaresApi(665) &&

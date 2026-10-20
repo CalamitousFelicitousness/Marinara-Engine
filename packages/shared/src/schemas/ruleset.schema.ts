@@ -12689,6 +12689,7 @@ export interface RulesetCombatSense {
   sheet?: RulesetValueRef;
   blind?: true;
   seesTrue?: true;
+  throughWalls?: true;
 }
 /** Conditions kept off when a creature that is `from` puts them on (1.191). */
 export interface RulesetConditionImmunityFrom {
@@ -12706,6 +12707,9 @@ const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = 
      *  image (`calls.illusion`) is never taken for a creature, and illusory duplicates (`duplicates`)
      *  draw nothing from it. 5e's Witch Sight. */
     seesTrue: z.literal(true).optional(),
+    /** It sees into and through solid matter (Capability API 1.666), within its range: a wall
+     *  between keeps nothing from it. 5e's X-ray vision (Ring of X-ray Vision). */
+    throughWalls: z.literal(true).optional(),
   })
   .strict();
 

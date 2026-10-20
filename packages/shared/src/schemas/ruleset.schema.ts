@@ -6605,7 +6605,9 @@ export const catalogCallsSchema = z
     illusion: z.literal(true).optional(),
     /** Which of its `options` comes is rolled as it is used, never picked (Capability API 1.506), each
      *  as likely as its `weight` against the rest (1 unless it says): a Bag of Tricks' d8 of beasts, an
-     *  Efreeti Bottle's d100. Each option names one `creature`, or calls nobody (`none`). */
+     *  Efreeti Bottle's d100. Each option names one `creature`, or calls nobody (`none`). Or which of
+     *  what it reads `from` a catalog (Capability API 1.695), each as likely: one chosen for its user,
+     *  as a Necklace of Prayer Beads' Planar Ally's deity chooses. */
     rolled: z.literal(true).optional(),
     /** An item's rolled call keeps what it first rolled (Capability API 1.538), the same option coming
      *  at each later use: an Efreeti Bottle, "the same effect occurs". */
@@ -6670,8 +6672,12 @@ export const catalogCallsSchema = z
   })
   .strict()
   .superRefine((calls, ctx) => {
-    if (calls.rolled && !calls.options)
-      ctx.addIssue({ code: "custom", path: ["rolled"], message: 'A rolled call rolls among its "options"' });
+    if (calls.rolled && !calls.options && !calls.from)
+      ctx.addIssue({
+        code: "custom",
+        path: ["rolled"],
+        message: 'A rolled call rolls among its "options", or among what it reads "from" a catalog',
+      });
     // An item's rolled call kept, counted and spent (1.538).
     if ((calls.keepsRoll || calls.lifetimeUses !== undefined) && !calls.rolled)
       ctx.addIssue({
@@ -11458,6 +11464,7 @@ export interface RulesetItemMoreUse {
     rolled?: string;
     recharge?: RulesetItemRechargeRule;
   };
+  usesOf?: string;
 }
 const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = z
   .object({
@@ -11481,6 +11488,10 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
       })
       .strict()
       .optional(),
+    /** Spends another further use's own count, by its label, in place of a count of its own
+     *  (Capability API 1.694): offered while that one has any left. A Necklace of Prayer Beads' bead
+     *  of curing, Cure Wounds or Lesser Restoration off one bead. */
+    usesOf: promptSafeText(40).optional(),
   })
   .strict();
 
@@ -21759,11 +21770,24 @@ function itemIssues(
   if (rolledKinds) {
     if (!item.moreUses || rolledKinds.weights.length !== item.moreUses.length)
       add([...at, "moreUsesRolled", "weights"], "Rolled counts weigh each further use, one weight apiece");
-    else if (item.moreUses.some((more) => !more.uses))
-      add([...at, "moreUsesRolled"], "Rolled counts are counts of further uses that count their own uses");
+    else if (item.moreUses.some((more, n) => (more.usesOf ? rolledKinds.weights[n] !== 0 : !more.uses)))
+      add(
+        [...at, "moreUsesRolled"],
+        "Rolled counts are counts of further uses that count their own uses; one spending another's weighs 0",
+      );
     if (rolledKinds.weights.every((weight) => weight === 0))
       add([...at, "moreUsesRolled", "weights"], "Rolled counts weigh some further use above nothing");
   }
+  // Spending another's count (1.694): one that counts its own, and none of its own beside it.
+  item.moreUses?.forEach((more, index) => {
+    if (more.usesOf === undefined) return;
+    const wanted = more.usesOf.trim().toLowerCase();
+    const other = item.moreUses!.find((one) => one !== more && one.label.trim().toLowerCase() === wanted);
+    if (more.uses)
+      add([...at, "moreUses", index, "usesOf"], "A further use counts its own uses or spends another's, not both");
+    else if (!other?.uses || other.usesOf !== undefined)
+      add([...at, "moreUses", index, "usesOf"], `No further use "${more.usesOf}" that counts its own uses`);
+  });
   item.moreUses?.forEach((more, index) => {
     if (more.use.label !== undefined)
       add([...at, "moreUses", index, "use", "label"], "A further use is named by its own label");

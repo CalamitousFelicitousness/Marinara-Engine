@@ -2742,6 +2742,28 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A further use spending another's count (1.694): a bead of curing. */
+function carriesUsesOf694(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesUsesOf694(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const more = plainRecord(record.item)?.moreUses;
+  if (Array.isArray(more) && more.some((one) => plainRecord(one)?.usesOf !== undefined)) return true;
+  return featureValues(record).some((one) => carriesUsesOf694(one, depth + 1));
+}
+
+/** A call rolled among what it reads from a catalog (1.695): a bead's Planar Ally. */
+function carriesRolledFromCall695(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRolledFromCall695(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const calls = plainRecord(record.calls);
+  if (calls?.rolled !== undefined && calls.from !== undefined) return true;
+  return featureValues(record).some((one) => carriesRolledFromCall695(one, depth + 1));
+}
+
 /** Further uses' counts rolled for each stack (1.693): a Necklace of Prayer Beads. */
 function carriesMoreUsesRolled693(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9110,6 +9132,20 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call rolled among what it reads from a catalog, 1.695.
+  if (
+    !declaresApi(695) &&
+    (carriesRolledFromCall695(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRolledFromCall695(document)))
+  )
+    return "A ruleset with a call rolled among what it reads from a catalog (calls.rolled with calls.from) requires schemaVersion 2 and capabilityApi 1.695 or newer";
+  // A further use that spends another's count, 1.694.
+  if (
+    !declaresApi(694) &&
+    (carriesUsesOf694(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesUsesOf694(document)))
+  )
+    return "A ruleset with a further use that spends another's count (moreUses[].usesOf) requires schemaVersion 2 and capabilityApi 1.694 or newer";
   // An item whose further uses' counts are rolled for each stack, 1.693.
   if (
     !declaresApi(693) &&

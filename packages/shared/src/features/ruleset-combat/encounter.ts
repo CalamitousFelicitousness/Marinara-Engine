@@ -90,6 +90,7 @@ import {
   rollRulesetDice,
   rulesetAverageDamage,
   rulesetCombatRoller,
+  rulesetMoreUsesOf,
   rulesetOwnUsesMax,
   sumOf,
 } from "./dice.js";
@@ -2441,10 +2442,14 @@ function itemUseActions(
         `use:${index}:${n + 1}`,
         more.use,
         more.label,
-        // Its own count, rolled for its stack where it is (1.483).
-        more.uses
-          ? { more: n + 1, max: rulesetOwnUsesMax(more.uses, held.stack?.id, n + 1, item.moreUsesRolled) }
-          : undefined,
+        // Its own count, rolled for its stack where it is (1.483), or another's it spends (1.694).
+        (() => {
+          const at = more.usesOf ? rulesetMoreUsesOf(item, more) : n;
+          const counted = at >= 0 ? item.moreUses![at]!.uses : undefined;
+          return counted
+            ? { more: at + 1, max: rulesetOwnUsesMax(counted, held.stack?.id, at + 1, item.moreUsesRolled) }
+            : undefined;
+        })(),
       ),
     );
     // Other uses' effects beside one (1.482), by the ids they were built under: Thunder and Lightning.
@@ -6369,6 +6374,21 @@ function fillCatalogCallsAsWritten(
       return needs <= 20 ? [{ ref, fromStep: Math.max(least, needs) }] : [];
     });
   const many = (count: RulesetCatalogCalls["count"]) => (count?.dice ? count.dice : String(count?.flat ?? 1));
+  // Rolled among what it reads (1.695), never picked: a bead's Planar Ally, the deity choosing.
+  if (calls.from && calls.count && calls.rolled) {
+    const rows = matching(calls.from, calls.upTo).flatMap(({ ref }, index) => {
+      const call = found(ref, calls.count);
+      return call ? [{ weight: 1, label: `${call.name} ×${many(calls.count)}`, call, index: index + 1 }] : [];
+    });
+    if (rows[0]) {
+      delete action.callChoice;
+      action.calls = rows[0].call;
+      action.callsRolled = rows;
+      if (calls.keepsRoll) action.callsRollKept = true;
+      if (calls.lifetimeUses !== undefined) action.callsLifetime = calls.lifetimeUses;
+    }
+    return;
+  }
   if (calls.from && calls.count) {
     const count = calls.count;
     action.modes = matching(calls.from, calls.upTo).flatMap(({ ref, fromStep }) => {

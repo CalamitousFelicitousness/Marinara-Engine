@@ -21,7 +21,12 @@ import type {
   RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
-import { parseRulesetCombatDice, rulesetChargesStart, rulesetOwnUsesMax } from "../ruleset-combat/dice.js";
+import {
+  parseRulesetCombatDice,
+  rulesetChargesStart,
+  rulesetMoreUsesOf,
+  rulesetOwnUsesMax,
+} from "../ruleset-combat/dice.js";
 import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
 import {
   rollRulesetCheckModifiers,
@@ -170,11 +175,13 @@ export function useRulesetItemOutsideFight(input: {
     const now = Math.min(max, stack.charges ?? rulesetChargesStart(facts!.charges!, max, stack.id));
     if (now < use.charges) return { ok: false, reason: "none-left" };
   }
-  // Its own uses (1.466), kept on the stack by its place.
-  const own = chosen?.uses;
+  // Its own uses (1.466), kept on the stack by its place, or another's it spends (1.694).
+  const ownPlace = chosen?.usesOf ? rulesetMoreUsesOf(item, chosen) + 1 : input.more;
+  if (chosen?.usesOf && !ownPlace) return { ok: false, reason: "no-use" };
+  const own = chosen?.usesOf ? item.moreUses![ownPlace! - 1]!.uses : chosen?.uses;
   // Its most, rolled for this stack where it is (1.483).
-  const ownMax = own ? rulesetOwnUsesMax(own, stack.id, input.more!, item.moreUsesRolled) : undefined;
-  const ownNow = own ? Math.min(ownMax!, stack.usesLeft?.[String(input.more)] ?? ownMax!) : undefined;
+  const ownMax = own ? rulesetOwnUsesMax(own, stack.id, ownPlace!, item.moreUsesRolled) : undefined;
+  const ownNow = own ? Math.min(ownMax!, stack.usesLeft?.[String(ownPlace)] ?? ownMax!) : undefined;
   if (ownNow !== undefined && ownNow < 1) return { ok: false, reason: "none-left" };
 
   // Its gate first, as a fight rolls it once the item is spent: failed, the item is spent below and
@@ -358,7 +365,7 @@ export function useRulesetItemOutsideFight(input: {
     againSaid = { save: save?.label ?? again.save.save, ...rolled, harms };
   }
   const usesLeftNow = {
-    ...(ownNow !== undefined ? { [String(input.more)]: ownNow - 1 } : {}),
+    ...(ownNow !== undefined ? { [String(ownPlace)]: ownNow - 1 } : {}),
     ...(again ? { a: Math.min(100, usedBefore + 1) } : {}),
   };
 

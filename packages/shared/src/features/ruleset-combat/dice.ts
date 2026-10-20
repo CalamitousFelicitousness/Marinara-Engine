@@ -55,6 +55,19 @@ export function rulesetOwnUsesMax(
   return Math.max(1, Math.min(uses.max, total));
 }
 
+/** The place in `moreUses` (from 0) of the further use whose count one spends (1.694), by its
+ *  `usesOf` label: one that counts its own. -1 where there is none. */
+export function rulesetMoreUsesOf(
+  item: { moreUses?: ReadonlyArray<{ label: string; uses?: unknown; usesOf?: string }> },
+  more: { usesOf?: string },
+): number {
+  const wanted = more.usesOf?.trim().toLowerCase();
+  if (!wanted) return -1;
+  return (item.moreUses ?? []).findIndex(
+    (one) => one !== more && !!one.uses && !one.usesOf && one.label.trim().toLowerCase() === wanted,
+  );
+}
+
 /** The pieces rolled for one stack of an item with `moreUsesRolled` (1.693), each the place (from 0) of
  *  the further use it was picked for: the count thrown and each pick made from the stack's id, so the
  *  stack keeps what it was made with. */

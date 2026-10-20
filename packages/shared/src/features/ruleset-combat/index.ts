@@ -93,6 +93,7 @@ export {
   rollRulesetDice,
   rulesetOwnUsesMax,
   rulesetRolledPieces,
+  rulesetMoreUsesOf,
   rulesetChargesStart,
   rulesetFoundStored,
   rulesetAverageAmount,

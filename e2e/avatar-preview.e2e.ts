@@ -189,6 +189,8 @@ test("avatar crop handles stay whole and draggable on a square image", async ({ 
     // Keep that source of overflow covered on local browsers too, without clipping the crop handles.
     await page.addStyleTag({ content: ".mari-editor-content select { font-family: Verdana, sans-serif; }" });
     expect(await sidewaysScroller(), "wide dropdown options must not make the editor scroll sideways").toBeNull();
+    // The changed font can reflow content and move the grip below the phone viewport.
+    await frame.evaluate((element) => element.scrollIntoView({ block: "center" }));
 
     // Grab the outer edge of the bottom-right handle, the part that used to be clipped, and shrink the crop.
     const before = await frame.boundingBox();

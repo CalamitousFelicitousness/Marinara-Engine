@@ -174,7 +174,11 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
   // Another seed: the hand edits were made for this one, so they are left out.
   const seed = wizard.getByLabel("World seed", { exact: true });
   // Save file restores focus while its toast exits; let that finish before editing the seed.
-  await expect(page.locator('[data-sonner-toast][data-removed="true"]')).toHaveCount(0);
+  await expect(
+    page.locator("[data-sonner-toast]").filter({
+      has: page.getByRole("button", { name: "Save file", exact: true, includeHidden: true }),
+    }),
+  ).toHaveCount(0);
   await seed.scrollIntoViewIfNeeded();
   await seed.click();
   await expect(seed).toBeFocused();

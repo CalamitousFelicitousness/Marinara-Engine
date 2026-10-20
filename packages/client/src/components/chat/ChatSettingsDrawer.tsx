@@ -15,6 +15,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { toast } from "sonner";
 import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
@@ -980,6 +981,7 @@ export function ChatSettingsDrawer({
   onOpenScheduleEditor,
 }: ChatSettingsDrawerProps) {
   const { t: localizeUi } = useUiTranslation();
+  const localizeText = useLocalizedUiText();
   const { t } = useTranslation();
   const qc = useQueryClient();
   // Popped-out sections render from here, so the settings stay live while any of them is open.
@@ -10806,7 +10808,7 @@ export function ChatSettingsDrawer({
             {agentAddIntervalMeta && agentAddPreview.runInterval != null && (
               <div className="space-y-1.5">
                 <label className="block text-[0.6875rem] font-semibold text-[var(--foreground)]">
-                  {agentAddIntervalMeta.label}
+                  {localizeText(agentAddIntervalMeta.label)}
                 </label>
                 <div className="flex items-center gap-3">
                   {agentAddPreview.agent.builtIn ? (

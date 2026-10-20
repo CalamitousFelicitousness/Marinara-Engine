@@ -3483,6 +3483,7 @@ export function AgentEditor() {
                   min={0}
                   max={MAX_ILLUSTRATOR_RUN_INTERVAL}
                   value={localVideoRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.videoRunInterval")}
                   onChange={(e) => {
                     setLocalVideoRunInterval(
                       e.target.value === "" ? "" : (normalizeIllustratorRunInterval(e.target.value) ?? ""),

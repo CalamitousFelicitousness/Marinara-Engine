@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { readFileSync } from "node:fs";
 import { acquireMariThreadLock, releaseMariThreadLock } from "./mari-thread-lock.js";
-import { seedUIState } from "./ui-state-fixture.js";
+import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -126,7 +126,14 @@ async function openMariWithProvider(
     await new Promise((resolve) => setTimeout(resolve, SHEET_DELAY_MS));
     await route.continue();
   });
-  await seedUIState(page, { hasCompletedOnboarding: true, rightPanelOpen: false, sidebarOpen: false });
+  // Other workers create newer connections on the shared server; this page must use its own provider.
+  await isolateSyncedUISettings(page);
+  await seedUIState(page, {
+    hasCompletedOnboarding: true,
+    rightPanelOpen: false,
+    sidebarOpen: false,
+    mariConnectionId: connectionId,
+  });
   await page.goto("/");
   await page
     .locator("main")

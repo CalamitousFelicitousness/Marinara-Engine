@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** Squeezing between walls, or a condition that moves as a smaller size (1.628): Amorphous. */
+function carriesSqueezing628(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSqueezing628(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.squeezesAs !== undefined || record.squeezing !== undefined) return true;
+  return featureValues(record).some((one) => carriesSqueezing628(one, depth + 1));
+}
+
 /** A condition whose holder shares spaces (1.627): a swarm. */
 function carriesSharesSpace627(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8415,6 +8425,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Squeezing between walls, or moving as a smaller size, 1.628.
+  if (
+    !declaresApi(628) &&
+    (carriesSqueezing628(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSqueezing628(document)))
+  )
+    return "A ruleset with squeezing, or a condition whose holder moves as a smaller size (sizes.squeezing, squeezesAs), requires schemaVersion 2 and capabilityApi 1.628 or newer";
   // A condition whose holder shares spaces, 1.627.
   if (
     !declaresApi(627) &&

@@ -210,6 +210,7 @@ export {
   rulesetJumpReach,
   rulesetHardLanding,
   rulesetPullPath,
+  rulesetSqueezeAt,
   rulesetPushPath,
   rulesetSees,
   rulesetWalkingDistances,

@@ -172,6 +172,7 @@ import {
   rulesetPositionOf,
   rulesetPathCells,
   rulesetPullPath,
+  rulesetSqueezeAt,
   rulesetPushPath,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
@@ -8848,6 +8849,36 @@ function pushTarget(
   return event;
 }
 
+/** Where a walk ends (1.628): squeezed into less of themselves between walls, with the ruleset's
+ *  condition for it, or back to their whole size once they fit again. */
+function settleSqueeze(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const at = rulesetPositionOf(actor);
+  if (!at || !ctx.combat.sizes) return;
+  const squeeze = rulesetSqueezeAt(ctx.definition, ctx.state, actor, at);
+  const condition = ctx.combat.sizes.squeezing?.condition;
+  if (squeeze) {
+    actor.squeezedFrom ??= rulesetSpanOf(actor);
+    actor.span = squeeze.span;
+    const held = condition && actor.tracked.some((entry) => entry.condition === condition);
+    if (squeeze.condition && !held)
+      applyConditionId(
+        ctx,
+        actor,
+        squeeze.condition,
+        { condition: squeeze.condition, duration: "instant" } as RulesetCombatApplies,
+        { sourceId: actor.id },
+      );
+    if (!squeeze.condition && held) removeCondition(ctx, actor, condition, "moved");
+    return;
+  }
+  if (actor.squeezedFrom === undefined) return;
+  actor.span = actor.squeezedFrom;
+  delete actor.squeezedFrom;
+  if (condition && actor.tracked.some((entry) => entry.condition === condition)) {
+    removeCondition(ctx, actor, condition, "moved");
+  }
+}
+
 /** Who hangs on to `holder` by a condition that `attaches` (1.623), still standing. */
 function attachedClingers(ctx: RulesetCombatContext, holder: RulesetCombatant): string[] {
   const rules = ctx.combat.conditions;
@@ -11603,8 +11634,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
           rulesetCellEnterCost(grid, cell.x, cell.y));
       const slowedStep = rulesetSlowedStep(grid, cell, plain, rulesetSlowedCells(ctx.state, actor), at, actor);
       const crowdedStep = rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
+      // Squeezed between walls (1.628), as the menu priced it.
+      const squeeze = rulesetSqueezeAt(ctx.definition, ctx.state, actor, cell);
       // Dragging somebody they hold (1.444), as the menu priced it.
-      spent += draggingNow.halves ? crowdedStep * 2 : crowdedStep;
+      spent += (draggingNow.halves ? crowdedStep * 2 : crowdedStep) * (squeeze?.costs ?? 1);
     } else spent += 1;
     walked.push(cell);
     // What a charge reads (1.186): where this turn's walking began, then each cell of it. A
@@ -11697,6 +11730,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   }
   if (!stopped && !rulesetCombatStanding(actor)) stopped = true;
   spendRulesetMovement(actor, spent);
+  settleSqueeze(ctx, actor);
   // Stopped on water they could only run across (1.379): it does not hold them up, and they come out
   // on the nearest open ground.
   let ashore: RulesetCombatCell | null = null;

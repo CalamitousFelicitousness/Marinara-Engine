@@ -2355,6 +2355,8 @@ export interface RulesetCombatant {
   /** How many cells a side it fills on the board, its own `x`/`y` the top-left one (1.194): its
    *  size's `cells`. Absent for one cell. */
   span?: number;
+  /** Their whole span while they stand squeezed into less (1.628), given back once they fit again. */
+  squeezedFrom?: number;
   /** Where a combatant without a sheet stands on the sheet's live tracks, by track id (1.115): the
    *  levels of `combat.levels` read these as a sheet's are read off its live state. */
   tracks?: Record<string, number>;

@@ -13141,6 +13141,10 @@ const combatConditionSchema = z
      *  anybody walks into and stops in its own. 5e's swarms, "can occupy another creature's space and
      *  vice versa", kept on with `keepsOn`. */
     sharesSpace: z.literal(true).optional(),
+    /** Its holder moves through any opening that fits a creature of this size (Capability API 1.628),
+     *  of `combat.sizes`, without squeezing: 5e's Amorphous, and a swarm's "any opening large enough
+     *  for a Tiny" creature, `"tiny"`. */
+    squeezesAs: sheetId.optional(),
     /** What its holder does to a creature whose space it enters, once a turn each (Capability API
      *  1.451): Fire Form. */
     entering: conditionEnteringSchema.optional(),
@@ -14118,6 +14122,7 @@ export interface RulesetCombatSizes {
   sheet?: RulesetValueRef;
   default?: string;
   passing?: { apart?: number; crowded?: number };
+  squeezing?: { costs: number; condition?: string };
 }
 const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = z
   .object({
@@ -14149,6 +14154,14 @@ const combatSizesSchema: z.ZodType<RulesetCombatSizes, z.ZodTypeDef, unknown> = 
       .refine((passing) => passing.apart !== undefined || passing.crowded !== undefined, {
         message: "passing says how far apart in size a foe may be walked through, or what a crowded cell costs",
       })
+      .optional(),
+    /** Squeezing (Capability API 1.628): somebody whose whole space does not fit between walls moves
+     *  through as the size below their own, each step costing `costs` times over, and holds
+     *  `condition` while they stand squeezed. 5e's `{"costs": 2, "condition": "squeezed"}`, its
+     *  condition giving disadvantage on attacks and Dexterity saves and advantage to attacks at them. */
+    squeezing: z
+      .object({ costs: z.number().int().min(1).max(4), condition: sheetId.optional() })
+      .strict()
       .optional(),
   })
   .strict();
@@ -17896,6 +17909,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue(at("sizes", "default"), `Unknown size "${combat.sizes.default}"`);
       }
       if (combat.sizes.sheet) checkRef(combat.sizes.sheet, at("sizes", "sheet"), derivedIds);
+      const squeezed = combat.sizes.squeezing?.condition;
+      if (squeezed && !conditions.has(squeezed)) {
+        issue(at("sizes", "squeezing", "condition"), `Unknown condition "${squeezed}"`);
+      }
     }
 
     // Senses that see in the dark (1.178): unique, each read off a number on the sheet, and reaching
@@ -18123,6 +18140,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(entry.condition)) issue([...path, "condition"], `Unknown condition "${entry.condition}"`);
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
+      // A size of the ruleset's own (1.628).
+      if (entry.squeezesAs && !combat.sizes?.order.some((size) => size.id === entry.squeezesAs)) {
+        issue([...path, "squeezesAs"], `Unknown size "${entry.squeezesAs}"`);
+      }
       entry.kinds?.forEach((kind, kindIndex) => {
         if (conditions.has(kind)) issue([...path, "kinds", kindIndex], `"${kind}" is a condition, so it is no kind`);
       });

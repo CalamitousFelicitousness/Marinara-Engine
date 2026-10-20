@@ -192444,6 +192444,11 @@
                 "type": "boolean",
                 "const": true
               },
+              "squeezesAs": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
               "entering": {
                 "type": "object",
                 "properties": {
@@ -211002,6 +211007,26 @@
                 },
                 "$comment": {}
               },
+              "additionalProperties": false
+            },
+            "squeezing": {
+              "type": "object",
+              "properties": {
+                "costs": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "condition": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "$comment": {}
+              },
+              "required": [
+                "costs"
+              ],
               "additionalProperties": false
             },
             "$comment": {}

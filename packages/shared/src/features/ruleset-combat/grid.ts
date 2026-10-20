@@ -103,6 +103,39 @@ export function rulesetSpanOf(combatant: { span?: number } | undefined): number 
   return typeof span === "number" && Number.isInteger(span) && span > 1 ? Math.min(span, 6) : 1;
 }
 
+/** How somebody fits into a cell their whole space does not, between walls (1.628): as small as a
+ *  condition's `squeezesAs` says, freely, or squeezed to the size below their own at `costs` times a
+ *  step, holding `condition`. Undefined where they fit whole, or cannot fit even so. */
+export function rulesetSqueezeAt(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: RulesetCombatCell,
+): { span: number; costs: number; condition?: string } | undefined {
+  const combat = definition.combat;
+  const grid = state.board?.grid;
+  const whole = actor.squeezedFrom ?? rulesetSpanOf(actor);
+  if (!combat?.sizes || !grid || whole <= 1) return undefined;
+  const solid = (at: RulesetCombatCell) =>
+    rulesetCellSolidFor(grid, at.x, at.y, actor) && !rulesetThroughSolid(grid, at.x, at.y, actor);
+  if (!rulesetFootprintAt(cell, whole).some(solid)) return undefined;
+  const order = combat.sizes.order;
+  const ways: Array<{ span: number; costs: number; condition?: string }> = [];
+  const as = rulesetActiveConditions(definition, combat, actor, state).find((entry) => entry.squeezesAs)?.squeezesAs;
+  const free = as ? order.find((size) => size.id === as) : undefined;
+  if (free) ways.push({ span: free.cells ?? 1, costs: 1 });
+  const rank = rulesetSizeRank(combat, actor);
+  const squeezing = combat.sizes.squeezing;
+  if (squeezing && rank !== undefined && rank > 0) {
+    ways.push({
+      span: order[rank - 1]!.cells ?? 1,
+      costs: squeezing.costs,
+      ...(squeezing.condition ? { condition: squeezing.condition } : {}),
+    });
+  }
+  return ways.find((way) => way.span < whole && !rulesetFootprintAt(cell, way.span).some(solid));
+}
+
 /** Every cell somebody fills (1.194), their own cell the top-left one. Empty off the board. */
 export function rulesetFootprint(combatant: RulesetCombatant | undefined): RulesetCombatCell[] {
   const at = rulesetPositionOf(combatant);
@@ -1154,10 +1187,11 @@ export function rulesetReachableCells(
   const insideSolid = (x: number, y: number) => rulesetThroughSolid(grid, x, y, actor);
   // Somebody bigger than one cell moves the whole of themselves (1.194): a step is taken by their
   // top-left cell, and every cell they would fill must be open. The cost is the ground their
-  // top-left cell steps onto, the way the one cell of anybody else pays.
-  const span = rulesetSpanOf(actor);
-  const fits = (x: number, y: number, set: ReadonlySet<string>) =>
-    rulesetFootprintAt({ x, y }, span).every((cell) => !solidFor(cell.x, cell.y) && !set.has(`${cell.x},${cell.y}`));
+  // top-left cell steps onto, the way the one cell of anybody else pays. Squeezed (1.628), their
+  // whole size still.
+  const span = actor.squeezedFrom ?? rulesetSpanOf(actor);
+  const fits = (x: number, y: number, set: ReadonlySet<string>, as = span) =>
+    rulesetFootprintAt({ x, y }, as).every((cell) => !solidFor(cell.x, cell.y) && !set.has(`${cell.x},${cell.y}`));
 
   // Whoever this combatant may not get any nearer to, and how near they stand right now. A cell
   // closer than that is not offered at all, so the menu stays the one place legality lives.
@@ -1241,7 +1275,9 @@ export function rulesetReachableCells(
       const y = at.y + dy;
       const next = `${x},${y}`;
       if (solidFor(x, y) || blockers.has(next)) continue;
-      if (span > 1 && !fits(x, y, blockers)) continue;
+      // Between walls too close for all of them, squeezed (1.628).
+      const squeeze = span > 1 ? rulesetSqueezeAt(definition, state, actor, { x, y }) : undefined;
+      if (span > 1 && !fits(x, y, blockers, squeeze?.span)) continue;
       // Somebody this combatant may not approach is not walked PAST either. A route that dips
       // inside the ring and comes out the far side is still getting nearer, which is the thing the
       // condition forbids, and the board DRAWS that route. So the step is refused rather than only
@@ -1284,7 +1320,7 @@ export function rulesetReachableCells(
           : slowedStep;
       // Through a space let by as hard going (1.547), as difficult ground is.
       const throughStep = hardGoing.has(next) ? Math.max(crowdedStep, plain * 2) : crowdedStep;
-      const step = dragging.halves ? throughStep * 2 : throughStep;
+      const step = (dragging.halves ? throughStep * 2 : throughStep) * (squeeze?.costs ?? 1);
       const cost = cheapest + step;
       if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
       best.set(next, cost);
@@ -1292,7 +1328,7 @@ export function rulesetReachableCells(
       open.set(next, { x, y });
       // A friend can be walked past and not stood on, so their cell is searched through and never
       // offered as somewhere to stop.
-      if (taken.has(next) || (span > 1 && !fits(x, y, taken))) continue;
+      if (taken.has(next) || (span > 1 && !fits(x, y, taken, squeeze?.span))) continue;
       // Run across and never stopped on (1.379).
       if (rulesetOnlyCrosses(grid, { x, y }, actor)) continue;
       if (

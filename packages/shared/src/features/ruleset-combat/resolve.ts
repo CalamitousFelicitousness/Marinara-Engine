@@ -10922,6 +10922,7 @@ function callCreatures(
     called.calledWith = action.id;
     if (action.calls.rounds) called.calledUntil = ctx.state.round + action.calls.rounds;
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = action.calls.endsWithCaller;
+    if (action.calls.endsWhenSpent) called.calledEndsWhenSpent = true;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
     // Spent with them, or waiting on their departure (1.559): a Ring of Djinni Summoning.
     const item = action.itemUse?.item;
@@ -11232,6 +11233,19 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
     )
       dismissCalled(ctx, caller, (one) => one.calledEndsWithCaller === "incapacitated", "caller");
   }
+  // Those that leave once every counted action of theirs is spent (1.689): a Dancing Sword after its
+  // fourth attack, back in hand.
+  for (const caller of ctx.state.combatants) {
+    dismissCalled(
+      ctx,
+      caller,
+      (one) =>
+        !!one.calledEndsWhenSpent &&
+        one.actions.some((action) => action.uses) &&
+        one.actions.every((action) => !action.uses || rulesetActionUses(one, action, ctx.state) < 1),
+      "spent",
+    );
+  }
   // Areas that end as their maker is incapacitated (1.688): an ice devil's Wall of Ice.
   for (const maker of ctx.state.combatants) {
     const ending = (maker.zones ?? []).filter(
@@ -11287,7 +11301,7 @@ function dismissCalled(
   ctx: RulesetCombatContext,
   caller: RulesetCombatant,
   which: (one: RulesetCombatant) => boolean,
-  reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash",
+  reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash" | "spent",
 ): void {
   const going = ctx.state.combatants.filter(
     (one) => one.calledBy === caller.id && !one.dismissed && !one.defeated && which(one),

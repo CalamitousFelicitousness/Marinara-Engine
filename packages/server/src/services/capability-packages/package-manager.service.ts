@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A call that ends once its creatures' counted actions are spent (1.689): a Dancing Sword. */
+function carriesCallsEndWhenSpent689(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCallsEndWhenSpent689(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.calls)?.endsWhenSpent !== undefined) return true;
+  return featureValues(record).some((one) => carriesCallsEndWhenSpent689(one, depth + 1));
+}
+
 /** An area that ends as its maker is incapacitated (1.688): an ice devil's Wall of Ice. */
 function carriesZoneEndsWithCaller688(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9069,6 +9079,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A call that ends once its creatures' counted actions are spent, 1.689.
+  if (
+    !declaresApi(689) &&
+    (carriesCallsEndWhenSpent689(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCallsEndWhenSpent689(document)))
+  )
+    return "A ruleset with a call that ends once its creatures' counted actions are spent (calls.endsWhenSpent) requires schemaVersion 2 and capabilityApi 1.689 or newer";
   // An area that ends as its maker is incapacitated, 1.688.
   if (
     !declaresApi(688) &&

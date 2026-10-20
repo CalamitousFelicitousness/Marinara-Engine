@@ -6618,6 +6618,10 @@ export const catalogCallsSchema = z
      *  (1.393); `"incapacitated"` also as soon as their caller is down or cannot act: a Feather
      *  Token's whip, which "vanishes when you are incapacitated or die". */
     endsWithCaller: z.union([z.literal(true), z.literal("incapacitated")]).optional(),
+    /** They leave once every action of theirs that counts its uses has none left (Capability API
+     *  1.689), an item they became (`becomesItem`) back in hand: a Dancing Sword's, "after the
+     *  hovering sword attacks for the fourth time", its attack with `uses` 4. */
+    endsWhenSpent: z.literal(true).optional(),
     /** Their caller commands them only while within this distance of them and able to act (Capability
      *  API 1.567); otherwise each turn they act on their own, as the Engine runs them, defending
      *  themselves and going at their caller's foes, and their caller pays nothing for it. 5e's Staff of

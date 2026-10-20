@@ -54209,6 +54209,10 @@
                             "incapacitated"
                           ]
                         },
+                        "endsWhenSpent": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "commandedWithin": {
                           "type": "number",
                           "exclusiveMinimum": 0,
@@ -137486,6 +137490,10 @@
                                 "incapacitated"
                               ]
                             },
+                            "endsWhenSpent": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "commandedWithin": {
                               "type": "number",
                               "exclusiveMinimum": 0,
@@ -161970,6 +161978,10 @@
                                       true,
                                       "incapacitated"
                                     ]
+                                  },
+                                  "endsWhenSpent": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "commandedWithin": {
                                     "type": "number",
@@ -186461,6 +186473,10 @@
                                       true,
                                       "incapacitated"
                                     ]
+                                  },
+                                  "endsWhenSpent": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "commandedWithin": {
                                     "type": "number",

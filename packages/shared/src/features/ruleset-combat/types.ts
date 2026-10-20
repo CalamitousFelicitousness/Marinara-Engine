@@ -1492,6 +1492,8 @@ export interface RulesetCombatAction {
     within?: { distance: number; seen?: true };
     /** They leave as soon as their caller is out (1.393), or down or unable to act (1.680). */
     endsWithCaller?: true | "incapacitated";
+    /** They leave once every action of theirs counting uses is spent (1.689): a Dancing Sword. */
+    endsWhenSpent?: true;
     /** They come without any calling actions of their own (1.393). */
     cantCall?: true;
     /** Raised from a corpse that died within `withinRounds` and is `is` (1.501): Create Specter. */
@@ -2108,6 +2110,8 @@ export interface RulesetCombatant {
   calledUntil?: number;
   /** They leave as soon as their caller is out (1.393), or down or unable to act (1.680). */
   calledEndsWithCaller?: true | "incapacitated";
+  /** It leaves once every action of its counting uses is spent (1.689): a Dancing Sword. */
+  calledEndsWhenSpent?: true;
   /** They turn on their caller's side when the concentration that holds them is broken (1.485). */
   calledHostileOnBreak?: true;
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
@@ -3588,7 +3592,7 @@ export type RulesetCombatEvent =
       type: "sentAway";
       actorId: string;
       ids: string[];
-      reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash";
+      reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash" | "spent";
     }
   /** Called creatures that turn on their caller's side as its concentration breaks (1.485). */
   | { type: "turnedOn"; actorId: string; ids: string[] }

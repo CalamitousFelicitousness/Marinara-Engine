@@ -2741,6 +2741,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A creature's action that sends somebody, or itself, out of the fight (1.632): Etherealness. */
+function carriesCreatureDismisses632(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureDismisses632(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.dismisses)?.carries !== undefined) return true;
+  // A creature's actions are the only list of whole actions a ruleset writes.
+  if (Array.isArray(record.actions) && record.actions.some((one) => plainRecord(one)?.dismisses !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesCreatureDismisses632(one, depth + 1));
+}
+
 /** A condition that ends when its holder is healed, or healed by magic (1.631). */
 function carriesEndsHealed631(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8465,6 +8478,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature's action that sends somebody out of the fight, 1.632.
+  if (
+    !declaresApi(632) &&
+    (carriesCreatureDismisses632(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureDismisses632(document)))
+  )
+    return "A ruleset with a creature's action that sends somebody, or the creature itself, out of the fight (a creature action's dismisses) requires schemaVersion 2 and capabilityApi 1.632 or newer";
   // A condition that ends when its holder is healed, 1.631.
   if (
     !declaresApi(631) &&

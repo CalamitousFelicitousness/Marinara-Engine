@@ -13621,6 +13621,49 @@ function dismiss(
   endZones(ctx, target);
   endConcentration(ctx, target, "spent");
   endConditionsFromSource(ctx, target);
+  // Its allies near it along with it (1.632): a nightmare's riders.
+  if (rule !== true && rule.carries && target.id === actor.id) carryAway(ctx, actor, action.label, rule.carries);
+}
+
+/** Up to `count` allies within `within` cells of `carrier`, nearest first, out of the fight with it
+ *  (1.632), each away while it holds `condition` from the carrier and back when the carrier is. */
+function carryAway(
+  ctx: RulesetCombatContext,
+  carrier: RulesetCombatant,
+  label: string,
+  carries: { count: number; within: number; condition: string },
+): void {
+  const from = rulesetPositionOf(carrier);
+  const gap = (one: RulesetCombatant) => (from && rulesetPositionOf(one) ? rulesetGap(carrier, one) : 0);
+  const riders = ctx.state.combatants
+    .filter(
+      (one) =>
+        one.id !== carrier.id &&
+        one.side === carrier.side &&
+        !one.defeated &&
+        !one.away &&
+        rulesetCombatStanding(one) &&
+        gap(one) <= carries.within,
+    )
+    .sort((a, b) => gap(a) - gap(b))
+    .slice(0, carries.count);
+  for (const rider of riders) {
+    applyConditionId(
+      ctx,
+      rider,
+      carries.condition,
+      { condition: carries.condition, duration: "until-dispelled" } as RulesetCombatApplies,
+      { sourceId: carrier.id },
+    );
+    if (!rider.tracked.some((entry) => entry.condition === carries.condition && entry.source === carrier.id)) continue;
+    rider.defeated = true;
+    rider.away = { by: carrier.id, label, while: carries.condition, turns: true, carried: true };
+    ctx.events.push({ type: "dismissed", actorId: carrier.id, targetId: rider.id, label, while: carries.condition });
+    endSummons(ctx, rider);
+    endZones(ctx, rider);
+    endConcentration(ctx, rider, "spent");
+    endConditionsFromSource(ctx, rider);
+  }
 }
 
 /** Out of the fight for good, alive, by no use of an entry (1.430): a failed save against what
@@ -13650,6 +13693,11 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
   target.defeated = false;
   placeNearest(ctx, target);
   ctx.events.push({ type: "returned", targetId: target.id });
+  // Those it carried away come back with it (1.632).
+  for (const rider of ctx.state.combatants) {
+    if (rider.away?.carried && rider.away.by === target.id && rider.away.while)
+      removeCondition(ctx, rider, rider.away.while, "linked");
+  }
 }
 
 /** Whoever has stopped time and is taking the turns it gave (1.454), if anybody: the actor. */

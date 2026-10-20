@@ -4678,6 +4678,25 @@ function blockActions(
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
+    // Out of the fight, its own creature too (1.632): a ghost's Etherealness.
+    ...(action.dismisses
+      ? {
+          dismisses:
+            action.dismisses === true
+              ? (true as const)
+              : {
+                  ...structuredClone(action.dismisses),
+                  ...(action.dismisses.carries
+                    ? {
+                        carries: {
+                          ...action.dismisses.carries,
+                          within: rulesetInCells(action.dismisses.carries.within, perCell ?? 1),
+                        },
+                      }
+                    : {}),
+                },
+        }
+      : {}),
     // Never on the same creature again (1.621): Frightful Presence.
     ...(action.oncePerTarget ? { sparedAfter: { ...action.oncePerTarget } } : {}),
     ...(action.reaps ? { reaps: true as const } : {}),

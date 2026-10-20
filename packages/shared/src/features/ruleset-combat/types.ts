@@ -517,6 +517,16 @@ export interface RulesetStatBlockAction {
   pull?: number;
   /** Whoever its blow drops (1.624): left stable, and what it puts on them. */
   onFell?: RulesetCombatOnFell;
+  /** Whoever it lands on leaves the fight (1.632), its own creature too, still taking its turns away;
+   *  `carries.within` in the ruleset's own distance. */
+  dismisses?:
+    | true
+    | {
+        while: string;
+        gone?: RulesetTargetIs;
+        turns?: true;
+        carries?: { count: number; within: number; condition: string };
+      };
   /** The creature teleports, in the ruleset's own distance (1.276). */
   teleport?: RulesetTeleport;
   /** A move bought with points (1.283): `share` of its speed or `distance` in the ruleset's own unit. */
@@ -1008,7 +1018,15 @@ export interface RulesetCombatAction {
   usableNear?: { prop: string; within: number };
   /** Whoever it lands on leaves the fight (1.236): for good, or only while they hold `while`, put on
    *  by the same use; with `gone`, one that is that stays gone if `while` ran its whole time. */
-  dismisses?: true | { while: string; gone?: RulesetTargetIs; turns?: true };
+  dismisses?:
+    | true
+    | {
+        while: string;
+        gone?: RulesetTargetIs;
+        turns?: true;
+        /** Allies that go with its own user (1.632), `within` cells, nearest first. */
+        carries?: { count: number; within: number; condition: string };
+      };
   /** It steadies a dying target: no more dying rolls (1.176). */
   stabilizes?: boolean;
   /** Live tracks it moves on whoever it lands on and who does not save, by levels (1.201). */
@@ -2126,6 +2144,8 @@ export interface RulesetCombatant {
     setAside?: true;
     /** Called and on its way (1.561): it arrives after this many more of its caller's turns. */
     arriving?: number;
+    /** Gone along with `by` (1.632), and back when they are. */
+    carried?: true;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral

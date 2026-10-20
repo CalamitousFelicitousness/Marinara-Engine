@@ -8207,6 +8207,34 @@ const creatureDamageSchema = z
 
 /** A save the action itself forces. The difficulty is the action's own, because a stat block is not
  *  a sheet and has no abilities list to read one off. */
+export interface RulesetCreatureDismisses {
+  while: string;
+  gone?: RulesetTargetIs;
+  turns?: true;
+  carries?: { count: number; within: number; condition: string };
+}
+const creatureDismissesSchema: z.ZodType<true | RulesetCreatureDismisses, z.ZodTypeDef, unknown> = z.union([
+  z.literal(true),
+  z
+    .object({
+      while: sheetId,
+      gone: targetIsSchema.optional(),
+      turns: z.literal(true).optional(),
+      /** Up to `count` of its allies within `within`, in the ruleset's own distance, nearest first,
+       *  go with it (Capability API 1.632), each holding `condition` while away and coming back
+       *  when it does: a nightmare's Ethereal Stride and its three riders. */
+      carries: z
+        .object({
+          count: z.number().int().min(1).max(20),
+          within: z.number().finite().gt(0).max(10000),
+          condition: sheetId,
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+]);
+
 const creatureOnFellSchema: z.ZodType<RulesetCreatureOnFell, z.ZodTypeDef, unknown> = z
   .object({
     stabilizes: z.literal(true).optional(),
@@ -8640,6 +8668,11 @@ const creatureActionFullSchema = z
      *  poisoned for 1 hour, even after regaining hit points, and is paralyzed while poisoned in this
      *  way". */
     onFell: creatureOnFellSchema.optional(),
+    /** Whoever it lands on leaves the fight (Capability API 1.632), as a catalog entry's `dismisses`
+     *  does; its own creature too, with `self` and `"turns": true`, still taking its turns away and
+     *  offered there only the way back (the condition's `endable`): a ghost's Etherealness,
+     *  `{"while": "ethereal", "turns": true}`, a phase spider's Ethereal Jaunt. */
+    dismisses: creatureDismissesSchema.optional(),
     /** Who it fells on Held Ground is reaped there and then (Capability API 1.323), and stays down. */
     reaps: z.literal(true).optional(),
     /** It works only on a roll (Capability API 1.388): a demon's "30 percent chance of summoning",
@@ -8815,6 +8848,22 @@ const creatureActionFullSchema = z
         code: z.ZodIssueCode.custom,
         path: ["pull"],
         message: "An action pushes or pulls whoever it lands on, not both",
+      });
+    }
+    // Away while it holds what the same use puts on (1.632).
+    const away = action.dismisses;
+    if (away && away !== true && !action.applies?.some((applied) => applied.condition === away.while)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dismisses", "while"],
+        message: `Away while it holds "${away.while}", so the action puts it on`,
+      });
+    }
+    if (away && away !== true && away.carries && !action.self) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dismisses", "carries"],
+        message: 'Those it "carries" go with the creature itself, so the action is "self"',
       });
     }
     if (action.oncePerTarget?.whenSaved && !action.save) {
@@ -20298,6 +20347,11 @@ function creatureIssues(
     const sparedUntil = action.oncePerTarget?.until;
     if (sparedUntil && !definition.rests.some((rest) => rest.id === sparedUntil)) {
       add([...path, "oncePerTarget", "until"], `Unknown rest "${sparedUntil}"`);
+    }
+    // What those it carries away hold is the ruleset's own (1.632).
+    const carried = action.dismisses && action.dismisses !== true ? action.dismisses.carries?.condition : undefined;
+    if (carried && !conditions.has(carried)) {
+      add([...path, "dismisses", "carries", "condition"], `Unknown condition "${carried}"`);
     }
     // What it puts on whoever it drops (1.624), held to the same names; steadying needs dying rules.
     action.onFell?.applies?.forEach((applies, appliesIndex) => {

@@ -1656,7 +1656,6 @@ const LocalChatArea = memo(function LocalChatArea({
       if (!activeChatId || chatMode !== "roleplay") return;
       // One at a time, through drawing a picture first: a second request would pay for a second clip.
       if (roleplayVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
-      let reviewOpened = false;
       try {
         roleplayVideoGeneratingRef.current = true;
         const payload: Record<string, unknown> = {
@@ -1683,7 +1682,9 @@ const LocalChatArea = memo(function LocalChatArea({
             const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
               (value): value is string => Boolean(value),
             );
-            reviewOpened = true;
+            // Close only the review this call opened (another chat's request may hold the window), and close it as
+            // soon as its prompt is read, not after the minutes-long clip, when a newer review may be showing.
+            const reviewOpened = !roleplayVideoReviewResolveRef.current;
             const overrides = await openRoleplayVideoPromptReview([
               {
                 id: "roleplay-video",
@@ -1694,6 +1695,7 @@ const LocalChatArea = memo(function LocalChatArea({
                 maxLength: preview.maxPromptLength ?? undefined,
               },
             ]);
+            if (reviewOpened) closeRoleplayVideoPromptReview(null);
             const reviewedPrompt = overrides?.[0]?.prompt.trim();
             if (!reviewedPrompt) return;
             payload.promptOverride = reviewedPrompt;
@@ -1725,8 +1727,6 @@ const LocalChatArea = memo(function LocalChatArea({
         void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
         toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
       } finally {
-        // Closing the review is left to the call that opened it.
-        if (reviewOpened) closeRoleplayVideoPromptReview(null);
         roleplayVideoGeneratingRef.current = false;
       }
     },

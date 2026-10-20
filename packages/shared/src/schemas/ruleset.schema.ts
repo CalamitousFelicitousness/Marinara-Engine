@@ -11313,6 +11313,27 @@ const catalogItemObjectSchema = z
     userNeedsAny: z.literal(true).optional(),
     /** What it does while worn: on, and bound where it binds. */
     worn: z.lazy(() => rulesetItemEffectSchema).optional(),
+    /** More to its number stats while worn (bound where it binds), each line only while its wearer's
+     *  sheet meets `needs` (all of them, or any one with `needsAny`), as `binds.needs` reads them
+     *  (Capability API 1.647): `add` adds to the item's own `stats`, a missing one counting 0. 5e's
+     *  Talisman of Pure Good, "+2 to spell attack rolls" only for a cleric or paladin. Up to 4. */
+    statsIf: z
+      .array(
+        z
+          .object({
+            needs: sheetNeedsSchema("needs"),
+            needsAny: z.literal(true).optional(),
+            add: z
+              .record(z.number().finite())
+              .refine((add) => Object.keys(add).length >= 1 && Object.keys(add).length <= 12, {
+                message: "A line adds to 1 to 12 stats",
+              }),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     /** What it does while it is only carried. */
     carried: z.lazy(() => rulesetItemEffectSchema).optional(),
     /** What it asks of whoever wears it, and what applies while they fall short. */
@@ -21016,6 +21037,14 @@ function itemIssues(
   for (const message of rulesetListRowIssues({ columns: items.stats ?? [] }, item.stats ?? {}, "Stat")) {
     add([...at, "stats"], message);
   }
+  // What it adds while its wearer meets what a line asks (1.647): number stats of the ruleset's.
+  item.statsIf?.forEach((line, index) => {
+    for (const id of Object.keys(line.add)) {
+      const stat = items.stats?.find((one) => one.id === id);
+      if (!stat) add([...at, "statsIf", index, "add", id], `Unknown stat "${id}"`);
+      else if (stat.type !== "number") add([...at, "statsIf", index, "add", id], `"${id}" is not a number stat`);
+    }
+  });
   const slots = new Map((items.slots ?? []).map((slot) => [slot.id, slot]));
   for (const [id, count] of Object.entries(item.slots ?? {})) {
     const slot = slots.get(id);

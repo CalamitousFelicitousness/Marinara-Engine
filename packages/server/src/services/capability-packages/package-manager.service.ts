@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item's stats added to while its wearer meets what a line asks (1.647): a Talisman of Pure
+ *  Good's +2 to a good cleric's or paladin's spell attacks. */
+function carriesStatsIf647(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesStatsIf647(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.category === "string" && record.statsIf !== undefined) return true;
+  return featureValues(record).some((one) => carriesStatsIf647(one, depth + 1));
+}
+
 /** Tags read off an alignment in words (1.646): a creature's `alignment`, a character's
  *  `creatureTypes.tagsFrom`. */
 function carriesAlignmentTags646(value: unknown, depth = 0): boolean {
@@ -8642,6 +8653,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's stats added to while its wearer meets what a line asks, 1.647.
+  if (
+    !declaresApi(647) &&
+    (carriesStatsIf647(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesStatsIf647(document)))
+  )
+    return "A ruleset with an item's stats added to while its wearer meets what it asks (statsIf) requires schemaVersion 2 and capabilityApi 1.647 or newer";
   // Tags read off an alignment in words, 1.646.
   if (
     !declaresApi(646) &&

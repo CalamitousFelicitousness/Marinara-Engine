@@ -1022,15 +1022,37 @@ export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
   stored: unknown,
   items: ReadonlyArray<T>,
 ): ReadonlyArray<T> {
-  if (!items.some((held) => held.worn && held.item.binds?.needs)) return items;
+  if (!items.some((held) => held.worn && (held.item.binds?.needs || held.item.statsIf || held.truly?.item.statsIf)))
+    return items;
   const evaluated = evaluateRulesetSheetLive(definition, build, stored);
-  return items.map((held) =>
-    held.worn &&
-    held.item.binds?.needs &&
-    !rulesetItemNeedsMet(definition, build, evaluated, held.item.binds.needs, held.item.binds.needsAny)
-      ? { ...held, worn: false }
-      : held,
-  );
+  // What a worn item adds to its stats while its wearer meets a line's needs (1.647).
+  const withStats = (item: RulesetSheetItem["item"]): RulesetSheetItem["item"] => {
+    const met = (item.statsIf ?? []).filter((line) =>
+      rulesetItemNeedsMet(definition, build, evaluated, line.needs, line.needsAny),
+    );
+    if (!met.length) return item;
+    const stats = { ...(item.stats ?? {}) };
+    for (const line of met)
+      for (const [id, more] of Object.entries(line.add)) {
+        const had = stats[id];
+        stats[id] = (typeof had === "number" ? had : 0) + more;
+      }
+    return { ...item, stats };
+  };
+  return items.map((held) => {
+    if (!held.worn) return held;
+    if (
+      held.item.binds?.needs &&
+      !rulesetItemNeedsMet(definition, build, evaluated, held.item.binds.needs, held.item.binds.needsAny)
+    )
+      return { ...held, worn: false };
+    if (!held.item.statsIf && !held.truly?.item.statsIf) return held;
+    return {
+      ...held,
+      item: withStats(held.item),
+      ...(held.truly ? { truly: { ...held.truly, item: withStats(held.truly.item) } } : {}),
+    };
+  });
 }
 
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */

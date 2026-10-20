@@ -223,6 +223,8 @@ export interface RulesetFightSeed {
   live: RulesetLiveStates | null;
   /** What each party member holds, by name, when the ruleset's sheet reads items. */
   items?: (name: string) => RulesetSheetItem[];
+  /** Whose bag each party member's items are in, by name (1.668): null for the player's own. */
+  holders?: (name: string) => string | null;
   /** The catalogs the party's own rows came from, so the fight knows what an ability costs. */
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
@@ -274,6 +276,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       live: input.live?.[key],
       catalogs: input.partyCatalogs,
       ...(input.items ? { items: input.items(member.name) } : {}),
+      ...(input.holders ? { holder: input.holders(member.name) } : {}),
     });
   }
 

@@ -39,6 +39,7 @@ import {
   combatAiHintsSchema,
   normalizeCharacterLookupName,
   rulesetBestiarySheetCatalogIds,
+  rulesetCardHolder,
   rulesetCardItems,
   rulesetReadsItems,
   rulesetCatalogIdsForBuild,
@@ -902,13 +903,14 @@ export async function combatDirectorRoutes(
           const itemBook = rulesetReadsItems(definition)
             ? await loadGameInventoryItemBook(app.db, { metadata: meta, resolved }, "player")
             : undefined;
+          const cardNames = (Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : []).flatMap((card) =>
+            typeof card?.name === "string" && card.name.trim() ? [card.name.trim()] : [],
+          );
           const fightItems = itemBook
             ? rulesetCardItems(
                 itemBook,
                 normalizeGameInventoryStacks(meta.gameInventory),
-                (Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : []).flatMap((card) =>
-                  typeof card?.name === "string" && card.name.trim() ? [card.name.trim()] : [],
-                ),
+                cardNames,
                 persona?.name ?? null,
               )
             : undefined;
@@ -942,7 +944,7 @@ export async function combatDirectorRoutes(
             playerName: persona?.name ?? null,
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
-            ...(fightItems ? { items: fightItems } : {}),
+            ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.237).

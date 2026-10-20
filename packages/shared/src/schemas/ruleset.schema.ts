@@ -7014,6 +7014,13 @@ const catalogMechanicsObject = z
         path: ["boundIn"],
       })
       .optional(),
+    /** Cast in a fight, it puts `count` of an item of the ruleset (`<catalog>/<entry>`) into its
+     *  caster's hand (Capability API 1.668), used there as any held item is and written to their bag
+     *  as the fight ends: 5e's Goodberry, ten berries. */
+    makesItems: z
+      .object({ item: catalogEntryRef, count: z.number().int().min(1).max(100) })
+      .strict()
+      .optional(),
     /** Held on a sheet's list, how it changes one named entry of its holder's every time they use it
      *  (Capability API 1.302), stacking with every other such: 5e's Agonizing Blast adds the
      *  Charisma modifier to eldritch blast's damage on a hit (`damageAdd`), Eldritch Spear makes its
@@ -11028,6 +11035,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     summons: true,
     scales: true,
     conjures: true,
+    makesItems: true,
     standard: true,
     rider: true,
   })
@@ -23655,6 +23663,18 @@ export function rulesetCatalogEntryIssues(
     const boundIn = mechanics?.conjures?.boundIn;
     if (boundIn !== undefined && !definition.sheet.live.text.some((one) => one.id === boundIn)) {
       add([index, "mechanics", "conjures", "boundIn"], `Unknown live text "${boundIn}"`);
+    }
+    // What it makes is an item (1.668).
+    const madeRef = mechanics?.makesItems?.item;
+    if (madeRef !== undefined) {
+      const catalogId = madeRef.slice(0, madeRef.indexOf("/"));
+      const catalog = definition.catalogs?.find((one) => one.id === catalogId);
+      if (!catalog) add([index, "mechanics", "makesItems", "item"], `Unknown entry "${madeRef}"`);
+      else if (catalog.entries && !catalog.from) {
+        const made = catalog.entries.find((one) => `${catalogId}/${one.id}` === madeRef);
+        if (!made) add([index, "mechanics", "makesItems", "item"], `Unknown entry "${madeRef}"`);
+        else if (!made.item) add([index, "mechanics", "makesItems", "item"], `"${madeRef}" is not an item`);
+      }
     }
     mechanics?.conjures?.items.forEach((ref, refIndex) => {
       const catalogId = ref.slice(0, ref.indexOf("/"));

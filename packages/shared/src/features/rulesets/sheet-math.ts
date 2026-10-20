@@ -292,6 +292,8 @@ export interface RulesetSheetItem {
   name?: string;
   /** Which inventory stack this is, so what a fight shoots or loads can be written back to it. */
   stack?: { id: string; ref: string; holder?: string };
+  /** Held for what a cast makes (1.668): the item it makes, by reference, none of it held yet. */
+  made?: string;
   /** What a weapon with a clip has loaded, as the stack keeps it. Absent reads as full. */
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */

@@ -2164,6 +2164,7 @@
   "game.combat.ruleset.event.initiative": "Initiative: {{order}}.",
   "game.combat.ruleset.event.inside": "{{target}} is taken inside {{holder}}.",
   "game.combat.ruleset.event.itemSpent": "{{actor}}'s {{label}} is spent for good.",
+  "game.combat.ruleset.event.itemsMade": "{{actor}} makes {{count}} {{label}}.",
   "game.combat.ruleset.event.jumped": "{{actor}} jumps to {{x}}, {{y}} for {{cost}} and has {{left}} left.",
   "game.combat.ruleset.event.knockedOut": "{{source}} knocks {{actor}} out: unconscious and stable.",
   "game.combat.ruleset.event.lair": "{{actor}}'s lair acts: {{label}}.",

@@ -3656,6 +3656,8 @@ function mechanicsAction(
     !mechanics.rescue &&
     !mechanics.alters &&
     !mechanics.conjures &&
+    // Making items (1.668): Goodberry.
+    !mechanics.makesItems &&
     !mechanics.teleport &&
     // Calling creatures (1.344) is something to resolve: Conjure Animals.
     !mechanics.calls &&
@@ -4099,6 +4101,7 @@ function mechanicsAction(
   // A weapon put in hand (1.306): which one is picked as it is used, its modes filled in once the
   // sheet's items and entries are known.
   if (mechanics.conjures) action.conjures = true;
+  if (mechanics.makesItems) action.makesItems = { ref: mechanics.makesItems.item, count: mechanics.makesItems.count };
   // A form picked as it is used (1.342), its modes filled in once the fight's bestiary is known.
   if (mechanics.forms) {
     action.shapes = true;
@@ -5079,6 +5082,8 @@ function sheetCombatant(
     catalogs: RulesetCatalogEntriesById;
     perCell: number | undefined;
     items?: ReadonlyArray<RulesetSheetItem>;
+    /** Whose bag their items are in (1.668), null for the player's: see the party input's `holder`. */
+    holder?: string | null;
     /** Conditions the fight has on them that change their abilities (1.462). */
     conditions?: readonly string[];
   },
@@ -5160,6 +5165,35 @@ function sheetCombatant(
     const { when: _when, wielding: _wielding, ...grant } = structuredClone(mechanics.grantsStrike);
     return [grant];
   });
+  // What their entries make (1.668), held from the start as none of it, so a cast has its uses ready:
+  // in a stack they already carry of it, or in one of its own, in their bag where it is known.
+  const heldItems = [...(input.items ?? [])];
+  for (const action of abilities.flatMap((entry) => entry.actions)) {
+    const makes = action.makesItems;
+    if (!makes) continue;
+    const entry = byRef.get(makes.ref);
+    let at = heldItems.findIndex((held) => held.stack?.ref === makes.ref || held.made === makes.ref);
+    if (at < 0 && entry?.item) {
+      at = heldItems.length;
+      heldItems.push({
+        item: entry.item,
+        quantity: 0,
+        worn: false,
+        name: entry.label,
+        made: makes.ref,
+        ...(input.holder !== undefined
+          ? {
+              stack: {
+                id: `st-made-${input.id}-${makes.ref.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+                ref: makes.ref,
+                ...(input.holder !== null ? { holder: input.holder } : {}),
+              },
+            }
+          : {}),
+      });
+    }
+    if (at >= 0) makes.at = at;
+  }
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
       attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
@@ -5169,7 +5203,7 @@ function sheetCombatant(
     ...itemFormActions(input.items),
     ...carriedSwitchActions(combat),
     ...knockOutSwitchActions(combat),
-    ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
+    ...itemUseActions(definition, combat, heldItems, build, evaluated, perCell),
     ...abilities.flatMap((entry) => entry.actions),
     // What the items they hold store (1.471), each cast once.
     ...storedItemActions(definition, input.items, byRef, build, evaluated, perCell),
@@ -5590,7 +5624,12 @@ function sheetCombatant(
       }
       return Object.keys(speeds).length > 0 ? { speeds } : {};
     })(),
-    sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
+    sheet: {
+      build,
+      live: input.live,
+      catalogs,
+      ...(input.items || heldItems.length ? { items: heldItems } : {}),
+    },
     ...(Object.keys(becomes).length ? { becomes } : {}),
     ...(Object.keys(slotsFreed).length ? { slotsFreed } : {}),
     ...(Object.keys(onFor).length ? { onFor } : {}),
@@ -6522,6 +6561,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       initiativeRoll,
       roll,
       build: entry.build,
+      ...(entry.holder !== undefined ? { holder: entry.holder } : {}),
       // What only a worn item kept on (1.611) is off when that item no longer is.
       live: entry.items
         ? rulesetLiveWornOff(

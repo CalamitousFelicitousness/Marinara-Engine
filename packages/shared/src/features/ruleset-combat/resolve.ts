@@ -2492,6 +2492,16 @@ function knockOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   }
 }
 
+/** Items made by a cast (1.668), into its maker's hand: more of the item they were held a place for
+ *  as the fight began, written to their bag as it ends. Goodberry. */
+function makeItems(ctx: RulesetCombatContext, maker: RulesetCombatant, action: RulesetCombatAction): void {
+  const makes = action.makesItems!;
+  const held = makes.at !== undefined ? maker.sheet?.items?.[makes.at] : undefined;
+  if (!held) return;
+  (maker.itemsUsed ??= {})[makes.at!] = (maker.itemsUsed[makes.at!] ?? 0) - makes.count;
+  ctx.events.push({ type: "itemsMade", actorId: maker.id, label: held.name ?? makes.ref, count: makes.count });
+}
+
 function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
   if (!combatant.sheet) return 0;
   const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live);
@@ -8121,6 +8131,7 @@ function applyChoice(
     for (const target of workingTargets) spare(target, rulesetSparedKey(working, action));
   }
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
+  if (action.makesItems) makeItems(ctx, working, action);
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
       id: action.followUp,

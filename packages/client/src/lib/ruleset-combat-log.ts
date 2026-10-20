@@ -1071,6 +1071,9 @@ export function rulesetCombatEventLine(
           health: event.health,
         },
       );
+    // Items made by a cast (1.668).
+    case "itemsMade":
+      return key("itemsMade", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     // Knocked out by a pulled blow (1.667).
     case "knockedOut":
       return key("knockedOut", { actor: names.combatant(event.actorId), source: names.combatant(event.sourceId) });

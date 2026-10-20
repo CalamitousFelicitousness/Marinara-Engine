@@ -875,6 +875,9 @@ export type RulesetCombatantInput =
       catalogs?: RulesetCatalogEntriesById;
       /** The items they hold as the fight starts, which an `itemStat` on their sheet reads. */
       items?: ReadonlyArray<RulesetSheetItem>;
+      /** Whose bag their items are in (1.668): a party member's name, null for the player's own
+       *  character. What a cast of theirs makes is written there; left out, it is not written. */
+      holder?: string | null;
     }
   /** A stat block, on either side (1.344): an ally beside the party is built as an opponent is. */
   | {
@@ -1238,6 +1241,9 @@ export interface RulesetCombatAction {
   /** Puts a weapon in its user's hand, the one its mode names (1.306): Pact of the Blade. What each
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
+  /** Makes items as it is used (1.668): `count` more of the item held at `at` in its user's items,
+   *  set there with none of it as the fight began. Goodberry. */
+  makesItems?: { ref: string; count: number; at?: number };
   /** Not used on the same creature again until its user takes this rest (1.304): Chains of Carceri. */
   oncePerTarget?: { until: string; whenSaved?: true };
   /** Kept up on later turns with `budget` (1.378): Intimidating Presence. */
@@ -3782,6 +3788,8 @@ export type RulesetCombatEvent =
   | { type: "pushBraced"; actorId: string; label: string; cells: number }
   /** Knocked out by a pulled melee blow instead of dropped dying or slain (1.667). */
   | { type: "knockedOut"; actorId: string; sourceId: string }
+  /** Items made by a cast (1.668): Goodberry's berries, into its caster's hand. */
+  | { type: "itemsMade"; actorId: string; label: string; count: number }
   /** Killed outright by massive damage (1.656). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */

@@ -1455,10 +1455,20 @@ export function rulesetCardItems(
   cardNames: readonly string[],
   playerName?: string | null,
 ): (cardName: string) => RulesetSheetItem[] {
+  const holderOf = rulesetCardHolder(cardNames, playerName);
+  return (cardName) => rulesetSheetItems(book, stacks, holderOf(cardName) ?? undefined);
+}
+
+/** Whose bag a party card's items are in (1.668): the card read for the player (the one named for
+ *  who the chat plays as, else the first) carries the player's own, null; every other card its own,
+ *  by its name. */
+export function rulesetCardHolder(
+  cardNames: readonly string[],
+  playerName?: string | null,
+): (cardName: string) => string | null {
   const key = normalizeCharacterLookupName;
   const player = (playerName ? cardNames.find((name) => key(name) === key(playerName)) : undefined) ?? cardNames[0];
-  return (cardName) =>
-    rulesetSheetItems(book, stacks, player !== undefined && key(cardName) === key(player) ? undefined : cardName);
+  return (cardName) => (player !== undefined && key(cardName) === key(player) ? null : cardName);
 }
 
 /** The item catalogs a ruleset declares: the ones the book is built from. */

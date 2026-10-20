@@ -50829,6 +50829,27 @@
                       ],
                       "additionalProperties": false
                     },
+                    "makesItems": {
+                      "type": "object",
+                      "properties": {
+                        "item": {
+                          "type": "string",
+                          "maxLength": 121,
+                          "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "item",
+                        "count"
+                      ],
+                      "additionalProperties": false
+                    },
                     "amends": {
                       "type": "array",
                       "items": {

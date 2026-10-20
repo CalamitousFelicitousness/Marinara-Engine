@@ -1369,6 +1369,8 @@ export interface RulesetCombatAction {
   /** And the entry itself, as `<catalog>/<entry>` (1.117): what a reaction or a condition that names
    *  one entry reads. */
   entry?: string;
+  /** That entry's filters, as its catalog wrote them: what a ward's `where` reads (1.592). */
+  filters?: Record<string, unknown>;
   /** IN CELLS, resolved once when the fight began, and read only by a positioned fight. An action
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;

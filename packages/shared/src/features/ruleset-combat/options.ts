@@ -2560,12 +2560,16 @@ export function rulesetWarded(
   const takes = (ward: { where?: { filter: string; equals: string | number }; entries?: string[] }) => {
     if (ward.entries && !(action.entry && ward.entries.includes(action.entry))) return false;
     if (!ward.where) return true;
+    // Its own filters, carried from the entry it was made from: a catalog of its own file holds
+    // no entries in the definition.
     const ref = action.entry;
-    const entry = ref
-      ? definition.catalogs
-          ?.find((one) => one.id === ref.slice(0, ref.indexOf("/")))
-          ?.entries?.find((one) => one.id === ref.slice(ref.indexOf("/") + 1))
-      : undefined;
+    const entry = action.filters
+      ? { filters: action.filters }
+      : ref
+        ? definition.catalogs
+            ?.find((one) => one.id === ref.slice(0, ref.indexOf("/")))
+            ?.entries?.find((one) => one.id === ref.slice(ref.indexOf("/") + 1))
+        : undefined;
     return !!entry && rulesetCatalogWhereReads(entry, ward.where);
   };
   held = held.filter(takes);
@@ -3261,6 +3265,7 @@ export function rulesetAttackModifierReaches(
     atTypesIn?: string[];
     whenTarget?: "surprised" | "not-yet-acted";
     targetHoldsFromSelf?: string[];
+    at?: RulesetTargetIs;
   },
   state: RulesetEncounterState | undefined,
   actor: RulesetCombatant,
@@ -3273,6 +3278,8 @@ export function rulesetAttackModifierReaches(
   if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
   // Only at somebody it holds itself (1.500): Grappler.
   if (modifier.targetHoldsFromSelf && !rulesetHeldBy(target, actor.id, modifier.targetHoldsFromSelf)) return false;
+  // Only at a target that is this (1.673): Demon Armor against demons.
+  if (modifier.at && (!definition || !target || !rulesetTargetIs(definition, target, modifier.at))) return false;
   // Only at a target of a kind the holder's sheet chose (1.376): Foe Slayer's favored enemies.
   if (
     modifier.atTypesIn &&
@@ -3319,6 +3326,8 @@ export function rulesetDamageModifiers(
       if (modifier.whenTarget && !rulesetTargetMoment(state, target, modifier.whenTarget)) return false;
       // At somebody it holds itself (1.500): Grappler.
       if (modifier.targetHoldsFromSelf && !rulesetHeldBy(target, actor.id, modifier.targetHoldsFromSelf)) return false;
+      // At a target that is this (1.673).
+      if (modifier.at && (!target || !rulesetTargetIs(definition, target, modifier.at))) return false;
       return (
         !modifier.fromSource ||
         (!item &&

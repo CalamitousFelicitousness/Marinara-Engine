@@ -12243,6 +12243,9 @@ const combatModifierBaseSchema = z
     mode: z.enum(RULESET_ROLL_MODES).optional(),
     /** Narrows a change to attacks-taken to attackers that are this (Capability API 1.185). */
     from: targetIsSchema.optional(),
+    /** Narrows a change to the holder's own attacks or damage to targets that are this (Capability
+     *  API 1.673): 5e's Demon Armor, disadvantage on attack rolls against demons. */
+    at: targetIsSchema.optional(),
     /** Narrows a change to the holder's own attacks to those against whoever put this on them
      *  (Capability API 1.185): 5e's Chill Touch, an undead's attacks against the caster. */
     atSource: z.literal(true).optional(),
@@ -12381,6 +12384,8 @@ const combatModifierBaseSchema = z
     }
     if (modifier.from !== undefined && modifier.to !== "attacks-taken")
       add("from", '"from" narrows attacks-taken only');
+    if (modifier.at !== undefined && modifier.to !== "attacks" && modifier.to !== "damage")
+      add("at", '"at" narrows the holder\'s own attacks or damage');
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
@@ -21252,6 +21257,7 @@ function effectNameIssues(
       abilities?: string[];
       against?: { conditions?: string[]; damage?: string[]; from?: RulesetTargetIs };
       from?: RulesetTargetIs;
+      at?: RulesetTargetIs;
       atLeast?: number | RulesetValueRef;
       add?: RulesetValueRef;
       atTypesIn?: string[];
@@ -21299,6 +21305,7 @@ function effectNameIssues(
     each(modifier.abilities, abilities, [...at, "modifiers", index, "abilities"], "ability");
     each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
     targetIsIssues(definition, modifier.from, [...at, "modifiers", index, "from"], add);
+    targetIsIssues(definition, modifier.at, [...at, "modifiers", index, "at"], add);
     targetIsIssues(definition, modifier.against?.from, [...at, "modifiers", index, "against", "from"], add);
     const against = [...at, "modifiers", index, "against"];
     each(

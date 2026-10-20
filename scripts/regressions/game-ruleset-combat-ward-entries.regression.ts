@@ -130,6 +130,15 @@ try {
     );
     assert.equal(reaches("Scry"), true, "a divination is kept off");
     assert.equal(reaches("Bolt"), false, "an evocation is not");
+    // The same with the spells in a catalog file of their own, as a game reads the ruleset: the
+    // definition's catalog holds no entries, and the filters ride on the cast.
+    const fromFile = parsed(
+      document({ catalogs: ["spells"], maxLevel: 9, where: { filter: "school", equals: "Divination" } }),
+    );
+    delete fromFile.catalogs!.find((one) => one.id === "spells")!.entries;
+    const reachesFromFile = warded(fromFile);
+    assert.equal(reachesFromFile("Scry"), true, "a divination from a catalog file is kept off");
+    assert.equal(reachesFromFile("Bolt"), false, "an evocation from a catalog file is not");
   }
 
   // ── Wish: one spell ──

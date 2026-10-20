@@ -4387,6 +4387,8 @@ function abilityActions(
     // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
     action.entry = ref;
+    // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+    if (entry.filters) action.filters = structuredClone(entry.filters);
     // And the row it came from (1.384): Druid spells, not a wizard's. A cell the row lacks reads as
     // its column's default (1.385), as a spell the builder added from a catalog carries no class.
     const values: Record<string, string> = {};
@@ -4447,6 +4449,8 @@ function innateActions(
     if (!action) return [];
     action.catalog = catalogId;
     action.entry = spell.entry;
+    // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+    if (entry.filters) action.filters = structuredClone(entry.filters);
     const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
     action.innate = {
       level: spell.level ?? baseLevel,
@@ -4501,6 +4505,8 @@ export function rulesetStoredAction(
   if (!action) return null;
   action.catalog = catalogId;
   action.entry = record.entry;
+  // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+  if (entry.filters) action.filters = structuredClone(entry.filters);
   const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
   action.innate = { level: Math.max(record.level, baseLevel), baseLevel };
   action.uses = { per: "encounter", count: 1 };
@@ -4618,6 +4624,8 @@ function conditionActions(
         if (!action) return [];
         action.catalog = catalogId;
         action.entry = ref;
+        // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+        if (entry.filters) action.filters = structuredClone(entry.filters);
         action.whileHolds = condition.condition;
         // Grown by the cost the condition was put on with (1.300), not one of its own.
         const per = action.use?.perCostStep;
@@ -5250,6 +5258,8 @@ function sheetCombatant(
       if (level < 1 || level > duplicates.upTo) continue;
       action.catalog = duplicates.catalog;
       action.entry = ref;
+      // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+      if (entry.filters) action.filters = structuredClone(entry.filters);
       if (wish.use) action.use = { ...wish.use };
       else delete action.use;
       if (wish.itemUse) action.itemUse = structuredClone(wish.itemUse);

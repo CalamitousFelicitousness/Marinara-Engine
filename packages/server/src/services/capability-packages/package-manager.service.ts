@@ -2740,6 +2740,24 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A change narrowed to the holder's attacks or damage at targets that are something (1.673): Demon
+ *  Armor. Read on every `modifiers` list, where `at` means nothing else. */
+function carriesModifierAt673(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesModifierAt673(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.modifiers) &&
+    record.modifiers.some((one) => {
+      const modifier = plainRecord(one);
+      return modifier?.at !== undefined && (modifier.to === "attacks" || modifier.to === "damage");
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesModifierAt673(one, depth + 1));
+}
+
 /** A leap onto whoever stands where it lands (1.672): a bulette's Deadly Leap. */
 function carriesLeapsOnto672(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8880,6 +8898,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A change at targets that are something, 1.673.
+  if (
+    !declaresApi(673) &&
+    (carriesModifierAt673(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesModifierAt673(document)))
+  )
+    return "A ruleset with a change to its holder's attacks or damage at targets that are something (modifiers[].at) requires schemaVersion 2 and capabilityApi 1.673 or newer";
   // A leap onto whoever stands where it lands, 1.672.
   if (
     !declaresApi(672) &&

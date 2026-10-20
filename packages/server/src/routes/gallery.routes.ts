@@ -81,6 +81,10 @@ import {
   resolveGalleryVideoSourceExchange,
 } from "../services/video/prompt-context.js";
 import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../services/video/scene-video-prompt-review.js";
+import {
+  formatVideoAppearanceDetails,
+  videoInstructionsUseAppearance,
+} from "../services/video/appearance-reference.js";
 import { writeRoleplayClipDirection } from "../services/video/roleplay-clip-writer.js";
 import {
   generateConversationVideo,
@@ -793,6 +797,11 @@ export async function galleryRoutes(app: FastifyInstance) {
     debugMode?: boolean;
     signal?: AbortSignal;
   }): Promise<string> {
+    // Instructions that speak to appearance get the people's appearance details to build in, as Illustrator clips do;
+    // otherwise the named characters' appearance lines go after the prompt.
+    const appearanceInPrompt =
+      args.meta.illustratorVideoIncludeCharacterAppearance === true &&
+      videoInstructionsUseAppearance(args.videoConn.videoPromptInstructions);
     let promptDraft: string;
     try {
       // The shared writer: the video connection's Video Prompting Instructions decide the prompt's format.
@@ -808,6 +817,11 @@ export async function galleryRoutes(app: FastifyInstance) {
         sourceExchange: args.sourceExchange,
         referenceImagePrompt: args.referenceImagePrompt,
         characterNames: args.characterNames,
+        appearanceDetails: appearanceInPrompt
+          ? formatVideoAppearanceDetails(
+              (await resolveRoleplayClipCast(args.chat, args.sourceExchange)).appearanceBlock,
+            )
+          : undefined,
         withoutPicture: args.withoutPicture === true,
         debugMode: args.debugMode,
         signal: args.signal,
@@ -816,7 +830,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       if (err instanceof ChatVideoError) throw new GallerySceneVideoRequestError(err.statusCode, err.message);
       throw err;
     }
-    if (args.meta.illustratorVideoIncludeCharacterAppearance === true) {
+    if (args.meta.illustratorVideoIncludeCharacterAppearance === true && !appearanceInPrompt) {
       // The characters the direction names get their appearance lines, as Illustrator images do.
       const { appearanceBlock } = await resolveRoleplayClipCast(args.chat, promptDraft);
       if (appearanceBlock) promptDraft = `${promptDraft}\n\n${appearanceBlock}`;

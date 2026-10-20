@@ -157,6 +157,36 @@ try {
   assert.equal(reviewed.statusCode, 200, reviewed.body);
   assert.match(h.lastComfyInputs()?.text ?? "", /^A reviewed shot of Bram ducking/u, "the reviewed prompt is sent");
 
+  // Attach Card Appearance for videos: instructions that speak to appearance give the writer the appearance details to
+  // build in, and no lines are added after its prompt; other instructions get the named characters' lines after it.
+  await h.saveChatSettings(pair.id, {
+    sceneVideoFirstFrame: "prompt_only",
+    illustratorVideoIncludeCharacterAppearance: true,
+  });
+  const setInstructions = async (videoPromptInstructions: string) => {
+    const response = await h.app.inject({
+      method: "PATCH",
+      url: `/api/connections/${h.video.id}`,
+      payload: { videoPromptInstructions },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+  };
+  await setInstructions("Describe every person from their appearance fields.");
+  replies.director = { content: "Bram ducks behind the bench.", finishReason: "stop" };
+  assert.equal((await roleplayVideo(pair.id, "Bram ducks")).statusCode, 200);
+  assert.match(lastDirector(), /Bram wears a red scarf/u, "the writer gets the appearance details");
+  assert.doesNotMatch(h.lastComfyInputs()?.text ?? "", /red scarf/u, "and nothing is added after its prompt");
+  await setInstructions("");
+  replies.director = { content: "Bram ducks behind the bench.", finishReason: "stop" };
+  assert.equal((await roleplayVideo(pair.id, "Bram ducks")).statusCode, 200);
+  assert.doesNotMatch(lastDirector(), /Bram wears a red scarf/u);
+  assert.match(
+    h.lastComfyInputs()?.text ?? "",
+    /Bram ducks behind the bench\.[\s\S]*Bram wears a red scarf/u,
+    "other instructions get the lines after the prompt",
+  );
+  await h.saveChatSettings(pair.id, { illustratorVideoIncludeCharacterAppearance: false });
+
   // A new Illustrator picture is drawn by /illustrate first; the route says so instead of drawing it.
   await h.saveChatSettings(pair.id, { sceneVideoFirstFrame: "picture" });
   assert.deepEqual((await roleplayVideo(pair.id)).json(), { needsPicture: true });

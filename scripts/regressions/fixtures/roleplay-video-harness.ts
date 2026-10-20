@@ -40,6 +40,7 @@ export async function startRoleplayVideoHarness(name: string) {
     const { galleryRoutes } = await import("../../../packages/server/src/routes/gallery.routes.js");
     const { agentsRoutes } = await import("../../../packages/server/src/routes/agents.routes.js");
     const { charactersRoutes } = await import("../../../packages/server/src/routes/characters.routes.js");
+    const { connectionsRoutes } = await import("../../../packages/server/src/routes/connections.routes.js");
     const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
     const { createAgentsStorage } = await import("../../../packages/server/src/services/storage/agents.storage.js");
     const { createConnectionsStorage } =
@@ -166,6 +167,7 @@ export async function startRoleplayVideoHarness(name: string) {
     await app.register(galleryRoutes, { prefix: "/api/gallery" });
     await app.register(agentsRoutes, { prefix: "/api/agents" });
     await app.register(charactersRoutes, { prefix: "/api/characters" });
+    await app.register(connectionsRoutes, { prefix: "/api/connections" });
     const chats = createChatsStorage(db);
     const characters = createCharactersStorage(db);
 

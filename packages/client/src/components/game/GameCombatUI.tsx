@@ -1218,7 +1218,7 @@ export function GameCombatUI({
           <button
             type="button"
             onClick={() => playCombatVoiceKeys(playableCombatVoiceKeys)}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--mari-game-text,var(--foreground))]/60 transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
             title={localizeUi("ui.game.gamecombatui.playCombatVoiceOver")}
             aria-label={localizeUi("ui.game.gamecombatui.playCombatVoiceOver")}
             disabled={playableCombatVoiceKeys.length === 0}
@@ -1888,9 +1888,7 @@ export function GameCombatUI({
                 html="BATTLE START"
                 className="text-xl font-bold tracking-wide text-[var(--mari-game-text,var(--foreground))]"
               />
-              <span className="text-xs text-[var(--mari-game-text,var(--foreground))]/60">
-                {enemies.map((e) => e.name).join(", ")}
-              </span>
+              <span className="text-xs text-[var(--muted-foreground)]">{enemies.map((e) => e.name).join(", ")}</span>
             </div>
           </div>
         )}
@@ -1913,7 +1911,7 @@ export function GameCombatUI({
               data-game-section="combat-banner"
               className={cn(
                 GAME_SECTION_CLASS,
-                "absolute inset-x-2 top-2 z-10 flex items-center gap-2 rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-bg,var(--background))]/75 px-3 py-2 text-xs text-[var(--mari-game-text,var(--foreground))]/70 backdrop-blur-md",
+                "absolute inset-x-2 top-2 z-10 flex items-center gap-2 rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-bg,var(--background))]/75 px-3 py-2 text-xs text-[var(--muted-foreground)] backdrop-blur-md",
               )}
             >
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)]/30 border-t-[var(--border)]" />
@@ -1984,10 +1982,7 @@ export function GameCombatUI({
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[var(--mari-game-bg,var(--background))]/85 px-6 text-center animate-in fade-in duration-500">
               <SkullIcon className="h-12 w-12 text-[var(--destructive)]" />
               <AnimatedText html="{shake:Defeat...}" className="text-2xl font-bold text-[var(--destructive)]" />
-              <AnimatedText
-                html="{pulse:Your party has fallen.}"
-                className="text-xs text-[var(--mari-game-text,var(--foreground))]/55"
-              />
+              <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-[var(--muted-foreground)]" />
               <button
                 onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
                 className="rounded-lg bg-[var(--primary)]/20 px-6 py-2.5 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
@@ -2021,7 +2016,7 @@ export function GameCombatUI({
                   {activeMobileCombatDialogue.character}
                 </span>
                 {activeMobileCombatDialogue.expression && (
-                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/55">
+                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                     {activeMobileCombatDialogue.expression}
                   </span>
                 )}
@@ -2057,7 +2052,7 @@ export function GameCombatUI({
                 "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                 openDrawer === "party"
                   ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
-                  : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/55 hover:bg-[var(--mari-game-text,var(--foreground))]/10",
+                  : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10",
               )}
             >
               {localizeUi("ui.game.gamecombatui.party")}
@@ -2070,7 +2065,7 @@ export function GameCombatUI({
                   "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                   openDrawer === "mechanics"
                     ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
-                    : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/55 hover:bg-[var(--mari-game-text,var(--foreground))]/10",
+                    : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10",
                 )}
               >
                 {localizeUi("ui.game.gamecombatui.mech")} {combatMechanics.length}
@@ -2084,7 +2079,7 @@ export function GameCombatUI({
                   "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                   openDrawer === "cues"
                     ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
-                    : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/55 hover:bg-[var(--mari-game-text,var(--foreground))]/10",
+                    : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10",
                 )}
               >
                 {localizeUi("ui.game.gamecombatui.cues")}
@@ -2097,13 +2092,13 @@ export function GameCombatUI({
                 "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                 openDrawer === "log"
                   ? "border-[var(--border)]/30 bg-[var(--mari-game-text,var(--foreground))]/15 text-[var(--mari-game-text,var(--foreground))]"
-                  : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/55 hover:bg-[var(--mari-game-text,var(--foreground))]/10",
+                  : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10",
               )}
             >
               {localizeUi("ui.game.gamecombatui.log")}
             </button>
             {turnOrder.length > 0 && (
-              <span className="ml-auto shrink-0 truncate rounded bg-[var(--mari-game-text,var(--foreground))]/5 px-2 py-1 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/45">
+              <span className="ml-auto shrink-0 truncate rounded bg-[var(--mari-game-text,var(--foreground))]/5 px-2 py-1 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                 {localizeUi("ui.game.gamecombatui.next")} {turnOrder[0]?.name ?? "—"}
               </span>
             )}
@@ -2129,7 +2124,7 @@ export function GameCombatUI({
                   <div className="truncate text-xs font-semibold text-[var(--mari-game-text,var(--foreground))]">
                     {activePlayer.name}
                   </div>
-                  <div className="text-[0.55rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/45">
+                  <div className="text-[0.55rem] tabular-nums text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecharactersheet.hp")} {activePlayer.hp}/{activePlayer.maxHp}
                     {activePlayer.maxMp
                       ? localizeUi("ui.game.gamecombatui.mpValue1Value2", {
@@ -2140,10 +2135,10 @@ export function GameCombatUI({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-center gap-0.5 text-center">
-                  <span className="min-w-[4.25rem] rounded border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/45">
+                  <span className="min-w-[4.25rem] rounded border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.round")} {round}
                   </span>
-                  <span className="min-w-[4.25rem] rounded bg-[var(--warning)]/20 px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--warning)]">
+                  <span className="min-w-[4.25rem] rounded bg-[var(--warning)]/20 px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]">
                     {localizeUi("ui.game.gamecombatui.yourTurn")}
                   </span>
                 </div>
@@ -2167,7 +2162,7 @@ export function GameCombatUI({
                       "flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-[0.65rem] font-medium transition-all duration-150",
                       actionMenuIndex === i
                         ? "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-[var(--mari-game-text,var(--foreground))]"
-                        : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/70 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]",
+                        : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]",
                     )}
                   >
                     <action.icon size={16} className={action.color} />
@@ -2181,7 +2176,7 @@ export function GameCombatUI({
               <div className="flex flex-col gap-2 p-2">
                 <div className="flex items-center gap-2">
                   <Sparkles size={13} className="text-[var(--primary)]" />
-                  <div className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60">
+                  <div className="text-[0.65rem] text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.pickASkillThenATargetGreyedOutNot")}
                   </div>
                 </div>
@@ -2216,7 +2211,7 @@ export function GameCombatUI({
                             <span className="min-w-0 truncate font-semibold text-[var(--mari-game-text,var(--foreground))]/90">
                               {skill.name}
                             </span>
-                            <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/45">
+                            <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--muted-foreground)]">
                               {localizeUi(combatSkillTypeLabelKey(skill.type))} ·{" "}
                               {skill.slotLevel
                                 ? localizeUi("game.combat.director.slotCost", { level: skill.slotLevel })
@@ -2227,7 +2222,7 @@ export function GameCombatUI({
                       })}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-2 text-xs text-[var(--mari-game-text,var(--foreground))]/45">
+                  <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-2 text-xs text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.noCombatSkillsAreAvailableForThisCombatant")}
                   </div>
                 )}
@@ -2238,7 +2233,7 @@ export function GameCombatUI({
                     setSelectedSkillId(null);
                     setSelectedItemName(null);
                   }}
-                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                 >
                   {localizeUi("ui.noodle.noodlerframe.back")}
                 </button>
@@ -2250,7 +2245,7 @@ export function GameCombatUI({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Backpack size={13} className="text-[var(--primary)]" />
-                    <span className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60">
+                    <span className="text-[0.65rem] text-[var(--muted-foreground)]">
                       {localizeUi("ui.game.gamecombatui.pickAnItemToUseThisTurn")}
                     </span>
                   </div>
@@ -2258,7 +2253,7 @@ export function GameCombatUI({
                     <button
                       type="button"
                       onClick={onOpenInventory}
-                      className="rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.6rem] text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                      className="rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                     >
                       {localizeUi("ui.game.gamecombatui.fullInventory")}
                     </button>
@@ -2280,13 +2275,13 @@ export function GameCombatUI({
                               {item.name}
                             </span>
                             {item.quantity > 1 && (
-                              <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 text-[0.55rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/60">
+                              <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 text-[0.55rem] tabular-nums text-[var(--muted-foreground)]">
                                 {localizeUi("ui.panels.imagedimensionrow.x")}
                                 {item.quantity}
                               </span>
                             )}
                           </div>
-                          <div className="mt-0.5 line-clamp-2 text-[0.6rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                          <div className="mt-0.5 line-clamp-2 text-[0.6rem] text-[var(--muted-foreground)]">
                             {itemEffect?.description || "Use on the active party member."}
                           </div>
                         </button>
@@ -2294,7 +2289,7 @@ export function GameCombatUI({
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-2 text-xs text-[var(--mari-game-text,var(--foreground))]/45">
+                  <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-2 text-xs text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.noItemsAreAvailableInYourInventory")}
                   </div>
                 )}
@@ -2305,7 +2300,7 @@ export function GameCombatUI({
                     setSelectedSkillId(null);
                     setSelectedItemName(null);
                   }}
-                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                 >
                   {localizeUi("ui.noodle.noodlerframe.back")}
                 </button>
@@ -2316,7 +2311,7 @@ export function GameCombatUI({
               <div className="flex flex-col gap-2 p-2">
                 <div className="flex items-center gap-2">
                   <Zap size={13} className="text-[var(--primary)]" />
-                  <span className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60">
+                  <span className="text-[0.65rem] text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.describeWhatYouAttemptTheGmResolvesIt")}
                   </span>
                 </div>
@@ -2335,7 +2330,7 @@ export function GameCombatUI({
                       submitCustomInstruction();
                     }
                   }}
-                  className="min-h-20 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2.5 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))]/85 outline-none transition-colors placeholder:text-[var(--mari-game-text,var(--foreground))]/35 focus:border-[var(--primary)]/45"
+                  className="min-h-20 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2.5 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))]/85 outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]/45"
                   placeholder={localizeUi("ui.game.gamecombatui.iKickSandIntoTheRuinGuardSCracked")}
                   autoFocus
                 />
@@ -2356,7 +2351,7 @@ export function GameCombatUI({
                       setSelectedItemName(null);
                       setCustomInstruction("");
                     }}
-                    className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                    className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                   >
                     {localizeUi("ui.noodle.noodlerframe.back")}
                   </button>
@@ -2395,7 +2390,7 @@ export function GameCombatUI({
                         )}
                       >
                         <span className="min-w-0 truncate font-semibold">{member.name}</span>
-                        <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/55">
+                        <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--muted-foreground)]">
                           {localizeUi("ui.game.gamecharactersheet.hp")} {member.hp}/{member.maxHp}
                         </span>
                       </button>
@@ -2418,7 +2413,7 @@ export function GameCombatUI({
                         )}
                       >
                         <span className="min-w-0 truncate font-semibold">{enemy.name}</span>
-                        <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/55">
+                        <span className="shrink-0 text-[0.6rem] tabular-nums text-[var(--muted-foreground)]">
                           {localizeUi("ui.game.gamecharactersheet.hp")} {enemy.hp}/{enemy.maxHp}
                         </span>
                       </button>
@@ -2440,7 +2435,7 @@ export function GameCombatUI({
                       setSelectedItemName(null);
                     }
                   }}
-                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                  className="self-start rounded border border-[var(--border)]/15 px-2 py-0.5 text-[0.65rem] text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                 >
                   {localizeUi("ui.noodle.noodlerframe.back")}
                 </button>
@@ -2465,7 +2460,7 @@ export function GameCombatUI({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/65">
+                <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                   {openDrawer === "party" && "Party"}
                   {openDrawer === "mechanics" && "Boss Mechanics"}
                   {openDrawer === "cues" && "Dialogue"}
@@ -2474,7 +2469,7 @@ export function GameCombatUI({
                 <button
                   type="button"
                   onClick={() => setOpenDrawer(null)}
-                  className="rounded p-1 text-[var(--mari-game-text,var(--foreground))]/55 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                  className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                   aria-label={localizeUi("ui.game.gamecombatui.closeDrawer")}
                 >
                   <X size={14} />
@@ -2517,7 +2512,7 @@ export function GameCombatUI({
               {openDrawer === "log" && (
                 <div className="space-y-1 pr-1">
                   {combatLogEntries.length === 0 ? (
-                    <div className="rounded border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-2 py-1.5 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                    <div className="rounded border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-2 py-1.5 text-[0.65rem] text-[var(--muted-foreground)]">
                       {localizeUi("ui.game.gamecombatui.noCombatEventsRecordedYet")}
                     </div>
                   ) : (
@@ -2527,7 +2522,7 @@ export function GameCombatUI({
                         className={cn(
                           "min-w-0 break-words rounded border px-2 py-1 text-xs leading-relaxed [overflow-wrap:anywhere]",
                           entry.tone === "system" &&
-                            "border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/[0.03] text-[var(--mari-game-text,var(--foreground))]/55",
+                            "border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/[0.03] text-[var(--muted-foreground)]",
                           entry.tone === "status" &&
                             "border-[var(--warning)]/10 bg-[var(--warning)]/8 text-[var(--mari-game-text,var(--foreground))]/75",
                           (!entry.tone || entry.tone === "action") &&
@@ -2581,9 +2576,7 @@ export function GameCombatUI({
                 html="BATTLE START"
                 className="text-xl font-bold tracking-wide text-[var(--mari-game-text,var(--foreground))]"
               />
-              <span className="text-sm text-[var(--mari-game-text,var(--foreground))]/60">
-                {enemies.map((e) => e.name).join(", ")}
-              </span>
+              <span className="text-sm text-[var(--muted-foreground)]">{enemies.map((e) => e.name).join(", ")}</span>
             </div>
           </div>
         )}
@@ -2664,7 +2657,7 @@ export function GameCombatUI({
                 "shrink-0 rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-bg,var(--background))]/65 px-2.5 py-1 text-center shadow-lg backdrop-blur-md",
               )}
             >
-              <div className="text-[0.55rem] font-semibold uppercase tracking-widest text-[var(--mari-game-text,var(--foreground))]/40">
+              <div className="text-[0.55rem] font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
                 {localizeUi("ui.game.gamecombatui.round")}
               </div>
               <div className="text-lg font-bold leading-none tabular-nums text-[var(--mari-game-text,var(--foreground))]">
@@ -2684,7 +2677,7 @@ export function GameCombatUI({
           )}
         >
           <div className="flex items-center gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <span className="mr-1 shrink-0 text-[0.6rem] font-semibold uppercase tracking-widest text-[var(--mari-game-text,var(--foreground))]/50">
+            <span className="mr-1 shrink-0 text-[0.6rem] font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
               {localizeUi("ui.game.gamesurfacecomponent.turn")}
             </span>
             {turnOrder.map((entry, i) => {
@@ -2695,7 +2688,7 @@ export function GameCombatUI({
                   className={cn(
                     "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium transition-all",
                     i === 0
-                      ? "bg-[var(--warning)]/30 text-[var(--warning)] ring-1 ring-[var(--warning)]/40"
+                      ? "bg-[var(--warning)]/30 text-[var(--mari-game-text,var(--foreground))] ring-1 ring-[var(--warning)]/40"
                       : isParty
                         ? "bg-[var(--primary)]/15 text-[var(--primary)]/80"
                         : "bg-[var(--destructive)]/15 text-[var(--destructive)]/80",
@@ -2722,7 +2715,7 @@ export function GameCombatUI({
         {(phase === "resolving" || phase === "animating") && (
           <div className="flex flex-col gap-2 px-4 py-3">
             {phase === "resolving" && (
-              <div className="flex items-center gap-2 text-sm text-[var(--mari-game-text,var(--foreground))]/60">
+              <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border)]/30 border-t-[var(--border)]" />
                 {selectedAction === "custom"
                   ? localizeUi("ui.game.gamecombatui.theGameMasterIsAdjudicatingYourManeuver")
@@ -2754,7 +2747,7 @@ export function GameCombatUI({
                 <div className="text-xs font-semibold text-[var(--mari-game-text,var(--foreground))]">
                   {activePlayer.name}
                 </div>
-                <div className="text-[0.6rem] text-[var(--mari-game-text,var(--foreground))]/40">
+                <div className="text-[0.6rem] text-[var(--muted-foreground)]">
                   {localizeUi("ui.game.gamecombatui.chooseAction")}
                 </div>
               </div>
@@ -2777,7 +2770,7 @@ export function GameCombatUI({
                     "group flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-all duration-150",
                     actionMenuIndex === i
                       ? "border-[var(--primary)]/50 bg-[var(--primary)]/20 text-[var(--mari-game-text,var(--foreground))] shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_15%,transparent)]"
-                      : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--mari-game-text,var(--foreground))]/70 hover:border-[var(--border)]/20 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]",
+                      : "border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 text-[var(--muted-foreground)] hover:border-[var(--border)]/20 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]",
                   )}
                 >
                   <action.icon size={14} className={action.color} />
@@ -2797,7 +2790,7 @@ export function GameCombatUI({
                   {activePlayer.name}
                   {localizeUi("ui.game.gamecombatui.sSkills")}
                 </div>
-                <div className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                <div className="text-[0.65rem] text-[var(--muted-foreground)]">
                   {localizeUi("ui.game.gamecombatui.chooseACombatAbilityThenPickATarget")}
                 </div>
               </div>
@@ -2834,7 +2827,7 @@ export function GameCombatUI({
                         <div className="font-semibold text-[var(--mari-game-text,var(--foreground))]/90">
                           {skill.name}
                         </div>
-                        <div className="mt-0.5 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                        <div className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">
                           {localizeUi(combatSkillTypeLabelKey(skill.type))} ·{" "}
                           {skill.description || localizeUi(combatSkillDescriptionKey(skill.type))} •{" "}
                           {skill.slotLevel
@@ -2846,7 +2839,7 @@ export function GameCombatUI({
                   })}
               </div>
             ) : (
-              <div className="text-xs text-[var(--mari-game-text,var(--foreground))]/45">
+              <div className="text-xs text-[var(--muted-foreground)]">
                 {localizeUi("ui.game.gamecombatui.noCombatSkillsAreAvailableForThisCombatant")}
               </div>
             )}
@@ -2859,7 +2852,7 @@ export function GameCombatUI({
                   setSelectedSkillId(null);
                   setSelectedItemName(null);
                 }}
-                className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
               >
                 {localizeUi("ui.noodle.noodlerframe.back")}
               </button>
@@ -2877,7 +2870,7 @@ export function GameCombatUI({
                     {activePlayer.name}
                     {localizeUi("ui.game.gamecombatui.sItems")}
                   </div>
-                  <div className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                  <div className="text-[0.65rem] text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.gamecombatui.chooseAnItemToUseThisTurn")}
                   </div>
                 </div>
@@ -2886,7 +2879,7 @@ export function GameCombatUI({
                 <button
                   type="button"
                   onClick={onOpenInventory}
-                  className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                  className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
                 >
                   {localizeUi("ui.game.gamecombatui.openInventory")}
                 </button>
@@ -2909,13 +2902,13 @@ export function GameCombatUI({
                           {item.name}
                         </span>
                         {item.quantity > 1 && (
-                          <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/60">
+                          <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-[var(--muted-foreground)]">
                             {localizeUi("ui.panels.imagedimensionrow.x")}
                             {item.quantity}
                           </span>
                         )}
                       </div>
-                      <div className="mt-0.5 line-clamp-2 text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                      <div className="mt-0.5 line-clamp-2 text-[0.65rem] text-[var(--muted-foreground)]">
                         {itemEffect?.description || "Use on the active party member."}
                       </div>
                     </button>
@@ -2923,7 +2916,7 @@ export function GameCombatUI({
                 })}
               </div>
             ) : (
-              <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-3 text-xs text-[var(--mari-game-text,var(--foreground))]/45">
+              <div className="rounded-lg border border-[var(--border)]/10 bg-[var(--mari-game-text,var(--foreground))]/5 px-3 py-3 text-xs text-[var(--muted-foreground)]">
                 {localizeUi("ui.game.gamecombatui.noItemsAreAvailableInYourInventory")}
               </div>
             )}
@@ -2936,7 +2929,7 @@ export function GameCombatUI({
                   setSelectedSkillId(null);
                   setSelectedItemName(null);
                 }}
-                className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                className="rounded border border-[var(--border)]/15 px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
               >
                 {localizeUi("ui.noodle.noodlerframe.back")}
               </button>
@@ -2953,7 +2946,7 @@ export function GameCombatUI({
                   {activePlayer.name}
                   {localizeUi("ui.game.gamecombatui.sSpecialManeuver")}
                 </div>
-                <div className="text-[0.65rem] text-[var(--mari-game-text,var(--foreground))]/45">
+                <div className="text-[0.65rem] text-[var(--muted-foreground)]">
                   {localizeUi("ui.game.gamecombatui.describeWhatYouAttemptTheGmCanApplyStatuses")}
                 </div>
               </div>
@@ -2974,7 +2967,7 @@ export function GameCombatUI({
                   submitCustomInstruction();
                 }
               }}
-              className="min-h-24 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))]/85 outline-none transition-colors placeholder:text-[var(--mari-game-text,var(--foreground))]/35 focus:border-[var(--primary)]/45"
+              className="min-h-24 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-2 text-sm leading-relaxed text-[var(--mari-game-text,var(--foreground))]/85 outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]/45"
               placeholder={localizeUi("ui.game.gamecombatui.exampleIKickSandIntoTheRuinGuardS")}
               autoFocus
             />
@@ -2996,7 +2989,7 @@ export function GameCombatUI({
                   setSelectedItemName(null);
                   setCustomInstruction("");
                 }}
-                className="rounded border border-[var(--border)]/15 px-2 py-1.5 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+                className="rounded border border-[var(--border)]/15 px-2 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
               >
                 {localizeUi("ui.noodle.noodlerframe.back")}
               </button>
@@ -3036,7 +3029,7 @@ export function GameCombatUI({
                     )}
                   >
                     <div className="font-semibold text-[var(--mari-game-text,var(--foreground))]/90">{enemy.name}</div>
-                    <div className="mt-0.5 text-[0.65rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/45">
+                    <div className="mt-0.5 text-[0.65rem] tabular-nums text-[var(--muted-foreground)]">
                       {localizeUi("ui.game.gamecharactersheet.hp")} {enemy.hp}/{enemy.maxHp}
                     </div>
                   </button>
@@ -3059,7 +3052,7 @@ export function GameCombatUI({
                     )}
                   >
                     <div className="font-semibold text-[var(--mari-game-text,var(--foreground))]/90">{member.name}</div>
-                    <div className="mt-0.5 text-[0.65rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/45">
+                    <div className="mt-0.5 text-[0.65rem] tabular-nums text-[var(--muted-foreground)]">
                       {localizeUi("ui.game.gamecharactersheet.hp")} {member.hp}/{member.maxHp}
                     </div>
                   </button>
@@ -3081,7 +3074,7 @@ export function GameCombatUI({
                   setSelectedItemName(null);
                 }
               }}
-              className="rounded border border-[var(--border)]/15 px-2 py-0.5 text-xs text-[var(--mari-game-text,var(--foreground))]/60 hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
+              className="rounded border border-[var(--border)]/15 px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--mari-game-text,var(--foreground))]/10 hover:text-[var(--mari-game-text,var(--foreground))]"
             >
               {localizeUi("ui.noodle.noodlerframe.back")}
             </button>
@@ -3107,10 +3100,7 @@ export function GameCombatUI({
           <div className="flex flex-col items-center gap-3 px-3 py-4 animate-in fade-in slide-in-from-bottom-4 duration-500 sm:px-4 sm:py-6">
             <SkullIcon className="h-8 w-8 text-[var(--destructive)]" />
             <AnimatedText html="{shake:Defeat...}" className="text-lg font-bold text-[var(--destructive)]" />
-            <AnimatedText
-              html="{pulse:Your party has fallen.}"
-              className="text-xs text-[var(--mari-game-text,var(--foreground))]/50"
-            />
+            <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-[var(--muted-foreground)]" />
             <button
               onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
               className="mt-2 rounded-lg bg-[var(--primary)]/20 px-6 py-2 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
@@ -3123,7 +3113,7 @@ export function GameCombatUI({
         {/* Live combat log */}
         {combatLogEntries.length > 0 && phase !== "victory" && phase !== "defeat" && (
           <div className="border-t border-[var(--border)]/5 px-3 py-2 sm:px-4">
-            <div className="mb-1 flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/40">
+            <div className="mb-1 flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
               <ScrollText size={11} />
               {localizeUi("ui.game.gamecombatui.combatLog")}
             </div>
@@ -3134,11 +3124,11 @@ export function GameCombatUI({
                   className={cn(
                     "min-w-0 break-words rounded border px-2 py-1 text-xs leading-relaxed [overflow-wrap:anywhere]",
                     entry.tone === "system" &&
-                      "border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/[0.03] text-[var(--mari-game-text,var(--foreground))]/50",
+                      "border-[var(--border)]/5 bg-[var(--mari-game-text,var(--foreground))]/[0.03] text-[var(--muted-foreground)]",
                     entry.tone === "status" &&
                       "border-[var(--warning)]/10 bg-[var(--warning)]/8 text-[var(--mari-game-text,var(--foreground))]/75",
                     (!entry.tone || entry.tone === "action") &&
-                      "border-[var(--border)]/5 bg-[var(--mari-game-bg,var(--background))]/20 text-[var(--mari-game-text,var(--foreground))]/70",
+                      "border-[var(--border)]/5 bg-[var(--mari-game-bg,var(--background))]/20 text-[var(--muted-foreground)]",
                   )}
                 >
                   {entry.text}
@@ -3192,14 +3182,12 @@ function CombatDialoguePanel({
                   {line.character}
                 </span>
                 {line.expression && (
-                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/50">
+                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                     {line.expression}
                   </span>
                 )}
                 {line.type === "whisper" && line.target && (
-                  <span className="text-[0.5625rem] text-[var(--mari-game-text,var(--foreground))]/40">
-                    → {line.target}
-                  </span>
+                  <span className="text-[0.5625rem] text-[var(--muted-foreground)]">→ {line.target}</span>
                 )}
               </div>
               <p
@@ -3243,12 +3231,12 @@ function CombatMechanicsPanel({ mechanics, round }: { mechanics: CombatMechanic[
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 truncate font-semibold">{mechanic.name}</span>
                 {interval > 0 && (
-                  <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.55rem] text-[var(--mari-game-text,var(--foreground))]/50">
+                  <span className="shrink-0 rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.55rem] text-[var(--muted-foreground)]">
                     {localizeUi("ui.game.combatmechanicspanel.every")} {interval}
                   </span>
                 )}
               </div>
-              <div className="mt-0.5 line-clamp-2 text-[0.65rem] leading-relaxed text-[var(--mari-game-text,var(--foreground))]/55">
+              <div className="mt-0.5 line-clamp-2 text-[0.65rem] leading-relaxed text-[var(--muted-foreground)]">
                 {charging && mechanic.counterplay ? mechanic.counterplay : mechanic.description}
               </div>
             </div>
@@ -3393,7 +3381,7 @@ function CombatantCard({
                   {line.character}
                 </span>
                 {line.expression && (
-                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--mari-game-text,var(--foreground))]/55">
+                  <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                     {line.expression}
                   </span>
                 )}
@@ -3505,7 +3493,7 @@ function CombatantCard({
         >
           {combatant.name}
         </span>
-        <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0 text-[0.55rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/40">
+        <span className="rounded-full bg-[var(--mari-game-text,var(--foreground))]/10 px-1.5 py-0 text-[0.55rem] tabular-nums text-[var(--muted-foreground)]">
           {localizeUi("ui.game.combatantcard.lv")}
           {combatant.level}
         </span>
@@ -3529,7 +3517,7 @@ function CombatantCard({
               style={{ width: `${hpPercent}%` }}
             />
           </div>
-          <span className="min-w-[2.5rem] text-right text-[0.55rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/50">
+          <span className="min-w-[2.5rem] text-right text-[0.55rem] tabular-nums text-[var(--muted-foreground)]">
             {combatant.hp}/{combatant.maxHp}
           </span>
         </div>
@@ -3544,7 +3532,7 @@ function CombatantCard({
                 style={{ width: `${mpPercent}%` }}
               />
             </div>
-            <span className="min-w-[2.5rem] text-right text-[0.55rem] tabular-nums text-[var(--mari-game-text,var(--foreground))]/40">
+            <span className="min-w-[2.5rem] text-right text-[0.55rem] tabular-nums text-[var(--muted-foreground)]">
               {combatant.mp}/{combatant.maxMp}
             </span>
           </div>
@@ -3679,7 +3667,7 @@ function ActionNarration({ action, allCombatants }: { action: CombatAttackResult
           tone === "critical" && "text-[var(--destructive)]",
           tone === "reaction" && "text-[var(--warning)]",
           tone === "heal" && "text-[var(--success)]",
-          tone === "miss" && "text-[var(--mari-game-text,var(--foreground))]/40",
+          tone === "miss" && "text-[var(--muted-foreground)]",
           tone === "hit" && "text-[var(--destructive)]",
         )}
       />

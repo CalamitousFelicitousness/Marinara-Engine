@@ -13617,10 +13617,15 @@ const combatConditionSchema = z
          *  unit (Capability API 1.629): a bearded devil's Steadfast, 30, on a kept-on condition with
          *  `conditionImmunities: ["frightened"]`. */
         allySeenWithin: z.number().finite().gt(0).max(10000).optional(),
+        /** Or only while its holder stands on ground one of these names (Capability API 1.661): a
+         *  tile of the board's, the board's whole place, or a lasting area left by an action named by
+         *  id or label. 5e's vampire in running water, `["water", "Running Water"]`, with an
+         *  aura's `harms` on itself. Off a board it is held off. */
+        ground: z.array(promptSafeText(40)).min(1).max(12).optional(),
       })
       .strict()
-      .refine((held) => held.light || held.allySeenWithin !== undefined, {
-        message: '"heldOnlyIn" names a light, an ally seen within a distance, or both',
+      .refine((held) => held.light || held.allySeenWithin !== undefined || held.ground, {
+        message: '"heldOnlyIn" names a light, an ally seen within a distance, ground, or more than one',
       })
       .optional(),
     /** While this holds, these conditions on its holder are held off, not ended (Capability API

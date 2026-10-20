@@ -103,6 +103,7 @@ import {
   rulesetGap,
   rulesetInCells,
   rulesetPositionOf,
+  rulesetNamesAction,
   rulesetSpanOf,
   rulesetZoneCells,
 } from "./grid.js";
@@ -592,6 +593,28 @@ function onTerrain(
   return tile !== undefined && terrains.includes(tile);
 }
 
+/** Whether somebody stands on ground one of these names (1.661): a tile or the board's place, as
+ *  `onTerrain` reads them, or a lasting area left by an action named by id or label. */
+function onGroundNamed(
+  combatant: RulesetCombatant,
+  state: RulesetEncounterState | undefined,
+  names: readonly string[],
+): boolean {
+  if (!state?.board) return false;
+  if (onTerrain(combatant, state, names)) return true;
+  const lower = names.map((name) => name.trim().toLowerCase());
+  const feet = rulesetFootprint(combatant);
+  if (feet.length === 0) return false;
+  return state.combatants.some((caster) =>
+    (caster.zones ?? []).some((zone) => {
+      const action = caster.actions.find((one) => one.id === zone.actionId);
+      if (!action || !rulesetNamesAction(lower, [action.id, action.label])) return false;
+      const cells = rulesetZoneCells(state, caster, zone);
+      return feet.some((foot) => cells.some((cell) => cell.x === foot.x && cell.y === foot.y));
+    }),
+  );
+}
+
 /** A prop's label or id loosely: lower case, a leading "the" dropped, and only letters and digits
  *  kept, so "Year-Wheel", "year wheel" and "The Year-Wheel" are one prop (1.332). */
 function looseProp(name: string): string {
@@ -736,6 +759,8 @@ export function rulesetActiveConditions(
       !heldInLight(definition, combat, combatant, state, entry.heldOnlyIn.light)
     )
       return [];
+    // Only on ground it names (1.661): a vampire in running water.
+    if (entry.heldOnlyIn?.ground && !onGroundNamed(combatant, state, entry.heldOnlyIn.ground)) return [];
     // Only while an ally is seen near (1.629): a bearded devil's Steadfast.
     if (
       entry.heldOnlyIn?.allySeenWithin !== undefined &&

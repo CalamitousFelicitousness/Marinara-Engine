@@ -2740,6 +2740,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition held only on ground it names (1.661): a vampire in running water. */
+function carriesHeldOnGround661(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHeldOnGround661(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.heldOnlyIn)?.ground !== undefined) return true;
+  return featureValues(record).some((one) => carriesHeldOnGround661(one, depth + 1));
+}
+
 /** A character's tags read off several fields (1.660): race and alignment. */
 function carriesTagsFromList660(ruleset: unknown): boolean {
   return Array.isArray(plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.creatureTypes)?.tagsFrom);
@@ -8775,6 +8785,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition held only on ground it names, 1.661.
+  if (
+    !declaresApi(661) &&
+    (carriesHeldOnGround661(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHeldOnGround661(document)))
+  )
+    return "A ruleset with a condition held only on ground it names (heldOnlyIn.ground) requires schemaVersion 2 and capabilityApi 1.661 or newer";
   // A character's tags read off several fields, 1.660.
   if (!declaresApi(660) && carriesTagsFromList660(ruleset))
     return "A ruleset that reads a character's tags off several fields (creatureTypes.tagsFrom as a list) requires schemaVersion 2 and capabilityApi 1.660 or newer";

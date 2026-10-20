@@ -89,6 +89,7 @@ import {
   Shield,
   Wallpaper,
   Search,
+  UserRound,
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -117,6 +118,7 @@ import { TranslationSection } from "../../features/chat-settings/sections/Transl
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
+  AVATAR_AGENT_IDS,
   BUILT_IN_AGENTS,
   VIDEO_FIRST_FRAMES,
   normalizeVideoFirstFrame,
@@ -159,6 +161,7 @@ import {
   GenerationSettingsLink,
 } from "./AgentSettingsControls";
 import { ExpressionSpriteSettings } from "./ExpressionSpriteSettings";
+import { AvatarLayoutSettings, type AvatarLayoutControls } from "./AvatarLayoutSettings";
 import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
@@ -459,6 +462,8 @@ interface ChatSettingsDrawerProps {
   onSpriteSideChange?: (side: "left" | "right", characterId?: string) => void;
   spriteVisualSettings?: LocalSpriteVisualSettings;
   onSpriteVisualSettingsChange?: (patch: Partial<LocalSpriteVisualSettings>) => void;
+  /** The Avatars drawer's controls, in chats whose stage can show avatars. */
+  avatarLayout?: AvatarLayoutControls;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
 }
 
@@ -595,6 +600,8 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
       return <MapIcon size={size} className={className} />;
     case "custom-agents":
       return <Bot size={size} className={className} />;
+    case "avatars":
+      return <UserRound size={size} className={className} />;
     default:
       return <Puzzle size={size} className={className} />;
   }
@@ -969,6 +976,7 @@ export function ChatSettingsDrawer({
   onSpriteSideChange,
   spriteVisualSettings,
   onSpriteVisualSettingsChange,
+  avatarLayout,
   onOpenScheduleEditor,
 }: ChatSettingsDrawerProps) {
   const { t: localizeUi } = useUiTranslation();
@@ -2015,6 +2023,12 @@ export function ChatSettingsDrawer({
   const lorebookKeeperActive = activeAgentIds.includes("lorebook-keeper");
   const cardEvolutionAuditorActive = activeAgentIds.includes("card-evolution-auditor");
   const expressionActive = activeAgentIds.includes("expression");
+  // One drawer for the 2D and 3D Avatars agents, in chats whose stage can show avatars.
+  const avatarLayoutActive =
+    metadata.enableAgents === true &&
+    Boolean(avatarLayout) &&
+    AVATAR_AGENT_IDS.some((id) => activeAgentIds.includes(id));
+  const avatarSettingsOrder = Math.min(...AVATAR_AGENT_IDS.map(getRoleplayAgentSettingsOrder));
   const illustratorActive = activeAgentIds.includes("illustrator");
   const echoChamberActive = activeAgentIds.includes("echo-chamber");
   const proseGuardianActive = activeAgentIds.includes("prose-guardian");
@@ -2579,6 +2593,14 @@ export function ChatSettingsDrawer({
       const agent = availableAgents.find((candidate) => candidate.id === agentId);
       addLink(agentId, activeAgentIds.includes(agentId), agent?.name ?? capabilityPackage.manifest.name);
     }
+    if (avatarLayoutActive) {
+      links.push({
+        id: "avatars",
+        label: localizeUi("avatars.setup.title"),
+        targetId: getAgentSettingsMenuId(chat.id, "avatars"),
+        order: avatarSettingsOrder,
+      });
+    }
     if (activeCustomAgents.length > 0) {
       links.push({
         id: "custom-agents",
@@ -2593,6 +2615,8 @@ export function ChatSettingsDrawer({
     activeCustomAgents,
     activeAgentIds,
     availableAgents,
+    avatarLayoutActive,
+    avatarSettingsOrder,
     beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
@@ -2616,6 +2640,7 @@ export function ChatSettingsDrawer({
     isGame,
     isRoleplayMode,
     getRoleplayAgentSettingsOrder,
+    localizeUi,
     knowledgeRetrievalActive,
     knowledgeRetrievalAgentMeta.name,
     knowledgeRouterActive,
@@ -3518,6 +3543,19 @@ export function ChatSettingsDrawer({
       void removeAgentFromMenu(agentId, agentName);
     };
   };
+
+  const avatarLayoutCard =
+    avatarLayoutActive && avatarLayout ? (
+      <AgentSettingsCard
+        id={getAgentSettingsMenuId(chat.id, "avatars")}
+        icon={renderRoleplayAgentMenuIcon("avatars")}
+        title={localizeUi("avatars.setup.title")}
+        description={localizeUi("avatars.layout.description")}
+        order={isGame ? undefined : avatarSettingsOrder}
+      >
+        <AvatarLayoutSettings chatId={chat.id} layout={avatarLayout} />
+      </AgentSettingsCard>
+    ) : null;
 
   const renderStandaloneRoleplayAgentSettingsCard = (agent: (typeof availableAgents)[number]) => {
     let settings: React.ReactNode = null;
@@ -8585,6 +8623,8 @@ export function ChatSettingsDrawer({
                     </AgentSettingsCard>
                   )}
 
+                  {isGame && avatarLayoutCard}
+
                   {!isGame && (
                     <div className="flex flex-col gap-2">
                       {metadata.enableAgents && !isGame && lorebookKeeperActive && (
@@ -9025,6 +9065,8 @@ export function ChatSettingsDrawer({
                           />
                         </AgentSettingsCard>
                       )}
+
+                      {avatarLayoutCard}
 
                       {metadata.enableAgents && isRoleplayMode && echoChamberActive && (
                         <AgentSettingsCard

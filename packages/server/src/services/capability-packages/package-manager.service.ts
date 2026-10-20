@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A derived value read from the words of a text field (1.637): 5e's alignment. */
+function carriesWordsTable637(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWordsTable637(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.op === "wordsTable") return true;
+  return featureValues(record).some((one) => carriesWordsTable637(one, depth + 1));
+}
+
 /** Ground a careful walker crosses safely, or that stops a walk (1.636): caltrops. */
 function carriesCaltrops636(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8522,6 +8532,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A derived value read from the words of a text field, 1.637.
+  if (
+    !declaresApi(637) &&
+    (carriesWordsTable637(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWordsTable637(document)))
+  )
+    return "A ruleset with a derived value read from the words of a text field (derived op wordsTable) requires schemaVersion 2 and capabilityApi 1.637 or newer";
   // Ground a careful walker crosses safely, or that stops a walk, 1.636.
   if (
     !declaresApi(636) &&

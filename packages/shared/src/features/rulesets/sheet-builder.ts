@@ -33,7 +33,7 @@ import {
   type RulesetDefinition,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
-import { defaultRulesetSheetBuild, evaluateRulesetSheet, resolveRulesetValueRef } from "./sheet-math.js";
+import { defaultRulesetSheetBuild, evaluateRulesetSheet, namesPhrase, resolveRulesetValueRef } from "./sheet-math.js";
 
 type Scalar = number | string | boolean;
 type StepOf<K extends RulesetBuilderStep["kind"]> = Extract<RulesetBuilderStep, { kind: K }>;
@@ -2471,6 +2471,10 @@ function spendRefConfigured(
     if (derived.op === "enumTable") {
       const value = derived.from.field !== undefined ? build.fields[derived.from.field] : undefined;
       return typeof value === "string" && Object.hasOwn(derived.table, value);
+    }
+    if (derived.op === "wordsTable") {
+      const value = build.fields[derived.from.field];
+      return typeof value === "string" && Object.keys(derived.table).some((word) => namesPhrase(value, word));
     }
     const refs = derived.op === "stepTable" ? [derived.from] : derived.op === "scale" ? [derived.of] : derived.of;
     return refs.every((inner) => spendRefConfigured(definition, build, inner, depth + 1));

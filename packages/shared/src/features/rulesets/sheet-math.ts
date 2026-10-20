@@ -110,7 +110,7 @@ export function rulesetSheetMigrationSteps(definition: RulesetDefinition, v = 1)
 
 /** Whether `phrase` is in `text` as whole words, ignoring case. Only letters join a word, so a level
  *  written straight after a class ("Fighter3") still names it. */
-function namesPhrase(text: string, phrase: string): boolean {
+export function namesPhrase(text: string, phrase: string): boolean {
   const escaped = phrase
     .trim()
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -744,6 +744,12 @@ export function evaluateRulesetSheet(
           typeof key === "string" && Object.prototype.hasOwnProperty.call(entry.table, key)
             ? entry.table[key]!
             : entry.default;
+      } else if (entry.op === "wordsTable") {
+        // The first word or phrase of the table the field names, as a migration's route reads a class.
+        const text = effectiveFieldValue(definition, build, entry.from.field);
+        const key =
+          typeof text === "string" ? Object.keys(entry.table).find((word) => namesPhrase(text, word)) : undefined;
+        derived[entry.id] = key !== undefined ? entry.table[key]! : entry.default;
       } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
       if (entry.id === proficiencyDerived && itemProficiency) derived[entry.id] = derived[entry.id]! + itemProficiency;
       // As the conditions they hold change it (1.609), before anything after it reads it: every

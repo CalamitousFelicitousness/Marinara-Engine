@@ -1074,6 +1074,25 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
       default: z.number().finite().default(0),
     })
     .strict(),
+  /** A number for the words a text field holds (Capability API 1.637): each key a word or phrase,
+   *  read as whole words ignoring case, the first the field names giving the number, and `default`
+   *  when it names none. 5e's alignment written freely, "Lawful Good" reading `good`. */
+  z
+    .object({
+      ...derivedBase,
+      op: z.literal("wordsTable"),
+      from: z.object({ field: sheetId }).strict(),
+      table: z
+        .record(z.number().finite())
+        .refine((table) => Object.keys(table).length >= 1 && Object.keys(table).length <= 40, {
+          message: "A words table names from 1 to 40 words",
+        })
+        .refine((table) => Object.keys(table).every((key) => key.trim().length >= 1 && key.length <= 40), {
+          message: "A words table's words are 1 to 40 characters",
+        }),
+      default: z.number().finite().default(0),
+    })
+    .strict(),
 ]);
 export const RULESET_DERIVED_OPS = Object.freeze([
   "sum",
@@ -1083,6 +1102,7 @@ export const RULESET_DERIVED_OPS = Object.freeze([
   "min",
   "max",
   "enumTable",
+  "wordsTable",
 ] as const);
 
 /** What applying something does to a pool check's own dice (Capability API 1.156): dice added to
@@ -15212,7 +15232,7 @@ interface RulesetSheetNames {
 /** The values a derived value reads, in the one place that knows where each op keeps them. An enum
  *  table reads a field's or a state's VALUE rather than a number, so it has none. */
 function derivedRefs(derived: z.infer<typeof rulesetDerivedSchema>): RulesetValueRef[] {
-  if (derived.op === "enumTable") return [];
+  if (derived.op === "enumTable" || derived.op === "wordsTable") return [];
   return derived.op === "stepTable" ? [derived.from] : derived.op === "scale" ? [derived.of] : derived.of;
 }
 
@@ -15344,6 +15364,7 @@ function refReadsSheet(
     const derived = def.sheet.derived.find((entry) => entry.id === ref.derived);
     // An enum table reads its enum field, which derivedRefs leaves out as no number.
     if (derived?.op === "enumTable" && derived.from.field !== undefined) into.fields.add(derived.from.field);
+    if (derived?.op === "wordsTable") into.fields.add(derived.from.field);
     if (derived) for (const inner of derivedRefs(derived)) refReadsSheet(def, inner, into, depth + 1);
   }
   return into;
@@ -16151,6 +16172,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             issue([...path, "table", key], `"${key}" is not one of the values of "${fieldId ?? liveState}"`);
           }
         }
+      }
+    }
+    if (derived.op === "wordsTable") {
+      // Words are read out of what a player wrote, so the field is text (or an enum, whose values are words).
+      const field = fieldById.get(derived.from.field);
+      if (!field) issue([...path, "from", "field"], `Unknown field "${derived.from.field}"`);
+      else if (field.type !== "text" && field.type !== "enum") {
+        issue([...path, "from", "field"], `Field "${derived.from.field}" is not text`);
       }
     }
     checkSection(derived.section, path);

@@ -174,6 +174,11 @@ function enumTableShape(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(enumTableShape);
   const properties = node.properties;
+  // A words table (1.637) names one to forty words the same way.
+  if (node.type === "object" && properties?.op?.const === "wordsTable" && properties.table) {
+    properties.table.minProperties = 1;
+    properties.table.maxProperties = 40;
+  }
   if (node.type !== "object" || properties?.op?.const !== "enumTable" || !properties.from || !properties.table) return;
   properties.from.oneOf = [{ required: ["field"] }, { required: ["liveState"] }];
   properties.table.minProperties = 1;

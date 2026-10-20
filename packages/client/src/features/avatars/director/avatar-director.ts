@@ -762,7 +762,7 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       }
       for (const owner of owners.values()) {
         const source = audioSources.get(owner.ownerId);
-        if (source) director.setAudioSource(owner.ownerId, source);
+        if (source && owner.audio !== source) director.setAudioSource(owner.ownerId, source);
       }
       // Game lines once there is someone to give them to: the line already on screen arrives right away.
       if (mode === "game" && !gameLinesSubscribed && !disposed) {

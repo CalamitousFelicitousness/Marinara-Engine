@@ -173,25 +173,27 @@ for (const [label, width, height] of [
       "390 runs on the phone emulation, 1440 on the desktop project.",
     );
     // Linux WebKit's headless runs paint only a frame or two of requestAnimationFrame in the window sampled
-    // here, too few to judge every frame; the Chromium projects keep both widths covered.
-    test.skip(browserName === "webkit", "Too few animation frames on WebKit to sample the hand-over.");
+    // here, too few to judge every frame. Only sampling is gated; final states stay covered on WebKit.
+    const sampleFrames = browserName !== "webkit";
     const provider = await startProvider();
     provider.state.fail = true;
     const connectionId = await openMariWithProvider(page, request, provider.baseUrl, width, height);
     try {
       const pane = await openWindowWithMari(page);
-      await startFrameSampler(page, SHEET_ONLY);
+      if (sampleFrames) await startFrameSampler(page, SHEET_ONLY);
       await sendText(pane, "Plan three characters");
       const card = pane.locator('[data-component="HomeProfessorMariChat.RunError"]');
       await expect(card).toBeVisible({ timeout: 30_000 });
       const row = pane.locator(".mari-run-error-row");
       await expect(row.locator('.mari-story-sprite[data-state="retry"]')).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(600);
-      const sampled = await stopFrameSampler(page);
+      const sampled = sampleFrames ? await stopFrameSampler(page) : null;
       await page.screenshot({ path: `.tmp/omnibar-ux/round9/proof-11/error-${label}.png` });
-      console.log(`HANDOVER11 error ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
-      expect(sampled.frames, "enough frames were sampled to judge the error hand-over").toBeGreaterThan(5);
-      expect(sampled.blank, "no frame without Mari from her working line to the error card").toBe(0);
+      if (sampled) {
+        console.log(`HANDOVER11 error ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
+        expect(sampled.frames, "enough frames were sampled to judge the error hand-over").toBeGreaterThan(5);
+        expect(sampled.blank, "no frame without Mari from her working line to the error card").toBe(0);
+      }
     } finally {
       await cleanUp(request, connectionId);
       await provider.close();
@@ -208,21 +210,23 @@ for (const [label, width, height] of [
       "390 runs on the phone emulation, 1440 on the desktop project.",
     );
     // Linux WebKit's headless runs paint only a frame or two of requestAnimationFrame in the window sampled
-    // here, too few to judge every frame; the Chromium projects keep both widths covered.
-    test.skip(browserName === "webkit", "Too few animation frames on WebKit to sample the hand-over.");
+    // here, too few to judge every frame. Only sampling is gated; final states stay covered on WebKit.
+    const sampleFrames = browserName !== "webkit";
     const provider = await startProvider();
     const connectionId = await openMariWithProvider(page, request, provider.baseUrl, width, height);
     try {
       const pane = await openWindowWithMari(page);
-      await startFrameSampler(page, SHEET_ONLY);
+      if (sampleFrames) await startFrameSampler(page, SHEET_ONLY);
       await sendText(pane, "Plan three characters");
       await expect(pane.locator(".mari-answer", { hasText: REPLY })).toBeVisible({ timeout: 30_000 });
       await expect(pane.locator(".mari-answer__sprite")).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(600);
-      const sampled = await stopFrameSampler(page);
-      console.log(`HANDOVER11 done ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
-      expect(sampled.frames, "enough frames were sampled to judge the done hand-over").toBeGreaterThan(5);
-      expect(sampled.blank, "no frame without Mari from her live line to her resting pose").toBe(0);
+      if (sampleFrames) {
+        const sampled = await stopFrameSampler(page);
+        console.log(`HANDOVER11 done ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
+        expect(sampled.frames, "enough frames were sampled to judge the done hand-over").toBeGreaterThan(5);
+        expect(sampled.blank, "no frame without Mari from her live line to her resting pose").toBe(0);
+      }
     } finally {
       await cleanUp(request, connectionId);
       await provider.close();

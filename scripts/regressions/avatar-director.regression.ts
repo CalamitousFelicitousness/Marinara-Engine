@@ -530,6 +530,17 @@ await flush();
   voicedGame.setAudioSource("alice", null);
   voicedGame.pushGameLine({ ...line, id: "fast", voicePending: false });
   assert.equal(advance(3_000).mouthOpen, 0, "a clip that finishes between frames is not replayed by late readiness");
+  voicedGame.pushGameLine({ ...line, id: "previous" });
+  voicedGame.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  const nextLine = { ...line, id: "next", voicePending: false };
+  voicedGame.pushGameLine(nextLine);
+  voicedGame.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice updated" }]);
+  voicedGame.setAudioSource("alice", null);
+  voicedGame.pushGameLine(nextLine);
+  assert.ok(
+    advance(2_300).mouthOpen > 0,
+    "refreshing a participant does not assign an earlier voice to the next Game line",
+  );
   voicedGame.pushGameLine({ ...line, id: "missing", voicePending: false });
   assert.ok(advance(2_300).mouthOpen > 0, "a voice that never starts gets one text fallback after the grace time");
   assert.equal(advance(9_000).mouthOpen, 0, "the fallback ends instead of repeating");
@@ -549,6 +560,65 @@ await flush();
     "Game voice proof: a 3000 ms generation wait stays silent, audio drives the mouth, and an absent voice falls back after its 2000 ms grace",
   );
   voicedGame.dispose();
+}
+
+// Participant edits are not playback events. New/re-added owners still hydrate, and real source changes still apply.
+{
+  const hydrated = director.createAvatarDirector(
+    { chatId: "game-participant-audio", mode: "game", reducedMotion: false },
+    { classify: async () => assert.fail("Game faces must never use the classifier") },
+  );
+  const participant = { owner: { ownerType: "character" as const, ownerId: "cached-alice" }, name: "Alice" };
+  let playing = true;
+  hydrated.setAudioSource("cached-alice", {
+    ownerId: "cached-alice",
+    level: () => 0.8,
+    isPlaying: () => playing,
+    viseme: () => "oh",
+  });
+  hydrated.setParticipants([participant]);
+  hydrated.frame("cached-alice", 1_000);
+  assert.ok(hydrated.frame("cached-alice", 1_200).mouthOpen > 0.7, "audio published before registration hydrates");
+  hydrated.setParticipants([{ owner: { ownerType: "character", ownerId: "replacement" }, name: "Alice" }]);
+  assert.equal(
+    hydrated.frame("replacement", 1_216).mouthOpen,
+    0,
+    "a replacement with the same name takes no old audio",
+  );
+  hydrated.setParticipants([participant]);
+  hydrated.frame("cached-alice", 1_232);
+  assert.ok(hydrated.frame("cached-alice", 1_432).mouthOpen > 0.7, "a re-added owner hydrates the current source");
+
+  // A registered source without playable audio (for example a failed decode) must not erase a text-only line.
+  playing = false;
+  hydrated.pushGameLine({
+    id: "text-only",
+    ownerId: "cached-alice",
+    speakerName: "Alice",
+    expression: null,
+    text: "Hello there!",
+    voiceExpected: false,
+  });
+  hydrated.frame("cached-alice", 1_448);
+  assert.ok(hydrated.frame("cached-alice", 1_648).mouthOpen > 0, "the text-only line starts its speech clock");
+  hydrated.setParticipants([{ ...participant, name: "Alice updated" }]);
+  assert.ok(hydrated.frame("cached-alice", 1_664).mouthOpen > 0, "a participant edit preserves the speech clock");
+
+  hydrated.setParticipants([]);
+  hydrated.setAudioSource("cached-alice", null);
+  hydrated.setParticipants([participant]);
+  assert.equal(hydrated.frame("cached-alice", 1_680).mouthOpen, 0, "a source withdrawn while absent is not restored");
+  hydrated.setAudioSource("cached-alice", {
+    ownerId: "cached-alice",
+    level: () => 0.8,
+    isPlaying: () => true,
+    viseme: () => "ee",
+  });
+  const replaced = hydrated.frame("cached-alice", 1_880);
+  assert.ok(replaced.mouthOpen > 0.7 && replaced.viseme === "ee", "a new playback source still takes effect");
+  hydrated.setAudioSource("cached-alice", null);
+  assert.equal(hydrated.frame("cached-alice", 1_896).mouthOpen, 0, "withdrawing playback still stops its mouth");
+  hydrated.dispose();
 }
 
 const thoughts = director.createAvatarDirector(
@@ -1142,6 +1212,7 @@ const scene = (id: string, names: string[]) => {
   await type('Alice sobs quietly. "I miss him so much, I really do."');
   reading("voice-7", true);
   finish();
+  voiced.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice updated" }]);
   await play(500);
   silence();
   reading("voice-7", false);

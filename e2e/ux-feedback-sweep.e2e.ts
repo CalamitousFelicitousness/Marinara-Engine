@@ -150,6 +150,7 @@ for (const spec of [
           : editor.locator(".mari-editor-title-input");
       await expect(title).toHaveValue(name);
       await expect(editor.locator("[data-editor-section]")).toHaveCount(spec.sections);
+      if (spec.kind === "Character") await expect(editor.locator('[data-editor-section="onboarding"]')).toHaveCount(1);
       await openSection(editor, spec.last);
       await expect.poll(() => editor.locator(".mari-editor-content").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
       const last = editor.locator(`[data-editor-section="${spec.lastId}"]`);

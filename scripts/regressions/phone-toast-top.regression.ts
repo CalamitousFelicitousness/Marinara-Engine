@@ -7,30 +7,55 @@ import {
 
 // Execute the real placement and watcher with layout/observer stubs. Header changes must move a
 // lingering toast before the next paint, without a polling delay or idle work after dismissal.
+class ElementStub {
+  children: ElementStub[] = [];
+  constructor(public selector?: string) {}
+  matches(selector: string): boolean {
+    return this.selector !== undefined && selector.split(",").includes(this.selector);
+  }
+  querySelector(selector: string): ElementStub | null {
+    for (const child of this.children) {
+      if (child.matches(selector)) return child;
+      const descendant = child.querySelector(selector);
+      if (descendant) return descendant;
+    }
+    return null;
+  }
+  contains(node: unknown): boolean {
+    return node === this || this.children.some((child) => child.contains(node));
+  }
+}
 let measurements = 0;
-function header(top: number, bottom: number, left = 0, right = 390, visibility = "visible") {
+function header(
+  top: number,
+  bottom: number,
+  left = 0,
+  right = 390,
+  visibility = "visible",
+  selector = ".mari-window__header",
+) {
   const rect = { top, bottom, left, right, width: right - left, height: bottom - top };
-  return {
+  return Object.assign(new ElementStub(selector), {
     rect,
     visibility,
     getBoundingClientRect() {
       measurements += 1;
       return rect;
     },
-  };
+  });
 }
 
 type Header = ReturnType<typeof header>;
-const topBar = header(0, 48);
+const topBar = header(0, 48, 0, 390, "visible", '[data-component="TopBar"]');
 const windowHeader = header(100, 150);
 const bubbleRow = header(56, 96);
 let rows: Header[] = [windowHeader, bubbleRow];
-const tacticalToolbar = header(48, 144);
+const tacticalToolbar = header(48, 144, 0, 390, "visible", "[data-chat-window-top-obstacle]");
 let topObstacles: Header[] = [];
 let hasTopBar = true;
 let showing = false;
-const body = {};
-const toast = {};
+const body = new ElementStub();
+const toast = new ElementStub();
 const styles = new Map<string, string>();
 const host = {
   querySelector: () => (showing ? toast : null),
@@ -56,9 +81,12 @@ class MutationStub {
   disconnect() {
     this.target = undefined;
   }
-  notify(target: unknown) {
+  notify(target: unknown, change: Partial<MutationRecord> = { type: "childList" }) {
     assert.ok(this.target, "only an active observer receives layout changes");
-    this.callback([{ target } as MutationRecord], this as unknown as MutationObserver);
+    this.callback(
+      [{ addedNodes: [], removedNodes: [], ...change, target } as unknown as MutationRecord],
+      this as unknown as MutationObserver,
+    );
   }
 }
 const resizes: ResizeStub[] = [];
@@ -89,7 +117,7 @@ Object.defineProperties(globalThis, {
       querySelector: () => (hasTopBar ? topBar : null),
       querySelectorAll: (selector: string) => [
         ...(selector.includes("TopBar") && hasTopBar ? [topBar] : []),
-        ...rows,
+        ...rows.filter((row) => row.matches(selector)),
         ...(selector.includes("[data-chat-window-top-obstacle]") ? topObstacles : []),
       ],
     },
@@ -110,6 +138,7 @@ Object.defineProperties(globalThis, {
     },
   },
   getComputedStyle: { configurable: true, value: (element: Header) => ({ visibility: element.visibility }) },
+  Element: { configurable: true, value: ElementStub },
   MutationObserver: { configurable: true, value: MutationStub },
   ResizeObserver: { configurable: true, value: ResizeStub },
 });
@@ -160,24 +189,50 @@ assert.equal(resizeListeners.size, 1);
 assert.ok(resizeObserver.observed.has(topBar));
 
 const editor = header(56, 210);
+const editorContainer = new ElementStub();
+editorContainer.children.push(editor);
 rows.push(editor);
-layoutObserver.notify(body);
+layoutObserver.notify(body, { type: "childList", addedNodes: [editorContainer] as unknown as NodeList });
 assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "218px", "opening an editor moves a lingering toast synchronously");
 assert.ok(resizeObserver.observed.has(editor), "new headers are observed for later size changes");
+
+const message = new ElementStub();
+message.children.push(new ElementStub());
+const beforeUnrelatedMutations = measurements;
+layoutObserver.notify(body, { type: "childList", addedNodes: [message] as unknown as NodeList });
+layoutObserver.notify(body, { type: "childList", removedNodes: [message] as unknown as NodeList });
+layoutObserver.notify(message, { type: "attributes", attributeName: "class" });
+layoutObserver.notify(message, { type: "attributes", attributeName: "style" });
+assert.equal(measurements, beforeUnrelatedMutations, "unrelated body mutations do not measure header geometry");
+
+editor.rect.bottom = 220;
+layoutObserver.notify(editor, { type: "attributes", attributeName: "style" });
+assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "228px", "moving an existing header updates in the same delivery");
 
 editor.rect.bottom = 240;
 editor.rect.height = 184;
 resizeObserver.notify();
 assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "248px", "font and header size changes keep controls clear");
 editor.visibility = "hidden";
-layoutObserver.notify(editor);
+layoutObserver.notify(editorContainer, { type: "attributes", attributeName: "data-chat-covered" });
 assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "158px", "a covered chat header stops reserving space");
 
+editor.visibility = "visible";
+layoutObserver.notify(editorContainer, { type: "attributes", attributeName: "hidden" });
+assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "248px", "revealing a header ancestor updates immediately");
+editor.selector = undefined;
+layoutObserver.notify(editor, { type: "attributes", attributeName: "class" });
+assert.equal(styles.get(PHONE_TOAST_TOP_VARIABLE), "158px", "losing a header selector releases its space immediately");
+assert.equal(resizeObserver.observed.has(editor), false, "a former header releases its resize observer");
+
 const beforeToastMutation = measurements;
-layoutObserver.notify(toast);
+layoutObserver.notify(toast, { type: "attributes", attributeName: "style" });
 assert.equal(measurements, beforeToastMutation, "toast animation does not repeatedly measure the app");
 rows = [];
-layoutObserver.notify(body);
+layoutObserver.notify(body, {
+  type: "childList",
+  removedNodes: [windowHeader, bubbleRow, editorContainer] as unknown as NodeList,
+});
 assert.deepEqual([...resizeObserver.observed], [topBar], "removed headers release their observers");
 topBar.rect.bottom = 60;
 for (const listener of resizeListeners) listener();

@@ -1791,6 +1791,7 @@
   "editor.navigation.cardSections": "Card sections",
   "editor.navigation.sections": "Editor sections",
   "editor.save.action": "Save",
+  "editor.save.dismissError": "Dismiss save error",
   "editor.save.embedding": "Embedding…",
   "editor.save.saving": "Saving…",
   "editor.save.uploading": "Uploading…",

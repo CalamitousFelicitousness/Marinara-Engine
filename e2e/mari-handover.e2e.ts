@@ -133,8 +133,8 @@ for (const [label, width, height] of [
     browserName,
   }) => {
     // Linux WebKit's headless runs paint only a frame or two of requestAnimationFrame in the window sampled
-    // here, too few to judge every frame; the Chromium projects keep both widths covered.
-    test.skip(browserName === "webkit", "Too few animation frames on WebKit to sample the hand-over.");
+    // here, too few to judge every frame. Only sampling is gated; the working sprite stays covered on WebKit.
+    const sampleFrames = browserName !== "webkit";
     const provider = await startSilentProvider();
     const connectionId = await openMariWithFixture(page, request, provider.baseUrl, width, height);
     try {
@@ -145,15 +145,17 @@ for (const [label, width, height] of [
       // Her empty home is up once her sheet is decoded; the frames before that are the page loading.
       await expect(mariPane.locator(SHEET_ONLY).first()).toBeVisible({ timeout: 30_000 });
 
-      await startFrameSampler(page, SHEET_ONLY);
+      if (sampleFrames) await startFrameSampler(page, SHEET_ONLY);
       await composer.fill("Hello there");
       await composer.press("Enter");
       await expect(mariPane.locator(".mari-live-work__sprite")).toBeVisible({ timeout: 20_000 });
       await page.waitForTimeout(800);
-      const sampled = await stopFrameSampler(page);
-      console.log(`HANDOVER ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
-      expect(sampled.frames, "enough frames were sampled to judge the hand-over").toBeGreaterThan(5);
-      expect(sampled.blank, "no frame without Mari from her empty home to her working line").toBe(0);
+      if (sampleFrames) {
+        const sampled = await stopFrameSampler(page);
+        console.log(`HANDOVER ${label} frames=${sampled.frames} fps=${sampled.fps} blank=${sampled.blank}`);
+        expect(sampled.frames, "enough frames were sampled to judge the hand-over").toBeGreaterThan(5);
+        expect(sampled.blank, "no frame without Mari from her empty home to her working line").toBe(0);
+      }
     } finally {
       await cleanUp(request, connectionId);
       await provider.close();

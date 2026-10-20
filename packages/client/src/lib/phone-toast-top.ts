@@ -75,10 +75,26 @@ export function watchPhoneToastTop(host: HTMLElement): () => void {
     }
     place();
   };
+  const containsHeader = (node: Node) =>
+    node instanceof Element &&
+    (node.matches(HEADERS) ||
+      node.querySelector(HEADERS) !== null ||
+      // A class change can remove a header's selector before this delivery.
+      [...observedHeaders].some((header) => node.contains(header)));
   const layoutObserver = new MutationObserver((records) => {
-    // Toast animation and our own offset changes do not change the app's headers.
-    if (records.every((record) => host.contains(record.target))) return;
-    refreshHeaders();
+    // Streaming messages and toast animations cannot move these headers. Keep relevant updates in
+    // this delivery: deferring them to another animation frame can paint a toast over new controls.
+    if (
+      records.some(
+        (record) =>
+          !host.contains(record.target) &&
+          (record.type === "attributes"
+            ? containsHeader(record.target)
+            : [...record.addedNodes, ...record.removedNodes].some(containsHeader)),
+      )
+    ) {
+      refreshHeaders();
+    }
   });
   const stopWatching = () => {
     watching = false;

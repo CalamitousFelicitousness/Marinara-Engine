@@ -1720,6 +1720,7 @@ export function ConnectionEditor() {
           <span className="flex-1">{saveError}</span>
           <button
             onClick={() => setSaveError(null)}
+            aria-label={localizeUi("editor.save.dismissError")}
             className="rounded-lg px-2 py-0.5 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/20"
           >
             <X size="0.75rem" />

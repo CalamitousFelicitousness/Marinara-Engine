@@ -2640,8 +2640,8 @@ export type WorkspaceClaimAudit = {
  * #5830: a claim about work from BEFORE this scope (an earlier run, or steps
  * already audited) is backable by a successful STATE read - the exact action
  * the coaching demands - so a truthful recap converges instead of looping
- * into the repair budget; a terminal summary directly after a passed audit
- * needs nothing new. A bare claim with nothing behind it at all stays
+ * into the repair budget; a terminal summary without a self-attributed mutation
+ * claim directly after a passed audit needs nothing new. A bare claim stays
  * challenged, and NEITHER escape applies to a scope containing a failed,
  * preview, or dry-run mutating attempt - "none" to the resolver, but active
  * evidence of non-completion to the audit.
@@ -2681,6 +2681,7 @@ export function auditWorkspaceCompletionClaim(
   }
   if (verification === "mismatch") return { issue: "mismatch", advanceWatermark: false };
   if (verification === "none") {
+    const selfAttributedClaim = workspaceTextClaimsMutationCompletion(action.visibleText, { selfAttributedOnly: true });
     // Escape hatches exist for truthful RECAPS of work outside this scope.
     // A scope containing any mutating-shaped attempt that did not apply is
     // not a recap scope - it is a failure being papered over - so both
@@ -2689,15 +2690,15 @@ export function auditWorkspaceCompletionClaim(
     if (!scopeHasUnappliedMutationAttempt(results, auditFrom)) {
       // A read cannot establish that Mari performed a write (#7879). Read-only
       // tasks may still conclude "Done", or report the observed state; first-person
-      // mutation claims need an actual applied mutation, including for recaps.
+      // mutation claims need an applied mutation in this audit scope, including for recaps.
       if (
         scopeHasSuccessfulStateRead(results, auditFrom) &&
-        (!workspaceTextClaimsMutationCompletion(action.visibleText, { selfAttributedOnly: true }) ||
-          results.some(isAppliedWorkspaceMutation))
+        (!selfAttributedClaim || results.slice(auditFrom).some(isAppliedWorkspaceMutation))
       ) {
         return { issue: null, advanceWatermark: true };
       }
-      if (isTerminal && hadPassedClaimAudit) return { issue: null, advanceWatermark: false };
+      // A passed-audit flag cannot tie a new self-attributed claim to the earlier claim.
+      if (isTerminal && hadPassedClaimAudit && !selfAttributedClaim) return { issue: null, advanceWatermark: false };
     }
     return { issue: "none", advanceWatermark: false };
   }

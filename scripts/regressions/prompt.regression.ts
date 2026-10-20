@@ -13703,24 +13703,35 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const auditTwo = auditWorkspaceCompletionClaim(midRunClaimTwo, batchResults, { auditFrom: batchResults.length });
       assert.equal(auditTwo.issue, "none", "a skipped step's empty scope is challenged - the #5819 report");
 
-      // A recap claim is backable by the read the coaching demands, so an
-      // honest continuation converges instead of looping into the budget
-      // (#5830's sticky-none trap).
+      // A state recap is backable by a fresh read, but that read cannot establish
+      // authorship of a new mutation using an earlier scope's applied evidence.
       const recapResults = [...batchResults, { ...verificationResult, id: "recap-read" }];
       const recapAudit = auditWorkspaceCompletionClaim(midRunClaimTwo, recapResults, {
         auditFrom: batchResults.length,
       });
-      assert.equal(recapAudit.issue, null, "a successful read in scope backs a recap");
-      assert.equal(recapAudit.advanceWatermark, true, "and the read is consumed so it cannot vouch twice");
+      assert.equal(recapAudit.issue, "none", "an earlier mutation cannot back a later self-attributed claim");
+      assert.equal(recapAudit.advanceWatermark, false);
+      const stateRecap = { ...midRunClaimTwo, visibleText: "Both entries have been created." };
+      assert.deepEqual(auditWorkspaceCompletionClaim(stateRecap, recapResults, { auditFrom: batchResults.length }), {
+        issue: null,
+        advanceWatermark: true,
+      });
 
-      // A terminal summary right after a passed audit needs nothing new; the
-      // same empty scope WITHOUT a passed audit stays challenged.
+      // A passed audit permits a terminal summary, never a new self-attributed
+      // mutation claim with no evidence in scope.
       assert.equal(
         auditWorkspaceCompletionClaim(unsupportedCompletion, batchResults, {
           auditFrom: batchResults.length,
           hadPassedClaimAudit: true,
         }).issue,
-        null,
+        "none",
+      );
+      assert.deepEqual(
+        auditWorkspaceCompletionClaim({ ...unsupportedCompletion, visibleText: "Done." }, batchResults, {
+          auditFrom: batchResults.length,
+          hadPassedClaimAudit: true,
+        }),
+        { issue: null, advanceWatermark: false },
       );
       assert.equal(
         auditWorkspaceCompletionClaim(unsupportedCompletion, batchResults, {

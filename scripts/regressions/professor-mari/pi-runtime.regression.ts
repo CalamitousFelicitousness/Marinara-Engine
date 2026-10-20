@@ -236,7 +236,13 @@ try {
             },
           },
         ]),
-        reply("Created the lorebook with 12 entries."),
+        reply("I created the lorebook with 12 entries.", [
+          { id: "audit-created-7879", name: "app_data", args: { action: "lorebook.entries", lorebookId } },
+        ]),
+        // A fresh read after the creation audit cannot back a new deletion claim in this same run.
+        reply("", [{ id: "recap-created-7879", name: "app_data", args: { action: "lorebook.entries", lorebookId } }]),
+        reply("I deleted Duke Gunterlie."),
+        reply("Duke Gunterlie is still present. No deletion was made."),
       ],
       "pi",
       service,
@@ -244,6 +250,11 @@ try {
       "Create a lorebook with 12 entries.",
     );
     await created.done;
+    assert.equal(requests.length, 5, "the later deletion claim must trigger a repair after the passed creation audit");
+    assert.equal(
+      (await lastAssistant(created.chat.id))?.content,
+      "Duke Gunterlie is still present. No deletion was made.",
+    );
     const before = await lorebooks.listEntries(lorebookId);
     assert.equal(before.length, 12, "Pi creates exactly the requested entry count");
     assert.equal((await lorebooks.countAllEntriesByLorebook())[lorebookId], 12);

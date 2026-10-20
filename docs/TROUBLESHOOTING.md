@@ -142,6 +142,8 @@ If an installed map or call does not appear, close Marinara Engine completely an
 
 If an older installation cannot complete its first package migration, do not delete the `data/capability-packages` folder or your chat data. Marinara leaves the migration incomplete and retries on the next startup. Existing chat selections and settings remain stored while the catalog is unreachable.
 
+If `data/capability-runtime-snapshots` or `data/capability-packages/versions` has grown large, you do not need to clean it by hand. Marinara deletes the old copies when it starts and keeps only the current and previous version of each agent.
+
 Package downloads are rejected when their checksum, declared file list, Engine version range, or archive paths do not match the official catalog. Update Marinara Engine first, refresh the catalog, and retry. Do not manually extract an artifact into the data directory.
 
 Agent updates are never applied at startup. When a newer compatible version is available, Marinara asks whether to apply it. Choose **No** to keep the installed version; the **Update** button remains available in **Agents → Download Agents**. A failed update also leaves the installed version registered, and a newly updated server runtime that fails its startup self-check rolls back to the previous version.

@@ -1,0 +1,13 @@
+diff --git a/dist/index.js b/dist/index.js
+index 935c02d73436eeae3b2a2fde46053e117cd8db7e..f7dd5cc6f865d63d32b300ad3e9587e9af7a545d 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1861,7 +1861,7 @@ async function Vn(n, e) {
+   function w(M) {
+     const R = { ...j.update(M) };
+     for (const [te, ne] of Object.entries(P)) R[te] = W === 1 ? ne : (R[te] ?? 0) + (ne - (R[te] ?? 0)) * W;
+-    j.lipOpen !== null && (R.mouthOpen = j.P.mouthOpen, (!e.preserveMouthForm || P.mouthForm === void 0) && (R.mouthForm = j.P.mouthForm));
++    j.lipOpen !== null && (P.mouthOpen === void 0 && (R.mouthOpen = j.P.mouthOpen), (!e.preserveMouthForm || P.mouthForm === void 0) && (R.mouthForm = j.P.mouthForm));
+     const V = J.apply(R, M);
+     return q = V, V;
+   }

@@ -30,6 +30,7 @@ import { fetchAvatarModel, useAvatarModelList } from "../../../hooks/use-avatar-
 import { spriteKeys, type SpriteInfo } from "../../../hooks/use-characters";
 import { useMatchMedia } from "../../../hooks/use-match-media";
 import { useReducedAmbientEffects } from "../../../hooks/use-reduced-ambient-effects";
+import { useTTSConfig } from "../../../hooks/use-tts";
 import { api } from "../../../lib/api-client";
 import {
   AVATAR_RENDER_BUDGET,
@@ -178,6 +179,13 @@ export function AvatarStage({
   useEffect(() => {
     director?.setParticipants(participants);
   }, [director, participants]);
+  // Read the way ChatArea decides to auto-play a Roleplay reply: the avatar then waits for the voice.
+  const { data: ttsConfig } = useTTSConfig();
+  const voiceAutoplay =
+    !!ttsConfig?.enabled && (mode === "roleplay" ? !!ttsConfig.autoplayRP : !!ttsConfig.autoplayGame);
+  useEffect(() => {
+    director?.setVoiceAutoplay(voiceAutoplay);
+  }, [director, voiceAutoplay]);
 
   const onScreen = useOnScreen(stageRef, shown.length > 0);
   const covered = useChatCovered(stageRef, shown.length > 0);

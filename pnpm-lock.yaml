@@ -31,6 +31,9 @@ overrides:
   ws: 8.21.0
 
 patchedDependencies:
+  mesh-avatar@0.1.1:
+    hash: 1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5
+    path: patches/mesh-avatar@0.1.1.patch
   onnxruntime-node@1.30.0:
     hash: 14ed7e6afb8fd6dd382042cd3bda0597d7de7a21c2a92dc5715b535ee218cd68
     path: patches/onnxruntime-node@1.30.0.patch
@@ -104,7 +107,7 @@ importers:
         version: 0.513.0(react@19.3.0)
       mesh-avatar:
         specifier: 0.1.1
-        version: 0.1.1
+        version: 0.1.1(patch_hash=1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5)
       postcss:
         specifier: 8.5.28
         version: 8.5.28
@@ -129,6 +132,9 @@ importers:
       workbox-window:
         specifier: ^7.4.1
         version: 7.4.1
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
       zustand:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0))
@@ -7617,7 +7623,7 @@ snapshots:
 
   merge-descriptors@2.0.0: {}
 
-  mesh-avatar@0.1.1:
+  mesh-avatar@0.1.1(patch_hash=1d738d28da461caff3fcba00ae3f3ca2c2783bfa6b28111b0c4d2363f13c38a5):
     dependencies:
       fflate: 0.8.3
 

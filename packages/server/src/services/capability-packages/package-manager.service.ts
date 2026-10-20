@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { z } from "zod";
 import {
@@ -246,6 +246,12 @@ const KNOWN_INCOMPATIBLE_RUNTIMES = new Map<string, string>([
 ]);
 
 export class CapabilityPackageVersionMismatchError extends Error {}
+
+/** This Engine refuses the package version before downloading it: it needs a newer capability API or Engine version,
+ *  or declares something this Engine cannot install. The install route answers 409 with the message. */
+export class CapabilityPackageCompatibilityError extends Error {
+  override name = "CapabilityPackageCompatibilityError";
+}
 
 export function normalizeArchivePath(value: string): string {
   if (!value || value.includes("\\") || value.startsWith("/") || value.includes("\0")) {
@@ -6382,13 +6388,15 @@ export function findPendingCapabilityPackageUpdates(
 async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDuringStartup = false) {
   const { manifest, artifact } = entry;
   const installIssue = getCapabilityPackageInstallIssue(manifest);
-  if (installIssue) throw new Error(installIssue);
+  if (installIssue) throw new CapabilityPackageCompatibilityError(installIssue);
   const initiallyInstalled = await readInstalledVersion(manifest.id);
   assertNotDowngrade(initiallyInstalled, manifest.version);
   const capabilityApiIssue = getCapabilityApiCompatibilityIssue(manifest);
-  if (capabilityApiIssue) throw new Error(capabilityApiIssue);
+  if (capabilityApiIssue) throw new CapabilityPackageCompatibilityError(capabilityApiIssue);
   if (!supportsEngineVersion(entry, APP_VERSION)) {
-    throw new Error(`Package requires Marinara Engine ${manifest.engine.min} to below ${manifest.engine.maxExclusive}`);
+    throw new CapabilityPackageCompatibilityError(
+      `Package requires Marinara Engine ${manifest.engine.min} to below ${manifest.engine.maxExclusive}`,
+    );
   }
   const archive = await fetchBytes(artifact.url, Math.min(artifact.bytes + 1, MAX_ARTIFACT_BYTES));
   if (archive.byteLength !== artifact.bytes) throw new Error("Downloaded package size does not match the catalog");
@@ -7320,7 +7328,43 @@ export const capabilityPackageManager = {
         `This Agent package changed after it was reviewed. Review the current ${entry.manifest.id} package and try again.`,
       );
     }
-    return installCatalogPackage(entry);
+    const installed = await installCatalogPackage(entry);
+    // A package without a server runs as soon as it is installed. One with a server is pruned once it has started.
+    if (installed.status === "active" && installed.readiness === "ready") await this.pruneVersions(installed.id);
+    return installed;
+  },
+
+  /**
+   * Deletes the kept versions of a package other than the current one and the one before it, which rollback restores.
+   * Runs after an activation or an update succeeds and at startup. A package whose update waits for a restart, or whose
+   * runtime has not started yet, keeps everything. Only `versions/<id>` folders of registered packages are touched,
+   * never the registry, install folders or package data. Never throws: a version it cannot delete goes next time.
+   */
+  async pruneVersions(packageId?: string) {
+    const removed: string[] = [];
+    try {
+      for (const installed of (await readRegistry()).packages) {
+        if (packageId !== undefined && installed.id !== packageId) continue;
+        // The manifest id is validated as a folder name; a registry id that differs from it is not trusted as a path.
+        if (installed.id !== installed.manifest.id) continue;
+        if (installed.status === "restart-required" || installed.readiness === "pending") continue;
+        const keep = new Set([installed.version, installed.previousVersion]);
+        const packageRoot = join(VERSIONS, installed.id);
+        const entries = await readdir(packageRoot, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+          if (!entry.isDirectory() || keep.has(entry.name)) continue;
+          try {
+            await rm(join(packageRoot, entry.name), { recursive: true, force: true });
+            removed.push(`${installed.id}@${entry.name}`);
+          } catch (error) {
+            logger.warn(error, "Could not remove capability package %s version %s", installed.id, entry.name);
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(error, "Could not check for old capability package versions");
+    }
+    if (removed.length > 0) logger.info("Removed old capability package versions: %s", removed.join(", "));
   },
 
   async uninstall(packageId: string) {

@@ -4669,8 +4669,11 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     expect(overlapsCamera).toBe(false);
 
     await openEditorSection(editor, "Metadata");
-    const uploadButton = editor.getByRole("button", { name: "Upload avatar", exact: true });
-    const metadataGenerateButton = editor.getByRole("button", { name: "Generate with AI", exact: true });
+    const avatarActions = editor
+      .locator('[data-editor-section="metadata"] section')
+      .filter({ has: page.getByRole("heading", { name: "Replace Avatar", exact: true }) });
+    const uploadButton = avatarActions.getByRole("button", { name: "Upload avatar", exact: true });
+    const metadataGenerateButton = avatarActions.getByRole("button", { name: "Generate with AI", exact: true });
     await expect(uploadButton).toBeVisible();
     await expect(metadataGenerateButton).toBeVisible();
     await page.mouse.move(1, 1);
@@ -8172,6 +8175,8 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
   page,
   request,
 }, testInfo) => {
+  // Five full reload/paint paths (added in 711c461e09) share this budget; each assertion keeps its 10s limit.
+  test.setTimeout(120_000);
   let characterId = "";
   let chatId = "";
   try {
@@ -13716,7 +13721,7 @@ test("Mobile Roleplay quick picker matches the character selector surface", asyn
       expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
       await page.getByTitle("Trigger character response", { exact: true }).click();
       await page.getByTitle("Quick Switcher", { exact: true }).click();
-      const picker = page.locator(".fixed[data-chat-floating-panel]");
+      const picker = page.locator("[data-quick-switcher-mobile-menu]");
       await expect(picker).toBeVisible();
       for (const tab of ["Connections", "Personas"]) {
         await picker.getByRole("button", { name: tab, exact: true }).click();

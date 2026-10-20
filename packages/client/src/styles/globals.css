@@ -3373,6 +3373,72 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
   }
 }
 
+/* The character editor carries eleven sections and seven actions, so its header
+   compacts earlier than the others: tighter spacing, an icon-only Save until
+   there is room, section icons only on very wide screens, and icon-only
+   sections (named in tooltips) in the narrowest desktop band. */
+@container (min-width: 56rem) and (max-width: 96rem) {
+  .mari-editor-header--dense .mari-editor-actions {
+    gap: 0.25rem;
+  }
+}
+
+@container (min-width: 56rem) and (max-width: 64rem) {
+  .mari-editor-header--dense .mari-editor-tab > svg {
+    display: block;
+  }
+
+  .mari-editor-header--dense .mari-editor-tab-label {
+    display: none;
+  }
+}
+
+@container (min-width: 80.001rem) and (max-width: 96rem) {
+  .mari-editor-header--dense {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-header-main {
+    gap: 0.5rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-save-label {
+    display: none;
+  }
+
+  .mari-editor-header--dense .mari-editor-action--primary {
+    padding-inline: 0.5rem;
+  }
+}
+
+@container (min-width: 96.001rem) and (max-width: 116rem) {
+  .mari-editor-header--dense .mari-editor-tab {
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-tab > svg {
+    display: none;
+  }
+}
+
+/* Narrow layouts (phones included): the section menu and every action share one row. */
+@container not (min-width: 56rem) {
+  .mari-editor-header--dense {
+    column-gap: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-navigation {
+    flex-basis: 4rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-actions {
+    gap: 0.25rem;
+  }
+}
+
 /* ─────────────────────────────────────────────
    5. BASE RESET & BODY
    ───────────────────────────────────────────── */

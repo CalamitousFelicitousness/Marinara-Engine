@@ -390,7 +390,7 @@
   border: 1px solid var(--border);
   border-radius: 1rem;
   background: var(--card);
-  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 16px 40px -12px color-mix(in srgb, var(--marinara-shadow-color) 55%, transparent);
 }
 
 .omnibar-settings-sheet[data-sizing] .omnibar-settings-sheet__card {

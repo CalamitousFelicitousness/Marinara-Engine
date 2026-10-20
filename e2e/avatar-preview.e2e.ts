@@ -148,6 +148,12 @@ test("avatar crop handles stay whole and draggable on a square image", async ({ 
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       useUIStore.getState().openCharacterDetail(id);
     }, character.id);
+    // WebKit may defer decoding an offscreen crop image; show its image before waiting for the overlay.
+    await page
+      .locator(".mari-editor-content")
+      .getByRole("img", { name: "Square crop handles", exact: true })
+      .first()
+      .scrollIntoViewIfNeeded();
     const frame = page.locator("[data-avatar-crop-frame]");
     await expect(frame).toBeVisible();
     await frame.evaluate((element) => element.scrollIntoView({ block: "center" }));

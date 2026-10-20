@@ -362,7 +362,8 @@
   --marinara-editor-muted: var(--marinara-chat-chrome-panel-muted);
   --marinara-editor-accent: var(--marinara-chat-chrome-accent);
   --marinara-editor-focus-ring: var(--marinara-chat-chrome-focus-ring);
-  --marinara-editor-shadow: 0 18px 48px color-mix(in srgb, #000 24%, transparent);
+  --marinara-shadow-color: #000;
+  --marinara-editor-shadow: 0 18px 48px color-mix(in srgb, var(--marinara-shadow-color) 24%, transparent);
 
   --tracker-card-neutral-surface-top: color-mix(
     in srgb,
@@ -566,28 +567,26 @@
    4. LIGHT THEME — COMPONENT OVERRIDES
    ───────────────────────────────────────────── */
 [data-theme="light"] .glass {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(245, 240, 252, 0.6) 100%);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
 }
 
 [data-theme="light"] .glass-strong {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(245, 240, 252, 0.75) 100%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.06),
-    inset 0 1px rgba(255, 255, 255, 0.5);
+  background: var(--glass-strong-bg);
+  border: 1px solid var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
 }
 
 [data-theme="light"] .geometric-grid {
   background-image:
-    linear-gradient(rgba(180, 140, 230, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(180, 140, 230, 0.06) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--primary) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 6%, transparent) 1px, transparent 1px);
 }
 
 [data-theme="light"] .texting-bubble-other {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--marinara-shadow-color) 5%, transparent);
 }
 
 [data-theme="light"] .retro-glow-text {
@@ -597,7 +596,7 @@
 }
 
 [data-theme="light"] .os-window-btn {
-  border-color: rgba(0, 0, 0, 0.15);
+  border-color: var(--border);
 }
 
 [data-theme="light"] .retro-scanlines::after {
@@ -612,11 +611,11 @@
 }
 [data-theme="light"] ::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, var(--y2k-pink) 0%, var(--y2k-purple) 100%);
-  border-color: rgba(0, 0, 0, 0.1);
+  border-color: var(--scrollbar-border);
 }
 
 [data-theme="light"] .shimmer {
-  background: linear-gradient(90deg, #f0eaf7 25%, #ede4f7 50%, #f0eaf7 75%);
+  background: linear-gradient(90deg, var(--muted) 25%, var(--accent) 50%, var(--muted) 75%);
   background-size: 200% 100%;
 }
 
@@ -789,7 +788,13 @@
     );
     box-shadow: var(
       --mari-window-shadow,
-      var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
+      var(
+        --mari-widget-shadow,
+        var(
+          --mari-widget-frame-shadow,
+          0 25px 50px -12px color-mix(in srgb, var(--marinara-shadow-color) 40%, transparent)
+        )
+      )
     );
     -webkit-backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
     backdrop-filter: var(--mari-widget-shell-backdrop-filter, var(--mari-window-backdrop-filter, blur(12px)));
@@ -904,7 +909,10 @@
         var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-button-text)))
       )
     );
-    box-shadow: var(--mari-window-bubble-shadow, var(--mari-widget-button-shadow, 0 4px 12px rgb(0 0 0 / 0.25)));
+    box-shadow: var(
+      --mari-window-bubble-shadow,
+      var(--mari-widget-button-shadow, 0 4px 12px color-mix(in srgb, var(--marinara-shadow-color) 25%, transparent))
+    );
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     cursor: pointer;
@@ -1101,7 +1109,7 @@
     border-radius: calc(var(--radius) - 0.125rem);
     background: var(--mari-widget-custom-background, var(--mari-widget-bg, var(--marinara-chat-chrome-button-bg)));
     color: var(--mari-widget-custom-border-solid, var(--mari-widget-accent, var(--marinara-chat-chrome-button-text)));
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.2);
+    box-shadow: 0 4px 6px -1px color-mix(in srgb, var(--marinara-shadow-color) 20%, transparent);
     opacity: 0;
     pointer-events: none;
     transition: opacity 150ms ease;
@@ -1225,7 +1233,13 @@
     );
     box-shadow: var(
       --mari-window-shadow,
-      var(--mari-widget-shadow, var(--mari-widget-frame-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4)))
+      var(
+        --mari-widget-shadow,
+        var(
+          --mari-widget-frame-shadow,
+          0 25px 50px -12px color-mix(in srgb, var(--marinara-shadow-color) 40%, transparent)
+        )
+      )
     );
     opacity: 0.6;
   }
@@ -2218,7 +2232,7 @@
 .mari-chrome-accent-reticle {
   border-color: var(--marinara-chat-chrome-accent);
   box-shadow:
-    0 0 0 1px rgb(0 0 0 / 0.65),
+    0 0 0 1px color-mix(in srgb, var(--marinara-shadow-color) 65%, transparent),
     0 0 0.875rem color-mix(in srgb, var(--marinara-chat-chrome-accent) 35%, transparent);
 }
 
@@ -3498,7 +3512,7 @@ input[type="range"] {
   --range-progress: 0%;
   --range-track-color: color-mix(in srgb, var(--muted) 72%, transparent);
   --range-fill-color: var(--primary);
-  --range-thumb-color: oklch(0.97 0.006 315);
+  --range-thumb-color: var(--foreground);
   --range-track-height: 0.25rem;
   --range-thumb-size: 0.875rem;
   --range-thumb-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--background) 70%, transparent);
@@ -4135,7 +4149,7 @@ html.mari-home-widget-drag-active .mari-home-empty-slot {
   z-index: 9999;
   overflow: visible;
   opacity: 0.96;
-  filter: drop-shadow(0 1.25rem 1.25rem rgb(0 0 0 / 0.34));
+  filter: drop-shadow(0 1.25rem 1.25rem color-mix(in srgb, var(--marinara-shadow-color) 34%, transparent));
   transform-origin: center;
   will-change: transform, opacity;
 }
@@ -4550,8 +4564,8 @@ strong {
   font-family: "Consolas", "Monaco", "Courier New", monospace;
   font-size: 0.85em;
   line-height: 1.45;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75em 1em;
   margin: 0.5em 0;
@@ -4560,7 +4574,7 @@ strong {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   white-space: pre;
-  color: #d4d4d4;
+  color: var(--secondary-foreground);
   /* Code is LTR even when the document around it is RTL. Lives in CSS, not
      only the renderer's dir attribute, because the chat HTML path strips
      attributes. No text-align here: direction alone realigns the block, and
@@ -4597,7 +4611,7 @@ strong {
   top: 0;
   inset-inline-end: 0;
   font-size: 0.7em;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--muted-foreground);
   padding: 0.25em 0.6em;
   pointer-events: none;
   text-transform: lowercase;
@@ -4654,33 +4668,33 @@ strong {
 }
 .mari-message-content .mari-md-table th,
 .mari-message-content .mari-md-table td {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   padding: 0.4em 0.75em;
   text-align: start;
 }
 .mari-message-content .mari-md-table th {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--secondary);
   font-weight: 600;
-  color: #e8e6e3;
+  color: var(--secondary-foreground);
 }
 .mari-message-content .mari-md-table tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--foreground) 2%, transparent);
 }
 .mari-message-content .mari-md-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
 /* Highlighted text */
 .mari-message-content .mari-md-highlight {
-  background: rgba(250, 204, 21, 0.15);
+  background: color-mix(in srgb, var(--marinara-app-accent-static) 15%, transparent);
   border-radius: 2px;
   padding: 0 0.1em;
-  color: #facc15;
+  color: var(--marinara-app-accent-static);
 }
 
 /* Docs-viewer search-match highlight (injected marks + sidebar snippets).
    Primary-tinted so it reads in both themes and stays visually distinct from
-   the markdown ==highlight== yellow above. Only the docs viewer emits this
+   the markdown ==highlight== above. Only the docs viewer emits this
    class, so it can't leak into chat despite the shared .mari-message-content. */
 .docs-search-mark {
   background-color: color-mix(in srgb, var(--primary) 24%, transparent);
@@ -4832,12 +4846,12 @@ strong {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a2e40;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, var(--y2k-pink) 0%, var(--y2k-purple) 100%);
-  border: 2px solid #0a0a0a66;
+  border: 2px solid var(--scrollbar-border);
   border-radius: 0.5rem;
 }
 
@@ -5161,7 +5175,7 @@ strong {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03125rem;
-  color: #0a0a0a;
+  color: var(--primary-foreground);
   background: linear-gradient(90deg, var(--y2k-pink), var(--y2k-lavender));
   border: 2px solid var(--y2k-purple);
   border-radius: 1rem;
@@ -5169,20 +5183,20 @@ strong {
 
 .retro-card {
   backdrop-filter: blur(10px);
-  background: #141414b3;
+  background: var(--card);
   border: 2px solid var(--rgb-red);
   border-radius: 0.75rem;
   padding: 20px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--marinara-shadow-color) 30%, transparent);
   transition: all 0.2s;
   animation: rgb-pulse-border 20s ease-in-out infinite;
 }
 
 .retro-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--marinara-shadow-color) 40%, transparent);
 }
 
 @keyframes twinkle-glow {
@@ -5332,17 +5346,17 @@ strong {
   font-size: 0.8125rem;
   font-weight: 600;
   transition: all 0.2s;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--marinara-shadow-color) 20%, transparent);
 }
 
 .os-button-pastel:hover {
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--marinara-shadow-color) 30%, transparent);
 }
 
 .os-button-pastel:active {
   transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--marinara-shadow-color) 20%, transparent);
 }
 
 .card-3d-tilt {
@@ -5570,13 +5584,13 @@ strong {
   border-radius: 0.75rem;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--marinara-shadow-color) 30%, transparent);
   transition: all 0.3s;
 }
 
 .os-window:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--marinara-shadow-color) 40%, transparent);
 }
 
 .os-title-bar {
@@ -5597,7 +5611,7 @@ strong {
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
   transition: all 0.2s;
 }
 
@@ -5605,10 +5619,10 @@ strong {
   background: var(--destructive);
 }
 .os-window-btn.minimize {
-  background: linear-gradient(135deg, #ffd88a, #ffe4a8);
+  background: var(--warning);
 }
 .os-window-btn.maximize {
-  background: linear-gradient(135deg, #a8ff9d, #c4ffa8);
+  background: var(--success);
 }
 
 .os-window-btn:hover {
@@ -5896,7 +5910,7 @@ strong {
   height: 1.55rem;
   width: 1.55rem;
   place-items: center;
-  filter: drop-shadow(0 0.18rem 0.28rem rgb(0 0 0 / 0.55));
+  filter: drop-shadow(0 0.18rem 0.28rem color-mix(in srgb, var(--marinara-shadow-color) 55%, transparent));
   pointer-events: none;
 }
 
@@ -6015,7 +6029,7 @@ strong {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #1a1a2e 25%, #2a1a3e 50%, #1a1a2e 75%);
+  background: linear-gradient(90deg, var(--muted) 25%, var(--accent) 50%, var(--muted) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
@@ -6168,7 +6182,7 @@ strong {
   background: linear-gradient(135deg, var(--y2k-pink), var(--y2k-lavender), var(--y2k-purple));
   box-shadow:
     0 0 12px color-mix(in srgb, var(--y2k-pink) 25%, transparent),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+    0 4px 12px color-mix(in srgb, var(--marinara-shadow-color) 15%, transparent);
   transition:
     box-shadow 0.3s,
     transform 0.3s;
@@ -6177,7 +6191,7 @@ strong {
 .glimmer-avatar-ring:hover {
   box-shadow:
     0 0 20px color-mix(in srgb, var(--y2k-pink) 40%, transparent),
-    0 4px 16px rgba(0, 0, 0, 0.2);
+    0 4px 16px color-mix(in srgb, var(--marinara-shadow-color) 20%, transparent);
   transform: scale(1.05);
 }
 
@@ -6223,18 +6237,18 @@ strong {
   );
   color: var(--card-foreground);
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 4px 16px rgba(0, 0, 0, 0.04);
+    0 1px 3px color-mix(in srgb, var(--marinara-shadow-color) 8%, transparent),
+    0 4px 16px color-mix(in srgb, var(--marinara-shadow-color) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--y2k-purple) 15%, transparent);
 }
 
 .glimmer-bubble-user {
   background: linear-gradient(135deg, color-mix(in srgb, var(--y2k-pink) 85%, var(--y2k-purple)), var(--y2k-purple));
-  color: #fff;
+  color: var(--primary-foreground);
   box-shadow:
     0 2px 8px color-mix(in srgb, var(--y2k-pink) 20%, transparent),
-    0 4px 16px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+    0 4px 16px color-mix(in srgb, var(--marinara-shadow-color) 8%, transparent);
+  border: 1px solid var(--border);
 }
 
 .glimmer-streaming {
@@ -6266,15 +6280,15 @@ strong {
 }
 
 .texting-bubble-user {
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  color: #fff;
-  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.2);
+  background: var(--marinara-app-accent-static-gradient);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--marinara-app-accent-static) 20%, transparent);
 }
 
 .texting-bubble-other {
   background: var(--card);
   color: var(--card-foreground);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--marinara-shadow-color) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
@@ -6522,37 +6536,45 @@ strong {
 .rpg-overlay {
   background: linear-gradient(
     180deg,
-    rgba(8, 8, 18, 0.55) 0%,
-    rgba(8, 8, 18, 0.4) 30%,
-    rgba(8, 8, 18, 0.45) 70%,
-    rgba(8, 8, 18, 0.6) 100%
+    color-mix(in srgb, var(--background) 55%, transparent) 0%,
+    color-mix(in srgb, var(--background) 40%, transparent) 30%,
+    color-mix(in srgb, var(--background) 45%, transparent) 70%,
+    color-mix(in srgb, var(--background) 60%, transparent) 100%
   );
 }
 
 [data-theme="light"] .rpg-overlay {
   background: linear-gradient(
     180deg,
-    rgba(250, 248, 255, 0.4) 0%,
-    rgba(250, 248, 255, 0.25) 30%,
-    rgba(250, 248, 255, 0.3) 70%,
-    rgba(250, 248, 255, 0.45) 100%
+    color-mix(in srgb, var(--background) 40%, transparent) 0%,
+    color-mix(in srgb, var(--background) 25%, transparent) 30%,
+    color-mix(in srgb, var(--background) 30%, transparent) 70%,
+    color-mix(in srgb, var(--background) 45%, transparent) 100%
   );
 }
 
 .mari-rp-reduced-paint > .rpg-overlay {
-  background: rgba(8, 8, 18, 0.5);
+  background: color-mix(in srgb, var(--background) 50%, transparent);
 }
 
 [data-theme="light"] .mari-rp-reduced-paint > .rpg-overlay {
-  background: rgba(250, 248, 255, 0.35);
+  background: color-mix(in srgb, var(--background) 35%, transparent);
 }
 
 .rpg-vignette {
-  background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.3) 100%);
+  background: radial-gradient(
+    ellipse at center,
+    transparent 50%,
+    color-mix(in srgb, var(--marinara-shadow-color) 30%, transparent) 100%
+  );
 }
 
 [data-theme="light"] .rpg-vignette {
-  background: radial-gradient(ellipse at center, transparent 60%, rgba(120, 100, 160, 0.12) 100%);
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    color-mix(in srgb, var(--primary) 12%, transparent) 100%
+  );
 }
 
 .mari-rp-reduced-paint > .rpg-vignette {
@@ -6658,7 +6680,7 @@ strong {
     180deg,
     color-mix(in srgb, var(--marinara-app-accent-solid) 20%, transparent),
     color-mix(in srgb, var(--marinara-app-accent-solid) 16%, transparent),
-    rgba(251, 146, 60, 0.08)
+    color-mix(in srgb, var(--marinara-app-accent-solid) 8%, transparent)
   );
   z-index: -1;
   filter: blur(8px);
@@ -6681,8 +6703,8 @@ strong {
 
 .rpg-streaming {
   box-shadow:
-    0 0 0 2px rgba(96, 165, 250, 0.25),
-    0 0 16px rgba(96, 165, 250, 0.1);
+    0 0 0 2px color-mix(in srgb, var(--marinara-app-accent-static) 25%, transparent),
+    0 0 16px color-mix(in srgb, var(--marinara-app-accent-static) 10%, transparent);
 }
 
 .rpg-streaming::after {
@@ -6690,9 +6712,9 @@ strong {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border: 1px solid rgba(96, 165, 250, 0.5);
+  border: 1px solid color-mix(in srgb, var(--marinara-app-accent-static) 50%, transparent);
   border-radius: inherit;
-  box-shadow: inset 0 0 16px rgba(96, 165, 250, 0.18);
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--marinara-app-accent-static) 18%, transparent);
   opacity: 0.25;
   animation: rpg-stream-pulse 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite alternate;
   will-change: opacity;
@@ -6712,7 +6734,7 @@ strong {
 }
 
 .rpg-hud {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent);
 }
 
 /* ─────────────────────────────────────────────
@@ -6731,7 +6753,7 @@ strong {
 .rpg-sprite-container img {
   max-height: 70vh;
   object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent));
 }
 
 .rpg-sprite-left {
@@ -6757,7 +6779,7 @@ strong {
 .game-stats-bar {
   height: 0.375rem;
   border-radius: 0.1875rem;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--muted);
   overflow: hidden;
 }
 
@@ -6768,16 +6790,16 @@ strong {
 }
 
 .game-stats-bar-hp {
-  background: linear-gradient(90deg, #ef4444, #f87171);
+  background: var(--marinara-app-accent-static-gradient);
 }
 .game-stats-bar-mp {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  background: var(--marinara-app-accent-static-gradient);
 }
 .game-stats-bar-xp {
-  background: linear-gradient(90deg, #a855f7, #c084fc);
+  background: var(--marinara-app-accent-static-gradient);
 }
 .game-stats-bar-stamina {
-  background: linear-gradient(90deg, #22c55e, #4ade80);
+  background: var(--marinara-app-accent-static-gradient);
 }
 
 .game-inventory-item {
@@ -6785,22 +6807,22 @@ strong {
   align-items: center;
   gap: 0.375rem;
   padding: 0.25rem 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
   border-radius: 0.375rem;
   font-size: 0.6875rem;
   transition: background 0.2s;
 }
 
 .game-inventory-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
 }
 
 /* ─────────────────────────────────────────────
    17. FUNCTION CALL CARDS
    ───────────────────────────────────────────── */
 .fn-call-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: color-mix(in srgb, var(--marinara-app-accent-static) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--marinara-app-accent-static) 20%, transparent);
   border-radius: 0.75rem;
   padding: 0.75rem;
   margin: 0.5rem 0;
@@ -6827,8 +6849,8 @@ strong {
 .fn-call-card .fn-result {
   margin-top: 0.375rem;
   padding: 0.5rem;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: color-mix(in srgb, var(--marinara-app-accent-static) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--marinara-app-accent-static) 20%, transparent);
   border-radius: 0.5rem;
   font-family: monospace;
   font-size: 0.6875rem;
@@ -6893,7 +6915,7 @@ strong {
   }
 
   .mari-gallery-image-actions .mari-chrome-accent-surface {
-    @apply border-transparent bg-white/20 text-white hover:bg-white/30;
+    @apply border-transparent bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)];
   }
 }
 
@@ -7049,7 +7071,7 @@ strong {
     position: fixed;
     inset: 0;
     z-index: 39;
-    background: rgba(0, 0, 0, 0.5);
+    background: color-mix(in srgb, var(--background) 50%, transparent);
     backdrop-filter: blur(2px);
   }
 
@@ -7537,10 +7559,10 @@ html[data-marinara-reduced-effects="true"] .mari-window {
 @keyframes combat-pulse {
   0%,
   100% {
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
   }
   50% {
-    border-color: rgba(239, 68, 68, 0.6);
+    border-color: color-mix(in srgb, var(--destructive) 60%, transparent);
   }
 }
 .game-combat-border {
@@ -7714,8 +7736,8 @@ html[data-marinara-reduced-effects="true"] .mari-window {
     combat-shake 320ms ease-out,
     combat-flash-hit 420ms ease-out;
   box-shadow:
-    0 0 0 1px rgba(248, 113, 113, 0.4),
-    0 0 26px rgba(248, 113, 113, 0.4);
+    0 0 0 1px color-mix(in srgb, var(--destructive) 40%, transparent),
+    0 0 26px color-mix(in srgb, var(--destructive) 40%, transparent);
 }
 
 .game-combatant-impact--reaction {
@@ -7723,15 +7745,15 @@ html[data-marinara-reduced-effects="true"] .mari-window {
     combat-shake 260ms ease-out,
     combat-flash-hit 360ms ease-out;
   box-shadow:
-    0 0 0 1px rgba(253, 224, 71, 0.34),
-    0 0 24px rgba(253, 224, 71, 0.32);
+    0 0 0 1px color-mix(in srgb, var(--warning) 34%, transparent),
+    0 0 24px color-mix(in srgb, var(--warning) 32%, transparent);
 }
 
 .game-combatant-impact--heal {
   animation: combat-flash-hit 420ms ease-out;
   box-shadow:
-    0 0 0 1px rgba(52, 211, 153, 0.32),
-    0 0 22px rgba(52, 211, 153, 0.34);
+    0 0 0 1px color-mix(in srgb, var(--success) 32%, transparent),
+    0 0 22px color-mix(in srgb, var(--success) 34%, transparent);
 }
 
 .game-combatant-impact--miss {
@@ -8388,7 +8410,7 @@ html[data-marinara-reduced-effects="true"] .mari-window {
   border: 2px solid #2a2023;
   box-shadow:
     inset 0 4px 0 rgba(255, 225, 166, 0.22),
-    0 0.55rem 0 rgba(0, 0, 0, 0.18);
+    0 0.55rem 0 color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent);
 }
 
 .mari-professor-pixel-scene [data-part="sprite"] {
@@ -8398,7 +8420,7 @@ html[data-marinara-reduced-effects="true"] .mari-window {
   height: auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  filter: drop-shadow(0.45rem 0.55rem 0 rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0.45rem 0.55rem 0 color-mix(in srgb, var(--marinara-shadow-color) 20%, transparent));
   transform-origin: 52% 100%;
   transform: translateY(0) rotate(-1deg);
 }
@@ -8409,7 +8431,7 @@ html[data-marinara-reduced-effects="true"] .mari-window {
   width: clamp(10.5rem, 43%, 13rem);
   height: 31%;
   transform: translateY(0.15rem);
-  filter: drop-shadow(0 0.45rem 0 rgba(0, 0, 0, 0.18));
+  filter: drop-shadow(0 0.45rem 0 color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent));
 }
 
 .mari-professor-pixel-scene [data-part="screen"] {

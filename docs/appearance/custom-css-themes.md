@@ -108,6 +108,7 @@ The theme editor has a collapsible **CSS Variable Reference**. Click it to see t
 | `--secondary` | Cards and inputs |
 | `--card` | Card background |
 | `--border` | Borders |
+| `--marinara-shadow-color` | Shadows under controls and windows |
 | `--muted-foreground` | Dimmed text |
 | `--sidebar` | Sidebar background |
 | `--sidebar-border` | Sidebar border |

@@ -2487,7 +2487,7 @@ html[data-marinara-effects-paused="true"] .mari-status-shimmer[data-active="true
   border-radius: 0.6rem;
   background: var(--card);
   padding: 0.25rem;
-  box-shadow: 0 1rem 2rem color-mix(in srgb, black 24%, transparent);
+  box-shadow: 0 1rem 2rem color-mix(in srgb, var(--marinara-shadow-color) 24%, transparent);
 }
 
 .mari-omnibar-header-menu__popover button {
@@ -3380,7 +3380,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 .mari-face[data-initial] {
-  background: color-mix(in oklch, oklch(0.72 0.11 calc(var(--mari-face-hue) * 1deg)) 34%, var(--muted));
+  background: color-mix(in srgb, var(--marinara-app-accent-static) 34%, var(--muted));
   color: var(--foreground);
 }
 
@@ -4181,29 +4181,29 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   border-radius: var(--mari-composer-radius);
   background: var(--mari-composer-fill);
   box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.12),
-    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.5);
+    0 1px 2px color-mix(in srgb, var(--marinara-shadow-color) 12%, transparent),
+    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent);
   color: var(--foreground);
 }
 
 [data-theme="light"] .mari-workspace-composer {
-  --mari-composer-fill: color-mix(in srgb, #fff 80%, var(--background));
+  --mari-composer-fill: color-mix(in srgb, var(--card) 80%, var(--background));
   box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.05),
-    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.18);
+    0 1px 2px color-mix(in srgb, var(--marinara-shadow-color) 5%, transparent),
+    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent);
 }
 
 .mari-workspace-composer:focus-within {
   border-color: color-mix(in srgb, var(--primary) 50%, var(--mari-hairline));
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent),
-    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.5);
+    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 50%, transparent);
 }
 
 [data-theme="light"] .mari-workspace-composer:focus-within {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent),
-    0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.18);
+    0 0.75rem 1.5rem -1rem color-mix(in srgb, var(--marinara-shadow-color) 18%, transparent);
 }
 
 /* Attachments first, then "Aware of" and its facets: one wrapping row inside the top edge. */
@@ -4493,12 +4493,12 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
     )
     var(--background);
   text-align: start;
-  box-shadow: 0 1rem 2rem -0.5rem rgb(0 0 0 / 0.45);
+  box-shadow: 0 1rem 2rem -0.5rem color-mix(in srgb, var(--marinara-shadow-color) 45%, transparent);
 }
 
 [data-theme="light"] .mari-composer-menu__popover {
-  background: #fff;
-  box-shadow: 0 1rem 2rem -0.75rem rgb(0 0 0 / 0.25);
+  background: var(--background);
+  box-shadow: 0 1rem 2rem -0.75rem color-mix(in srgb, var(--marinara-shadow-color) 25%, transparent);
 }
 
 .mari-composer-menu__head {

@@ -199,8 +199,10 @@
   --muted-foreground: #a1a1aa;
   --accent: #2a1a3e;
   --accent-foreground: #f0e8ff;
-  --destructive: #ff6b9d;
-  --destructive-foreground: #0a0a0a;
+  --destructive: var(--marinara-app-accent-static);
+  --destructive-foreground: var(--primary-foreground);
+  --warning: var(--marinara-app-accent-static);
+  --success: var(--marinara-app-accent-static);
   --border: color-mix(in srgb, var(--primary) 20%, transparent);
   --input: var(--border);
   --ring: var(--primary);
@@ -246,6 +248,34 @@
   --marinara-app-accent-static: var(--primary);
   --marinara-app-accent-gradient: linear-gradient(90deg, #ec4b97, #f29744, #36cdde);
   --marinara-app-accent-static-gradient: linear-gradient(90deg, #ec4b97, #f29744, #36cdde);
+  /* Resource palettes are theme defaults; controls consume the tokens below. */
+  --mari-panel-characters-gradient-start: #f472b6;
+  --mari-panel-characters-gradient-end: #f43f5e;
+  --mari-panel-characters-gradient-text: #fff7fb;
+  --mari-panel-lorebooks-gradient-start: #f59e0b;
+  --mari-panel-lorebooks-gradient-end: #f97316;
+  --mari-panel-lorebooks-gradient-text: #fff7ed;
+  --mari-panel-presets-gradient-start: #c084fc;
+  --mari-panel-presets-gradient-end: #8b5cf6;
+  --mari-panel-presets-gradient-text: #fbf7ff;
+  --mari-panel-connections-gradient-start: #38bdf8;
+  --mari-panel-connections-gradient-end: #3b82f6;
+  --mari-panel-connections-gradient-text: #f0f9ff;
+  --mari-panel-agents-gradient-start: #a78bfa;
+  --mari-panel-agents-gradient-end: #a855f7;
+  --mari-panel-agents-gradient-text: #fbf7ff;
+  --mari-panel-personas-gradient-start: #34d399;
+  --mari-panel-personas-gradient-end: #14b8a6;
+  --mari-panel-personas-gradient-text: #ecfdf5;
+  --mari-panel-settings-gradient-start: #9ca3af;
+  --mari-panel-settings-gradient-end: #6b7280;
+  --mari-panel-settings-gradient-text: #f9fafb;
+  --mari-panel-backgrounds-gradient-start: #818cf8;
+  --mari-panel-backgrounds-gradient-end: #6366f1;
+  --mari-panel-backgrounds-gradient-text: #eef2ff;
+  --mari-panel-browser-gradient-start: #a3e635;
+  --mari-panel-browser-gradient-end: #14b8a6;
+  --mari-panel-browser-gradient-text: #07130f;
   --marinara-chat-chrome-accent: var(--marinara-app-accent-solid);
   --marinara-chat-chrome-accent-gradient: var(--marinara-app-accent-gradient);
   --marinara-chat-chrome-text: var(--card-foreground);
@@ -462,8 +492,8 @@
   --muted-foreground: #65656f;
   --accent: #ede4f7;
   --accent-foreground: #1a1025;
-  --destructive: #c44040;
-  --destructive-foreground: #ffffff;
+  --destructive: var(--marinara-app-accent-static);
+  --destructive-foreground: var(--primary-foreground);
   --border: color-mix(in srgb, var(--primary) 27%, transparent);
   --input: var(--border);
   --ring: var(--primary);
@@ -1358,14 +1388,6 @@
     0 0 0 4px var(--marinara-chat-chrome-focus-ring);
 }
 
-/* Accent Pulse animates --primary, and --destructive defaults to it. Delete buttons hold the
-   steady accent instead, like the editor shells in 4c.
-   ponytail: a theme that sets its own --destructive shows the steady accent while Accent Pulse
-   runs; a dedicated --marinara-danger-* theme hook is the upgrade path. */
-[data-marinara-accent-animation] .mari-chrome-control--danger {
-  --destructive: var(--marinara-app-accent-static);
-}
-
 .mari-chrome-control--danger {
   border-color: color-mix(in srgb, var(--destructive) 26%, transparent);
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
@@ -1540,51 +1562,51 @@
 
 /* Resource sections keep their identifying palettes when the app accent changes. */
 .mari-panel-gradient--characters {
-  --mari-panel-gradient-start: #f472b6;
-  --mari-panel-gradient-end: #f43f5e;
-  --mari-panel-gradient-text: #fff7fb;
+  --mari-panel-gradient-start: var(--mari-panel-characters-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-characters-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-characters-gradient-text);
 }
 
 .mari-panel-gradient--lorebooks {
-  --mari-panel-gradient-start: #f59e0b;
-  --mari-panel-gradient-end: #f97316;
-  --mari-panel-gradient-text: #fff7ed;
+  --mari-panel-gradient-start: var(--mari-panel-lorebooks-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-lorebooks-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-lorebooks-gradient-text);
 }
 
 .mari-panel-gradient--presets {
-  --mari-panel-gradient-start: #c084fc;
-  --mari-panel-gradient-end: #8b5cf6;
-  --mari-panel-gradient-text: #fbf7ff;
+  --mari-panel-gradient-start: var(--mari-panel-presets-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-presets-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-presets-gradient-text);
 }
 
 .mari-panel-gradient--connections {
-  --mari-panel-gradient-start: #38bdf8;
-  --mari-panel-gradient-end: #3b82f6;
-  --mari-panel-gradient-text: #f0f9ff;
+  --mari-panel-gradient-start: var(--mari-panel-connections-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-connections-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-connections-gradient-text);
 }
 
 .mari-panel-gradient--agents {
-  --mari-panel-gradient-start: #a78bfa;
-  --mari-panel-gradient-end: #a855f7;
-  --mari-panel-gradient-text: #fbf7ff;
+  --mari-panel-gradient-start: var(--mari-panel-agents-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-agents-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-agents-gradient-text);
 }
 
 .mari-panel-gradient--personas {
-  --mari-panel-gradient-start: #34d399;
-  --mari-panel-gradient-end: #14b8a6;
-  --mari-panel-gradient-text: #ecfdf5;
+  --mari-panel-gradient-start: var(--mari-panel-personas-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-personas-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-personas-gradient-text);
 }
 
 .mari-panel-gradient--settings {
-  --mari-panel-gradient-start: #9ca3af;
-  --mari-panel-gradient-end: #6b7280;
-  --mari-panel-gradient-text: #f9fafb;
+  --mari-panel-gradient-start: var(--mari-panel-settings-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-settings-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-settings-gradient-text);
 }
 
 .mari-panel-gradient--backgrounds {
-  --mari-panel-gradient-start: #818cf8;
-  --mari-panel-gradient-end: #6366f1;
-  --mari-panel-gradient-text: #eef2ff;
+  --mari-panel-gradient-start: var(--mari-panel-backgrounds-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-backgrounds-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-backgrounds-gradient-text);
 }
 
 /*
@@ -1754,11 +1776,11 @@
 }
 
 .mari-suggestion-chip--caution {
-  --chip-tint: #f59e0b;
+  --chip-tint: var(--warning);
 }
 
 .mari-suggestion-chip--success {
-  --chip-tint: #10b981;
+  --chip-tint: var(--success);
 }
 
 /*
@@ -1777,9 +1799,9 @@
 }
 
 .mari-panel-gradient--browser {
-  --mari-panel-gradient-start: #a3e635;
-  --mari-panel-gradient-end: #14b8a6;
-  --mari-panel-gradient-text: #07130f;
+  --mari-panel-gradient-start: var(--mari-panel-browser-gradient-start);
+  --mari-panel-gradient-end: var(--mari-panel-browser-gradient-end);
+  --mari-panel-gradient-text: var(--mari-panel-browser-gradient-text);
 }
 
 .mari-avatar-placeholder {
@@ -1797,9 +1819,9 @@
 }
 
 .mari-avatar-placeholder--persona {
-  --mari-avatar-placeholder-start: #34d399;
-  --mari-avatar-placeholder-end: #14b8a6;
-  --mari-avatar-placeholder-text: #ecfdf5;
+  --mari-avatar-placeholder-start: var(--mari-panel-personas-gradient-start);
+  --mari-avatar-placeholder-end: var(--mari-panel-personas-gradient-end);
+  --mari-avatar-placeholder-text: var(--mari-panel-personas-gradient-text);
 }
 
 .mari-topbar-button {
@@ -2491,8 +2513,8 @@
 
 @media (max-width: 639px) {
   .mari-quick-preset-editor [data-preset-marker-section="true"] {
-    border-color: color-mix(in srgb, #60a5fa 52%, var(--marinara-chat-chrome-button-border));
-    background: color-mix(in srgb, #3b82f6 13%, var(--marinara-chat-chrome-button-bg));
+    border-color: color-mix(in srgb, var(--marinara-app-accent-static) 52%, var(--marinara-chat-chrome-button-border));
+    background: color-mix(in srgb, var(--marinara-app-accent-static) 13%, var(--marinara-chat-chrome-button-bg));
   }
 
   .mari-quick-preset-editor [data-preset-section-group-badge] {
@@ -3563,14 +3585,14 @@ input[type="range"]:disabled {
 }
 
 input[type="range"].mari-spotify-volume-slider {
-  --range-track-color: color-mix(in srgb, #1db954 26%, transparent);
-  --range-fill-color: #1db954;
-  --range-thumb-color: #1db954;
+  --range-track-color: color-mix(in srgb, var(--marinara-app-accent-static) 26%, transparent);
+  --range-fill-color: var(--marinara-app-accent-static);
+  --range-thumb-color: var(--marinara-app-accent-static);
   --range-thumb-size: 0.6875rem;
   --range-track-height: 0.25rem;
   --range-thumb-shadow: 0 0 0 0.125rem var(--marinara-music-player-shell-bg);
 
-  accent-color: #1db954;
+  accent-color: var(--marinara-app-accent-static);
 }
 
 input[type="range"].mari-spotify-volume-slider::-webkit-slider-runnable-track {
@@ -3600,14 +3622,14 @@ input[type="range"].mari-spotify-volume-slider::-moz-range-thumb {
 }
 
 input[type="range"].mari-youtube-volume-slider {
-  --range-track-color: color-mix(in srgb, #ff0000 24%, transparent);
-  --range-fill-color: #ff0000;
-  --range-thumb-color: #ff0000;
+  --range-track-color: color-mix(in srgb, var(--marinara-app-accent-static) 24%, transparent);
+  --range-fill-color: var(--marinara-app-accent-static);
+  --range-thumb-color: var(--marinara-app-accent-static);
   --range-thumb-size: 0.6875rem;
   --range-track-height: 0.25rem;
   --range-thumb-shadow: 0 0 0 0.125rem var(--marinara-music-player-shell-bg);
 
-  accent-color: #ff0000;
+  accent-color: var(--marinara-app-accent-static);
 }
 
 input[type="range"].mari-youtube-volume-slider::-webkit-slider-runnable-track {
@@ -4686,7 +4708,7 @@ strong {
 .mari-message-content .mari-md-checkbox {
   width: 0.9em;
   height: 0.9em;
-  accent-color: rgb(139, 92, 246);
+  accent-color: var(--marinara-app-accent-static);
   flex-shrink: 0;
   margin: 0;
   cursor: default;

@@ -118,6 +118,10 @@ The theme editor has a collapsible **CSS Variable Reference**. Click it to see t
 
 You are not limited to this list. A theme can set any CSS variable Marinara uses, and it can add other custom styles too.
 
+Delete and error controls use `--destructive`, warnings use `--warning`, and success states use `--success`. These colors follow the selected accent by default and stay steady while Accent Pulse runs. A custom theme can set these variables to its own colors.
+
+Resource sections also expose theme colors. For example, `--mari-panel-connections-gradient-start`, `--mari-panel-connections-gradient-end`, and `--mari-panel-connections-gradient-text` control the Connections palette, including both speech cards. Replace `connections` with `characters`, `lorebooks`, `presets`, `agents`, `personas`, `settings`, `backgrounds`, or `browser` to change another section.
+
 Some visual effects have their own variables. For example, a theme can request the accent pulse animation by setting `--marinara-theme-accent-pulse: enabled`.
 
 Custom theme CSS is cleaned before it runs, for safety. Styles that load a file from another website do not work. To use an image or a font inside a theme, embed it as a `data:` URI instead of a web link. A `data:` URI holds the file's content directly inside the CSS.

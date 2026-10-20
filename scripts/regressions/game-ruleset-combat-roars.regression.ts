@@ -3,6 +3,8 @@
  *
  *   - `byUse`: an androsphinx's Roar, three a day, frightens first, deafens as well second, and
  *     thunders third; its parts are never on the menu themselves; a use past the end makes the last.
+ *   - On a board, a part bursting around the sphinx catches whom it reaches and never the sphinx,
+ *     and the Roar is made where the sphinx stands.
  *   - A catalog creature carries it onto its block. Import refusals, and the install gate.
  */
 import assert from "node:assert/strict";
@@ -16,6 +18,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatOptions,
+  rulesetOptionTargets,
   rulesetStatBlockFromCreature,
   supportedCapabilityApi,
   type RulesetCombatEvent,
@@ -162,6 +165,70 @@ try {
     // Its uses are gone.
     const offered = rulesetCombatOptions(definition, third.state, "sphinx").map((one) => one.id);
     assert.ok(!offered.includes("roar"), "no roars left today");
+  }
+
+  // ── On a board, a part that bursts around the sphinx catches whom it reaches, never the sphinx ──
+  {
+    const loud = [
+      { ...roars[0] },
+      {
+        id: "roar_1",
+        name: "First Roar",
+        budget: "action",
+        area: { shape: "burst", size: 500, around: true },
+        save: { save: "wis_save", difficulty: 18, onSuccess: "negates" },
+        applies: [{ condition: "frightened", duration: { rounds: 10 } }],
+      },
+      { ...roars[2], autoHit: undefined, area: { shape: "burst", size: 500, around: true } },
+      { ...roars[3], autoHit: undefined, area: { shape: "burst", size: 500, around: true } },
+    ];
+    const boardDefinition = parsed(withSphinx(loud));
+    const boardCreature = boardDefinition.catalogs!.find((one) => one.id === "creatures")!.entries![0]!.creature!;
+    const loudSphinx = rulesetStatBlockFromCreature(boardDefinition, boardCreature)!;
+    const state = createRulesetEncounter({
+      definition: boardDefinition,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        { id: "sphinx", name: "Androsphinx", side: "enemy", block: { ...loudSphinx, health: 500 } },
+        { id: "hero", name: "Hero", side: "party", block: block() },
+        { id: "friend", name: "Friend", side: "party", block: block() },
+      ],
+      board: {
+        grid: { width: 20, height: 9, tiles: Array.from({ length: 9 }, () => Array(20).fill("plains")) },
+        placements: { sphinx: { x: 14, y: 6 }, hero: { x: 6, y: 6 }, friend: { x: 2, y: 1 } },
+      },
+    } as never);
+    state.order = ["sphinx", "hero", "friend"];
+    state.turn = 0;
+    const option = rulesetCombatOptions(boardDefinition, state, "sphinx").find((one) => one.id === "roar");
+    assert.ok(option, "offered on a board");
+    const step = applyRulesetCombatChoice(
+      boardDefinition,
+      state,
+      {
+        actorId: "sphinx",
+        optionId: "roar",
+        targetIds: rulesetOptionTargets(boardDefinition, state, "sphinx", option)
+          .slice(0, option.targets.count)
+          .map((one) => one.id),
+      },
+      () => 10,
+    );
+    assert.deepEqual(of(step.events, "refused"), [], JSON.stringify(step.events));
+    assert.deepEqual(
+      of(step.events, "save")
+        .map((one) => one.actorId)
+        .sort(),
+      ["friend", "hero"],
+      "the sphinx never saves against its own roar",
+    );
+    for (const id of ["hero", "friend"])
+      assert.ok(
+        rulesetCombatant(step.state, id)!.tracked.some((one) => one.condition === "frightened"),
+        id,
+      );
+    assert.equal(rulesetCombatant(step.state, "sphinx")!.tracked.length, 0);
   }
 
   // ── Refusals ──

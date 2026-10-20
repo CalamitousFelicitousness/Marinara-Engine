@@ -4884,9 +4884,15 @@ function blockActions(
   }));
   // What a use makes by its count (1.634) is never on a menu itself.
   for (const action of built) {
-    for (const id of action.byUse ?? []) {
-      const part = built.find((one) => one.id === id);
-      if (part) part.rolledPart = true;
+    const parts = (action.byUse ?? []).flatMap((id) => built.find((one) => one.id === id) ?? []);
+    for (const part of parts) part.rolledPart = true;
+    // Aimed as its parts are: made where it stands when each bursts around its maker or is its
+    // maker's own (the Roar), else as far as the first of them that reaches anybody.
+    if (parts.length && parts.every((part) => part.around || part.targets.side === "self")) {
+      action.targets = { side: "self", count: 0 };
+    } else {
+      const reach = parts.find((part) => part.range)?.range;
+      if (reach && !action.range) action.range = structuredClone(reach);
     }
   }
   // A sequence made without the steps its maker may leave out (1.590), one mode for each way.

@@ -14882,8 +14882,13 @@ function resolveActionBodyIn(
     const aimedAlso = ctx.aimedAlso;
     delete ctx.aimedAlso;
     if (at) ctx.aimedAt = { x: at.x, y: at.y };
-    const caught =
-      part.targets.side === "self"
+    // A burst around its user catches whom it reaches and never its user, as the part on its own
+    // would: the Roar's.
+    const caught = part.around
+      ? rulesetAroundTargets(ctx.state, actor, part).filter(
+          (one) => !rulesetSealedApart(ctx.definition, ctx.state, actor, one),
+        )
+      : part.targets.side === "self"
         ? [actor]
         : part.area && at && ctx.state.board?.grid
           ? rulesetAreaTargets(ctx.state, actor.id, part.id, at).flatMap((id) => rulesetCombatant(ctx.state, id) ?? [])

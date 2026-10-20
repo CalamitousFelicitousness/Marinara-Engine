@@ -3419,6 +3419,9 @@ function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): Rul
     ...(teleport.carriesWithin !== undefined ? { carriesWithin: rulesetInCells(teleport.carriesWithin, perCell) } : {}),
     ...(teleport.carriesSeen ? { carriesSeen: true as const } : {}),
     ...(teleport.leaves ? { leaves: true as const } : {}),
+    // Its familiarity table (1.617).
+    ...(teleport.familiarity ? { familiarity: teleport.familiarity.map((row) => ({ ...row })) } : {}),
+    ...(teleport.mishap ? { mishap: { ...teleport.mishap } } : {}),
     ...(teleport.smoke
       ? {
           smoke: {
@@ -3949,8 +3952,20 @@ function mechanicsAction(
   if (mechanics.push !== undefined) action.push = rulesetInCells(mechanics.push, perCell ?? 1);
   if (mechanics.pushesOutSaved) action.pushesOutSaved = true;
   // Measured on a board (1.276): a fight without one has nowhere to go, but out of it (1.279).
-  if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves))
+  if (mechanics.teleport && (perCell !== undefined || mechanics.teleport.leaves)) {
     action.teleport = rulesetTeleportInCells(mechanics.teleport, perCell ?? 1);
+    // How well its user knows where it goes (1.617), picked as it is used.
+    if (mechanics.teleport.familiarity) {
+      action.modes = [
+        ...(action.modes ?? []),
+        ...mechanics.teleport.familiarity.map((row, index) => ({
+          id: `familiar-${row.id}`,
+          label: row.label,
+          familiar: index,
+        })),
+      ];
+    }
+  }
   if (mechanics.zone) action.zone = rulesetZoneAction(mechanics.zone, perCell);
   // What the turn's own economy makes of it: free of a budget, handing budgets back, or letting
   // its holder buy a standard action with a budget other than the main one.

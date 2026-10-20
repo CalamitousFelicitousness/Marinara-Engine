@@ -2740,6 +2740,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A teleport's familiarity table (1.617): 5e's Teleport. */
+function carriesTeleportFamiliarity617(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTeleportFamiliarity617(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const teleport = plainRecord(record.teleport);
+  if (teleport && (teleport.familiarity !== undefined || teleport.mishap !== undefined)) return true;
+  return featureValues(record).some((one) => carriesTeleportFamiliarity617(one, depth + 1));
+}
+
 /** A trap disarmed with a check (1.616): a zone's `disarm`, or the `disarm` standard action. */
 function carriesZoneDisarm616(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8307,6 +8318,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A teleport's familiarity table, 1.617.
+  if (
+    !declaresApi(617) &&
+    (carriesTeleportFamiliarity617(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesTeleportFamiliarity617(document)))
+  )
+    return "A ruleset with a teleport's familiarity table (teleport.familiarity or teleport.mishap) requires schemaVersion 2 and capabilityApi 1.617 or newer";
   // A trap disarmed with a check, 1.616.
   if (
     !declaresApi(616) &&

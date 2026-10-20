@@ -455,6 +455,11 @@ export interface RulesetTeleport {
   /** A creature's (1.280): one of its own actions, by id, it may make once before or after the
    *  teleport as part of the same action. A blink dog's bite. */
   strike?: string;
+  /** How well its user knows where it goes, as modes, and what a mishap deals (1.617). */
+  familiarity?: Array<{ id: string; label: string; mishap: number; similar?: number; off?: number }>;
+  mishap?: { dice: string; type: string };
+  /** The familiarity picked, by its place (1.617). */
+  familiar?: number;
 }
 
 /** One thing a stat block can do. `reach` and `range` are in the ruleset's own distance unit; a
@@ -1597,6 +1602,8 @@ export interface RulesetCombatMode {
   aroundHit?: RulesetCombatAroundHit;
   /** The places of the optional steps of a sequence left out in this mode (1.590). */
   skips?: number[];
+  /** A teleport's familiarity picked in this mode (1.617), by its place. */
+  familiar?: number;
 }
 
 /** A Hammer of Thunderbolts' clap (1.312): everybody within `within` cells of the one hit saves or
@@ -3656,6 +3663,15 @@ export type RulesetCombatEvent =
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Out of the fight by a teleport that leaves it (1.279), or along with whoever did (`by`). */
   | { type: "left"; actorId: string; label: string; by?: string }
+  /** How a teleport out of the fight went (1.617): the d100, under the familiarity `row`. */
+  | {
+      type: "teleportRoll";
+      actorId: string;
+      label: string;
+      row: string;
+      roll: number;
+      outcome: "on-target" | "off-target" | "similar" | "mishap";
+    }
   /** Back from where it was sent (1.236), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
   /** Called creatures that came after their caller's turns (1.561): Children of the Night's. */

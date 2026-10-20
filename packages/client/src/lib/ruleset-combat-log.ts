@@ -623,6 +623,18 @@ export function rulesetCombatEventLine(
             label: event.label,
           })
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
+    // How a teleport out of the fight went (1.617).
+    case "teleportRoll":
+      return key(
+        event.outcome === "mishap"
+          ? "teleportRollMishap"
+          : event.outcome === "similar"
+            ? "teleportRollSimilar"
+            : event.outcome === "off-target"
+              ? "teleportRollOffTarget"
+              : "teleportRollOnTarget",
+        { actor: names.combatant(event.actorId), label: event.label, row: event.row, roll: event.roll },
+      );
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
     // Called creatures come after their caller's turns (1.561): Children of the Night's.

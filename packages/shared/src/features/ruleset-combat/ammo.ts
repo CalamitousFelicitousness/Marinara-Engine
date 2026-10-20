@@ -57,6 +57,10 @@ export function rulesetModedAction(
         }
       : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+    // The familiarity picked (1.617), rolled on as it leaves the fight.
+    ...(mode.familiar !== undefined && action.teleport
+      ? { teleport: { ...action.teleport, familiar: mode.familiar } }
+      : {}),
     // Out of the stack picked (1.604): an Arrow of Slaying.
     ...(mode.ammoFrom !== undefined ? { ammoFrom: mode.ammoFrom } : {}),
     // Its own reach and clauses (1.190): a javelin of lightning's bolt, 4d6 more on a hit.

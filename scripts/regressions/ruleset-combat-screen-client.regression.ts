@@ -969,6 +969,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["growth", say({ type: "growth", actorId: "brenna", label: "Shears", cells: 1, by: "cut" })],
     ["left", say({ type: "left", actorId: "lurker", label: "Teleport" })],
+    [
+      "teleportRoll",
+      say({
+        type: "teleportRoll",
+        actorId: "lurker",
+        label: "Teleport",
+        row: "Seen casually",
+        roll: 12,
+        outcome: "mishap",
+      }),
+    ],
     ["surprised", say({ type: "surprised", actorIds: ["brenna", "lurker"] })],
     ["surpriseOver", say({ type: "surpriseOver", actorId: "lurker" })],
     ["extraTurn", say({ type: "extraTurn", actorId: "brenna", initiative: 7, label: "Thief's Reflexes" })],
@@ -1627,6 +1638,21 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("returned"), "Thorn Lurker comes back into the fight.");
   // Out of the fight by a teleport (1.279), and along with whoever went.
   assert.equal(printed.get("left"), "Thorn Lurker leaves the fight with Teleport.");
+  assert.equal(
+    printed.get("teleportRoll"),
+    "Thorn Lurker’s Teleport (Seen casually) rolls 12 and goes wrong: a mishap.",
+  );
+  assert.equal(
+    say({
+      type: "teleportRoll",
+      actorId: "lurker",
+      label: "Teleport",
+      row: "Very familiar",
+      roll: 80,
+      outcome: "on-target",
+    }),
+    "Thorn Lurker’s Teleport (Very familiar) rolls 80 and lands on target.",
+  );
   assert.equal(
     say({ type: "left", actorId: "brenna", label: "Teleport", by: "lurker" }),
     "Brenna leaves the fight along with Thorn Lurker's Teleport.",

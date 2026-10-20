@@ -7119,7 +7119,11 @@ function applyChoice(
   // A creature type is picked as it is used (1.270): no kind, no Antipathy.
   // And so is the weapon put in hand (1.306).
   const namedIn = actor.actions.find((entry) => entry.id === option.id);
-  if (!mode && (namedIn?.kindChoice || namedIn?.conjures || namedIn?.shapes)) {
+  // How well its user knows where it goes, leaving the fight (1.617).
+  if (
+    !mode &&
+    (namedIn?.kindChoice || namedIn?.conjures || namedIn?.shapes || (namedIn?.teleport?.familiarity && !choice.at))
+  ) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
@@ -13257,8 +13261,10 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
         const was = rulesetPositionOf(one);
         return !was || !teleportHeld(ctx, one, action, was, null, actor.id);
       });
-    leaveFight(ctx, actor, action);
-    for (const one of along) leaveFight(ctx, one, action, actor.id);
+    // Where it lands, by its familiarity (1.617): a mishap hurts every traveller and rolls again.
+    rollFamiliarity(ctx, actor, action, along);
+    if (!actor.defeated) leaveFight(ctx, actor, action);
+    for (const one of along) if (!one.defeated) leaveFight(ctx, one, action, actor.id);
     return;
   }
   const grid = ctx.state.board?.grid;
@@ -13324,6 +13330,49 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
       }
     }
     if (spot) set(one, spot, was, actor.id);
+  }
+}
+
+/**
+ * A teleport's familiarity rolled as it leaves the fight (1.617): a d100 against the row picked, a
+ * mishap first, then a similar area, then off target, the rest on target. A mishap deals its damage
+ * to its user and everybody along, and rolls again, twenty times at most.
+ */
+function rollFamiliarity(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  along: RulesetCombatant[],
+): void {
+  const rule = action.teleport;
+  const row = rule?.familiar !== undefined ? rule.familiarity?.[rule.familiar] : undefined;
+  if (!rule || !row) return;
+  const dice = rule.mishap ? parseRulesetCombatDice(rule.mishap.dice) : null;
+  for (let times = 0; times < 20; times++) {
+    const roll = ctx.roll(100);
+    const outcome =
+      roll <= row.mishap
+        ? "mishap"
+        : roll <= row.mishap + (row.similar ?? 0)
+          ? "similar"
+          : roll <= row.mishap + (row.similar ?? 0) + (row.off ?? 0)
+            ? "off-target"
+            : "on-target";
+    ctx.events.push({ type: "teleportRoll", actorId: actor.id, label: action.label, row: row.label, roll, outcome });
+    if (outcome !== "mishap") return;
+    for (const one of [actor, ...along]) {
+      if (one.defeated || !dice) continue;
+      const rolls = rollRulesetDice(ctx.roll, dice.count, dice.sides);
+      const dealt = applyDamage(ctx, one, {
+        sourceId: actor.id,
+        label: action.label,
+        damageType: rule.mishap!.type,
+        rolls,
+        flat: dice.flat,
+        amount: sumOf(rolls) + dice.flat,
+      });
+      afterBlow(ctx, one, dealt, false);
+    }
   }
 }
 

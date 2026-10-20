@@ -5987,6 +5987,8 @@ const reducesMaxSchema: z.ZodType<RulesetReducesMax, z.ZodTypeDef, unknown> = z
 /** Where a teleport goes (Capability API 1.276). Typed by hand, to keep the definition's type small. */
 export interface RulesetTeleportRule {
   distance: number;
+  familiarity?: Array<{ id: string; label: string; mishap: number; similar?: number; off?: number }>;
+  mishap?: { dice: string; type: string };
   seen?: true;
   carries?: number;
   carriesWithin?: number;
@@ -6021,8 +6023,54 @@ const teleportSchema: z.ZodType<RulesetTeleportRule, z.ZodTypeDef, unknown> = z
      *  same action (Capability API 1.280): a blink dog's bite. The menu offers the teleport, with
      *  the strike after it, and the strike, with the teleport after it. */
     strike: sheetId.optional(),
+    /** How well its user knows where it goes, picked as it is used (Capability API 1.617): each a
+     *  mode, with the chances in a hundred of a mishap, of a similar area and of landing off target
+     *  (the rest lands on it). Leaving the fight, a d100 is rolled: a mishap deals `mishap` to its
+     *  user and everybody it carries, and rolls again. 5e's Teleport. */
+    familiarity: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            mishap: z.number().int().min(0).max(99),
+            similar: z.number().int().min(0).max(100).optional(),
+            off: z.number().int().min(0).max(100).optional(),
+          })
+          .strict()
+          .refine((row) => row.mishap + (row.similar ?? 0) + (row.off ?? 0) <= 100, {
+            message: "A row's chances come to no more than 100",
+          }),
+      )
+      .min(1)
+      .max(8)
+      .optional(),
+    /** What a mishap deals each traveller (Capability API 1.617): `{"dice": "3d10", "type": "force"}`. */
+    mishap: z
+      .object({
+        dice: z
+          .string()
+          .max(20)
+          .regex(/^\d{1,2}d\d{1,3}([+-]\d{1,3})?$/u),
+        type: z.string().min(1).max(40),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
+  .refine((teleport) => !teleport.familiarity || (teleport.leaves && teleport.mishap), {
+    message: '"familiarity" is rolled leaving the fight, so it goes with "leaves" and a "mishap"',
+    path: ["familiarity"],
+  })
+  .refine((teleport) => !teleport.mishap || teleport.familiarity, {
+    message: '"mishap" is what "familiarity" rolls, so it goes with it',
+    path: ["mishap"],
+  })
+  .refine(
+    (teleport) =>
+      new Set((teleport.familiarity ?? []).map((row) => row.id)).size === (teleport.familiarity ?? []).length,
+    { message: "Each familiarity has its own id", path: ["familiarity"] },
+  )
   .refine((teleport) => teleport.carriesWithin === undefined || teleport.carries !== undefined, {
     message: '"carriesWithin" is how near those it "carries" stand, so it goes with "carries"',
     path: ["carriesWithin"],

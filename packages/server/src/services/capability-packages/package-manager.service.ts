@@ -2741,6 +2741,25 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A condition's hits that deal damage, ask a save, or read the blow's damage type (1.630): a poison
+ *  on a weapon. */
+function carriesOnHitDamage630(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOnHitDamage630(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const onHit = plainRecord(record.onHit);
+  if (
+    onHit &&
+    (onHit.damage !== undefined ||
+      onHit.save !== undefined ||
+      onHit.failedBy !== undefined ||
+      onHit.damageTypes !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesOnHitDamage630(one, depth + 1));
+}
+
 /** A condition held only while an ally is seen near (1.629): a bearded devil's Steadfast. */
 function carriesAllySeen629(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8435,6 +8454,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition's hits that deal damage, ask a save, or read the blow's damage type, 1.630.
+  if (
+    !declaresApi(630) &&
+    (carriesOnHitDamage630(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOnHitDamage630(document)))
+  )
+    return "A ruleset with a condition whose holder's hits deal damage or ask a save (onHit damage, save, failedBy, damageTypes) requires schemaVersion 2 and capabilityApi 1.630 or newer";
   // A condition held only while an ally is seen near, 1.629.
   if (
     !declaresApi(629) &&

@@ -1559,10 +1559,44 @@ function ownHit(
     if (!rule || target.defeated) continue;
     if (rule.weapon && !rulesetWeaponBlow(action)) continue;
     if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
+    // Only a blow of these damage types (1.630): a poison on a slashing or piercing weapon.
+    const blowType = action.damage?.type?.trim().toLowerCase();
+    if (rule.damageTypes && !rule.damageTypes.some((type) => type.trim().toLowerCase() === blowType)) continue;
     const own = attacker.tracked.find((one) => one.condition === entry.condition);
-    for (const applies of rule.applies) {
+    // Its save first (1.630): a poison's Constitution save.
+    const saved = rule.save ? rollSave(ctx, target, rule.save.save, rule.save.difficulty, attacker.id) : false;
+    const thrown = rule.save
+      ? [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === target.id)
+      : undefined;
+    if (rule.damage && !(saved && rule.save?.onSuccess === "negates")) {
+      const dice = rule.damage.dice ? parseRulesetCombatDice(rule.damage.dice) : null;
+      const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : [];
+      const flat = (dice?.flat ?? 0) + (rule.damage.flat ?? 0);
+      const whole = sumOf(rolls) + flat;
+      const dealt = applyDamage(ctx, target, {
+        sourceId: attacker.id,
+        label:
+          ctx.definition.sheet.live.conditions.find((live) => live.id === entry.condition)?.label ?? entry.condition,
+        ...(rule.damage.type ? { damageType: rule.damage.type } : {}),
+        rolls,
+        flat,
+        amount: saved ? Math.floor(whole / 2) : whole,
+      });
+      afterBlow(ctx, target, dealt, false);
+    }
+    if (saved || target.defeated) continue;
+    // Failed badly (1.630): drow poison's unconsciousness on a failure by 5.
+    const worse =
+      rule.failedBy &&
+      thrown?.type === "save" &&
+      !thrown.automatic &&
+      thrown.difficulty - thrown.total >= rule.failedBy.atLeast
+        ? rule.failedBy.applies
+        : [];
+    for (const applies of [...(rule.applies ?? []), ...worse]) {
       applyConditionId(ctx, target, applies.condition, applies, {
         sourceId: attacker.id,
+        ...(rule.save ? { difficulty: rule.save.difficulty } : {}),
         ...(own?.concentration ? { concentration: true } : {}),
         ...(own?.catalog ? { catalog: own.catalog } : {}),
       });

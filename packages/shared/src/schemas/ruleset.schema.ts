@@ -12836,15 +12836,51 @@ const conditionWhenHitSchema: z.ZodType<RulesetConditionWhenHit, z.ZodTypeDef, u
 export interface RulesetConditionOnHit {
   weapon?: true;
   blow?: "melee" | "ranged";
-  applies: RulesetCatalogApplies[];
+  damageTypes?: string[];
+  applies?: RulesetCatalogApplies[];
+  damage?: { dice?: string; flat?: number; type?: string };
+  save?: { save: string; difficulty: number; onSuccess: "half" | "negates" };
+  failedBy?: { atLeast: number; applies: RulesetCatalogApplies[] };
 }
 const conditionOnHitSchema: z.ZodType<RulesetConditionOnHit, z.ZodTypeDef, unknown> = z
   .object({
     weapon: z.literal(true).optional(),
     blow: z.enum(["melee", "ranged"]).optional(),
-    applies: z.array(catalogAppliesSchema).min(1).max(4),
+    /** Only a hit dealing one of these damage types (Capability API 1.630): a poison coating "one
+     *  slashing or piercing weapon". */
+    damageTypes: z.array(promptSafeText(40)).min(1).max(8).optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4).optional(),
+    /** Damage dealt on top of the hit (Capability API 1.630): a poison's 1d4. */
+    damage: z
+      .object({
+        dice: catalogDice.optional(),
+        flat: z.number().int().min(0).max(1000).optional(),
+        type: promptSafeText(40).optional(),
+      })
+      .strict()
+      .refine((damage) => damage.dice || damage.flat !== undefined, {
+        message: "The damage names dice, a flat amount, or both",
+      })
+      .optional(),
+    /** A save the one hit makes first (Capability API 1.630): made, `damage` is halved or not dealt
+     *  and `applies` does not go on. Serpent venom, DC 11 Constitution, half. */
+    save: z
+      .object({ save: sheetId, difficulty: z.number().int().min(0).max(1000), onSuccess: z.enum(["half", "negates"]) })
+      .strict()
+      .optional(),
+    /** Failed by this much or more, these go on as well (Capability API 1.630): drow poison's
+     *  unconsciousness on a failure by 5. */
+    failedBy: z
+      .object({ atLeast: z.number().int().min(1).max(100), applies: z.array(catalogAppliesSchema).min(1).max(4) })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((rule) => rule.applies || rule.damage, { message: "onHit applies something, deals damage, or both" })
+  .refine((rule) => !rule.failedBy || rule.save, {
+    message: '"failedBy" reads onHit\'s own save, so it has one',
+    path: ["failedBy"],
+  });
 
 /** What its holder does to a creature whose space it enters (Capability API 1.451), the first time in
  *  each of its turns: `harm` with no save, and `applies` from the holder. 5e's Fire Form, 1d10 fire
@@ -18232,9 +18268,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (entry.whenHit.from) targetIsIssues(def, entry.whenHit.from, [...where, "from"], issue);
       }
       // What its holder's hits put on is the ruleset's own (1.450), and what its entering does (1.451).
-      entry.onHit?.applies.forEach((applied, appliedIndex) => {
+      entry.onHit?.applies?.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition))
           issue([...path, "onHit", "applies", appliedIndex, "condition"], `Unknown condition "${applied.condition}"`);
+      });
+      // Its save is the sheet's, and what a bad failure puts on the ruleset's own (1.630).
+      if (entry.onHit?.save && !def.sheet.saves.some((one) => one.id === entry.onHit!.save!.save))
+        issue([...path, "onHit", "save", "save"], `Unknown save "${entry.onHit.save.save}"`);
+      entry.onHit?.failedBy?.applies.forEach((applied, appliedIndex) => {
+        if (!conditions.has(applied.condition))
+          issue(
+            [...path, "onHit", "failedBy", "applies", appliedIndex, "condition"],
+            `Unknown condition "${applied.condition}"`,
+          );
       });
       entry.entering?.applies?.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition))

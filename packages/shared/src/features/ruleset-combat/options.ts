@@ -1725,6 +1725,8 @@ export function rulesetPaidLevel(
   payWith?: string,
 ): number {
   if (action.innate) return action.innate.level;
+  // An item's use casts at its own level (1.677).
+  if (action.castLevel !== undefined) return action.castLevel;
   const id = rulesetItemSlotPayment(payWith)?.pool ?? payWith ?? action.use?.pool;
   if (!id) return 0;
   const pool = definition.sheet.live.pools.find((entry) => entry.id === id);

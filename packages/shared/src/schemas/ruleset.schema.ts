@@ -11100,6 +11100,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** `utility` (Capability API 1.181) is a use that only leaves an area standing: a scroll of Fog
      *  Cloud, Darkness or Silence; or one that teleports (1.276): a cape's Dimension Door. */
     kind: z.enum(["attack", "heal", "buff", "debuff", "utility"]),
+    /** The level it casts at (Capability API 1.677): a scroll's spell's. Whatever reads the level an
+     *  entry is paid at reads this, a reaction's `"upTo": "paid"` among them: a scroll of
+     *  Counterspell, 3, stops a spell of 3rd level or lower outright. */
+    level: z.number().int().min(0).max(20).optional(),
     /** Abilities it raises on its user's sheet for good (Capability API 1.463), by ability id: `by`
      *  onto the score, and `max` onto the most it may be. Used outside a fight only; a fight never
      *  offers it. 5e's Manual of Gainful Exercise, `{ "str": { "by": 2, "max": 2 } }`. */
@@ -11320,12 +11324,18 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       !use.keepsCaught &&
       // Or casts other entries (1.587): a Ring of Three Wishes.
       !use.duplicates &&
+      // Or stops what it answers (1.677): a scroll of Counterspell.
+      !(typeof use.reaction === "object" && use.reaction.cancels) &&
       (!use.zone || !use.area)
     ) {
       issue(
         "kind",
-        "A utility use leaves an area standing, clears growth, teleports, calls creatures or casts other entries, so it has an area and a zone, clears, a teleport, calls or duplicates",
+        "A utility use leaves an area standing, clears growth, teleports, calls creatures, casts other entries or stops what it answers, so it has an area and a zone, clears, a teleport, calls, duplicates or a reaction that cancels",
       );
+    }
+    // What it stops it reads against the level it casts at (1.677).
+    if (typeof use.reaction === "object" && use.reaction.upTo === "paid" && use.level === undefined) {
+      issue("level", 'An item\'s use that stops up to "paid" reads the level it casts at, so it has "level"');
     }
     if (use.endsLayers && !use.endsLayersAs) {
       issue("endsLayersAs", "A use that breaks a layer says which entry it is read as, so it names endsLayersAs");

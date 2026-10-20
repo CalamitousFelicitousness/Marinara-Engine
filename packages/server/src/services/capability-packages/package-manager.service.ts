@@ -2741,6 +2741,18 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item's use with the level it casts at, or a utility one that stops what it answers (1.677): a
+ *  scroll of Counterspell. */
+function carriesItemLevel677(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesItemLevel677(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const use = plainRecord(record.use);
+  if (use && (use.level !== undefined || (use.kind === "utility" && plainRecord(use.reaction)?.cancels))) return true;
+  return featureValues(record).some((one) => carriesItemLevel677(one, depth + 1));
+}
+
 /** A wall a creature's action lays (1.675): an ice devil's Wall of Ice. A creature's action has a
  *  `name`; a catalog entry's area sits on its `mechanics`, which has none. */
 function carriesCreatureWall675(value: unknown, depth = 0): boolean {
@@ -8923,6 +8935,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item's use at its own level, or one that stops what it answers, 1.677.
+  if (
+    !declaresApi(677) &&
+    (carriesItemLevel677(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemLevel677(document)))
+  )
+    return "A ruleset with an item's use that casts at a level (use.level) or a utility use that stops what it answers requires schemaVersion 2 and capabilityApi 1.677 or newer";
   // A wall a creature's action lays, 1.675.
   if (
     !declaresApi(675) &&

@@ -2938,6 +2938,8 @@ function itemUseMechanics(
   if (use.recovers?.count !== undefined) action.recovers = structuredClone(use.recovers);
   // What it puts on lasts while the item's charges do (1.570): the Boots of Speed.
   if (use.chargesPerRound) action.chargesPerRound = true;
+  // The level it casts at (1.677): a scroll of Counterspell's 3.
+  if (use.level !== undefined) action.castLevel = use.level;
   return action;
 }
 

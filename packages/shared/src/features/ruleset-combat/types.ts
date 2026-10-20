@@ -1380,6 +1380,8 @@ export interface RulesetCombatAction {
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
   range?: RulesetCombatRange;
+  /** The level an item's use casts at (1.677): a scroll's spell's. */
+  castLevel?: number;
   /** The level of a spell cast without slots, and the base it scales from (1.123). */
   innate?: {
     level: number;

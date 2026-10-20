@@ -156,6 +156,7 @@ test("Speech to Text keeps an edit made just before leaving Connections", async 
   } finally {
     releaseSave();
   }
+  await expect.poll(() => saved.baseUrl).toBe("http://localhost:9001/v1");
   await openCard();
   await expect(serverUrl).toHaveValue("http://localhost:9001/v1");
   await page.waitForTimeout(700);

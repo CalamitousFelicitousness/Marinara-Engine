@@ -750,7 +750,8 @@ function syncControl(ctx: RulesetCombatContext): void {
       : one.tracked.find((entry) => {
           if (!rules.get(entry.condition)?.controls || !entry.source || entry.source === one.id) return false;
           const source = rulesetCombatant(ctx.state, entry.source);
-          return !!source && !source.defeated;
+          // Gone into them (1.643), it controls them from inside: a ghost's Possession.
+          return !!source && (!source.defeated || source.away?.possessing === one.id);
         });
     const controller = holding ? rulesetCombatant(ctx.state, holding.source!) : undefined;
     if (controller && controller.side !== one.side) {
@@ -4182,6 +4183,16 @@ function removeCondition(
   // Away only while it held this (1.236), it comes back, or stays gone.
   if (target.away?.while === condition && (!removed || removed.source === target.away.by)) {
     bringBack(ctx, target, reason);
+  }
+  // Whoever went into them while they held this (1.643) comes out beside them: a ghost out of the body.
+  const possessor = removed?.source !== undefined ? rulesetCombatant(ctx.state, removed.source) : undefined;
+  if (possessor?.away?.possessing === target.id && possessor.away.while === condition) {
+    const at = rulesetPositionOf(target);
+    if (at) {
+      possessor.x = at.x;
+      possessor.y = at.y;
+    }
+    bringBack(ctx, possessor, "linked");
   }
   // What was put on with it to last only as long as it ends with it (1.202): put on by the same
   // source with the same use, whatever took this one off.
@@ -13726,6 +13737,24 @@ function dismiss(
       : target.tracked.find((entry) => entry.condition === rule.while && entry.source === actor.id);
   // Kept off what it is away under, it stays.
   if (rule !== true && !held) return;
+  // Gone into whom it landed on, its user leaves instead (1.643): a ghost's Possession. What it put
+  // on them stays, holding it away.
+  if (rule !== true && rule.possesses) {
+    if (actor.defeated || actor.id === target.id) return;
+    actor.defeated = true;
+    actor.away = { by: target.id, label: action.label, while: rule.while, possessing: target.id };
+    ctx.events.push({
+      type: "dismissed",
+      actorId: actor.id,
+      targetId: actor.id,
+      label: action.label,
+      while: rule.while,
+    });
+    endSummons(ctx, actor);
+    endZones(ctx, actor);
+    endConcentration(ctx, actor, "spent");
+    return;
+  }
   if (held && held.rounds !== null) held.clockOf = "source";
   target.defeated = true;
   target.away = {

@@ -8333,6 +8333,7 @@ export interface RulesetCreatureDismisses {
   gone?: RulesetTargetIs;
   turns?: true;
   carries?: { count: number; within: number; condition: string };
+  possesses?: true;
 }
 const creatureDismissesSchema: z.ZodType<true | RulesetCreatureDismisses, z.ZodTypeDef, unknown> = z.union([
   z.literal(true),
@@ -8352,8 +8353,18 @@ const creatureDismissesSchema: z.ZodType<true | RulesetCreatureDismisses, z.ZodT
         })
         .strict()
         .optional(),
+      /** The creature itself leaves, not its target, while its target holds `while` from it, and
+       *  comes back beside them once that ends (Capability API 1.643): a ghost's Possession, the
+       *  body holding a condition with `controls` and `endsWhenHolder.downed`, so the ghost returns
+       *  as the body drops to 0 hit points or the possession is ended. Never with `turns`, `gone`
+       *  or `carries`, nor on a `self` action. */
+      possesses: z.literal(true).optional(),
     })
-    .strict(),
+    .strict()
+    .refine((rule) => !rule.possesses || (!rule.turns && !rule.gone && !rule.carries), {
+      message: '"possesses" sends the creature into its target, so it goes without "turns", "gone" or "carries"',
+      path: ["possesses"],
+    }),
 ]);
 
 const creatureOnFellSchema: z.ZodType<RulesetCreatureOnFell, z.ZodTypeDef, unknown> = z
@@ -9023,6 +9034,13 @@ const creatureActionFullSchema = z
         code: z.ZodIssueCode.custom,
         path: ["dismisses", "while"],
         message: `Away while it holds "${away.while}", so the action puts it on`,
+      });
+    }
+    if (away && away !== true && away.possesses && action.self) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dismisses", "possesses"],
+        message: '"possesses" goes into whom the action lands on, so the action is not "self"',
       });
     }
     if (away && away !== true && away.carries && !action.self) {

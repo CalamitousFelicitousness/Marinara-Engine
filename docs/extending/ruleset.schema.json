@@ -77662,6 +77662,10 @@
                                   ],
                                   "additionalProperties": false
                                 },
+                                "possesses": {
+                                  "type": "boolean",
+                                  "const": true
+                                },
                                 "$comment": {}
                               },
                               "required": [
@@ -94776,6 +94780,10 @@
                                       "condition"
                                     ],
                                     "additionalProperties": false
+                                  },
+                                  "possesses": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "$comment": {}
                                 },

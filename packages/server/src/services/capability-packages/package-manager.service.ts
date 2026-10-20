@@ -2741,6 +2741,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** A creature's action never used on the same creature again (1.621): Frightful Presence. */
+/** A creature that goes into whom it lands on (1.643): a ghost's Possession. */
+function carriesPossesses643(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesPossesses643(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.dismisses)?.possesses !== undefined) return true;
+  return featureValues(record).some((one) => carriesPossesses643(one, depth + 1));
+}
+
 /** A creature's action whose riders wait on a contest (1.642): a merrow's Harpoon. Only a creature's
  *  actions, which a catalog's `actions` and a block's hold; a catalog entry's own `contest` is 1.512. */
 function carriesCreatureContest642(value: unknown, depth = 0): boolean {
@@ -8592,6 +8602,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature that goes into whom it lands on, 1.643.
+  if (
+    !declaresApi(643) &&
+    (carriesPossesses643(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesPossesses643(document)))
+  )
+    return "A ruleset with a creature that goes into whom it lands on (dismisses.possesses) requires schemaVersion 2 and capabilityApi 1.643 or newer";
   // A creature's action whose riders wait on a contest, 1.642.
   if (
     !declaresApi(642) &&

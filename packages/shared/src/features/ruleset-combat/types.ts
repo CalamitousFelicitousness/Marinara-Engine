@@ -530,6 +530,7 @@ export interface RulesetStatBlockAction {
         gone?: RulesetTargetIs;
         turns?: true;
         carries?: { count: number; within: number; condition: string };
+        possesses?: true;
       };
   /** The creature teleports, in the ruleset's own distance (1.276). */
   teleport?: RulesetTeleport;
@@ -1033,6 +1034,8 @@ export interface RulesetCombatAction {
         turns?: true;
         /** Allies that go with its own user (1.632), `within` cells, nearest first. */
         carries?: { count: number; within: number; condition: string };
+        /** Its user goes, into its target, while the target holds `while` from them (1.643). */
+        possesses?: true;
       };
   /** It steadies a dying target: no more dying rolls (1.176). */
   stabilizes?: boolean;
@@ -2165,6 +2168,9 @@ export interface RulesetCombatant {
     arriving?: number;
     /** Gone along with `by` (1.632), and back when they are. */
     carried?: true;
+    /** Gone into this combatant (1.643), and back beside them once they no longer hold `while` from
+     *  it: a ghost's Possession. */
+    possessing?: string;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral

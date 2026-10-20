@@ -142,6 +142,8 @@ interface OwnerState {
   /** The last frame time this owner's voice played, and whether it played during this reply's reading. */
   voiceAt: number;
   voicePlayed: boolean;
+  /** An earlier reading's voice was still playing when this reading began; it is not this reading's voice. */
+  voiceStale: boolean;
   /** The clip the voice is reading: its sentences, the next one to show, and how far the voice was. */
   line: { text: string; parts: ReplySegment[]; next: number; progress: number } | null;
 }
@@ -200,6 +202,7 @@ function newOwner(participant: AvatarParticipant): OwnerState {
     held: null,
     voiceAt: -Infinity,
     voicePlayed: false,
+    voiceStale: false,
     line: null,
   };
 }
@@ -633,7 +636,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
     for (const owner of owners.values()) {
       if (!owner.audio?.isPlaying()) continue;
       owner.voiceAt = now;
-      if (voice === "waiting") {
+      // Only this reading's voice ends the wait, not an earlier one still playing while this reply streams or loads.
+      if (voice === "waiting" && voiceReadingId !== null && !owner.voiceStale) {
         owner.voicePlayed = true;
         voiceNewsAt = now;
       }
@@ -745,6 +749,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
       const owner = owners.get(ownerId);
       if (!owner) return;
       owner.audio = source;
+      // The voice that was playing stopped or moved on; the next one belongs to the reading now announced.
+      owner.voiceStale = false;
       if (source) owner.clock.clear();
     },
     setVoiceAutoplay(on: boolean) {
@@ -875,6 +881,8 @@ export function createAvatarDirector(options: AvatarDirectorOptions, hooks: Avat
         if (replay) return;
         voice = "waiting";
         voiceReadingId = detail.readingId;
+        // A voice playing now is an earlier reading's: this reading stops it before its own voice plays.
+        for (const owner of owners.values()) owner.voiceStale = owner.audio !== null;
         voicePending = true;
         voiceNewsAt = now;
         replyMessageIds.add(detail.messageId);

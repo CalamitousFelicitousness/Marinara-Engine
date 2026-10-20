@@ -1051,6 +1051,23 @@ const scene = (id: string, names: string[]) => {
   await until("the held mood", () => alice.emotion === "sad", 500);
   await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
 
+  // An earlier reading still playing while the next reply streams and loads is not this reading's voice: when this
+  // reading fails at once, the text animation still plays.
+  fresh();
+  voiceClip("Alice hums an old tune.", 30);
+  begin();
+  await type('Alice sobs quietly. "I miss him so much, I really do."');
+  reading("voice-7", true);
+  finish();
+  await play(500);
+  silence();
+  reading("voice-7", false);
+  fresh();
+  await play(10_000);
+  assert.ok(talkedMs > 1_000, `an earlier voice does not count as this reading's (${talkedMs} ms)`);
+  assert.ok(faces.has("sad"), "and the reply's moods show");
+  assert.equal(alice.emotion, "neutral", "then the face relaxes as after any reply");
+
   // A reading that stays away (still loading, or blocked until a tap): after 30 s the avatar stops waiting, and a
   // voice that still comes moves the mouth.
   fresh();

@@ -203,7 +203,7 @@ export function Modal({
       {/* Backdrop */}
       <div
         data-backdrop-dismiss-surface="true"
-        className="mari-modal-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        className="mari-modal-backdrop absolute inset-0 bg-[var(--background)]/55 backdrop-blur-[2px]"
         style={{
           opacity: isEntering ? 1 : 0,
           transition: "opacity 150ms ease-out",

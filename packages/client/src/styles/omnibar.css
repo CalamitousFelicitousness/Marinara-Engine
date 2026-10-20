@@ -343,17 +343,17 @@ html[data-mari-pull-landing] [data-mari-pull-target] * {
   background: linear-gradient(90deg, color-mix(in srgb, var(--omnibar-now-tone) 9%, transparent), transparent 70%);
 }
 .omnibar-now-row--review {
-  --omnibar-now-tone: rgb(245 158 11);
+  --omnibar-now-tone: var(--warning);
 }
 .omnibar-now-row--fix {
-  --omnibar-now-tone: rgb(244 63 94);
+  --omnibar-now-tone: var(--destructive);
 }
 .omnibar-now-row--check,
 .omnibar-now-row--setup {
-  --omnibar-now-tone: rgb(14 165 233);
+  --omnibar-now-tone: var(--marinara-app-accent-static);
 }
 .omnibar-now-row--finished {
-  --omnibar-now-tone: rgb(16 185 129);
+  --omnibar-now-tone: var(--marinara-app-accent-static);
 }
 .omnibar-now-action {
   display: inline-flex;

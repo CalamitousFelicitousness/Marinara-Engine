@@ -127,7 +127,7 @@ export function CustomEmojiTagButton({
   return (
     <>
       {flashing && (
-        <div className="pointer-events-none absolute inset-0 z-20 animate-pulse rounded-xl bg-red-500/20 ring-2 ring-red-500" />
+        <div className="pointer-events-none absolute inset-0 z-20 animate-pulse rounded-xl bg-[var(--destructive)]/20 ring-2 ring-[var(--destructive)]" />
       )}
       <button
         type="button"

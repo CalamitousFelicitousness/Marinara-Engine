@@ -369,7 +369,7 @@ export function StickerPicker({ open, onClose, onSelect, anchorRef, containerRef
 
       {showSettings && <CustomEmojiSelectionSettings />}
 
-      {error && <p className="px-3 py-1.5 text-[0.6875rem] text-red-400">{error}</p>}
+      {error && <p className="px-3 py-1.5 text-[0.6875rem] text-[var(--destructive)]">{error}</p>}
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {!q && !editing && visibleRecentStickers.length > 0 && (

@@ -13034,13 +13034,13 @@ function GameSurfaceComponent({
                       data-game-section="scene-alert"
                       className={cn(
                         GAME_SECTION_CLASS,
-                        "rounded-xl border border-amber-500/20 bg-black/80 px-4 py-3 shadow-lg backdrop-blur-sm",
+                        "rounded-xl border border-[var(--warning)]/20 bg-[var(--card)]/95 px-4 py-3 shadow-lg backdrop-blur-sm",
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+                        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--warning)]" />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-amber-200">
+                          <div className="text-xs font-medium text-[var(--warning)]">
                             {localizeUi("ui.game.gamesurfacecomponent.localSceneHelperFailedToStart")}
                           </div>
                           <div className="mt-1 text-[0.6875rem] leading-relaxed text-white/70">
@@ -13079,7 +13079,7 @@ function GameSurfaceComponent({
                         "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
                       )}
                     >
-                      <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+                      <AlertTriangle size={14} className="shrink-0 text-[var(--warning)]" />
                       <span className="text-xs text-white/70">
                         {localizeUi("ui.game.gamesurfacecomponent.imageGenerationFailed")}
                       </span>
@@ -13114,7 +13114,7 @@ function GameSurfaceComponent({
                         "flex items-center gap-3 rounded-xl bg-black/80 px-4 py-2.5 shadow-lg backdrop-blur-sm",
                       )}
                     >
-                      <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+                      <AlertTriangle size={14} className="shrink-0 text-[var(--warning)]" />
                       <span className="text-xs text-white/70">
                         {localizeUi("ui.game.gamesurfacecomponent.sceneAnalysisFailed")}
                       </span>
@@ -13286,7 +13286,7 @@ function GameSurfaceComponent({
                           type="button"
                           onClick={handleReturnToPreCombatTurn}
                           disabled={!latestAssistantMsg?.id}
-                          className="mari-chat-style-control mari-game-scene-control mari-game-scene-control--amber flex items-center gap-1.5 rounded-lg border border-amber-300/25 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 shadow-lg backdrop-blur-md transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+                          className="mari-chat-style-control mari-game-scene-control mari-game-scene-control--amber flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/25 bg-[var(--primary)]/20 px-3 py-1.5 text-xs font-semibold text-[var(--primary)] shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--primary)]/30 disabled:opacity-50"
                           title={localizeUi("ui.game.gamesurfacecomponent.exitCombatAndRemoveTheTurnThatStartedIt")}
                         >
                           <RotateCcw size={13} />
@@ -13828,8 +13828,8 @@ function GameSurfaceComponent({
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/15">
-              <AlertTriangle size="1.125rem" className="text-red-300" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--warning)]/15">
+              <AlertTriangle size="1.125rem" className="text-[var(--warning)]" />
             </div>
             <p className="text-sm text-[var(--muted-foreground)]">
               {localizeUi("ui.game.gamesurfacecomponent.interruptionAttemptsCanGoBadlyDependingOnTheSituation")}
@@ -13845,20 +13845,14 @@ function GameSurfaceComponent({
             </button>
             <button
               onClick={() => confirmInterrupt("force")}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold ring-1 transition-colors"
-              style={{
-                color: "#20C20E",
-                backgroundColor: "rgba(32, 194, 14, 0.12)",
-                borderColor: "rgba(32, 194, 14, 0.35)",
-                boxShadow: "0 0 0 1px rgba(32, 194, 14, 0.35) inset",
-              }}
+              className="rounded-lg bg-[var(--marinara-app-accent-static)]/12 px-3 py-1.5 text-xs font-semibold text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/35 transition-colors"
               title={localizeUi("ui.game.gamesurfacecomponent.cutInWithoutTellingTheGmItWasAn")}
             >
               {localizeUi("ui.game.gamesurfacecomponent.forceInterrupt")}
             </button>
             <button
               onClick={() => confirmInterrupt("risky")}
-              className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-200 ring-1 ring-red-500/40 transition-colors hover:bg-red-500/30"
+              className="rounded-lg bg-[var(--warning)]/20 px-3 py-1.5 text-xs font-semibold text-[var(--warning)] ring-1 ring-[var(--warning)]/40 transition-colors hover:bg-[var(--warning)]/30"
               title={localizeUi("ui.game.gamesurfacecomponent.attemptAnInFictionInterruptionOutcomesCanFail")}
             >
               {localizeUi("ui.game.gamesurfacecomponent.yes")}

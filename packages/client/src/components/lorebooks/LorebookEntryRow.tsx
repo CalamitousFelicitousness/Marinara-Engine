@@ -151,9 +151,9 @@ const STATUS_LABEL: Record<EntryStatus, string> = {
 };
 
 const STATUS_DOT_COLOR: Record<EntryStatus, string> = {
-  constant: "bg-yellow-300",
-  selective: "bg-red-400",
-  normal: "bg-emerald-400",
+  constant: "bg-[var(--primary)]",
+  selective: "bg-[var(--primary)]",
+  normal: "bg-[var(--primary)]",
 };
 
 function isHeaderInlineControlTarget(target: EventTarget | null) {
@@ -566,7 +566,7 @@ export function LorebookEntryRow({
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-y-0 left-0 w-[3px] rounded-l-xl",
-            previewMatch === "matched" ? "bg-emerald-400" : "mari-chrome-accent-progress mari-accent-animated",
+            previewMatch === "matched" ? "bg-[var(--primary)]" : "mari-chrome-accent-progress mari-accent-animated",
           )}
         />
       )}
@@ -709,7 +709,7 @@ export function LorebookEntryRow({
           className={cn(
             "ml-1 shrink-0 rounded p-0 transition-colors sm:ml-0 sm:p-0.5",
             localUseRegex
-              ? "bg-orange-400/15 text-orange-300 ring-1 ring-orange-400/25"
+              ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/25"
               : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
           )}
         >
@@ -785,7 +785,7 @@ export function LorebookEntryRow({
             className={cn(
               "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium ring-1",
               previewMatch === "matched"
-                ? "bg-emerald-400/12 text-emerald-300 ring-emerald-400/30"
+                ? "bg-[var(--primary)]/12 text-[var(--primary)] ring-[var(--primary)]/30"
                 : "mari-editor-chip mari-editor-chip--accent",
             )}
             title={
@@ -833,7 +833,7 @@ export function LorebookEntryRow({
         {mapBacklinks.length > 0 && (
           <button
             type="button"
-            className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-md bg-sky-400/10 px-1.5 text-[0.625rem] font-medium text-sky-300 ring-1 ring-sky-400/20 hover:bg-sky-400/15"
+            className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-md bg-[var(--primary)]/10 px-1.5 text-[0.625rem] font-medium text-[var(--primary)] ring-1 ring-[var(--primary)]/20 hover:bg-[var(--primary)]/15"
             title={localizeUi("ui.lorebooks.lorebookentryrow.usedByValue1", {
               value1: mapBacklinks.map((backlink) => backlink.locationName).join(", "),
             })}
@@ -856,7 +856,7 @@ export function LorebookEntryRow({
             isVectorExcluded
               ? "bg-[var(--destructive)]/10 text-[var(--destructive)] ring-[var(--destructive)]/20"
               : isVectorized
-                ? "bg-emerald-400/10 text-emerald-400 ring-emerald-400/20"
+                ? "bg-[var(--primary)]/10 text-[var(--primary)] ring-[var(--primary)]/20"
                 : "bg-[var(--background)]/55 text-[var(--muted-foreground)] ring-[var(--border)] hover:text-[var(--foreground)]",
           )}
           title={vectorStatusTitle}

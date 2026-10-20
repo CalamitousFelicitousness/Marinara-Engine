@@ -251,7 +251,7 @@ export function CustomEmojiTab({
 
       {!searchResultsOnly && showSettings && <CustomEmojiSelectionSettings />}
 
-      {!searchResultsOnly && error && <p className="mb-2 px-1 text-[0.6875rem] text-red-400">{error}</p>}
+      {!searchResultsOnly && error && <p className="mb-2 px-1 text-[0.6875rem] text-[var(--destructive)]">{error}</p>}
 
       {filteredGlobal.length === 0 && filteredGroups.length === 0 ? (
         <p className="px-1 py-6 text-center text-[0.6875rem] text-foreground/45">

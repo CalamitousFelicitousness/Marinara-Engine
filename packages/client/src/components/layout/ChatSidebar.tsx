@@ -108,10 +108,10 @@ const CONVERSATION_STATUS_PRIORITY: Record<ConversationPresenceStatus, number> =
 };
 
 const CONVERSATION_STATUS_DOT_CLASS: Record<ConversationPresenceStatus, string> = {
-  online: "bg-green-500",
-  idle: "bg-yellow-500",
-  offline: "bg-gray-400",
-  dnd: "bg-red-500",
+  online: "bg-[var(--primary)]",
+  idle: "bg-[var(--warning)]",
+  offline: "bg-[var(--muted-foreground)]",
+  dnd: "bg-[var(--destructive)]",
 };
 
 function asConversationStatus(value: unknown): ConversationPresenceStatus | undefined {
@@ -1213,7 +1213,7 @@ export function ChatSidebar() {
             const count = unreadCounts.get(chat.id) || 0;
             if (count === 0 || isActive) return null;
             return (
-              <span className="absolute -top-1 -right-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white shadow-sm ring-2 ring-[var(--sidebar-background)]">
+              <span className="absolute -top-1 -right-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-md bg-[var(--primary)] px-1 text-[0.5625rem] font-bold leading-none text-[var(--primary-foreground)] shadow-sm ring-2 ring-[var(--sidebar-background)]">
                 {count > 99 ? "99+" : count}
               </span>
             );
@@ -1372,7 +1372,7 @@ export function ChatSidebar() {
                   {localize(cfg.shortLabel)}
                 </span>
                 {tabUnread > 0 && !isActive && (
-                  <span className="absolute -top-1 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-md bg-red-500 px-0.5 text-[0.5rem] font-bold leading-none text-white">
+                  <span className="absolute -top-1 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-md bg-[var(--primary)] px-0.5 text-[0.5rem] font-bold leading-none text-[var(--primary-foreground)]">
                     {tabUnread > 99 ? "99+" : tabUnread}
                   </span>
                 )}
@@ -1965,29 +1965,29 @@ const STATUS_OPTIONS: Array<{
     value: "active",
     label: "Active",
     description: "You're online and available",
-    color: "bg-green-500",
-    icon: <Circle size="0.625rem" className="fill-green-500 text-green-500" />,
+    color: "bg-[var(--primary)]",
+    icon: <Circle size="0.625rem" className="fill-[var(--primary)] text-[var(--primary)]" />,
   },
   {
     value: "idle",
     label: "Idle",
     description: "Automatic when you're away",
-    color: "bg-yellow-500",
-    icon: <Moon size="0.625rem" className="text-yellow-500" />,
+    color: "bg-[var(--warning)]",
+    icon: <Moon size="0.625rem" className="text-[var(--warning)]" />,
   },
   {
     value: "dnd",
     label: "Do Not Disturb",
     description: "Suppress auto messages",
-    color: "bg-red-500",
-    icon: <MinusCircle size="0.625rem" className="text-red-500" />,
+    color: "bg-[var(--destructive)]",
+    icon: <MinusCircle size="0.625rem" className="text-[var(--destructive)]" />,
   },
   {
     value: "invisible",
     label: "Invisible",
     description: "Hide your status from models",
-    color: "bg-gray-400",
-    icon: <Circle size="0.625rem" className="fill-gray-400 text-gray-400" />,
+    color: "bg-[var(--muted-foreground)]",
+    icon: <Circle size="0.625rem" className="fill-[var(--muted-foreground)] text-[var(--muted-foreground)]" />,
   },
 ];
 

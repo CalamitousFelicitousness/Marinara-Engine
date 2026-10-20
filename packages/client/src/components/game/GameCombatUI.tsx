@@ -513,12 +513,12 @@ interface GameCombatUIProps {
 // ── Constants ──
 
 const ACTION_MENU = [
-  { id: "attack", label: "Attack", icon: Sword, color: "text-red-400" },
-  { id: "skill", label: "Skills", icon: Sparkles, color: "text-blue-400" },
-  { id: "custom", label: "Special", icon: Zap, color: "text-violet-300" },
-  { id: "defend", label: "Defend", icon: Shield, color: "text-amber-400" },
-  { id: "item", label: "Items", icon: Backpack, color: "text-green-400" },
-  { id: "flee", label: "Flee", icon: Wind, color: "text-gray-400" },
+  { id: "attack", label: "Attack", icon: Sword, color: "text-[var(--primary)]" },
+  { id: "skill", label: "Skills", icon: Sparkles, color: "text-[var(--primary)]" },
+  { id: "custom", label: "Special", icon: Zap, color: "text-[var(--primary)]" },
+  { id: "defend", label: "Defend", icon: Shield, color: "text-[var(--primary)]" },
+  { id: "item", label: "Items", icon: Backpack, color: "text-[var(--primary)]" },
+  { id: "flee", label: "Flee", icon: Wind, color: "text-[var(--muted-foreground)]" },
 ] as const;
 
 const COMBAT_SFX = {
@@ -1202,7 +1202,7 @@ export function GameCombatUI({
             <button
               type="button"
               onClick={combatVoicePaused ? resumeCombatVoicePlayback : pauseCombatVoicePlayback}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sky-100 transition-colors hover:bg-white/10"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--primary)] transition-colors hover:bg-white/10"
               title={
                 combatVoicePaused
                   ? localizeUi("ui.game.gamecombatui.resumeCombatVoiceOver")
@@ -1219,7 +1219,7 @@ export function GameCombatUI({
             <button
               type="button"
               onClick={restartCombatVoicePlayback}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sky-100 transition-colors hover:bg-white/10"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--primary)] transition-colors hover:bg-white/10"
               title={localizeUi("ui.game.gamecombatui.restartCombatVoiceOver")}
               aria-label={localizeUi("ui.game.gamecombatui.restartCombatVoiceOver")}
             >
@@ -1228,7 +1228,7 @@ export function GameCombatUI({
             <button
               type="button"
               onClick={stopCombatVoicePlayback}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sky-100 transition-colors hover:bg-white/10"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--primary)] transition-colors hover:bg-white/10"
               title={localizeUi("ui.game.gamecombatui.stopCombatVoiceOver")}
               aria-label={localizeUi("ui.game.gamecombatui.stopCombatVoiceOver")}
             >
@@ -1239,7 +1239,7 @@ export function GameCombatUI({
           <button
             type="button"
             onClick={() => playCombatVoiceKeys(playableCombatVoiceKeys)}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
             title={localizeUi("ui.game.gamecombatui.playCombatVoiceOver")}
             aria-label={localizeUi("ui.game.gamecombatui.playCombatVoiceOver")}
             disabled={playableCombatVoiceKeys.length === 0}
@@ -1990,7 +1990,7 @@ export function GameCombatUI({
               <AnimatedText html="{bounce:Victory!}" className="text-2xl font-bold text-amber-200" />
               <button
                 onClick={() => onCombatEnd("victory", buildSummary("victory"))}
-                className="rounded-lg bg-amber-500/20 px-6 py-2.5 text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30 transition-colors hover:bg-amber-500/30"
+                className="rounded-lg bg-[var(--primary)]/20 px-6 py-2.5 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
               >
                 {localizeUi("ui.noodle.wizardfooter.continue")}
               </button>
@@ -2003,7 +2003,7 @@ export function GameCombatUI({
               <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-white/55" />
               <button
                 onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
-                className="rounded-lg bg-red-500/20 px-6 py-2.5 text-sm font-semibold text-red-200 ring-1 ring-red-400/30 transition-colors hover:bg-red-500/30"
+                className="rounded-lg bg-[var(--primary)]/20 px-6 py-2.5 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
               >
                 {localizeUi("ui.noodle.wizardfooter.continue")}
               </button>
@@ -2069,7 +2069,7 @@ export function GameCombatUI({
               className={cn(
                 "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                 openDrawer === "party"
-                  ? "border-blue-400/40 bg-blue-500/15 text-blue-100"
+                  ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
                   : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10",
               )}
             >
@@ -2082,7 +2082,7 @@ export function GameCombatUI({
                 className={cn(
                   "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                   openDrawer === "mechanics"
-                    ? "border-amber-400/40 bg-amber-500/15 text-amber-100"
+                    ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
                     : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10",
                 )}
               >
@@ -2096,7 +2096,7 @@ export function GameCombatUI({
                 className={cn(
                   "shrink-0 rounded border px-2 py-1 text-[0.6rem] font-semibold uppercase tracking-wide",
                   openDrawer === "cues"
-                    ? "border-sky-400/40 bg-sky-500/15 text-sky-100"
+                    ? "border-[var(--primary)]/40 bg-[var(--primary)]/15 text-[var(--primary)]"
                     : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10",
                 )}
               >
@@ -2191,7 +2191,7 @@ export function GameCombatUI({
             {phase === "skill-select" && activePlayer && (
               <div className="flex flex-col gap-2 p-2">
                 <div className="flex items-center gap-2">
-                  <Sparkles size={13} className="text-blue-400" />
+                  <Sparkles size={13} className="text-[var(--primary)]" />
                   <div className="text-[0.65rem] text-white/60">
                     {localizeUi("ui.game.gamecombatui.pickASkillThenATargetGreyedOutNot")}
                   </div>
@@ -2221,7 +2221,7 @@ export function GameCombatUI({
                               "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-all",
                               insufficientMp
                                 ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                                : "border-blue-400/20 bg-blue-500/10 text-white/85 hover:border-blue-400/40 hover:bg-blue-500/15",
+                                : "border-[var(--primary)]/20 bg-[var(--primary)]/10 text-white/85 hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15",
                             )}
                           >
                             <span className="min-w-0 truncate font-semibold text-white/90">{skill.name}</span>
@@ -2258,7 +2258,7 @@ export function GameCombatUI({
               <div className="flex flex-col gap-2 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Backpack size={13} className="text-green-400" />
+                    <Backpack size={13} className="text-[var(--primary)]" />
                     <span className="text-[0.65rem] text-white/60">
                       {localizeUi("ui.game.gamecombatui.pickAnItemToUseThisTurn")}
                     </span>
@@ -2282,7 +2282,7 @@ export function GameCombatUI({
                           key={item.name}
                           type="button"
                           onClick={() => handleItemSelect(item.name)}
-                          className="rounded-lg border border-green-400/20 bg-green-500/10 px-3 py-2 text-left text-xs text-white/85 transition-all hover:border-green-400/40 hover:bg-green-500/15"
+                          className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-2 text-left text-xs text-white/85 transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-tight text-white/90 [overflow-wrap:anywhere]">
@@ -2324,7 +2324,7 @@ export function GameCombatUI({
             {phase === "custom-action" && activePlayer && (
               <div className="flex flex-col gap-2 p-2">
                 <div className="flex items-center gap-2">
-                  <Zap size={13} className="text-violet-300" />
+                  <Zap size={13} className="text-[var(--primary)]" />
                   <span className="text-[0.65rem] text-white/60">
                     {localizeUi("ui.game.gamecombatui.describeWhatYouAttemptTheGmResolvesIt")}
                   </span>
@@ -2344,7 +2344,7 @@ export function GameCombatUI({
                       submitCustomInstruction();
                     }
                   }}
-                  className="min-h-20 w-full resize-none rounded-lg border border-violet-300/20 bg-violet-500/10 px-2.5 py-2 text-sm leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/35 focus:border-violet-300/45"
+                  className="min-h-20 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-2.5 py-2 text-sm leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/35 focus:border-[var(--primary)]/45"
                   placeholder={localizeUi("ui.game.gamecombatui.iKickSandIntoTheRuinGuardSCracked")}
                   autoFocus
                 />
@@ -2353,7 +2353,7 @@ export function GameCombatUI({
                     type="button"
                     onClick={submitCustomInstruction}
                     disabled={!customInstruction.trim() || !onCustomInstruction}
-                    className="rounded-lg border border-violet-300/25 bg-violet-500/15 px-3 py-1.5 text-xs font-semibold text-violet-100 transition-colors hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="rounded-lg border border-[var(--primary)]/25 bg-[var(--primary)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/25 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {localizeUi("ui.game.gamecombatui.askGm")}
                   </button>
@@ -2376,7 +2376,7 @@ export function GameCombatUI({
             {phase === "target-select" && (
               <div className="flex flex-col gap-2 px-3 py-2">
                 <div className="flex items-start gap-2">
-                  <Zap size={13} className="mt-0.5 shrink-0 text-amber-400" />
+                  <Zap size={13} className="mt-0.5 shrink-0 text-[var(--primary)]" />
                   <AnimatedText
                     html={
                       selectedAction === "skill" && selectedSkill
@@ -2400,7 +2400,7 @@ export function GameCombatUI({
                           "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs",
                           member.hp <= 0
                             ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                            : "border-blue-400/30 bg-blue-500/10 text-white/85 hover:bg-blue-500/15",
+                            : "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-white/85 hover:bg-[var(--primary)]/15",
                         )}
                       >
                         <span className="min-w-0 truncate font-semibold">{member.name}</span>
@@ -2423,7 +2423,7 @@ export function GameCombatUI({
                           "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs",
                           enemy.hp <= 0
                             ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                            : "border-amber-400/30 bg-amber-500/10 text-white/85 hover:bg-amber-500/15",
+                            : "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-white/85 hover:bg-[var(--primary)]/15",
                         )}
                       >
                         <span className="min-w-0 truncate font-semibold">{enemy.name}</span>
@@ -2786,7 +2786,7 @@ export function GameCombatUI({
         {phase === "skill-select" && activePlayer && (
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-2">
-              <Sparkles size={14} className="text-blue-400" />
+              <Sparkles size={14} className="text-[var(--primary)]" />
               <div>
                 <div className="text-xs font-semibold text-white">
                   {activePlayer.name}
@@ -2823,7 +2823,7 @@ export function GameCombatUI({
                           "rounded-lg border px-3 py-2 text-left text-xs transition-all",
                           insufficientMp
                             ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                            : "border-blue-400/20 bg-blue-500/10 text-white/80 hover:border-blue-400/40 hover:bg-blue-500/15",
+                            : "border-[var(--primary)]/20 bg-[var(--primary)]/10 text-white/80 hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15",
                         )}
                       >
                         <div className="font-semibold text-white/90">{skill.name}</div>
@@ -2864,7 +2864,7 @@ export function GameCombatUI({
           <div className="flex flex-col gap-3 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Backpack size={14} className="text-green-400" />
+                <Backpack size={14} className="text-[var(--primary)]" />
                 <div>
                   <div className="text-xs font-semibold text-white">
                     {activePlayer.name}
@@ -2895,7 +2895,7 @@ export function GameCombatUI({
                       key={item.name}
                       type="button"
                       onClick={() => handleItemSelect(item.name)}
-                      className="rounded-lg border border-green-400/20 bg-green-500/10 px-3 py-2 text-left text-xs text-white/80 transition-all hover:border-green-400/40 hover:bg-green-500/15"
+                      className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-2 text-left text-xs text-white/80 transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-tight text-white/90 [overflow-wrap:anywhere]">
@@ -2940,7 +2940,7 @@ export function GameCombatUI({
         {phase === "custom-action" && activePlayer && (
           <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-2">
-              <Zap size={14} className="text-violet-300" />
+              <Zap size={14} className="text-[var(--primary)]" />
               <div>
                 <div className="text-xs font-semibold text-white">
                   {activePlayer.name}
@@ -2967,7 +2967,7 @@ export function GameCombatUI({
                   submitCustomInstruction();
                 }
               }}
-              className="min-h-24 w-full resize-none rounded-lg border border-violet-300/20 bg-violet-500/10 px-3 py-2 text-sm leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/35 focus:border-violet-300/45"
+              className="min-h-24 w-full resize-none rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-2 text-sm leading-relaxed text-white/85 outline-none transition-colors placeholder:text-white/35 focus:border-[var(--primary)]/45"
               placeholder={localizeUi("ui.game.gamecombatui.exampleIKickSandIntoTheRuinGuardS")}
               autoFocus
             />
@@ -2977,7 +2977,7 @@ export function GameCombatUI({
                 type="button"
                 onClick={submitCustomInstruction}
                 disabled={!customInstruction.trim() || !onCustomInstruction}
-                className="rounded-lg border border-violet-300/25 bg-violet-500/15 px-3 py-1.5 text-xs font-semibold text-violet-100 transition-colors hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-45"
+                className="rounded-lg border border-[var(--primary)]/25 bg-[var(--primary)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/25 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {localizeUi("ui.game.gamecombatui.askGm")}
               </button>
@@ -3001,7 +3001,7 @@ export function GameCombatUI({
         {phase === "target-select" && (
           <div className="flex flex-col items-start gap-2 px-4 py-3">
             <div className="flex items-center gap-2">
-              <Zap size={14} className="shrink-0 text-amber-400" />
+              <Zap size={14} className="shrink-0 text-[var(--primary)]" />
               <AnimatedText
                 html={
                   selectedAction === "skill" && selectedSkill
@@ -3025,7 +3025,7 @@ export function GameCombatUI({
                       "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                       enemy.hp <= 0
                         ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                        : "border-amber-400/25 bg-amber-500/10 text-white/85 hover:border-amber-300/45 hover:bg-amber-500/15",
+                        : "border-[var(--primary)]/25 bg-[var(--primary)]/10 text-white/85 hover:border-[var(--primary)]/45 hover:bg-[var(--primary)]/15",
                     )}
                   >
                     <div className="font-semibold text-white/90">{enemy.name}</div>
@@ -3048,7 +3048,7 @@ export function GameCombatUI({
                       "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                       member.hp <= 0
                         ? "cursor-not-allowed border-white/10 bg-white/5 text-white/30"
-                        : "border-blue-400/25 bg-blue-500/10 text-white/85 hover:border-blue-300/45 hover:bg-blue-500/15",
+                        : "border-[var(--primary)]/25 bg-[var(--primary)]/10 text-white/85 hover:border-[var(--primary)]/45 hover:bg-[var(--primary)]/15",
                     )}
                   >
                     <div className="font-semibold text-white/90">{member.name}</div>
@@ -3088,7 +3088,7 @@ export function GameCombatUI({
             <AnimatedText html="{bounce:Victory!}" className="text-lg font-bold text-amber-200" />
             <button
               onClick={() => onCombatEnd("victory", buildSummary("victory"))}
-              className="mt-2 rounded-lg bg-amber-500/20 px-6 py-2 text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30 transition-colors hover:bg-amber-500/30"
+              className="mt-2 rounded-lg bg-[var(--primary)]/20 px-6 py-2 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
             >
               {localizeUi("ui.noodle.wizardfooter.continue")}
             </button>
@@ -3103,7 +3103,7 @@ export function GameCombatUI({
             <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-white/50" />
             <button
               onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
-              className="mt-2 rounded-lg bg-red-500/20 px-6 py-2 text-sm font-semibold text-red-200 ring-1 ring-red-400/30 transition-colors hover:bg-red-500/30"
+              className="mt-2 rounded-lg bg-[var(--primary)]/20 px-6 py-2 text-sm font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 transition-colors hover:bg-[var(--primary)]/30"
             >
               {localizeUi("ui.noodle.wizardfooter.continue")}
             </button>
@@ -3327,7 +3327,7 @@ function CombatantCard({
       className={cn(
         "relative flex min-w-0 flex-col items-center rounded-2xl border border-transparent p-1 text-center transition-all duration-200",
         "w-[var(--combat-card-width)]",
-        isTargetable && !isKo && "cursor-pointer border-amber-400/35 bg-amber-400/5",
+        isTargetable && !isKo && "cursor-pointer border-[var(--primary)]/35 bg-[var(--primary)]/5",
         !isTargetable && "cursor-default",
       )}
     >
@@ -3399,7 +3399,7 @@ function CombatantCard({
           isKo && "grayscale opacity-40",
           isTargetable &&
             !isKo &&
-            "cursor-pointer border-amber-400/60 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(251,191,36,0.2)]",
+            "cursor-pointer border-[var(--primary)]/60 hover:border-[var(--primary)] hover:shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_20%,transparent)]",
           isActive && !isKo && "border-white/40 shadow-[0_0_16px_rgba(255,255,255,0.1)]",
           !isTargetable && !isActive && "border-white/10",
           side === "enemy" ? "bg-red-500/10" : "bg-blue-500/10",

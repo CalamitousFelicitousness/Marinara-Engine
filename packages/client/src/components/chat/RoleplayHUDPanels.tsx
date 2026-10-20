@@ -572,7 +572,7 @@ export function CombinedPlayerPanel({
                       />
                       <button
                         onClick={() => removeCharacter(idx)}
-                        className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
+                        className="text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-colors shrink-0"
                         title={localizeUi("ui.chat.combinedplayerpanel.removeCharacter")}
                       >
                         <X size="0.625rem" />
@@ -804,7 +804,7 @@ export function CombinedPlayerPanel({
                     />
                     <button
                       onClick={() => removeCustomField(idx)}
-                      className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
+                      className="text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-colors shrink-0"
                       title={localizeUi("ui.chat.combinedplayerpanel.removeField")}
                     >
                       <X size="0.5625rem" />
@@ -1036,7 +1036,7 @@ export function CharactersPanel({
     <>
       <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
         <span className={NEUTRAL_PANEL_TITLE}>
-          <Users size="0.625rem" className="text-sky-400/80" />{" "}
+          <Users size="0.625rem" className="text-[var(--primary)]/80" />{" "}
           {localizeUi("ui.chat.characterswidget.presentCharacters")}
         </span>
         <div className="flex items-center gap-2">
@@ -1145,7 +1145,7 @@ export function CharactersPanel({
                 />
                 <button
                   onClick={() => removeCharacter(idx)}
-                  className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
+                  className="text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-colors shrink-0"
                   title={localizeUi("ui.chat.combinedplayerpanel.removeCharacter")}
                 >
                   <X size="0.625rem" />
@@ -1442,7 +1442,7 @@ export function CustomTrackerPanel({
               />
               <button
                 onClick={() => removeField(idx)}
-                className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
+                className="text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-colors shrink-0"
                 title={localizeUi("ui.chat.combinedplayerpanel.removeField")}
               >
                 <X size="0.5625rem" />
@@ -1514,7 +1514,7 @@ export function CombinedWorldPanel({
     <>
       <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
         <span className={NEUTRAL_PANEL_TITLE}>
-          <CloudSun size="0.625rem" className="text-sky-400/80" />{" "}
+          <CloudSun size="0.625rem" className="text-[var(--primary)]/80" />{" "}
           {localizeUi("ui.panels.appearancesettings.worldState")}
         </span>
         <span className="flex items-center gap-1">
@@ -2115,9 +2115,9 @@ function QuestCardEditable({
           className={cn("rounded-sm", questCompletedLock.locked && HUD_LOCKED_FIELD_CLASS)}
         >
           {quest.completed ? (
-            <CheckCircle2 size="0.6875rem" className="text-emerald-400 shrink-0" />
+            <CheckCircle2 size="0.6875rem" className="text-[var(--primary)] shrink-0" />
           ) : (
-            <Target size="0.6875rem" className="text-amber-400 shrink-0" />
+            <Target size="0.6875rem" className="text-[var(--warning)] shrink-0" />
           )}
         </button>
         <HudFieldLockButton
@@ -2146,7 +2146,7 @@ function QuestCardEditable({
         )}
         <button
           onClick={onRemove}
-          className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
+          className="text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-colors shrink-0"
           title={localizeUi("ui.chat.questcardeditable.removeQuest")}
         >
           <X size="0.5625rem" />
@@ -2164,7 +2164,7 @@ function QuestCardEditable({
                   className={cn("rounded-sm", completedLock.locked && HUD_LOCKED_FIELD_CLASS)}
                 >
                   {objective.completed ? (
-                    <CheckCircle2 size="0.5rem" className="text-emerald-400/60 shrink-0" />
+                    <CheckCircle2 size="0.5rem" className="text-[var(--primary)]/60 shrink-0" />
                   ) : (
                     <Circle size="0.5rem" className="text-[var(--muted-foreground)]/40 shrink-0" />
                   )}
@@ -2183,7 +2183,7 @@ function QuestCardEditable({
                 <HudFieldLockButton {...textLock} label={localizeUi("ui.chat.questcardeditable.objectiveText")} />
                 <button
                   onClick={() => removeObjective(idx)}
-                  className="opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)]/40 hover:text-red-500 transition-all shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-[var(--muted-foreground)]/40 hover:text-[var(--destructive)] transition-all shrink-0"
                 >
                   <X size="0.4375rem" />
                 </button>

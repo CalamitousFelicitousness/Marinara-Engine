@@ -29,10 +29,10 @@ type UpcomingScheduleBlock = {
 };
 
 const STATUS_COLORS: Record<ConversationPresenceStatus, string> = {
-  online: "bg-green-500",
-  idle: "bg-yellow-500",
-  dnd: "bg-red-500",
-  offline: "bg-gray-400",
+  online: "bg-[var(--primary)]",
+  idle: "bg-[var(--warning)]",
+  dnd: "bg-[var(--destructive)]",
+  offline: "bg-[var(--muted-foreground)]",
 };
 
 const STATUS_LABEL_KEYS: Record<ConversationPresenceStatus, string> = {
@@ -168,7 +168,7 @@ export function ConversationPresenceScheduleSection({
               className={cn(
                 "rounded-full px-1.5 py-0.5 text-[0.5625rem] font-medium ring-1",
                 schedulesEnabled
-                  ? "bg-green-500/10 text-green-500 ring-green-500/25"
+                  ? "bg-[var(--primary)]/10 text-[var(--primary)] ring-[var(--primary)]/25"
                   : "bg-[var(--foreground)]/6 text-[var(--muted-foreground)] ring-[var(--border)]",
               )}
             >

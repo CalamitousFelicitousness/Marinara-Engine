@@ -2676,7 +2676,7 @@ export function LorebookEditor() {
                     <FlaskConical size="0.8125rem" className="mari-chrome-accent-icon mari-accent-animated shrink-0" />
                     <span className="flex-1">{localizeUi("ui.lorebooks.lorebookeditor.keywordTest")}</span>
                     {previewActive && (
-                      <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[0.625rem] font-medium text-emerald-300 ring-1 ring-emerald-400/25">
+                      <span className="rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-[0.625rem] font-medium text-[var(--primary)] ring-1 ring-[var(--primary)]/25">
                         {previewMatchCount} {localizeUi("ui.lorebooks.lorebookeditor.match")}
                         {previewMatchCount === 1 ? "" : localizeUi("ui.lorebooks.lorebookeditor.es")}
                       </span>
@@ -3418,7 +3418,7 @@ function VectorizeSection({
           className={cn(
             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1",
             allVectorized
-              ? "bg-emerald-400/10 text-emerald-400 ring-emerald-400/20"
+              ? "bg-[var(--primary)]/10 text-[var(--primary)] ring-[var(--primary)]/20"
               : "bg-[var(--background)]/70 ring-[var(--border)]",
           )}
         >
@@ -3603,7 +3603,7 @@ function VectorizeSection({
             <p
               className={cn(
                 "text-[0.625rem] flex items-center gap-1",
-                result.success ? "text-emerald-400" : "text-red-400",
+                result.success ? "text-[var(--primary)]" : "text-[var(--destructive)]",
               )}
             >
               {result.success ? <Check size="0.625rem" /> : <AlertTriangle size="0.625rem" />}

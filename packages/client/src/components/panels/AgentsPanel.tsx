@@ -1352,12 +1352,15 @@ export function AgentsPanel() {
       </div>
 
       {agentImportError && (
-        <div role="alert" className="rounded-lg bg-red-500/10 px-2 py-1.5 text-xs text-red-500">
+        <div
+          role="alert"
+          className="rounded-lg bg-[var(--destructive)]/10 px-2 py-1.5 text-xs text-[var(--destructive)]"
+        >
           {agentImportError}
         </div>
       )}
       {agentImportSuccess && (
-        <div role="status" className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-500">
+        <div role="status" className="rounded-lg bg-[var(--primary)]/10 px-2 py-1.5 text-xs text-[var(--primary)]">
           {agentImportSuccess}
         </div>
       )}

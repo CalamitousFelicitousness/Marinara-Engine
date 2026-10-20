@@ -3887,7 +3887,7 @@ function CharacterSheetSection({
             <button
               type="button"
               onClick={clearSelection}
-              className="mari-editor-action inline-flex w-full justify-center text-red-500"
+              className="mari-editor-action inline-flex w-full justify-center text-[var(--destructive)]"
             >
               <X size="0.875rem" />
               {localizeUi("ui.characters.charactersheet.remove")}
@@ -6852,7 +6852,7 @@ function LorebookTab({
                   className={cn(
                     "shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] font-medium",
                     entry.enabled
-                      ? "bg-emerald-500/15 text-emerald-500"
+                      ? "bg-[var(--primary)]/15 text-[var(--primary)]"
                       : "bg-[var(--muted-foreground)]/15 text-[var(--muted-foreground)]",
                   )}
                 >

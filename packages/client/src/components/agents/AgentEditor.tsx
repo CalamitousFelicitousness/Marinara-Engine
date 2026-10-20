@@ -233,19 +233,19 @@ function getDisplayedSpotifyRedirectUri(): string {
 const PHASE_META: Record<AgentPhase, { label: string; color: string; icon: typeof Zap; description: string }> = {
   pre_generation: {
     label: "Pre-Generation",
-    color: "text-amber-400",
+    color: "text-[var(--warning)]",
     icon: Zap,
     description: "Runs before the main AI response. Can inject context or modify the prompt.",
   },
   parallel: {
     label: "Parallel",
-    color: "text-sky-400",
+    color: "text-[var(--primary)]",
     icon: Activity,
     description: "Runs alongside or after the main generation. Independent processing.",
   },
   post_processing: {
     label: "Post-Processing",
-    color: "text-emerald-400",
+    color: "text-[var(--primary)]",
     icon: Clock,
     description: "Runs after the main AI response. Can analyze and extract data from it.",
   },
@@ -2106,17 +2106,17 @@ export function AgentEditor() {
         />
         <div className="mari-editor-actions flex max-md:w-full max-md:justify-end max-md:border-t max-md:border-[var(--marinara-editor-divider)] max-md:pt-2">
           {saveError && (
-            <span className="mari-editor-status mr-2 text-red-400">
+            <span className="mari-editor-status mr-2 text-[var(--destructive)]">
               <AlertCircle size="0.6875rem" /> {localizeUi("ui.agents.agenteditor.saveFailed")}
             </span>
           )}
           {savedFlash && !dirty && (
-            <span className="mari-editor-status mr-2 text-emerald-400">
+            <span className="mari-editor-status mr-2 text-[var(--primary)]">
               <Check size="0.6875rem" /> {localizeUi("chat.settings.inlineEditor.saved")}
             </span>
           )}
           {dirty && !saveError && (
-            <span className="mari-editor-status mr-2 text-amber-400">
+            <span className="mari-editor-status mr-2 text-[var(--warning)]">
               {localizeUi("ui.agents.agenteditor.unsaved")}
             </span>
           )}
@@ -2151,7 +2151,7 @@ export function AgentEditor() {
 
       {/* Unsaved warning */}
       {showUnsavedWarning && (
-        <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+        <div className="flex items-center justify-between bg-[var(--warning)]/10 px-4 py-2 text-xs text-[var(--warning)]">
           <span>{localizeUi("ui.agents.agenteditor.youHaveUnsavedChanges")}</span>
           <div className="flex gap-2">
             <button
@@ -2170,7 +2170,7 @@ export function AgentEditor() {
               onClick={async () => {
                 if (await handleSave()) closeAgentDetail();
               }}
-              className="rounded-lg bg-amber-500/20 px-3 py-1 hover:bg-amber-500/30"
+              className="rounded-lg bg-[var(--warning)]/20 px-3 py-1 hover:bg-[var(--warning)]/30"
             >
               {localizeUi("ui.agents.agenteditor.saveClose")}
             </button>
@@ -2180,10 +2180,13 @@ export function AgentEditor() {
 
       {/* Save error banner */}
       {saveError && (
-        <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 text-xs text-red-400">
+        <div className="flex items-center gap-2 bg-[var(--destructive)]/10 px-4 py-2 text-xs text-[var(--destructive)]">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">{saveError}</span>
-          <button onClick={() => setSaveError(null)} className="rounded-lg px-2 py-0.5 hover:bg-red-500/20">
+          <button
+            onClick={() => setSaveError(null)}
+            className="rounded-lg px-2 py-0.5 hover:bg-[var(--destructive)]/20"
+          >
             <X size="0.75rem" />
           </button>
         </div>
@@ -2194,7 +2197,7 @@ export function AgentEditor() {
           with two injection blocks. The warning surfaces this so users either
           choose one or knowingly accept the cost. */}
       {bothKnowledgeAgentsConfigured && (
-        <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+        <div className="flex items-center gap-2 bg-[var(--warning)]/10 px-4 py-2 text-xs text-[var(--warning)]">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">
             {isKnowledgeRouterAgent
@@ -2520,9 +2523,9 @@ export function AgentEditor() {
                 }}
               />
               {localResultType === "text_rewrite" && (
-                <p className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[0.625rem] leading-relaxed text-amber-200">
+                <p className="mt-2 rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/10 px-3 py-2 text-[0.625rem] leading-relaxed text-[var(--warning)]">
                   {localizeUi("ui.agents.agenteditor.textRewriteAgentsAlwaysSaveAsPostProcessingTheir")}{" "}
-                  <code className="rounded bg-black/20 px-1 py-0.5">
+                  <code className="rounded bg-[var(--secondary)]/20 px-1 py-0.5">
                     {'{"editedText":"...","changes":[{"description":"..."}]}'}
                   </code>
                   .
@@ -2572,7 +2575,7 @@ export function AgentEditor() {
           {(isCustomAgent || isNewCustomAgent) && (
             <FieldGroup
               label={localizeUi("ui.agents.agenteditor.lorebookWriter")}
-              icon={<BookOpen size="0.875rem" className="text-amber-400" />}
+              icon={<BookOpen size="0.875rem" className="text-[var(--warning)]" />}
               help={localizeUi("ui.agents.agenteditor.letsThisCustomAgentCallAFunctionThatCreates")}
             >
               <div className="space-y-3">
@@ -2614,7 +2617,7 @@ export function AgentEditor() {
                       ))}
                     </select>
                   ) : (
-                    <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[0.625rem] text-amber-200">
+                    <p className="rounded-lg border border-[var(--warning)]/20 bg-[var(--warning)]/10 px-3 py-2 text-[0.625rem] text-[var(--warning)]">
                       {localizeUi("ui.agents.agenteditor.createALorebookBeforeEnablingWritesForThisAgent")}
                     </p>
                   )}
@@ -3497,7 +3500,7 @@ export function AgentEditor() {
               help={localizeUi("ui.agents.agenteditor.chooseWhichServiceMusicDjShouldUseForFuture")}
             >
               <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+                <div className="grid grid-cols-3 gap-2 rounded-xl border border-[var(--foreground)]/10 bg-[var(--foreground)]/[0.03] p-1">
                   {(["spotify", "youtube", "custom"] as const).map((provider) => {
                     const active = localMusicProvider === provider;
                     const label = provider === "spotify" ? "Spotify" : provider === "youtube" ? "YouTube" : "Custom";
@@ -3510,8 +3513,8 @@ export function AgentEditor() {
                         className={cn(
                           "rounded-md px-3 py-2 text-xs font-medium transition-all",
                           active
-                            ? "bg-white/12 text-white shadow-sm"
-                            : "text-white/45 hover:bg-white/8 hover:text-white/75",
+                            ? "bg-[var(--foreground)]/12 text-[var(--foreground)] shadow-sm"
+                            : "text-[var(--foreground)]/45 hover:bg-[var(--foreground)]/8 hover:text-[var(--foreground)]/75",
                         )}
                       >
                         {label}
@@ -3519,7 +3522,7 @@ export function AgentEditor() {
                     );
                   })}
                 </div>
-                <p className="text-[0.625rem] text-white/40">
+                <p className="text-[0.625rem] text-[var(--foreground)]/40">
                   {localizeUi("ui.agents.agenteditor.visiblePlayer")}{" "}
                   {musicPlayerSource === "spotify"
                     ? localizeUi("ui.agents.agenteditor.spotify")
@@ -3542,13 +3545,13 @@ export function AgentEditor() {
           {isMusicAgent && (
             <FieldGroup
               label={localizeUi("ui.agents.agenteditor.spotifyConnection")}
-              icon={<Music size="0.875rem" className="text-green-400" />}
+              icon={<Music size="0.875rem" className="text-[var(--primary)]" />}
               help={localizeUi("ui.agents.agenteditor.connectYourSpotifyAccountToLetThisAgentControl")}
             >
               <div className="space-y-3">
                 {/* Client ID input */}
                 <div>
-                  <label className="block text-[0.6875rem] font-medium text-white/60 mb-1">
+                  <label className="block text-[0.6875rem] font-medium text-[var(--foreground)]/60 mb-1">
                     {localizeUi("ui.agents.agenteditor.spotifyClientId")}
                   </label>
                   <input
@@ -3559,14 +3562,14 @@ export function AgentEditor() {
                       setDirty(true);
                     }}
                     placeholder={localizeUi("ui.agents.agenteditor.pasteYourSpotifyAppClientId")}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 font-mono"
+                    className="w-full rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 text-xs text-[var(--foreground)] placeholder-[var(--foreground)]/30 outline-none focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20 font-mono"
                   />
                 </div>
 
                 {/* Connection status & buttons */}
                 {spotifyStatus?.connected ? (
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 rounded-lg bg-green-500/10 px-3 py-2 text-xs font-medium text-green-400">
+                    <span className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-3 py-2 text-xs font-medium text-[var(--primary)]">
                       <Check size="0.75rem" />
                       {spotifyStatus.expired
                         ? localizeUi("ui.agents.agenteditor.connectedTokenExpiredWillAutoRefresh")
@@ -3608,7 +3611,7 @@ export function AgentEditor() {
                         );
                         await qc.invalidateQueries({ queryKey: agentKeys.all });
                       }}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50 transition-colors hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                      className="rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 text-xs text-[var(--foreground)]/50 transition-colors hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] hover:border-[var(--destructive)]/20"
                     >
                       {localizeUi("ui.agents.agenteditor.disconnect")}
                     </button>
@@ -3698,8 +3701,8 @@ export function AgentEditor() {
                     className={cn(
                       "flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-medium transition-all",
                       localSpotifyClientId.trim() && dbConfig?.id
-                        ? "bg-[#1DB954] text-white hover:bg-[#1ed760] active:scale-95"
-                        : "bg-white/5 text-white/30 cursor-not-allowed",
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/85 active:scale-95"
+                        : "bg-[var(--foreground)]/5 text-[var(--foreground)]/30 cursor-not-allowed",
                     )}
                   >
                     <Music size="0.875rem" />
@@ -3710,25 +3713,25 @@ export function AgentEditor() {
                 )}
 
                 {spotifyConnectError && !spotifyStatus?.connected && (
-                  <p className="text-[0.6875rem] text-red-400/80">{spotifyConnectError}</p>
+                  <p className="text-[0.6875rem] text-[var(--destructive)]/80">{spotifyConnectError}</p>
                 )}
 
                 {/* Paste-back fallback for installs where the browser can't reach the loopback callback. */}
                 {spotifyConnecting && !spotifyStatus?.connected && dbConfig?.id && (
-                  <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-[0.6875rem] text-white/50 space-y-2">
+                  <div className="rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/[0.02] p-3 text-[0.6875rem] text-[var(--foreground)]/50 space-y-2">
                     <button
                       type="button"
                       onClick={() => setSpotifyPasteOpen((v) => !v)}
-                      className="text-white/60 hover:text-white/80 transition-colors text-left w-full"
+                      className="text-[var(--foreground)]/60 hover:text-[var(--foreground)]/80 transition-colors text-left w-full"
                     >
                       {spotifyPasteOpen ? "▾" : "▸"}{" "}
                       {localizeUi("ui.agents.agenteditor.browserCouldnTReachTheCallback")}
                     </button>
                     {spotifyPasteOpen && (
                       <div className="space-y-2 pt-1">
-                        <p className="text-white/40 leading-relaxed">
+                        <p className="text-[var(--foreground)]/40 leading-relaxed">
                           {localizeUi("ui.agents.agenteditor.ifYouReRunningMarinaraOnADifferentMachine")}{" "}
-                          <code className="text-white/50">127.0.0.1</code>{" "}
+                          <code className="text-[var(--foreground)]/50">127.0.0.1</code>{" "}
                           {localizeUi("ui.agents.agenteditor.orHttpsCallbacksCopyTheFullUrlFromThe")}
                         </p>
                         <textarea
@@ -3739,9 +3742,11 @@ export function AgentEditor() {
                           }}
                           rows={3}
                           placeholder={localizeUi("ui.agents.agenteditor.http1270017860ApiSpotifyCallback")}
-                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[0.6875rem] text-white placeholder-white/20 outline-none focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 font-mono"
+                          className="w-full rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 text-[0.6875rem] text-[var(--foreground)] placeholder-[var(--foreground)]/20 outline-none focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20 font-mono"
                         />
-                        {spotifyPasteError && <p className="text-red-400/80 text-[0.625rem]">{spotifyPasteError}</p>}
+                        {spotifyPasteError && (
+                          <p className="text-[var(--destructive)]/80 text-[0.625rem]">{spotifyPasteError}</p>
+                        )}
                         <button
                           type="button"
                           disabled={!spotifyPasteValue.trim() || spotifyPasteSubmitting}
@@ -3792,8 +3797,8 @@ export function AgentEditor() {
                           className={cn(
                             "rounded-lg px-3 py-1.5 text-[0.6875rem] font-medium transition-all",
                             spotifyPasteValue.trim() && !spotifyPasteSubmitting
-                              ? "bg-[#1DB954] text-white hover:bg-[#1ed760] active:scale-95"
-                              : "bg-white/5 text-white/30 cursor-not-allowed",
+                              ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/85 active:scale-95"
+                              : "bg-[var(--foreground)]/5 text-[var(--foreground)]/30 cursor-not-allowed",
                           )}
                         >
                           {spotifyPasteSubmitting
@@ -3806,16 +3811,16 @@ export function AgentEditor() {
                 )}
 
                 {/* Setup instructions */}
-                <div className="rounded-lg border border-green-500/10 bg-green-500/5 p-3 text-[0.6875rem] text-white/50 space-y-2">
-                  <p className="font-medium text-green-400/80">{localizeUi("ui.agents.agenteditor.setup")}</p>
-                  <ol className="list-decimal list-inside space-y-1 text-white/40">
+                <div className="rounded-lg border border-[var(--primary)]/10 bg-[var(--primary)]/5 p-3 text-[0.6875rem] text-[var(--foreground)]/50 space-y-2">
+                  <p className="font-medium text-[var(--primary)]/80">{localizeUi("ui.agents.agenteditor.setup")}</p>
+                  <ol className="list-decimal list-inside space-y-1 text-[var(--foreground)]/40">
                     <li>
                       {localizeUi("ui.agents.agenteditor.goToThe")}{" "}
                       <a
                         href="https://developer.spotify.com/dashboard"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-green-400 hover:underline inline-flex items-center gap-0.5"
+                        className="text-[var(--primary)] hover:underline inline-flex items-center gap-0.5"
                       >
                         {localizeUi("ui.agents.agenteditor.spotifyDeveloperDashboard")}{" "}
                         <ExternalLink size="0.5625rem" />
@@ -3824,7 +3829,7 @@ export function AgentEditor() {
                     <li>{localizeUi("ui.agents.agenteditor.createANewAppSelectWebApi")}</li>
                     <li>
                       {localizeUi("ui.agents.agenteditor.inRedirectUrisAdd")}{" "}
-                      <code className="text-white/50 select-all">
+                      <code className="text-[var(--foreground)]/50 select-all">
                         {spotifyStatus?.redirectUri ?? getDisplayedSpotifyRedirectUri()}
                       </code>
                     </li>
@@ -3838,16 +3843,16 @@ export function AgentEditor() {
                       <strong>{localizeUi("ui.agents.agenteditor.connectSpotifyAccount")}</strong>
                     </li>
                   </ol>
-                  <p className="text-[0.625rem] text-white/30 mt-1">
+                  <p className="text-[0.625rem] text-[var(--foreground)]/30 mt-1">
                     {localizeUi("ui.agents.agenteditor.requiresSpotifyPremiumTokensRefreshAutomaticallyNoNeedTo")}
                   </p>
-                  <p className="text-[0.625rem] text-white/30 leading-relaxed">
+                  <p className="text-[0.625rem] text-[var(--foreground)]/30 leading-relaxed">
                     {localizeUi("ui.agents.agenteditor.spotifyOnlyAccepts")}{" "}
-                    <code className="text-white/40">{"https://"}</code>{" "}
+                    <code className="text-[var(--foreground)]/40">{"https://"}</code>{" "}
                     {localizeUi("ui.agents.agenteditor.redirectUrisOrLoopback")}
-                    <code className="text-white/40">{"http://127.0.0.1"}</code>
+                    <code className="text-[var(--foreground)]/40">{"http://127.0.0.1"}</code>
                     {localizeUi("ui.agents.agenteditor.ifYouReRunningMarinaraOnAnotherMachineOver")}{" "}
-                    <code className="text-white/40">{"SPOTIFY_REDIRECT_URI"}</code>{" "}
+                    <code className="text-[var(--foreground)]/40">{"SPOTIFY_REDIRECT_URI"}</code>{" "}
                     {localizeUi("ui.agents.agenteditor.toYourHttpsUrl")}
                   </p>
                 </div>
@@ -3859,12 +3864,12 @@ export function AgentEditor() {
           {showsYoutubeSettings && (
             <FieldGroup
               label={localizeUi("ui.agents.agenteditor.youtubeConnection")}
-              icon={<Music size="0.875rem" className="text-red-400" />}
+              icon={<Music size="0.875rem" className="text-[var(--primary)]" />}
               help={localizeUi("ui.agents.agenteditor.playsMoodMatchedMusicFromYoutubeInAnEmbedded")}
             >
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[0.6875rem] font-medium text-white/60 mb-1">
+                  <label className="block text-[0.6875rem] font-medium text-[var(--foreground)]/60 mb-1">
                     {localizeUi("ui.agents.agenteditor.youtubeDataApiKey")}
                   </label>
                   <input
@@ -3879,7 +3884,7 @@ export function AgentEditor() {
                         ? localizeUi("ui.agents.agenteditor.keyConfiguredPasteANewOneToReplace")
                         : localizeUi("ui.agents.agenteditor.pasteYourYoutubeDataApiKeyAiza")
                     }
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 font-mono"
+                    className="w-full rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 text-xs text-[var(--foreground)] placeholder-[var(--foreground)]/30 outline-none focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20 font-mono"
                   />
                 </div>
 
@@ -3913,7 +3918,7 @@ export function AgentEditor() {
                         setYoutubeSaving(false);
                       }
                     }}
-                    className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-[var(--primary)]/15 px-3 py-2 text-xs font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/25 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {youtubeSaving
                       ? localizeUi("chat.settings.inlineEditor.saving")
@@ -3924,7 +3929,7 @@ export function AgentEditor() {
 
                   {youtubeConfigured && (
                     <>
-                      <span className="flex items-center gap-1.5 rounded-lg bg-green-500/10 px-3 py-2 text-xs font-medium text-green-400">
+                      <span className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)]/10 px-3 py-2 text-xs font-medium text-[var(--primary)]">
                         <Check size="0.75rem" />
                         {localizeUi("ui.agents.agenteditor.apiKeyConfigured")}
                       </span>
@@ -3939,7 +3944,7 @@ export function AgentEditor() {
                           });
                           setYoutubeConfigured(false);
                         }}
-                        className="text-xs text-white/50 hover:text-red-400"
+                        className="text-xs text-[var(--foreground)]/50 hover:text-[var(--destructive)]"
                       >
                         {localizeUi("settings.notifications.customSound.actions.remove")}
                       </button>
@@ -3947,10 +3952,10 @@ export function AgentEditor() {
                   )}
                 </div>
 
-                {youtubeError && <p className="text-[0.6875rem] text-red-400">{youtubeError}</p>}
+                {youtubeError && <p className="text-[0.6875rem] text-[var(--destructive)]">{youtubeError}</p>}
 
-                <div className="rounded-lg bg-white/5 p-3 text-[0.6875rem] text-white/50 leading-relaxed">
-                  <p className="mb-1 font-medium text-white/60">
+                <div className="rounded-lg bg-[var(--foreground)]/5 p-3 text-[0.6875rem] text-[var(--foreground)]/50 leading-relaxed">
+                  <p className="mb-1 font-medium text-[var(--foreground)]/60">
                     {localizeUi("ui.agents.agenteditor.howToGetAFreeKey")}
                   </p>
                   <ol className="ml-4 list-decimal space-y-1">
@@ -3960,7 +3965,7 @@ export function AgentEditor() {
                         href="https://console.cloud.google.com/apis/library/youtube.googleapis.com"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-red-400 hover:underline inline-flex items-center gap-0.5"
+                        className="text-[var(--primary)] hover:underline inline-flex items-center gap-0.5"
                       >
                         {localizeUi("ui.agents.agenteditor.googleCloudConsole")} <ExternalLink size="0.5625rem" />
                       </a>{" "}
@@ -3983,7 +3988,7 @@ export function AgentEditor() {
                       {localizeUi("ui.agents.agenteditor.youtubeDataApiV3NotByHttpReferrerSearch")}
                     </li>
                   </ol>
-                  <p className="mt-1 text-[0.625rem] text-white/30">
+                  <p className="mt-1 text-[0.625rem] text-[var(--foreground)]/30">
                     {localizeUi("ui.agents.agenteditor.theFreeQuota100SearchesDayIsPlentyFor")}
                   </p>
                 </div>
@@ -4013,8 +4018,8 @@ export function AgentEditor() {
                 />
 
                 {localCustomMusicSource === "game-assets" ? (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <label className="mb-1 block text-[0.6875rem] font-medium text-white/60">
+                  <div className="rounded-xl border border-[var(--foreground)]/10 bg-[var(--foreground)]/[0.03] p-3">
+                    <label className="mb-1 block text-[0.6875rem] font-medium text-[var(--foreground)]/60">
                       {localizeUi("ui.agents.agenteditor.gameAssetsMusicFolder")}
                     </label>
                     <div className="flex flex-col gap-2 sm:flex-row">
@@ -4027,7 +4032,7 @@ export function AgentEditor() {
                         }}
                         onBlur={() => setLocalCustomMusicFolder((current) => normalizeCustomMusicFolderInput(current))}
                         placeholder={localizeUi("ui.agents.agenteditor.music")}
-                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-white outline-none placeholder-white/30 focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20"
+                        className="min-w-0 flex-1 rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none placeholder-[var(--foreground)]/30 focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20"
                       />
                       <button
                         type="button"
@@ -4038,7 +4043,7 @@ export function AgentEditor() {
                         {localizeUi("ui.agents.agenteditor.openFolder")}
                       </button>
                     </div>
-                    <p className="mt-2 text-[0.625rem] leading-relaxed text-white/40">
+                    <p className="mt-2 text-[0.625rem] leading-relaxed text-[var(--foreground)]/40">
                       <Trans
                         i18nKey="ui.agents.agenteditor.gameAssetsMusicFolderGuidance"
                         components={{
@@ -4049,8 +4054,8 @@ export function AgentEditor() {
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <label className="mb-1 block text-[0.6875rem] font-medium text-white/60">
+                  <div className="rounded-xl border border-[var(--foreground)]/10 bg-[var(--foreground)]/[0.03] p-3">
+                    <label className="mb-1 block text-[0.6875rem] font-medium text-[var(--foreground)]/60">
                       {localizeUi("ui.agents.agenteditor.musicFolderOnThisDevice")}
                     </label>
                     <div className="flex flex-col gap-2 sm:flex-row">
@@ -4065,7 +4070,7 @@ export function AgentEditor() {
                           setLocalCustomMusicExternalFolder((current) => normalizeExternalMusicFolderInput(current))
                         }
                         placeholder={localizeUi("ui.agents.agenteditor.noFolderSelected")}
-                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-white outline-none placeholder-white/30"
+                        className="min-w-0 flex-1 rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/5 px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none placeholder-[var(--foreground)]/30"
                       />
                       <button
                         type="button"
@@ -4076,7 +4081,7 @@ export function AgentEditor() {
                         {localizeUi("ui.agents.agenteditor.selectFolder")}
                       </button>
                     </div>
-                    <p className="mt-2 text-[0.625rem] leading-relaxed text-white/40">
+                    <p className="mt-2 text-[0.625rem] leading-relaxed text-[var(--foreground)]/40">
                       {localizeUi("ui.agents.agenteditor.theFolderPickerOpensOnTheDeviceRunningMarinara")}
                     </p>
                   </div>
@@ -4095,7 +4100,7 @@ export function AgentEditor() {
                   ? localizeUi("ui.agents.agenteditor.knowledgeSources")
                   : localizeUi("ui.agents.agenteditor.lorebookContextSources")
               }
-              icon={<BookOpen size="0.875rem" className="text-amber-400" />}
+              icon={<BookOpen size="0.875rem" className="text-[var(--warning)]" />}
               help={
                 isKnowledgeRouterAgent
                   ? localizeUi("ui.agents.agenteditor.useChatActiveLorebooksByDefaultOrSelectFixed")
@@ -4145,10 +4150,10 @@ export function AgentEditor() {
                             className={cn(
                               "h-1.5 w-1.5 rounded-full",
                               descriptionCoverage.ratio >= 0.75
-                                ? "bg-emerald-400"
+                                ? "bg-[var(--primary)]"
                                 : descriptionCoverage.ratio >= 0.25
-                                  ? "bg-amber-400"
-                                  : "bg-red-400",
+                                  ? "bg-[var(--warning)]"
+                                  : "bg-[var(--destructive)]",
                             )}
                           />
                           <span className="text-[var(--muted-foreground)]">
@@ -4179,7 +4184,7 @@ export function AgentEditor() {
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all text-xs",
                               selected
-                                ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+                                ? "bg-[var(--warning)]/10 border border-[var(--warning)]/20 text-[var(--warning)]"
                                 : "bg-[var(--secondary)] border border-transparent text-[var(--foreground)] hover:bg-[var(--accent)]",
                             )}
                           >
@@ -4187,7 +4192,7 @@ export function AgentEditor() {
                               className={cn(
                                 "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
                                 selected
-                                  ? "border-amber-500/50 bg-amber-500/20"
+                                  ? "border-[var(--warning)]/50 bg-[var(--warning)]/20"
                                   : "border-[var(--border)] bg-[var(--background)]",
                               )}
                             >
@@ -4231,12 +4236,12 @@ export function AgentEditor() {
                 {/* ── Uploaded Files (Knowledge Retrieval only) ── */}
                 {isKnowledgeRetrievalAgent && (
                   <div className="space-y-1.5">
-                    <p className="text-[0.6875rem] font-medium text-white/60">
+                    <p className="text-[0.6875rem] font-medium text-[var(--foreground)]/60">
                       {localizeUi("ui.agents.agenteditor.files")}
                     </p>
                     {/* File list */}
                     {allKnowledgeSources && allKnowledgeSources.length > 0 && (
-                      <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-white/10 bg-white/[0.02] p-2">
+                      <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-[var(--foreground)]/10 bg-[var(--foreground)]/[0.02] p-2">
                         {allKnowledgeSources.map((src) => {
                           const selected = localSourceFileIds.includes(src.id);
                           return (
@@ -4245,8 +4250,8 @@ export function AgentEditor() {
                               className={cn(
                                 "flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition-all",
                                 selected
-                                  ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
-                                  : "bg-white/[0.02] border border-transparent text-white/60",
+                                  ? "bg-[var(--warning)]/10 border border-[var(--warning)]/20 text-[var(--warning)]"
+                                  : "bg-[var(--foreground)]/[0.02] border border-transparent text-[var(--foreground)]/60",
                               )}
                             >
                               <button
@@ -4262,14 +4267,16 @@ export function AgentEditor() {
                                 <div
                                   className={cn(
                                     "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
-                                    selected ? "border-amber-500/50 bg-amber-500/20" : "border-white/20 bg-white/5",
+                                    selected
+                                      ? "border-[var(--warning)]/50 bg-[var(--warning)]/20"
+                                      : "border-[var(--foreground)]/20 bg-[var(--foreground)]/5",
                                   )}
                                 >
                                   {selected && <Check size="0.625rem" />}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate font-medium">{src.originalName}</p>
-                                  <p className="text-[0.625rem] text-white/40">
+                                  <p className="text-[0.625rem] text-[var(--foreground)]/40">
                                     {(src.size / 1024).toFixed(1)} {localizeUi("ui.agents.agenteditor.kb")}
                                   </p>
                                 </div>
@@ -4283,7 +4290,7 @@ export function AgentEditor() {
                                     },
                                   });
                                 }}
-                                className="shrink-0 rounded p-1 text-white/20 transition-colors hover:bg-white/10 hover:text-white/70"
+                                className="shrink-0 rounded p-1 text-[var(--foreground)]/20 transition-colors hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]/70"
                                 title={localizeUi("ui.agents.agenteditor.deleteFile")}
                               >
                                 <Trash2 size="0.75rem" />
@@ -4321,8 +4328,8 @@ export function AgentEditor() {
                       className={cn(
                         "flex items-center gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs font-medium transition-all w-full justify-center",
                         uploadSource.isPending
-                          ? "border-white/10 text-white/30 cursor-wait"
-                          : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-amber-400 hover:bg-amber-500/5",
+                          ? "border-[var(--foreground)]/10 text-[var(--foreground)]/30 cursor-wait"
+                          : "border-[var(--foreground)]/15 text-[var(--foreground)]/50 hover:border-[var(--warning)]/30 hover:text-[var(--warning)] hover:bg-[var(--warning)]/5",
                       )}
                     >
                       {uploadSource.isPending ? (
@@ -4342,7 +4349,7 @@ export function AgentEditor() {
 
                 {/* Summary */}
                 {(localSourceLorebookIds.length > 0 || localSourceFileIds.length > 0) && (
-                  <p className="text-[0.625rem] text-white/40">
+                  <p className="text-[0.625rem] text-[var(--foreground)]/40">
                     {[
                       localSourceLorebookIds.length > 0
                         ? `${localSourceLorebookIds.length} lorebook${localSourceLorebookIds.length !== 1 ? "s" : ""}`
@@ -4392,11 +4399,11 @@ export function AgentEditor() {
               {builtIn && (
                 <div className="flex items-center gap-2 mb-2">
                   {isUsingDefaultPrompt ? (
-                    <span className="flex items-center gap-1 rounded-lg bg-emerald-400/10 px-2.5 py-1 text-[0.625rem] font-medium text-emerald-400">
+                    <span className="flex items-center gap-1 rounded-lg bg-[var(--primary)]/10 px-2.5 py-1 text-[0.625rem] font-medium text-[var(--primary)]">
                       <Check size="0.625rem" /> {localizeUi("ui.agents.agenteditor.usingBuiltInDefault")}
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 rounded-lg bg-amber-400/10 px-2.5 py-1 text-[0.625rem] font-medium text-amber-400">
+                    <span className="flex items-center gap-1 rounded-lg bg-[var(--warning)]/10 px-2.5 py-1 text-[0.625rem] font-medium text-[var(--warning)]">
                       <FileText size="0.625rem" /> {localizeUi("ui.agents.agenteditor.customOverride")}
                     </span>
                   )}
@@ -4794,7 +4801,7 @@ function ToolCard({
               <div key={name} className="flex items-start gap-2 text-[0.6875rem]">
                 <code className="shrink-0 rounded bg-[var(--secondary)] px-1.5 py-0.5 font-mono text-[0.625rem] text-[var(--foreground)]">
                   {name}
-                  {isRequired && <span className="text-red-400">*</span>}
+                  {isRequired && <span className="text-[var(--destructive)]">*</span>}
                 </code>
                 <span className="text-[var(--muted-foreground)]">
                   <span className="text-[var(--primary)]">{p.type}</span>

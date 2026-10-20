@@ -190,7 +190,7 @@ export function ChatNotificationBubbles() {
               <span
                 className={cn(
                   "absolute -bottom-1 -right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1",
-                  "bg-red-500 text-[10px] font-bold text-white shadow",
+                  "bg-[var(--primary)] text-[10px] font-bold text-[var(--primary-foreground)] shadow",
                 )}
               >
                 {totalCount > 99 ? "99+" : totalCount}
@@ -258,7 +258,7 @@ function NotificationBubble({
         className={cn(
           "relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full",
           isCall
-            ? "bg-emerald-500/15 shadow-lg ring-2 ring-emerald-400/60"
+            ? "bg-[var(--primary)]/15 shadow-lg ring-2 ring-[var(--primary)]/60"
             : "bg-[var(--accent)]/20 shadow-lg ring-2 ring-[var(--accent)]/40",
           "transition-transform hover:scale-110 active:scale-95",
         )}
@@ -277,10 +277,10 @@ function NotificationBubble({
             style={getAvatarCropStyle(notif.avatarCrop)}
           />
         ) : (
-          <MessageCircle className={cn("h-5 w-5", isCall ? "text-emerald-400" : "text-[var(--accent)]")} />
+          <MessageCircle className={cn("h-5 w-5", isCall ? "text-[var(--primary)]" : "text-[var(--accent)]")} />
         )}
         {isCall && (
-          <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-[var(--background)]">
+          <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] ring-2 ring-[var(--background)]">
             <PhoneIncoming size="0.6875rem" />
           </span>
         )}
@@ -307,7 +307,7 @@ function NotificationBubble({
               event.stopPropagation();
               onAcceptCall();
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
             title={localizeUi("ui.chat.notificationbubble.answerCall")}
           >
             {accepting ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Phone size="0.8125rem" />}
@@ -317,7 +317,7 @@ function NotificationBubble({
         <span
           className={cn(
             "absolute -bottom-0.5 -left-0.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1",
-            "bg-red-500 text-[10px] font-bold text-white shadow",
+            "bg-[var(--primary)] text-[10px] font-bold text-[var(--primary-foreground)] shadow",
           )}
         >
           {notif.count > 99 ? "99+" : notif.count}

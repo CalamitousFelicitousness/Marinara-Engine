@@ -210,7 +210,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
           id="encounter-target-title"
           className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--foreground)]"
         >
-          <Crosshair size="1rem" className="text-red-400" />
+          <Crosshair size="1rem" className="text-[var(--primary)]" />
           {localizeUi("ui.chat.targetselection.selectTarget")}
         </h3>
 
@@ -219,7 +219,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
           {(attackType === "AoE" || attackType === "both") && (
             <button
               onClick={() => onSelect("all-enemies")}
-              className="flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-left transition-all hover:border-orange-500/40 hover:bg-orange-500/20"
+              className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/10 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20"
             >
               <span className="text-lg">💥</span>
               <div>
@@ -247,7 +247,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
                 <button
                   key={i}
                   onClick={() => onSelect(enemy.name)}
-                  className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-left transition-all hover:border-red-500/40 hover:bg-red-500/15"
+                  className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
                 >
                   <span className="text-lg">{enemy.sprite || "👹"}</span>
                   <div className="flex-1">
@@ -267,7 +267,7 @@ function TargetSelection({ attackType, enemies, party, onSelect, onCancel }: Tar
                 <button
                   key={`party-${i}`}
                   onClick={() => onSelect(member.name)}
-                  className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-left transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15"
+                  className="flex items-center gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 text-left transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/15"
                 >
                   <span className="text-lg">✨</span>
                   <div className="flex-1">
@@ -396,7 +396,7 @@ function EncounterConfig() {
           id="encounter-config-title"
           className="mb-5 flex items-center gap-2 text-base font-bold text-[var(--foreground)]"
         >
-          <Swords size="1.125rem" className="text-red-400" />
+          <Swords size="1.125rem" className="text-[var(--primary)]" />
           {localizeUi("ui.chat.encounterconfig.configureCombatNarrative")}
         </h2>
 
@@ -416,7 +416,7 @@ function EncounterConfig() {
           {/* Spellbook selection */}
           <div className="space-y-2">
             <h4 className="flex items-center gap-1.5 text-xs font-bold text-[var(--muted-foreground)]">
-              <Wand2 size="0.75rem" className="text-indigo-400" />
+              <Wand2 size="0.75rem" className="text-[var(--primary)]" />
               {localizeUi("ui.chat.encounterconfig.spellbook")}
             </h4>
             <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]/70">
@@ -446,7 +446,7 @@ function EncounterConfig() {
           </button>
           <button
             onClick={() => initEncounter(settings)}
-            className="flex-1 rounded-xl bg-gradient-to-r from-red-600 to-orange-500 py-2.5 text-xs font-bold text-foreground shadow-lg shadow-red-500/20 transition-all hover:shadow-xl hover:shadow-red-500/30 active:scale-95"
+            className="flex-1 rounded-xl bg-[var(--primary)] py-2.5 text-xs font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:shadow-xl hover:shadow-[var(--primary)]/30 active:scale-95"
           >
             <Swords size="0.875rem" className="mr-1.5 inline" />
             {localizeUi("ui.chat.encounterconfig.beginCombat")}
@@ -542,9 +542,9 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
 
   if (!Array.isArray(party) || party.length === 0) {
     return (
-      <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-center">
-        <AlertTriangle size="1.5rem" className="mx-auto mb-2 text-yellow-400" />
-        <p className="text-xs text-yellow-300">{localizeUi("ui.chat.playercontrols.waitingForCombatData")}</p>
+      <div className="rounded-xl border border-[var(--warning)]/20 bg-[var(--warning)]/5 p-4 text-center">
+        <AlertTriangle size="1.5rem" className="mx-auto mb-2 text-[var(--warning)]" />
+        <p className="text-xs text-[var(--warning)]">{localizeUi("ui.chat.playercontrols.waitingForCombatData")}</p>
       </div>
     );
   }
@@ -599,7 +599,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
     <>
       <div className="space-y-3 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-foreground/5 p-4">
         <h3 className="flex items-center gap-2 text-xs font-bold text-foreground/70">
-          <Zap size="0.875rem" className="text-yellow-400" />
+          <Zap size="0.875rem" className="text-[var(--primary)]" />
           {localizeUi("ui.chat.playercontrols.yourActions")}
         </h3>
 
@@ -615,7 +615,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
                   key={i}
                   disabled={isProcessing}
                   onClick={() => handleAttack(atk)}
-                  className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-all hover:border-red-500/40 hover:bg-red-500/20 disabled:opacity-30"
+                  className="flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20 disabled:opacity-30"
                 >
                   <Swords size="0.75rem" />
                   {atk.name}
@@ -638,7 +638,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
                   key={i}
                   disabled={isProcessing}
                   onClick={() => handleItem(item)}
-                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/20 disabled:opacity-30"
+                  className="flex items-center gap-1.5 rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/20 disabled:opacity-30"
                 >
                   <FlaskConical size="0.75rem" />
                   {item}
@@ -665,7 +665,7 @@ function PlayerControls({ onAction }: { onAction: (text: string) => void }) {
             <button
               onClick={handleCustomSubmit}
               disabled={isProcessing || !customInput.trim()}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-foreground transition-all hover:bg-blue-500 disabled:opacity-30"
+              className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-all hover:bg-[var(--primary)] disabled:opacity-30"
             >
               <Send size="0.875rem" />
             </button>
@@ -741,7 +741,9 @@ function CombatEndScreen() {
 
       {summaryStatus === "error" && (
         <>
-          <p className="mt-2 text-sm text-red-400">{localizeUi("ui.chat.combatendscreen.failedToGenerateSummary")}</p>
+          <p className="mt-2 text-sm text-[var(--destructive)]">
+            {localizeUi("ui.chat.combatendscreen.failedToGenerateSummary")}
+          </p>
           <button
             onClick={closeEncounter}
             className="mt-6 rounded-xl bg-foreground/10 px-6 py-3 text-sm font-bold text-foreground/80 transition-all hover:bg-foreground/20"
@@ -919,7 +921,7 @@ function EncounterModalInner() {
               {/* Loading state */}
               {isLoading && !initialized && (
                 <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <Loader2 size="2rem" className="animate-spin text-red-400" />
+                  <Loader2 size="2rem" className="animate-spin text-[var(--primary)]" />
                   <p className="text-sm text-foreground/50">
                     {localizeUi("ui.chat.encountermodalinner.initializingCombatEncounter")}
                   </p>
@@ -929,12 +931,12 @@ function EncounterModalInner() {
               {/* Error state */}
               {error && !initialized && (
                 <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <AlertTriangle size="2rem" className="text-red-400" />
-                  <p className="max-w-sm text-center text-sm text-red-300">{error}</p>
+                  <AlertTriangle size="2rem" className="text-[var(--destructive)]" />
+                  <p className="max-w-sm text-center text-sm text-[var(--destructive)]">{error}</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => initEncounter(settings)}
-                      className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-medium text-foreground"
+                      className="flex items-center gap-1.5 rounded-xl bg-[var(--destructive)] px-4 py-2 text-xs font-medium text-[var(--destructive-foreground)]"
                     >
                       <RefreshCw size="0.75rem" />
                       {localizeUi("ui.game.gamesurfacecomponent.retry")}
@@ -1005,7 +1007,7 @@ function EncounterModalInner() {
 
                   {/* Error during combat */}
                   {error && initialized && (
-                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-center text-xs text-red-300">
+                    <div className="rounded-xl border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 p-3 text-center text-xs text-[var(--destructive)]">
                       {error}
                     </div>
                   )}
@@ -1034,8 +1036,8 @@ class EncounterErrorBoundary extends Component<{ children: ReactNode; onReset: (
           {(t) => (
             <div className="fixed inset-0 z-[100] flex items-center justify-center max-md:pt-[env(safe-area-inset-top)]">
               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-              <div className="relative flex max-w-md flex-col items-center gap-4 rounded-2xl border border-red-500/20 bg-gray-950 p-8 shadow-2xl">
-                <AlertTriangle size="2.5rem" className="text-red-400" />
+              <div className="relative flex max-w-md flex-col items-center gap-4 rounded-2xl border border-[var(--destructive)]/20 bg-[var(--card)] p-8 shadow-2xl">
+                <AlertTriangle size="2.5rem" className="text-[var(--destructive)]" />
                 <h3 className="text-sm font-bold text-foreground/90">{t("ui.chat.encountererrorboundary.title")}</h3>
                 <p className="text-center text-xs text-foreground/50">
                   {t("ui.chat.encountererrorboundary.description")}
@@ -1045,7 +1047,7 @@ class EncounterErrorBoundary extends Component<{ children: ReactNode; onReset: (
                     this.setState({ hasError: false });
                     this.props.onReset();
                   }}
-                  className="rounded-xl bg-red-600 px-6 py-2.5 text-xs font-medium text-foreground transition-all hover:bg-red-500"
+                  className="rounded-xl bg-[var(--destructive)] px-6 py-2.5 text-xs font-medium text-[var(--destructive-foreground)] transition-all hover:bg-[var(--destructive)]/85"
                 >
                   {t("ui.chat.encountererrorboundary.close")}
                 </button>

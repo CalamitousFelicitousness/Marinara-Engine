@@ -787,7 +787,7 @@ function NpcsView({
                   onClick={() => onNpcRemove(entry.originalName)}
                   disabled={isRemoving}
                   title={localizeUi("ui.game.npcsview.removeThisNpcFromTheJournal")}
-                  className="rounded p-1 text-white/35 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+                  className="rounded p-1 text-white/35 transition-colors hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)] disabled:opacity-40"
                 >
                   <Trash2 size={11} />
                 </button>
@@ -1047,13 +1047,8 @@ function LibraryView({
         return (
           <div key={i} className="group relative rounded-lg border border-white/5 bg-white/3 px-3 py-2">
             <div className="flex items-center gap-1.5">
-              <BookOpen size={11} className={isBook ? "text-amber-400/70" : "text-blue-400/70"} />
-              <span
-                className={cn(
-                  "text-[0.625rem] font-semibold uppercase tracking-wide",
-                  isBook ? "text-amber-400/70" : "text-blue-400/70",
-                )}
-              >
+              <BookOpen size={11} className="text-[var(--primary)]/70" />
+              <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--primary)]/70">
                 {isBook ? localizeUi("ui.game.libraryview.book") : localizeUi("ui.game.libraryview.note")}
               </span>
               <span className="ml-auto pr-14 text-[0.5625rem] text-white/30">{entry.timestamp}</span>
@@ -1100,7 +1095,10 @@ function NotesView({ notes, onChange, saved }: { notes: string; onChange: (text:
           {localizeUi("ui.game.notesview.yourPersonalNotesVisibleToTheGameMasterAnd")}
         </p>
         <span
-          className={cn("text-[0.5625rem] transition-opacity", saved ? "text-emerald-400/60" : "text-amber-400/60")}
+          className={cn(
+            "text-[0.5625rem] transition-opacity",
+            saved ? "text-[var(--primary)]/60" : "text-[var(--warning)]/60",
+          )}
         >
           {saved ? localizeUi("chat.settings.inlineEditor.saved") : localizeUi("ui.noodle.stageprofileform.saving")}
         </span>

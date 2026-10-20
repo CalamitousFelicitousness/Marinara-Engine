@@ -64,12 +64,12 @@ function useIsMobileViewport() {
 
 function statusDotClass(status?: string | null) {
   return status === "offline"
-    ? "bg-gray-400"
+    ? "bg-[var(--muted-foreground)]"
     : status === "dnd"
-      ? "bg-red-500"
+      ? "bg-[var(--destructive)]"
       : status === "idle"
-        ? "bg-yellow-500"
-        : "bg-green-500";
+        ? "bg-[var(--warning)]"
+        : "bg-[var(--primary)]";
 }
 
 function statusLabel(status?: string | null) {

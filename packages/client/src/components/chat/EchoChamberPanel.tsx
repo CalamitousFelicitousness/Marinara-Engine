@@ -562,8 +562,8 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
   };
   const status = (
     <span aria-hidden="true" className="relative flex h-1.5 w-1.5 shrink-0">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
-      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--primary)] opacity-60" />
+      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
     </span>
   );
 

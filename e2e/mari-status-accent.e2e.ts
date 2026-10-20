@@ -39,9 +39,10 @@ for (const theme of ["light", "dark"] as const) {
       root.style.setProperty("--background", theme === "dark" ? "#050312" : "#faf8ff");
       root.style.setProperty("--foreground", theme === "dark" ? "#d4d4d4" : "#1a1025");
       root.style.setProperty("--primary-foreground", "#0a0a0a");
+      root.style.setProperty("--destructive-foreground", "var(--primary-foreground)");
       root.style.setProperty("--primary", "#ec4899");
-      root.style.setProperty("--destructive", "#ef4444");
-      root.style.setProperty("--warning", "#f59e0b");
+      root.style.setProperty("--destructive", "var(--marinara-app-accent-static)");
+      root.style.setProperty("--warning", "var(--marinara-app-accent-static)");
       root.style.setProperty("--marinara-app-accent-static", "#14b8a6");
     }, theme);
 
@@ -89,5 +90,19 @@ for (const theme of ["light", "dark"] as const) {
       }
     });
     expect(await readColours()).toEqual(selected);
+
+    // A custom theme can select separate semantic colours; the accent default must not override them.
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty("--destructive", "#f97316");
+      document.documentElement.style.setProperty("--destructive-foreground", "#faf8ff");
+      document.documentElement.style.setProperty("--warning", "#a855f7");
+    });
+    const custom = await readColours();
+    for (const [index, sample] of samples.entries()) {
+      expect(custom[index], `${sample.join(": ")} respects a custom semantic colour`).not.toBe(selected[index]);
+    }
+    await expect(page.locator("#delete")).toHaveCSS("background-color", "rgb(249, 115, 22)");
+    await expect(page.locator("#delete")).toHaveCSS("color", "rgb(250, 248, 255)");
+    await expect(page.locator("#missed")).toHaveCSS("color", "rgb(168, 85, 247)");
   });
 }

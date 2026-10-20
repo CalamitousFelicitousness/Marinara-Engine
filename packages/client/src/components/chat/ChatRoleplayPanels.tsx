@@ -17,21 +17,21 @@ const LOREBOOK_ENTRY_STATUS_STYLE: Record<
 > = {
   normal: {
     labelKey: "chat.activeContext.status.normal",
-    dot: "bg-emerald-400",
-    row: "border border-emerald-400/20 bg-emerald-400/10 hover:bg-emerald-400/15",
-    badge: "bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/20",
+    dot: "bg-[var(--primary)]",
+    row: "border border-[var(--primary)]/20 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15",
+    badge: "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/20",
   },
   constant: {
     labelKey: "chat.activeContext.status.constant",
-    dot: "bg-yellow-300",
-    row: "border border-yellow-300/25 bg-yellow-300/10 hover:bg-yellow-300/15",
-    badge: "bg-yellow-300/15 text-yellow-200 ring-1 ring-yellow-300/20",
+    dot: "bg-[var(--primary)]",
+    row: "border border-[var(--primary)]/25 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15",
+    badge: "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/20",
   },
   selective: {
     labelKey: "chat.activeContext.status.selective",
-    dot: "bg-red-400",
-    row: "border border-red-400/25 bg-red-400/10 hover:bg-red-400/15",
-    badge: "bg-red-400/15 text-red-200 ring-1 ring-red-400/20",
+    dot: "bg-[var(--primary)]",
+    row: "border border-[var(--primary)]/25 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15",
+    badge: "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/20",
   },
 };
 
@@ -94,18 +94,22 @@ function ActiveLorebookEntryRow({
     <div
       className={cn(
         "cursor-pointer rounded-lg p-2 text-xs transition-colors",
-        isSemanticMatch ? "border border-cyan-300/25 bg-cyan-400/10 hover:bg-cyan-400/15" : statusStyle.row,
+        isSemanticMatch
+          ? "border border-[var(--primary)]/25 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15"
+          : statusStyle.row,
       )}
       onClick={() => setExpanded((prev) => !prev)}
     >
       <div className="flex items-center gap-2">
-        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isSemanticMatch ? "bg-cyan-300" : statusStyle.dot)} />
+        <span
+          className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isSemanticMatch ? "bg-[var(--primary)]" : statusStyle.dot)}
+        />
         <span className="truncate font-medium text-[var(--foreground)]/80">{entry.name}</span>
         <span className={cn("shrink-0 rounded px-1 py-0.5 text-[0.5rem] font-semibold", statusStyle.badge)}>
           {localizeUi(statusStyle.labelKey)}
         </span>
         {isSemanticMatch && (
-          <span className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[0.5rem] font-semibold text-cyan-100 ring-1 ring-cyan-300/25">
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[0.5rem] font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/25">
             <Sparkles size="0.55rem" />
             {semanticScoreLabel
               ? localizeUi("chat.activeContext.vectorScore", { score: semanticScoreLabel })
@@ -113,7 +117,7 @@ function ActiveLorebookEntryRow({
           </span>
         )}
         {isCurrentLocation && (
-          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-sky-400/15 px-1 py-0.5 text-[0.5rem] font-semibold text-sky-200 ring-1 ring-sky-400/25">
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-[var(--primary)]/15 px-1 py-0.5 text-[0.5rem] font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/25">
             <MapPin size="0.55rem" /> {localizeUi("ui.noodle.noodleprofilesurface.location")}
           </span>
         )}
@@ -150,7 +154,7 @@ function ActiveLorebookEntryRow({
         </p>
       )}
       {isSemanticMatch && (
-        <p className="mt-0.5 truncate text-[0.625rem] text-cyan-100/75">
+        <p className="mt-0.5 truncate text-[0.625rem] text-[var(--primary)]/75">
           {semanticScoreLabel
             ? localizeUi("chat.activeContext.semanticMatchScore", { score: semanticScoreLabel })
             : localizeUi("ui.chat.activelorebookentryrow.semanticVectorMatch")}
@@ -209,7 +213,7 @@ function BudgetSkippedEntryRow({ entry }: { entry: BudgetSkippedLorebookEntry })
         {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
         <span className="min-w-0 flex-1 truncate font-medium">{entry.name}</span>
         {isSemanticMatch && (
-          <span className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[0.5rem] font-semibold text-cyan-100 ring-1 ring-cyan-300/25">
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[0.5rem] font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/25">
             <Sparkles size="0.55rem" />
             {semanticScoreLabel
               ? localizeUi("chat.activeContext.vectorScore", { score: semanticScoreLabel })
@@ -355,7 +359,7 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
       <BudgetSkippedEntriesNotice entries={skippedEntries} />
       {currentLocationEntries.length > 0 && (
         <section aria-label={localizeUi("ui.chat.activelorebookentriescontent.currentLocationLore")}>
-          <h4 className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-sky-200">
+          <h4 className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--primary)]">
             <MapPin size="0.6875rem" /> {localizeUi("ui.chat.activelorebookentriescontent.currentLocation")}
           </h4>
           <div className="space-y-1.5">

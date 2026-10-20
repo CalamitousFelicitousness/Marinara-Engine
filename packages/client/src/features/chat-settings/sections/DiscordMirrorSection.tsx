@@ -36,7 +36,7 @@ export function DiscordMirrorControls({
         className="mari-chrome-field w-full !rounded-md px-3 py-2.5 text-[0.6875rem]"
       />
       {hasInvalidWebhook && (
-        <p id={webhookErrorId} className="text-[0.625rem] text-red-400">
+        <p id={webhookErrorId} className="text-[0.625rem] text-[var(--destructive)]">
           {localizeUi("ui.chatSettings.discordmirrorcontrols.invalidWebhookUrlFormat")}
         </p>
       )}

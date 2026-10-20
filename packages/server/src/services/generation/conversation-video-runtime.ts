@@ -63,7 +63,7 @@ export interface ConversationVideoResult {
   firstFrame: "gallery" | "selfie" | "avatar" | "none";
 }
 
-const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_196;
+const VIDEO_PROMPT_WRITER_MAX_TOKENS = 8_192;
 const SELFIE_CONTEXT_MAX_CHARS = 2_000;
 const PICTURE_PROMPT_MAX_CHARS = 1_500;
 const UNCLOSED_THINKING_RE = /^<(?:think|thinking|reasoning)\b/iu;

@@ -1551,6 +1551,8 @@ export function useGenerate() {
       let agentFailuresThisRun: AgentFailure[] = [];
       let illustrationQueued = false;
       let illustrationSettled = false;
+      // Clips this stream is still waiting for (video_started until video, video_error or video_skipped).
+      let videosPending = 0;
       let passiveStreamRecovered = false;
       let spatialTransitionCommitted = false;
       let committedSpatialTravel: ResolvedSpatialTravel | undefined;
@@ -2894,7 +2896,22 @@ export function useGenerate() {
               break;
             }
 
+            case "video_started": {
+              videosPending += 1;
+              // A clip that starts after the reply is done (one following its picture) frees the next message too.
+              if (sawDoneEvent && useChatStore.getState().abortControllers.get(params.chatId) === abortController) {
+                useChatStore.getState().setBackgroundIllustration(params.chatId, true);
+              }
+              break;
+            }
+
+            case "video_skipped": {
+              videosPending = Math.max(0, videosPending - 1);
+              break;
+            }
+
             case "video": {
+              videosPending = Math.max(0, videosPending - 1);
               const videoData = event.data as { characterName: string; messageId: string | null };
               // A clip that was saved but couldn't join its message is still made; it waits in the Gallery.
               toast(
@@ -2911,6 +2928,7 @@ export function useGenerate() {
             }
 
             case "video_error": {
+              videosPending = Math.max(0, videosPending - 1);
               const errData = event.data as { error: string };
               console.warn("[video] Generation failed:", errData.error);
               toast.error(translate("generation.video.failed", { error: errData.error }));
@@ -3198,9 +3216,9 @@ export function useGenerate() {
 
             case "done": {
               sawDoneEvent = true;
+              // Only media (a picture or a clip that takes minutes) is left: the next message may start meanwhile.
               if (
-                illustrationQueued &&
-                !illustrationSettled &&
+                ((illustrationQueued && !illustrationSettled) || videosPending > 0) &&
                 useChatStore.getState().abortControllers.get(params.chatId) === abortController
               ) {
                 useChatStore.getState().setBackgroundIllustration(params.chatId, true);

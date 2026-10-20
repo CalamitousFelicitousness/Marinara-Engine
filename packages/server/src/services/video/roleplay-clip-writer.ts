@@ -12,7 +12,7 @@ import { compactVideoPromptText } from "./prompt-context.js";
 import { buildRoleplayVideoDirectionMessages, resolveRoleplayVideoDirection } from "./roleplay-video-direction.js";
 
 /** Room for a model that thinks before answering, as the Conversation video writer has. */
-const ROLEPLAY_CLIP_WRITER_MAX_TOKENS = 8_196;
+const ROLEPLAY_CLIP_WRITER_MAX_TOKENS = 8_192;
 
 type RoleplayClipChat = {
   id: string;

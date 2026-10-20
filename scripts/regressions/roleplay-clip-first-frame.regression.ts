@@ -95,6 +95,37 @@ try {
   assert.doesNotMatch(noVideoBody, /video_error/u, "no video error");
   await h.saveChatSettings(roleplay.id, { sceneVideoConnectionId: h.video.id });
 
+  // A storyteller's [illustrate] asks for its clip, so the Video Run Interval doesn't hold it back, while an automatic
+  // clip inside the interval is skipped and the stream says so.
+  const commanded = await h.createRoleplay("Commanded clip");
+  await h.saveChatSettings(commanded.id, {
+    enableAgents: true,
+    activeAgentIds: ["illustrator"],
+    illustratorRunInterval: 1,
+    illustratorVideoRunInterval: 100,
+    sceneVideoConnectionId: h.video.id,
+    illustratorVideoMode: "clips_only",
+    sceneVideoFirstFrame: "prompt_only",
+    roleplayCommandsEnabled: true,
+    roleplayCommandToggles: { illustrate: true },
+    automaticSummaryEnabled: false,
+  });
+  replies.agent = { shouldGenerate: true, prompt: "1girl, porch, dusk", videoPrompt: "Aster waves slowly" };
+  replies.main = "Aster smiles.";
+  await h.generate(commanded.id, "Hello, Aster.");
+  const commandedClips = (await h.attachments(commanded.id, "video")).length;
+  assert.equal(commandedClips, 1, "the first automatic clip starts the interval");
+  const skippedBody = await h.generate(commanded.id, "Again?");
+  assert.equal((await h.attachments(commanded.id, "video")).length, commandedClips, "inside the interval: no clip");
+  assert.doesNotMatch(skippedBody, /"type":"video","data"/u);
+  replies.main = '[illustrate: subject="Aster waves from the porch" characters="Aster"] Aster waves.';
+  await h.generate(commanded.id, "Show me!");
+  assert.equal(
+    (await h.attachments(commanded.id, "video")).length,
+    commandedClips + 1,
+    "the storyteller's [illustrate] makes its clip anyway",
+  );
+
   // ── Re-running Illustrator on a reply (the Illustrate button) follows Illustrator makes and First frame too ──
   const rerun = async () => {
     const response = await h.app.inject({

@@ -2741,6 +2741,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An aura that spreads only while its holder is ridden (1.682): a goat of terror. */
+function carriesAuraWhileRidden682(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAuraWhileRidden682(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.auras) && record.auras.some((one) => plainRecord(one)?.whileRidden !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesAuraWhileRidden682(one, depth + 1));
+}
+
 /** A condition whose holder understands every language without being understood (1.681): Comprehend
  *  Languages. */
 function carriesLanguagesUnderstands681(value: unknown, depth = 0): boolean {
@@ -8986,6 +8997,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An aura that spreads only while its holder is ridden, 1.682.
+  if (
+    !declaresApi(682) &&
+    (carriesAuraWhileRidden682(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAuraWhileRidden682(document)))
+  )
+    return "A ruleset with an aura that spreads only while its holder is ridden (auras[].whileRidden) requires schemaVersion 2 and capabilityApi 1.682 or newer";
   // A condition whose holder understands every language, 1.681.
   if (
     !declaresApi(681) &&

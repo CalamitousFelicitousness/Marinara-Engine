@@ -13077,6 +13077,7 @@ export interface RulesetConditionAura {
   chosenKind?: true;
   orSeen?: true;
   seenByHolder?: true;
+  whileRidden?: true;
   harms?: { dice?: string; flat?: number; type?: string; on?: "holder-turn" | "their-turn" };
   grows?: { by: number; upTo: number };
   lingers?: true;
@@ -13124,6 +13125,10 @@ const conditionAuraSchema: z.ZodType<RulesetConditionAura, z.ZodTypeDef, unknown
     /** Only to whoever its holder can see (Capability API 1.555): a knight's Leadership, "a
      *  nonhostile creature that it can see". */
     seenByHolder: z.literal(true).optional(),
+    /** It spreads only while somebody rides its holder (Capability API 1.682), its sides read from
+     *  the rider's: allies and enemies are the rider's. 5e's goat of terror, "an aura of terror while
+     *  you are riding it": hostile to its rider, 30 feet. */
+    whileRidden: z.literal(true).optional(),
     /** It reaches `by` further as each of its holder's turns starts, to no more than `upTo`, in the
      *  ruleset's distance (Capability API 1.320): Frost Debt, 20 feet growing by 10 to 40. */
     grows: z

@@ -219941,6 +219941,10 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "whileRidden": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "grows": {
                       "type": "object",
                       "properties": {

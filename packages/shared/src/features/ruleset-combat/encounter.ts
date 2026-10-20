@@ -7414,9 +7414,12 @@ export function rulesetAuraReaches(
   condition?: string,
 ): boolean {
   if (target.defeated) return false;
+  // Only while ridden, and read from the rider's side (1.682): a goat of terror.
+  const rider = aura.whileRidden && holder.riddenBy ? rulesetCombatant(state, holder.riddenBy) : undefined;
+  if (aura.whileRidden && !rider) return false;
   // Nor through a sphere (1.314), either way.
   if (rulesetSealedApart(definition, state, holder, target)) return false;
-  const same = holder.side === target.side;
+  const same = (rider ?? holder).side === target.side;
   if (holder.id === target.id ? !aura.self : aura.side === (same ? "enemies" : "allies")) return false;
   const perCell = definition.combat?.distance?.perCell;
   if (state.board?.grid && perCell !== undefined && holder.id !== target.id) {

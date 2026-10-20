@@ -4827,7 +4827,10 @@ function avertOptions(
   for (const { holder, aura } of rulesetAuraSpreaders(definition, state)) {
     if (!aura.save?.avert || holder.id === actor.id || holder.defeated) continue;
     if (away.has(holder.id) || offered.has(holder.id)) continue;
-    if (aura.side === (holder.side === actor.side ? "enemies" : "allies")) continue;
+    // Read from its rider's side, and only while ridden (1.682).
+    const rider = aura.whileRidden && holder.riddenBy ? rulesetCombatant(state, holder.riddenBy) : undefined;
+    if (aura.whileRidden && !rider) continue;
+    if (aura.side === ((rider ?? holder).side === actor.side ? "enemies" : "allies")) continue;
     offered.add(holder.id);
     out.push({
       id: `${RULESET_AVERT_OPTION_PREFIX}${holder.id}`,

@@ -2740,6 +2740,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A save failed badly on a creature's action, or by a total that low anywhere (1.620): a mummy's
+ *  Dreadful Glare, a sprite's arrow. */
+function carriesFailedBy620(value: unknown, depth = 0, creature = false): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFailedBy620(one, depth + 1, creature));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const failedBy = plainRecord(plainRecord(record.save)?.failedBy);
+  if (failedBy && (creature || failedBy.resultAtMost !== undefined)) return true;
+  if (record.creature !== undefined && carriesFailedBy620(record.creature, depth + 1, true)) return true;
+  return featureValues(record).some((one) => carriesFailedBy620(one, depth + 1, creature));
+}
+
 /** A climb kept off some ground, and slippery ground (1.618): Slippers of Spider Climbing, Grease. */
 function carriesClimbNotOn618(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -8328,6 +8341,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A save failed badly on a creature's action, or by a total that low, 1.620.
+  if (
+    !declaresApi(620) &&
+    (carriesFailedBy620(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFailedBy620(document)))
+  )
+    return "A ruleset with a creature's save failed by a margin, or a save failed by a total that low (save.failedBy on a creature, resultAtMost), requires schemaVersion 2 and capabilityApi 1.620 or newer";
   // Number fields held to a combined most, 1.619.
   if (!declaresApi(619) && plainRecord(plainRecord(ruleset)?.sheet)?.totals !== undefined)
     return "A ruleset whose sheet holds fields to a combined most (sheet.totals) requires schemaVersion 2 and capabilityApi 1.619 or newer";

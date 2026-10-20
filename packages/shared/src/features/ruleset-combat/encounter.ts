@@ -3814,7 +3814,10 @@ function mechanicsAction(
       ...(mechanics.save.failedBy
         ? {
             failedBy: {
-              atLeast: mechanics.save.failedBy.atLeast,
+              ...(mechanics.save.failedBy.atLeast !== undefined ? { atLeast: mechanics.save.failedBy.atLeast } : {}),
+              ...(mechanics.save.failedBy.resultAtMost !== undefined
+                ? { resultAtMost: mechanics.save.failedBy.resultAtMost }
+                : {}),
               applies: mechanics.save.failedBy.applies.map((one) => ({ ...one })),
             },
           }
@@ -4621,7 +4624,7 @@ function blockActions(
           },
         }
       : {}),
-    ...(action.save ? { save: { ...action.save } } : {}),
+    ...(action.save ? { save: structuredClone(action.save) } : {}),
     ...(action.saveDifficulty !== undefined ? { saveDifficulty: action.saveDifficulty } : {}),
     ...(action.applies?.length ? { applies: action.applies.map((entry) => ({ ...entry })) } : {}),
     // Held by its maker's concentration (1.307): an imp's Invisibility.

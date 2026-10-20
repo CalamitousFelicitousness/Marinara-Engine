@@ -326,7 +326,8 @@ export interface RulesetCombatSaveRider {
   /** A target on a side hostile to its user's rolls it with advantage (1.529): Charm Person. */
   advantageIfFought?: true;
   /** A failure by at least `atLeast` puts these on in place of the action's `applies` (1.539). */
-  failedBy?: { atLeast: number; applies: RulesetCombatApplies[] };
+  /** `resultAtMost` (1.620): a total of that or lower instead. */
+  failedBy?: { atLeast?: number; resultAtMost?: number; applies: RulesetCombatApplies[] };
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the

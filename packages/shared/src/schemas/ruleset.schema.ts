@@ -5445,6 +5445,24 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     }
   });
 
+/** A save failed badly enough that something worse goes on in place of what it puts on (1.539): by
+ *  at least `atLeast`, or (Capability API 1.620) with a total of `resultAtMost` or lower. */
+export interface RulesetSaveFailedBy {
+  atLeast?: number;
+  resultAtMost?: number;
+  applies: RulesetCatalogApplies[];
+}
+const saveFailedBySchema: z.ZodType<RulesetSaveFailedBy, z.ZodTypeDef, unknown> = z
+  .object({
+    atLeast: z.number().int().min(1).max(50).optional(),
+    resultAtMost: z.number().int().min(-50).max(100).optional(),
+    applies: z.array(catalogAppliesSchema).min(1).max(4),
+  })
+  .strict()
+  .refine((rule) => (rule.atLeast === undefined) !== (rule.resultAtMost === undefined), {
+    message: 'Say "atLeast" or "resultAtMost"',
+  });
+
 /** A list of conditions put on together: each `endsWith` names another one of the same list (1.202). */
 function linkedApplies(list: RulesetCatalogApplies[], ctx: z.RefinementCtx): void {
   const named = new Set(list.map((entry) => entry.condition));
@@ -6598,10 +6616,7 @@ const catalogMechanicsObject = z
         /** A failure by at least `atLeast` puts these on in place of its `applies` (Capability API
          *  1.539), as an aura's does: a Wand of Wonder's petrification, petrified outright on a
          *  failure by 5 or more. */
-        failedBy: z
-          .object({ atLeast: z.number().int().min(1).max(50), applies: z.array(catalogAppliesSchema).min(1).max(4) })
-          .strict()
-          .optional(),
+        failedBy: saveFailedBySchema.optional(),
       })
       .strict()
       .optional(),
@@ -8163,6 +8178,11 @@ const creatureSaveSchema = z
     /** The target gains nothing from cover on this save (Capability API 1.74). */
     ignoresCover: z.literal(true).optional(),
     ...saveExtrasShape,
+    /** Failed by `atLeast` or more, or with a total of `resultAtMost` or lower, these go on in place
+     *  of the action's `applies` (Capability API 1.620): a mummy's Dreadful Glare, frightened and
+     *  paralyzed on a failure by 5 or more; a sprite's arrow, poisoned and unconscious on a total of
+     *  5 or lower. */
+    failedBy: saveFailedBySchema.optional(),
   })
   .strict();
 
@@ -20056,6 +20076,12 @@ function creatureIssues(
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
+    });
+    // What a bad failure puts on instead (1.620), held to the same names.
+    action.save?.failedBy?.applies.forEach((applies, appliesIndex) => {
+      const where = [...path, "save", "failedBy", "applies", appliesIndex];
+      if (!conditions.has(applies.condition)) add([...where, "condition"], `Unknown condition "${applies.condition}"`);
+      if (applies.when) add([...where, "when"], 'A creature has no sheet to read "when" off');
     });
     // A charge's clauses, save and conditions are held to the same names the blow's own are (1.186).
     const charge = action.charge;

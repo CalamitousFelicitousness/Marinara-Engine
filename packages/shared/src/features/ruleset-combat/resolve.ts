@@ -16029,11 +16029,14 @@ function resolveActionBodyIn(
       const missed = failedBy
         ? [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === target.id)
         : undefined;
+      // Or with a total that low (1.620): a sprite's arrow.
       const worse =
         failedBy &&
         missed?.type === "save" &&
         !missed.automatic &&
-        missed.difficulty - missed.total >= failedBy.atLeast;
+        !missed.success &&
+        ((failedBy.atLeast !== undefined && missed.difficulty - missed.total >= failedBy.atLeast) ||
+          (failedBy.resultAtMost !== undefined && missed.total <= failedBy.resultAtMost));
       const putting = worse ? failedBy.applies : (action.applies ?? []);
       // Not on whoever it catches where it goes on what it calls (1.426).
       for (const applies of slain || warded || action.appliesToCalled ? [] : putting) {

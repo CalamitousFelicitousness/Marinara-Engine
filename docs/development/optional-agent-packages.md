@@ -51,25 +51,106 @@ lore-entry selection, JSON-ish response parsing, and resolved language-model cal
 Connection credentials, provider implementations, database handles, and storage
 objects remain private to Engine.
 
-### Host UI settings store
+### Host client namespace
 
-The Engine owns the one UI settings store, `useUIStore` in `packages/client/src/stores/ui.store.ts`, and it is the
-only code that saves the browser's `marinara-engine-ui` key. Packages never bundle a copy of that module. Before any
-package client loads, the client entry sets this host bridge:
+The Engine owns its client state and its libraries, and agent package clients use them instead of bundling copies. A
+copy keeps state of its own: package clients that bundled the UI settings store saved an older version of it over the
+Engine's settings on every load (Pasta-Devs/Marinara-Agents#1478), and each bundled chat store kept the chat that was
+open when the page loaded.
+
+Before the Engine imports the first package client, it defines one global:
 
 ```ts
-globalThis.__MARINARA_HOST_UI_STORE__ = { version: 1, store: useUIStore };
+globalThis.__MARINARA_HOST__ = {
+  version: 1,
+  capabilityApi,
+  stores,
+  services,
+  modules,
+  queryClient,
+  components,
+  data,
+  api,
+};
 ```
 
-`store` is the live zustand store, so `store.getState()`, `store.setState()` and `store.subscribe()` read and change
-the same settings the Engine shows and saves. `version` changes only when the bridge's shape does. A package build
-that compiles Engine hooks importing `ui.store.ts` aliases that module to a small adapter whose `useUIStore`,
-`getState`, `setState` and `subscribe` delegate to the bridge's store. On an Engine without the bridge, the adapter is
-a store that never persists: it is seeded read-only from `marinara-engine-ui` and never writes or removes that key.
+The property is not writable or configurable, and the namespace and its `stores`, `services`, `modules`, `components`
+and `data` objects are frozen. The package loader (`useCapabilityClientModules`) loads `lib/marinara-host.ts` with
+`import()` and awaits `ensureMarinaraHost()` before it imports any package client, so the namespace is complete when a
+package module is evaluated. An Engine with no package clients never loads it. If it cannot load (a stale chunk after an
+update, for example), each package shows its existing load error and the rest of the Engine keeps working. The
+TypeScript type is `MarinaraHostV1` in `packages/client/src/lib/marinara-host-contract.ts`, together with the lists on
+this page. Package builds declare matching structural types instead of importing Engine source.
 
-Package clients built before the bridge bundle their own copy of the store at version 74 and save over the key with
-only the settings that copy knows. The Engine also saves each write to a host-only `marinara-engine-ui:host` copy, and
-when it loads, it ignores a stored blob older than its own version while that copy is at the current version.
+| Member              | Value                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`           | `1`. It changes only when the shape breaks.                                                                                                                                   |
+| `capabilityApi`     | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                |
+| `stores`            | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice. |
+| `services.tts`      | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                     |
+| `services.dialogs`  | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                             |
+| `modules`           | Library modules, keyed by bare specifier (below).                                                                                                                             |
+| `queryClient`       | The one React Query `QueryClient` the Engine renders with.                                                                                                                    |
+| `components.Modal`  | The Engine's `Modal`, with its overlay order, Escape and back-button handling.                                                                                                |
+| `data.emojiCatalog` | The `lib/emoji-catalog.generated.ts` module.                                                                                                                                  |
+| `api`               | The `lib/api-client.ts` module (`api`, `ApiError`, `getApiErrorMessage`, ...).                                                                                                |
+
+A package reads a member only after checking it, for example
+`const host = globalThis.__MARINARA_HOST__; if (host?.version === 1 && typeof host.stores?.ui?.getState === "function")`.
+The namespace only grows: a new member comes with a capability API minor, and a package that needs it requires that
+minor. Packages built for the namespace require the capability API version that added it, so an older Engine never
+installs them and keeps the version it has. When a member is missing anyway, the package never falls back to a bundled
+copy of a stateful Engine service: the `ui` and `chat` stores become read-only copies that never write, and every other
+member reports that the feature needs a newer Marinara Engine.
+
+**Host modules.** `modules[specifier]` is exactly what `import * as m from "<specifier>"` returns in the Engine's own
+build, including `default` where the library has one. The specifiers are `react`, `react/jsx-runtime`, `react-dom`,
+`react-dom/client`, `@tanstack/react-query`, `zustand`, `zustand/middleware`, `sonner`, `zod`, `i18next`,
+`react-i18next`, `framer-motion`, `tailwind-merge` and `clsx`. A package build resolves these specifiers to shims that
+read the namespace, so the package renders with the Engine's one React and shares its React Query cache and toasts.
+
+- Packages never render a `<Toaster>` and never create a `QueryClient`. A `toast` from `sonner` shows at the user's
+  toast position. The Engine's query defaults (30-second `staleTime`, one retry, no refetch on window focus) apply
+  unless a query sets its own options, and a new package-owned query key starts with the package id.
+- A package keeps its own i18next instance from `i18next.createInstance()` inside `<I18nextProvider>`. It never uses
+  `initReactI18next`, `setI18n` or `setDefaults`, which would replace the Engine's instance.
+- `lucide-react`, `chess.js`, `scheduler` and `@marinara-engine/shared` are not host modules; packages bundle what they
+  use of them.
+- Packages are built against these majors: `react` 19, `react-dom` 19, `@tanstack/react-query` 5, `zustand` 5,
+  `sonner` 2, `zod` 3, `i18next` 26, `react-i18next` 17, `framer-motion` 13, `tailwind-merge` 3 and `clsx` 2. A major
+  upgrade of one of them in the Engine (React first) breaks every package built against the old major, so it requires a
+  capability API **major**. `scripts/regressions/marinara-host-namespace.regression.ts` fails when a major in
+  `packages/client/package.json` changes and the contract does not.
+
+**Store fields packages read.** Published packages read these fields today. The Engine keeps each of them, and
+dropping or renaming one needs a capability API major (`MARINARA_HOST_STORE_FIELDS` pins them with `Pick<>`):
+
+| Store       | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui`        | `achievementsEnabled`, `debugMode`, `includeReasoningInExports`, `enableStreaming`, `userStatus`, `enterToSendConvo`, `conversationCallVoiceVolume`, `conversationCallVoiceMuted`, `setConversationCallVoiceVolume`, `setConversationCallVoiceMuted`, `conversationTimeZone`, `noodleNavigation`, `setNoodleNavigation`, `noodleSelectedPersonaId`, `setNoodleSelectedPersonaId`, `reviewImagePromptsBeforeSend`, `musicPlayerEnabled`, `musicPlayerSource`, `sidebarOpen`, `setSidebarOpen`, `chatBackground`, `setChatBackground`, `characterDetailId`, `lorebookDetailId`, `presetDetailId`, `connectionDetailId`, `agentDetailId`, `toolDetailId`, `personaDetailId`, `regexDetailId`, `characterLibraryOpen`, `botBrowserOpen`, `gameAssetsBrowserOpen`, `modal`, `rightPanelOpen`, `closeModal`, `closeRightPanel`, `closeBotBrowser`, `closeAllDetails` |
+| `chat`      | `activeChatId`, `activeChat`, `isStreaming`, `streamingChatId`, `abortControllers`, `reset`, `pendingSpatialTransitions`, `setPendingSpatialTransition`, `clearPendingSpatialTransition`, `setPendingSpatialTransitionStatus`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `agent`     | `setYoutubePlay`, `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `sidecar`   | `modelDownloaded`, `modelDisplayName`, `fetchStatus`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `dialog`    | `dialog`, `openDialog`, `closeDialog`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `gallery`   | `pinImage`, `pinVideo`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `encounter` | `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `gameState` | `current`, `setGameState`, `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `backfill`  | `resetBackfill`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+**Engine-owned browser storage.** Packages may read these keys and never write or remove them: `marinara-engine-ui`,
+`marinara-engine-ui:host`, `marinara-active-chat-id`, `marinara-input-drafts` (local and session storage),
+`marinara-pending-spatial-transitions`, `marinara-pinned-gallery-images` and `marinara_sidecar_prompted`. They never
+open the IndexedDB database `marinara-tts-audio-cache`. To change a setting, a package calls the store's action, for
+example `host.stores.ui.getState().setConversationCallVoiceMuted(true)`, and the Engine saves it.
+
+**App dialogs.** The Engine renders its alert, confirm, prompt and choice dialogs on its topmost layer, the command
+bar's, so a dialog a package opens shows above the package's own overlay and takes focus.
+
+**Package builds from before the namespace.** They bundle their own copy of the UI store at version 74 and save over
+`marinara-engine-ui` with only the settings that copy knows. The Engine also saves each write to a host-only
+`marinara-engine-ui:host` copy, and when it loads, it ignores a stored blob older than its own version while that copy
+is at the current version. The Engine still sets `globalThis.React` and `globalThis.ReactDOM` for installed bundles
+that use the classic JSX runtime.
 
 ### Capability API 1.7 chat branches
 

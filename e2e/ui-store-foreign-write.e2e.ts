@@ -1,11 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
 import { UI_PERSISTENCE } from "../packages/client/src/lib/ui-persistence.js";
+import {
+  engineStorageWrites,
+  installPackageClient,
+  packageClientPath,
+  preparePackagePage as prepare,
+  recordStorageWrites,
+  waitForPackageClient,
+} from "./host-package-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
-
-const APP_VERSION = (
-  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
-).version;
 
 // Older catalog packages (tic-tac-toe@1.0.5 among them) bundle their own copy of the UI store at version 74. On
 // load it rewrites the shared key with only the settings it knows: everything below disappears from the blob.
@@ -95,62 +98,18 @@ const LOCAL_SETTINGS = { roleplayReducedPaintEffects: true, activeImpersonatePro
 const LEGACY_MARI_CONNECTION_KEY = "marinara:home-professor-mari-connection-id";
 const PACKAGE_ID = "e2e-ui-store-package";
 
-async function prepare(page: Page) {
-  // Keep the proof local: a server copy of the synced settings must not refill what the browser lost.
-  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
-  await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), APP_VERSION);
-}
-
 /** Installs one package whose client module is `body`, and records the stored blob's version as each page starts. */
-async function installPackageClient(page: Page, body: string) {
+async function installUIStorePackage(page: Page, body: string) {
   await page.addInitScript((name) => {
     const versions = JSON.parse(sessionStorage.getItem("e2e:stored-versions") ?? "[]") as unknown[];
     versions.push(JSON.parse(localStorage.getItem(name) ?? "null")?.version ?? null);
     sessionStorage.setItem("e2e:stored-versions", JSON.stringify(versions));
   }, UI_PERSISTENCE.name);
-  const manifest = {
-    schemaVersion: 1,
-    id: PACKAGE_ID,
-    name: "UI Store Fixture",
-    version: "1.0.0",
-    description: "UI store fixture.",
-    engine: { min: "2.3.0", maxExclusive: "4.0.0" },
-    kind: ["agent"],
-    entrypoints: { agents: "agents.json", client: "client.js" },
-    files: [{ path: "client.js", sha256: "0".repeat(64), bytes: 1 }],
-    permissions: ["ui"],
-    restartRequired: false,
-  };
-  await page.route("**/api/capability-packages/installed", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: PACKAGE_ID,
-          version: manifest.version,
-          manifest,
-          installedAt: "2026-10-01T00:00:00.000Z",
-          status: "active",
-          error: null,
-          readiness: "ready",
-          readinessError: null,
-          legacy: false,
-        },
-      ],
-    }),
-  );
-  await page.route(`**/api/capability-packages/${PACKAGE_ID}/client?*`, (route) =>
-    route.fulfill({
-      contentType: "text/javascript",
-      body: `${body}
-customElements.get("marinara-capability-${PACKAGE_ID}") ||
-  customElements.define("marinara-capability-${PACKAGE_ID}", class extends HTMLElement {});
-globalThis.__e2ePackageLoads = (globalThis.__e2ePackageLoads ?? 0) + 1;`,
-    }),
-  );
+  await installPackageClient(page, PACKAGE_ID, body);
 }
 
 /**
- * A client built before the host bridge: its bundled v74 store reads the key once, keeps only the settings it knows
+ * A client built before the host namespace: its bundled v74 store reads the key once, keeps only the settings it knows
  * and saves them at v74 (again as the page goes away, after the Engine's own last save).
  */
 function oldPackageClient() {
@@ -185,12 +144,6 @@ function storedVersionsAtStart(page: Page) {
   return page.evaluate(() => JSON.parse(sessionStorage.getItem("e2e:stored-versions") ?? "[]") as unknown[]);
 }
 
-async function waitForPackageClient(page: Page) {
-  await expect
-    .poll(() => page.evaluate(() => (globalThis as { __e2ePackageLoads?: number }).__e2ePackageLoads))
-    .toBe(1);
-}
-
 function pick(state: Record<string, unknown>, keys: readonly string[]) {
   return Object.fromEntries(keys.map((key) => [key, state[key]]));
 }
@@ -200,31 +153,37 @@ test.describe("UI settings and an old package's copy of the UI store", () => {
     test.skip(!testInfo.project.name.includes("desktop"), "One browser proves the shared browser-storage path.");
   });
 
-  test("package clients load after the host UI store bridge and change the live store", async ({ page }) => {
+  test("a package client changes the Engine's live UI store and writes no Engine key itself", async ({ page }) => {
     await prepare(page);
     await seedUIState(page, { hasCompletedOnboarding: true }, "if-missing");
-    await installPackageClient(
+    await recordStorageWrites(page);
+    await installUIStorePackage(
       page,
-      `const bridge = globalThis.__MARINARA_HOST_UI_STORE__;
-globalThis.__e2eBridgeAtImport = bridge ? { version: bridge.version, store: bridge.store } : null;
-bridge?.store.getState().setRoleplayReducedPaintEffects(true);`,
+      `const ui = globalThis.__MARINARA_HOST__?.stores.ui;
+globalThis.__e2eUIStoreAtImport = ui ?? null;
+ui?.getState().setRoleplayReducedPaintEffects(true);`,
     );
     await page.goto("/");
     await waitForPackageClient(page);
     expect(
       await page.evaluate(async () => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-        const seen = (globalThis as { __e2eBridgeAtImport?: { version: number; store: unknown } | null })
-          .__e2eBridgeAtImport;
         return {
-          version: seen?.version,
-          liveStore: seen?.store === useUIStore,
+          liveStore: (globalThis as { __e2eUIStoreAtImport?: unknown }).__e2eUIStoreAtImport === useUIStore,
           changed: useUIStore.getState().roleplayReducedPaintEffects,
         };
       }),
-    ).toEqual({ version: 1, liveStore: true, changed: true });
+    ).toEqual({ liveStore: true, changed: true });
     // The package changed the Engine's own settings, so the Engine saves them.
     await expect.poll(async () => (await readStored(page))?.state.roleplayReducedPaintEffects).toBe(true);
+    const writes = await engineStorageWrites(page);
+    expect(
+      writes.some((write) => write.key === UI_PERSISTENCE.name && write.caller.includes("/src/stores/ui.store.ts")),
+      "the Engine's store saved the package's change",
+    ).toBe(true);
+    // No write to marinara-engine-ui, marinara-active-chat-id, marinara-input-drafts or another Engine key came from
+    // the package's own code.
+    expect(writes.filter((write) => write.caller.includes(packageClientPath(PACKAGE_ID)))).toEqual([]);
   });
 
   test("settings survive an old package client saving its v74 copy over them", async ({ page }) => {
@@ -233,9 +192,16 @@ bridge?.store.getState().setRoleplayReducedPaintEffects(true);`,
     // the user's saved sheet size and cleared connection must win instead.
     await seedUIState(page, { hasCompletedOnboarding: true, imageBackgroundWidth: 1536 }, "if-missing");
     await page.addInitScript((key) => localStorage.setItem(key, "e2e-legacy-mari"), LEGACY_MARI_CONNECTION_KEY);
-    await installPackageClient(page, oldPackageClient());
+    await recordStorageWrites(page);
+    await installUIStorePackage(page, oldPackageClient());
     await page.goto("/");
     await waitForPackageClient(page);
+    // The write check in the test above sees an old client write the Engine's key itself.
+    expect(
+      (await engineStorageWrites(page))
+        .filter((write) => write.caller.includes(packageClientPath(PACKAGE_ID)))
+        .map((write) => write.key),
+    ).toEqual([UI_PERSISTENCE.name]);
     // The package saved its copy when it loaded; the user's changes come after it.
     await page.evaluate(async (settings) => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);

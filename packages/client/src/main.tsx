@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { App, AppRecoveryBoundary } from "./App";
 import { startKeepAlive } from "./lib/keep-alive";
 import { installCsrfFetchShim } from "./lib/csrf-fetch";
@@ -10,6 +10,7 @@ import { initializeLocalization } from "./localization/i18n";
 import { LocalizationProvider } from "./localization/LocalizationProvider";
 import { shownMariAppearancePack, useUIStore } from "./stores/ui.store";
 import { mariAssetUrls } from "./lib/mari-work-animations";
+import { queryClient } from "./lib/query-client";
 import { APP_VERSION } from "@marinara-engine/shared";
 import { formatRuntimeBuild } from "./lib/runtime-build";
 import { recordClientReload, registerClientRuntimeDiagnostics } from "./lib/client-runtime-diagnostics";
@@ -20,9 +21,6 @@ import "./styles/globals.css";
 // React from the global scope, so expose the host runtime before any package
 // client is imported.
 Object.assign(globalThis, { React, ReactDOM });
-// One UI settings store, owned by the Engine: package clients read and change this live store instead of bundling
-// their own copy (docs/development/optional-agent-packages.md, "Host UI settings store").
-Object.assign(globalThis, { __MARINARA_HOST_UI_STORE__: { version: 1, store: useUIStore } });
 
 registerClientRuntimeDiagnostics(formatRuntimeBuild(APP_VERSION, __MARINARA_BUILD_COMMIT__));
 // Prevent Chrome/Edge from sleeping this tab
@@ -39,16 +37,6 @@ const firstPaintMariImages = mariAssetUrls(shownMariAppearancePack(useUIStore.ge
   Object.assign(new Image(), { fetchPriority: "high", src: url }),
 );
 Object.assign(globalThis, { __marinaraFirstPaintMari: firstPaintMariImages });
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 function scheduleAfterFirstLoad(callback: () => void) {
   const schedule = () => {

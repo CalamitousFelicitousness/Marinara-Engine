@@ -128,11 +128,14 @@ function videoPromptWords(prompt: string): string {
   let text = prompt;
   try {
     const parsed = JSON.parse(prompt) as unknown;
-    if (parsed && typeof parsed === "object") {
-      text = Object.values(parsed)
-        .filter((value): value is string => typeof value === "string")
-        .join(" ");
-    }
+    // Every string in it, nested ones too ({"shots":[{"description":"…"}]}).
+    const strings = (value: unknown): string[] =>
+      typeof value === "string"
+        ? [value]
+        : value && typeof value === "object"
+          ? Object.values(value).flatMap(strings)
+          : [];
+    if (parsed && typeof parsed === "object") text = strings(parsed).join(" ");
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }

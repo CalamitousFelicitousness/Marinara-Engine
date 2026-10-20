@@ -470,6 +470,16 @@ try {
     ]),
     "\n[Ana sent a video message: Ana waves.]",
   );
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: '{"shots":[{"description":"Ana waves."},{"description":"She laughs."}]}',
+      },
+    ]),
+    "\n[Ana sent a video message: Ana waves. She laughs.]",
+  );
   // Generation and Peek Prompt add the same notes to an assistant message, so the preview shows what the model reads.
   assert.equal(
     appendSentMediaNotes("", [{ type: "video", characterName: "Aster", prompt: VIDEO_PROMPT }]),

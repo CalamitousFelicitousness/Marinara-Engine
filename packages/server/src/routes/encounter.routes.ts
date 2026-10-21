@@ -987,10 +987,12 @@ export async function encounterRoutes(app: FastifyInstance) {
         gameTtsEmotionIndicatorsEnabled(await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY)),
       );
       // A fight the story set (Capability API 1.343): its opponents are the story's, never the model's.
+      // Creatures the ruleset doesn't have are refused (and logged); with none left, the fight is the model's.
       const storyFight = await latestStoryFight(app.db, chatId, chatMeta);
-      const storyOpponents = storyFight
+      const storyRoster = storyFight
         ? await storyFightOpponents(storyFight, fightRuleset?.definition.combat ? fightRuleset : null)
         : null;
+      const storyOpponents = storyRoster?.opponents.length ? storyRoster.opponents : null;
       if (storyFight && storyOpponents) {
         prompt.push({ role: "user", content: storyFightPromptText(storyFight, storyOpponents) });
       }

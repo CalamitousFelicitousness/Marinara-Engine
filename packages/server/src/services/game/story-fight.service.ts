@@ -34,11 +34,15 @@ export async function latestStoryFight(
   }
 }
 
-/** The fight's opponents, each by the bestiary's own name for it when the ruleset has the id. */
+/**
+ * The fight's opponents, each by the bestiary's own name for it when the ruleset has the id. An id it
+ * doesn't have (or any id, in a game without a ruleset's combat) is refused and logged, never fought as a
+ * made-up creature.
+ */
 export async function storyFightOpponents(
   fight: StoryFight,
   ruleset: { definition: RulesetDefinition; packageId: string | null } | null,
-): Promise<Array<{ name: string; creature: string }>> {
+): Promise<{ opponents: Array<{ name: string; creature: string }>; refused: string[] }> {
   const labels = new Map<string, string>();
   if (ruleset) {
     const refs = new Set(fight.creatures.map((each) => each.creature).filter(storyIsRef));
@@ -50,20 +54,23 @@ export async function storyFightOpponents(
       const entry = read?.ok ? read.entries.find((each) => each.id === entryId) : undefined;
       if (entry) labels.set(ref, entry.label);
     }
-    for (const ref of refs) {
-      if (!labels.has(ref)) {
-        logger.warn("Story fight %s names creature %s, which the game's ruleset doesn't have", fight.id, ref);
-      }
-    }
   }
-  return storyFightRoster(fight, (ref) => labels.get(ref));
+  const roster = storyFightRoster(fight, (ref) => labels.get(ref));
+  if (roster.refused.length) {
+    logger.warn(
+      "Story fight %s names creatures the game's ruleset doesn't have, left out of the fight: %s",
+      fight.id,
+      roster.refused.join(", "),
+    );
+  }
+  return roster;
 }
 
 /** The prompt line that tells the blueprint writer who this fight is with. */
 export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<{ name: string; creature: string }>) {
   return [
     `This fight is set by the story: "${fight.name}".${fight.note ? ` ${fight.note}` : ""}`,
-    `Its enemies are exactly these, in this order, with these names${opponents.length ? "" : " (none)"}:`,
+    `Its enemies are exactly these, in this order, with these names:`,
     ...opponents.map((each) => `- ${each.name} (creature: ${each.creature})`),
     "Write no other enemies.",
   ].join("\n");

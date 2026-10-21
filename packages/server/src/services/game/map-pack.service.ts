@@ -31,8 +31,9 @@ import { logger } from "../../lib/logger.js";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
 import { cleanImageTilePack } from "./tile-pack-images.service.js";
 
-// The Capability API minors a map pack and an image tile pack need (1.72, 1.80): the reader enforces
-// them, and the authoring check reports them, from the same numbers.
+// The Capability API minors a map pack and an image tile pack need (1.72, 1.80). The manifest schema
+// refuses a map pack below 1.72, this reader refuses image tiles below 1.80, and the authoring check
+// reports both from these numbers.
 const MAP_PACK_MINOR = 72;
 const IMAGE_TILES_MINOR = 80;
 /** Map pack tiles already checked, by package, version and the tiles file's hash; the oldest go first. */

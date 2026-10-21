@@ -211,19 +211,33 @@ const r3 = reply(third);
 const fight = storyFightIn(story, r3);
 assert.equal(fight?.id, "granary");
 assert.equal(storyFightIn(story, r2), null);
-const roster = storyFightRoster(fight!, (ref) => (ref === "creatures/scarecrow" ? "Scarecrow" : undefined));
+const { opponents: roster, refused } = storyFightRoster(fight!, (ref) =>
+  ref === "creatures/scarecrow" ? "Scarecrow" : undefined,
+);
 assert.deepEqual(roster, [
   { name: "Scarecrow 1", creature: "Scarecrow" },
   { name: "Scarecrow 2", creature: "Scarecrow" },
   { name: "The Owed", creature: "The Owed" },
 ]);
-// A creature id the bestiary doesn't have is named from its entry id, never shown as the raw reference.
-assert.deepEqual(
-  storyFightRoster({ ...fight!, creatures: [{ creature: "creatures/hollow-scarecrow", count: 1 }] }).map(
-    (each) => each.name,
-  ),
-  ["Hollow scarecrow"],
+assert.deepEqual(refused, []);
+// A creature id the bestiary doesn't have is refused and listed, never fought as a made-up creature.
+const missing = storyFightRoster(
+  {
+    ...fight!,
+    creatures: [
+      { creature: "monsters/goblin", count: 2 },
+      { creature: "creatures/scarecrow", count: 1 },
+    ],
+  },
+  (ref) => (ref === "creatures/scarecrow" ? "Scarecrow" : undefined),
 );
+assert.deepEqual(missing.opponents, [{ name: "Scarecrow", creature: "Scarecrow" }]);
+assert.deepEqual(missing.refused, ["monsters/goblin"]);
+// Without a ruleset to read ids, every id is refused.
+assert.deepEqual(storyFightRoster({ ...fight!, creatures: [{ creature: "monsters/goblin", count: 1 }] }), {
+  opponents: [],
+  refused: ["monsters/goblin"],
+});
 // The blueprint keeps the model's own enemy where it wrote one, copies one where it did not, and never
 // keeps an enemy the story did not ask for or a stat block the model proposed instead.
 const enemies = storyFightBlueprintEnemies(

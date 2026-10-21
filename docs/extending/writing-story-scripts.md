@@ -230,7 +230,9 @@ A fight the story sets: who is fought, and where when the world has a board pain
 Each creature is a bestiary creature of the game's ruleset, by its id (`catalog/entry`) or its name, and
 `count` of them (numbered when there are several), called `name` in the fight when given. `battlefield`
 is a board painted by hand in the world (`b<n>`), fought on wherever the fight starts; without one the
-fight is fought where it starts, as any other. `note` tells the Game Master how it comes about.
+fight is fought where it starts, as any other. `note` tells the Game Master how it comes about. An id the
+game's ruleset does not have is refused: those creatures are left out of the fight and the refusal is
+logged, and a fight left with none is the Game Master's own.
 
 ### Endings
 

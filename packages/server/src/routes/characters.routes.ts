@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   canonicalizeLegacyPersonaInput,
+  normalizeCardFieldAlternatives,
   unassignCardFieldAlternatives,
   createCharacterSchema,
   updateCharacterSchema,
@@ -748,7 +749,9 @@ async function buildNativeCharacterExport(
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
   const portableExtensions: Record<string, unknown> = {
     ...extensions,
-    cardFieldAlternatives: unassignCardFieldAlternatives(extensions.cardFieldAlternatives),
+    cardFieldAlternatives: unassignCardFieldAlternatives(
+      normalizeCardFieldAlternatives(extensions.cardFieldAlternatives),
+    ),
   };
   delete portableExtensions.characterSheetImageId;
   const portableData = { ...data, extensions: portableExtensions };
@@ -791,7 +794,9 @@ export function buildCompatibleCharacterExport(
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
-  extensions.cardFieldAlternatives = unassignCardFieldAlternatives(extensions.cardFieldAlternatives);
+  extensions.cardFieldAlternatives = unassignCardFieldAlternatives(
+    normalizeCardFieldAlternatives(extensions.cardFieldAlternatives),
+  );
   delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [

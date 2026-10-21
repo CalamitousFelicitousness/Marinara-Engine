@@ -251,7 +251,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
               type="button"
               onClick={onRemove}
               disabled={removing}
-              className="mari-editor-action mari-editor-action--compact mari-editor-action--primary inline-flex whitespace-nowrap gap-1 rounded-lg px-2 py-1 text-[0.625rem]"
+              className="mari-editor-action mari-editor-action--compact mari-editor-action--accent inline-flex whitespace-nowrap gap-1 rounded-lg px-2 py-1 text-[0.625rem]"
               title={localizeUi("ui.ui.avatarcropwidget.removeAvatar")}
             >
               {removing

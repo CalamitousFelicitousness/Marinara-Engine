@@ -17,6 +17,10 @@ import {
 import { newId, now } from "../../utils/id-generator.js";
 import {
   PROFESSOR_MARI_ID,
+  applyCharacterCardFieldAlternatives,
+  applyPersonaCardFieldAlternatives,
+  cardEntityBelongsToChat,
+  unassignCardFieldAlternatives,
   characterBookSchema,
   characterExtensionsSchema,
   type CharacterData,
@@ -165,6 +169,7 @@ export type PersonaStorageWriteFields = Pick<
   | "versioningEnabled"
   | "creatorNotes"
   | "phoneticName"
+  | "cardFieldAlternatives"
   | "summary"
   | "mes_example"
   | "description"
@@ -294,6 +299,7 @@ function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
     versioningEnabled: persona.versioningEnabled === "false" ? "false" : "true",
     creatorNotes: persona.creatorNotes ?? "",
     phoneticName: persona.phoneticName ?? "",
+    cardFieldAlternatives: persona.cardFieldAlternatives ?? "[]",
     summary: persona.summary ?? "",
     mes_example: persona.mes_example ?? "",
     description: persona.description ?? "",
@@ -339,6 +345,7 @@ function normalizePersonaSnapshot(data: PersonaCardSnapshot): PersonaCardSnapsho
     versioningEnabled: data.versioningEnabled === "false" ? "false" : "true",
     creatorNotes: data.creatorNotes ?? "",
     phoneticName: data.phoneticName ?? "",
+    cardFieldAlternatives: data.cardFieldAlternatives ?? "[]",
     summary: data.summary ?? "",
     mes_example: data.mes_example ?? "",
     description: data.description ?? "",
@@ -405,7 +412,19 @@ async function insertPersonaVersionSnapshot(
 }
 
 export function createCharactersStorage(db: DB) {
+  async function eligibleChat(chatId: string | undefined, kind: "character" | "persona", entityId: string) {
+    if (!chatId) return undefined;
+    const rows = await db.select().from(chats).where(eq(chats.id, chatId));
+    return rows[0] && cardEntityBelongsToChat(rows[0], kind, entityId) ? chatId : undefined;
+  }
   return {
+    async listCardFieldChats(kind: "character" | "persona", entityId: string) {
+      const rows = await db.select().from(chats);
+      return rows
+        .filter((chat) => cardEntityBelongsToChat(chat, kind, entityId))
+        .map(({ id, name }) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    },
     // ── Characters ──
 
     async list() {
@@ -482,9 +501,19 @@ export function createCharactersStorage(db: DB) {
       });
     },
 
-    async getById(id: string) {
+    async getById(id: string, chatId?: string) {
       const rows = await db.select().from(characters).where(eq(characters.id, id));
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row || !chatId) return row ?? null;
+      const scope = await eligibleChat(chatId, "character", id);
+      if (!scope) return row;
+      try {
+        const data = parseCharacterData(row.data);
+        const projected = applyCharacterCardFieldAlternatives(data, scope);
+        return projected === data ? row : { ...row, data: JSON.stringify(projected) };
+      } catch {
+        return row;
+      }
     },
 
     async listVersions(characterId: string) {
@@ -867,6 +896,7 @@ export function createCharactersStorage(db: DB) {
           sourceData.extensions && typeof sourceData.extensions === "object" && !Array.isArray(sourceData.extensions)
             ? { ...(sourceData.extensions as Record<string, unknown>) }
             : {};
+        sourceExtensions.cardFieldAlternatives = unassignCardFieldAlternatives(sourceExtensions.cardFieldAlternatives);
         delete sourceExtensions.characterSheetImageId;
         sourceExtensions.useCharacterSheetAsReference = false;
         sourceData.extensions = sourceExtensions;
@@ -885,8 +915,12 @@ export function createCharactersStorage(db: DB) {
 
     // ── Personas ──
 
-    async listPersonas() {
-      return db.select().from(personas).orderBy(desc(personas.updatedAt));
+    async listPersonas(chatId?: string) {
+      const rows = await db.select().from(personas).orderBy(desc(personas.updatedAt));
+      if (!chatId) return rows;
+      return Promise.all(
+        rows.map(async (row) => applyPersonaCardFieldAlternatives(row, await eligibleChat(chatId, "persona", row.id))),
+      );
     },
 
     async listPersonasPage(options: PersonaListPageOptions) {
@@ -923,9 +957,10 @@ export function createCharactersStorage(db: DB) {
       return toPaginatedList(rows, options.limit, options.offset);
     },
 
-    async getPersona(id: string) {
+    async getPersona(id: string, chatId?: string) {
       const rows = await db.select().from(personas).where(eq(personas.id, id));
-      return rows[0] ?? null;
+      const row = rows[0];
+      return row ? applyPersonaCardFieldAlternatives(row, await eligibleChat(chatId, "persona", id)) : null;
     },
 
     async listPersonaVersions(personaId: string) {
@@ -1011,6 +1046,7 @@ export function createCharactersStorage(db: DB) {
         creatorNotes: extra?.creatorNotes ?? "",
         phoneticName: extra?.phoneticName ?? "",
         description,
+        cardFieldAlternatives: extra?.cardFieldAlternatives ?? "[]",
         summary: extra?.summary ?? "",
         mes_example: extra?.mes_example ?? "",
         personality: extra?.personality ?? "",
@@ -1075,6 +1111,7 @@ export function createCharactersStorage(db: DB) {
           versioningEnabled: source.versioningEnabled === "false" ? "false" : "true",
           creatorNotes: source.creatorNotes ?? "",
           phoneticName: source.phoneticName ?? "",
+          cardFieldAlternatives: JSON.stringify(unassignCardFieldAlternatives(source.cardFieldAlternatives)),
           summary: source.summary ?? "",
           mes_example: source.mes_example ?? "",
           description: source.description ?? "",
@@ -1130,6 +1167,7 @@ export function createCharactersStorage(db: DB) {
       if (updates.versioningEnabled !== undefined) sets.versioningEnabled = updates.versioningEnabled;
       if (updates.creatorNotes !== undefined) sets.creatorNotes = updates.creatorNotes;
       if (updates.phoneticName !== undefined) sets.phoneticName = updates.phoneticName;
+      if (updates.cardFieldAlternatives !== undefined) sets.cardFieldAlternatives = updates.cardFieldAlternatives;
       if (updates.summary !== undefined) sets.summary = updates.summary;
       if (updates.mes_example !== undefined) sets.mes_example = updates.mes_example;
       if (updates.description !== undefined) sets.description = updates.description;
@@ -1167,6 +1205,7 @@ export function createCharactersStorage(db: DB) {
           ...(updates.versioningEnabled !== undefined && { versioningEnabled: updates.versioningEnabled }),
           ...(updates.creatorNotes !== undefined && { creatorNotes: updates.creatorNotes }),
           ...(updates.phoneticName !== undefined && { phoneticName: updates.phoneticName }),
+          ...(updates.cardFieldAlternatives !== undefined && { cardFieldAlternatives: updates.cardFieldAlternatives }),
           ...(updates.summary !== undefined && { summary: updates.summary }),
           ...(updates.mes_example !== undefined && { mes_example: updates.mes_example }),
           ...(updates.description !== undefined && { description: updates.description }),
@@ -1265,6 +1304,7 @@ export function createCharactersStorage(db: DB) {
             versioningEnabled: data.versioningEnabled,
             creatorNotes: data.creatorNotes,
             phoneticName: data.phoneticName ?? "",
+            cardFieldAlternatives: data.cardFieldAlternatives ?? "[]",
             summary: data.summary ?? "",
             mes_example: data.mes_example ?? "",
             description: data.description,

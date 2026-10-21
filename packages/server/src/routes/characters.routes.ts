@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   canonicalizeLegacyPersonaInput,
+  unassignCardFieldAlternatives,
   createCharacterSchema,
   updateCharacterSchema,
   createGroupSchema,
@@ -744,7 +745,10 @@ async function buildNativeCharacterExport(
   const extensions = parseCharacterDataRecord(data?.extensions);
   const characterSheetImageId =
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-  const portableExtensions = { ...extensions };
+  const portableExtensions = {
+    ...extensions,
+    cardFieldAlternatives: unassignCardFieldAlternatives(extensions.cardFieldAlternatives),
+  };
   delete portableExtensions.characterSheetImageId;
   const portableData = { ...data, extensions: portableExtensions };
   const gallery = await galleryStorage.listByCharacterId(char.id);
@@ -786,6 +790,7 @@ export function buildCompatibleCharacterExport(
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
+  extensions.cardFieldAlternatives = unassignCardFieldAlternatives(extensions.cardFieldAlternatives);
   delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [
@@ -892,7 +897,10 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
     updatedAt: _updatedAt,
     ...projectedFields
   } = projected;
-  const validationFields: Record<string, unknown> = { ...projectedFields };
+  const validationFields: Record<string, unknown> = {
+    ...projectedFields,
+    cardFieldAlternatives: unassignCardFieldAlternatives(projectedFields.cardFieldAlternatives),
+  };
   const usesFallbackName = typeof validationFields.name !== "string" || !validationFields.name.trim();
 
   if (usesFallbackName) validationFields.name = "Unnamed Persona";
@@ -1510,6 +1518,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     const reset = await enqueueUpdate(characterUpdateQueues, req.params.id, () => storage.resetVersions(req.params.id));
     if (!reset) return reply.status(404).send({ error: "Character not found" });
     return reset;
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Character not found" });
+    return storage.listCardFieldChats("character", req.params.id);
+  });
+
+  app.get<{ Params: { id: string } }>("/personas/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getPersona(req.params.id))) return reply.status(404).send({ error: "Persona not found" });
+    return storage.listCardFieldChats("persona", req.params.id);
   });
 
   app.post("/", async (req) => {

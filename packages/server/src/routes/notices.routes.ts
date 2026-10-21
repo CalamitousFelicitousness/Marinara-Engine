@@ -112,10 +112,10 @@ export function parseMarinaraNotices(raw: unknown, version: string, now = Date.n
   return notices;
 }
 
-/** Local machine, trusted Tailscale/Docker peer, admin secret, or signed in with Basic Auth. */
+/** Local machine, IP_ALLOWLIST or trusted Tailscale/Docker peer, admin secret, or signed in with Basic Auth. */
 export function isNoticeOwner(request: FastifyRequest) {
   const access = getRequestAccess(request);
-  if (access.local || access.trustedInterface || isAdminAuthorized(request)) return true;
+  if (access.trustedPeer || isAdminAuthorized(request)) return true;
   return access.basicAuthConfigured && isBasicAuthSatisfied(request);
 }
 

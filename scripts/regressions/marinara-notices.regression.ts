@@ -8,7 +8,7 @@ import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import { noticesRoutes, parseMarinaraNotices, versionInRange } from "../../packages/server/src/routes/notices.routes.js";
 import { APP_VERSION } from "../../packages/shared/src/constants/defaults.js";
 
-const ENV_KEYS = ["ADMIN_SECRET", "BASIC_AUTH_USER", "BASIC_AUTH_PASS", "MARINARA_NOTICES_ENABLED", "MARINARA_NOTICES_URL"];
+const ENV_KEYS = ["ADMIN_SECRET", "BASIC_AUTH_USER", "BASIC_AUTH_PASS", "MARINARA_NOTICES_ENABLED", "MARINARA_NOTICES_URL", "IP_ALLOWLIST"];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 for (const key of ENV_KEYS) delete process.env[key];
 
@@ -95,6 +95,9 @@ try {
   assert.equal(await get("192.168.1.20"), 0, "an anonymous LAN visitor gets no notice data");
   assert.equal(await get("127.0.0.1", { "x-forwarded-for": "203.0.113.5" }), 0, "a proxied visitor is not the owner");
   assert.equal(await get("203.0.113.5", { "x-admin-secret": "admin-secret" }), 1, "the admin secret proves the owner");
+  process.env.IP_ALLOWLIST = "192.168.1.20";
+  assert.equal(await get("192.168.1.20"), 1, "an IP_ALLOWLIST peer without a password sees the notice");
+  delete process.env.IP_ALLOWLIST;
   process.env.MARINARA_NOTICES_ENABLED = "false";
   assert.equal(await get("127.0.0.1"), 0, "the opt-out hides notices");
   console.info("Marinara notices regressions passed.");

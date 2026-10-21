@@ -317,14 +317,14 @@ How it works:
 
 - At startup and then every hour, the server downloads one small file, `notices.json`, from the `notices` branch of the Marinara Engine repository on GitHub.
 - The server keeps only the notices that name your version. Your browser asks your own server for them once when the page loads and then every hour.
-- If the download fails, nothing shows and startup is not delayed.
+- If a download fails, the server keeps the notices it already has and startup is not delayed. If the file is gone, no notices show.
 
 Why it is safe:
 
 - The request is a normal file download. It sends no data about you, your chats, or your settings.
 - The `notices` branch is protected. Only maintainers can change it, and each change needs a review.
 - The file is checked strictly. A notice is plain text only, with a size limit. Links are kept only when they point to `https://github.com/Pasta-Devs/`.
-- Only you see notices: on the computer that runs Marinara, or after you sign in with your login. Other visitors get an empty list.
+- Only you see notices: on the computer that runs Marinara, from an address in `IP_ALLOWLIST`, or after you sign in with your login. Other visitors get an empty list.
 - A notice cannot install, run, or change anything. It only shows text.
 
 To turn notices off, set `MARINARA_NOTICES_ENABLED=false`. **Warning:** then Marinara cannot tell you about security fixes or required steps for your version. Watch the [GitHub releases](https://github.com/Pasta-Devs/Marinara-Engine/releases) yourself. Forks can point `MARINARA_NOTICES_URL` at their own file.

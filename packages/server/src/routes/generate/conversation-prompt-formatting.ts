@@ -128,12 +128,15 @@ function videoPromptWords(prompt: string): string {
   let text = prompt;
   try {
     const parsed = JSON.parse(prompt) as unknown;
-    // Every string in it, nested ones too ({"shots":[{"description":"…"}]}).
+    // Every string in it, nested ones too ({"shots":[{"description":"…"}]}), and JSON kept inside a string. A negative
+    // prompt lists what the clip must not show, so it is left out.
     const strings = (value: unknown): string[] =>
       typeof value === "string"
-        ? [value]
+        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : value]
         : value && typeof value === "object"
-          ? Object.values(value).flatMap(strings)
+          ? Object.entries(value)
+              .filter(([key]) => !/negative/iu.test(key))
+              .flatMap(([, item]) => strings(item))
           : [];
     if (parsed && typeof parsed === "object") text = strings(parsed).join(" ");
   } catch {

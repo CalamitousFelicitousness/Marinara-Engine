@@ -480,6 +480,20 @@ try {
     ]),
     "\n[Ana sent a video message: Ana waves. She laughs.]",
   );
+  // A negative prompt is what the clip must not show, and JSON kept inside a string is read as JSON too.
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: JSON.stringify({
+          prompt: JSON.stringify({ shots: [{ description: "Ana waves." }] }),
+          negative_prompt: "blurry, extra fingers",
+        }),
+      },
+    ]),
+    "\n[Ana sent a video message: Ana waves.]",
+  );
   // Generation and Peek Prompt add the same notes to an assistant message, so the preview shows what the model reads.
   assert.equal(
     appendSentMediaNotes("", [{ type: "video", characterName: "Aster", prompt: VIDEO_PROMPT }]),

@@ -46,7 +46,7 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
     >
       <div className="flex flex-col gap-3 text-xs">
         {open ? (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/15 p-3">
             <p className="font-semibold text-[var(--foreground)]">{t("settings.accessStatus.peersIntro")}</p>
             <ul className="mt-1 flex list-disc flex-col gap-1 pl-4 text-[var(--foreground)]">
               {peers.map((peer) => (
@@ -68,6 +68,7 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
         ) : (
           <p className="text-[var(--muted-foreground)]">{t("settings.accessStatus.closed")}</p>
         )}
+        {data.allowlist && <p className="text-[var(--muted-foreground)]">{t("settings.accessStatus.allowlistNote")}</p>}
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
           {rows.map(([key, value]) => (
             <Fragment key={key}>

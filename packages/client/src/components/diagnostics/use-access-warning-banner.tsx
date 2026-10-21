@@ -38,18 +38,17 @@ export const visiblePasswordlessPeers = (peers: PasswordlessPeer[]): Passwordles
 export function useAccessWarningBanner(): AppBannerCandidate | null {
   const { t, i18n } = useTranslation();
   const { data } = useAccessStatus();
-  const peers = data?.passwordlessPeers ?? [];
+  const peers = visiblePasswordlessPeers(data?.passwordlessPeers ?? []);
   if (peers.length === 0) return null;
 
   return {
     // A new kind of open door brings the banner back after a dismissal.
     id: `access-open:${peers.join(",")}`,
-    severity: "warning",
+    // Critical comes back next session; an internet-wide door should not stay dismissed.
+    severity: peers.includes("internet") ? "critical" : "warning",
     title: t("ui.diagnostics.accessWarningBanner.title"),
     body: t("ui.diagnostics.accessWarningBanner.who", {
-      list: new Intl.ListFormat(i18n.language).format(
-        visiblePasswordlessPeers(peers).map((peer) => t(`settings.accessStatus.peer.${peer}`)),
-      ),
+      list: new Intl.ListFormat(i18n.language).format(peers.map((peer) => t(`settings.accessStatus.peer.${peer}`))),
     }),
     actions: (
       <button

@@ -2,9 +2,9 @@
 // owner gets configuration facts without secret values, and the "who gets in without a
 // password" list follows the same policy the hooks enforce.
 import assert from "node:assert/strict";
-import { networkInterfaces } from "node:os";
+import type { NetworkInterfaceInfo } from "node:os";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
-import { isTailscaleIp } from "../../packages/server/src/middleware/ip-allowlist.js";
+import { getPasswordlessPeers } from "../../packages/server/src/middleware/ip-allowlist.js";
 import { accessStatusRoutes } from "../../packages/server/src/routes/access-status.routes.js";
 
 const ENV_KEYS = [
@@ -24,20 +24,30 @@ const ENV_KEYS = [
   "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
 ] as const;
+type Env = Partial<Record<(typeof ENV_KEYS)[number], string>>;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
-// Direct Tailscale peers are trusted automatically when this machine has a tailnet address.
-const tailscale = Object.values(networkInterfaces()).some((list) => list?.some((a) => isTailscaleIp(a.address)))
-  ? ["tailscale"]
-  : [];
 const SECRETS = { BASIC_AUTH_PASS: "pass-value-must-not-leak", ADMIN_SECRET: "admin-value-must-not-leak" };
+const LOGIN = { BASIC_AUTH_USER: "owner", ...SECRETS };
 
-function setEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
+function setEnv(values: Env) {
   for (const key of ENV_KEYS) delete process.env[key];
   Object.assign(process.env, values);
 }
 
+const tailnetAddress: NetworkInterfaceInfo = {
+  address: "100.101.102.103",
+  netmask: "255.192.0.0",
+  family: "IPv4",
+  mac: "00:00:00:00:00:00",
+  internal: false,
+  cidr: "100.101.102.103/10",
+};
+const NO_TAILNET = {};
+const TAILNET = { tailscale0: [tailnetAddress] };
+
 const app = Fastify();
 await app.register(accessStatusRoutes, { prefix: "/api/access" });
+await app.listen({ host: "127.0.0.1", port: 0 });
 
 const status = (remoteAddress: string, headers: Record<string, string> = {}) =>
   app.inject({
@@ -48,13 +58,14 @@ const status = (remoteAddress: string, headers: Record<string, string> = {}) =>
   });
 
 try {
-  // Owner on loopback: facts only, never the values behind them.
-  setEnv({ BASIC_AUTH_USER: "owner", ...SECRETS, HOST: "0.0.0.0", IP_ALLOWLIST: "192.168.1.0/24" });
+  // Owner on loopback: facts only, never the values behind them. HOST edited after start
+  // does not move the real bind.
+  setEnv({ ...LOGIN, HOST: "0.0.0.0", IP_ALLOWLIST: "192.168.1.0/24" });
   const owner = await status("127.0.0.1");
   assert.equal(owner.statusCode, 200);
   assert.deepEqual(owner.json(), {
-    loopbackOnly: false,
-    host: "0.0.0.0",
+    loopbackOnly: true,
+    host: "127.0.0.1",
     basicAuth: true,
     adminSecret: true,
     allowlist: true,
@@ -82,45 +93,37 @@ try {
   assert.equal(proxied.statusCode, 200);
   assert.deepEqual(proxied.json().passwordlessPeers, ["proxy"]);
   assert.equal(proxied.json().viaProxy, true);
-  assert.equal(proxied.json().loopbackOnly, true);
 
-  // The list follows the enforced policy for a remote device of each kind.
-  const peers = async (env: Parameters<typeof setEnv>[0]) => {
+  // A plain loopback-only native install lets nobody else in, and never lists LAN or internet kinds.
+  const loopbackPeers = async (env: Env) => {
     setEnv(env);
     return (await status("127.0.0.1")).json().passwordlessPeers;
   };
-  const NETWORK = { HOST: "0.0.0.0" } as const;
-  // A plain loopback-only native install lets nobody else in, and never lists LAN or internet kinds.
-  assert.deepEqual(await peers({}), []);
-  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), []);
-  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_REMOTE: "true" }), ["proxy"]);
-  assert.deepEqual(await peers({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
-  assert.deepEqual(await peers({ ...NETWORK }), tailscale);
-  assert.deepEqual(await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), [
-    "privateNetwork",
-    ...tailscale,
-  ]);
-  assert.deepEqual(await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_REMOTE: "true" }), [
-    "internet",
-    "privateNetwork",
-    ...tailscale,
-    "proxy",
-  ]);
-  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_TAILSCALE: "true" }), ["tailscale"]);
-  // A default Docker install: a LAN device names the host by its own address, so gateway trust ends.
-  assert.deepEqual(await peers({ ...NETWORK, MARINARA_DOCKER: "true" }), tailscale);
-  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_DOCKER: "true" }), tailscale);
-  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_DOCKER: "true", REQUIRE_AUTH_FOR_DOCKER_PROXY: "false" }), [
-    ...tailscale,
-    "docker",
-  ]);
+  assert.deepEqual(await loopbackPeers({}), []);
+  assert.deepEqual(await loopbackPeers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), []);
+  assert.deepEqual(await loopbackPeers({ BYPASS_AUTH_TAILSCALE: "true", MARINARA_DOCKER: "true" }), []);
+  assert.deepEqual(await loopbackPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true" }), ["proxy"]);
+  assert.deepEqual(await loopbackPeers({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
+
+  // Bound to every interface: the list follows the enforced policy for a remote device of each kind.
+  const networkPeers = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {
+    setEnv(env);
+    return getPasswordlessPeers("0.0.0.0", interfaces);
+  };
+  assert.deepEqual(networkPeers({}), []);
+  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), ["privateNetwork"]);
+  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true" }), ["internet", "privateNetwork", "proxy"]);
+  // Direct Tailscale peers are trusted automatically once this machine is on a tailnet.
+  assert.deepEqual(networkPeers({}, TAILNET), ["tailscale"]);
+  assert.deepEqual(networkPeers({ BYPASS_AUTH_TAILSCALE: "true" }), ["tailscale"]);
+  assert.deepEqual(networkPeers({ BYPASS_AUTH_TAILSCALE: "false" }, TAILNET), []);
+  // A default Docker install trusts gateway peers until a login or allowlist is set.
+  assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true" }), ["docker"]);
+  assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true", ...LOGIN }), []);
+  assert.deepEqual(networkPeers({ BYPASS_AUTH_DOCKER: "true" }), ["docker"]);
   // A password wins over the unauthenticated opt-ins; an allowlist keeps everyone else out.
-  const login = { BASIC_AUTH_USER: "owner", ...SECRETS };
-  assert.deepEqual(await peers({ ...NETWORK, ...login, ALLOW_UNAUTHENTICATED_REMOTE: "true" }), tailscale);
-  assert.deepEqual(
-    await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }),
-    [],
-  );
+  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", ...LOGIN }), []);
+  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), []);
 } finally {
   await app.close();
   for (const key of ENV_KEYS) {

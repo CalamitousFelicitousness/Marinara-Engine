@@ -19,7 +19,6 @@ import os, { networkInterfaces } from "node:os";
 import {
   getAdminSecret,
   getBasicAuthConfig,
-  getHost,
   getDockerBypassMode,
   getIpAllowlist,
   getTailscaleBypassMode,
@@ -542,11 +541,7 @@ function isHttp10(request: Pick<AccessRequest, "raw">): boolean {
  * headers. Such requests get the checks of a remote client, not loopback trust.
  */
 export function isForwardedLoopbackRequest(request: AccessRequest): boolean {
-  return isForwardedLoopbackPeer(
-    isLoopbackIp(request.ip),
-    hasProxyForwardingHeaders(request) || hasRelayedHost(request) || isHttp10(request),
-    isLoopbackProxyAuthRequired(),
-  );
+  return isForwardedLoopbackPeer(isLoopbackIp(request.ip), isProxiedRequest(request), isLoopbackProxyAuthRequired());
 }
 
 /** True when the request comes from this machine itself rather than through a local proxy. */
@@ -624,40 +619,54 @@ function getAccessConfig(): AccessFacts["config"] {
 
 export type PasswordlessPeer = "internet" | "privateNetwork" | "tailscale" | "docker" | "proxy";
 
-/** True when the server listens on loopback only, so other devices reach it only through a local proxy. */
-export function isLoopbackOnlyBind(): boolean {
-  const host = getHost();
+/** True when a bind address is loopback only, so other devices reach it only through a local proxy. */
+export function isLoopbackBind(host: string): boolean {
   return host === "localhost" || isLoopbackIp(host);
 }
+
+/** A peer with no facts set; each sample below overrides only what makes it that kind of device. */
+const NO_PEER_FACTS: Omit<AccessFacts, "config"> = {
+  loopbackIp: false,
+  forwardingHeaders: false,
+  relayedHost: false,
+  http10: false,
+  allowlisted: false,
+  privateNetworkIp: false,
+  tailscaleIp: false,
+  tailscaleLocalAddress: false,
+  dockerIp: false,
+  dockerRuntimeMatch: false,
+  dockerCompatibilityNetwork: false,
+};
 
 /**
  * Kinds of remote device the current configuration lets in without a password. Asks the same
  * policy the hooks use about one sample device per kind, so the owner summary cannot drift from
- * enforcement. A remote device names this server by a LAN address or hostname, so it looks
- * relayed when it arrives through a local proxy or the Docker gateway. Unset facts read as false.
+ * enforcement. `bindHost` is the address the server actually listens on.
  */
-export function getPasswordlessPeers(): PasswordlessPeer[] {
+export function getPasswordlessPeers(
+  bindHost: string,
+  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+): PasswordlessPeer[] {
   const config = getAccessConfig();
-  const direct = !isLoopbackOnlyBind();
+  const direct = !isLoopbackBind(bindHost);
   const tailscaleHere =
     config.tailscaleMode === "enabled" ||
-    Object.values(networkInterfaces()).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address)));
+    Object.values(interfaces).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address)));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
     ["privateNetwork", { privateNetworkIp: true }, direct],
     ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
-    [
-      "docker",
-      { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime(), relayedHost: true },
-      direct && dockerHere,
-    ],
+    // No relayed Host: the client picks the Host header, and `localhost` passes host validation.
+    ["docker", { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() }, direct && dockerHere],
+    // A remote device behind a local proxy names this server by its own address, so it looks relayed.
     ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, true],
   ];
   return samples
     .filter(([, facts, reachable]) => {
       if (!reachable) return false;
-      const policy = evaluateAccessPolicy({ ...facts, config } as AccessFacts);
+      const policy = evaluateAccessPolicy({ ...NO_PEER_FACTS, ...facts, config });
       return !policy.authRequired && !policy.lockedDown && (!config.ipAllowlistConfigured || policy.ipAllowed);
     })
     .map(([peer]) => peer);

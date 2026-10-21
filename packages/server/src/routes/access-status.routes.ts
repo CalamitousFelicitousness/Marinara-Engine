@@ -7,25 +7,23 @@
 
 import type { FastifyInstance } from "fastify";
 import { getHost, getIpAllowlist } from "../config/runtime-config.js";
-import {
-  getAccessPolicy,
-  getPasswordlessPeers,
-  isLoopbackOnlyBind,
-  isProxiedRequest,
-} from "../middleware/ip-allowlist.js";
+import { getAccessPolicy, getPasswordlessPeers, isLoopbackBind, isProxiedRequest } from "../middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 
 export async function accessStatusRoutes(app: FastifyInstance) {
   app.get("/status", async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Access status" })) return;
     const policy = getAccessPolicy(request);
+    // The address the server really listens on; HOST in .env can change without a restart.
+    const bound = request.server.server.address();
+    const host = bound && typeof bound === "object" ? bound.address : getHost();
     return {
-      loopbackOnly: isLoopbackOnlyBind(),
-      host: getHost(),
+      loopbackOnly: isLoopbackBind(host),
+      host,
       basicAuth: policy.basicAuthConfigured,
       adminSecret: policy.adminSecretConfigured,
       allowlist: getIpAllowlist() !== null,
-      passwordlessPeers: getPasswordlessPeers(),
+      passwordlessPeers: getPasswordlessPeers(host),
       viaProxy: isProxiedRequest(request),
     };
   });

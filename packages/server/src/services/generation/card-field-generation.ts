@@ -67,8 +67,10 @@ export async function generateCardField(args: {
   field: CardFieldKey;
   card: CardFieldDraft;
   debugMode?: boolean;
+  signal?: AbortSignal;
   connection: Extract<ResolvedChatSummaryConnection, { ok: true }>;
 }): Promise<string> {
+  args.signal?.throwIfAborted();
   const messages = buildCardFieldMessages(args.kind, args.field, args.card);
   logDebugOverride(
     args.debugMode === true || isDebugAgentsEnabled(),
@@ -80,10 +82,12 @@ export async function generateCardField(args: {
   );
   const result = await args.connection.provider.chatComplete(messages, {
     model: args.connection.model,
+    signal: args.signal,
     maxTokens: 2048,
     temperature: 0.65,
     enabledParameters: resolveChatSummaryTemperatureOptions(args.connection).enabledParameters,
   });
+  args.signal?.throwIfAborted();
   if (result.finishReason === "length") {
     throw new Error("Card field generation reached the model output limit. Your original field was kept.");
   }

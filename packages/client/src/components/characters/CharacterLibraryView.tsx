@@ -227,7 +227,7 @@ function toPersonaLibraryCard(persona: Persona): LibraryCard {
     tokenEstimate: estimatePersonaTokens(persona),
     favorite: false,
     creatorNotes: getText(persona.creatorNotes),
-    hasExplicitSummary: false,
+    hasExplicitSummary: Boolean(getText(persona.summary)),
     sections: getPersonaSections(persona),
   };
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,11 +37,20 @@ const requests: Array<Record<string, any>> = [];
 let output = "word ".repeat(120).trim();
 let finishReason = "stop";
 let failingModel = "";
+let heldProvider: { started: () => void; closed: () => void } | null = null;
+let heldResponse: ServerResponse | null = null;
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString());
   requests.push(body);
+  if (heldProvider) {
+    const held = heldProvider;
+    heldResponse = response;
+    response.once("close", held.closed);
+    held.started();
+    return;
+  }
   if (body.model === failingModel) {
     response.writeHead(500, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: "fixture unavailable" }));
@@ -279,6 +288,58 @@ try {
     assert.equal(row?.summary, longSummary);
     assert.equal(row?.mes_example, "Saved example");
   }
+  // A real browser connection closing must cancel its held upstream request, for both editors.
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const appAddress = app.server.address();
+  assert.ok(appAddress && typeof appAddress !== "string");
+  const originalError = logger.error;
+  const cancellationErrors: unknown[][] = [];
+  logger.error = ((...args: unknown[]) => {
+    cancellationErrors.push(args);
+  }) as typeof logger.error;
+  try {
+    for (const url of [characterPath, personaPath]) {
+      let started!: () => void;
+      let closed!: () => void;
+      const providerStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const providerClosed = new Promise<void>((resolve) => {
+        closed = resolve;
+      });
+      heldProvider = { started, closed };
+      const controller = new AbortController();
+      const before = requests.length;
+      const pending = fetch(`http://127.0.0.1:${appAddress.port}${url}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ field: "appearance", card }),
+        signal: controller.signal,
+      });
+      const clientAborted = assert.rejects(pending, (error: Error) => error.name === "AbortError");
+      await providerStarted;
+      controller.abort();
+      await clientAborted;
+      await new Promise<void>((resolve, reject) => {
+        const deadline = setTimeout(
+          () => reject(new Error("disconnected editor left its paid provider request running")),
+          3000,
+        );
+        providerClosed.then(() => {
+          clearTimeout(deadline);
+          resolve();
+        });
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(requests.length, before + 1, "cancellation never sends another fallback request");
+      heldProvider = null;
+      heldResponse = null;
+    }
+    assert.equal(cancellationErrors.length, 0, "expected editor cancellation is not recorded as a generation error");
+  } finally {
+    logger.error = originalError;
+  }
+
   const legacy = await characters.createPersona("Legacy", "Legacy description");
   assert.equal(legacy?.summary, "");
   assert.equal(legacy?.mes_example, "");
@@ -286,6 +347,8 @@ try {
     "card-field-generation: all offline route, prompt, connection, boundary, persistence and round-trip checks passed",
   );
 } finally {
+  heldResponse?.destroy();
+  provider.closeAllConnections();
   await app.close();
   await new Promise<void>((resolve) => provider.close(() => resolve()));
   await db._fileStore.close();

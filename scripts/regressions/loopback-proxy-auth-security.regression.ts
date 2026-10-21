@@ -46,11 +46,16 @@ let innerPreviewHeaders: Record<string, unknown> | undefined;
 
 const app = Fastify();
 // The same onRequest order as app.ts.
+// light-my-request always speaks HTTP/1.1; this test-only hook lets a case ask for HTTP/1.0 like nginx's default proxy_pass.
+app.addHook("onRequest", async (request) => {
+  if (request.headers["x-test-http-version"] === "1.0") request.raw.httpVersion = "1.0";
+});
 app.addHook("onRequest", securityHeadersHook);
 app.addHook("onRequest", hostValidationHook);
 app.addHook("onRequest", ipAllowlistHook);
 app.addHook("onRequest", basicAuthHook);
 app.addHook("onRequest", csrfProtectionHook);
+app.get("/api/health", async () => ({ ok: true }));
 app.get("/api/chats", async () => [{ id: "private-chat" }]);
 app.post("/api/chats", async () => ({ created: true }));
 app.post("/api/backup/download", async (request: FastifyRequest, reply: FastifyReply) => {
@@ -152,6 +157,45 @@ try {
     200,
     "a proxied visitor with valid credentials keeps working",
   );
+
+  // Real-world proxies and sockets; every relayed visitor must log in, the local browser must not.
+  const proxyCases: Array<[string, Record<string, string>, string, number]> = [
+    ["plain local browser", { host: "localhost:7860" }, "127.0.0.1", 200],
+    ["local browser over ::1", { host: "[::1]:7860" }, "::1", 200],
+    ["local browser over mapped IPv4", LOCAL_HOST, "::ffff:127.0.0.1", 200],
+    ["nginx default (HTTP/1.0, no headers)", { ...LOCAL_HOST, "x-test-http-version": "1.0" }, "127.0.0.1", 401],
+    ["nginx with X-Forwarded-For", PROXIED, "127.0.0.1", 401],
+    ["nginx over ::1 (HTTP/1.0)", { host: "[::1]:7860", "x-test-http-version": "1.0" }, "::1", 401],
+    [
+      "cloudflared",
+      { host: "chat.example.com", "cf-connecting-ip": "203.0.113.66", "x-forwarded-for": "203.0.113.66" },
+      "127.0.0.1",
+      401,
+    ],
+    [
+      "Tailscale serve/funnel",
+      { host: "box.tail1234.ts.net", "tailscale-user-login": "guest@example.com" },
+      "127.0.0.1",
+      401,
+    ],
+    ["ngrok", { host: "abc-123.ngrok-free.app" }, "127.0.0.1", 401],
+    [
+      "LAN client faking X-Forwarded-For",
+      { host: "192.168.1.20:7860", "x-forwarded-for": "127.0.0.1" },
+      "192.168.1.20",
+      401,
+    ],
+  ];
+  process.env.TRUSTED_HOSTS = "chat.example.com,box.tail1234.ts.net,abc-123.ngrok-free.app";
+  for (const [name, headers, remote, expected] of proxyCases) {
+    assert.equal((await inject("GET", "/api/chats", headers, remote)).statusCode, expected, name);
+  }
+  assert.equal(
+    (await inject("GET", "/api/health", { ...LOCAL_HOST, "x-test-http-version": "1.0" })).statusCode,
+    200,
+    "the health check stays reachable through an HTTP/1.0 proxy",
+  );
+  delete process.env.TRUSTED_HOSTS;
 
   // ── Admin secret and loopback-only routes ──
   assert.equal(

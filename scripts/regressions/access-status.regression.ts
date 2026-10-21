@@ -117,6 +117,9 @@ try {
   assert.deepEqual(networkPeers({}, TAILNET), ["tailscale"]);
   assert.deepEqual(networkPeers({ BYPASS_AUTH_TAILSCALE: "true" }), ["tailscale"]);
   assert.deepEqual(networkPeers({ BYPASS_AUTH_TAILSCALE: "false" }, TAILNET), []);
+  // Bound to one LAN address, the tailnet interface is not listening.
+  setEnv({});
+  assert.deepEqual(getPasswordlessPeers("192.168.1.5", TAILNET), []);
   // A default Docker install trusts gateway peers until a login or allowlist is set.
   assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true" }), ["docker"]);
   assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true", ...LOGIN }), []);

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "../../../lib/api-client";
 import { useUIStore } from "../../../stores/ui.store";
 import { useAccessStatus, visiblePasswordlessPeers } from "../../diagnostics/use-access-warning-banner";
 import { SettingsSection } from "./SettingControls";
@@ -8,11 +9,15 @@ import { SettingsSection } from "./SettingControls";
 /** Settings > Advanced > Access: owner-only summary of who gets in without a password. Others see one line. */
 export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation();
-  const { data, isError } = useAccessStatus();
-  if (isError) {
+  const { data, error } = useAccessStatus();
+  if (error) {
     return (
       <SettingsSection title={t("settings.accessStatus.title")} icon={<Shield size="0.875rem" />} anchorId={anchorId}>
-        <p className="text-xs text-[var(--muted-foreground)]">{t("settings.accessStatus.ownerOnly")}</p>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {error instanceof ApiError && error.status === 403
+            ? t("settings.accessStatus.ownerOnly")
+            : t("settings.accessStatus.loadFailed")}
+        </p>
       </SettingsSection>
     );
   }

@@ -650,9 +650,12 @@ export function getPasswordlessPeers(
 ): PasswordlessPeer[] {
   const config = getAccessConfig();
   const direct = !isLoopbackBind(bindHost);
+  // A tailnet device connects directly only when the bind covers the tailnet address.
+  const tailscaleBind = ["0.0.0.0", "::", ""].includes(bindHost) || isTailscaleIp(bindHost);
   const tailscaleHere =
-    config.tailscaleMode === "enabled" ||
-    Object.values(interfaces).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address)));
+    tailscaleBind &&
+    (config.tailscaleMode === "enabled" ||
+      Object.values(interfaces).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address))));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],

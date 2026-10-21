@@ -4410,6 +4410,7 @@
   "settings.accessStatus.guide": "Open the remote access guide",
   "settings.accessStatus.listen.loopback": "This computer only",
   "settings.accessStatus.listen.network": "Network address {{host}}",
+  "settings.accessStatus.loadFailed": "Access status could not load. Reload the page to try again.",
   "settings.accessStatus.nextStep": "Set a login password. The guide shows how.",
   "settings.accessStatus.notSet": "Not set",
   "settings.accessStatus.ownerOnly": "Only the owner of this computer can see access settings.",

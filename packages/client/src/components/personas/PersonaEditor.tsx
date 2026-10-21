@@ -171,13 +171,13 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 const PERSONA_CARD_SECTIONS = [
-  { id: "persona-card-summary", label: "Summary" },
-  { id: "persona-card-description", label: "Description" },
-  { id: "persona-card-personality", label: "Personality" },
-  { id: "persona-card-backstory", label: "Backstory" },
-  { id: "persona-card-appearance", label: "Appearance" },
-  { id: "persona-card-scenario", label: "Scenario" },
-  { id: "persona-card-dialogue", label: "Example Dialogue" },
+  { id: "persona-card-summary", field: "summary" },
+  { id: "persona-card-description", field: "description" },
+  { id: "persona-card-personality", field: "personality" },
+  { id: "persona-card-backstory", field: "backstory" },
+  { id: "persona-card-appearance", field: "appearance" },
+  { id: "persona-card-scenario", field: "scenario" },
+  { id: "persona-card-dialogue", field: "mes_example" },
 ] as const;
 
 const PERSONA_METADATA_HELP =
@@ -4465,7 +4465,9 @@ function PersonaCardTab({
         subtitle={localizeUi("ui.personas.personacardtab.writeYourCorePersonaCardFieldsInOneFocused")}
         helpText={localizeUi("ui.cardFields.personaCardHelp")}
       />
-      <EditorSectionJumps items={PERSONA_CARD_SECTIONS} />
+      <EditorSectionJumps
+        items={PERSONA_CARD_SECTIONS.map(({ id, field }) => ({ id, label: generation.labels[field] }))}
+      />
       <div className="space-y-10">
         <EditorSectionAnchor id="persona-card-summary">
           <TextareaTab

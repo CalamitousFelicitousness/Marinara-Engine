@@ -52,6 +52,7 @@ class ToAPIsHttpError extends Error {
 
 /** A paid task may exist: callers must not submit an automatic replacement. */
 export class ToAPIsSubmittedTaskError extends Error {
+  readonly retryable = false;
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : "ToAPIs task interrupted", { cause });
     this.name = "ToAPIsSubmittedTaskError";
@@ -295,13 +296,9 @@ export async function generateToAPIsVideo(
   if (request.model !== "seedance-2-mini")
     throw new Error("This ToAPIs adapter currently supports seedance-2-mini only");
   if (!request.prompt.trim()) throw new Error("ToAPIs video prompt is required");
-  if (!Number.isInteger(request.durationSeconds) || request.durationSeconds < 4 || request.durationSeconds > 15)
-    throw new Error("ToAPIs duration must be an integer from 4 to 15 seconds");
-  if (
-    !["480p", "720p", "1080p"].includes(request.resolution || "480p") ||
-    !["16:9", "9:16"].includes(request.aspectRatio)
-  )
-    throw new Error("Unsupported ToAPIs video dimensions");
+  // ponytail: keep the initial acceptance preset; expand after contract and application proof.
+  if (request.durationSeconds !== 4 || (request.resolution || "480p") !== "480p" || request.aspectRatio !== "16:9")
+    throw new Error("This ToAPIs adapter currently supports 4-second, 480p, 16:9 video only");
   if (request.lastFrameImage) throw new Error("Last-frame input is not verified by this ToAPIs adapter");
   const body: Record<string, unknown> = {
     model: request.model,

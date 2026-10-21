@@ -197,6 +197,11 @@ try {
   await check("invalid video inputs fail before upload or POST", async () => {
     for (const patch of [
       { durationSeconds: 3 },
+      { durationSeconds: 5 },
+      { durationSeconds: 15 },
+      { resolution: "720p" },
+      { resolution: "1080p" },
+      { aspectRatio: "9:16" },
       { model: "seedance-2" },
       { lastFrameImage: { base64: png, mimeType: "image/png" } },
       { referenceImage: { base64: "bad-data", mimeType: "image/png" } },
@@ -254,12 +259,12 @@ try {
   await check("ambiguous and completed submissions never activate a paid fallback", async () => {
     for (const failure of ["uncertain", "missing-id", "poll-http", "bad-media", "failed"]) {
       mode = failure;
-      await assert.rejects(image({ fallback: imageFallback }));
-      await assert.rejects(video({ fallback: videoFallback }));
+      await assert.rejects(image({ fallback: imageFallback }), { retryable: false });
+      await assert.rejects(video({ fallback: videoFallback }), { retryable: false });
     }
     assert.equal(submissions().length, 10);
     assert.equal(
-      calls.some((call) => call.url.includes("api.openai.com") || call.url.includes("api.seedance2.ai")),
+      calls.some((call) => ["api.openai.com", "api.seedance2.ai"].includes(new URL(call.url).hostname)),
       false,
     );
   });
@@ -297,10 +302,26 @@ try {
   });
   await check("image deadline never submits a paid fallback", async () => {
     mode = "stall";
-    await assert.rejects(image({ fallback: imageFallback }), /timed out/);
+    await assert.rejects(image({ fallback: imageFallback }), { message: /timed out/, retryable: false });
     assert.equal(submissions().length, 1);
     assert.equal(
-      calls.some((call) => call.url.includes("api.openai.com")),
+      calls.some((call) => new URL(call.url).hostname === "api.openai.com"),
+      false,
+    );
+  });
+  await check("default compatible image deadline is nonretryable too", async () => {
+    mode = "stall";
+    await assert.rejects(
+      generateImage("custom", "https://toapis.com/v1", "fixture-key", "custom", {
+        model: "gpt-image-2",
+        prompt: "library",
+        fallback: imageFallback,
+      }),
+      { message: /timed out/, retryable: false },
+    );
+    assert.equal(submissions().length, 1);
+    assert.equal(
+      calls.some((call) => new URL(call.url).hostname === "api.openai.com"),
       false,
     );
   });
@@ -364,14 +385,28 @@ try {
             model: kind === "image" ? "gpt-image-2" : "seedance-2-mini",
             ...(kind === "image"
               ? { imageService: "openai", imageGenerationSource: "openai", defaultForAgents: true }
-              : { videoService: "seedance", videoGenerationSource: "seedance", defaultForAgents: true }),
+              : {
+                  videoService: "seedance",
+                  videoGenerationSource: "seedance",
+                  defaultForAgents: true,
+                }),
           },
         });
         assert.equal(saved.statusCode, 200, saved.body);
         const id = saved.json().id;
         assert.ok(id);
         if (kind === "image") imageId = id;
-        else videoId = id;
+        else {
+          videoId = id;
+          const defaults = await app.inject({
+            method: "PUT",
+            url: `/api/connections/${id}/default-parameters`,
+            payload: {
+              videoGeneration: { service: "seedance", durationSeconds: 4, aspectRatio: "16:9", resolution: "480p" },
+            },
+          });
+          assert.equal(defaults.statusCode, 200, defaults.body);
+        }
         const loaded = await app.inject(`/api/connections/${id}`);
         assert.equal(loaded.statusCode, 200);
         assert.equal(loaded.json().baseUrl, "https://toapis.com/v1");

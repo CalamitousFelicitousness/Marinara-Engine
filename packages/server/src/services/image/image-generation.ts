@@ -449,12 +449,9 @@ export async function generateImage(
     const fallback = request.fallback;
     if (error instanceof ToAPIsSubmittedTaskError) throw error;
     // The deadline races the worker, so it can arrive before the worker wraps its aborted task.
-    if (
-      error instanceof ImageGenerationDeadlineError &&
-      resolvedSource === "openai" &&
-      isToAPIsMediaUrl(normalizedBaseUrl)
-    )
-      throw error;
+    if (error instanceof ImageGenerationDeadlineError && isToAPIsMediaUrl(normalizedBaseUrl)) {
+      throw new ToAPIsSubmittedTaskError(error);
+    }
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;
     // An edit drawn without its picture is a new picture, so a fallback that drops the picture is not tried.
     if (request.referenceIsCanvas && !imageConnectionTakesReferencePicture(fallback)) {

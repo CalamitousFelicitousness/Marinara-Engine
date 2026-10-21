@@ -93,7 +93,7 @@ export function useCsrfOriginBanner(): AppBannerCandidate | null {
         >
           {copied
             ? localizeUi("ui.diagnostics.csrforiginwarningbanner.copied")
-            : localizeUi("lorebook.editor.batch.copy")}
+            : localizeUi("ui.diagnostics.csrforiginwarningbanner.copy")}
         </button>
       </>
     ),

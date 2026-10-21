@@ -9495,6 +9495,7 @@
   "ui.connections.videogenerationdefaultspanel.videoDefaults": "Video Defaults",
   "ui.diagnostics.csrforiginwarningbanner.addThisLineToYour": ". Add this line to your",
   "ui.diagnostics.csrforiginwarningbanner.autoTrustedWithoutAddingHereLoopback": "Auto-trusted without adding here: loopback (",
+  "ui.diagnostics.csrforiginwarningbanner.copy": "Copy",
   "ui.diagnostics.csrforiginwarningbanner.copied": "Copied ✓",
   "ui.diagnostics.csrforiginwarningbanner.dockerBridge": "), Docker bridge (",
   "ui.diagnostics.csrforiginwarningbanner.lanIps": "), LAN IPs (",

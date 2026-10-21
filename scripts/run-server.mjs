@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
+import { isIP } from "node:net";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findChangedBuildFile } from "../packages/server/scripts/write-build-meta.mjs";
@@ -10,13 +11,21 @@ const browserArgIndex = serverArgs.indexOf("--open-browser");
 let browserUrl = null;
 if (browserArgIndex !== -1) {
   const [, rawUrl] = serverArgs.splice(browserArgIndex, 2);
+  if (!rawUrl || rawUrl.startsWith("--") || serverArgs.includes("--open-browser")) {
+    process.stderr.write("Could not start Marinara Engine: --open-browser requires exactly one URL value.\n");
+    process.exit(1);
+  }
   try {
-    const url = new URL(rawUrl);
-    if (!["http:", "https:"].includes(url.protocol) || serverArgs.includes("--open-browser")) throw new Error();
+    // Launchers append :PORT to HOST. Bracket only a verified raw IPv6 literal,
+    // keeping the existing port, Android entry path and query intact.
+    const ipv6 = /^(https?:\/\/)([\da-f:.]+):(\d+)([/?#].*)?$/iu.exec(rawUrl);
+    const url = new URL(ipv6 && isIP(ipv6[2]) === 6 ? `${ipv6[1]}[${ipv6[2]}]:${ipv6[3]}${ipv6[4] ?? ""}` : rawUrl);
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error();
     browserUrl = url.href;
   } catch {
-    process.stderr.write("Could not start Marinara Engine: --open-browser requires one HTTP or HTTPS URL.\n");
-    process.exit(1);
+    process.stderr.write(
+      "  [WARN] Cannot open the browser automatically: expected a valid HTTP or HTTPS URL. The server will still start.\n",
+    );
   }
 }
 

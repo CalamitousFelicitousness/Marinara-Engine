@@ -59,6 +59,26 @@ for (const theme of ["dark", "light"] as const) {
       const musicPath = editor.getByLabel("Music endpoint path", { exact: true });
       const sfxPath = editor.getByLabel("Sound-effect endpoint path", { exact: true });
       await expect(format).toHaveValue("binary");
+      if (info.project.name.startsWith("mobile-")) {
+        const typography = await Promise.all(
+          [format, musicPath, sfxPath].map((control) =>
+            control.evaluate((element) => ({
+              coarsePointer: matchMedia("(pointer: coarse)").matches,
+              rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+              fontSize: parseFloat(getComputedStyle(element).fontSize),
+            })),
+          ),
+        );
+        for (const metrics of typography) {
+          expect(metrics.coarsePointer).toBe(true);
+          expect(metrics.fontSize).toBe(metrics.rootFontSize);
+          expect(metrics.fontSize).toBeGreaterThanOrEqual(16);
+        }
+        await info.attach("mobile-audio-control-typography", {
+          body: JSON.stringify(typography),
+          contentType: "application/json",
+        });
+      }
       await expect(editor.getByText(/Only enable capabilities your server supports\./u)).toBeVisible();
       await format.selectOption("chat_completions");
       await musicPath.fill("chat/completions");

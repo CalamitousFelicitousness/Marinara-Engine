@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
@@ -31,6 +31,10 @@ childProcess.spawn = function(command, args, options) {
   const child = new EventEmitter();
   child.unref = () => {};
   const record = { command, args, shell: options?.shell ?? false, at: Date.now() };
+  if (process.env.BROWSER_FIXTURE_CAPTURE_ONLY === "true") {
+    appendFileSync(${JSON.stringify(capture)}, JSON.stringify(record) + "\\n");
+    return child;
+  }
   if (process.env.BROWSER_FIXTURE_OPENER_FAIL === "true") {
     appendFileSync(${JSON.stringify(capture)}, JSON.stringify(record) + "\\n");
     queueMicrotask(() => child.emit("error", new Error("browser opener fixture failed")));
@@ -62,7 +66,7 @@ if (process.env.BROWSER_FIXTURE_EARLY_EXIT === "true") process.exit(19);
 // Slower than both removed launcher timers (3 and 4 seconds).
 await sleep(boot === 1 ? Number(process.env.BROWSER_FIXTURE_DELAY ?? 4500) : 20);
 const server = createServer((_request, response) => response.end("ready boot " + boot));
-await new Promise(done => server.listen(Number(process.env.BROWSER_FIXTURE_PORT), "127.0.0.1", done));
+await new Promise(done => server.listen(Number(process.env.BROWSER_FIXTURE_PORT), process.env.BROWSER_FIXTURE_HOST, done));
 // Report readiness twice to exercise duplicate notifications.
 process.send?.({ type: "marinara:ready" });
 process.send?.({ type: "marinara:ready" });
@@ -72,11 +76,13 @@ process.exit(process.env.BROWSER_FIXTURE_RESTART === "true" && boot === 1 ? 75 :
 `,
 );
 
-async function run({ open = true, env = {}, browserUrl } = {}) {
+async function run({ open = true, env = {}, browserUrl, browserHost, browserArgs } = {}) {
   rmSync(capture, { force: true });
   rmSync(counter, { force: true });
+  rmSync(argumentsFile, { force: true });
+  const host = env.BROWSER_FIXTURE_HOST ?? "127.0.0.1";
   const probe = createServer();
-  await new Promise((done) => probe.listen(0, "127.0.0.1", done));
+  await new Promise((done) => probe.listen(0, host, done));
   const port = probe.address().port;
   await new Promise((done) => probe.close(done));
   const started = Date.now();
@@ -89,12 +95,16 @@ async function run({ open = true, env = {}, browserUrl } = {}) {
       fixture,
       "--kept-argument",
       "value with spaces & punctuation",
-      ...(open
-        ? ["--open-browser", browserUrl ?? `http://127.0.0.1:${port}/android-login?source=launcher&ready=true`]
-        : []),
+      ...(browserArgs ??
+        (open
+          ? [
+              "--open-browser",
+              browserUrl ?? `http://${browserHost ?? host}:${port}/android-login?source=launcher&ready=true`,
+            ]
+          : [])),
     ],
     {
-      env: { ...process.env, BROWSER_FIXTURE_PORT: String(port), ...env },
+      env: { ...process.env, BROWSER_FIXTURE_PORT: String(port), BROWSER_FIXTURE_HOST: host, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -155,10 +165,45 @@ try {
   assert.equal(openerFailed.status, 0, "A missing browser opener must not stop the server");
   assert.match(openerFailed.stderr, /Could not open the browser.*Open http/u);
 
-  const invalid = await run({ browserUrl: "file:///etc/passwd" });
-  assert.equal(invalid.status, 1);
-  assert.match(invalid.stderr, /requires one HTTP or HTTPS URL/u);
-  assert.deepEqual(invalid.records, []);
+  for (const browserHost of ["::1", "[::1]"]) {
+    const ipv6 = await run({ browserHost, env: { BROWSER_FIXTURE_HOST: "::1", BROWSER_FIXTURE_DELAY: "0" } });
+    assert.equal(ipv6.status, 0, ipv6.stderr);
+    assert.equal(ipv6.records.length, 1);
+    assert.equal(ipv6.records[0].status, 200, JSON.stringify(ipv6.records));
+    assert.match(ipv6.records[0].args[0], /^http:\/\/\[::1\]:\d+\/android-login\?source=launcher&ready=true$/u);
+  }
+  for (const [raw, expected] of [
+    ["http://2001:db8::1:7860/android-login?one=1&two=2", "http://[2001:db8::1]:7860/android-login?one=1&two=2"],
+    ["https://::ffff:127.0.0.1:7861/path?one=1", "https://[::ffff:7f00:1]:7861/path?one=1"],
+    ["http://localhost:7860/path?one=1", "http://localhost:7860/path?one=1"],
+  ]) {
+    // These verify URL normalization only; they do not claim reachability of an unconfigured address.
+    const result = await run({
+      browserUrl: raw,
+      env: { BROWSER_FIXTURE_DELAY: "0", BROWSER_FIXTURE_CAPTURE_ONLY: "true" },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.records[0].args[0], expected);
+  }
+  for (const browserUrl of ["file:///etc/passwd", "not a URL", "http://:::::7860/path"]) {
+    const invalid = await run({ browserUrl, env: { BROWSER_FIXTURE_DELAY: "0" } });
+    assert.equal(invalid.status, 0, "An invalid optional browser URL must not stop the server");
+    assert.match(invalid.stderr, /Cannot open the browser automatically.*server will still start/u);
+    assert.deepEqual(invalid.records, []);
+    assert.equal(readFileSync(counter, "utf8"), "1", "The server must actually start with browser opening disabled");
+  }
+  for (const browserArgs of [
+    ["--open-browser"],
+    ["--open-browser", ""],
+    ["--open-browser", "--open-browser", "http://127.0.0.1:7860"],
+    ["--open-browser", "http://127.0.0.1:7860", "--open-browser", "http://127.0.0.1:7860"],
+  ]) {
+    const missing = await run({ browserArgs });
+    assert.equal(missing.status, 1, "Missing or duplicate switch values remain real argument errors");
+    assert.match(missing.stderr, /requires exactly one URL value/u);
+    assert.equal(existsSync(counter), false, "Argument errors must fail before starting a child");
+    assert.deepEqual(missing.records, []);
+  }
 
   const entry = readFileSync(join(root, "packages/server/src/index.ts"), "utf8");
   assert.ok(

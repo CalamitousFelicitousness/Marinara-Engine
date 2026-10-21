@@ -138,13 +138,38 @@ try {
   assert.equal((await connections.getById(row.id))?.audioMusicEndpoint, "new-music");
   assert.equal(audioConnectionSupportsGeneration({ audioSource: "elevenlabs", audioMusic: "true" }, "music"), true);
   assert.equal(audioConnectionSupportsGeneration({ audioSource: "openai", audioMusic: true }, "music"), false);
+  assert.equal(
+    createConnectionSchema.safeParse({ name: "valid", provider: "audio", audioMusicEndpoint: "audio/music" }).success,
+    true,
+  );
   for (const path of ["https://evil.example/steal", "//evil.example/steal", "x?key=secret", "x#fragment", "x\\\\y"]) {
-    assert.equal(createConnectionSchema.safeParse({ name: "bad", audioMusicEndpoint: path }).success, false, path);
+    const invalid = createConnectionSchema.safeParse({ name: "bad", provider: "audio", audioMusicEndpoint: path });
+    assert.equal(invalid.success, false, path);
+    if (!invalid.success)
+      assert.deepEqual(
+        invalid.error.issues.map((issue) => issue.path),
+        [["audioMusicEndpoint"]],
+      );
   }
   await assert.rejects(
     generateCompatibleGameAudio({
       baseUrl,
-      endpoint: "//evil.example",
+      endpoint: "https://evil.example/audio",
+      apiKey: "",
+      model: "",
+      format: "binary",
+      prompt: "x",
+      duration: 5,
+      allowLocal: true,
+      timeoutMs: 100,
+      maxBytes: 10,
+    }),
+    /must be a path on the configured connection/u,
+  );
+  await assert.rejects(
+    generateCompatibleGameAudio({
+      baseUrl,
+      endpoint: "sfx",
       apiKey: "",
       model: "",
       format: "binary",
@@ -154,6 +179,7 @@ try {
       timeoutMs: 100,
       maxBytes: 10,
     }),
+    /protocol 'http' is not allowed/u,
   );
   await assert.rejects(
     generateCompatibleGameAudio({

@@ -243,6 +243,19 @@ for (const kind of ["character", "persona"] as const) {
       const tags = editor.getByRole("button", { name: "Remove All", exact: true });
       await tags.scrollIntoViewIfNeeded();
       await expect(tags).toHaveClass(/mari-editor-action/u);
+      const compact = editor.getByRole("button", { name: "Editor sections", exact: true });
+      if (await compact.isVisible()) {
+        await compact.click();
+        await editor
+          .getByRole("menu", { name: "Editor sections", exact: true })
+          .getByRole("menuitemradio", { name: "Card", exact: true })
+          .click();
+      } else {
+        await editor
+          .getByRole("navigation", { name: "Editor sections", exact: true })
+          .getByRole("button", { name: "Card", exact: true })
+          .click();
+      }
       const summary = editor.locator(`#${kind}-card-summary`);
       await summary.getByRole("button", { name: "Add Alternative Field", exact: true }).click();
       const status = summary.locator("summary").filter({ hasText: "Active in 0 chats" });

@@ -127,7 +127,7 @@ A repair runs in two jobs after the review job:
   App's token, because a push made with `GITHUB_TOKEN` starts no CI and no review. That push starts the next review,
   whose repair check resolves the threads the code confirms. A patch that changed nothing, failed the checks, met a
   branch that moved meanwhile, or was rejected by the push (one editing a workflow file, which the App's token cannot
-  push, so the repair is told not to) is reported in a comment instead.
+  push, so the repair is told not to) is reported in a comment instead, and so is any other failure of the push job.
 
 The App needs **Contents: Read and write** on the repository, installed there, with its ID and private key in the
 `DOTTORE_APP_ID` and `DOTTORE_APP_PRIVATE_KEY` secrets. A calling workflow passes both.

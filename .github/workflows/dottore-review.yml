@@ -517,5 +517,18 @@ jobs:
               printf '\n```\n'
             } > /tmp/report.md
             gh pr comment "$PR_NUM" --repo "$GITHUB_REPOSITORY" --body-file /tmp/report.md
+            touch /tmp/push-reported
             exit 1
           fi
+
+      # Any other failure once the patch passed (a fork or branch gone before the checkout, a failed commit) says so on
+      # the pull request too, instead of ending as a red job with no word there.
+      - name: Report a repair push that failed
+        if: failure() && env.RESULT == 'valid'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -e /tmp/push-reported ] && exit 0
+          gh pr comment "$PR_NUM" --repo "$GITHUB_REPOSITORY" \
+            --body "🩺 Dottore's repair could not be pushed, so the branch is unchanged ([run]($RUN_URL))."

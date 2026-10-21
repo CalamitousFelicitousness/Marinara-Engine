@@ -91,13 +91,17 @@ async function api(
     } catch {
       // The shared sanitizer also handles plain-text and HTML proxy errors.
     }
+    // Decode before redaction, and apply the display cap only after redacting complete private values.
+    details = sanitizeApiError(details, details.length);
     for (const privateValue of [key, decodeURIComponent(path.split("/")[2] || "")]) {
       if (privateValue) details = details.replaceAll(privateValue, "[redacted]");
     }
-    details = sanitizeApiError(details.replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]"))
+    details = details
+      .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
       .replace(/<[^>]*>/g, " ")
       .replace(/\s+/g, " ")
-      .trim();
+      .trim()
+      .slice(0, 300);
     throw new ToAPIsHttpError(response.status, path.split("/")[0]!, details);
   }
   const result: unknown = await response.json();

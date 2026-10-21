@@ -81,6 +81,13 @@ globalThis.fetch = async (input, init) => {
     if (mode === "rejected") return json({ error: { message: "fixture rejection" } }, 401);
     if (mode === "rejected-escaped")
       return new Response('{"error":{"message":"Invalid \\u0066ixture-key"}}', { status: 401 });
+    if (mode === "rejected-nested")
+      return json(
+        { error: String.raw`{"error":{"message":"Invalid fixture-\u006bey at https:\/\/toapis.com\/private"}}` },
+        401,
+      );
+    if (mode === "rejected-nested-long")
+      return json({ error: String.raw`{"error":{"message":"${"x".repeat(295)}fixture-\u006bey"}}` }, 401);
     if (mode === "rejected-html")
       return new Response("<html><title>Account not enabled</title></html>", { status: 403 });
     if (mode === "rejected-metadata") return json({ id: "private-task-reference", key: "fixture-key" }, 400);
@@ -292,11 +299,20 @@ try {
   await check("HTTP rejection details strip HTML and omit unrecognized task metadata", async () => {
     mode = "rejected-escaped";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 401: Invalid [redacted]" });
+    mode = "rejected-nested";
+    await assert.rejects(image(), { message: "ToAPIs images HTTP 401: Invalid [redacted] at [redacted URL]" });
+    mode = "rejected-nested-long";
+    await assert.rejects(image(), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.length < 350);
+      assert.equal(error.message.includes("fixtu"), false, "Truncation must not expose a partial key");
+      return true;
+    });
     mode = "rejected-html";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 403: Account not enabled" });
     mode = "rejected-metadata";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 400" });
-    assert.equal(submissions().length, 3);
+    assert.equal(submissions().length, 5);
   });
   await check("poll rejection diagnostics redact credentials, task IDs and URLs", async () => {
     mode = "poll-unauthorized";

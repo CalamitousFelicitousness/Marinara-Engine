@@ -2479,6 +2479,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       let personaPhoneticName = "";
       let personaDescription = "";
       let personaFields: {
+        example?: string;
         phoneticName?: string;
         personality?: string;
         scenario?: string;
@@ -2522,6 +2523,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         personaFields = {
           phoneticName: personaPhoneticName,
+          example: cardPromptText(identity.mesExample),
           personality: cardPromptText(identity.personality),
           scenario: cardPromptText(identity.scenario),
           backstory: cardPromptText(identity.backstory),
@@ -3443,6 +3445,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         personaDescription = resolvePersonaPromptMacros(personaDescription);
         personaFields = {
           ...personaFields,
+          example: resolvePersonaPromptMacros(personaFields.example ?? ""),
           personality: resolvePersonaPromptMacros(personaFields.personality ?? ""),
           scenario: resolvePersonaPromptMacros(personaFields.scenario ?? ""),
           backstory: resolvePersonaPromptMacros(personaFields.backstory ?? ""),

@@ -50,6 +50,9 @@ import {
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
+  rulesetImmuneToCondition,
+  rulesetAreaTargets,
+  rulesetCombatIsPool,
   rulesetDamageAverage,
   planRulesetCombatCost,
   rulesetCombatRoller,
@@ -109,6 +112,8 @@ import {
   type DirectedRulesetView,
   type RulesetBoardLight,
   type RulesetCatalogEntriesById,
+  type RulesetCombatAction,
+  type RulesetCombatApplies,
   type RulesetCombatChoice,
   type RulesetCombatEvent,
   type RulesetCombatOption,
@@ -1337,8 +1342,19 @@ export function priced(
   menu?: RulesetCombatOption[],
 ): PricedOption[] {
   const out: PricedOption[] = [];
+  // What is left in each pool of its sheet: the fewer left, the dearer each one, so the last is kept
+  // for when it matters (twice its price) and a full pool is spent freely.
+  const left = actor.sheet
+    ? new Map(
+        readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools.map((pool) => [pool.key, pool.value]),
+      )
+    : undefined;
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
-    const base = (option.cost ?? []).reduce((total, entry) => total + entry.amount, 0) + (option.signature?.cost ?? 0);
+    const base =
+      (option.cost ?? []).reduce(
+        (total, entry) => total + entry.amount * (1 + 1 / Math.max(1, left?.get(entry.pool) ?? Infinity)),
+        0,
+      ) + (option.signature?.cost ?? 0);
     // One that only a higher pool can pay for now (1.171) is never taken at its own price.
     const ways: PricedOption[] = [
       ...(option.upcastOnly ? [] : [{ option, price: base }]),
@@ -1662,7 +1678,7 @@ function rulesetCandidatesFrom(
         action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(way) }, option },
         cost: price,
       };
-      if (weighCaught(definition, combat, actor, option, caught, candidate)) candidates.push(candidate);
+      if (weighCaught(definition, combat, encounter, actor, option, caught, candidate)) candidates.push(candidate);
       continue;
     }
     const lands = menu ? rulesetWindowTargetOf(encounter, actor, option) : undefined;
@@ -1758,12 +1774,36 @@ function rulesetCandidatesFrom(
           ];
         candidate.damage = Math.min(2, (average / pool) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;
+        // What it puts on them as well (a stunning blow), and the spell it may break by hurting
+        // whoever holds one up.
+        const rider = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target) ?? 0;
+        const breaks = target.concentrating ? 0.3 : 0;
+        if (rider + breaks > 0) candidate.setup = (rider + breaks) * chance;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
         // gives nothing.
         if (option.restores && !rulesetPoolHasRoom(definition, target, option.restores)) continue;
-        candidate.support = 0.4;
-      } else candidate.setup = 0.4;
+        // What it does for them, read off what it puts on them: nothing, for what they already have.
+        const helps = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
+        if (helps === 0) continue;
+        candidate.support = helps ?? 0.4;
+      } else if (
+        menu &&
+        fallingAction?.reaction?.cancels &&
+        (encounter.window?.trigger.kind === "aimed" || encounter.window?.trigger.kind === "used")
+      ) {
+        // Stopping what is coming (Counterspell) is worth what it would have done.
+        candidate.setup = rulesetStoppedWorth(definition, combat, encounter, actor) * chance;
+      } else {
+        // What it does to them, read off what it puts on them: nothing, for what they already have
+        // or cannot take.
+        const holds = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
+        if (holds === 0) continue;
+        candidate.setup = holds ?? 0.4;
+      }
+      // Starting another held spell lets go of the one it holds up.
+      if (fallingAction?.concentration && actor.concentrating && actor.concentrating.actionId !== option.id)
+        candidate.cost = (candidate.cost ?? 0) + 0.4;
       candidates.push(candidate);
     }
   }
@@ -1777,6 +1817,174 @@ function rulesetCandidatesFrom(
   }
   if (standing) for (const candidate of candidates) candidate.action.to = { ...standing };
   return candidates;
+}
+
+/** What each effect of a condition is worth on an opponent (`foe`) or a friend (`friend`), as a share
+ *  of a turn of theirs: taking a turn away entirely is worth a whole one. */
+const RULESET_EFFECT_WORTH: Partial<Record<string, { foe?: number; friend?: number }>> = {
+  "cannot-act": { foe: 1 },
+  "cannot-harm": { foe: 0.8 },
+  "cannot-target-source-side": { foe: 0.5 },
+  "cannot-target-source": { foe: 0.25 },
+  "speed-zero": { foe: 0.25 },
+  "own-attacks-disadvantage": { foe: 0.35 },
+  "attacks-against-advantage": { foe: 0.35 },
+  "attacks-against-adjacent-advantage": { foe: 0.15 },
+  "attacks-from-adjacent-critical": { foe: 0.2 },
+  "cannot-approach-source": { foe: 0.15 },
+  "cannot-react": { foe: 0.1 },
+  "cannot-heal": { foe: 0.1 },
+  "own-saves-disadvantage": { foe: 0.15 },
+  "own-checks-disadvantage": { foe: 0.05 },
+  "own-attacks-advantage": { friend: 0.35 },
+  "attacks-against-disadvantage": { friend: 0.35 },
+  "attacks-against-no-advantage": { friend: 0.1 },
+  "resist-all": { friend: 0.4 },
+  "own-saves-advantage": { friend: 0.15 },
+  "own-checks-advantage": { friend: 0.05 },
+};
+
+/** An amount's average, nothing for one that has none or is written loosely. */
+function rulesetSafeAverage(amount: RulesetCombatAction["damage"]): number {
+  const average = amount ? rulesetAverageAmount(amount) : 0;
+  return Number.isFinite(average) ? average : 0;
+}
+
+/** The share of a target's turns a thing put on them lasts for: a moment, a few rounds, until they
+ *  shake it off, or for good. */
+function rulesetDurationWorth(duration: RulesetCombatApplies["duration"]): number {
+  if (duration === "instant" || duration === "this-action") return 0.3;
+  if (duration === "until-save") return 0.75;
+  if (duration === "until-dispelled") return 1;
+  if (duration.untilDispelled) return 1;
+  return Math.min(1, 0.35 + 0.25 * duration.rounds);
+}
+
+/** The chance a target fails a save, read the way the save will be thrown: its own modifier against
+ *  the difficulty on a d20; an even chance on dice pools, whose odds the picker does not work out. */
+function rulesetFailChance(
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  target: RulesetCombatant,
+  save: { save: string; difficulty: number },
+): number {
+  if (rulesetCombatIsPool(combat)) return 0.5;
+  const own = target.saves[save.save] ?? 0;
+  return Math.max(0.05, Math.min(0.95, (save.difficulty - 1 - own) / 20));
+}
+
+/** How dangerous a combatant is to the other side, against what that side has left: 0.5 for one
+ *  that barely scratches, up to 1.5 for one whose best blow takes a whole fighter's health. */
+function rulesetThreat(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  one: RulesetCombatant,
+): number {
+  const best = Math.max(0, ...one.actions.map((action) => rulesetSafeAverage(action.damage)));
+  const others = encounter.combatants.filter((other) => other.side !== one.side && rulesetCombatStanding(other));
+  if (others.length === 0) return 1;
+  const pools = others.map((other) => {
+    const health = rulesetCombatHealth(definition, combat, other);
+    return Math.max(1, health.value + health.temp);
+  });
+  const mean = pools.reduce((sum, pool) => sum + pool, 0) / pools.length;
+  return 0.5 + Math.min(1, best / mean);
+}
+
+/**
+ * What an action is worth by what it puts on a target, read off the ruleset's own conditions: what
+ * their effects and behaviours do, how long they last, the chance it lands, and how much the target
+ * matters. An opponent is worth more held down the more dangerous it is; a friend is helped by what
+ * helps. Nothing for a condition the target already holds or cannot take. Undefined when the action
+ * puts nothing readable on anybody, so its caller keeps its own guess.
+ */
+function rulesetEffectWorth(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction | undefined,
+  target: RulesetCombatant,
+  /** Weighed as harm whoever it lands on: what a blast does to its maker's own side. */
+  asHarm = false,
+): number | undefined {
+  if (!action) return undefined;
+  const foe = asHarm || target.side !== actor.side;
+  let worth: number | undefined;
+  // Sent out of the fight (1.236): its turns are gone while it is away.
+  if (action.dismisses && foe) worth = 1;
+  if (!action.applies?.length)
+    return worth === undefined ? undefined : worth * rulesetThreat(definition, combat, encounter, target);
+  const held = new Set(rulesetCombatConditions(definition, target));
+  for (const applied of action.applies) {
+    worth ??= 0;
+    if (held.has(applied.condition)) continue;
+    if (rulesetImmuneToCondition(target, applied.condition, definition, encounter, actor)) continue;
+    const rule = combat.conditions?.find((one) => one.condition === applied.condition);
+    let each = 0;
+    for (const effect of rule?.effects ?? [])
+      each += (foe ? RULESET_EFFECT_WORTH[effect]?.foe : RULESET_EFFECT_WORTH[effect]?.friend) ?? 0;
+    // What it makes them do (1.264, 1.490): run, wander, strike whoever is nearest, waste a turn.
+    const behavior = rule?.behavior;
+    if (foe && behavior) {
+      if (behavior.table || behavior.only) each += 0.6;
+      else if (behavior.moves === "away" || behavior.nearest) each += 0.5;
+      else if (behavior.wastes) each += 0.4;
+      else each += 0.15;
+    }
+    // A number added or taken off, whichever way it points, is worth a little.
+    each += Math.min(0.3, (rule?.modifiers?.length ?? 0) * 0.1);
+    if (rule?.effects?.includes("ends-on-damage")) each *= 0.6;
+    worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
+  }
+  if (worth === undefined) return undefined;
+  const lands = action.save && foe ? rulesetFailChance(combat, target, action.save) : 1;
+  return worth * lands * (foe ? rulesetThreat(definition, combat, encounter, target) : 1);
+}
+
+/** What stopping a cast or a blow aimed at this side is worth (an answer that cancels, 5e's
+ *  Counterspell): the harm it would do to whom it is aimed at here, what it would put on them, or the
+ *  healing it would give the other side. A modest guess when the thing itself cannot be read. */
+export function rulesetStoppedWorth(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): number {
+  const trigger = encounter.window?.trigger;
+  if (!trigger || (trigger.kind !== "aimed" && trigger.kind !== "used")) return 0.4;
+  const source = rulesetCombatant(encounter, trigger.sourceId);
+  const action = source?.actions.find((one) => one.id === trigger.optionId);
+  if (!source || !action) return 0.4;
+  // Whom it is aimed at: as the moment says, else as the held use says, its area's catch included.
+  const resume = encounter.window?.resume;
+  const held = resume?.kind === "action" && resume.actorId === source.id ? resume : undefined;
+  const ids = new Set([
+    ...(trigger.kind === "aimed" ? (trigger.targetIds ?? []) : []),
+    ...(held?.targetIds ?? []),
+    ...(held?.at ? rulesetAreaTargets(encounter, source.id, held.optionId, held.at) : []),
+  ]);
+  const aimedAt = [...ids]
+    .map((id) => rulesetCombatant(encounter, id))
+    .filter((one): one is RulesetCombatant => !!one && !one.defeated);
+  const mine = aimedAt.filter((one) => one.side === actor.side);
+  let worth = 0;
+  const average = rulesetSafeAverage(action.damage);
+  for (const one of mine) {
+    const health = rulesetCombatHealth(definition, combat, one);
+    if (average > 0) worth += Math.min(1, average / Math.max(1, health.value + health.temp));
+    worth += rulesetEffectWorth(definition, combat, encounter, source, action, one) ?? 0;
+  }
+  // Healing or helping their own side is worth stopping too.
+  for (const one of aimedAt.filter((other) => other.side === source.side)) {
+    const health = rulesetCombatHealth(definition, combat, one);
+    if (action.heal) worth += Math.min(1, (health.max - health.value) / Math.max(1, health.max));
+    worth += (rulesetEffectWorth(definition, combat, encounter, source, action, one) ?? 0) * 0.5;
+  }
+  if (action.summons || action.calls) worth += 0.6;
+  // Something it could read and found small is worth that little; only what says nothing gets a guess.
+  const read = average > 0 || !!action.heal || !!action.applies?.length || !!action.summons || !!action.calls;
+  return Math.min(2, read ? worth : 0.4);
 }
 
 /** Whether a pool of this fighter's sheet has room for more. */
@@ -1836,7 +2044,7 @@ function areaCandidates(
       ...(foes[0] ? { targetId: foes[0].id } : {}),
       cost: price,
     };
-    if (!weighCaught(definition, combat, actor, option, caught, candidate)) continue;
+    if (!weighCaught(definition, combat, encounter, actor, option, caught, candidate)) continue;
     candidates.push(candidate);
   }
   return candidates;
@@ -1848,6 +2056,7 @@ function areaCandidates(
 function weighCaught(
   definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   option: RulesetCombatOption,
   caught: RulesetCombatant[],
@@ -1857,6 +2066,17 @@ function weighCaught(
   const chance = option.forecast?.hitChance ?? 1;
   const foes = caught.filter((target) => target.side !== actor.side && !target.down);
   const friends = caught.filter((target) => target.side === actor.side);
+  // What its conditions are worth on each it catches, read off the ruleset (see `rulesetEffectWorth`).
+  const action = actor.actions.find((one) => one.id === option.id);
+  const worthOn = (target: RulesetCombatant) =>
+    rulesetEffectWorth(definition, combat, encounter, actor, action, target);
+  const riders = (who: RulesetCombatant[]) => who.reduce((sum, target) => sum + (worthOn(target) ?? 0), 0);
+  // What it does to its own side caught in it, weighed as the harm it is.
+  const harms = (who: RulesetCombatant[]) =>
+    who.reduce(
+      (sum, target) => sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, target, true) ?? 0),
+      0,
+    );
   if (option.heals) {
     const helped = friends.filter((target) => {
       const health = rulesetCombatHealth(definition, combat, target);
@@ -1879,12 +2099,24 @@ function weighCaught(
     }, 0);
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0) return false;
-  } else if (foes.length > 0) candidate.setup = 0.4;
-  else {
+    // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
+    const rider = riders(foes) - harms(friends);
+    if (rider > 0) candidate.setup = Math.min(2, rider) * chance;
+  } else if (foes.length > 0) {
+    // What it puts on them, less what it puts on its own side: a Hypnotic Pattern over the party
+    // and not over its own.
+    const read = foes.some((target) => worthOn(target) !== undefined);
+    const worth = riders(foes) - harms(friends);
+    if (read && worth <= 0) return false;
+    candidate.setup = read ? Math.min(2, worth) : 0.4;
+  } else {
     if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
       return false;
     }
-    candidate.support = 0.4;
+    const read = friends.some((target) => worthOn(target) !== undefined);
+    const worth = riders(friends);
+    if (read && worth <= 0) return false;
+    candidate.support = read ? Math.min(2, worth) : 0.4;
   }
   return true;
 }

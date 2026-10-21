@@ -277,3 +277,7 @@ If the page does not load at all, the server may not be reachable. Check `HOST=0
 - [Server Configuration Reference](CONFIGURATION.md) for the full list of `.env` settings and edge cases.
 - [Troubleshooting Marinara Engine](TROUBLESHOOTING.md) for connection errors, mobile access, and more.
 - [Frequently Asked Questions](FAQ.md) for a quick walkthrough of reaching Marinara from another device.
+
+## Search engines
+
+Marinara asks search engines not to index its pages (`X-Robots-Tag: noindex, nofollow`). This does not protect your installation and does not remove pages that are already indexed. Use the access controls above to keep your installation private.

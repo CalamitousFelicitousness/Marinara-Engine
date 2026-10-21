@@ -14,6 +14,7 @@ import { csrfProtectionHook } from "../../packages/server/src/middleware/csrf-pr
 import { hostValidationHook } from "../../packages/server/src/middleware/host-validation.js";
 import { ipAllowlistHook, isLoopbackRequest } from "../../packages/server/src/middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../../packages/server/src/middleware/privileged-gate.js";
+import { securityHeadersHook } from "../../packages/server/src/middleware/security-headers.js";
 import { forwardPromptPreview } from "../../packages/server/src/routes/generate/prompt-preview.js";
 
 const ENV_KEYS = [
@@ -45,6 +46,7 @@ let innerPreviewHeaders: Record<string, unknown> | undefined;
 
 const app = Fastify();
 // The same onRequest order as app.ts.
+app.addHook("onRequest", securityHeadersHook);
 app.addHook("onRequest", hostValidationHook);
 app.addHook("onRequest", ipAllowlistHook);
 app.addHook("onRequest", basicAuthHook);
@@ -91,6 +93,14 @@ try {
     421,
     "an untrusted public name is still rejected before authentication",
   );
+  // X-Robots-Tag must reach 200, 401 and 421 replies, including the one rejected before auth.
+  for (const response of [
+    await inject("GET", "/api/chats", LOCAL_HOST),
+    await inject("GET", "/api/chats", PROXIED),
+    await inject("GET", "/api/chats", { ...PROXIED, host: "chat.example.com" }),
+  ]) {
+    assert.equal(response.headers["x-robots-tag"], "noindex, nofollow", `status ${response.statusCode}`);
+  }
   process.env.TRUSTED_HOSTS = "chat.example.com";
   assert.equal(
     (await inject("GET", "/api/chats", { ...PROXIED, host: "chat.example.com" })).statusCode,

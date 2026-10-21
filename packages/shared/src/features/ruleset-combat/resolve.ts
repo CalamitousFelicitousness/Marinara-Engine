@@ -4544,6 +4544,18 @@ function removeCondition(
       1,
     );
   }
+  // The last of what a concentration held on others, shaken off or ended (Hold Person's one held
+  // target saving later, the other having saved at the cast): it holds nobody, so it ends, as one
+  // that landed on nobody does at the cast.
+  if (removed?.concentration && reason !== "concentration" && removed.source) {
+    const holder = rulesetCombatant(ctx.state, removed.source);
+    const holding = holder?.concentrating;
+    const action =
+      holding && removed.action?.includes(holding.actionId)
+        ? holder!.actions.find((one) => one.id === holding.actionId)
+        : undefined;
+    if (action) letGoOfNothing(ctx, holder!, action);
+  }
   if (ending?.applies && !target.defeated) {
     // Ended in the middle of its holder's own turn (their own concentration broken, say), the clock
     // starts with the NEXT turn: "until after its next turn" is never the rest of this one. Ended as
@@ -9108,7 +9120,9 @@ function continueCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   reopenAction(ctx, actor, action, resume);
 }
 
-/** A fresh use opens the same moments whether it was held over or a summon strikes again. */
+/** A fresh use opens the same moments whether it was held over or a summon strikes again; a summon's
+ *  strike is no use of the spell, though, so only its aim is answered (no Counterspell for Spiritual
+ *  Weapon's second swing). */
 function reopenAction(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9118,6 +9132,7 @@ function reopenAction(
   // Used subtly (1.253), nobody sees it being used to answer it.
   const held =
     (!action.altered?.subtle &&
+      !resume.summon &&
       openMoment(
         ctx,
         {

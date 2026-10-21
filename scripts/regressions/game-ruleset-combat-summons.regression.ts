@@ -285,6 +285,13 @@ try {
     assert.equal(caster(held.state).summons, undefined, `${on}: no weapon while reactions wait`);
     const made = pass(JSON.parse(JSON.stringify(held.state)), after);
     assert.deepEqual(outcomes(made.events), ["appeared"]);
+    if (on === "used") {
+      // A later strike is no use of the spell: nothing answers it as one (no Counterspell for it).
+      const struck = strike(nextTurn(made.state), after);
+      assert.equal(struck.state.window, undefined, "a strike opens no used moment");
+      assert.deepEqual(outcomes(struck.events), ["struck"]);
+      continue;
+    }
     const again = strike(nextTurn(made.state), before);
     assert.equal(again.state.window?.trigger.kind, on, `later strikes reopen ${on}`);
     const struck = pass(again.state, after);

@@ -1285,6 +1285,11 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     { type: "refused", actorId: "snag", optionId: "scimitar", reason: "cannot-act" },
   ]);
 
+  // Shaken off at the end of its turn, the hold holds nobody, and the caster stops concentrating.
+  const shaken = endTurn(fiveE, state, "snag", 19);
+  assert.equal(who(shaken.state, "corwin").concentrating, null, "nobody left held");
+  assert.equal(firstOf(shaken.events, "concentration").state, "ended");
+
   // The end of its own turn is when it gets to try again, and this one fails.
   const ticked = endTurn(fiveE, state, "snag", 3);
   const repeated = firstOf(ticked.events, "save");

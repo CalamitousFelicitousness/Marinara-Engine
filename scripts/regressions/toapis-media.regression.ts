@@ -19,6 +19,8 @@ type Call = { url: string; method: string; headers: Headers; body: unknown };
 let calls: Call[] = [];
 let mode = "complete";
 let transientPolls = 0;
+let chatTransportGuardFired = false;
+let chatAbortReason: unknown;
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 globalThis.fetch = async (input, init) => {
@@ -49,6 +51,24 @@ globalThis.fetch = async (input, init) => {
     return json({ status: "completed", output: { url: "https://media.toapis.com/legacy.mp4" } });
   }
   assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer fixture-key");
+  if (url.pathname === "/v1/chat/completions" && mode === "stall-chat") {
+    const signal = init?.signal;
+    assert.ok(signal, "The chat-image request must honor the image deadline");
+    return new Promise<Response>((_resolve, reject) => {
+      // The production deadline is unref'd; keep this stalled transport alive until it aborts.
+      const transportTimeout = setTimeout(() => {
+        chatTransportGuardFired = true;
+        reject(new Error("Fixture transport did not abort"));
+      }, 5000);
+      const abort = () => {
+        clearTimeout(transportTimeout);
+        chatAbortReason = signal.reason;
+        reject(signal.reason);
+      };
+      if (signal.aborted) abort();
+      else signal.addEventListener("abort", abort, { once: true });
+    });
+  }
   if (url.pathname === "/v1/uploads/images") {
     assert.ok(body instanceof FormData);
     assert.equal((body.get("file") as Blob).type, "image/png");
@@ -59,9 +79,15 @@ globalThis.fetch = async (input, init) => {
     if (mode === "uncertain") throw new Error("fixture transport lost response");
     if (mode === "missing-id") return json({ status: "queued" });
     if (mode === "rejected") return json({ error: { message: "fixture rejection" } }, 401);
+    if (mode === "rejected-escaped")
+      return new Response('{"error":{"message":"Invalid \\u0066ixture-key"}}', { status: 401 });
+    if (mode === "rejected-html")
+      return new Response("<html><title>Account not enabled</title></html>", { status: 403 });
+    if (mode === "rejected-metadata") return json({ id: "private-task-reference", key: "fixture-key" }, 400);
+    if (mode === "rejected-oversized") return new Response("x".repeat(2 * 1024 * 1024 + 1), { status: 401 });
     if (mode === "redirect") return new Response(null, { status: 307, headers: { location: "/v1/replayed" } });
     return json({
-      id: `fixture-${kind}`,
+      id: mode === "poll-unauthorized" ? `fixture-${kind}/private` : `fixture-${kind}`,
       status: mode === "immediate" ? "completed" : "queued",
       result: { data: [{ url: `https://media.toapis.com/output.${kind === "images" ? "png" : "mp4"}` }] },
     });
@@ -70,7 +96,15 @@ globalThis.fetch = async (input, init) => {
   if (mode === "failed") return json({ id: `fixture-${kind}`, status: "failed" });
   if (mode === "poll-http") return json({ error: "fixture" }, 503);
   if (mode === "poll-once" && transientPolls++ === 0) return json({ error: "fixture" }, 503);
-  if (mode === "poll-unauthorized") return json({ error: "fixture" }, 401);
+  if (mode === "poll-unauthorized")
+    return json(
+      {
+        error: {
+          message: `Task fixture-${kind}/private denied for fixture-key at https://toapis.com/?key=fixture-key`,
+        },
+      },
+      401,
+    );
   if (mode === "private-output") {
     return json({ status: "completed", result: { data: [{ url: "https://127.0.0.1/private.png" }] } });
   }
@@ -86,6 +120,8 @@ async function check(name: string, run: () => void | Promise<void>) {
   calls = [];
   mode = "complete";
   transientPolls = 0;
+  chatTransportGuardFired = false;
+  chatAbortReason = undefined;
   await run();
   passed++;
   process.stdout.write(`PASS ${name}\n`);
@@ -250,8 +286,40 @@ try {
   });
   await check("definite submission rejection retains the HTTP status", async () => {
     mode = "rejected";
-    await assert.rejects(image(), /HTTP 401/);
+    await assert.rejects(image(), /HTTP 401: fixture rejection/);
     assert.equal(submissions().length, 1);
+  });
+  await check("HTTP rejection details strip HTML and omit unrecognized task metadata", async () => {
+    mode = "rejected-escaped";
+    await assert.rejects(image(), { message: "ToAPIs images HTTP 401: Invalid [redacted]" });
+    mode = "rejected-html";
+    await assert.rejects(image(), { message: "ToAPIs images HTTP 403: Account not enabled" });
+    mode = "rejected-metadata";
+    await assert.rejects(image(), { message: "ToAPIs images HTTP 400" });
+    assert.equal(submissions().length, 3);
+  });
+  await check("poll rejection diagnostics redact credentials, task IDs and URLs", async () => {
+    mode = "poll-unauthorized";
+    await assert.rejects(video({ fallback: videoFallback }), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /HTTP 401: Task .* denied/);
+      assert.ok(error.message.length < 350);
+      for (const privateValue of ["fixture-key", "fixture-videos/private", "https://"]) {
+        assert.equal(error.message.includes(privateValue), false);
+      }
+      assert.equal((error as Error & { retryable?: boolean }).retryable, false);
+      return true;
+    });
+    assert.equal(submissions().length, 1);
+  });
+  await check("oversized HTTP error bodies remain capped and cannot activate paid fallback", async () => {
+    mode = "rejected-oversized";
+    await assert.rejects(image({ fallback: imageFallback }), { retryable: false });
+    assert.equal(submissions().length, 1);
+    assert.equal(
+      calls.some((call) => new URL(call.url).hostname === "api.openai.com"),
+      false,
+    );
   });
   await check("validation before any paid submission can use the configured fallback", async () => {
     assert.equal((await image({ model: "unsupported", fallback: imageFallback })).base64, png);
@@ -340,6 +408,21 @@ try {
       calls.some((call) => new URL(call.url).hostname === "api.openai.com"),
       false,
     );
+  });
+  await check("a Gemini chat-image deadline on ToAPIs keeps its ordinary fallback", async () => {
+    mode = "stall-chat";
+    const result = await image({ model: "gemini-3-image", fallback: imageFallback });
+    assert.equal(chatTransportGuardFired, false, "The provider deadline must fire before the fixture guard");
+    assert.ok(chatAbortReason instanceof Error);
+    assert.equal(chatAbortReason.name, "ImageGenerationDeadlineError");
+    assert.equal(result.base64, png);
+    assert.equal(calls.filter((call) => new URL(call.url).pathname === "/v1/chat/completions").length, 1);
+    assert.equal(
+      calls.filter((call) => new URL(call.url).hostname === "toapis.com" && call.url.includes("/images/generations"))
+        .length,
+      0,
+    );
+    assert.equal(calls.filter((call) => new URL(call.url).hostname === "api.openai.com").length, 1);
   });
   await check("ordinary OpenAI path preserved", async () => {
     assert.equal(

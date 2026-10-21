@@ -348,6 +348,7 @@ export async function generateImage(
     request.admissionMode ?? { kind: "foreground" },
   );
   let outcome: ConnectionAttemptOutcome = "failed";
+  let usesToAPIsTaskAdapter = false;
 
   try {
     const physicalRequest = () =>
@@ -366,6 +367,8 @@ export async function generateImage(
 
         switch (resolvedSource) {
           case "openai":
+          default:
+            usesToAPIsTaskAdapter = isToAPIsMediaUrl(normalizedBaseUrl);
             return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
           case "codex_chatgpt":
             return generateChatGPTImage(scopedRequest);
@@ -415,8 +418,6 @@ export async function generateImage(
             return generateAutomatic1111(normalizedBaseUrl, scopedRequest, serviceHint);
           case "gemini_image":
             return generateViaChatCompletions(normalizedBaseUrl, apiKey, scopedRequest);
-          default:
-            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
         }
       });
     // Admit on the resolved endpoint rather than a connection id: every caller reaches this
@@ -449,7 +450,7 @@ export async function generateImage(
     const fallback = request.fallback;
     if (error instanceof ToAPIsSubmittedTaskError) throw error;
     // The deadline races the worker, so it can arrive before the worker wraps its aborted task.
-    if (error instanceof ImageGenerationDeadlineError && isToAPIsMediaUrl(normalizedBaseUrl)) {
+    if (error instanceof ImageGenerationDeadlineError && usesToAPIsTaskAdapter) {
       throw new ToAPIsSubmittedTaskError(error);
     }
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;

@@ -15,6 +15,7 @@ import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch, resolveValidatedImage, validateOutboundUrl } from "../../utils/security.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
+import { sanitizeApiError } from "../llm/base-provider.js";
 
 export function isToAPIsMediaUrl(baseUrl: string): boolean {
   try {
@@ -45,8 +46,9 @@ class ToAPIsHttpError extends Error {
   constructor(
     public readonly status: number,
     resource: string,
+    details = "",
   ) {
-    super(`ToAPIs ${resource} HTTP ${status}`);
+    super(`ToAPIs ${resource} HTTP ${status}${details ? `: ${details}` : ""}`);
   }
 }
 
@@ -80,8 +82,23 @@ async function api(
     decodeCompressedResponse: true,
   });
   if (!response.ok) {
-    await response.body?.cancel();
-    throw new ToAPIsHttpError(response.status, path.split("/")[0]!);
+    // safeFetch already buffered and capped this response (including decompression) at 2 MiB.
+    let details = await response.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(details);
+      const message = parsed?.error?.message ?? parsed?.error ?? parsed?.message;
+      details = typeof message === "string" ? message : "";
+    } catch {
+      // The shared sanitizer also handles plain-text and HTML proxy errors.
+    }
+    for (const privateValue of [key, decodeURIComponent(path.split("/")[2] || "")]) {
+      if (privateValue) details = details.replaceAll(privateValue, "[redacted]");
+    }
+    details = sanitizeApiError(details.replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]"))
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    throw new ToAPIsHttpError(response.status, path.split("/")[0]!, details);
   }
   const result: unknown = await response.json();
   if (!result || typeof result !== "object" || Array.isArray(result)) {

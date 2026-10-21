@@ -514,7 +514,8 @@ function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): bo
 /**
  * A browser on this computer addresses Marinara by a loopback name. A loopback socket that
  * announces any other Host (a domain or a LAN address) was relayed by a local proxy or tunnel,
- * even when that proxy adds no forwarding headers.
+ * even when that proxy adds no forwarding headers. A Docker gateway peer that
+ * names another Host is relayed too.
  */
 function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
   const hostname = parseRequestHostname(
@@ -529,21 +530,26 @@ function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
   return !isLoopbackIp(hostname);
 }
 
+/** Browsers speak HTTP/1.1 or newer; nginx's default proxy_pass speaks HTTP/1.0. */
+function isHttp10(request: Pick<AccessRequest, "raw">): boolean {
+  return request.raw?.httpVersion === "1.0";
+}
+
 /**
  * True when a loopback socket relays another client: a reverse proxy or tunnel
  * on this machine connects from 127.0.0.1 but announces itself with forwarding
  * headers. Such requests get the checks of a remote client, not loopback trust.
  */
-export function isForwardedLoopbackRequest(request: Pick<FastifyRequest, "headers" | "ip">): boolean {
+export function isForwardedLoopbackRequest(request: AccessRequest): boolean {
   return isForwardedLoopbackPeer(
     isLoopbackIp(request.ip),
-    hasProxyForwardingHeaders(request) || hasRelayedHost(request),
+    hasProxyForwardingHeaders(request) || hasRelayedHost(request) || isHttp10(request),
     isLoopbackProxyAuthRequired(),
   );
 }
 
 /** True when the request comes from this machine itself rather than through a local proxy. */
-export function isLoopbackRequest(request: Pick<FastifyRequest, "headers" | "ip">): boolean {
+export function isLoopbackRequest(request: AccessRequest): boolean {
   return isLoopbackIp(request.ip) && !isForwardedLoopbackRequest(request);
 }
 
@@ -587,6 +593,7 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     loopbackIp: isLoopbackIp(ip),
     forwardingHeaders: hasProxyForwardingHeaders(request),
     relayedHost: hasRelayedHost(request),
+    http10: isHttp10(request),
     allowlisted: isInIpAllowlist(ip),
     privateNetworkIp: isPrivateNetworkIp(ip),
     tailscaleIp: isTailscaleIp(ip),

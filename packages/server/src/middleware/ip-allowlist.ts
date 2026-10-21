@@ -30,7 +30,7 @@ import {
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessPolicy } from "./access-policy.js";
+import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
 
 // ── CIDR helpers ──
@@ -583,7 +583,6 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
       parsedDockerCidrs,
     );
   const ip = request.ip;
-  const basicAuth = getBasicAuthConfig();
   return evaluateAccessPolicy({
     loopbackIp: isLoopbackIp(ip),
     forwardingHeaders: hasProxyForwardingHeaders(request),
@@ -596,18 +595,50 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
       isDockerRuntime() && isDockerCompatibilityNetworkIp(ip, dockerInterfaces, dockerGatewayIp, parsedDockerCidrs),
-    config: {
-      basicAuthConfigured: Boolean(basicAuth.user && basicAuth.pass),
-      ipAllowlistConfigured: getIpAllowlist() !== null,
-      adminSecretConfigured: Boolean(getAdminSecret()),
-      loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),
-      dockerProxyAuthRequired: isDockerProxyAuthRequired(),
-      tailscaleMode: getTailscaleBypassMode(),
-      dockerMode: getDockerBypassMode(),
-      allowUnauthenticatedPrivateNetwork: isUnauthenticatedPrivateNetworkAllowed(),
-      allowUnauthenticatedRemote: isUnauthenticatedRemoteAllowed(),
-    },
+    config: getAccessConfig(),
   });
+}
+
+function getAccessConfig(): AccessFacts["config"] {
+  const basicAuth = getBasicAuthConfig();
+  return {
+    basicAuthConfigured: Boolean(basicAuth.user && basicAuth.pass),
+    ipAllowlistConfigured: getIpAllowlist() !== null,
+    adminSecretConfigured: Boolean(getAdminSecret()),
+    loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),
+    dockerProxyAuthRequired: isDockerProxyAuthRequired(),
+    tailscaleMode: getTailscaleBypassMode(),
+    dockerMode: getDockerBypassMode(),
+    allowUnauthenticatedPrivateNetwork: isUnauthenticatedPrivateNetworkAllowed(),
+    allowUnauthenticatedRemote: isUnauthenticatedRemoteAllowed(),
+  };
+}
+
+export type PasswordlessPeer = "internet" | "privateNetwork" | "tailscale" | "docker" | "proxy";
+
+/**
+ * Kinds of remote visitor the current configuration lets in without a password. Asks the same
+ * policy the hooks use about one sample peer per kind, so the owner summary cannot drift from
+ * enforcement. Facts a sample leaves unset read as false.
+ */
+export function getPasswordlessPeers(): PasswordlessPeer[] {
+  const config = getAccessConfig();
+  const samples: Record<PasswordlessPeer, Partial<AccessFacts>> = {
+    internet: {},
+    privateNetwork: { privateNetworkIp: true },
+    tailscale: { tailscaleIp: true, privateNetworkIp: true },
+    docker: { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() },
+    proxy: { loopbackIp: true, forwardingHeaders: true },
+  };
+  return (Object.keys(samples) as PasswordlessPeer[]).filter((peer) => {
+    const policy = evaluateAccessPolicy({ ...samples[peer], config } as AccessFacts);
+    return !policy.authRequired && !policy.lockedDown && (!config.ipAllowlistConfigured || policy.ipAllowed);
+  });
+}
+
+/** True when the request reached this server through a proxy or tunnel. */
+export function isProxiedRequest(request: Pick<FastifyRequest, "headers">): boolean {
+  return hasProxyForwardingHeaders(request) || hasRelayedHost(request);
 }
 
 /** Log each automatic or explicit trust bypass once, the first time a peer takes it. */

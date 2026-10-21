@@ -29,6 +29,7 @@ import {
   logStorageDiagnostics,
 } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
+import { getPasswordlessPeers } from "./middleware/ip-allowlist.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
 import { migrateTaskbarShortcuts } from "./services/setup/taskbar-shortcut-migration.js";
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
@@ -170,6 +171,13 @@ async function main() {
     startSessionPostmortem();
     stopRuntimeMemoryMonitor = startRuntimeMemoryMonitor();
     logCsrfTrustSummary();
+    const passwordlessPeers = getPasswordlessPeers();
+    if (passwordlessPeers.length > 0) {
+      logger.warn(
+        "[access] These visitors get in without a password: %s. See Settings → Advanced → Access and docs/REMOTE_ACCESS.md.",
+        passwordlessPeers.join(", "),
+      );
+    }
     scheduleTaskbarShortcutMigration();
   } catch (err) {
     if (isShuttingDown) {

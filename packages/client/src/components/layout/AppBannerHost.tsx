@@ -2,6 +2,7 @@
 // Single mount point for app-wide banners: shows only the most severe one
 // ──────────────────────────────────────────────
 import { useState } from "react";
+import { useAccessWarningBanner } from "../diagnostics/use-access-warning-banner";
 import { useCsrfOriginBanner } from "../diagnostics/use-csrf-origin-banner";
 import { AppBanner, type AppBannerCandidate } from "../ui/AppBanner";
 
@@ -29,7 +30,7 @@ function pickAppBanner(candidates: (AppBannerCandidate | null)[], dismissed: (c:
 }
 
 export function AppBannerHost() {
-  const candidates = [useCsrfOriginBanner()];
+  const candidates = [useCsrfOriginBanner(), useAccessWarningBanner()];
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const banner = pickAppBanner(candidates, (c) => dismissedIds.includes(c.id) || wasDismissed(c));
 

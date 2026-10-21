@@ -196,7 +196,11 @@ function AlternativeField({
         }}
       >
         <summary className="min-h-10 cursor-pointer px-3 py-2.5">
-          {t("ui.cardFields.alternativeChats", { count: selected })}
+          {loading
+            ? t("ui.cardFields.alternativeChatsLoading")
+            : failed
+              ? t("ui.cardFields.alternativeChatsUnknown")
+              : t("ui.cardFields.alternativeChats", { count: selected })}
         </summary>
         <div className="space-y-2 border-t border-[var(--border)] p-3">
           <p className="text-[var(--muted-foreground)]">{t("ui.cardFields.alternativeChatHelp")}</p>

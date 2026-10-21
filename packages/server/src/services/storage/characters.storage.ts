@@ -30,6 +30,8 @@ import {
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
 import { toPaginatedList } from "../../utils/list-pagination.js";
 import { withAvatarFileLifecycleLock } from "../image/avatar-file-lifecycle.js";
+import { logger } from "../../lib/logger.js";
+import { takeRateLimitedSlot } from "../../lib/log-rate-limit.js";
 
 function resolveTimestamps(overrides?: TimestampOverrides | null) {
   const normalized = normalizeTimestampOverrides(overrides);
@@ -511,7 +513,21 @@ export function createCharactersStorage(db: DB) {
         const data = parseCharacterData(row.data);
         const projected = applyCharacterCardFieldAlternatives(data, scope);
         return projected === data ? row : { ...row, data: JSON.stringify(projected) };
-      } catch {
+      } catch (error) {
+        if (takeRateLimitedSlot(`storage.card-field-alternatives:character:${id}`) !== null) {
+          // JSON parse errors can quote private card text; log only fixed categories.
+          logger.debug(
+            {
+              event: "storage.card-field-alternatives",
+              kind: "character",
+              entityId: id,
+              errorCategory: error instanceof SyntaxError ? "invalid-json" : "projection-failed",
+              outcome: "failed",
+              suppressed: true,
+            },
+            "Could not project character card fields; using the stored row",
+          );
+        }
         return row;
       }
     },

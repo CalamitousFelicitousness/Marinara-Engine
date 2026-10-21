@@ -116,6 +116,8 @@ You can add as many alternatives as you need. Selecting no chats keeps one inact
 
 Alternatives for **Summary** remain metadata. They do not add summary text to the model's chat prompt.
 
+The **Active in** count includes only chats currently using this character. Saved assignments pause if the character is removed from a chat and resume when it is added again. Loading or unavailable chat lists do not remove assignments; reopen the picker to refresh its choices.
+
 Card exports, imports, duplication, and conversion between characters and personas keep alternative text but clear chat selections. Whole-profile backups retain those selections.
 
 To delete an alternative, use its trash button and confirm **Delete**. Cancel keeps it. Save the card to apply the removal; its selected chats then use the original field again, subject to any existing chat overrides. The original field is never deleted with an alternative.

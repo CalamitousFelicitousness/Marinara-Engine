@@ -1,4 +1,8 @@
-import { cardFieldAlternativesSchema, type CardFieldAlternative } from "../schemas/card-field-alternative.schema.js";
+import {
+  cardFieldAlternativeSchema,
+  cardFieldAlternativesSchema,
+  type CardFieldAlternative,
+} from "../schemas/card-field-alternative.schema.js";
 import type { CardFieldKey } from "../types/card-field.js";
 
 function record(value: unknown): Record<string, unknown> {
@@ -26,7 +30,15 @@ export function normalizeCardFieldAlternatives(value: unknown): CardFieldAlterna
 }
 
 export function unassignCardFieldAlternatives(value: unknown): CardFieldAlternative[] {
-  return normalizeCardFieldAlternatives(value).map((alternative) => ({ ...alternative, chatIds: [] }));
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      // Let the strict array schema report malformed portable input as a validation error.
+    }
+  }
+  const alternatives = cardFieldAlternativeSchema.array().parse(value === undefined ? [] : value);
+  return cardFieldAlternativesSchema.parse(alternatives.map((alternative) => ({ ...alternative, chatIds: [] })));
 }
 
 /** The same membership rule is used by the picker API and prompt reads. */

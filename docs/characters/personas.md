@@ -108,6 +108,8 @@ You can create as many alternatives as you need. Each chat uses one alternative 
 
 An alternative has its own wand, which uses its text as the seed and the other persona card fields as reference. Generation changes only that alternative. Click **Save** to keep edits and chat assignments; normal save-on-leave also applies.
 
+The **Active in** count includes only chats currently using this persona. Saved assignments pause if the chat selects a different persona and resume if it selects this one again. Loading or unavailable chat lists do not remove assignments; reopen the picker to refresh its choices.
+
 Card exports, imports, duplication, and conversion between characters and personas keep alternative text but clear chat selections. Whole-profile backups retain those selections.
 
 Use an alternative's trash button to remove it. The confirmation offers **Cancel** to keep it or **Delete** to remove it from the draft. Save the persona to apply the removal. Its selected chats then return to the original field, subject to any existing chat overrides; deleting an alternative never deletes the original field.

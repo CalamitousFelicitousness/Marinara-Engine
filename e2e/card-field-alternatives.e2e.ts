@@ -268,6 +268,72 @@ for (const owner of ["character", "persona"] as const) {
     }
   });
 
+  test(`${owner} alternative availability preserves assignments through loading, errors, and dormant membership`, async ({
+    page,
+    request,
+  }, info) => {
+    const id = await createEntity(request, owner, `Availability ${owner} ${info.testId}`);
+    const chat = await createChat(request, owner, id, `${owner} saved assignment`);
+    const entries: Alternative[] = [
+      { id: "availability-alternative", field: "description", value: "A saved alternative.", chatIds: [chat] },
+    ];
+    const saved = await request.patch(endpoint(owner, id), {
+      data:
+        owner === "character"
+          ? { data: { extensions: { cardFieldAlternatives: entries } } }
+          : { cardFieldAlternatives: entries },
+    });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    const membership = (included: boolean) =>
+      owner === "character" ? { characterIds: included ? [id] : [] } : { personaId: included ? id : null };
+    expect((await request.patch(`/api/chats/${chat}`, { data: membership(false) })).ok()).toBeTruthy();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let fail = true;
+    const pattern = `**${endpoint(owner, id)}/card-field-chats`;
+    await page.route(pattern, async (route) => {
+      await held;
+      if (fail) await route.fulfill({ status: 400, json: { error: "Availability fixture failure" } });
+      else await route.continue();
+    });
+    try {
+      await prepare(page);
+      const editor = await openCard(page, owner, id);
+      const section = alternative(editor, "Description", 1);
+      await expect(section.locator("summary")).toHaveText("Loading eligible chats…");
+      release();
+      await expect(section.locator("summary")).toHaveText("Chat availability unknown");
+      const openingRefresh = page.waitForResponse(
+        (response) => response.url().endsWith(`${endpoint(owner, id)}/card-field-chats`) && response.status() === 400,
+      );
+      await openChats(section);
+      await openingRefresh;
+      await expect(section.locator("summary")).toHaveText("Chat availability unknown");
+      await expect(section.getByRole("alert")).toContainText("Your alternative text and assignments were kept.");
+      expect((await stored(request, owner, id)).alternatives).toEqual(entries);
+      fail = false;
+      await section.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(section.locator("summary")).toHaveText("Active in 0 chats");
+      await expect(section.getByRole("checkbox")).toHaveCount(0);
+      const baseDescription = "Updated base description while the assignment is dormant.";
+      await editor.getByRole("textbox", { name: "Description", exact: true }).fill(baseDescription);
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(async () => (await stored(request, owner, id)).field("description")).toBe(baseDescription);
+      expect((await stored(request, owner, id)).alternatives).toEqual(entries);
+      expect((await request.patch(`/api/chats/${chat}`, { data: membership(true) })).ok()).toBeTruthy();
+      await section.locator("summary").click();
+      await openChats(section);
+      await expect(section.getByRole("checkbox", { name: `${owner} saved assignment`, exact: true })).toBeChecked();
+      await expect(section.locator("summary")).toHaveText("Active in 1 chat");
+      expect((await stored(request, owner, id)).alternatives).toEqual(entries);
+    } finally {
+      release();
+      if (!page.isClosed()) await page.unroute(pattern);
+      await request.delete(`/api/chats/${chat}`);
+      await request.delete(endpoint(owner, id));
+    }
+  });
+
   test(`${owner} alternative generation uses its own seed and protects later typing and deletion`, async ({
     page,
     request,

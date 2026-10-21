@@ -453,7 +453,7 @@ try {
       JSON.stringify(lines),
     );
     assert.ok(lines.includes("Ada gains 4 initiative, and is on 9."), JSON.stringify(lines));
-    assert.ok(lines.includes("Rats is now Reeling."), JSON.stringify(lines));
+    assert.ok(lines.includes("Rats gains Reeling."), JSON.stringify(lines));
     assert.ok(lines.includes("Ada gains 5 initiative for crashing Rats, and is on 14."), JSON.stringify(lines));
 
     // Crashed, the rats are offered only the style that takes, and a spending one is refused.

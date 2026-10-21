@@ -1028,9 +1028,11 @@ export async function combatDirectorRoutes(
         if (state.id !== input.id) throw new Error("Battle changed. Reload its current state.");
         const session = await rulesetSessionFor(input.chatId, state);
         const ruleset = session && "definition" in session ? session.definition : null;
-        if (state.instanceId !== input.instanceId) return { session: sessionView(state, session) };
+        // Sent at a fight that has since moved on (another tab, a restart): nothing is done, and the
+        // reply says so, so the client takes the fight as it stands rather than its own older copy.
+        if (state.instanceId !== input.instanceId) return { session: sessionView(state, session), stale: true };
         if (state.requests.includes(input.requestId)) return { session: sessionView(state, session) };
-        if (state.revision !== input.revision) return { session: sessionView(state, session) };
+        if (state.revision !== input.revision) return { session: sessionView(state, session), stale: true };
         // A fight whose rules are gone changes nothing at all: it is already finished, and the view
         // says why.
         if (state.style === "ruleset" && !ruleset) return { session: sessionView(state, session) };

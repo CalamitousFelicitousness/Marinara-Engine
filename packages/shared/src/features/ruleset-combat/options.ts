@@ -162,6 +162,7 @@ import {
   rulesetCarriesLight,
   rulesetHiddenFrom,
   rulesetHidingTraits,
+  rulesetStaysHidden,
   rulesetLightAt,
   rulesetSeesCell,
   rulesetStandsObscured,
@@ -5348,8 +5349,32 @@ export function rulesetUncompelledOptions(
     );
   }
   options.push(...grantedStandardOptions(definition, combat, actor, state));
+  // Hiding where every opponent sees them clearly is no hiding at all (playtest): still allowed by
+  // the rules, but marked, so neither a player's menu nor the AI spends an action on a roll that
+  // cannot work.
+  if (hidingHopeless(definition, actor, state)) {
+    for (const option of options)
+      if (option.kind === "standard" && rulesetStandardName(option.id) === "hide") option.futile = true;
+  }
   options.push(endTurn);
   return options;
+}
+
+/** Whether no opponent on the board could lose sight of this combatant whatever it rolled: each
+ *  sees it clearly, with nothing larger to slip behind. Never on a fight with no board, nor in a
+ *  ruleset that does not hide for real. */
+function hidingHopeless(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  state?: RulesetEncounterState,
+): boolean {
+  if (!definition.combat?.hiding || !state?.board || !rulesetPositionOf(actor)) return false;
+  const plain = !!rulesetHidingTraits(definition, actor).starts;
+  const foes = state.combatants.filter(
+    (one) => one.side !== actor.side && !one.defeated && !one.down && rulesetPositionOf(one),
+  );
+  if (foes.length === 0) return false;
+  return !foes.some((viewer) => rulesetStaysHidden(definition, state, viewer, actor, Number.MAX_SAFE_INTEGER, plain));
 }
 
 /** What a legendary move lends its maker to walk with (1.283): a share of its turn's allowance,

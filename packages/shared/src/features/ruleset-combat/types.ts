@@ -4253,6 +4253,9 @@ export interface RulesetCombatAlterOffer {
 }
 
 export interface RulesetCombatOption {
+  /** Allowed, but nothing can come of it now: a Hide with every opponent seeing its user clearly.
+   *  Left off a player's menu and never picked by the AI. */
+  futile?: true;
   /** The trap it disarms (1.616): its caster's and the action that laid it. */
   disarms?: { casterId: string; actionId: string };
   /** Breaks what these conditions on its actor command (1.591), and is harmed for it: 5e's Geas.

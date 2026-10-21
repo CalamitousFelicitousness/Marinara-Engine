@@ -871,7 +871,7 @@ export function rulesetMenu(
     ? rulesetWindowOptions(definition, encounter, actorId).filter(
         (option) => !asked || rulesetAnswerDeflects(definition, encounter, asked, option.id) !== false,
       )
-    : rulesetCombatOptions(definition, encounter, actorId);
+    : rulesetCombatOptions(definition, encounter, actorId).filter((option) => !option.futile);
   return menu.map((option) => {
     // A teleport is aimed as a shape is (1.276): at a cell it may go to, catching nobody.
     const aim = option.area
@@ -1759,6 +1759,8 @@ function rulesetCandidatesFrom(
   }
   for (const way of priced(definition, encounter, actor, menu)) {
     const { option, price } = way;
+    // Nothing can come of it from here: a Hide in the open.
+    if (option.futile) continue;
     // Turning a line or cone the actor carries (1.182) is weighed the same way, before any walk.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
       const turned = standing ? null : zoneTurnCandidate(encounter, actor, option, price);
@@ -3149,6 +3151,19 @@ function advanceTurn(definition: RulesetDefinition, state: CombatDirectorState, 
   const step = advanceRulesetTurn(definition, fight.encounter, rollerFor(fight));
   absorb(definition, state, fight, step);
   answerRulesetWindows(definition, state, fight);
+  // A player's member on the ground and dying has rolled against death as the turn began and has
+  // nothing else to do: the turn ends by itself rather than waiting on a click that decides nothing.
+  const next = currentRulesetActor(fight.encounter);
+  if (
+    next &&
+    next.dying &&
+    !next.stable &&
+    rulesetEncounterOutcome(fight.encounter) === "ongoing" &&
+    !fight.encounter.window &&
+    rulesetController(state, fight, next) === "manual" &&
+    rulesetCombatOptions(definition, fight.encounter, next.id).every((option) => option.kind === "end-turn")
+  )
+    advanceTurn(definition, state, fight);
 }
 
 /**

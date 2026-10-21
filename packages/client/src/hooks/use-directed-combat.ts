@@ -58,22 +58,23 @@ export function useDirectedCombat(input: {
     mutationFn: async (command: DirectedCommand) => {
       const current = qc.getQueryData<DirectedCombatView>(key);
       if (!current) throw new Error("Battle has not loaded.");
-      const result = await api.post<{ session: DirectedCombatView; rulesetLive?: RulesetLiveStates }>(
-        "/game/combat/director/command",
-        {
-          chatId: input.chatId,
-          anchor: input.anchor,
-          id: current.id,
-          instanceId: current.instanceId,
-          revision: current.revision,
-          requestId: generateClientId(),
-          command,
-          debugMode: useUIStore.getState().debugMode,
-        },
-      );
+      const result = await api.post<{
+        session: DirectedCombatView;
+        rulesetLive?: RulesetLiveStates;
+        stale?: boolean;
+      }>("/game/combat/director/command", {
+        chatId: input.chatId,
+        anchor: input.anchor,
+        id: current.id,
+        instanceId: current.instanceId,
+        revision: current.revision,
+        requestId: generateClientId(),
+        command,
+        debugMode: useUIStore.getState().debugMode,
+      });
       return result;
     },
-    onSuccess: ({ session, rulesetLive }) => {
+    onSuccess: ({ session, rulesetLive, stale }) => {
       void qc.invalidateQueries({ queryKey: chatKeys.detail(input.chatId) });
       // The server already wrote the party's sheets inside the step it accepted, so this is the
       // store catching up with what is on disk, never a second write: the in-game sheet is right
@@ -82,6 +83,13 @@ export function useDirectedCombat(input: {
         const store = useGameStateStore.getState();
         const current = store.current;
         if (current?.chatId === input.chatId) store.setGameState({ ...current, rulesetLive });
+      }
+      // The fight had moved on without this screen (a restart, another tab): what was sent did
+      // nothing, so it is said, and the fight is shown as the server has it, older or not.
+      if (stale) {
+        toast.info(t("game.combat.staleCommand"));
+        qc.setQueryData<DirectedCombatView>(key, session);
+        return;
       }
       qc.setQueryData<DirectedCombatView>(key, (current) =>
         !current ||

@@ -110,6 +110,7 @@ import {
   rulesetPropNamed,
   rulesetStepTimes,
   rulesetItemCallRoll,
+  rulesetNoteFight,
 } from "./encounter.js";
 import {
   rulesetAirborne,
@@ -4594,6 +4595,7 @@ export function rulesetCombatOptions(
   state: RulesetEncounterState,
   actorId: string,
 ): RulesetCombatOption[] {
+  rulesetNoteFight(state);
   const options = commandedOptions(definition, state, actorId);
   // What a command its actor may break at a cost stops is offered too (1.591), marked with the
   // conditions it breaks: 5e's Geas. Not while it is already being broken.

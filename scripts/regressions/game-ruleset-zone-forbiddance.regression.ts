@@ -182,7 +182,8 @@ try {
     );
     assert.deepEqual(
       option.kindsOf?.map((kind) => kind.id),
-      ["humanoid", "fiend", "undead"],
+      ["fiend", "undead"],
+      "only among the kinds its targetTypes names",
     );
   }
 
@@ -195,10 +196,10 @@ try {
     assert.equal(zone.damageType, "necrotic");
     assert.deepEqual(struck(step.state), { imp: ["15 necrotic"] });
   }
-  // ── Against humanoids, which its own targetTypes leave out ──
+  // ── Against both ──
   {
-    const step = cast({ mode: "damage-radiant", kinds: ["humanoid", "undead"] });
-    assert.deepEqual(struck(step.state), { zombie: ["15 radiant"], thug: ["15 radiant"] });
+    const step = cast({ mode: "damage-radiant", kinds: ["fiend", "undead"] });
+    assert.deepEqual(struck(step.state), { imp: ["15 radiant"], zombie: ["15 radiant"] });
   }
   // ── Named none: whom its own targetTypes say ──
   {
@@ -211,6 +212,7 @@ try {
     [{}, "no damage type"],
     [{ mode: "damage-fire" }, "a type it does not offer"],
     [{ mode: "damage-radiant", kinds: ["dragon"] }, "a kind it does not offer"],
+    [{ mode: "damage-radiant", kinds: ["humanoid"] }, "a kind its targetTypes leaves out"],
     [{ mode: "damage-radiant", kinds: [] }, "no kind"],
     [{ mode: "damage-radiant", kinds: ["fiend", "fiend"] }, "one twice"],
   ] as const) {
@@ -255,10 +257,10 @@ try {
   // ── With no damage type named, the first, and said; a kind it cannot strike, said ──
   {
     const stood = rulesetStandingAtStart(definition, fight(), [
-      { casterId: "cleric", entry: "Forbiddance", at: "between", kinds: ["Fiend", "Dragon"] },
+      { casterId: "cleric", entry: "Forbiddance", at: "between", kinds: ["Fiend", "Humanoid"] },
     ]);
     assert.match(stood.skipped.join(" "), /Forbiddance was given no damage type, so it deals radiant/);
-    assert.match(stood.skipped.join(" "), /cannot be set against "Dragon"/);
+    assert.match(stood.skipped.join(" "), /cannot be set against "Humanoid"/);
     const zone = rulesetCombatant(stood.state, "cleric")!.zones![0]!;
     assert.equal(zone.damageType, "radiant");
     assert.deepEqual(zone.strikesIs, { types: ["fiend"] });

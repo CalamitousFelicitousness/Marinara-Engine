@@ -4682,6 +4682,11 @@ export interface RulesetTargetIs {
    *  sheet, or what a creature `wears`. 5e's "a creature wearing armor made of metal",
    *  `{"wears": {"tags": ["metal"]}}`: Shocking Grasp, Heat Metal, a rust monster's Antennae. */
   wears?: { tags: string[] };
+  /** Only one standing in, or only one not standing in, a zone one of these entries left (Capability
+   *  API 1.702), by entry id or name, whoever cast it: 5e's Magic Jar, which cannot possess a
+   *  creature "warded by ... magic circle", `{"outsideZoneOf": ["magic-circle"]}`. */
+  insideZoneOf?: string[];
+  outsideZoneOf?: string[];
   /** Never one that is this (Capability API 1.477), whatever else it is: a net's "no effect on
    *  creatures that are formless", `{ "except": { "tags": ["formless"] } }`. */
   except?: Omit<RulesetTargetIs, "except" | "anyOf">;
@@ -4701,6 +4706,8 @@ const targetIsShape = {
     .object({ tags: z.array(sheetId).min(1).max(12) })
     .strict()
     .optional(),
+  insideZoneOf: z.array(promptSafeText(80)).min(1).max(8).optional(),
+  outsideZoneOf: z.array(promptSafeText(80)).min(1).max(8).optional(),
 };
 const namesSomething = (test: Omit<RulesetTargetIs, "except" | "anyOf">) =>
   test.types !== undefined ||
@@ -4709,7 +4716,9 @@ const namesSomething = (test: Omit<RulesetTargetIs, "except" | "anyOf">) =>
   test.atLeastSize !== undefined ||
   test.flying !== undefined ||
   test.holding !== undefined ||
-  test.wears !== undefined;
+  test.wears !== undefined ||
+  test.insideZoneOf !== undefined ||
+  test.outsideZoneOf !== undefined;
 const targetIsSchema: z.ZodType<RulesetTargetIs, z.ZodTypeDef, unknown> = z
   .object({
     ...targetIsShape,

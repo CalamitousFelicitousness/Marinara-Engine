@@ -142,6 +142,7 @@ export {
   rulesetCheckTakenModes,
   rulesetCheckMode,
   rulesetCombatant,
+  rulesetNoteFight,
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetInitiativeMode,

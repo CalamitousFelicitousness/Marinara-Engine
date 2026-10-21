@@ -1102,7 +1102,7 @@ export interface RulesetCombatAction {
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
   /** Its user names one or more of these creature types and tags as they use it (1.700), the
-   *  kinds its zone strikes: Forbiddance. */
+   *  kinds its zone strikes, among those its targetTypes names where it names any: Forbiddance. */
   kindsOf?: Array<{ id: string; label: string }>;
   /** Its user names its damage type as they use it (1.700), one of `modes`. */
   damageTypeChoice?: true;

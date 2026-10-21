@@ -218,7 +218,40 @@ function lairTurnTaker(combatant: RulesetCombatant): boolean {
 }
 
 export function rulesetCombatant(state: RulesetEncounterState, id: string): RulesetCombatant | undefined {
-  return state.combatants.find((combatant) => combatant.id === id);
+  const found = state.combatants.find((combatant) => combatant.id === id);
+  if (found) fightOf.set(found, state);
+  return found;
+}
+
+/** The fight each combatant was last read from (1.702), for a target test that asks where they stand
+ *  when nothing else hands it the fight. */
+const fightOf = new WeakMap<RulesetCombatant, RulesetEncounterState>();
+
+/** Notes every combatant of this fight as being in it (1.702). */
+export function rulesetNoteFight(state: RulesetEncounterState): void {
+  for (const combatant of state.combatants) fightOf.set(combatant, state);
+}
+
+/** Whether this combatant stands in a zone one of these entries left (1.702), by id or name. */
+function standsInZoneOf(combatant: RulesetCombatant, names: readonly string[]): boolean {
+  const state = fightOf.get(combatant);
+  if (!state) return false;
+  const wanted = names.map((name) => name.trim().toLowerCase());
+  const at = rulesetPositionOf(combatant);
+  const grid = state.board?.grid;
+  return state.combatants.some((caster) =>
+    (caster.zones ?? []).some((zone) => {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      // By its entry's id (`<catalog>/<entry>` or the entry alone), or its name.
+      const ids = [zone.actionId, action?.entry ?? "", action?.label ?? zone.label].map((one) =>
+        one.trim().toLowerCase(),
+      );
+      if (!ids.some((one) => wanted.includes(one) || wanted.some((name) => one.endsWith(`/${name}`)))) return false;
+      return grid && at
+        ? rulesetZoneCells(state, caster, zone).some((cell) => rulesetFills(combatant, cell))
+        : !!zone.held?.includes(combatant.id);
+    }),
+  );
 }
 
 export function currentRulesetActor(state: RulesetEncounterState): RulesetCombatant | undefined {
@@ -1132,6 +1165,9 @@ export function rulesetTargetIs(
   // One of these at least (1.502); a flier; holding one of these conditions.
   if (test.anyOf && !test.anyOf.some((one) => rulesetTargetIs(definition, combatant, one))) return false;
   if (test.flying && !combatant.speeds?.fly) return false;
+  // Standing in a zone of these entries, or not (1.702): Magic Jar, never into a magic circle.
+  if (test.insideZoneOf && !standsInZoneOf(combatant, test.insideZoneOf)) return false;
+  if (test.outsideZoneOf && standsInZoneOf(combatant, test.outsideZoneOf)) return false;
   const holding = test.holding;
   if (holding && !rulesetCombatConditions(definition, combatant).some((id) => holding.includes(id))) return false;
   // Wearing something of these tags (1.658): an item worn on its sheet, or what a creature wears.
@@ -4216,11 +4252,12 @@ function mechanicsAction(
   // A creature type named as it is used (1.270), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
   // Or several, the kinds its zone strikes (1.700): Forbiddance.
+  // Only among the kinds its targetTypes names, where it names any: Forbiddance's five.
   if (mechanics.kindChoice === "many" && creatureTypes) {
-    action.kindsOf = [...creatureTypes.types, ...(creatureTypes.tags ?? [])].map((kind) => ({
-      id: kind.id,
-      label: kind.label,
-    }));
+    const among = [...(mechanics.targetTypes?.is?.types ?? []), ...(mechanics.targetTypes?.is?.tags ?? [])];
+    action.kindsOf = [...creatureTypes.types, ...(creatureTypes.tags ?? [])]
+      .filter((kind) => among.length === 0 || among.includes(kind.id))
+      .map((kind) => ({ id: kind.id, label: kind.label }));
   }
   if (mechanics.kindChoice === true && creatureTypes) {
     action.kindChoice = true;

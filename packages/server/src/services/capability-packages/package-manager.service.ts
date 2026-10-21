@@ -2742,6 +2742,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A target test asking whether one stands in a zone some entries left (1.702): Magic Jar and Magic
+ *  Circle. */
+function carriesZoneTargetTest702(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesZoneTargetTest702(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.insideZoneOf !== undefined || record.outsideZoneOf !== undefined) return true;
+  return featureValues(record).some((one) => carriesZoneTargetTest702(one, depth + 1));
+}
+
 /** A creature with more than 12 actions (1.701): 5e's vampire, with its bat and mist forms. Before
  *  it every list of actions held 12 at most, so any longer one is one. */
 function carriesManyActions701(value: unknown, depth = 0): boolean {
@@ -9201,6 +9212,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Target tests of where one stands, 1.702.
+  if (
+    !declaresApi(702) &&
+    (carriesZoneTargetTest702(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesZoneTargetTest702(document)))
+  )
+    return "A ruleset with a target test of standing in a zone some entries left (insideZoneOf or outsideZoneOf) requires schemaVersion 2 and capabilityApi 1.702 or newer";
   // Creatures with more than 12 actions, 1.701.
   if (
     !declaresApi(701) &&

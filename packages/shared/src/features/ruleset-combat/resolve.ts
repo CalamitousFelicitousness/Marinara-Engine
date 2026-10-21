@@ -160,6 +160,7 @@ import {
   rulesetNoteProvoked,
   rulesetStepTimes,
   rulesetItemCallRoll,
+  rulesetNoteFight,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -504,6 +505,7 @@ function begin(
   roller: RulesetCombatRoller,
 ): { ctx: RulesetCombatContext; finish: () => RulesetCombatStep } {
   const next = structuredClone(state);
+  rulesetNoteFight(next);
   let rolls = 0;
   const ctx: RulesetCombatContext = {
     definition,

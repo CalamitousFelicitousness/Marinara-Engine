@@ -77,6 +77,10 @@ export function QuickConnectionSwitcher({
   const showModels = modelsEnabled && !isRandom;
   const modelsConnection = showModels ? sorted.find((connection) => connection.id === modelsConnectionId) : undefined;
 
+  useEffect(() => {
+    if (open && !modelsEnabled && document.activeElement === document.body) btnRef.current?.focus();
+  }, [open, modelsEnabled]);
+
   const handleSwitch = useCallback(
     (connId: string) => {
       if (!activeChatId) return;

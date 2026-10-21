@@ -428,14 +428,30 @@ test("a synchronized connection-only preference closes an open model picker (#79
     await page.goto("/");
     const picker = await openModels(page, testInfo, main.id);
     await expect(picker).toBeVisible();
-    releaseSettings?.();
     const menu = page.locator(isPhone(testInfo) ? "[data-quick-switcher-mobile-menu]" : "[data-quick-connection-menu]");
+    const trigger = page.getByRole("button", {
+      name: isPhone(testInfo) ? "Quick Switcher" : "Quick Connection Switcher",
+      exact: true,
+    });
+    if (isPhone(testInfo)) {
+      await picker.locator("[data-model-back]").click();
+      await expect(trigger).toBeFocused();
+      await expect(menu.locator(`[data-connection-option="${main.id}"]`)).toBeVisible();
+      await menu.locator(`[data-connection-models="${main.id}"]`).click();
+    }
+    await picker.locator("[data-model-search]").focus();
+    await expect(picker.locator("[data-model-search]")).toBeFocused();
+    releaseSettings?.();
     await expect(menu.locator("[data-connection-model-picker], [data-connection-models]")).toHaveCount(0);
     await expect(menu.getByRole("button", { name: "Show models in Quick Switcher", exact: true })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
     await expect(menu.locator(`[data-connection-option="${main.id}"]`)).toBeVisible();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
   } finally {
     releaseSettings?.();
     await cleanup();

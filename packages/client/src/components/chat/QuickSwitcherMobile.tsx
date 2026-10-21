@@ -206,8 +206,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     [activeChatId, activeConnectionId, updateChat],
   );
   useEffect(() => {
-    if (!open || !modelsEnabled) setModelsStep(null);
-  }, [open, modelsEnabled]);
+    if (!modelsStep || (open && modelsEnabled)) return;
+    setModelsStep(null);
+    if (open && document.activeElement === document.body) btnRef.current?.focus();
+  }, [open, modelsEnabled, modelsStep]);
   const modelsConnection =
     modelsEnabled && tab === "connections" && modelsStep && !isRandom
       ? sortedConnections.find(
@@ -480,7 +482,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                   <button
                     type="button"
                     data-model-back
-                    onClick={() => setModelsStep(null)}
+                    onClick={() => {
+                      setModelsStep(null);
+                      btnRef.current?.focus();
+                    }}
                     aria-label={localizeUi("connections.modelPicker.back")}
                     title={localizeUi("connections.modelPicker.back")}
                     className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-foreground/60 transition-colors hover:bg-foreground/10 hover:text-foreground/85"

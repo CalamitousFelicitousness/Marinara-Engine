@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import {
   CHAT_PRESET_APPLY_MUTATION_KEY,
   chatPresetApplyFilters,
+  nextWizardApplyHold,
 } from "../../packages/client/src/lib/chat-preset-apply";
 
 const require = createRequire(new URL("../../packages/client/package.json", import.meta.url));
@@ -45,5 +46,17 @@ unsubscribe();
 assert.equal(queryClient.isMutating(chatPresetApplyFilters("new")), 0, "the wizard opens once the profile is applied");
 assert.equal(sawWaitEndBeforeCache, false, "the wait never ends before the applied chat is cached");
 assert.deepEqual(cachedChat()?.metadata.conversationCommandToggles, { video: true });
+
+// Only the apply running when the wizard opens holds it; a profile picked inside the wizard later doesn't unmount it.
+let hold = nextWizardApplyHold(null, "new", true);
+assert.equal(hold.waiting, true, "the wizard waits for the starred profile it opened with");
+hold = nextWizardApplyHold(hold, "new", false);
+assert.equal(hold.waiting, false, "and opens once it ends, or fails");
+hold = nextWizardApplyHold(hold, "new", true);
+assert.equal(hold.waiting, false, "a profile applied from inside the wizard doesn't take it down");
+assert.equal(nextWizardApplyHold(null, "new", false).waiting, false, "no apply running: no wait");
+assert.equal(nextWizardApplyHold(hold, "other", true).waiting, true, "another chat's wizard waits for its own apply");
+const steady = nextWizardApplyHold(hold, "new", true);
+assert.equal(nextWizardApplyHold(steady, "new", true), steady, "an unchanged hold is the same object (no re-render)");
 
 console.log("The setup wizard waits for a new chat's profile and then starts from its settings.");

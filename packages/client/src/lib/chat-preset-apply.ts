@@ -9,3 +9,19 @@ export function chatPresetApplyFilters(chatId: string): MutationFilters {
     predicate: (mutation) => (mutation.state.variables as { chatId?: string } | undefined)?.chatId === chatId,
   };
 }
+
+export type WizardApplyHold = { chatId: string; waiting: boolean };
+
+/**
+ * Whether a chat's setup wizard waits for a profile apply. Only an apply already running when the wizard first shows
+ * for this chat (the new chat's starred profile) holds it; once that ends, a later apply (a profile picked inside the
+ * wizard) never unmounts it. A failed apply ends the wait too.
+ */
+export function nextWizardApplyHold(
+  previous: WizardApplyHold | null,
+  chatId: string,
+  applying: boolean,
+): WizardApplyHold {
+  if (!previous || previous.chatId !== chatId) return { chatId, waiting: applying };
+  return previous.waiting && !applying ? { chatId, waiting: false } : previous;
+}

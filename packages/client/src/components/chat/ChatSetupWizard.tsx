@@ -34,6 +34,7 @@ import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-
 import { useLorebooks } from "../../hooks/use-lorebooks";
 import { useUpdateChat, useUpdateChatMetadata, useCreateMessage, chatKeys } from "../../hooks/use-chats";
 import { useChatPresets, useApplyChatPreset, useIsApplyingChatPreset } from "../../hooks/use-chat-presets";
+import { nextWizardApplyHold } from "../../lib/chat-preset-apply";
 import { useAgentConfigs, useCreateAgent, useUpdateAgent, type AgentConfigRow } from "../../hooks/use-agents";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useUIStore } from "../../stores/ui.store";
@@ -935,12 +936,16 @@ function SetupGenerationParametersPanel({
 
 export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const applyingProfile = useIsApplyingChatPreset(chat.id);
+  const [applyHold, setApplyHold] = useState(() => nextWizardApplyHold(null, chat.id, applyingProfile));
+  const hold = nextWizardApplyHold(applyHold, chat.id, applyingProfile);
+  if (hold !== applyHold) setApplyHold(hold);
   const chatMode = (chat as unknown as { mode?: string }).mode ?? "roleplay";
   // Game mode has its own wizard in GameSurface — skip the roleplay wizard
   if (chatMode === "game") return null;
   // A new chat's starred profile is still being applied: start from its settings, not the blank chat's,
-  // or finishing setup would write the blank chat's commands back over the profile's.
-  if (applyingProfile) return <WizardLoading onClose={onFinish} />;
+  // or finishing setup would write the blank chat's commands back over the profile's. A profile picked inside the
+  // wizard later doesn't hold it, so the open wizard is never unmounted.
+  if (hold.waiting) return <WizardLoading onClose={onFinish} />;
   return <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} />;
 }
 

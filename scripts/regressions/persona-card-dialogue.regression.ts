@@ -83,7 +83,9 @@ try {
         presetId: preset.id,
         name: "Identity",
         identifier: "identity",
-        content: includePersona ? "{{persona}}" : "Respond as the character.",
+        content: includePersona
+          ? "PEEK_IDENTITY_SECTION {{persona}}"
+          : "PEEK_IDENTITY_SECTION Respond as the character.",
         role: "system",
         enabled: true,
         isMarker: false,
@@ -104,6 +106,7 @@ try {
       assert.equal(peek.json().source, "live_preview");
       const text = JSON.stringify(peek.json().messages);
       const context = `${wrapFormat}/${includePersona ? "persona macro" : "fallback"}/peek`;
+      assert.match(text, /PEEK_IDENTITY_SECTION/u, `${context}: the preset section reaches the preview`);
       assert.equal(text.split("PEEK_DIALOGUE").length - 1, 1, `${context}: example appears exactly once`);
       assert.match(text, /Example Persona:.*PEEK_DIALOGUE Subject/u, `${context}: speakers resolve`);
       assert.doesNotMatch(text, /\{\{(?:user|char)\}\}|SUMMARY_METADATA_ONLY/u, context);

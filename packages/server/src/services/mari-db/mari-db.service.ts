@@ -3257,8 +3257,8 @@ export class MariDbService {
         );
         const patch: Row = { updatedAt: now() };
         assignStringField(patch, data, ["name"], "name");
-        assignStringField(patch, data, ["summary"], "summary");
-        assignStringField(patch, data, ["mes_example"], "mes_example");
+        if (typeof data.summary === "string") patch.summary = data.summary.trim();
+        if (typeof data.mes_example === "string") patch.mes_example = data.mes_example.trim();
         assignStringField(patch, data, ["description"], "description");
         assignStringField(patch, data, ["personality"], "personality");
         assignStringField(patch, data, ["scenario"], "scenario");

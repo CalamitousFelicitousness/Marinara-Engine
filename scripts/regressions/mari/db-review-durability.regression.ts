@@ -144,8 +144,8 @@ try {
       };
       await assertDirectFields();
       for (const [field, shape, value] of [
-        ["summary", "top-level", "A revised top-level summary."],
-        ["mes_example", "patch", "{{user}}: Revised nested dialogue."],
+        ["summary", "top-level", "  A revised top-level summary.  "],
+        ["mes_example", "patch", "  {{user}}: Revised nested dialogue.  "],
         ["summary", "patch", "A revised nested summary."],
         ["mes_example", "top-level", "{{user}}: Revised top-level dialogue."],
       ] as const) {
@@ -157,7 +157,46 @@ try {
           apply: true,
         });
         assert.equal(updated.ok, true, `${field}-only ${shape} update succeeds: ${JSON.stringify(updated)}`);
-        expectedFields[field] = value;
+        expectedFields[field] = value.trim();
+        await assertDirectFields();
+      }
+
+      const clearResults = [];
+      for (const [field, shape, value] of [
+        ["summary", "top-level", ""],
+        ["mes_example", "patch", ""],
+        ["summary", "patch", " \n "],
+        ["mes_example", "top-level", " \n "],
+      ] as const) {
+        const update = { [field]: value };
+        clearResults.push(
+          await mari.executeAction({
+            action: "persona.update",
+            personaId: "direct-fields-persona",
+            ...(shape === "top-level" ? update : { patch: update }),
+            apply: true,
+          }),
+        );
+      }
+      assert.ok(
+        clearResults.every((result) => result.ok),
+        `empty card fields can be cleared: ${JSON.stringify(clearResults)}`,
+      );
+      expectedFields.summary = "";
+      expectedFields.mes_example = "";
+      await assertDirectFields();
+      for (const payload of [
+        {},
+        { summary: null, mes_example: 17 },
+        { patch: { summary: 17, mes_example: null } },
+      ]) {
+        const ignored = await mari.executeAction({
+          action: "persona.update",
+          personaId: "direct-fields-persona",
+          ...payload,
+          apply: true,
+        });
+        assert.equal(ignored.ok, false, "omitted or non-string fields remain non-updates");
         await assertDirectFields();
       }
 

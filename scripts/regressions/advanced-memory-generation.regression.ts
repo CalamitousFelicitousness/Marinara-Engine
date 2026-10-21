@@ -97,6 +97,7 @@ try {
     apiKey: "fixture",
     maxContext: 16_384,
     maxTokensOverride: 512,
+    defaultParameters: { maxContext: 8192, maxTokens: 512 },
     embeddingModel: "fixture-embedding",
   });
   const characters = createCharactersStorage(db);
@@ -106,7 +107,6 @@ try {
   const presets = createPromptsStorage(db);
   const preset = await presets.create({
     name: "Advanced fixture",
-    parameters: { maxTokens: 512, maxContext: 8192 },
     wrapFormat: "xml",
   });
   assert.ok(preset);

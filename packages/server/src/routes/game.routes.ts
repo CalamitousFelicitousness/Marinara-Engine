@@ -9343,7 +9343,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         chat.personaId ??
         setupConfig.personaId ??
         null;
-      const persona = currentRoomGeneration() ? null : personaId ? await characters.getPersona(personaId) : null;
+      const persona = currentRoomGeneration()
+        ? null
+        : personaId
+          ? await characters.getPersona(personaId, input.chatId)
+          : null;
       if (persona) {
         targetName = persona.name?.trim() || requestedName;
         targetCharacterCard = buildRecruitCharacterSourceCard({
@@ -9381,7 +9385,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         throw new Error("The selected character is not in the active party");
       }
 
-      const character = await characters.getById(input.characterId);
+      const character = await characters.getById(input.characterId, input.chatId);
       if (character) {
         const data = (typeof character.data === "string" ? JSON.parse(character.data) : character.data) as Record<
           string,
@@ -12902,7 +12906,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const characters = createCharactersStorage(app.db);
         const experienceSetupConfig = (meta.gameSetupConfig as GameSetupConfig | null) ?? null;
         const lorePersonaId = chat.personaId || experienceSetupConfig?.personaId || null;
-        const lorePersona = lorePersonaId ? await characters.getPersona(lorePersonaId) : null;
+        const lorePersona = lorePersonaId ? await characters.getPersona(lorePersonaId, req.params.chatId) : null;
         const lorePersonaFields = {
           description: lorePersona?.description ?? "",
           personality: lorePersona?.personality ?? "",

@@ -819,8 +819,9 @@ export async function conversationRoutes(app: FastifyInstance) {
           "free time",
           scheduleNow,
         );
+        // The card used above is a chat projection. Persist runtime state only,
+        // so scoped appearance/backstory never replace the authored base card.
         const extensions = {
-          ...(charData.extensions ?? {}),
           conversationStatus: status,
           conversationSchedule: fullSchedule,
         };

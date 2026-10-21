@@ -64,6 +64,9 @@ export interface RulesetBuilderApplied {
   saves: Record<string, string>;
   fields: Record<string, Scalar>;
   rows: string[];
+  /** The marks a mark step ticked (1.714), as `<list>:<column>:<row's catalog ref>`, so unmarking clears
+   *  only those. */
+  marks?: string[];
   /** The sheet below the rating stages, and their last numeric answer. */
   ratings?: Record<string, { before?: Scalar; desired: number }>;
   /** Actual paid increments, independently owned by each stage. */
@@ -105,6 +108,8 @@ export interface RulesetBuilderState {
   assign?: Record<string, number>;
   /** Entry ids picked at each catalog step. */
   picks?: Record<string, string[]>;
+  /** The rows marked at each mark step (1.714), by their catalog ref. */
+  marks?: Record<string, string[]>;
   /** Abilities chosen for a grant's `abilities.choose`, keyed by `rulesetBuilderChoiceKey`. */
   abilityChoices?: Record<string, string[]>;
   /** Skills or saves chosen for a grant's or a trained step's `choose`. */
@@ -178,6 +183,7 @@ const stateShape = {
   rolled: z.array(z.number().finite()).max(40).optional(),
   assign: z.record(z.number().int().min(0).max(40)).optional(),
   picks: z.record(idList).optional(),
+  marks: z.record(z.array(z.string().max(200)).max(200)).optional(),
   abilityChoices: z.record(idList).optional(),
   trainedChoices: z.record(idList).optional(),
   entryChoices: z.record(idList).optional(),
@@ -221,6 +227,7 @@ const stateShape = {
       saves: z.record(z.string().max(40)).default({}),
       fields: z.record(z.union([z.number().finite(), z.string().max(4000), z.boolean()])).default({}),
       rows: z.array(z.string().max(200)).max(1000).default([]),
+      marks: z.array(z.string().max(300)).max(1000).optional().catch(undefined),
       trainingBefore: z
         .object({ skills: z.record(z.string().max(40)), saves: z.record(z.string().max(40)) })
         .optional(),
@@ -736,6 +743,52 @@ export function rulesetBuilderPicks(
   return step.quotas || step.distinctBy || step.quotaBelow
     ? limitedEntries(exclusive, step, max)
     : exclusive.slice(0, max);
+}
+
+/** The rows a mark step offers (1.714): those on its list that a catalog wrote and that match its
+ *  `where`, by their catalog ref, each once. A row the player typed in has no ref and is not offered. */
+export function rulesetBuilderMarkRows(
+  step: StepOf<"mark">,
+  build: RulesetSheetBuild,
+): Array<{ ref: string; row: Record<string, Scalar> }> {
+  const rows = Array.isArray(build.lists[step.list]) ? build.lists[step.list]! : [];
+  const seen = new Set<string>();
+  return rows.flatMap((row) => {
+    const ref = row?.[RULESET_CATALOG_ROW_KEY];
+    if (typeof ref !== "string" || seen.has(ref)) return [];
+    for (const [id, want] of Object.entries(step.where ?? {})) {
+      const value = row[id];
+      if (typeof want === "object" ? typeof value !== "number" || value < want.atLeast : value !== want) return [];
+    }
+    seen.add(ref);
+    return [{ ref, row }];
+  });
+}
+
+/** How many rows a mark step lets the player mark (1.714): its `max`, or what `countFrom` reads. */
+export function rulesetBuilderMarkCount(
+  definition: RulesetDefinition,
+  step: StepOf<"mark">,
+  build: RulesetSheetBuild,
+): number {
+  if (step.countFrom) return Math.max(0, Math.floor(resolveRulesetValueRef(definition, build, step.countFrom)));
+  return step.max ?? 0;
+}
+
+/** The rows marked at a mark step (1.714): the stored marks still offered, the earliest first, no more
+ *  than it lets the player mark. */
+export function rulesetBuilderMarked(
+  definition: RulesetDefinition,
+  stepId: string,
+  state: RulesetBuilderState,
+  build: RulesetSheetBuild,
+): string[] {
+  const step = stepById(definition, stepId);
+  if (!step || step.kind !== "mark" || !rulesetBuilderStepVisible(definition, step, build)) return [];
+  const offered = new Set(rulesetBuilderMarkRows(step, build).map(({ ref }) => ref));
+  return [...new Set(state.marks?.[stepId] ?? [])]
+    .filter((ref) => offered.has(ref))
+    .slice(0, rulesetBuilderMarkCount(definition, step, build));
 }
 
 /** The stored picks of a step with `id` added: one of an `exclusive` group (1.94) replaces the step's
@@ -2172,6 +2225,30 @@ function applyRulesetBuilderLegacy(
     if (wrote) next.rows.push(ref);
   }
 
+  // Marks (1.714): a row newly marked has its column ticked, and one unmarked has it cleared, as far as
+  // the builder ticked it. A tick the player changed on the sheet since stays theirs until the mark does.
+  const written = { ...build, abilities, skills, saves, fields, lists };
+  const wanted = new Map<string, { list: string; column: string; ref: string }>();
+  for (const step of definition.sheet.builder?.steps ?? [])
+    if (step.kind === "mark")
+      for (const ref of rulesetBuilderMarked(definition, step.id, state, written))
+        wanted.set(`${step.list}:${step.column}:${ref}`, { list: step.list, column: step.column, ref });
+  const tick = (key: string, value: boolean) => {
+    const [list, column] = key.split(":") as [string, string];
+    const ref = key.slice(list.length + column.length + 2);
+    const rows = lists[list];
+    if (!Array.isArray(rows)) return false;
+    const at = rows.findIndex((row) => row?.[RULESET_CATALOG_ROW_KEY] === ref);
+    if (at < 0 || rows[at]![column] === value) return false;
+    lists = { ...lists, [list]: rows.map((row, index) => (index === at ? { ...row, [column]: value } : row)) };
+    return true;
+  };
+  for (const key of previous.marks ?? []) {
+    if (wanted.has(key)) (next.marks ??= []).push(key);
+    else tick(key, false);
+  }
+  for (const key of wanted.keys()) if (!previous.marks?.includes(key) && tick(key, true)) (next.marks ??= []).push(key);
+
   return {
     build: { ...build, abilities, skills, saves, fields, lists },
     state: { ...state, applied: next },
@@ -2316,6 +2393,13 @@ export function rulesetBuilderRemaining(
       add(step.id, missing);
     } else if (step.kind === "roll") {
       if (!state.describing) add(step.id, step.rolls.filter((roll) => !state.rolls?.[step.id]?.[roll.id]).length);
+    } else if (step.kind === "mark") {
+      // Never more than there are rows to mark.
+      const most = Math.min(
+        rulesetBuilderMarkCount(definition, step, build),
+        rulesetBuilderMarkRows(step, build).length,
+      );
+      add(step.id, Math.max(0, most - rulesetBuilderMarked(definition, step.id, state, build).length));
     } else if (step.kind === "initialize") {
       add(step.id, state.describing || state.initialized?.[step.id] ? 0 : 1);
     } else if (step.kind === "allocate") {

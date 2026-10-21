@@ -1999,6 +1999,27 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       from: sheetId.optional(),
     })
     .strict(),
+  /** Rows already on one of the sheet's lists that the player marks, ticking a boolean column on each
+   *  (Capability API 1.714): a wizard's prepared spells out of the spellbook the steps before wrote. */
+  z
+    .object({
+      ...builderStepBase,
+      kind: z.literal("mark"),
+      list: sheetId,
+      /** The boolean column a mark ticks. */
+      column: sheetId,
+      /** Only rows with these values are offered; `{ atLeast }` for a number column (1 to 4 columns). */
+      where: z
+        .record(sheetId, z.union([sheetScalar, z.object({ atLeast: z.number().finite() }).strict()]))
+        .refine((where) => Object.keys(where).length >= 1 && Object.keys(where).length <= 4, {
+          message: "A mark step filters on 1 to 4 columns",
+        })
+        .optional(),
+      /** How many rows the player marks: a fixed number, or a sheet value (`countFrom`), exactly one. */
+      max: z.number().int().min(1).max(200).optional(),
+      countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    })
+    .strict(),
   /** Starting values written once, when the player confirms them (Capability API 1.158): SAN from POW,
    *  Humanity before freebies, the creation XP left over. Reopening never writes them again. */
   z
@@ -2109,6 +2130,14 @@ export type RulesetBuilderStep =
       pool?: string;
       cost?: number | RulesetBuilderRowsCost;
       from?: string;
+    })
+  | (BuilderStepBase & {
+      kind: "mark";
+      list: string;
+      column: string;
+      where?: Record<string, string | number | boolean | { atLeast: number }>;
+      max?: number;
+      countFrom?: RulesetValueRef;
     })
   | (BuilderStepBase & {
       kind: "roll";
@@ -18334,6 +18363,24 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           else if (!catalog.feeds?.includes(step.list))
             issue([...path, "from"], `"${step.from}" writes no rows to "${step.list}"`);
         }
+      } else if (step.kind === "mark") {
+        const list = listById.get(step.list);
+        if (!list) issue([...path, "list"], `Unknown list "${step.list}"`);
+        else {
+          if (list.columns.find((column) => column.id === step.column)?.type !== "boolean")
+            issue([...path, "column"], `No boolean column "${step.column}"`);
+          for (const [id, value] of Object.entries(step.where ?? {})) {
+            const column = list.columns.find((each) => each.id === id);
+            if (!column) issue([...path, "where", id], `Unknown column "${id}"`);
+            else if (typeof value === "object" && column.type !== "number")
+              issue([...path, "where", id], "Only a number column is filtered by atLeast");
+          }
+          if (step.max !== undefined && step.max > list.maxItems)
+            issue([...path, "max"], `"${step.list}" holds at most ${list.maxItems} rows`);
+        }
+        if ((step.max === undefined) === (step.countFrom === undefined))
+          issue([...path, "max"], "A mark step says max or countFrom, exactly one");
+        if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
       } else if (step.kind === "abilities") {
         abilitySteps += 1;
         if (sheet.abilities.length === 0) issue([...path, "kind"], "This sheet has no ability scores");
@@ -23329,7 +23376,7 @@ function builderChoicesIssues(
       for (const group of step.groups) for (const target of group.targets) ratingWrites(target);
     if (step.kind === "abilities") for (const ability of definition.sheet.abilities) writes.abilities.add(ability.id);
     if (step.kind === "fields") for (const id of step.fields) writes.fields.add(id);
-    if (step.kind === "rows") writes.lists.add(step.list);
+    if (step.kind === "rows" || step.kind === "mark") writes.lists.add(step.list);
     if (step.kind === "trained")
       for (const choice of step.choose ?? [])
         for (const id of choice.onDuplicate

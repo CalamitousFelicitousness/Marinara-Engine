@@ -20,6 +20,9 @@ import {
   rulesetBuilderStartingGearOptions,
   rulesetBuilderPickAdded,
   rulesetBuilderPicks,
+  rulesetBuilderMarkRows,
+  rulesetBuilderMarkCount,
+  rulesetBuilderMarked,
   rulesetBuilderPickReason,
   rulesetBuilderInactiveChoices,
   rulesetBuilderStepVisible,
@@ -821,6 +824,47 @@ export function RulesetSheetBuilder({
 
   // Named rows (1.154): the player's own rows are edited where they sit in the list, so two rows with
   // the same name stay two rows. Rows a pick wrote are shown and left to the pick.
+  // Rows already on a list, marked to tick one of their columns (1.714): a wizard's prepared spells.
+  const markStep = (current: StepOf<"mark">) => {
+    const list = definition.sheet.lists.find((each) => each.id === current.list);
+    const name = list?.columns.find((column) => column.type === "text")?.id;
+    const rows = rulesetBuilderMarkRows(current, build);
+    const marked = rulesetBuilderMarked(definition, current.id, state, build);
+    const most = Math.min(rulesetBuilderMarkCount(definition, current, build), rows.length);
+    const toggle = (ref: string) => {
+      const stored = state.marks?.[current.id] ?? [];
+      const next = marked.includes(ref) ? stored.filter((each) => each !== ref) : [...marked, ref];
+      update({ ...state, marks: { ...state.marks, [current.id]: next } });
+    };
+    return (
+      <div className="space-y-1.5">
+        <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+          {rows.length === 0
+            ? t("ui.rulesets.builder.markNone")
+            : t("ui.rulesets.builder.markCount", { count: most, marked: marked.length })}
+        </p>
+        <ul className="space-y-1">
+          {rows.map(({ ref, row }) => {
+            const on = marked.includes(ref);
+            return (
+              <li key={ref}>
+                <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!on && marked.length >= most}
+                    onChange={() => toggle(ref)}
+                  />
+                  {String((name && row[name]) || ref)}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  };
+
   const rowsStep = (current: StepOf<"rows">) => {
     const list = definition.sheet.lists.find((each) => each.id === current.list);
     if (!list) return null;
@@ -1798,6 +1842,8 @@ export function RulesetSheetBuilder({
             allocateStep(step)
           ) : step.kind === "rows" ? (
             rowsStep(step)
+          ) : step.kind === "mark" ? (
+            markStep(step)
           ) : step.kind === "initialize" ? (
             initializeStep(step)
           ) : step.kind === "roll" ? (

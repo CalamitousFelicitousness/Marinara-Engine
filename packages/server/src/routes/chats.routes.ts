@@ -63,6 +63,7 @@ import {
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
   DEFAULT_GENERATION_PARAMS,
+  isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
 } from "@marinara-engine/shared";
 import type {
@@ -532,7 +533,7 @@ function toPeekPromptMessages(
 
 async function buildPersonaSnapshotForChat(
   app: FastifyInstance,
-  chat: { personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
+  chat: { id?: string; personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
 ) {
   const charactersStore = createCharactersStorage(app.db);
   if (!chat) return null;
@@ -3636,6 +3637,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaDescription = cardPromptText(identity.description);
 
             personaFields = {
+              example: cardPromptText(identity.mesExample),
               personality: cardPromptText(identity.personality),
               scenario: cardPromptText(identity.scenario),
               backstory: cardPromptText(identity.backstory),
@@ -3667,7 +3669,10 @@ export async function chatsRoutes(app: FastifyInstance) {
                 isSceneChat: chatMeta.sceneStatus === "active",
                 chatParameters: chatMeta.chatParameters,
                 baseReasoningEffort:
-                  preset && chatMode !== "conversation" && chatMode !== "game"
+                  preset &&
+                  !isStockMarinaraUniversalPreset(preset) &&
+                  chatMode !== "conversation" &&
+                  chatMode !== "game"
                     ? (parsePresetParameters(preset.parameters).reasoningEffort ?? null)
                     : DEFAULT_GENERATION_PARAMS.reasoningEffort,
               })
@@ -4020,7 +4025,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                   individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
                   impersonate: false,
                   narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
-                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds, chat.id)),
                 })
               : undefined,
             enableAgents: chatMeta.enableAgents === true,
@@ -4094,7 +4099,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           // Character info fallback
           for (const cid of assistantCharacterIds) {
-            const charRow = await charStore.getById(cid);
+            const charRow = await charStore.getById(cid, chat.id);
             if (!charRow) continue;
             const charData = JSON.parse(charRow.data as string);
             const charName = charData.name ?? "Unknown";
@@ -4214,6 +4219,40 @@ export async function chatsRoutes(app: FastifyInstance) {
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.appearance), "appearance", wrapFormat, 2),
                 );
+              // Use actual resolved leaves, not raw preset references: disabled or
+              // unselected branches must still receive the fallback.
+              // ponytail: whitespace/case matching covers wrappers and case macros;
+              // other content transforms would need emitted-field provenance.
+              const normalizedContent = allContent
+                .split("\n")
+                .map((line) => line.trim())
+                .join("\n")
+                .normalize("NFC")
+                .toLowerCase()
+                .toUpperCase()
+                .normalize("NFC");
+              const exampleAlreadyInPrompt = (example: string) => {
+                const normalizedExample = example
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .join("\n")
+                  .trim()
+                  .normalize("NFC")
+                  .toLowerCase()
+                  .toUpperCase()
+                  .normalize("NFC");
+                return !!normalizedExample && normalizedContent.includes(normalizedExample);
+              };
+              const hasEmittedPersonaExample = assembled.resolvedPersonaExamples.some(exampleAlreadyInPrompt);
+              if (!hasEmittedPersonaExample) {
+                const resolvedPersonaExample = resolveMacros(personaFields.example ?? "", {
+                  ...promptMacroContext,
+                  variables: assembled.macroVariables,
+                  agentData: assembled.macroAgentData,
+                });
+                if (resolvedPersonaExample && !exampleAlreadyInPrompt(resolvedPersonaExample))
+                  fieldParts.push(wrapContent(resolvedPersonaExample, "example_dialogue", wrapFormat, 2));
+              }
               if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.scenario), "scenario", wrapFormat, 2));
               // Include enabled RPG attributes

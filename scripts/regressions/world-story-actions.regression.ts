@@ -31,7 +31,10 @@ import {
   type StoryScriptInput,
   type StoryTurnWorld,
 } from "../../packages/shared/src/index.js";
-import { storyFightBlueprintEnemies } from "../../packages/server/src/services/game/story-fight.service.js";
+import {
+  storyFightBlueprintEnemies,
+  storyFightPromptText,
+} from "../../packages/server/src/services/game/story-fight.service.js";
 
 const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
 assert.ok(parsed.ok);
@@ -211,12 +214,36 @@ const r3 = reply(third);
 const fight = storyFightIn(story, r3);
 assert.equal(fight?.id, "granary");
 assert.equal(storyFightIn(story, r2), null);
-const roster = storyFightRoster(fight!, (ref) => (ref === "creatures/scarecrow" ? "Scarecrow" : undefined));
+const { opponents: roster, refused } = storyFightRoster(fight!, (ref) =>
+  ref === "creatures/scarecrow" ? "Scarecrow" : undefined,
+);
 assert.deepEqual(roster, [
   { name: "Scarecrow 1", creature: "Scarecrow" },
   { name: "Scarecrow 2", creature: "Scarecrow" },
   { name: "The Owed", creature: "The Owed" },
 ]);
+assert.deepEqual(refused, []);
+// A creature id the bestiary doesn't have is refused and listed, never fought as a made-up creature.
+const missing = storyFightRoster(
+  {
+    ...fight!,
+    creatures: [
+      { creature: "monsters/goblin", count: 2 },
+      { creature: "creatures/scarecrow", count: 1 },
+    ],
+  },
+  (ref) => (ref === "creatures/scarecrow" ? "Scarecrow" : undefined),
+);
+assert.deepEqual(missing.opponents, [{ name: "Scarecrow", creature: "Scarecrow" }]);
+assert.deepEqual(missing.refused, ["monsters/goblin"]);
+// With every creature refused, the fight is still the story's, but its enemies are the writer's to choose.
+assert.match(storyFightPromptText(fight!, []), /Choose its enemies yourself\.$/u);
+assert.doesNotMatch(storyFightPromptText(fight!, []), /exactly these/u);
+// Without a ruleset to read ids, every id is refused.
+assert.deepEqual(storyFightRoster({ ...fight!, creatures: [{ creature: "monsters/goblin", count: 1 }] }), {
+  opponents: [],
+  refused: ["monsters/goblin"],
+});
 // The blueprint keeps the model's own enemy where it wrote one, copies one where it did not, and never
 // keeps an enemy the story did not ask for or a stat block the model proposed instead.
 const enemies = storyFightBlueprintEnemies(

@@ -30,10 +30,16 @@ import {
   type ExperienceMapPack,
   type TilePack,
 } from "@marinara-engine/shared";
+import { logger } from "../../lib/logger.js";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
 import { loadRulesetRegistry } from "./ruleset-registry.service.js";
 import { cleanImageTilePack } from "./tile-pack-images.service.js";
 
+// The Capability API minors a map pack and an image tile pack need (1.72, 1.80). The manifest schema
+// refuses a map pack below 1.72, this reader refuses image tiles below 1.80, and the authoring check
+// reports both from these numbers.
+const MAP_PACK_MINOR = 72;
+const IMAGE_TILES_MINOR = 80;
 /** Map pack tiles already checked, by package, version and the tiles file's hash; the oldest go first. */
 const checkedTiles = new Map<string, TilePack>();
 const CHECKED_TILES_KEPT = 8;
@@ -74,7 +80,8 @@ export async function readMapPackPeople(packageId: string): Promise<NonNullable<
   let file: Awaited<ReturnType<typeof capabilityPackageManager.mapPackPeople>>;
   try {
     file = await capabilityPackageManager.mapPackPeople(packageId);
-  } catch {
+  } catch (error) {
+    logger.warn(error, "Could not read the people file of Experience %s", packageId);
     return null;
   }
   if (!file) return null;
@@ -82,7 +89,10 @@ export async function readMapPackPeople(packageId: string): Promise<NonNullable<
   let people = checkedPeople.get(key);
   if (!people) {
     const read = readExperiencePeople(file.data.toString("utf8"));
-    if (!read.ok) return null;
+    if (!read.ok) {
+      logger.warn("The people file of Experience %s no longer reads: %s", packageId, read.issues.join(" "));
+      return null;
+    }
     people = read.people;
     rememberPeople(key, people);
   }
@@ -189,8 +199,11 @@ export async function checkMapPackFiles(
       tiles = read.pack;
       if (tiles.tilePackVersion === 2) {
         const api = files.capabilityApi;
-        if (!api || !(api.major > 1 || (api.major === 1 && api.minor >= 80)))
-          return { ok: false, reason: "its tiles are an image pack, which needs capabilityApi 1.80 or newer" };
+        if (!api || !(api.major > 1 || (api.major === 1 && api.minor >= IMAGE_TILES_MINOR)))
+          return {
+            ok: false,
+            reason: `its tiles are an image pack, which needs capabilityApi 1.${IMAGE_TILES_MINOR} or newer`,
+          };
         const cleaned = await cleanImageTilePack(tiles);
         if (!cleaned.ok) return { ok: false, reason: `its tiles do not read: ${cleaned.issue}` };
         tiles = cleaned.pack;
@@ -465,7 +478,7 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
     }
   }
   const mapPack = parsed.success ? parsed.data.contributions?.gameSurface?.mapPack : undefined;
-  let minor = 68;
+  let minor = MAP_PACK_MINOR;
   if (!mapPack) return { ok: false, minor, issues };
   // Its files, each sent and within what an installed package may hold.
   const fileOf = (path: string, maxBytes = WORLD_SHARE_FILE_MAX_BYTES): Buffer | null => {
@@ -556,7 +569,7 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
   const audio = declared.some((path) => /\.(?:ogg|mp3|wav)$/iu.test(path));
   minor = Math.max(
     minor,
-    pack.tiles?.tilePackVersion === 2 ? 75 : 0,
+    pack.tiles?.tilePackVersion === 2 ? IMAGE_TILES_MINOR : 0,
     ...pack.worlds.map((world) => (world.story ? storyCapabilityMinor(world.story) : 0)),
     pack.worlds.some((world) => worldSeasonPainted(world.world)) ? 351 : 0,
     pack.creatures?.length ? 344 : 0,

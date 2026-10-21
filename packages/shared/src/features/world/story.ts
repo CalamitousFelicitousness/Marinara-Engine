@@ -1315,19 +1315,26 @@ function storyActionTags(
 
 /** A story fight's opponents, one by one (1.343): each creature as many times as it counts, called by its
  *  own name in the fight (numbered when there are several), `creature` the bestiary's name for it (`label`
- *  reads an id; a creature by name is its own). */
+ *  reads an id; a creature by name is its own). An id the bestiary doesn't have is refused, never made
+ *  up: its opponents are left out and the id is listed in `refused`, for the caller to report. */
 export function storyFightRoster(
   fight: StoryFight,
   label: (creature: string) => string | undefined = () => undefined,
-): Array<{ name: string; creature: string }> {
-  return fight.creatures.flatMap((each) => {
-    const creature = (storyIsRef(each.creature) ? label(each.creature) : undefined) ?? each.creature;
+): { opponents: Array<{ name: string; creature: string }>; refused: string[] } {
+  const refused = new Set<string>();
+  const opponents = fight.creatures.flatMap((each) => {
+    const creature = storyIsRef(each.creature) ? label(each.creature) : each.creature;
+    if (creature === undefined) {
+      refused.add(each.creature);
+      return [];
+    }
     const base = each.name ?? creature;
     return Array.from({ length: each.count }, (_, index) => ({
       name: each.count > 1 ? `${base} ${index + 1}` : base,
       creature,
     }));
   });
+  return { opponents, refused: [...refused] };
 }
 
 /** The fight as a party this size fights it (1.356): its variant for the size, else itself. */

@@ -129,10 +129,14 @@ function fallbackActionResult(input: EncounterActionRequest): CombatActionResult
 }
 
 /** Build character context from the chat's character IDs. */
-async function buildCharacterContext(chars: ReturnType<typeof createCharactersStorage>, characterIds: string[]) {
+async function buildCharacterContext(
+  chars: ReturnType<typeof createCharactersStorage>,
+  characterIds: string[],
+  chatId?: string,
+) {
   let ctx = "";
   for (const cid of characterIds) {
-    const row = await chars.getById(cid);
+    const row = await chars.getById(cid, chatId);
     if (!row) continue;
     const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
     ctx += `<character="${data.name}">\n`;
@@ -165,8 +169,10 @@ async function buildPersonaContext(
   chatPersonaId: string | null,
   chatMode?: string | null,
   personaCharacterId?: string | null,
+  chatId?: string,
 ) {
   const persona = await resolveChatUserIdentity(chars, {
+    id: chatId,
     personaId: chatPersonaId,
     personaCharacterId,
     mode: chatMode,
@@ -903,12 +909,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       let chatMeta: Record<string, unknown> | null = null;
       if (typeof chat.metadata === "string") {
@@ -980,12 +987,14 @@ export async function encounterRoutes(app: FastifyInstance) {
         gameTtsEmotionIndicatorsEnabled(await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY)),
       );
       // A fight the story set (Capability API 1.343): its opponents are the story's, never the model's.
+      // Creatures the ruleset doesn't have are refused (and logged); with none left, the model picks them.
       const storyFight = await latestStoryFight(app.db, chatId, chatMeta);
-      const storyOpponents = storyFight
+      const storyRoster = storyFight
         ? await storyFightOpponents(storyFight, fightRuleset?.definition.combat ? fightRuleset : null)
         : null;
-      if (storyFight && storyOpponents) {
-        prompt.push({ role: "user", content: storyFightPromptText(storyFight, storyOpponents) });
+      const storyOpponents = storyRoster?.opponents.length ? storyRoster.opponents : null;
+      if (storyFight && storyRoster) {
+        prompt.push({ role: "user", content: storyFightPromptText(storyFight, storyRoster.opponents) });
       }
       debugLog(
         "[debug/game/combat:init] request chatId=%s model=%s historyMessages=%d settings=%s",
@@ -1092,12 +1101,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       const spellbookCtx = await loadSpellbookContext(spellbookId);
 
@@ -1202,12 +1212,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
 
       const prompt = buildSummaryPrompt(

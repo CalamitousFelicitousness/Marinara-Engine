@@ -36,14 +36,16 @@ stay as they were.
   "events": [],
   "cutscenes": [],
   "fights": [],
-  "endings": []
+  "endings": [],
+  "knowledge": []
 }
 ```
 
 Ids are 1 to 40 lowercase letters, digits, `_` or `-`, unique within their list. A story holds at most
-256 flags (64 before Capability API 1.353), 64 directions, 256 events (128 before 1.349), 64 cutscenes, 32 fights and 16 endings. No text in it may hold a line break, square
-brackets or `{{`, and names written into a tag (a group, a background) may not hold a double quote:
-nothing a story says can pass for one of the Game Master's tags.
+256 flags (64 before Capability API 1.353), 64 directions, 256 events (128 before 1.349), 64 cutscenes,
+32 fights, 16 endings and 600 knowledge entries. No text in it may hold a line break, square brackets or
+`{{`, and names written into a tag (a group, a background) may not hold a double quote: nothing a story
+says can pass for one of the Game Master's tags.
 
 ### Flags
 
@@ -85,8 +87,13 @@ segments, one filled per point, shown in the game's HUD and the World tab, with 
 happens when it is full.
 
 ```json
-{ "id": "reeve", "kind": "number", "initial": 0, "gm": true,
-  "clock": { "title": "The Reeve's patience", "segments": 6, "full": "The Reeve sends his men." } }
+{
+  "id": "reeve",
+  "kind": "number",
+  "initial": 0,
+  "gm": true,
+  "clock": { "title": "The Reeve's patience", "segments": 6, "full": "The Reeve sends his men." }
+}
 ```
 
 Set it, add to it and test it in conditions like any number flag. The Game Master is told the clocks
@@ -167,14 +174,14 @@ An event happens once, unless it has `"repeat": true` (which `start`, `turn` and
 | `arrive` | While the party is in `place` (a place id) or a place inside it, having come there by starting there, a walk on the overworld, a visit in town, or a place the Game Master names. With `repeat`, again each time it comes back from elsewhere.                                                                                                                                                                                                          |
 | `meet`   | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names.                                                                                                                                                                                                                                          |
 | `deed`   | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one.                                                                                                                                                                                                                                                                                                        |
-| `fight` | When a fight ends in `outcome`: `victory`, `defeat` or `flee`. With `fight` (one of the script's fights, 1.358), only when that fight ended so: the fight the Game Master's latest reply started, by the story's `fight` action or its own trip. |
-| `leave` | When the party leaves `place` (a place id) and every place inside it (1.358): by a walk, a visit, a place the Game Master names or the story's `move`, in the latest reply or this turn. With `repeat`, again each time it leaves. |
-| `broke` | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named. |
+| `fight`  | When a fight ends in `outcome`: `victory`, `defeat` or `flee`. With `fight` (one of the script's fights, 1.358), only when that fight ended so: the fight the Game Master's latest reply started, by the story's `fight` action or its own trip.                                                                                                                                                                                                        |
+| `leave`  | When the party leaves `place` (a place id) and every place inside it (1.358): by a walk, a visit, a place the Game Master names or the story's `move`, in the latest reply or this turn. With `repeat`, again each time it leaves.                                                                                                                                                                                                                      |
+| `broke`  | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                                                                                                                                                                                                                            |
 | `flags`  | When its conditions hold. With `repeat`, again each time they come true after being false.                                                                                                                                                                                                                                                                                                                                                              |
 | `gm`     | Only when the Game Master trips it (the event needs `"gm": true`).                                                                                                                                                                                                                                                                                                                                                                                      |
-| `rest` | After a reply in which the party rested: a `[sheet: op="rest"]` the Game Master's reply took, of the ruleset rest `rest` names (its id or label, such as `long`) or any (1.349). |
-| `travel` | On a turn the party sets out from one place for another, from inside `from` and to inside `to` when they are given (1.349). |
-| `idle` | After `turns` replies in a row with nothing happening: no story event, no walk and no fight (1.349). |
+| `rest`   | After a reply in which the party rested: a `[sheet: op="rest"]` the Game Master's reply took, of the ruleset rest `rest` names (its id or label, such as `long`) or any (1.349).                                                                                                                                                                                                                                                                        |
+| `travel` | On a turn the party sets out from one place for another, from inside `from` and to inside `to` when they are given (1.349).                                                                                                                                                                                                                                                                                                                             |
+| `idle`   | After `turns` replies in a row with nothing happening: no story event, no walk and no fight (1.349).                                                                                                                                                                                                                                                                                                                                                    |
 | `step`   | When a walk goes over the cell `x`, `y` (0-based from the top-left) of `place`: a settlement's town (a visit's path, door to door), or a place's map made by hand (a walk on it). The cell must be one the party can walk onto: in a town, ground the square reaches and not a free lot, where the story may build; on a map, floor its entry reaches. A generated map has no cells to name. With `repeat`, again on each turn whose walk goes over it. |
 
 Hand edits that take a step event's cell away (a building put on it, a map's floor walled) are refused
@@ -185,22 +192,22 @@ deed it waits for, would set itself off every turn, so the Engine refuses it.
 
 **Actions** (`do`):
 
-| Action                                                                                                  | Does                                                                     |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `{ "set": "<flag>", "value": <value> }`                                                                 | Sets a flag.                                                             |
-| `{ "add": "<flag>", "amount": <number> }`                                                               | Adds to a number flag.                                                   |
-| `{ "tell": "<text>" }`                                                                                  | Asks something of the Game Master, once, this turn.                      |
-| `{ "cutscene": "<id>" }`                                                                                | Plays a cutscene.                                                        |
-| `{ "show": "<flag>" }`                                                                                  | Shows a hidden quest objective in the journal.                           |
-| `{ "world": { "deed": "<kind>", "group": "...", "with": "...", "place": "<place id>", "who": "..." } }` | Records a deed in the world, answered as the Game Master's own would be. |
-| `{ "give": { "item": "<catalog/entry or a name>", "count": 1, "who": "...", "summary": "..." } }` | Gives an item (1.343): one of the game's ruleset items by its id, or any other by its name (with `summary` saying what it is), into the player's bag or the party member `who` names. It goes in as the Game Master's own would, so the inventory's rules apply. An id the game's ruleset does not offer is refused, with the reason in the reply. |
-| `{ "fight": "<fight id>" }` | Starts one of the script's fights (1.343). The Game Master is told to lead into it, and the fight that follows has the story's opponents. |
-| `{ "move": "<place id>" }` | Puts the party at a place of the world (1.343), as a walk would; an `arrive` event it brings happens on the same turn. |
-| `{ "ending": "<ending id>" }` | Ends the game with one of the script's endings (1.343): its scene plays, the Game Master closes on its epilogue, and the player is shown the ending and offered to end the session. Nothing in the story happens after it. |
-| `{ "music": "<track id>" }` or `{ "music": null }` | Cues one of its Experience's tracks over the place's music (1.345), until another cue, or `null` hands back to the place's. The track must be one of the map pack's `music`. |
-| `{ "recruit": "<person id>" }` | Takes one of its Experience's companions into the party (1.347), with their sheet for the game's ruleset. The Game Master is told to show them joining. |
-| `{ "dismiss": "<person id>" }` | Lets a companion go from the party (1.347). |
-| `{ "season": { "place": "<place id>", "to": "winter" } }` | Holds a place, and every place inside it, at a season whatever the date (1.351); without `place`, the whole world. `"to": null` lets it go back to the script's own `seasons`, or the date's. |
+| Action                                                                                                  | Does                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ "set": "<flag>", "value": <value> }`                                                                 | Sets a flag.                                                                                                                                                                                                                                                                                                                                       |
+| `{ "add": "<flag>", "amount": <number> }`                                                               | Adds to a number flag.                                                                                                                                                                                                                                                                                                                             |
+| `{ "tell": "<text>" }`                                                                                  | Asks something of the Game Master, once, this turn.                                                                                                                                                                                                                                                                                                |
+| `{ "cutscene": "<id>" }`                                                                                | Plays a cutscene.                                                                                                                                                                                                                                                                                                                                  |
+| `{ "show": "<flag>" }`                                                                                  | Shows a hidden quest objective in the journal.                                                                                                                                                                                                                                                                                                     |
+| `{ "world": { "deed": "<kind>", "group": "...", "with": "...", "place": "<place id>", "who": "..." } }` | Records a deed in the world, answered as the Game Master's own would be.                                                                                                                                                                                                                                                                           |
+| `{ "give": { "item": "<catalog/entry or a name>", "count": 1, "who": "...", "summary": "..." } }`       | Gives an item (1.343): one of the game's ruleset items by its id, or any other by its name (with `summary` saying what it is), into the player's bag or the party member `who` names. It goes in as the Game Master's own would, so the inventory's rules apply. An id the game's ruleset does not offer is refused, with the reason in the reply. |
+| `{ "fight": "<fight id>" }`                                                                             | Starts one of the script's fights (1.343). The Game Master is told to lead into it, and the fight that follows has the story's opponents.                                                                                                                                                                                                          |
+| `{ "move": "<place id>" }`                                                                              | Puts the party at a place of the world (1.343), as a walk would; an `arrive` event it brings happens on the same turn.                                                                                                                                                                                                                             |
+| `{ "ending": "<ending id>" }`                                                                           | Ends the game with one of the script's endings (1.343): its scene plays, the Game Master closes on its epilogue, and the player is shown the ending and offered to end the session. Nothing in the story happens after it.                                                                                                                         |
+| `{ "music": "<track id>" }` or `{ "music": null }`                                                      | Cues one of its Experience's tracks over the place's music (1.345), until another cue, or `null` hands back to the place's. The track must be one of the map pack's `music`.                                                                                                                                                                       |
+| `{ "recruit": "<person id>" }`                                                                          | Takes one of its Experience's companions into the party (1.347), with their sheet for the game's ruleset. The Game Master is told to show them joining.                                                                                                                                                                                            |
+| `{ "dismiss": "<person id>" }`                                                                          | Lets a companion go from the party (1.347).                                                                                                                                                                                                                                                                                                        |
+| `{ "season": { "place": "<place id>", "to": "winter" } }`                                               | Holds a place, and every place inside it, at a season whatever the date (1.351); without `place`, the whole world. `"to": null` lets it go back to the script's own `seasons`, or the date's.                                                                                                                                                      |
 
 Any action may carry its own `if` (Capability API 1.358): it is done only when its conditions hold as
 the event reaches it, with the event's earlier actions done, so one event can branch.
@@ -216,14 +223,22 @@ the event reaches it, with the event's earlier actions done, so one event can br
 Which actions were done is recorded with the trip, so a `gm` event's scenes and asks arrive the next turn
 as they were done when the Game Master marked it.
 
-A map pack world whose story has clocks needs Capability API 1.342, one with fights, endings or the
-`give`, `fight`, `move` and `ending` actions needs 1.343, one that cues music needs 1.345, and one that
-recruits or dismisses companions needs 1.347, one with knowledge needs 1.348, and one with `rest`,
-`travel` or `idle` events, a `priority`, a `party` condition or more than 128 events needs 1.349, and one
-with `seasons` or the `season` action needs 1.351, one with more than 64 flags needs 1.353, and one
-with fight `variants` needs 1.356, and one with `any` conditions, a `fight` event naming its fight, a
-`leave` event, a flag's `min` or `max`, or an `if` on an action or a page needs 1.358. A companion is a person of the pack's people file marked
-as one (see the map pack's people in [optional agent packages](../development/optional-agent-packages.md)).
+Each story feature needs a Capability API minor:
+
+- clocks need 1.342;
+- fights, endings, and the `give`, `fight`, `move` and `ending` actions need 1.343;
+- music cues need 1.345;
+- recruiting or dismissing companions needs 1.347;
+- knowledge needs 1.348;
+- `rest`, `travel` and `idle` events, a `priority`, a `party` condition, or more than 128 events need 1.349;
+- `seasons` and the `season` action need 1.351;
+- more than 64 flags need 1.353;
+- fight `variants` need 1.356;
+- `any` conditions, a `fight` event naming its fight, a `leave` event, a flag's `min` or `max`, and an `if`
+  on an action or a page need 1.358.
+
+A companion is a person of the pack's people file marked as one (see the map pack's people in
+[optional agent packages](../development/optional-agent-packages.md)).
 
 Of the `rest`, `travel` and `idle` events that could happen on one turn, only one does: the one with the
 highest `priority` (a whole number from -100 to 100, 0 when left out; the first in the script on a tie). A
@@ -256,15 +271,25 @@ events may change them, as a ring of frost spreading or a line of spring sweepin
 A fight the story sets: who is fought, and where when the world has a board painted for it.
 
 ```json
-{ "id": "granary", "name": "The Granary",
-  "creatures": [{ "creature": "creatures/scarecrow", "count": 3 }, { "creature": "The Owed", "name": "The Owed" }],
-  "battlefield": "b2", "note": "The jars break when hit." }
+{
+  "id": "granary",
+  "name": "The Granary",
+  "creatures": [
+    { "creature": "creatures/scarecrow", "count": 3 },
+    { "creature": "The Owed", "name": "The Owed" }
+  ],
+  "battlefield": "b2",
+  "note": "The jars break when hit."
+}
 ```
 
 Each creature is a bestiary creature of the game's ruleset, by its id (`catalog/entry`) or its name, and
 `count` of them (numbered when there are several), called `name` in the fight when given. `battlefield`
 is a board painted by hand in the world (`b<n>`), fought on wherever the fight starts; without one the
-fight is fought where it starts, as any other. `note` tells the Game Master how it comes about.
+fight is fought where it starts, as any other. `note` tells the Game Master how it comes about. An id the
+game's ruleset does not have is refused: those creatures are left out of the fight and the refusal is
+logged. A fight left with none still starts as the story set it, on its battlefield, but the Game Master
+picks its enemies.
 
 A fight can be set for parties of other sizes (Capability API 1.356). The party is the player's character
 and every companion travelling with it, from 1 to 6.

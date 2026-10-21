@@ -32,6 +32,7 @@ import {
   Unplug,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { unassignCardFieldAlternatives } from "@marinara-engine/shared";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api } from "../../lib/api-client";
@@ -2069,6 +2070,9 @@ export function BotBrowserView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: personaName,
+        summary: typeof cardData.summary === "string" ? cardData.summary : "",
+        mes_example: typeof cardData.mes_example === "string" ? cardData.mes_example : "",
+        cardFieldAlternatives: unassignCardFieldAlternatives(extensions.cardFieldAlternatives),
         description: optionalString(cardData.description) ?? optionalString(cardData.personality) ?? "",
         personality: optionalString(cardData.personality) ?? "",
         scenario: optionalString(cardData.scenario) ?? "",

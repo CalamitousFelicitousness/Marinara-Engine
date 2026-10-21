@@ -38,11 +38,15 @@ export async function latestStoryFight(
   }
 }
 
-/** The fight's opponents, each by the bestiary's own name for it when the ruleset has the id. */
+/**
+ * The fight's opponents, each by the bestiary's own name for it when the ruleset has the id. An id it
+ * doesn't have (or any id, in a game without a ruleset's combat) is refused and logged, never fought as a
+ * made-up creature.
+ */
 export async function storyFightOpponents(
   fight: StoryFight,
   ruleset: { definition: RulesetDefinition; packageId: string | null } | null,
-): Promise<Array<{ name: string; creature: string }>> {
+): Promise<{ opponents: Array<{ name: string; creature: string }>; refused: string[] }> {
   const labels = new Map<string, string>();
   if (ruleset) {
     const refs = new Set(fight.creatures.map((each) => each.creature).filter(storyIsRef));
@@ -55,14 +59,25 @@ export async function storyFightOpponents(
       if (entry) labels.set(ref, entry.label);
     }
   }
-  return storyFightRoster(fight, (ref) => labels.get(ref));
+  const roster = storyFightRoster(fight, (ref) => labels.get(ref));
+  if (roster.refused.length) {
+    logger.warn(
+      "Story fight %s names creatures the game's ruleset doesn't have, left out of the fight: %s",
+      fight.id,
+      roster.refused.join(", "),
+    );
+  }
+  return roster;
 }
 
-/** The prompt line that tells the blueprint writer who this fight is with. */
+/** The prompt line that tells the blueprint writer who this fight is with; with no opponents (none named,
+ *  or every one refused), the enemies are the writer's own to choose. */
 export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<{ name: string; creature: string }>) {
+  const header = `This fight is set by the story: "${fight.name}"${fight.forParty ? `, as set for a party of ${fight.forParty}` : ""}.${fight.note ? ` ${fight.note}` : ""}`;
+  if (!opponents.length) return [header, "Choose its enemies yourself."].join("\n");
   return [
-    `This fight is set by the story: "${fight.name}"${fight.forParty ? `, as set for a party of ${fight.forParty}` : ""}.${fight.note ? ` ${fight.note}` : ""}`,
-    `Its enemies are exactly these, in this order, with these names${opponents.length ? "" : " (none)"}:`,
+    header,
+    `Its enemies are exactly these, in this order, with these names:`,
     ...opponents.map((each) => `- ${each.name} (creature: ${each.creature})`),
     "Write no other enemies.",
   ].join("\n");

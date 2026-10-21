@@ -8,7 +8,16 @@ import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 /** The circle: `segments` wedges with a small gap between them, the first `filled` lit. */
-export function StoryClockDial({ clock, size = 28 }: { clock: StoryClock; size?: number }) {
+/** `decorative` hides the dial from screen readers where the clock's title and tally are written beside it. */
+export function StoryClockDial({
+  clock,
+  size = 28,
+  decorative = false,
+}: {
+  clock: StoryClock;
+  size?: number;
+  decorative?: boolean;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const r = size / 2;
   const inner = r * 0.38;
@@ -27,12 +36,16 @@ export function StoryClockDial({ clock, size = 28 }: { clock: StoryClock; size?:
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      role="img"
-      aria-label={localizeUi("ui.game.storyClock.label", {
-        title: clock.title,
-        filled: clock.filled,
-        segments: clock.segments,
-      })}
+      {...(decorative
+        ? { "aria-hidden": true }
+        : {
+            role: "img",
+            "aria-label": localizeUi("ui.game.storyClock.label", {
+              title: clock.title,
+              filled: clock.filled,
+              segments: clock.segments,
+            }),
+          })}
       className={cn("shrink-0", clock.full && "drop-shadow-[0_0_4px_rgba(252,211,77,0.7)]")}
     >
       {wedges}
@@ -51,6 +64,9 @@ export function useStoryJournal(chatId: string | null, turnKey: string | null) {
       return { clocks: journal?.clocks ?? [], ending: journal?.ending ?? null, music: journal?.music ?? null };
     },
     enabled: Boolean(chatId),
+    // A new turn reads afresh, but the last turn's clocks and music cue hold until it has: an empty
+    // moment between them would stop the Experience's track and start it again. Never another game's.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === chatId ? previous : undefined),
     staleTime: 30_000,
     retry: false,
   });

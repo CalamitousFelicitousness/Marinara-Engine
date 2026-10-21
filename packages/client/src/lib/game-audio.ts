@@ -659,15 +659,16 @@ class GameAudioManager {
   /**
    * Play an Experience's own track over the Engine's music (Capability API 1.345), or end it (null) and
    * go back to what the Engine last chose. The player's volumes and mute apply to it as to any music.
+   * `resume: false` ends it without going back, for when another source takes over or the game closes.
    */
-  setExperienceMusic(track: { tag: string; url: string } | null): void {
+  setExperienceMusic(track: { tag: string; url: string } | null, options: { resume?: boolean } = {}): void {
     if (track?.tag === this.experienceMusic?.tag && track?.url === this.experienceMusic?.url) return;
     this.experienceMusic = track;
     if (track) {
       this.playMusic(track.tag, { [track.tag]: { path: "", url: track.url } });
       return;
     }
-    const aside = this.asideMusic;
+    const aside = options.resume === false ? null : this.asideMusic;
     this.asideMusic = null;
     if (aside) this.playMusic(aside.tag, aside.manifest);
     else this.stopMusic();
@@ -781,6 +782,9 @@ class GameAudioManager {
   stopMusic(immediate = false): void {
     this.currentMusicTag = null;
     this.pendingMusic = null;
+    // Stopping ends an Experience's track too, and drops the Engine cue it held aside, so neither comes back.
+    this.experienceMusic = null;
+    this.asideMusic = null;
 
     // Cancel any running crossfade so the next-element doesn't keep playing
     if (this.fadeInterval) {

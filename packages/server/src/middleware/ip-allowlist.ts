@@ -30,7 +30,7 @@ import {
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessPolicy } from "./access-policy.js";
+import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
 
 // ── CIDR helpers ──
@@ -117,7 +117,9 @@ function parseCIDR(entry: string): CIDREntry | null {
 
     // If the original was an IPv4 CIDR (e.g. /24), shift it into the IPv6-mapped range
     const isV4 = ip.includes(".") && !ip.includes(":");
-    if (isV4 && prefixLen <= 32) {
+    if (isV4) {
+      // An IPv4 prefix above /32 is a typo; left unshifted it would match every IPv4 address.
+      if (prefixLen > 32) return null;
       prefixLen += 96; // offset into the ::ffff: prefix
     }
   }
@@ -480,6 +482,30 @@ export function isTailscaleIp(ip: string): boolean {
   return matchesCIDR(bytes, TAILSCALE_CIDR);
 }
 
+// Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows. macOS (utun*) and Android (tun*) give
+// every VPN the same name, so there the interface must also hold Tailscale's IPv6 range.
+const GENERIC_VPN_NAMES: Partial<Record<NodeJS.Platform, RegExp>> = { darwin: /^utun\d/, android: /^tun\d/ };
+const TAILSCALE_IPV6_CIDR = parseCIDR("fd7a:115c:a1e0::/48")!;
+
+/**
+ * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
+ * Carriers use the same range for mobile data, so the address alone does not prove a tailnet.
+ */
+function hasTailscaleInterfaceAddress(
+  interfaces: ReturnType<typeof networkInterfaces>,
+  address: string | undefined,
+  platform: NodeJS.Platform,
+): boolean {
+  const genericName = GENERIC_VPN_NAMES[platform];
+  return Object.entries(interfaces).some(([name, addresses = []]) => {
+    if (!(genericName ?? /^tailscale/i).test(name)) return false;
+    if (genericName && !addresses.some((a) => matchesCIDR(ipToBytes(a.address) ?? [], TAILSCALE_IPV6_CIDR))) {
+      return false;
+    }
+    return addresses.some((a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)));
+  });
+}
+
 /** True if the given IP is in the Docker bridge range (172.16.0.0/12). */
 export function isDockerIp(ip: string): boolean {
   const bytes = ipToBytes(ip);
@@ -541,11 +567,7 @@ function isHttp10(request: Pick<AccessRequest, "raw">): boolean {
  * headers. Such requests get the checks of a remote client, not loopback trust.
  */
 export function isForwardedLoopbackRequest(request: AccessRequest): boolean {
-  return isForwardedLoopbackPeer(
-    isLoopbackIp(request.ip),
-    hasProxyForwardingHeaders(request) || hasRelayedHost(request) || isHttp10(request),
-    isLoopbackProxyAuthRequired(),
-  );
+  return isForwardedLoopbackPeer(isLoopbackIp(request.ip), isProxiedRequest(request), isLoopbackProxyAuthRequired());
 }
 
 /** True when the request comes from this machine itself rather than through a local proxy. */
@@ -589,7 +611,6 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
       parsedDockerCidrs,
     );
   const ip = request.ip;
-  const basicAuth = getBasicAuthConfig();
   return evaluateAccessPolicy({
     loopbackIp: isLoopbackIp(ip),
     forwardingHeaders: hasProxyForwardingHeaders(request),
@@ -598,23 +619,120 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     allowlisted: isInIpAllowlist(ip),
     privateNetworkIp: isPrivateNetworkIp(ip),
     tailscaleIp: isTailscaleIp(ip),
-    tailscaleLocalAddress: typeof localAddress === "string" && isTailscaleIp(localAddress),
+    tailscaleLocalAddress:
+      typeof localAddress === "string" &&
+      hasTailscaleInterfaceAddress(dockerInterfaces, localAddress, dockerNetwork.platform ?? process.platform),
     dockerIp: isDockerIp(ip),
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
       isDockerRuntime() && isDockerCompatibilityNetworkIp(ip, dockerInterfaces, dockerGatewayIp, parsedDockerCidrs),
-    config: {
-      basicAuthConfigured: Boolean(basicAuth.user && basicAuth.pass),
-      ipAllowlistConfigured: getIpAllowlist() !== null,
-      adminSecretConfigured: Boolean(getAdminSecret()),
-      loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),
-      dockerProxyAuthRequired: isDockerProxyAuthRequired(),
-      tailscaleMode: getTailscaleBypassMode(),
-      dockerMode: getDockerBypassMode(),
-      allowUnauthenticatedPrivateNetwork: isUnauthenticatedPrivateNetworkAllowed(),
-      allowUnauthenticatedRemote: isUnauthenticatedRemoteAllowed(),
-    },
+    config: getAccessConfig(),
   });
+}
+
+function getAccessConfig(): AccessFacts["config"] {
+  const basicAuth = getBasicAuthConfig();
+  return {
+    basicAuthConfigured: Boolean(basicAuth.user && basicAuth.pass),
+    ipAllowlistConfigured: getIpAllowlist() !== null,
+    adminSecretConfigured: Boolean(getAdminSecret()),
+    loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),
+    dockerProxyAuthRequired: isDockerProxyAuthRequired(),
+    tailscaleMode: getTailscaleBypassMode(),
+    dockerMode: getDockerBypassMode(),
+    allowUnauthenticatedPrivateNetwork: isUnauthenticatedPrivateNetworkAllowed(),
+    allowUnauthenticatedRemote: isUnauthenticatedRemoteAllowed(),
+  };
+}
+
+export type PasswordlessPeer = "internet" | "privateNetwork" | "allowlist" | "tailscale" | "docker" | "proxy";
+
+/** True when a bind address is loopback only, so other devices reach it only through a local proxy. */
+export function isLoopbackBind(host: string): boolean {
+  return host === "localhost" || isLoopbackIp(host);
+}
+
+/** IPv4 allowlist entries shorter than /16 (or IPv6 shorter than /32) are reported as the open internet: they admit whole ISPs, not a home or office. */
+const BROAD_ALLOWLIST_V4_PREFIX = 16;
+const BROAD_ALLOWLIST_V6_PREFIX = 32;
+
+/** True when an allowlist entry is wide enough to admit public address space (private, CGNAT and loopback ranges never count). */
+function isBroadAllowlistEntry(entry: CIDREntry): boolean {
+  // An IPv6 entry that covers the whole ::ffff:0:0/96 block admits every IPv4 peer.
+  if (entry.prefixLen <= 96 && matchesCIDR(ipToBytes("::ffff:0.0.0.0")!, entry)) return true;
+  const isV4 =
+    entry.prefixLen >= 96 &&
+    entry.bytes.slice(0, 10).every((b) => b === 0) &&
+    entry.bytes[10] === 0xff &&
+    entry.bytes[11] === 0xff;
+  if (entry.prefixLen >= (isV4 ? 96 + BROAD_ALLOWLIST_V4_PREFIX : BROAD_ALLOWLIST_V6_PREFIX)) return false;
+  return ![...DEFAULT_PRIVATE_NETWORK_CIDRS, ...LOOPBACK_CIDRS].some(
+    (range) => range.prefixLen <= entry.prefixLen && matchesCIDR(entry.bytes, range),
+  );
+}
+
+/** A peer with no facts set; each sample below overrides only what makes it that kind of device. */
+const NO_PEER_FACTS: Omit<AccessFacts, "config"> = {
+  loopbackIp: false,
+  forwardingHeaders: false,
+  relayedHost: false,
+  http10: false,
+  allowlisted: false,
+  privateNetworkIp: false,
+  tailscaleIp: false,
+  tailscaleLocalAddress: false,
+  dockerIp: false,
+  dockerRuntimeMatch: false,
+  dockerCompatibilityNetwork: false,
+};
+
+/**
+ * Kinds of remote device the current configuration lets in without a password. Asks the same
+ * policy the hooks use about one sample device per kind, so the owner summary cannot drift from
+ * enforcement. `bindHost` is the address the server actually listens on. `withLogin` asks which
+ * kinds would still get in once a login password is set.
+ */
+export function getPasswordlessPeers(
+  bindHost: string,
+  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+  withLogin = false,
+  platform: NodeJS.Platform = process.platform,
+): PasswordlessPeer[] {
+  const config = withLogin ? { ...getAccessConfig(), basicAuthConfigured: true } : getAccessConfig();
+  const direct = !isLoopbackBind(bindHost);
+  // A tailnet device connects directly only when the bind covers the tailnet address.
+  const anyAddress = ["0.0.0.0", "::", ""].includes(bindHost);
+  const tailscaleBind = anyAddress || isTailscaleIp(bindHost);
+  const tailscaleHere =
+    tailscaleBind &&
+    (config.tailscaleMode === "enabled" ||
+      hasTailscaleInterfaceAddress(interfaces, anyAddress ? undefined : bindHost, platform));
+  const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
+  const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
+    ["internet", {}, direct],
+    // An allowlist that admits public ranges is the open internet in practice.
+    ["internet", { allowlisted: true }, direct && (getAllowlist()?.some(isBroadAllowlistEntry) ?? false)],
+    ["privateNetwork", { privateNetworkIp: true }, direct],
+    ["allowlist", { allowlisted: true }, direct && config.ipAllowlistConfigured],
+    ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
+    // No relayed Host: the client picks the Host header, and `localhost` passes host validation.
+    ["docker", { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() }, direct && dockerHere],
+    // A remote device behind a local proxy names this server by its own address, so it looks relayed.
+    // The proxy dials 127.0.0.1, which a bind to one LAN address does not listen on.
+    ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, !direct || anyAddress],
+  ];
+  return samples
+    .filter(([, facts, reachable]) => {
+      if (!reachable) return false;
+      const policy = evaluateAccessPolicy({ ...NO_PEER_FACTS, ...facts, config });
+      return !policy.authRequired && !policy.lockedDown && (!config.ipAllowlistConfigured || policy.ipAllowed);
+    })
+    .map(([peer]) => peer);
+}
+
+/** True when the request reached this server through a proxy or tunnel. */
+export function isProxiedRequest(request: AccessRequest): boolean {
+  return hasProxyForwardingHeaders(request) || hasRelayedHost(request) || isHttp10(request);
 }
 
 /** Log each automatic or explicit trust bypass once, the first time a peer takes it. */
@@ -641,7 +759,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
       logger.warn(
         tailscaleMode === "enabled"
           ? "[auth-bypass] BYPASS_AUTH_TAILSCALE=true — clients in 100.64.0.0/10 will skip Basic Auth and IP allowlist"
-          : "[auth-bypass] Direct Tailscale connection detected — the peer and local socket are both in 100.64.0.0/10 and will skip Basic Auth and IP allowlist",
+          : "[auth-bypass] Direct Tailscale connection detected — the peer is in 100.64.0.0/10, the local socket is on a Tailscale interface, and the peer will skip Basic Auth and IP allowlist",
       );
       bypassAnnounced.tailscale = true;
     }
@@ -671,6 +789,8 @@ export function isTrustedInterfaceRequest(
     interfaces?: ReturnType<typeof networkInterfaces>;
     gatewayIp?: string | null;
     containerInterfaceNames?: ReadonlySet<string>;
+    /** Host OS for the Tailscale interface rule; tests pin it. */
+    platform?: NodeJS.Platform;
   } = {},
 ): boolean {
   const policy = getAccessPolicy(request, dockerNetwork);

@@ -65,7 +65,7 @@ try {
         const preamble =
           [
             "$ErrorActionPreference = 'Stop'",
-            "function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing); if ($Uri -ne $env:MARINARA_EXPECT_URI -or $OutFile -ne $env:MARINARA_EXPECT_FILE -or !$UseBasicParsing) { throw 'Unexpected download arguments' }; Write-Host 'download-stub' }",
+            "function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing); if ($Uri -ne $env:MARINARA_EXPECT_URI -or $OutFile -ne $env:MARINARA_EXPECT_FILE -or !$UseBasicParsing) { throw ('Unexpected download arguments: URI=' + $Uri + '; expected URI=' + $env:MARINARA_EXPECT_URI + '; file=' + $OutFile + '; expected file=' + $env:MARINARA_EXPECT_FILE + '; basic parsing=' + $UseBasicParsing) }; Write-Host 'download-stub' }",
             "function Get-FileHash { param($Algorithm, $LiteralPath); if ($Algorithm -ne 'SHA256' -or $LiteralPath -ne $env:MARINARA_EXPECT_FILE) { throw 'Unexpected hash arguments' }; Write-Host 'hash-stub'; @{ Hash = $env:MARINARA_STUB_HASH } }",
             "function Get-AuthenticodeSignature { param($LiteralPath); if ($LiteralPath -ne $env:MARINARA_EXPECT_FILE) { throw 'Unexpected signature path' }; Write-Host 'signature-stub'; @{ Status = $env:MARINARA_STUB_SIGNATURE } }",
           ].join("; ") + "; ";

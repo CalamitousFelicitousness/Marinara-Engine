@@ -29,9 +29,9 @@ export function useOwnerNoticeBanners(): AppBannerCandidate[] {
     const load = () => {
       if (document.visibilityState !== "visible") return;
       void api
-        .get<{ notices: OwnerNotice[] }>("/notices")
+        .get<{ notices?: OwnerNotice[] } | null>("/notices")
         .then((value) => {
-          if (!cancelled) setNotices(value.notices);
+          if (!cancelled && Array.isArray(value?.notices)) setNotices(value.notices);
         })
         .catch(() => {
           // Notices are best-effort; keep whatever was last shown.

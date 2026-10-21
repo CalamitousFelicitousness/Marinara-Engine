@@ -34,36 +34,58 @@ function cappedText(value: unknown, max: number) {
 
 /** `<=2.5.1`, `>=2.4.0 <2.5.2`, `2.5.0 || 2.5.1`: space = and, `||` = or. */
 export function versionInRange(version: string, range: string) {
-  return range.split("||").some((set) => {
-    const comparators = set.trim().split(/\s+/);
-    return comparators.every((comparator) => {
-      const match = /^(<=|>=|<|>|=)?(v?\d+(?:\.\d+){0,2})$/.exec(comparator);
-      if (!match) return false;
-      const diff = compareVersions(version, match[2]!);
-      switch (match[1]) {
-        case "<":
-          return diff < 0;
-        case "<=":
-          return diff <= 0;
-        case ">":
-          return diff > 0;
-        case ">=":
-          return diff >= 0;
-        default:
-          return diff === 0;
-      }
+  // `>= 2.4.0` means `>=2.4.0`, not a bare operator followed by a version.
+  return range
+    .replace(/(<=|>=|<|>|=)\s+/g, "$1")
+    .split("||")
+    .some((set) => {
+      const comparators = set.trim().split(/\s+/);
+      return comparators.every((comparator) => {
+        const match = /^(<=|>=|<|>|=)?(v?\d+(?:\.\d+){0,2})$/.exec(comparator);
+        if (!match) return false;
+        const diff = compareVersions(version, match[2]!);
+        switch (match[1]) {
+          case "<":
+            return diff < 0;
+          case "<=":
+            return diff <= 0;
+          case ">":
+            return diff > 0;
+          case ">=":
+            return diff >= 0;
+          default:
+            return diff === 0;
+        }
+      });
     });
-  });
 }
 
 function allowedLink(value: unknown) {
   if (typeof value !== "string") return null;
   try {
     const url = new URL(value);
-    return url.origin === "https://github.com" && url.pathname.startsWith("/Pasta-Devs/") ? url.href : null;
+    const allowed =
+      url.origin === "https://github.com" && !url.username && !url.password && url.pathname.startsWith("/Pasta-Devs/");
+    return allowed ? url.href : null;
   } catch {
     return null;
   }
+}
+
+/** Reads the body but stops once it passes the cap, so a huge file is never buffered. */
+async function readCapped(res: Response) {
+  if (Number(res.headers.get("content-length")) > MAX_FILE_CHARS) throw new Error("notices file is too large");
+  const reader = res.body?.getReader();
+  const decoder = new TextDecoder();
+  let body = "";
+  for (let chunk = await reader?.read(); chunk && !chunk.done; chunk = await reader!.read()) {
+    body += decoder.decode(chunk.value, { stream: true });
+    if (body.length > MAX_FILE_CHARS) {
+      await reader!.cancel();
+      throw new Error("notices file is too large");
+    }
+  }
+  return body + decoder.decode();
 }
 
 /** Drops every notice that is malformed, expired, or for another version. */
@@ -103,16 +125,14 @@ export async function noticesRoutes(app: FastifyInstance) {
     if (!isOwnerNoticesEnabled()) return;
     const url = process.env.OWNER_NOTICES_URL?.trim() || DEFAULT_NOTICES_URL;
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.status === 404) {
         cached = [];
         logger.debug("[notices] No notices file at %s", url);
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.text();
-      if (body.length > MAX_FILE_CHARS) throw new Error("notices file is too large");
-      cached = JSON.parse(body);
+      cached = JSON.parse(await readCapped(res));
     } catch (err) {
       // Keep the last good file; a failed fetch never blocks startup.
       logger.warn(err, "[notices] Could not fetch owner notices");

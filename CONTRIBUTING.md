@@ -397,7 +397,7 @@ approval, and the PR description must say why owners must act now. The file is a
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | `id`       | Required. Letters, digits and `-`, at most 64. Dismissals are stored per `id`.                            |
 | `level`    | Required. `warning` (dismissed for good) or `critical` (comes back each browser session). No `info`.      |
-| `versions` | Required. Matching app versions: `<`, `<=`, `>`, `>=`, `=` or a bare version; space = and, `\|\|` = or.   |
+| `versions` | Required. Matching app versions: `<`, `<=`, `>`, `>=`, `=` or a bare version; space = and, `\|\|` = or. Any other syntax drops the notice without a warning. |
 | `title`    | Required. Plain text, at most 120 characters.                                                             |
 | `text`     | Required. One sentence, plain text, at most 500 characters.                                               |
 | `action`   | Required. What the owner must do, one sentence, at most 200 characters.                                   |
@@ -405,7 +405,8 @@ approval, and the PR description must say why owners must act now. The file is a
 | `link`     | Optional. Must start with `https://github.com/Pasta-Devs/`; any other link is dropped.                    |
 
 The app drops a notice that breaks any rule, and ignores the whole file if it is not a JSON array or has more than
-20 entries. Text is shown as written: HTML and Markdown are not rendered. The banner has no "Update now" button; put
+20 entries. If the file is not valid JSON, the app keeps the last good notices; a valid file with the wrong shape
+shows nothing. Text is shown as written: HTML and Markdown are not rendered. The banner has no "Update now" button; put
 the update step in `action` and the release in `link`.
 
 **Retiring a notice:** delete it from the file, or let it expire. To show a changed notice again to owners who

@@ -49,6 +49,7 @@ for (const link of [
   "https://github.com/Pasta-Devs/../evil",
   "http://github.com/Pasta-Devs/Marinara-Engine",
   "javascript:alert(1)",
+  "https://evil@github.com/Pasta-Devs/x",
 ]) {
   assert.equal(parse([{ ...valid, link }])[0]?.link, null, `link ${link} is dropped`);
 }
@@ -61,6 +62,8 @@ assert.equal(
 
 assert.ok(versionInRange("2.5.1", ">=2.4.0 <2.5.2"));
 assert.ok(!versionInRange("2.5.2", ">=2.4.0 <2.5.2"));
+assert.ok(versionInRange("2.5.1", ">= 2.4.0 < 2.5.2"), "a space after the operator still matches");
+assert.ok(!versionInRange("2.5.2", ">= 2.4.0 < 2.5.2"));
 assert.ok(versionInRange("2.5.1", "2.4.0 || 2.5.1"));
 assert.ok(versionInRange("2.5.1", ">2.5.0"));
 assert.ok(!versionInRange("2.5.1", ">2.5.1"));

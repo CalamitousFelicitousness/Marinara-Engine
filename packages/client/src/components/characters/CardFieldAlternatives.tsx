@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CardFieldAlternative, CardFieldDraft, CardFieldKey } from "@marinara-engine/shared";
@@ -88,7 +88,9 @@ function AlternativeField({
 }) {
   const { t } = useTranslation();
   const latest = useRef(props);
-  latest.current = props;
+  useLayoutEffect(() => {
+    latest.current = props;
+  });
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;

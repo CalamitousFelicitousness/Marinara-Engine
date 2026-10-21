@@ -143,7 +143,13 @@ function videoPromptWords(prompt: string): string {
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }
-  return text.replace(BRACKETED_CUE_RE, " ").replace(FIELD_LABEL_RE, " ");
+  return (
+    text
+      .replace(BRACKETED_CUE_RE, " ")
+      // A cue that never closes runs to the end of its line.
+      .replace(/\[[^\]\n]*$/gmu, " ")
+      .replace(FIELD_LABEL_RE, " ")
+  );
 }
 
 /**

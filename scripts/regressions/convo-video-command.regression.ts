@@ -494,6 +494,11 @@ try {
   ]);
   assert.equal(longNote.split("[").length - 1, 1, "one opening bracket");
   assert.equal(longNote.split("]").length - 1, 1, "one closing bracket");
+  assert.doesNotMatch(longNote, /unfinished cue/u, "an unclosed cue's words go with it");
+  assert.equal(
+    formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: "Ana waves. [cut to window" }]),
+    "\n[Ana sent a video message: Ana waves.]",
+  );
   // A word_word: inside a sentence isn't a field label, so the prose stays as written.
   assert.equal(
     formatSentVideoNotes([

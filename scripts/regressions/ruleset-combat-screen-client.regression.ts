@@ -1372,7 +1372,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     say({ type: "temporary", targetId: "brenna", rolls: [], flat: 0, amount: 4, lost: true }),
     "Brenna loses the last 4 temporary points.",
   );
-  assert.equal(printed.get("condition"), "Brenna is now Prone.");
+  assert.equal(printed.get("condition"), "Brenna gains Prone.");
   assert.equal(printed.get("spend"), "Corwin spends 1 1st-level slots.");
   assert.equal(printed.get("budget"), "Brenna has 0 Bonus action left.");
   assert.equal(printed.get("uses"), "Thorns: 1 of 3 left.");
@@ -1380,7 +1380,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("signature"), "Thorn Lurker spends 2 on Wail, with 1 left.");
   assert.equal(printed.get("strikes"), "Brenna swings with Longsword, with 1 strike left.");
   assert.equal(printed.get("gives"), "Brenna uses Second Wind and has 1 Action.");
-  assert.equal(printed.get("rider"), "Sly Strike catches Thorn Lurker as well.");
+  assert.equal(printed.get("rider"), "Thorn Lurker also takes Sly Strike.");
   assert.equal(printed.get("ashore"), "Brenna cannot stop on the water and comes out at 4, 2.");
   assert.equal(printed.get("presence"), "Brenna senses Fiend, Undead within 5280.");
   assert.equal(printed.get("chance"), "Brenna's Divine Intervention fails: 40 on a d100, needing 12 or less.");
@@ -1392,7 +1392,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("concentration"), "Corwin loses hold of Bless.");
   assert.equal(printed.get("standard"), "Brenna helps Corwin.");
-  assert.equal(printed.get("dying"), "Brenna holds on: 12 against 10. Held 2, slipped 1.");
+  assert.equal(printed.get("dying"), "Brenna passes a roll against death: 12 against 10. 2 passed, 1 failed.");
   assert.equal(printed.get("down"), "Brenna goes down and is fighting to hold on.");
   assert.equal(printed.get("defeated"), "Thorn Lurker is out of the fight.");
   assert.equal(printed.get("revived"), "Brenna is back up on 1.");

@@ -145,7 +145,8 @@ export function useRulesetItemOutsideFight(input: {
   if (!stack.item || !item) return { ok: false, reason: "not-ruleset-item" };
   // One of its further uses, as its own menu choice in a fight is (1.267).
   const chosen = input.more !== undefined ? item.moreUses?.[input.more - 1] : undefined;
-  if (input.more !== undefined && (!chosen || !item.use)) return { ok: false, reason: "no-use" };
+  if (input.more !== undefined && (!chosen || (!item.use && !item.moreUsesRolled)))
+    return { ok: false, reason: "no-use" };
   const use = chosen?.use ?? item.use;
   if (!use) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.

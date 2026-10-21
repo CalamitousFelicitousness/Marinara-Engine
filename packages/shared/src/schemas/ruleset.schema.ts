@@ -11625,8 +11625,9 @@ const catalogItemObjectSchema = z
     /** Its further uses' counts rolled for each stack (Capability API 1.693): `dice` many pieces, each
      *  one of the further uses picked by `weights` (one per `moreUses`, in order, each as likely as its
      *  weight against the rest), each adding one to that use's `uses` (never past its `max`, and none
-     *  where none was picked). Thrown once for the stack and the same at every reading. 5e's Necklace
-     *  of Prayer Beads, `{ "dice": "1d4+2", "weights": [6, 6, 4, 2, 1, 1] }`. */
+     *  where none was picked). Thrown once for the stack and the same at every reading. Such an item
+     *  may have no `use` of its own, only these (Capability API 1.696). 5e's Necklace of Prayer Beads,
+     *  `{ "dice": "1d4+2", "weights": [6, 6, 4, 2, 1, 1] }`. */
     moreUsesRolled: z
       .object({ dice: catalogDice, weights: z.array(z.number().int().min(0).max(100)).min(1).max(16) })
       .strict()
@@ -21698,7 +21699,9 @@ function itemIssues(
   item.moreUses?.forEach((more, index) =>
     useIssues(definition, item, more.use, [...at, "moreUses", index, "use"], add),
   );
-  if (item.moreUses && !item.use) add([...at, "moreUses"], 'More uses go beside a "use"');
+  // Only further uses, where they are rolled for (1.696): a Necklace of Prayer Beads' beads.
+  if (item.moreUses && !item.use && !item.moreUsesRolled)
+    add([...at, "moreUses"], 'More uses go beside a "use", or are rolled for ("moreUsesRolled")');
   // What holds only while something of the item is left (1.679).
   for (const side of ["worn", "carried"] as const) {
     const effect = item[side];

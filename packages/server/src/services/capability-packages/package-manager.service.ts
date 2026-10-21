@@ -2742,6 +2742,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** An item of only further uses, rolled for (1.696): a Necklace of Prayer Beads. */
+function carriesOnlyMoreUses696(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesOnlyMoreUses696(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const item = plainRecord(record.item);
+  if (item && item.moreUses !== undefined && item.use === undefined) return true;
+  return featureValues(record).some((one) => carriesOnlyMoreUses696(one, depth + 1));
+}
+
 /** A further use spending another's count (1.694): a bead of curing. */
 function carriesUsesOf694(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9132,6 +9143,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // An item of only further uses, rolled for, 1.696.
+  if (
+    !declaresApi(696) &&
+    (carriesOnlyMoreUses696(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesOnlyMoreUses696(document)))
+  )
+    return "A ruleset with an item of only further uses, rolled for (moreUses with moreUsesRolled and no use), requires schemaVersion 2 and capabilityApi 1.696 or newer";
   // A call rolled among what it reads from a catalog, 1.695.
   if (
     !declaresApi(695) &&

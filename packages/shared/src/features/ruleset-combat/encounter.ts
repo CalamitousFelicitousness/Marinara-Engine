@@ -2427,14 +2427,15 @@ function itemUseActions(
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
 ): RulesetCombatAction[] {
-  if (!items?.some((held) => held.item.use)) return [];
+  if (!items?.some((held) => held.item.use || held.item.moreUses)) return [];
   const pooled = rulesetCombatIsPool(combat);
   const actions: RulesetCombatAction[] = [];
   items.forEach((held, index) => {
     const { item } = held;
-    if (!item.use) return;
-    // Its first use, then any more it has (1.267), each its own choice paid from the same charges.
-    useOf(held, index, `use:${index}`, item.use, item.use.label);
+    if (!item.use && !item.moreUses) return;
+    // Its first use, then any more it has (1.267), each its own choice paid from the same charges;
+    // only the further ones of an item rolled for (1.696).
+    if (item.use) useOf(held, index, `use:${index}`, item.use, item.use.label);
     item.moreUses?.forEach((more, n) =>
       useOf(
         held,
@@ -2468,7 +2469,7 @@ function itemUseActions(
     });
     // What its use rolls for (1.506), each row its own action never on a menu: a Wand of Wonder. A row
     // that does nothing a fight can use is only told.
-    const roller = item.use.rollsTable ? actions.find((one) => one.id === `use:${index}`) : undefined;
+    const roller = item.use?.rollsTable ? actions.find((one) => one.id === `use:${index}`) : undefined;
     if (roller && item.useTable) {
       roller.rollsAmong = item.useTable.map((row, k) => {
         const id = `use:${index}:t${k + 1}`;

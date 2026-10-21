@@ -5,6 +5,8 @@
  *     Restoration off the same bead as its Cure Wounds, in a fight and out of one.
  *   - A call rolled among what it reads from a catalog (Capability API 1.695): the bead of summons'
  *     Planar Ally, a celestial, elemental or fiend chosen for its user, never picked by them.
+ *   - An item of only further uses, rolled for (Capability API 1.696): no `use` of its own, its menu
+ *     only its beads, in a fight and out of one.
  *   - Refusals and the install gates.
  */
 import assert from "node:assert/strict";
@@ -38,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 695);
+  assert.ok(supportedCapabilityApi.minor >= 696);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -235,6 +237,68 @@ try {
     assert.equal(kinds.size, 2, "either may come");
   }
 
+  // ── Only further uses, rolled for: no use of its own ──
+  const beadsOnly = (item: Record<string, any>) => {
+    delete item.use;
+    item.moreUsesRolled = { dice: "1d4+2", weights: [6, 0, 1] };
+  };
+  {
+    const bare = parsed(document(beadsOnly));
+    const item = bare.catalogs!.find((catalog) => catalog.id === "gear")!.entries![0]!.item!;
+    const state = createRulesetEncounter({
+      definition: bare,
+      seed: 1,
+      roller: () => 3,
+      bestiary,
+      combatants: [
+        {
+          id: "cleric",
+          name: "Cleric",
+          side: "party",
+          build,
+          live: {},
+          items: [
+            {
+              item,
+              quantity: 1,
+              name: "Necklace of Prayer Beads",
+              worn: true,
+              stack: { id: "st-beads", ref: "gear/beads" },
+            } as RulesetSheetItem,
+          ],
+        },
+      ],
+    });
+    const ids = rulesetCombatant(state, "cleric")!.actions.flatMap((one) => (one.itemUse ? [one.id] : []));
+    assert.ok(!ids.includes("use:0"), "no use of its own");
+    assert.ok(ids.includes("use:0:1") && ids.includes("use:0:2"), ids.join(", "));
+    const book = rulesetItemBook(bare, {
+      gear: bare.catalogs!.find((catalog) => catalog.id === "gear")!.entries! as RulesetCatalogEntry[],
+    });
+    const stacks: GameInventoryStack[] = [
+      { id: "st-beads", name: "Necklace of Prayer Beads", item: "gear/beads", quantity: 1, equipped: true },
+    ];
+    const cures = rulesetOwnUsesMax(item.moreUses![0]!.uses!, "st-beads", 1, item.moreUsesRolled);
+    const outside = (more?: number) =>
+      useRulesetItemOutsideFight({
+        definition: bare,
+        itemOf: book.itemOf,
+        stacks,
+        stackId: "st-beads",
+        user: { name: "Cleric", build, live: {} },
+        roll: () => 2,
+        ...(more !== undefined ? { more } : {}),
+      });
+    const plain = outside();
+    assert.equal(plain.ok, false, "nothing to use but its beads");
+    const cure = outside(1);
+    assert.equal(cure.ok, cures > 0, cure.ok ? "" : cure.reason);
+  }
+  refused(
+    document((item) => delete item.use),
+    /More uses go beside a "use", or are rolled for/,
+  );
+
   // ── Refusals ──
   refused(
     document((item) => (item.moreUses[1].usesOf = "Nothing")),
@@ -272,6 +336,10 @@ try {
     "A ruleset with a call rolled among what it reads from a catalog (calls.rolled with calls.from) requires schemaVersion 2 and capabilityApi 1.695 or newer";
   const usesOfGate =
     "A ruleset with a further use that spends another's count (moreUses[].usesOf) requires schemaVersion 2 and capabilityApi 1.694 or newer";
+  const onlyGate =
+    "A ruleset with an item of only further uses, rolled for (moreUses with moreUsesRolled and no use), requires schemaVersion 2 and capabilityApi 1.696 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(695) as never, document(beadsOnly)), onlyGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(696) as never, document(beadsOnly)), onlyGate);
   assert.equal(getCapabilityPackageInstallIssue(manifest(694) as never, document()), rolledGate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(695) as never, document()), rolledGate);
   const noAlly = document((item) => item.moreUses.splice(2, 1));
@@ -279,7 +347,7 @@ try {
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(694) as never, noAlly), usesOfGate);
 
   console.log(
-    "Prayer beads: Lesser Restoration spends the curing bead's count with Cure Wounds, in a fight and out; Planar Ally's creature chosen among what it reads; refusals and the gates at 1.694 and 1.695.",
+    "Prayer beads: Lesser Restoration spends the curing bead's count with Cure Wounds, in a fight and out; Planar Ally's creature chosen among what it reads; a necklace of only beads; refusals and the gates at 1.694, 1.695 and 1.696.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

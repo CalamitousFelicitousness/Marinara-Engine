@@ -35,6 +35,7 @@ import {
   gameInventoryBearerStatus,
   gameInventoryItemId,
   gameInventoryStackLabel,
+  rulesetMoreUsesOf,
   rulesetOwnUsesMax,
   rulesetChargesStart,
   rulesetFoundStored,
@@ -1166,17 +1167,25 @@ export function GameInventory({
               {selectedInventoryItem &&
                 canInteract &&
                 onUseItem &&
-                selectedRulesetItem?.entry.item?.use &&
-                selectedRulesetItem.entry.item.moreUses?.map((more, n) => (
-                  <button
-                    key={more.label}
-                    onClick={() => handleUse(selectedInventoryItem.id, `${selectedLabel}: ${more.label}`, n + 1)}
-                    className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
-                  >
-                    <Wand2 size={12} />
-                    {more.label}
-                  </button>
-                ))}
+                (selectedRulesetItem?.entry.item?.use || selectedRulesetItem?.entry.item?.moreUsesRolled) &&
+                selectedRulesetItem.entry.item.moreUses?.map((more, n) => {
+                  // A count rolled to none for this stack (1.693) is never offered.
+                  const item = selectedRulesetItem.entry.item!;
+                  const at = more.usesOf ? rulesetMoreUsesOf(item, more) : n;
+                  const counted = at >= 0 ? item.moreUses?.[at]?.uses : undefined;
+                  if (counted && rulesetOwnUsesMax(counted, selectedInventoryItem.id, at + 1, item.moreUsesRolled) < 1)
+                    return null;
+                  return (
+                    <button
+                      key={more.label}
+                      onClick={() => handleUse(selectedInventoryItem.id, `${selectedLabel}: ${more.label}`, n + 1)}
+                      className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
+                    >
+                      <Wand2 size={12} />
+                      {more.label}
+                    </button>
+                  );
+                })}
             </div>
             {(typesItems || picksItems) && (
               <div className={cn("flex gap-1.5", selectedInventoryItem && "mt-2.5")}>

@@ -46,6 +46,7 @@ let singleUser = false;
 let continueTurn = false;
 let omitFinishReason = false;
 let emptyNarrator = false;
+let finalReplyThinking = "";
 let refusedCommand = "";
 let nativeDraft = "";
 let nativeRollTotal = 0;
@@ -56,8 +57,10 @@ const originalPlanner = OpenAIProvider.prototype.chatComplete;
 OpenAIProvider.prototype.chatComplete = async (messages, options) => {
   if (options.model === "thinking-narrator") {
     order.push("thinking-main");
-    if (messages.some((message) => message.role === "tool"))
+    if (messages.some((message) => message.role === "tool")) {
+      if (finalReplyThinking) options.onThinking?.(finalReplyThinking);
       return { content: "", toolCalls: [], finishReason: "stop" };
+    }
     options.onThinking?.("PRIVATE TOOL ROUND PLAN: roll first, then reveal the smuggler.");
     return {
       content: null,
@@ -608,6 +611,19 @@ try {
     .map((event) => String(event.data))
     .join("");
   assert.doesNotMatch(streamedNarration, /PRIVATE TOOL ROUND PLAN/, "the planning is not streamed as narration either");
+
+  // A finished final reply whose provider put the scene in its own reasoning field is still recovered.
+  finalReplyThinking = "Fog creeps over the quay as the lock clicks open.";
+  await chats.createMessage({ chatId: thinkingChat.id, role: "user", content: "Pick the lock again." });
+  order.length = 0;
+  const recovered = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: thinkingChat.id } });
+  finalReplyThinking = "";
+  assert.equal(recovered.statusCode, 200, recovered.body);
+  assert.doesNotMatch(recovered.body, /"type":"error"/, recovered.body);
+  assert.deepEqual(order, ["thinking-main", "thinking-main"]);
+  const recoveredReply = (await chats.listMessages(thinkingChat.id)).at(-1)!;
+  assert.equal(recoveredReply.role, "assistant");
+  assert.equal(recoveredReply.content, "Fog creeps over the quay as the lock clicks open.");
 
   const refusalChat = (await chats.create({
     name: "Refused commands",

@@ -1,4 +1,7 @@
-import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +40,84 @@ try {
   ];
 
   const failures = unsafePatterns.filter(({ pattern }) => pattern.test(code));
+  // #7933: nsExec and cmd.exe stripped the nested download quotes before PowerShell parsed them.
+  // Exercise the exact command line on Windows, with network and signature APIs stubbed.
+  const prerequisiteLines = lines.filter((line) => /nsExec::ExecToLog.*powershell/i.test(line));
+  const prerequisiteScripts = prerequisiteLines.map(
+    (line) => /^\s*nsExec::ExecToLog `powershell -NoProfile -Command "([^"\r\n]+)"`$/.exec(line)?.[1],
+  );
+  if (prerequisiteScripts.length !== 4 || prerequisiteScripts.some((script) => !script)) {
+    failures.push({
+      message: "Prerequisite PowerShell commands must run directly with one intact quoted script argument.",
+    });
+  } else {
+    const executable = process.platform === "win32" ? "powershell.exe" : "pwsh";
+    const probe = spawnSync(executable, ["-NoProfile", "-Command", "exit 0"], { windowsHide: true });
+    if (probe.error?.code === "ENOENT" && process.platform !== "win32") {
+      console.log("PowerShell unavailable; native prerequisite command proof runs in the Windows platform check.");
+    } else {
+      assert.equal(probe.status, 0, `PowerShell must be available: ${probe.error ?? probe.stderr}`);
+      const temp = await mkdtemp(resolve(tmpdir(), "Marinara O'Brien & (prereq) "));
+      try {
+        const definitions = new Map(
+          [...content.matchAll(/^!define (\w+) "([^"\r\n]+)"$/gm)].map((match) => match.slice(1)),
+        );
+        const preamble =
+          [
+            "$ErrorActionPreference = 'Stop'",
+            "function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing); if ($Uri -ne $env:MARINARA_EXPECT_URI -or $OutFile -ne $env:MARINARA_EXPECT_FILE -or !$UseBasicParsing) { throw 'Unexpected download arguments' }; Write-Host 'download-stub' }",
+            "function Get-FileHash { param($Algorithm, $LiteralPath); if ($Algorithm -ne 'SHA256' -or $LiteralPath -ne $env:MARINARA_EXPECT_FILE) { throw 'Unexpected hash arguments' }; Write-Host 'hash-stub'; @{ Hash = $env:MARINARA_STUB_HASH } }",
+            "function Get-AuthenticodeSignature { param($LiteralPath); if ($LiteralPath -ne $env:MARINARA_EXPECT_FILE) { throw 'Unexpected signature path' }; Write-Host 'signature-stub'; @{ Status = $env:MARINARA_STUB_SIGNATURE } }",
+          ].join("; ") + "; ";
+        for (const [index, script] of prerequisiteScripts.entries()) {
+          const isGit = index < 2;
+          const name = isGit ? "GIT" : "NODE";
+          const expanded = script.replace(/\$\{(\w+)\}/g, (_, key) => {
+            assert.ok(definitions.has(key), `Unknown installer definition ${key}`);
+            return definitions.get(key);
+          });
+          const env = {
+            ...process.env,
+            TMP: temp,
+            TEMP: temp,
+            TMPDIR: temp,
+            MARINARA_EXPECT_URI: definitions.get(`${name}_DOWNLOAD_URL`),
+            MARINARA_EXPECT_FILE: resolve(temp, isGit ? "git-install.exe" : "node-install.msi"),
+            MARINARA_STUB_HASH: definitions.get(`${name}_SHA256`),
+            MARINARA_STUB_SIGNATURE: "Valid",
+          };
+          const run = (overrides = {}) => {
+            const command = preamble + expanded;
+            const args =
+              process.platform === "win32" ? [`-NoProfile -Command "${command}"`] : ["-NoProfile", "-Command", command];
+            return spawnSync(executable, args, {
+              env: { ...env, ...overrides },
+              encoding: "utf8",
+              timeout: 15_000,
+              windowsHide: true,
+              windowsVerbatimArguments: process.platform === "win32",
+            });
+          };
+          const valid = run();
+          assert.equal(valid.status, 0, `${name} prerequisite command failed: ${valid.error ?? valid.stderr}`);
+          if (index % 2 === 0) {
+            assert.match(valid.stdout, /download-stub/, `${name} download command must reach Invoke-WebRequest`);
+          } else {
+            assert.match(valid.stdout, /hash-stub[\s\S]*signature-stub/, `${name} must verify hash before signature`);
+            const badHash = run({ MARINARA_STUB_HASH: "0".repeat(64) });
+            assert.equal(badHash.status, 1, `${name} must refuse a mismatched hash`);
+            assert.doesNotMatch(badHash.stdout, /signature-stub/, `${name} must stop at a mismatched hash`);
+            const badSignature = run({ MARINARA_STUB_SIGNATURE: "NotSigned" });
+            assert.equal(badSignature.status, 1, `${name} must refuse an invalid signature`);
+            assert.match(badSignature.stdout, /signature-stub/, `${name} must reach signature verification`);
+          }
+        }
+        console.log("Git and Node.js PowerShell prerequisite commands passed positive and integrity-failure controls.");
+      } finally {
+        await rm(temp, { recursive: true, force: true });
+      }
+    }
+  }
   const sharedBuild = sharedPackage?.scripts?.build;
   if (typeof sharedBuild !== "string" || /\bpnpm(?:\.cmd)?\s/i.test(sharedBuild)) {
     failures.push({

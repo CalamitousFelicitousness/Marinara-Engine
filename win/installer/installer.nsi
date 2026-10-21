@@ -240,8 +240,8 @@ Section "Install" SecInstall
   ${If} $GIT_OK != 0
     DetailPrint "Git not found — attempting automatic install..."
     DetailPrint "Downloading Git for Windows (this may take a minute)..."
-    ; Download Git installer via PowerShell (known-working path used by the v1.4.7 installer)
-    nsExec::ExecToLog 'cmd /c powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri ""${GIT_DOWNLOAD_URL}"" -OutFile ""$TEMP\git-install.exe"" -UseBasicParsing"'
+    ; Keep PowerShell quotes intact: invoke it directly and resolve temporary paths inside the script.
+    nsExec::ExecToLog `powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '${GIT_DOWNLOAD_URL}' -OutFile ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'git-install.exe')) -UseBasicParsing"`
     Pop $0
     ${If} $0 != 0
       MessageBox MB_YESNO|MB_ICONEXCLAMATION "\
@@ -255,7 +255,7 @@ Would you like to open the Git download page to install it manually?" IDYES open
         Abort "Installation cancelled — Git is required."
     ${EndIf}
     DetailPrint "Verifying Git installer integrity..."
-    nsExec::ExecToLog 'cmd /c powershell -NoProfile -Command "if (((Get-FileHash -Algorithm SHA256 -LiteralPath ""$TEMP\git-install.exe"").Hash).ToLowerInvariant() -ne ''${GIT_SHA256}'') { exit 1 }; if ((Get-AuthenticodeSignature -LiteralPath ""$TEMP\git-install.exe"").Status -ne ''Valid'') { exit 1 }"'
+    nsExec::ExecToLog `powershell -NoProfile -Command "if (((Get-FileHash -Algorithm SHA256 -LiteralPath ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'git-install.exe'))).Hash).ToLowerInvariant() -ne '${GIT_SHA256}') { exit 1 }; if ((Get-AuthenticodeSignature -LiteralPath ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'git-install.exe'))).Status -ne 'Valid') { exit 1 }"`
     Pop $0
     ${If} $0 != 0
       Delete "$TEMP\git-install.exe"
@@ -305,7 +305,7 @@ Please restart your computer and run this installer again."
   ${If} $NODE_OK != 0
     DetailPrint "Node.js 24 LTS or newer not found — attempting automatic install..."
     DetailPrint "Downloading Node.js LTS (this may take a minute)..."
-    nsExec::ExecToLog 'cmd /c powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri ""${NODE_DOWNLOAD_URL}"" -OutFile ""$TEMP\node-install.msi"" -UseBasicParsing"'
+    nsExec::ExecToLog `powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '${NODE_DOWNLOAD_URL}' -OutFile ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'node-install.msi')) -UseBasicParsing"`
     Pop $0
     ${If} $0 != 0
       MessageBox MB_YESNO|MB_ICONEXCLAMATION "\
@@ -319,7 +319,7 @@ Would you like to open the Node.js download page to install it manually?" IDYES 
         Abort "Installation cancelled — Node.js is required."
     ${EndIf}
     DetailPrint "Verifying Node.js installer integrity..."
-    nsExec::ExecToLog 'cmd /c powershell -NoProfile -Command "if (((Get-FileHash -Algorithm SHA256 -LiteralPath ""$TEMP\node-install.msi"").Hash).ToLowerInvariant() -ne ''${NODE_SHA256}'') { exit 1 }; if ((Get-AuthenticodeSignature -LiteralPath ""$TEMP\node-install.msi"").Status -ne ''Valid'') { exit 1 }"'
+    nsExec::ExecToLog `powershell -NoProfile -Command "if (((Get-FileHash -Algorithm SHA256 -LiteralPath ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'node-install.msi'))).Hash).ToLowerInvariant() -ne '${NODE_SHA256}') { exit 1 }; if ((Get-AuthenticodeSignature -LiteralPath ([IO.Path]::Combine([IO.Path]::GetTempPath(), 'node-install.msi'))).Status -ne 'Valid') { exit 1 }"`
     Pop $0
     ${If} $0 != 0
       Delete "$TEMP\node-install.msi"

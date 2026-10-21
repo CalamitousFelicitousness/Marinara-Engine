@@ -472,11 +472,14 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
     if (who.id === view.actorId) said.push(t("game.combat.ruleset.board.onTurn"));
     if (who.defeated) said.push(t("game.combat.ruleset.status.defeated"));
     else if (who.down) said.push(t("game.combat.ruleset.status.down"));
-    // What holds them, and what they hold together: what a token's marks stand for.
-    if (who.conditions.length > 0)
+    // What they are doing, what holds them, and what they hold together: what a token's marks stand
+    // for. A trait they carry all fight is the status list's to name, not the square's.
+    for (const stance of who.stances ?? []) said.push(t(`game.combat.ruleset.stance.${stance}`));
+    const held = who.conditions.filter((condition) => !condition.trait);
+    if (held.length > 0)
       said.push(
         t("game.combat.ruleset.board.conditions", {
-          list: who.conditions
+          list: held
             .map((condition) =>
               condition.rounds !== undefined
                 ? t("game.combat.ruleset.board.conditionRounds", { label: condition.label, count: condition.rounds })

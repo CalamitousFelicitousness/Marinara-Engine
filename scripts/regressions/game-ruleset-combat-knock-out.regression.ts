@@ -154,9 +154,19 @@ try {
       true,
       "and on once it is",
     );
+    // Switched back once the same turn, so a misclick is undone; then not again until next turn.
+    const back = rulesetCombatOptions(definition, step.state, "hero").find((one) => one.label === "Knock out");
+    assert.equal(back?.on, true, "offered again the same turn, to turn it back off");
+    const undone = applyRulesetCombatChoice(
+      definition,
+      step.state,
+      { actorId: "hero", optionId: back!.id, targetIds: [] },
+      roll,
+    );
+    assert.equal(who(undone.state, "hero").knocksOut, undefined, "off again");
     assert.ok(
-      !rulesetCombatOptions(definition, step.state, "hero").some((one) => one.label === "Knock out"),
-      "once a turn",
+      !rulesetCombatOptions(definition, undone.state, "hero").some((one) => one.label === "Knock out"),
+      "once a turn, and once back",
     );
     assert.ok(
       !rulesetCombatOptions(parsed(JSON.parse(fiveEText)), fight(parsed(JSON.parse(fiveEText))), "hero").some(

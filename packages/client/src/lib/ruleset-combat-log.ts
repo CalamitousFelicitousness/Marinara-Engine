@@ -359,27 +359,37 @@ export function rulesetCombatEventLine(
         },
       );
     }
-    case "save":
+    case "save": {
+      // Against the action that forced it, by name: Sacred Flame has no attack line to say so.
+      const saveName =
+        event.label && event.sourceId
+          ? t("game.combat.ruleset.event.saveAgainst", {
+              save: names.save(event.save),
+              actor: names.combatant(event.sourceId),
+              label: event.label,
+            })
+          : names.save(event.save);
       if (event.automatic) {
         return key(event.success ? "saveAutomaticSuccess" : "saveAutomatic", {
           actor: names.combatant(event.actorId),
-          save: names.save(event.save),
+          save: saveName,
         });
       }
       if (event.pool) {
         return key(event.success ? "savePoolSuccess" : "savePoolFailure", {
           actor: names.combatant(event.actorId),
-          save: names.save(event.save),
+          save: saveName,
           roll: rulesetPoolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t)),
           needed: t("game.combat.ruleset.roll.needed", { count: event.difficulty }),
         });
       }
       return key(event.success ? "saveSuccess" : "saveFailure", {
         actor: names.combatant(event.actorId),
-        save: names.save(event.save),
+        save: saveName,
         roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
+    }
     case "damage": {
       // A pool fight's damage is its own throw: what the dice counted (and the automatic successes
       // beside them), then what soak took off, thrown or off the dice, before the harm lands.
@@ -440,8 +450,9 @@ export function rulesetCombatEventLine(
       return key("skipDazed", { actor: names.combatant(event.actorId) });
     case "heal":
       if (event.blocked) return key("healBlocked", { target: names.combatant(event.targetId) });
-      return key("heal", {
+      return key(event.label && event.sourceId ? "healBy" : "heal", {
         target: names.combatant(event.targetId),
+        ...(event.label && event.sourceId ? { actor: names.combatant(event.sourceId), label: event.label } : {}),
         amount: event.amount,
         health: event.health,
         maxHealth: event.maxHealth,

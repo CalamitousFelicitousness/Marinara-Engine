@@ -674,6 +674,7 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   for (const combatant of fight.encounter.combatants) {
     const unit = units.get(combatant.id);
     if (!unit) continue;
+    rulesetReadRole(definition, unit, combatant);
     // Who plays a party member, as the fight has it: what the party panel shows.
     if (combatant.side === "party")
       unit.controller = rulesetController(state, fight, combatant) === "ai" ? "ai" : "manual";
@@ -690,17 +691,35 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   }
 }
 
+/** What a fighter is for, read once off what its ruleset sheet or block can do (a priest supports, a
+ *  mage casts), or as its own data says (1.710). The ruleset is what it fights with, so a game card's
+ *  class or skills say nothing here. */
+function rulesetReadRole(definition: RulesetDefinition, unit: Combatant, combatant: RulesetCombatant): void {
+  if (!unit.tactics || unit.tactics.roleRead) return;
+  unit.tactics.role = rulesetCombatantBehavior(definition, combatant)?.role ?? rulesetCombatantRole(combatant);
+  unit.tactics.roleRead = true;
+}
+
 function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-): Array<{ id: string; label: string; rounds?: number }> {
+): Array<{ id: string; label: string; rounds?: number; trait?: true }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
   // And what a zone they stand in puts on them while they stay (1.179).
-  const ids = new Set([
-    ...rulesetCombatConditions(definition, combatant),
-    ...(state ? rulesetZoneConditions(state, combatant, definition) : []),
+  const zoned = state ? rulesetZoneConditions(state, combatant, definition) : [];
+  const ids = new Set([...rulesetCombatConditions(definition, combatant), ...zoned]);
+  // What the fight, a zone or their own sheet put on them; the rest only what they are or carry
+  // keeps on them all fight (a race's Lucky, a worn item's), which is a trait, not news.
+  const put = new Set([
+    ...combatant.tracked.filter((entry) => !entry.kept).map((entry) => entry.condition),
+    ...zoned,
+    ...(combatant.sheet
+      ? readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live)
+          .conditions.filter((condition) => condition.active)
+          .map((condition) => condition.id)
+      : []),
   ]);
   return [...ids].map((id) => {
     const rounds = tracked.get(id);
@@ -708,8 +727,19 @@ function conditionsOf(
       id,
       label: declared.get(id) ?? id,
       ...(typeof rounds === "number" ? { rounds } : {}),
+      ...(put.has(id) ? {} : { trait: true as const }),
     };
   });
+}
+
+/** What a standard action left a combatant doing until their next turn, for the fight's badges. */
+function stancesOf(combatant: RulesetCombatant): DirectedRulesetCombatant["stances"] {
+  const stances: NonNullable<DirectedRulesetCombatant["stances"]> = [];
+  if (combatant.flags.dodging) stances.push("dodging");
+  if (combatant.hiding?.from.length) stances.push("hidden");
+  if (combatant.flags.disengaged) stances.push("disengaged");
+  if (combatant.readied) stances.push("readied");
+  return stances.length ? stances : undefined;
 }
 
 function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
@@ -764,6 +794,7 @@ function projectCombatant(
       saves: source.saves,
     }),
   );
+  const stances = stancesOf(combatant);
   return {
     id: combatant.id,
     name: combatant.name,
@@ -773,6 +804,7 @@ function projectCombatant(
     health,
     defense: combatant.defense,
     conditions: conditionsOf(definition, combatant, state),
+    ...(stances ? { stances } : {}),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: active.flatMap((source) => {
       const modifiers = source.modifiers?.filter((one) => one.to === "damage" || one.to === "damage-taken");
@@ -1150,7 +1182,13 @@ function rulesetCandidates(
   const actor = rulesetCombatant(encounter, actorId);
   const own = candidates.filter((candidate) => {
     const action = actor?.actions.find((one) => one.id === candidate.action.option.id);
-    return !(action?.free && action.beforeAttack);
+    if (action?.free && action.beforeAttack) return false;
+    // Told to hold its ground: a dash or a getaway goes nowhere it may go, so it is a wasted turn.
+    if (orders?.posture === "hold" && candidate.action.option.kind === "standard") {
+      const name = rulesetStandardName(candidate.action.option.id);
+      if (name === "dash" || name === "disengage") return false;
+    }
+    return true;
   });
   if (!own.some((candidate) => worth(candidate) > 0)) return own;
   const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics, orders);
@@ -1182,6 +1220,8 @@ function rulesetKeepsDefensive(
   if (!tactics || tactics.mind === "mindless" || !definition.combat) return false;
   // Told to get out of the fight, or to keep out of harm's way.
   if (orders?.posture === "retreat") return true;
+  // Two turns of it in a row and nothing has changed: it fights again, or the fight never ends.
+  if ((tactics.wary ?? 0) >= 2) return false;
   const minded =
     orders?.posture === "back" ||
     tactics.adjective === "cautious" ||
@@ -2311,6 +2351,11 @@ function weighCaught(
   } else {
     // Something meant for the other side that would catch only its own: ball bearings under a friend.
     if (option.targets.side === "enemy") return false;
+    // Nor anybody at all: ball bearings thrown on an empty floor beside a friend, who then walks on
+    // them. What is worth laying for nobody yet is weighed as a zone, never here.
+    if (friends.length === 0) return false;
+    // And nothing that would harm the friends it catches: ball bearings under them, any side's.
+    if (harms(friends) > 0 && riders(friends) <= 0) return false;
     if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
       return false;
     }
@@ -2646,9 +2691,8 @@ function pickChoice(
     if (!unit.tactics || (wanted !== undefined && unit.tactics.mind !== wanted)) {
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
-      // What it is for, read off what it can do, where the Engine's own reading has nothing to go on.
-      if (!unit.combatClass && !unit.skills?.length) unit.tactics.role = rulesetCombatantRole(actor);
     }
+    rulesetReadRole(definition, unit, actor);
     // How its own data says it goes about a fight (1.710): its temperament, unless the Game Master
     // gave it one for this fight, and its role.
     const behavior = rulesetCombatantBehavior(definition, actor);
@@ -2678,6 +2722,11 @@ function pickChoice(
     orders,
   );
   if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
+  // Counted only on its own turn's choice, not on a reaction's.
+  if (!menu && chosen) {
+    if (rulesetDefensiveName(chosen.option)) unit.tactics!.wary = (unit.tactics!.wary ?? 0) + 1;
+    else delete unit.tactics!.wary;
+  }
   return chosen;
 }
 
@@ -2773,6 +2822,12 @@ function weighRulesetOrders(
     )
       focus += strength * 0.7;
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
+    // Guarding or protecting somebody keeps it on a leash: what takes it more than three squares
+    // from them is worth a fifth, so it never runs off across the board after the first foe it sees.
+    if (guarded && candidate.action.to && rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) > 3) {
+      for (const key of ["damage", "finish", "setup", "support", "healing", "focus"] as const)
+        if (candidate[key] !== undefined) candidate[key] = candidate[key]! * 0.2;
+    }
     // A blow that would kill: only one in melee by somebody pulling their blows knocks out instead.
     if (orders.spare && harms && (candidate.finish ?? 0) > 0) {
       const action = actor.actions.find((one) => one.id === candidate.action.option.id);
@@ -2982,7 +3037,18 @@ function answerRulesetWindows(
     if (!window || !asking) return;
     const combatant = rulesetCombatant(fight.encounter, asking);
     const controller = rulesetController(state, fight, combatant);
-    if (controller === "manual") return;
+    if (controller === "manual") {
+      // Asked with nothing worth taking (a Shield that would not stop the hit): let go for them,
+      // rather than holding the fight on a prompt with only "Let it go by" on it.
+      if (rulesetMenu(definition, fight.encounter, asking, true).length > 0) return;
+      applyChoiceOnly(definition, state, fight, {
+        actorId: asking,
+        optionId: RULESET_PASS_OPTION,
+        targetIds: [],
+        window: window.id,
+      });
+      continue;
+    }
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
     // Somebody hidden from it, and a Detect to look for them with (1.287).
@@ -3571,6 +3637,8 @@ export function commandRulesetCombatDirector(
     }
     if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
     fight.controllers[combatant.id] = command.controller;
+    // The party panel reads the unit's own controller: said at once, not at the next turn.
+    syncRulesetCombatants(definition, state);
     return settled(state);
   }
 

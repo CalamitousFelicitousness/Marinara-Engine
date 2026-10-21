@@ -44,6 +44,11 @@ export const combatTacticsSchema = z
     opened: z.literal(true).optional(),
     /** It lay in wait and has sprung (a ruleset creature's `behavior.ambush`, 1.710). */
     sprung: z.literal(true).optional(),
+    /** Its role was read off what its ruleset sheet or block can do (1.710). */
+    roleRead: z.literal(true).optional(),
+    /** Turns in a row it spent dodging, getting away or hiding: two, and it fights again, so two
+     *  careful sides never stare at each other all fight. */
+    wary: z.number().int().min(0).max(99).optional(),
   })
   .superRefine((value, ctx) => {
     // A mindless creature has no temperament but its own, and nothing else is mindless.

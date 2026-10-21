@@ -2241,8 +2241,8 @@ export interface RulesetCombatant {
   flags: {
     /** The light they carry was put out or lit this turn, for nothing (1.295). */
     lightSwitched?: true;
-    /** They turned to pulling their blows, or back, this turn (1.667). */
-    knockOutSwitched?: true;
+    /** They turned to pulling their blows, or back, this turn (1.667); `"back"` once they undid it. */
+    knockOutSwitched?: true | "back";
     dodging?: boolean;
     dashed?: boolean;
     disengaged?: boolean;
@@ -3329,6 +3329,8 @@ export type RulesetCombatEvent =
       actorId: string;
       /** Who forced it, when somebody did. */
       sourceId?: string;
+      /** The action of theirs that forced it. */
+      label?: string;
       save: string;
       /** How it was rolled, when a condition made it more or less than one throw. */
       mode?: RulesetCombatRollMode;
@@ -3375,6 +3377,8 @@ export type RulesetCombatEvent =
       type: "heal";
       targetId: string;
       sourceId?: string;
+      /** The action of theirs that healed. */
+      label?: string;
       rolls: number[];
       flat: number;
       amount: number;

@@ -13032,8 +13032,9 @@ function GameSurfaceComponent({
                     experienceOwnsGame && "hidden",
                   )}
                 >
-                  {/* Desktop: inline minimap */}
-                  <div className="hidden md:block">
+                  {/* Desktop: inline minimap. Not in a fight on a board, which is the map then: the
+                      card would only cover the fight's own party panel. */}
+                  <div className={cn("hidden", !tacticalCombatActive && "md:block")}>
                     <GameMapPanel
                       map={viewedMap}
                       maps={availableMaps}

@@ -129,14 +129,20 @@ export function RulesetCombatStatus({
             {order.map((combatant) => {
               const onTurn = combatant.id === view.actorId;
               const deathTrack = combatant.deathTrack;
-              const conditions = combatant.conditions.map((condition) =>
-                typeof condition.rounds === "number"
-                  ? t("game.combat.ruleset.status.conditionRounds", {
-                      label: condition.label,
-                      rounds: condition.rounds,
-                    })
-                  : condition.label,
-              );
+              const traits = combatant.conditions.filter((condition) => condition.trait);
+              const conditions = [
+                ...(combatant.stances ?? []).map((stance) => t(`game.combat.ruleset.stance.${stance}`)),
+                ...combatant.conditions
+                  .filter((condition) => !condition.trait)
+                  .map((condition) =>
+                    typeof condition.rounds === "number"
+                      ? t("game.combat.ruleset.status.conditionRounds", {
+                          label: condition.label,
+                          rounds: condition.rounds,
+                        })
+                      : condition.label,
+                  ),
+              ];
               const state = combatant.left
                 ? t("game.combat.ruleset.status.left")
                 : combatant.away
@@ -219,6 +225,13 @@ export function RulesetCombatStatus({
                       ]
                         .filter(Boolean)
                         .join(" · ")}
+                    </span>
+                  )}
+                  {traits.length > 0 && (
+                    <span className="mt-0.5 block text-[0.65rem] italic text-[var(--muted-foreground)]">
+                      {t("game.combat.ruleset.status.traits", {
+                        list: traits.map((condition) => condition.label).join(", "),
+                      })}
                     </span>
                   )}
                   {combatant.kind && (
@@ -327,5 +340,7 @@ function zoneLine(
   t: TFunction,
 ): string {
   const caster = view.combatants.find((one) => one.id === zone.casterId)?.name ?? zone.casterId;
+  // Hours of turns (ball bearings left for a day) is no count anybody reads: it lasts the fight.
+  if (zone.rounds > 100) return t("game.combat.ruleset.status.zoneLasting", { caster, label: zone.label });
   return t("game.combat.ruleset.status.zone", { caster, label: zone.label, count: zone.rounds });
 }

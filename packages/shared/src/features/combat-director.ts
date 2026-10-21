@@ -154,7 +154,12 @@ export interface DirectedRulesetCombatant {
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
-  conditions: Array<{ id: string; label: string; rounds?: number }>;
+  /** `trait` marks one only what they are or carry keeps on them for the whole fight (a halfling's
+   *  Lucky, a worn ring's): it is listed, never badged, so it does not hide what the fight did. */
+  conditions: Array<{ id: string; label: string; rounds?: number; trait?: true }>;
+  /** What a standard action left them doing until their next turn: dodging, hidden, disengaged or
+   *  with something readied. Not conditions, so a screen names them in its own words. */
+  stances?: Array<"dodging" | "hidden" | "disengaged" | "readied">;
   /** All active typed defenses, including exceptions (Capability API 1.132). */
   hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
   /** Active damage dealt/taken sources (Capability API 1.133), also read by the Game Master. */

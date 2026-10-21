@@ -710,6 +710,18 @@ export function RulesetCombatBoard({
                 : null;
             const percent = rulesetHealthPercent(combatant.health);
             const bar = percent > 60 ? "bg-emerald-500" : percent > 25 ? "bg-amber-500" : "bg-red-500";
+            // What they are doing first (dodging, hidden), then what the fight put on them; a trait
+            // they hold all fight is never badged, or Lucky would hide Blessed.
+            const badges = [
+              ...(combatant.stances ?? []).map((stance) => ({
+                id: `stance:${stance}`,
+                label: t(`game.combat.ruleset.stance.${stance}`),
+                stance: true,
+              })),
+              ...combatant.conditions
+                .filter((condition) => !condition.trait)
+                .map((condition) => ({ id: condition.id, label: condition.label, stance: false })),
+            ];
             return (
               <div
                 key={combatant.id}
@@ -770,19 +782,23 @@ export function RulesetCombatBoard({
                   )}
                   {/* What holds them, a letter each (three at most), and a ring for a spell they hold
                       together. The square's own sentence names them in full. */}
-                  {!combatant.defeated && (combatant.conditions.length > 0 || combatant.concentrating) && (
+                  {!combatant.defeated && (badges.length > 0 || combatant.concentrating) && (
                     <div className="absolute -right-1 -top-1 flex gap-px">
                       {combatant.concentrating && (
                         <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
                           C
                         </span>
                       )}
-                      {combatant.conditions.slice(0, 3).map((condition) => (
+                      {badges.slice(0, 3).map((badge) => (
                         <span
-                          key={condition.id}
-                          className="flex h-3 w-3 items-center justify-center rounded-full border border-amber-200 bg-amber-600/85 text-[0.45rem] font-black uppercase leading-none text-white"
+                          key={badge.id}
+                          title={badge.label}
+                          className={cn(
+                            "flex h-3 w-3 items-center justify-center rounded-full border text-[0.45rem] font-black uppercase leading-none text-white",
+                            badge.stance ? "border-emerald-200 bg-emerald-600/85" : "border-amber-200 bg-amber-600/85",
+                          )}
                         >
-                          {condition.label.charAt(0)}
+                          {badge.label.charAt(0)}
                         </span>
                       ))}
                     </div>

@@ -8195,7 +8195,7 @@ function applyChoice(
       const on = !working.knocksOut;
       if (on) working.knocksOut = true;
       else delete working.knocksOut;
-      working.flags.knockOutSwitched = true;
+      working.flags.knockOutSwitched = working.flags.knockOutSwitched ? "back" : true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
     } else if (switching?.switches && "conjured" in switching.switches) {
       // A weapon put in hand, put away for nothing (1.308).
@@ -15648,6 +15648,13 @@ function resolveActionBody(
     else delete ctx.acting;
   }
   if (!result) chargeThen(ctx, actor, action, from);
+  // Named on the saves it forced and the healing it gave, so a log names the spell that did it even
+  // where no attack roll did (Sacred Flame, Cure Wounds). An action inside it named its own first.
+  for (let index = from; index < ctx.events.length; index++) {
+    const event = ctx.events[index]!;
+    if ((event.type === "save" || event.type === "heal") && event.sourceId === actor.id && !event.label && action.label)
+      ctx.events[index] = { ...event, label: action.label };
+  }
   return result;
 }
 

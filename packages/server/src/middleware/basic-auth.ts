@@ -306,7 +306,7 @@ function wantsHtml(request: FastifyRequest): boolean {
 function renderLockdownPage(clientIp: string, proxied: boolean): string {
   const safeIp = escapeHtml(clientIp);
   const lede = proxied
-    ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you choose how visitors should authenticate. Pick one of the options below, save <code>.env</code>, wait a couple of seconds, then refresh this page.`
+    ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you set a login. Follow the steps below, save <code>.env</code>, wait a couple of seconds, then refresh this page.`
     : `You're connecting from <span class="ip-pill">${safeIp}</span>, which isn't loopback. To protect your data, the server refuses non-local traffic until you choose how this device should authenticate. Pick one of the options below, save <code>.env</code>, wait a couple of seconds, then refresh this page.`;
   // The IP allowlist only helps direct devices. A proxied visitor shows the proxy's address.
   const secondOption = proxied

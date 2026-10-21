@@ -41,7 +41,7 @@ stay as they were.
 ```
 
 Ids are 1 to 40 lowercase letters, digits, `_` or `-`, unique within their list. A story holds at most
-64 flags, 64 directions, 128 events, 64 cutscenes, 32 fights and 16 endings. No text in it may hold a line break, square
+256 flags (64 before Capability API 1.353), 64 directions, 256 events (128 before 1.349), 64 cutscenes, 32 fights and 16 endings. No text in it may hold a line break, square
 brackets or `{{`, and names written into a tag (a group, a background) may not hold a double quote:
 nothing a story says can pass for one of the Game Master's tags.
 
@@ -64,6 +64,14 @@ A flag is a value the story keeps: `"bool"` (true or false) or `"number"`.
   "initial": 0,
   "quest": { "title": "Favours", "text": "Do the town three favours", "goal": 3 }
 }
+```
+
+A number flag may have a `min` and a `max` (Capability API 1.358): every `set` and `add` keeps it within
+them, the Game Master's own tags too, so an approval score stays between -10 and 10 however many events
+add to it. Its `initial` must be within them.
+
+```json
+{ "id": "approval", "kind": "number", "initial": 0, "min": -10, "max": 10, "gm": true }
 ```
 
 A yes-or-no objective is done when its flag is true; a number objective when it reaches its `goal`
@@ -100,6 +108,13 @@ must hold. A yes-or-no flag is only compared with `=` or `!=`.
 
 `{ "party": "<person id>", "is": "in" | "out" }` asks whether a person of the world travels with the
 party now, such as a companion the story recruited (Capability API 1.349).
+
+`{ "any": [<condition>, <condition>, ...] }` holds when any one of its 2 to 8 conditions does (Capability
+API 1.358): an either-or in one list, in place of two events.
+
+```json
+"if": [{ "any": [{ "flag": "won_granary", "is": "=", "value": true }, { "party": "p11-3", "is": "in" }] }]
+```
 
 ### Knowledge
 
@@ -152,8 +167,9 @@ An event happens once, unless it has `"repeat": true` (which `start`, `turn` and
 | `arrive` | While the party is in `place` (a place id) or a place inside it, having come there by starting there, a walk on the overworld, a visit in town, or a place the Game Master names. With `repeat`, again each time it comes back from elsewhere.                                                                                                                                                                                                          |
 | `meet`   | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names.                                                                                                                                                                                                                                          |
 | `deed`   | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one.                                                                                                                                                                                                                                                                                                        |
-| `fight`  | When a fight ends in `outcome`: `victory`, `defeat` or `flee`.                                                                                                                                                                                                                                                                                                                                                                                          |
-| `broke`  | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named.                                                                                                                                                                                                                                                                                            |
+| `fight` | When a fight ends in `outcome`: `victory`, `defeat` or `flee`. With `fight` (one of the script's fights, 1.358), only when that fight ended so: the fight the Game Master's latest reply started, by the story's `fight` action or its own trip. |
+| `leave` | When the party leaves `place` (a place id) and every place inside it (1.358): by a walk, a visit, a place the Game Master names or the story's `move`, in the latest reply or this turn. With `repeat`, again each time it leaves. |
+| `broke` | When a fight broke the prop called `prop` (Capability API 1.316), matched without case. Only a prop painted on one of the world's battlefields can be named. |
 | `flags`  | When its conditions hold. With `repeat`, again each time they come true after being false.                                                                                                                                                                                                                                                                                                                                                              |
 | `gm`     | Only when the Game Master trips it (the event needs `"gm": true`).                                                                                                                                                                                                                                                                                                                                                                                      |
 | `rest` | After a reply in which the party rested: a `[sheet: op="rest"]` the Game Master's reply took, of the ruleset rest `rest` names (its id or label, such as `long`) or any (1.349). |
@@ -184,11 +200,29 @@ deed it waits for, would set itself off every turn, so the Engine refuses it.
 | `{ "music": "<track id>" }` or `{ "music": null }` | Cues one of its Experience's tracks over the place's music (1.345), until another cue, or `null` hands back to the place's. The track must be one of the map pack's `music`. |
 | `{ "recruit": "<person id>" }` | Takes one of its Experience's companions into the party (1.347), with their sheet for the game's ruleset. The Game Master is told to show them joining. |
 | `{ "dismiss": "<person id>" }` | Lets a companion go from the party (1.347). |
+| `{ "season": { "place": "<place id>", "to": "winter" } }` | Holds a place, and every place inside it, at a season whatever the date (1.351); without `place`, the whole world. `"to": null` lets it go back to the script's own `seasons`, or the date's. |
+
+Any action may carry its own `if` (Capability API 1.358): it is done only when its conditions hold as
+the event reaches it, with the event's earlier actions done, so one event can branch.
+
+```json
+"do": [
+  { "add": "approval", "amount": 2 },
+  { "tell": "Hob warms to the party.", "if": [{ "flag": "approval", "is": ">=", "value": 5 }] },
+  { "tell": "Hob keeps his distance.", "if": [{ "flag": "approval", "is": "<", "value": 5 }] }
+]
+```
+
+Which actions were done is recorded with the trip, so a `gm` event's scenes and asks arrive the next turn
+as they were done when the Game Master marked it.
 
 A map pack world whose story has clocks needs Capability API 1.342, one with fights, endings or the
 `give`, `fight`, `move` and `ending` actions needs 1.343, one that cues music needs 1.345, and one that
 recruits or dismisses companions needs 1.347, one with knowledge needs 1.348, and one with `rest`,
-`travel` or `idle` events, a `priority`, a `party` condition or more than 128 events needs 1.349. A companion is a person of the pack's people file marked
+`travel` or `idle` events, a `priority`, a `party` condition or more than 128 events needs 1.349, and one
+with `seasons` or the `season` action needs 1.351, one with more than 64 flags needs 1.353, and one
+with fight `variants` needs 1.356, and one with `any` conditions, a `fight` event naming its fight, a
+`leave` event, a flag's `min` or `max`, or an `if` on an action or a page needs 1.358. A companion is a person of the pack's people file marked
 as one (see the map pack's people in [optional agent packages](../development/optional-agent-packages.md)).
 
 Of the `rest`, `travel` and `idle` events that could happen on one turn, only one does: the one with the
@@ -196,6 +230,26 @@ highest `priority` (a whole number from -100 to 100, 0 when left out; the first 
 companion's campfire talk, a pair of companions bickering on the road, or a companion coming to the player
 in a quiet hour then never pile up. With a `party` condition, such a scene happens only while those
 companions travel with the party. A script may have 256 events from 1.349 (128 before).
+
+### Seasons
+
+A world's seasons follow its calendar, 90 days each. A story can hold places at a season whatever the date
+(Capability API 1.351): a valley stuck in autumn, a hill held at winter.
+
+```json
+"seasons": [{ "place": "p3", "season": "autumn" }, { "season": "summer" }]
+```
+
+Each holds a place and every place inside it; one without a `place` holds the whole world. The nearest
+held place decides: a village held at winter inside a region held at autumn is winter. The `season`
+action changes a hold during play, or lets it go. Where the party is held, the Game Master is told the
+season and that it is held; the weather is made for it; the overworld draws each cell in the season of the
+place it lies nearest (a tile pack's `<id>@<season>` tiles), and a town in its own.
+
+A world's hand-painted battlefield may be painted with seasons too: a `seasons` row per tile row, a letter
+or `.` per tile, with `seasonKeys` naming the letters (`{ "a": "autumn", "w": "winter" }`). A tile left
+`.` is in the season of the place the fight is at. A fight's tiles start in them, and its round's map
+events may change them, as a ring of frost spreading or a line of spring sweeping across.
 
 ### Fights
 
@@ -211,6 +265,22 @@ Each creature is a bestiary creature of the game's ruleset, by its id (`catalog/
 `count` of them (numbered when there are several), called `name` in the fight when given. `battlefield`
 is a board painted by hand in the world (`b<n>`), fought on wherever the fight starts; without one the
 fight is fought where it starts, as any other. `note` tells the Game Master how it comes about.
+
+A fight can be set for parties of other sizes (Capability API 1.356). The party is the player's character
+and every companion travelling with it, from 1 to 6.
+
+```json
+"variants": [
+  { "party": { "min": 3, "max": 4 }, "creatures": [{ "creature": "creatures/scarecrow", "count": 4 }] },
+  { "party": 5, "creatures": [{ "creature": "creatures/scarecrow", "count": 5 }], "battlefield": "b3",
+    "note": "The Owed wakes in the loft." }
+]
+```
+
+The variant whose `party` holds the party's size is fought, with its own creatures, and its own
+`battlefield` and `note` when it gives them (the fight's otherwise). A party no variant holds fights the
+fight as written. No size may be held by two variants. The Game Master is told which party size the fight
+was set for when it starts, and again after its recap.
 
 ### Endings
 
@@ -243,6 +313,15 @@ without a speaker is narration, a page with one is that person's line, by their 
 the player's, for `player`), with an `expression` from the Game Master's own list. A `background` is a
 background the game has, or `backgrounds:generated:<words>` to have one made when image generation is
 on. The Game Master is told the scene was shown and carries on from it.
+
+A page may carry an `if` (Capability API 1.358): it is shown only while its conditions hold as the scene
+plays, so a camp scene can give each companion a line only while they travel with the party.
+
+```json
+{ "speaker": "p11-3", "text": "Another night.", "if": [{ "party": "p11-3", "is": "in" }] }
+```
+
+A scene all of whose pages are held back shows nothing.
 
 ```json
 { "id": "dusk", "kind": "beats", "beats": ["Lamps are lit.", "A bell tolls."] }

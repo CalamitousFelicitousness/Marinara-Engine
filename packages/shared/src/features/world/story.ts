@@ -13,10 +13,12 @@ import { worldPlaceNamed } from "./edits.js";
 import { worldCast, type WorldPerson } from "./people.js";
 import { worldPlaceMap, worldPlaceMapReach } from "./place-maps.js";
 import { worldTown, worldTownReach } from "./town.js";
+import { WORLD_SEASONS, worldSeason, type WorldSeason } from "./overworld.js";
 
 export const STORY_VERSION = 1;
 export const STORY_MAX = Object.freeze({
-  flags: 64,
+  /** 64 before Capability API 1.353, which room for companions' approval, quests and secrets raised. */
+  flags: 256,
   directions: 64,
   /** 128 before Capability API 1.349, which room for companions' scenes raised. */
   events: 256,
@@ -70,8 +72,11 @@ const value = z.union([z.boolean(), z.number().finite()]);
 const flagCondition = z.object({ flag: id, is: z.enum(["=", "!=", ">", ">=", "<", "<="]), value }).strict();
 /** Whether a person of the world travels with the party (Capability API 1.349), by person id. */
 const partyCondition = z.object({ party: z.string().min(1).max(40), is: z.enum(["in", "out"]) }).strict();
+const singleCondition = z.union([flagCondition, partyCondition]);
+/** Holds when any one of its conditions does (Capability API 1.358): an either-or in one list. */
+const anyCondition = z.object({ any: z.array(singleCondition).min(2).max(STORY_MAX.conditions) }).strict();
 const conditions = z
-  .array(z.union([flagCondition, partyCondition]))
+  .array(z.union([flagCondition, partyCondition, anyCondition]))
   .max(STORY_MAX.conditions)
   .optional();
 /** What sets a companion's scene off (Capability API 1.349): one of them happens at most once a turn,
@@ -84,7 +89,10 @@ const trigger = z.discriminatedUnion("on", [
   z.object({ on: z.literal("meet"), person: z.string().min(1).max(140) }).strict(),
   z.object({ on: z.literal("day"), day: z.number().int().min(0).max(1_000_000) }).strict(),
   z.object({ on: z.literal("turn"), turn: z.number().int().min(1).max(1_000_000) }).strict(),
-  z.object({ on: z.literal("fight"), outcome: z.enum(STORY_FIGHT_OUTCOMES) }).strict(),
+  /** A fight ends in `outcome`: any fight, or (Capability API 1.358) the script's fight `fight`. */
+  z.object({ on: z.literal("fight"), outcome: z.enum(STORY_FIGHT_OUTCOMES), fight: id.optional() }).strict(),
+  /** The party leaves a place, and every place inside it (Capability API 1.358). */
+  z.object({ on: z.literal("leave"), place: z.string().min(1).max(120) }).strict(),
   /** A fight broke this prop (Capability API 1.316), by its label: an oil jar, the mill's sluice gate. */
   z.object({ on: z.literal("broke"), prop: z.string().trim().min(1).max(40) }).strict(),
   z
@@ -144,28 +152,55 @@ const storyGive = z
   })
   .strict();
 
+/** An action, with its own conditions (Capability API 1.358): done only when they hold as the event
+ *  reaches it, so one event can branch. */
+const act = <T extends z.ZodRawShape>(shape: T) => z.object({ ...shape, if: conditions }).strict();
+
 const action = z.union([
-  z.object({ set: id, value }).strict(),
-  z.object({ add: id, amount: z.number().finite() }).strict(),
-  z.object({ tell: promptSafeText(600) }).strict(),
-  z.object({ cutscene: id }).strict(),
-  z.object({ show: id }).strict(),
-  z.object({ world: worldDeed }).strict(),
-  z.object({ give: storyGive }).strict(),
+  act({ set: id, value }),
+  act({ add: id, amount: z.number().finite() }),
+  act({ tell: promptSafeText(600) }),
+  act({ cutscene: id }),
+  act({ show: id }),
+  act({ world: worldDeed }),
+  act({ give: storyGive }),
   /** Starts one of the script's fights (Capability API 1.343). */
-  z.object({ fight: id }).strict(),
+  act({ fight: id }),
   /** Puts the party at a place of the world, by id (Capability API 1.343). */
-  z.object({ move: z.string().min(1).max(120) }).strict(),
+  act({ move: z.string().min(1).max(120) }),
   /** Ends the game with one of the script's endings (Capability API 1.343). */
-  z.object({ ending: id }).strict(),
+  act({ ending: id }),
   /** Cues one of its Experience's tracks over the place's music, or (null) hands back to the place's
    *  (Capability API 1.345). */
-  z.object({ music: id.nullable() }).strict(),
+  act({ music: id.nullable() }),
   /** Takes one of its Experience's companions into the party, or lets one go, by their person id
    *  (Capability API 1.347). */
-  z.object({ recruit: z.string().min(1).max(40) }).strict(),
-  z.object({ dismiss: z.string().min(1).max(40) }).strict(),
+  act({ recruit: z.string().min(1).max(40) }),
+  act({ dismiss: z.string().min(1).max(40) }),
+  /** Holds a place (and every place inside it), or the whole world without one, at a season whatever the
+   *  day; `null` lets it go back to the script's own (Capability API 1.351). */
+  act({
+    season: z.object({ place: z.string().min(1).max(120).optional(), to: z.enum(WORLD_SEASONS).nullable() }).strict(),
+  }),
 ]);
+
+/** The largest party a story fight's variants are written for (1.356). */
+export const STORY_PARTY_MAX = 6;
+const fightCreatures = z
+  .array(
+    z
+      .object({
+        /** A bestiary creature: its id (`catalog/entry`) or its name in the game's ruleset. */
+        creature: z.string().min(1).max(200),
+        count: z.number().int().min(1).max(20).default(1),
+        /** What this one is called in the fight, when not the creature's own name. */
+        name: tagWord(60).optional(),
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(STORY_MAX.fightCreatures);
+const fightBoard = z.string().regex(/^b\d{1,4}$/, "A battlefield is b and a number");
 
 const page = z
   .object({
@@ -174,6 +209,9 @@ const page = z
     speaker: z.string().min(1).max(140).optional(),
     expression: z.enum(STORY_EXPRESSIONS).optional(),
     text: promptSafeText(600),
+    /** Shown only when these hold as the scene is shown (Capability API 1.358): a group scene's lines for
+     *  the companions travelling with the party. */
+    if: conditions,
   })
   .strict();
 
@@ -190,6 +228,10 @@ export const storyScriptSchema = z
             /** The Game Master may set it with a story tag. */
             gm: z.literal(true).optional(),
             note: promptSafeText(200).optional(),
+            /** A number flag's bounds (Capability API 1.358): every set and add, the Game Master's too, is
+             *  kept within them. */
+            min: z.number().finite().optional(),
+            max: z.number().finite().optional(),
             /** A quest objective in the journal: open until the flag is true (or at its goal). */
             quest: z
               .object({
@@ -222,6 +264,12 @@ export const storyScriptSchema = z
     directions: z
       .array(z.object({ id, text: promptSafeText(600), if: conditions }).strict())
       .max(STORY_MAX.directions)
+      .default([]),
+    /** Places held at a season whatever the day (Capability API 1.351): a place and every place inside it,
+     *  the nearest holding one deciding; one without a place holds the whole world. */
+    seasons: z
+      .array(z.object({ place: z.string().min(1).max(120).optional(), season: z.enum(WORLD_SEASONS) }).strict())
+      .max(64)
       .default([]),
     /** What people know and say, as it holds (Capability API 1.348): about themselves, others and the
      *  setting, changing as the story moves. Each is told to the Game Master on a turn its conditions hold
@@ -300,27 +348,37 @@ export const storyScriptSchema = z
           .object({
             id,
             name: promptSafeText(80),
-            creatures: z
+            creatures: fightCreatures,
+            /** A board painted by hand in the world (`b<n>`), fought on instead of the one where it starts. */
+            battlefield: fightBoard.optional(),
+            /** For the Game Master: how it comes about. */
+            note: promptSafeText(300).optional(),
+            /** The fight for parties of other sizes (Capability API 1.356): the first whose `party` holds the
+             *  party's size (its player characters and the companions travelling with it) is fought, with
+             *  its own creatures (and board and note, when it gives them); else the fight as above. */
+            variants: z
               .array(
                 z
                   .object({
-                    /** A bestiary creature: its id (`catalog/entry`) or its name in the game's ruleset. */
-                    creature: z.string().min(1).max(200),
-                    count: z.number().int().min(1).max(20).default(1),
-                    /** What this one is called in the fight, when not the creature's own name. */
-                    name: tagWord(60).optional(),
+                    party: z.union([
+                      z.number().int().min(1).max(STORY_PARTY_MAX),
+                      z
+                        .object({
+                          min: z.number().int().min(1).max(STORY_PARTY_MAX),
+                          max: z.number().int().min(1).max(STORY_PARTY_MAX),
+                        })
+                        .strict()
+                        .refine((range) => range.min <= range.max, "A party's min is not above its max"),
+                    ]),
+                    creatures: fightCreatures,
+                    battlefield: fightBoard.optional(),
+                    note: promptSafeText(300).optional(),
                   })
                   .strict(),
               )
               .min(1)
-              .max(STORY_MAX.fightCreatures),
-            /** A board painted by hand in the world (`b<n>`), fought on instead of the one where it starts. */
-            battlefield: z
-              .string()
-              .regex(/^b\d{1,4}$/, "A battlefield is b and a number")
+              .max(STORY_PARTY_MAX)
               .optional(),
-            /** For the Game Master: how it comes about. */
-            note: promptSafeText(300).optional(),
           })
           .strict(),
       )
@@ -347,8 +405,12 @@ export type StoryScriptInput = z.input<typeof storyScriptSchema>;
 export type StoryEvent = StoryScript["events"][number];
 export type StoryFlag = StoryScript["flags"][number];
 export type StoryAction = StoryEvent["do"][number];
+export type StoryCondition = NonNullable<StoryEvent["if"]>[number];
 export type StoryCutscene = StoryScript["cutscenes"][number];
-export type StoryFight = StoryScript["fights"][number];
+export type StoryFight = StoryScript["fights"][number] & {
+  /** The party size it was chosen for, when a variant of it was (1.356). */
+  forParty?: number;
+};
 export type StoryEnding = StoryScript["endings"][number];
 /** A `catalog/entry` item or creature id, as a ruleset's catalogs name their entries. */
 const STORY_REF = /^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -360,6 +422,27 @@ export function storyIsRef(value: string): boolean {
 export function storyPerson(game: GameWorld, personId: string): WorldPerson | undefined {
   const match = /^(.+)-e?\d+$/.exec(personId);
   return match ? worldCast(game, match[1]!).find((person) => person.id === personId) : undefined;
+}
+
+/** A list's conditions one by one, an `any` group's each in it (1.358). */
+export function storyConditionsFlat(list: StoryEvent["if"]): Array<Exclude<StoryCondition, { any: unknown }>> {
+  return (list ?? []).flatMap((condition) => ("any" in condition ? condition.any : [condition]));
+}
+
+/** Every list of conditions a script has: its events', their actions', its directions', what people
+ *  know's and its scenes' pages'. */
+function storyConditionLists(story: StoryScript): Array<StoryEvent["if"]> {
+  return [
+    ...story.events.flatMap((event) => [event.if, ...event.do.map((action) => action.if)]),
+    ...story.directions.map((direction) => direction.if),
+    ...story.knowledge.map((known) => known.if),
+    ...story.cutscenes.flatMap((cutscene) => (cutscene.kind === "pages" ? cutscene.pages.map((page) => page.if) : [])),
+  ];
+}
+
+/** A number kept within its flag's bounds (1.358). */
+function storyBounded(flag: Pick<StoryFlag, "min" | "max"> | undefined, value: number): number {
+  return Math.min(flag?.max ?? Infinity, Math.max(flag?.min ?? -Infinity, value));
 }
 
 const NEEDS_GROUP: readonly WorldDeed[] = [
@@ -433,7 +516,7 @@ export function checkStoryScript(
     return flag;
   };
   const checkConditions = (list: StoryEvent["if"], where: string) => {
-    for (const condition of list ?? []) {
+    for (const condition of storyConditionsFlat(list)) {
       if ("party" in condition) {
         personOk(condition.party, where);
         continue;
@@ -463,8 +546,21 @@ export function checkStoryScript(
     if (!fits(flag, flag.initial)) issues.push(`${where}: its first value is not a ${flag.kind}.`);
     if (flag.quest?.goal !== undefined && flag.kind !== "number") issues.push(`${where}: only a number has a goal.`);
     if (flag.clock && flag.kind !== "number") issues.push(`${where}: only a number flag is a clock.`);
+    if (flag.min !== undefined || flag.max !== undefined) {
+      if (flag.kind !== "number") issues.push(`${where}: only a number flag has a min or a max.`);
+      else if (flag.min !== undefined && flag.max !== undefined && flag.min > flag.max)
+        issues.push(`${where}: its min is above its max.`);
+      else if (typeof flag.initial === "number" && storyBounded(flag, flag.initial) !== flag.initial)
+        issues.push(`${where}: its first value is outside its min and max.`);
+    }
   }
   for (const direction of story.directions) checkConditions(direction.if, `Direction "${direction.id}"`);
+  const heldSeasons = new Set<string>();
+  for (const held of story.seasons) {
+    if (held.place) placeOk(held.place, `Season of "${held.place}"`);
+    if (heldSeasons.has(held.place ?? "*")) issues.push(`Two seasons hold "${held.place ?? "the world"}".`);
+    heldSeasons.add(held.place ?? "*");
+  }
   for (const known of story.knowledge) {
     const where = `Knowledge "${known.id}"`;
     checkConditions(known.if, where);
@@ -476,7 +572,9 @@ export function checkStoryScript(
     checkConditions(event.if, where);
     const when = event.when;
     if (when.on === "gm" && !event.gm) issues.push(`${where}: only the Game Master trips it, so it must be its.`);
-    if (when.on === "arrive") placeOk(when.place, where);
+    if (when.on === "arrive" || when.on === "leave") placeOk(when.place, where);
+    if (when.on === "fight" && when.fight && !fightIds.has(when.fight))
+      issues.push(`${where}: no fight "${when.fight}".`);
     if (when.on === "travel") {
       if (when.from) placeOk(when.from, where);
       if (when.to) placeOk(when.to, where);
@@ -495,6 +593,7 @@ export function checkStoryScript(
       const issue = storyStepIssue(game, when);
       if (issue) issues.push(`${where}: ${issue}`);
     }
+    event.do.forEach((action, index) => checkConditions(action.if, `${where}, action ${index + 1}`));
     for (const action of event.do) {
       if ("set" in action) {
         const flag = flagOf(action.set, where);
@@ -523,6 +622,8 @@ export function checkStoryScript(
         if (event.repeat && when.on === "fight") issues.push(`${where}: it starts a fight when one ends, every time.`);
       } else if ("ending" in action) {
         if (!endingIds.has(action.ending)) issues.push(`${where}: no ending "${action.ending}".`);
+      } else if ("season" in action) {
+        if (action.season.place) placeOk(action.season.place, where);
       } else if ("recruit" in action) {
         personOk(action.recruit, where);
       } else if ("dismiss" in action) {
@@ -564,8 +665,19 @@ export function checkStoryScript(
     }
   }
   for (const fight of story.fights) {
-    if (fight.battlefield && !boards.has(fight.battlefield)) {
-      issues.push(`Fight "${fight.id}": no battlefield "${fight.battlefield}" painted in this world.`);
+    for (const board of [fight.battlefield, ...(fight.variants ?? []).map((variant) => variant.battlefield)]) {
+      if (board && !boards.has(board))
+        issues.push(`Fight "${fight.id}": no battlefield "${board}" painted in this world.`);
+    }
+    // Each size of party has one variant at most.
+    const sizes = new Set<number>();
+    for (const variant of fight.variants ?? []) {
+      const [min, max] =
+        typeof variant.party === "number" ? [variant.party, variant.party] : [variant.party.min, variant.party.max];
+      for (let size = min; size <= max; size++) {
+        if (sizes.has(size)) issues.push(`Fight "${fight.id}": two variants are for a party of ${size}.`);
+        sizes.add(size);
+      }
     }
   }
   for (const ending of story.endings) {
@@ -575,9 +687,10 @@ export function checkStoryScript(
   }
   for (const cutscene of story.cutscenes) {
     if (cutscene.kind !== "pages") continue;
-    for (const page of cutscene.pages) {
+    cutscene.pages.forEach((page, index) => {
       if (page.speaker && page.speaker !== STORY_PLAYER) personOk(page.speaker, `Cutscene "${cutscene.id}"`);
-    }
+      checkConditions(page.if, `Cutscene "${cutscene.id}", page ${index + 1}`);
+    });
   }
   // The Game Master is told its own events' beats on every turn, so they are kept to a prompt's share.
   const scenes = new Map(story.cutscenes.map((cutscene) => [cutscene.id, cutscene]));
@@ -652,6 +765,12 @@ export interface StoryLedgerEntry {
   ending?: string;
   /** The track it cued, or null when it handed back to the place's music (1.345). */
   music?: string | null;
+  /** The seasons it held places at (1.351), by place id (`*` the whole world); null lets one go. */
+  seasons?: Array<[string, WorldSeason | null]>;
+  /** Which of its event's actions were done (1.358), by place in the list, when some have conditions. */
+  acts?: number[];
+  /** The item use whose story cost it recorded (1.359), by the spend's id. */
+  spend?: string;
 }
 
 // A body never holds "[", so a tag opener repeated without a "]" is read in one pass.
@@ -695,8 +814,24 @@ export function readStoryLedger(replies: readonly string[]): StoryLedgerEntry[] 
       const fight = values.get("fight")?.trim();
       const ending = values.get("ending")?.trim();
       const music = values.get("music");
+      const seasons = (values.get("seasons") ?? "").split(";").flatMap((pair): Array<[string, WorldSeason | null]> => {
+        const [place, season] = pair.split("=").map((each) => each?.trim());
+        if (!place) return [];
+        if (!season) return [[place, null]];
+        return (WORLD_SEASONS as readonly string[]).includes(season) ? [[place, season as WorldSeason]] : [];
+      });
+      const acts = values.has("acts")
+        ? (values.get("acts") ?? "")
+            .split(";")
+            .filter((each) => /^\d{1,2}$/.test(each.trim()))
+            .map((each) => Number(each.trim()))
+        : undefined;
+      const spend = values.get("spend")?.trim();
       entries.push({
+        ...(spend ? { spend } : {}),
+        ...(acts ? { acts } : {}),
         ...(music !== undefined ? { music: music.trim() || null } : {}),
+        ...(seasons.length ? { seasons } : {}),
         ...(event ? { event } : {}),
         ...(fight ? { fight } : {}),
         ...(ending ? { ending } : {}),
@@ -719,6 +854,8 @@ export interface StoryState {
   ended?: string;
   /** The track the story last cued, while it holds (1.345). */
   music?: string;
+  /** The seasons the story holds places at now (1.351), by place id (`*` the whole world). */
+  seasons?: Record<string, WorldSeason>;
 }
 
 /** The story as its ledger left it: each flag's value (a recorded value the script no longer fits is
@@ -730,8 +867,13 @@ export function storyState(story: StoryScript, ledger: readonly StoryLedgerEntry
   const shown = new Set<string>();
   let ended: string | undefined;
   let music: string | null = null;
+  const seasons: Record<string, WorldSeason> = {};
   for (const entry of ledger) {
     if (entry.music !== undefined) music = entry.music;
+    for (const [place, season] of entry.seasons ?? []) {
+      if (season) seasons[place] = season;
+      else delete seasons[place];
+    }
     if (entry.event) fired[entry.event] = (fired[entry.event] ?? 0) + 1;
     if (entry.ending && !ended && story.endings.some((ending) => ending.id === entry.ending)) ended = entry.ending;
     for (const [flag, given] of entry.set) {
@@ -740,7 +882,14 @@ export function storyState(story: StoryScript, ledger: readonly StoryLedgerEntry
     }
     for (const flag of entry.show) if (kinds.has(flag)) shown.add(flag);
   }
-  return { flags, fired, shown: [...shown], ...(ended ? { ended } : {}), ...(music ? { music } : {}) };
+  return {
+    flags,
+    fired,
+    shown: [...shown],
+    ...(ended ? { ended } : {}),
+    ...(music ? { music } : {}),
+    ...(Object.keys(seasons).length ? { seasons } : {}),
+  };
 }
 
 /** A quest objective the story shows the player (worldgen W10): open until its flag is true, or its
@@ -797,7 +946,7 @@ export function storyCompanionsNamed(story: StoryScript): string[] {
   ];
 }
 
-/** The Capability API minor a script needs: 1.349 for rest, travel and idle events, party conditions and more
+/** The Capability API minor a script needs: 1.356 for fight variants, 1.353 for more than 64 flags, 1.351 for held seasons, 1.349 for rest, travel and idle events, party conditions and more
  *  than 128 events, 1.348 for knowledge, 1.347 for companions, 1.345 for music cues, 1.343 for fights, endings and its give, move, fight and
  *  ending actions, 1.342 for clocks, else 0 (any Engine with stories reads it). */
 export function storyCapabilityMinor(story: StoryScript): number {
@@ -809,6 +958,22 @@ export function storyCapabilityMinor(story: StoryScript): number {
     ...story.directions.flatMap((direction) => direction.if ?? []),
     ...story.knowledge.flatMap((known) => known.if ?? []),
   ].some((condition) => "party" in condition);
+  const lists = storyConditionLists(story);
+  if (
+    lists.some((list) => list?.some((condition) => "any" in condition)) ||
+    story.events.some(
+      (event) =>
+        event.when.on === "leave" ||
+        (event.when.on === "fight" && event.when.fight !== undefined) ||
+        event.do.some((action) => action.if !== undefined),
+    ) ||
+    story.cutscenes.some((cutscene) => cutscene.kind === "pages" && cutscene.pages.some((page) => page.if)) ||
+    story.flags.some((flag) => flag.min !== undefined || flag.max !== undefined)
+  )
+    return 358;
+  if (story.fights.some((fight) => fight.variants?.length)) return 356;
+  if (story.flags.length > 64) return 353;
+  if (story.seasons.length || story.events.some((event) => event.do.some((action) => "season" in action))) return 351;
   if (
     partyConditions ||
     story.events.length > 128 ||
@@ -871,7 +1036,7 @@ export function storyConditionsHold(
   /** Who travels with the party, by person id (1.349); a party condition holds only when it is known. */
   party?: ReadonlySet<string>,
 ): boolean {
-  return (list ?? []).every((condition) => {
+  const holds = (condition: Exclude<StoryCondition, { any: unknown }>): boolean => {
     if ("party" in condition) return party !== undefined && party.has(condition.party) === (condition.is === "in");
     const { flag, is, value: wanted } = condition;
     const current = flags[flag];
@@ -890,7 +1055,8 @@ export function storyConditionsHold(
       case "<=":
         return Number(current) <= Number(wanted);
     }
-  });
+  };
+  return (list ?? []).every((condition) => ("any" in condition ? condition.any.some(holds) : holds(condition)));
 }
 
 /** The people of the world who travel with the party, by person id: its members' names, matched to the
@@ -900,14 +1066,9 @@ export function storyPartyOf(game: GameWorld, story: StoryScript, names: readonl
   const ids = new Set<string>();
   if (!wanted.size) return ids;
   const named = new Set<string>();
-  for (const event of story.events)
-    for (const condition of event.if ?? []) if ("party" in condition) named.add(condition.party);
-  for (const known of story.knowledge) {
-    if (known.person) named.add(known.person);
-    for (const condition of known.if ?? []) if ("party" in condition) named.add(condition.party);
-  }
-  for (const direction of story.directions)
-    for (const condition of direction.if ?? []) if ("party" in condition) named.add(condition.party);
+  for (const list of storyConditionLists(story))
+    for (const condition of storyConditionsFlat(list)) if ("party" in condition) named.add(condition.party);
+  for (const known of story.knowledge) if (known.person) named.add(known.person);
   for (const personId of named) {
     const person = storyPerson(game, personId);
     if (person?.named && wanted.has(person.name.trim().toLowerCase())) ids.add(personId);
@@ -972,6 +1133,8 @@ export interface StoryTurnWorld {
   day: number;
   /** What this turn's player message says a fight ended in. */
   fight: StoryFightOutcome | null;
+  /** What items' uses spent of story numbers in fights (1.359); those not yet recorded are, this turn. */
+  spends?: readonly StorySpend[];
   /** What this turn's player message says a fight broke (1.316), by label. */
   broke?: readonly string[];
   /** The player's name, for a page the player speaks. */
@@ -983,6 +1146,9 @@ export interface StoryTurnWorld {
   item?: StoryItemLabel;
   /** Who travels with the party, by name (1.349): its party conditions hold by them. */
   party?: readonly string[];
+  /** How many the party is (1.356): its player characters and the companions travelling with it. A
+   *  story fight is started in its variant for this size. */
+  partySize?: number;
   /** The player's message this turn, read with the latest reply for who and what is in the scene (1.348). */
   player?: string | null;
 }
@@ -1005,6 +1171,8 @@ export interface StoryTurn {
   filled: Array<{ flag: string; title: string; text: string }>;
   /** Who of the world travels with the party, by person id (1.349). */
   party: string[];
+  /** The season where the party is, and whether the story holds it there (1.351). */
+  season: { season: WorldSeason; held: boolean };
   /** What people know that holds and is in the scene this turn (1.348), for the Game Master. */
   knowledge: Array<{ who?: string; text: string }>;
 }
@@ -1022,19 +1190,27 @@ function storyRecord(
     fight?: string;
     ending?: string;
     music?: string | null;
+    seasons?: Array<[string, WorldSeason | null]>;
+    acts?: number[];
+    spend?: string;
   },
   by?: "engine",
 ) {
   const parts = [
     ...(entry.event ? [`event="${entry.event}"`] : []),
+    ...(entry.spend ? [`spend="${entry.spend}"`] : []),
     ...(entry.flag ? [`flag="${entry.flag}"`] : []),
     ...(entry.fight ? [`fight="${entry.fight}"`] : []),
     ...(entry.ending ? [`ending="${entry.ending}"`] : []),
     ...(entry.music !== undefined ? [`music="${entry.music ?? ""}"`] : []),
+    ...(entry.seasons?.length
+      ? [`seasons="${entry.seasons.map(([place, season]) => `${place}=${season ?? ""}`).join(";")}"`]
+      : []),
     ...(entry.set.length
       ? [`set="${entry.set.map(([flag, value]) => `${flag}=${recordValue(value)}`).join(";")}"`]
       : []),
     ...(entry.show.length ? [`show="${entry.show.join(";")}"`] : []),
+    ...(entry.acts ? [`acts="${entry.acts.join(";")}"`] : []),
     ...(by ? [`by="${by}"`] : []),
     `result="ok"`,
   ];
@@ -1042,23 +1218,33 @@ function storyRecord(
 }
 
 /** An event's flag changes and reveals against these flag values (applied to them). A sum that is no
- *  longer a number a record can hold is left as it was. */
-function applyActions(story: StoryScript, event: StoryEvent, flags: StoryState["flags"]) {
-  const kinds = new Map(story.flags.map((flag) => [flag.id, flag.kind]));
+ *  longer a number a record can hold is left as it was; a number is kept within its flag's bounds (1.358).
+ *  An action with conditions is done only when they hold as the event reaches it, its earlier actions
+ *  done (1.358): which were done is recorded, and `done` is the event with only them. */
+function applyActions(story: StoryScript, event: StoryEvent, flags: StoryState["flags"], party?: ReadonlySet<string>) {
+  const declared = new Map(story.flags.map((flag) => [flag.id, flag]));
   const set: Array<[string, boolean | number]> = [];
   const show: string[] = [];
   let fight: string | undefined;
   let ending: string | undefined;
   let music: string | null | undefined;
-  for (const action of event.do) {
+  const seasons: Array<[string, WorldSeason | null]> = [];
+  const branches = event.do.some((action) => action.if !== undefined);
+  const acts: number[] = [];
+  for (const [index, action] of event.do.entries()) {
+    if (action.if && !storyConditionsHold(action.if, flags, party)) continue;
+    acts.push(index);
     if ("music" in action) music = action.music;
+    if ("season" in action) seasons.push([action.season.place ?? "*", action.season.to]);
     if ("fight" in action) fight ??= action.fight;
     if ("ending" in action) ending ??= action.ending;
     if ("set" in action) {
-      flags[action.set] = action.value;
-      set.push([action.set, action.value]);
-    } else if ("add" in action && kinds.get(action.add) === "number") {
-      const next = Number(flags[action.add] ?? 0) + action.amount;
+      const flag = declared.get(action.set);
+      const value = typeof action.value === "number" ? storyBounded(flag, action.value) : action.value;
+      flags[action.set] = value;
+      set.push([action.set, value]);
+    } else if ("add" in action && declared.get(action.add)?.kind === "number") {
+      const next = storyBounded(declared.get(action.add), Number(flags[action.add] ?? 0) + action.amount);
       if (!Number.isFinite(next)) continue;
       flags[action.add] = next;
       set.push([action.add, next]);
@@ -1069,9 +1255,12 @@ function applyActions(story: StoryScript, event: StoryEvent, flags: StoryState["
   return {
     set,
     show,
+    done: branches ? { ...event, do: acts.map((index) => event.do[index]!) } : event,
+    ...(branches ? { acts } : {}),
     ...(fight ? { fight } : {}),
     ...(ending ? { ending } : {}),
     ...(music !== undefined ? { music } : {}),
+    ...(seasons.length ? { seasons } : {}),
   };
 }
 
@@ -1141,6 +1330,22 @@ export function storyFightRoster(
   });
 }
 
+/** The fight as a party this size fights it (1.356): its variant for the size, else itself. */
+export function storyFightForParty(fight: StoryFight, size: number | null | undefined): StoryFight {
+  if (!size || !fight.variants?.length) return fight;
+  const variant = fight.variants.find((each) =>
+    typeof each.party === "number" ? each.party === size : size >= each.party.min && size <= each.party.max,
+  );
+  if (!variant) return fight;
+  return {
+    ...fight,
+    creatures: variant.creatures,
+    ...(variant.battlefield ? { battlefield: variant.battlefield } : {}),
+    ...(variant.note ? { note: variant.note } : {}),
+    forParty: size,
+  };
+}
+
 /** An ending as the player is shown it (1.343). */
 export function storyEndingOf(
   story: StoryScript,
@@ -1172,9 +1377,14 @@ function storyPages(
   game: GameWorld,
   cutscene: Extract<StoryCutscene, { kind: "pages" }>,
   playerName: string | undefined,
+  /** The flags and who travels with the party as it is shown: a page with conditions only while they
+   *  hold (1.358). */
+  flags: StoryState["flags"],
+  party: ReadonlySet<string>,
 ): string {
   const lines = cutscene.background ? [`[bg: ${cutscene.background}]`] : [];
   for (const page of cutscene.pages) {
+    if (page.if && !storyConditionsHold(page.if, flags, party)) continue;
     const speaker =
       page.speaker === STORY_PLAYER
         ? playerName?.trim()
@@ -1202,6 +1412,40 @@ function storyWorldTag(game: GameWorld, deed: Extract<StoryAction, { world: unkn
     ...(deed.who ? [`who="${deed.who}"`] : []),
   ];
   return `[world: ${parts.join(" ")}]`;
+}
+
+/** What an item's use spent of a story number in a fight (Capability API 1.359): kept with the game until
+ *  a turn records it, by its id, so it is recorded once whatever is regenerated. */
+export interface StorySpend {
+  id: string;
+  flag: string;
+  add: number;
+  /** What was used, for the Game Master. */
+  label?: string;
+}
+
+/** The spends these replies have not recorded yet, each as the record it is written as, applied to the
+ *  flags in order (each kept within its flag's bounds). */
+export function storySpendsDue(
+  story: StoryScript,
+  ledger: readonly StoryLedgerEntry[],
+  spends: readonly StorySpend[] | undefined,
+  flags: StoryState["flags"],
+): Array<{ spend: StorySpend; record: string; entry: StoryLedgerEntry }> {
+  const recorded = new Set(ledger.flatMap((entry) => (entry.spend ? [entry.spend] : [])));
+  const declared = new Map(story.flags.map((flag) => [flag.id, flag]));
+  const due: Array<{ spend: StorySpend; record: string; entry: StoryLedgerEntry }> = [];
+  for (const spend of spends ?? []) {
+    const flag = declared.get(spend.flag);
+    if (recorded.has(spend.id) || flag?.kind !== "number") continue;
+    recorded.add(spend.id);
+    const next = storyBounded(flag, Number(flags[spend.flag] ?? 0) + spend.add);
+    if (!Number.isFinite(next)) continue;
+    flags[spend.flag] = next;
+    const entry: StoryLedgerEntry = { set: [[spend.flag, next]], show: [], spend: spend.id, by: "engine" };
+    due.push({ spend, entry, record: storyRecord({ flag: spend.flag, ...entry }, "engine") });
+  }
+  return due;
 }
 
 /** The bodies of the `[sheet: ...]` tags in a reply, read in one pass: a regex here backtracks on unclosed tags. */
@@ -1256,6 +1500,14 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   let at: string | null = game.world.startId ?? null;
   const cameIn = new Map<string, number>();
   for (const target of targets) if (inside(at, target)) cameIn.set(target, -1);
+  // When the party last left each place a leave event waits for (1.358).
+  const exits = new Set(story.events.flatMap((event) => (event.when.on === "leave" ? [event.when.place] : [])));
+  const wentOut = new Map<string, number>();
+  const goTo = (next: string | null, index: number) => {
+    for (const target of targets) if (inside(next, target) && !inside(at, target)) cameIn.set(target, index);
+    for (const place of exits) if (inside(at, place) && !inside(next, place)) wentOut.set(place, index);
+    at = next;
+  };
   const lastHappened = new Map<string, number>();
   const ledger: StoryLedgerEntry[] = [];
   let flagsSoFar = storyState(story, []).flags;
@@ -1278,9 +1530,7 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
     if (index === world.replies.length) setOutFrom = at;
     for (const entry of segment.world) {
       if (entry.at === undefined) continue;
-      const next = placeOf(entry.at);
-      for (const target of targets) if (inside(next, target) && !inside(at, target)) cameIn.set(target, index);
-      at = next;
+      goTo(placeOf(entry.at), index);
     }
     const entries = readStoryLedger([segment.reply]);
     if (!entries.length) return;
@@ -1293,6 +1543,9 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
     }
   });
 
+  // What items' uses spent in fights since (1.359), recorded first, so this turn's events read it.
+  const spent = storySpendsDue(story, ledger, world.spends, { ...storyState(story, ledger).flags });
+  ledger.push(...spent.map((each) => each.entry));
   const state = storyState(story, ledger);
   const flags = { ...state.flags };
   const fired = { ...state.fired };
@@ -1302,6 +1555,24 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   const tells: string[] = [];
   const beats: string[][] = [];
   const tripped: string[] = [];
+  prepend.push(...spent.map((each) => each.record));
+  for (const { spend, entry } of spent) {
+    const flag = story.flags.find((each) => each.id === spend.flag);
+    const name = flag?.clock?.title ?? flag?.quest?.title ?? spend.flag;
+    tells.push(
+      `${spend.label ? `Using ${spend.label}` : "An item's use"} ${spend.add < 0 ? "cost the party" : "gave the party"} ${Math.abs(spend.add)} of ${name}; it is ${entry.set[0]![1]} now.`,
+    );
+  }
+  // The recap of a story fight fought in its variant for the party's size names the variant (1.356).
+  if (world.fight) {
+    const ended = storyFightIn(story, world.latest);
+    const as = ended ? storyFightForParty(ended, world.partySize) : null;
+    if (as?.forParty) {
+      tells.push(
+        `The fight that just ended was the story's "${as.name}", as set for a party of ${as.forParty}: ${as.creatures.map((each) => `${each.count} ${each.name ?? each.creature}`).join(", ")}.`,
+      );
+    }
+  }
 
   /** An event's scenes, asks and deeds: by the Engine this turn, or as the Game Master marked it last
    *  reply, whose deeds went with its tag and whose beats it was told to narrate as it marked it. */
@@ -1310,9 +1581,12 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   const showScene = (id: string, byEngine: boolean) => {
     const cutscene = cutscenes.get(id);
     if (cutscene?.kind === "pages") {
-      const pages = storyPages(game, cutscene, world.playerName);
-      prepend.push(pages);
-      shown.push(pages);
+      const pages = storyPages(game, cutscene, world.playerName, flags, party);
+      // A scene all of whose pages are held back by their conditions shows nothing.
+      if (pages.replace(/^\[bg: [^\]]*\]/u, "").trim()) {
+        prepend.push(pages);
+        shown.push(pages);
+      }
     } else if (cutscene?.kind === "beats" && byEngine) beats.push([...cutscene.beats]);
   };
   const deliver = (event: StoryEvent, byEngine: boolean) => {
@@ -1326,15 +1600,15 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
     for (const action of event.do) {
       if ("move" in action && byEngine) {
         // Where the party is from here on this turn, so an arrival the move brings trips now.
-        for (const target of targets) if (inside(action.move, target) && !inside(at, target)) cameIn.set(target, now);
-        at = action.move;
+        goTo(action.move, now);
         const place = game.world.places.find((each) => each.id === action.move);
         if (place) tells.push(`The story has taken the party to ${place.name}. Tell how they come to be there.`);
       } else if ("fight" in action) {
-        const fight = fights.get(action.fight);
+        const set = fights.get(action.fight);
+        const fight = set ? storyFightForParty(set, world.partySize) : undefined;
         if (fight) {
           tells.push(
-            `The story starts the fight "${fight.name}" now${fight.note ? ` (${fight.note})` : ""}. Lead straight into it; the Engine starts it with its own opponents: ${fight.creatures.map((each) => `${each.count} ${each.name ?? each.creature}`).join(", ")}.`,
+            `The story starts the fight "${fight.name}"${fight.forParty ? ` (as set for a party of ${fight.forParty})` : ""} now${fight.note ? ` (${fight.note})` : ""}. Lead straight into it; the Engine starts it with its own opponents: ${fight.creatures.map((each) => `${each.count} ${each.name ?? each.creature}`).join(", ")}.`,
           );
         }
       } else if (("recruit" in action || "dismiss" in action) && byEngine) {
@@ -1366,7 +1640,10 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   // What the Game Master tripped last reply: its scenes and asks arrive now (its deeds went with it).
   for (const entry of world.latest ? readStoryLedger([world.latest]) : []) {
     const event = entry.event ? events.get(entry.event) : undefined;
-    if (event && entry.by !== "engine") deliver(event, false);
+    // Only the actions its trip did, when some have conditions (1.358).
+    const acts = entry.acts;
+    if (event && entry.by !== "engine")
+      deliver(acts ? { ...event, do: event.do.filter((_, index) => acts.includes(index)) } : event, false);
   }
 
   // What the latest reply named and did, for the events that happen again each time.
@@ -1431,7 +1708,20 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
             )
           : event.repeat === true && latestDeeds.some((entry) => deedMatches(entry, when.deed, when.place));
       case "fight":
-        return world.fight === when.outcome && (event.repeat || times === 0);
+        // With a fight named (1.358), only when the fight that ended is that one: the one the latest reply
+        // started.
+        return (
+          world.fight === when.outcome &&
+          (event.repeat || times === 0) &&
+          (!when.fight || storyFightIn(story, world.latest)?.id === when.fight)
+        );
+      case "leave":
+        // Left in the latest reply or this turn (a walk, or the story's own move), and not back in since.
+        return (
+          (times === 0 || event.repeat === true) &&
+          !inside(at, when.place) &&
+          (wentOut.get(when.place) ?? -2) >= world.replies.length - 1
+        );
       case "broke":
         return (
           (world.broke ?? []).some((label) => label.trim().toLowerCase() === when.prop.trim().toLowerCase()) &&
@@ -1468,6 +1758,7 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   };
 
   const thisTurn = new Set<string>();
+  const held: Record<string, WorldSeason> = { ...(state.seasons ?? {}) };
   // A game that has had its ending trips nothing more.
   let ended = state.ended;
   // A rest, a trip or a quiet spell sets off one scene a turn at most: the highest priority's (1.349).
@@ -1490,10 +1781,14 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
     thisTurn.add(next.id);
     tripped.push(next.id);
     fired[next.id] = (fired[next.id] ?? 0) + 1;
-    const record = applyActions(story, next, flags);
+    const { done, ...record } = applyActions(story, next, flags, party);
     for (const flag of record.show) shownFlags.add(flag);
+    for (const [place, season] of record.seasons ?? []) {
+      if (season) held[place] = season;
+      else delete held[place];
+    }
     prepend.push(storyRecord({ event: next.id, ...record }, "engine"));
-    deliver(next, true);
+    deliver(done, true);
     if (record.ending) ended = record.ending;
   }
 
@@ -1503,15 +1798,87 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
     shown,
     tells,
     beats,
-    state: { flags, fired, shown: [...shownFlags], ...(ended ? { ended } : {}) },
+    state: {
+      flags,
+      fired,
+      shown: [...shownFlags],
+      ...(ended ? { ended } : {}),
+      ...(Object.keys(held).length ? { seasons: held } : {}),
+    },
     filled: clocksFilled(story, flagsBeforeLatest, flags).map((flag) => ({
       flag: flag.id,
       title: flag.clock!.title,
       text: flag.clock!.full,
     })),
     party: [...party],
+    season: storySeasonAt(story, held, game, at, world.day),
     knowledge: storyKnowledgeHere(story, game, flags, party, [world.latest, world.player]),
   };
+}
+
+/** The season at a place (1.351): the one the story holds it, or the nearest place it is inside, at (its
+ *  events' first, then the script's own), else the one it holds the whole world at, else the day's. */
+export function storySeasonAt(
+  story: StoryScript,
+  held: Readonly<Record<string, WorldSeason>> | undefined,
+  game: GameWorld,
+  placeId: string | null | undefined,
+  day: number,
+): { season: WorldSeason; held: boolean } {
+  const parents = new Map(game.world.places.map((place) => [place.id, place.parentId]));
+  const own = new Map(story.seasons.map((each) => [each.place ?? "*", each.season]));
+  for (let at = placeId ?? null, hops = 0; at && hops < 64; at = parents.get(at) ?? null, hops++) {
+    const season = held?.[at] ?? own.get(at);
+    if (season) return { season, held: true };
+  }
+  const world = held?.["*"] ?? own.get("*");
+  return world ? { season: world, held: true } : { season: worldSeason(day), held: false };
+}
+
+/** Every place the story holds at a season now (1.351), with that season: each place whose own, or a place
+ *  it is inside, or the world's, is held (and `*` when the world's is). Empty when the story holds none, so the day's season stands. */
+export function storyPlaceSeasons(
+  story: StoryScript,
+  held: Readonly<Record<string, WorldSeason>> | undefined,
+  game: GameWorld,
+): Record<string, WorldSeason> {
+  if (!story.seasons.length && !Object.keys(held ?? {}).length) return {};
+  const seasons: Record<string, WorldSeason> = {};
+  for (const place of game.world.places) {
+    const at = storySeasonAt(story, held, game, place.id, 0);
+    if (at.held) seasons[place.id] = at.season;
+  }
+  const world = storySeasonAt(story, held, game, null, 0);
+  if (world.held) seasons["*"] = world.season;
+  return seasons;
+}
+
+/** The season each cell of the world is held at (1.351), row by row: the one of the place it lies nearest
+ *  (among the places no other is inside), null where that place is not held. Null when nothing is. */
+export function worldSeasonCells(
+  game: GameWorld,
+  seasons: Readonly<Record<string, WorldSeason>> | undefined,
+): Array<WorldSeason | null> | null {
+  if (!seasons || !Object.keys(seasons).length) return null;
+  const { width, height, places } = game.world;
+  const parents = new Set(places.flatMap((place) => (place.parentId ? [place.parentId] : [])));
+  const leaves = places.filter((place) => !parents.has(place.id));
+  if (!leaves.some((place) => seasons[place.id])) return null;
+  const cells: Array<WorldSeason | null> = new Array(width * height).fill(null);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      let best = Infinity;
+      let season: WorldSeason | null = null;
+      for (const place of leaves) {
+        const far = (place.at.x - x) ** 2 + (place.at.y - y) ** 2;
+        if (far < best) {
+          best = far;
+          season = seasons[place.id] ?? null;
+        }
+      }
+      cells[y * width + x] = season;
+    }
+  return cells;
 }
 
 /** What people know that holds now and is in the scene (1.348): an entry whose conditions hold, whose
@@ -1590,10 +1957,10 @@ export function applyStoryTags(
       if (!storyConditionsHold(event.if, flags, party)) return refuse("conditions");
       fired[event.id] = (fired[event.id] ?? 0) + 1;
       tripped.add(event.id);
-      const record = applyActions(story, event, flags);
+      const { done, ...record } = applyActions(story, event, flags, party);
       if (record.ending) ended = record.ending;
-      const deeds = event.do.flatMap((action) => ("world" in action ? [storyWorldTag(game, action.world)] : []));
-      const { tags, refusedItems } = storyActionTags(game, event, item);
+      const deeds = done.do.flatMap((action) => ("world" in action ? [storyWorldTag(game, action.world)] : []));
+      const { tags, refusedItems } = storyActionTags(game, done, item);
       return [
         storyRecord({ event: event.id, ...record }),
         ...deeds,
@@ -1622,6 +1989,8 @@ export function applyStoryTags(
         next = typeof read === (flag.kind === "bool" ? "boolean" : "number") ? read : undefined;
       }
       if (next === undefined || (typeof next === "number" && !Number.isFinite(next))) return refuse("unreadable");
+      // Kept within its bounds (1.358).
+      if (typeof next === "number") next = storyBounded(flag, next);
       flags[flag.id] = next;
       return storyRecord({ flag: flag.id, set: [[flag.id, next]], show: [] });
     }
@@ -1717,6 +2086,9 @@ export function storyTurnPromptText(story: StoryScript, turn: StoryTurn): string
   }
   for (const clock of turn.filled ?? []) {
     lines.push(`The clock "${clock.title}" has just filled. Bring this about now: ${clock.text}`);
+  }
+  if (turn.season.held) {
+    lines.push(`It is ${turn.season.season} here, whatever the date: the story holds it so.`);
   }
   if (turn.knowledge.length) {
     lines.push(

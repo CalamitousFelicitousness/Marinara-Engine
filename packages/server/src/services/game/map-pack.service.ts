@@ -20,7 +20,10 @@ import {
   experiencePeopleImages,
   experiencePeopleMinor,
   readExperiencePeople,
+  applyExperienceRulesetOverlay,
+  readExperienceRulesetOverlay,
   type ExperiencePeople,
+  type ExperienceRulesetOverlay,
   type GameWorld,
   compileGameWorld,
   gameWorldFromSnapshot,
@@ -28,6 +31,7 @@ import {
   type TilePack,
 } from "@marinara-engine/shared";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
+import { loadRulesetRegistry } from "./ruleset-registry.service.js";
 import { cleanImageTilePack } from "./tile-pack-images.service.js";
 
 /** Map pack tiles already checked, by package, version and the tiles file's hash; the oldest go first. */
@@ -41,6 +45,14 @@ const CHECKED_CREATURES_KEPT = 16;
 /** Map pack people files already read, by package, version and file hash; the oldest go first. */
 const checkedPeople = new Map<string, ExperiencePeople>();
 const CHECKED_PEOPLE_KEPT = 16;
+
+/** What a dungeon look of an Experience must draw at least (1.357): its liquid and props fall back to
+ *  plain colours, as a library set's do. */
+const DUNGEON_LOOK_TILES = ["dn_floor", "dn_wall"] as const;
+
+/** Whether a world's boards are painted with seasons (Capability API 1.351). */
+const worldSeasonPainted = (world: { edits?: { battlefields?: Array<{ seasons?: unknown }> } }) =>
+  Boolean(world.edits?.battlefields?.some((board) => board.seasons));
 
 export type MapPack = ExperienceMapPack;
 
@@ -149,6 +161,13 @@ export async function checkMapPackFiles(
     if (needs && (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < needs)) {
       return { ok: false, reason: `${path}'s story needs capabilityApi 1.${needs} or newer` };
     }
+    // Boards painted with seasons (1.351) likewise.
+    if (
+      worldSeasonPainted(world.world) &&
+      (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < 351)
+    ) {
+      return { ok: false, reason: `${path}'s battlefields painted with seasons need capabilityApi 1.351 or newer` };
+    }
     worlds.push({
       path,
       name: world.name,
@@ -180,6 +199,44 @@ export async function checkMapPackFiles(
       if (checkedTiles.size > CHECKED_TILES_KEPT) checkedTiles.delete(checkedTiles.keys().next().value!);
     }
   }
+  // Its image packs for maps made by hand (1.357), each read as its tiles are, laid out as a dungeon set,
+  // and named once.
+  const dungeons: TilePack[] = [];
+  for (const { path, data, sha256 } of files.dungeons ?? []) {
+    if (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < 357) {
+      return { ok: false, reason: `${path} is a dungeon look, which needs capabilityApi 1.357 or newer` };
+    }
+    const key = `${packageId}@${files.version}#dungeon:${sha256}`;
+    let pack = cache ? checkedTiles.get(key) : undefined;
+    if (!pack) {
+      const read = parseTilePack(data.toString("utf8"));
+      if (!read.ok) return { ok: false, reason: `${path} does not read: ${read.issues[0]}` };
+      pack = read.pack;
+      if (pack.tilePackVersion === 2) {
+        const cleaned = await cleanImageTilePack(pack);
+        if (!cleaned.ok) return { ok: false, reason: `${path} does not read: ${cleaned.issue}` };
+        pack = cleaned.pack;
+      }
+      if (cache) checkedTiles.set(key, pack);
+      if (checkedTiles.size > CHECKED_TILES_KEPT) checkedTiles.delete(checkedTiles.keys().next().value!);
+    }
+    const missing = DUNGEON_LOOK_TILES.filter((id) => !pack!.tiles[id]?.length);
+    if (missing.length)
+      return { ok: false, reason: `${path} has no ${missing.join(", ")}, which a dungeon look needs` };
+    if (dungeons.some((each) => each.id === pack!.id)) {
+      return { ok: false, reason: `${path} is called "${pack.id}", as another of its dungeon looks is` };
+    }
+    dungeons.push(pack);
+  }
+  // A hand map's own words for the Game Master (1.357) likewise need an Experience that declares them.
+  for (const { path, world } of worlds) {
+    if (
+      world.edits?.maps?.some((map) => map.words) &&
+      (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < 357)
+    ) {
+      return { ok: false, reason: `${path}'s maps with their own words need capabilityApi 1.357 or newer` };
+    }
+  }
   const games = worlds.map((entry) => ({ entry, game: packGameWorld(kit.kit, entry) }));
   // Its music (1.345): a place a track is for is a place of one of its worlds.
   let music: MapPack["music"];
@@ -205,6 +262,13 @@ export async function checkMapPackFiles(
     }
     const read = parseCreaturePack(data.toString("utf8"));
     if (!read.ok) return { ok: false, reason: `${path} does not read: ${read.issues[0]}` };
+    // Flying art (creaturePackVersion 2) needs an Experience that declares 1.352.
+    if (
+      read.pack.creaturePackVersion >= 2 &&
+      (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < 352)
+    ) {
+      return { ok: false, reason: `${path} has flying art, which needs capabilityApi 1.352 or newer` };
+    }
     creatures.push(read.pack);
     if (cache) checkedCreatures.set(key, read.pack);
     if (checkedCreatures.size > CHECKED_CREATURES_KEPT) checkedCreatures.delete(checkedCreatures.keys().next().value!);
@@ -255,6 +319,33 @@ export async function checkMapPackFiles(
     const stray = worlds.find((entry) => entry.story && storyCompanionsNamed(entry.story).length);
     if (stray) return { ok: false, reason: `${stray.path}'s story takes in companions, and the pack has no people` };
   }
+  // Its ruleset overlays (1.355), read for their shape: each is checked against the game's ruleset when
+  // it is merged in.
+  for (const file of files.rulesets ?? []) {
+    const read = readExperienceRulesetOverlay(file.data.toString("utf8"));
+    if (!read.ok) return { ok: false, reason: `${file.path} does not read: ${read.issues[0]}` };
+    if (!files.capabilityApi || files.capabilityApi.major !== 1 || files.capabilityApi.minor < 355) {
+      return { ok: false, reason: `${file.path} is a ruleset overlay, which needs capabilityApi 1.355 or newer` };
+    }
+    // Item uses that cost a story number (1.359): a number flag of one of its worlds' stories.
+    if (read.overlay.storyUses?.length) {
+      if (files.capabilityApi!.minor < 359) {
+        return { ok: false, reason: `${file.path} has story costs, which need capabilityApi 1.359 or newer` };
+      }
+      const numbers = new Set(
+        worlds.flatMap((entry) =>
+          (entry.story?.flags ?? []).flatMap((flag) => (flag.kind === "number" ? [flag.id] : [])),
+        ),
+      );
+      const stray = read.overlay.storyUses.find((use) => !numbers.has(use.flag));
+      if (stray) {
+        return {
+          ok: false,
+          reason: `${file.path}'s story cost for "${stray.item}" is of "${stray.flag}", which no story of its worlds has as a number`,
+        };
+      }
+    }
+  }
   return {
     ok: true,
     pack: {
@@ -264,6 +355,7 @@ export async function checkMapPackFiles(
       worlds,
       tiles,
       ...(creatures.length ? { creatures } : {}),
+      ...(dungeons.length ? { dungeons } : {}),
       ...(music ? { music } : {}),
       ...(people ? { people } : {}),
     },
@@ -326,7 +418,10 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
     block.kit,
     block.tiles,
     block.people,
-    ...[block.worlds, block.creatures].flatMap((list) => (Array.isArray(list) ? list : [])),
+    ...[block.worlds, block.creatures, block.dungeons].flatMap((list) => (Array.isArray(list) ? list : [])),
+    ...(Array.isArray(block.rulesets) ? block.rulesets : []).map((each) =>
+      each && typeof each === "object" ? (each as Record<string, unknown>).overlay : undefined,
+    ),
   ].filter((path): path is string => typeof path === "string");
   const declared = [...new Set([...texts.keys(), ...named, ...assets.map((asset) => asset.path)])];
   // The manifest's own rules, on a stand-in manifest that declares exactly these files.
@@ -394,7 +489,22 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
     sha256: "",
   }));
   const people = mapPack.people ? fileOf(mapPack.people) : null;
-  if (issues.length || !kit || worlds.some((world) => !world.data) || creatures.some((each) => !each.data)) {
+  const dungeons = (mapPack.dungeons ?? []).map((path) => ({ path, data: fileOf(path), sha256: "" }));
+  let storyCosts = false;
+  const rulesets = (mapPack.rulesets ?? []).map((each) => ({
+    ruleset: each.ruleset,
+    path: each.overlay,
+    data: fileOf(each.overlay),
+    sha256: "",
+  }));
+  if (
+    issues.length ||
+    !kit ||
+    worlds.some((world) => !world.data) ||
+    creatures.some((each) => !each.data) ||
+    dungeons.some((each) => !each.data) ||
+    rulesets.some((each) => !each.data)
+  ) {
     return { ok: false, minor, issues };
   }
   const checked = await checkMapPackFiles(
@@ -411,6 +521,8 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
       music: mapPack.music ?? null,
       assets: declared,
       people: mapPack.people && people ? { path: mapPack.people, data: people, sha256: "" } : null,
+      rulesets: rulesets.map((each) => ({ ...each, data: each.data! })),
+      dungeons: dungeons.map((each) => ({ ...each, data: each.data! })),
     },
     { cache: false },
   );
@@ -419,6 +531,26 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
     issues.push({ path, message: checked.reason });
     return { ok: false, minor, issues };
   }
+  // Each overlay merged into its ruleset as installed here, as a game of it would (1.355).
+  for (const each of rulesets) {
+    const read = readExperienceRulesetOverlay(each.data!.toString("utf8"));
+    if (read.ok && read.overlay.storyUses?.length) storyCosts = true;
+  }
+  if (rulesets.length) {
+    const registry = await loadRulesetRegistry();
+    for (const each of rulesets) {
+      const registered = registry.get(each.ruleset);
+      if (!registered) continue;
+      const read = readExperienceRulesetOverlay(each.data!.toString("utf8"));
+      const merged = read.ok
+        ? applyExperienceRulesetOverlay(registered.definition, read.overlay as ExperienceRulesetOverlay, false)
+        : read;
+      if (!merged.ok) {
+        for (const message of merged.issues) issues.push({ path: each.path, message });
+      }
+    }
+    if (issues.length) return { ok: false, minor, issues };
+  }
   // What it needs, from what it holds.
   const pack = checked.pack;
   const audio = declared.some((path) => /\.(?:ogg|mp3|wav)$/iu.test(path));
@@ -426,9 +558,14 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
     minor,
     pack.tiles?.tilePackVersion === 2 ? 75 : 0,
     ...pack.worlds.map((world) => (world.story ? storyCapabilityMinor(world.story) : 0)),
+    pack.worlds.some((world) => worldSeasonPainted(world.world)) ? 351 : 0,
     pack.creatures?.length ? 344 : 0,
+    pack.creatures?.some((each) => each.creaturePackVersion >= 2) ? 352 : 0,
     pack.music || audio ? 345 : 0,
     pack.people ? experiencePeopleMinor(pack.people) : 0,
+    rulesets.length ? 355 : 0,
+    storyCosts ? 359 : 0,
+    pack.dungeons?.length || pack.worlds.some((world) => world.world.edits?.maps?.some((map) => map.words)) ? 357 : 0,
   );
   return { ok: true, minor, issues };
 }

@@ -291,9 +291,9 @@ Newer versions ask for a login when a visit comes through a reverse proxy, a tun
 
 To get back in:
 
-1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password.
-2. Open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`.
-3. Save the file. Marinara picks up the change in a few seconds. If it does not, restart Marinara. Then sign in from your other device with that user name and password.
+1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password. In Docker, this is true only while no login and no `IP_ALLOWLIST` are set; otherwise use your login.
+2. Open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. If `IP_ALLOWLIST` is set, add your other device's address to it or remove it, because a device that is not on the list gets a **403** even with a login.
+3. Save the file. Marinara picks up the change in a few seconds. If it does not, or if you use Docker, restart Marinara. Then sign in from your other device with that user name and password.
 
 ## Search engines
 

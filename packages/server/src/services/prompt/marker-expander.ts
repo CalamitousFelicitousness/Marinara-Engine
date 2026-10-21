@@ -193,9 +193,9 @@ export async function expandMarker(
 ): Promise<ExpandedMarker> {
   switch (config.type) {
     case "character":
-      return expandCharacter(config, ctx);
+      return expandCharacter(config, ctx, macroOptions);
     case "persona":
-      return expandPersona(config, ctx);
+      return expandPersona(config, ctx, macroOptions);
     case "lorebook":
     case "world_info_before":
     case "world_info_after":
@@ -220,7 +220,11 @@ export async function expandMarker(
 
 // ── Character ──────────────────────────────────
 
-async function expandCharacter(config: MarkerConfig, ctx: MarkerContext): Promise<ExpandedMarker> {
+async function expandCharacter(
+  config: MarkerConfig,
+  ctx: MarkerContext,
+  macroOptions?: ResolveMacroOptions,
+): Promise<ExpandedMarker> {
   const charStorage = createCharactersStorage(ctx.db);
   const parts: string[] = [];
   for (const charId of ctx.characterIds) {
@@ -248,7 +252,13 @@ async function expandCharacter(config: MarkerConfig, ctx: MarkerContext): Promis
       if (field === "scenario" && ctx.groupScenarioOverrideText) continue;
       const value = cardPromptText(getCharacterField(data, field));
       if (value) {
-        const resolved = resolveMacros(value, characterMacroContext);
+        const resolved = resolveMacros(
+          value,
+          characterMacroContext,
+          macroOptions?.onPersonaExampleResolved
+            ? { onPersonaExampleResolved: macroOptions.onPersonaExampleResolved }
+            : undefined,
+        );
         charParts.push(
           wrapContent(
             field === "mes_example" || field === "example_dialogue"
@@ -351,7 +361,11 @@ function getCharacterField(data: CharacterData, field: string): string {
 
 // ── Persona ────────────────────────────────────
 
-async function expandPersona(_config: MarkerConfig, ctx: MarkerContext): Promise<ExpandedMarker> {
+async function expandPersona(
+  _config: MarkerConfig,
+  ctx: MarkerContext,
+  macroOptions?: ResolveMacroOptions,
+): Promise<ExpandedMarker> {
   const parts: string[] = [];
   const pName = ctx.personaName || "User";
 
@@ -379,14 +393,12 @@ async function expandPersona(_config: MarkerConfig, ctx: MarkerContext): Promise
 
   const personaExample = cardPromptText(ctx.personaFields?.example);
   if (personaExample) {
-    parts.push(
-      wrapContent(
-        sanitizeExampleDialoguePromptLeaf(resolveMacros(personaExample, ctx.macroCtx), ctx.wrapFormat),
-        "example_dialogue",
-        ctx.wrapFormat,
-        2,
-      ),
+    const resolvedExample = sanitizeExampleDialoguePromptLeaf(
+      resolveMacros(personaExample, ctx.macroCtx),
+      ctx.wrapFormat,
     );
+    macroOptions?.onPersonaExampleResolved?.(resolvedExample);
+    parts.push(wrapContent(resolvedExample, "example_dialogue", ctx.wrapFormat, 2));
   }
 
   // Include RPG attributes if enabled

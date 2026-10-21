@@ -229,6 +229,8 @@ export interface AssemblerOutput {
   macroVariables: Record<string, string>;
   /** Agent outputs made available to {{agent::TYPE}} while assembling sections. */
   macroAgentData: Record<string, string>;
+  /** Resolved Persona examples observed during assembly; callers must still check the emitted messages. */
+  resolvedPersonaExamples: string[];
   /** Valid character cards discovered through exact ID macros, including activated lorebook entries. */
   referencedCharacterIds: string[];
   /** Any lorebook depth entries that were queued (already injected into messages) */
@@ -287,12 +289,15 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   const variableValues = JSON.parse(input.preset.variableValues) as Record<string, string>;
   // Preset text can safely delay all character macros until the responder is known.
   // Lorebook content only delays names so field macros keep the same budgeting behavior.
-  const deferAllMacroOptions: ResolveMacroOptions | undefined = input.deferCharacterMacros
-    ? { deferCharacterMacros: "all" }
-    : undefined;
-  const deferNameMacroOptions: ResolveMacroOptions | undefined = input.deferCharacterMacros
-    ? { deferCharacterMacros: "names" }
-    : undefined;
+  const resolvedPersonaExamples = new Set<string>();
+  const deferAllMacroOptions: ResolveMacroOptions = {
+    onPersonaExampleResolved: (text) => resolvedPersonaExamples.add(text),
+    ...(input.deferCharacterMacros ? { deferCharacterMacros: "all" } : {}),
+  };
+  const deferNameMacroOptions: ResolveMacroOptions = {
+    ...deferAllMacroOptions,
+    ...(input.deferCharacterMacros ? { deferCharacterMacros: "names" } : {}),
+  };
 
   // Build lookup maps
   const sectionMap = new Map(input.sections.map((s) => [s.id, s]));
@@ -830,6 +835,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     parameters,
     macroVariables: { ...macroCtx.variables },
     macroAgentData: { ...(macroCtx.agentData ?? {}) },
+    resolvedPersonaExamples: [...resolvedPersonaExamples],
     referencedCharacterIds: Object.keys(macroCtx.characterReferences ?? {}),
     lorebookDepthEntriesCount,
     ...(markerCtx.updatedEntryStateOverrides

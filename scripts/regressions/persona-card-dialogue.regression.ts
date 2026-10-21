@@ -112,6 +112,130 @@ try {
       assert.doesNotMatch(text, /\{\{(?:user|char)\}\}|SUMMARY_METADATA_ONLY/u, context);
     }
   }
+  await storage.updatePersona(saved.id, {
+    mes_example: '{{random::PEEK_RANDOM_A::PEEK_RANDOM_B}} {{user}}: "Observe {{char}} with {{proofLabel}}. Straße İ."',
+  });
+  const stochasticCases = [
+    "persona macro",
+    "persona marker",
+    "nested character marker",
+    "uppercase",
+    "lowercase",
+    "disabled section",
+    "disabled group",
+    "selected choice",
+    "unselected choice",
+    "unused choice",
+    "false conditional",
+    "fallback",
+  ] as const;
+  for (const wrapFormat of ["xml", "markdown", "none"] as const) {
+    for (const variant of stochasticCases) {
+      await storage.update(subject.id, {
+        description: variant === "nested character marker" ? "CHARACTER_MARKER_SECTION\n{{persona}}" : "A subject.",
+      });
+      const preset = await presets.create({
+        name: `Stochastic persona dialogue: ${variant}`,
+        wrapFormat,
+        variableValues: { proofLabel: "PRESET_CHOICE_REFERENCE" },
+      });
+      assert.ok(preset);
+      const usesChoice = variant.endsWith("choice");
+      if (usesChoice) {
+        await presets.createChoiceBlock({
+          presetId: preset.id,
+          variableName: "identityChoice",
+          question: "Include the Persona?",
+          options: [
+            { id: "include", label: "Include", value: "{{persona}}" },
+            { id: "omit", label: "Omit", value: "No Persona chosen." },
+          ],
+          multiSelect: false,
+          randomPick: false,
+          separator: ", ",
+          displayMode: "auto",
+          optionSort: "manual",
+        });
+      }
+      const disabledGroup =
+        variant === "disabled group"
+          ? await presets.createGroup({ presetId: preset.id, name: "Disabled identity", enabled: false })
+          : null;
+      await presets.createSection({
+        presetId: preset.id,
+        name: "Identity",
+        identifier: "identity",
+        content:
+          variant === "selected choice" || variant === "unselected choice"
+            ? "{{identityChoice}}"
+            : variant === "false conditional"
+              ? "{{#if false}}{{persona}}{{/if}}"
+              : variant === "fallback" || variant === "unused choice"
+                ? "Respond as the character."
+                : variant === "uppercase" || variant === "lowercase"
+                  ? `{{${variant}}}{{persona}}{{/${variant}}}`
+                  : "{{persona}}",
+        role: "system",
+        enabled: variant !== "disabled section",
+        groupId: disabledGroup?.id ?? null,
+        isMarker: variant === "persona marker" || variant === "nested character marker",
+        ...(variant === "persona marker"
+          ? { markerConfig: { type: "persona" as const } }
+          : variant === "nested character marker"
+            ? { markerConfig: { type: "character" as const, characterFields: ["description"] } }
+            : {}),
+        order: 0,
+      });
+      await presets.createSection({
+        presetId: preset.id,
+        name: "Instructions",
+        identifier: "instructions",
+        content: "PEEK_STOCHASTIC_SECTION Respond as {{char}}.",
+        role: "system",
+        enabled: true,
+        isMarker: false,
+        order: 1,
+      });
+      const chat = await chats.create({
+        name: `Stochastic persona dialogue: ${variant}`,
+        mode: "roleplay",
+        characterIds: [subject.id],
+        personaId: saved.id,
+        promptPresetId: preset.id,
+      });
+      assert.ok(chat);
+      await chats.patchMetadata(chat.id, {
+        enableAgents: false,
+        enableTools: false,
+        enableMemoryRecall: false,
+        presetChoices: { identityChoice: variant === "unselected choice" ? "No Persona chosen." : "{{persona}}" },
+      });
+      await chats.createMessage({ chatId: chat.id, role: "user", content: "Hello." });
+      const originalRandom = Math.random;
+      let randomCalls = 0;
+      try {
+        Math.random = () => (randomCalls++ % 2 === 0 ? 0 : 0.999);
+        const peek = await app.inject({ method: "POST", url: `/api/chats/${chat.id}/peek-prompt`, payload: {} });
+        assert.equal(peek.statusCode, 200, peek.body);
+        const text = JSON.stringify(peek.json().messages);
+        const context = `${wrapFormat}/${variant}/stochastic peek`;
+        assert.match(text, /PEEK_STOCHASTIC_SECTION/u, context);
+        assert.equal(text.match(/PEEK_RANDOM_/giu)?.length ?? 0, 1, `${context}: dialogue appears exactly once`);
+        assert.match(text, /Example Persona:.*Observe Subject with PRESET_CHOICE_REFERENCE/iu, context);
+        if (variant === "uppercase") {
+          assert.match(text, /EXAMPLE PERSONA:.*OBSERVE SUBJECT WITH PRESET_CHOICE_REFERENCE/u, context);
+          assert.match(text, /STRASSE İ/u, context);
+        }
+        if (variant === "lowercase") {
+          assert.match(text, /example persona:.*observe subject with preset_choice_reference/u, context);
+          assert.match(text, /straße i\u0307/u, context);
+        }
+        assert.doesNotMatch(text, /\{\{(?:random|user|char|proofLabel)|SUMMARY_METADATA_ONLY/iu, context);
+      } finally {
+        Math.random = originalRandom;
+      }
+    }
+  }
   console.info("Persona dialogue survives persistence, selected identity, macros, and the assembled persona marker.");
 } finally {
   await app.close();

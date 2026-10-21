@@ -272,6 +272,10 @@ To open Marinara from a phone or tablet on the same network:
 
 If the page does not load at all, the server may not be reachable. Check `HOST=0.0.0.0` and the `PORT` value. If you get a 403 instead, your device is reachable but not yet allowed in. Recheck your chosen option above.
 
+## Search engines
+
+Marinara asks search engines not to index its pages (`X-Robots-Tag: noindex, nofollow`). This does not protect your installation and does not remove pages that are already indexed. Use the access controls above to keep your installation private.
+
 ## Related guides
 
 - [Server Configuration Reference](CONFIGURATION.md) for the full list of `.env` settings and edge cases.

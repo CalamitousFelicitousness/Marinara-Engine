@@ -25,6 +25,7 @@ export async function accessStatusRoutes(app: FastifyInstance) {
       adminSecret: policy.adminSecretConfigured,
       allowlist: getIpAllowlist() !== null,
       passwordlessPeers: getPasswordlessPeers(host),
+      loginKeepsOpen: getPasswordlessPeers(host, undefined, true),
       viaProxy: isProxiedRequest(request),
     };
   });

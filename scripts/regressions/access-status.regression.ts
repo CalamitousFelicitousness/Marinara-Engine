@@ -70,6 +70,7 @@ try {
     adminSecret: true,
     allowlist: true,
     passwordlessPeers: [],
+    loginKeepsOpen: [],
     viaProxy: false,
   });
   for (const secret of Object.values(SECRETS)) assert.ok(!owner.body.includes(secret), "status must not leak secrets");
@@ -134,6 +135,19 @@ try {
     "allowlist",
   ]);
   assert.deepEqual(networkPeers({ IP_ALLOWLIST: "192.168.1.0/24", ...LOGIN }), ["allowlist"]);
+
+  // The remedy split: a login closes opt-in and auto-Docker peers, never allowlisted or trusted ones.
+  const peersAfterLogin = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {
+    setEnv(env);
+    return getPasswordlessPeers("0.0.0.0", interfaces, true);
+  };
+  assert.deepEqual(peersAfterLogin({ ALLOW_UNAUTHENTICATED_REMOTE: "true", MARINARA_DOCKER: "true" }), []);
+  assert.deepEqual(peersAfterLogin({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), [
+    "allowlist",
+  ]);
+  assert.deepEqual(peersAfterLogin({ BYPASS_AUTH_DOCKER: "true" }), ["docker"]);
+  assert.deepEqual(peersAfterLogin({}, TAILNET), ["tailscale"]);
+  assert.deepEqual(peersAfterLogin({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
 } finally {
   await app.close();
   for (const key of ENV_KEYS) {

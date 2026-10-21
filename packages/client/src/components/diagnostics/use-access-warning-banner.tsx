@@ -19,6 +19,8 @@ export type AccessStatus = {
   adminSecret: boolean;
   allowlist: boolean;
   passwordlessPeers: PasswordlessPeer[];
+  /** Peers a login password would not close. */
+  loginKeepsOpen: PasswordlessPeer[];
   viaProxy: boolean;
 };
 

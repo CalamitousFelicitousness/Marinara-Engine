@@ -6,24 +6,31 @@ import { useUIStore } from "../../../stores/ui.store";
 import { useAccessStatus, visiblePasswordlessPeers } from "../../diagnostics/use-access-warning-banner";
 import { SettingsSection } from "./SettingControls";
 
+/** Matches the privileged gate's refusals, so each one names its own next step. */
+function refusalKey(error: Error) {
+  if (!(error instanceof ApiError)) return "settings.accessStatus.loadFailed";
+  if (error.status === 421) return "settings.accessStatus.hostRefused";
+  if (error.status !== 403) return "settings.accessStatus.loadFailed";
+  if (error.message.startsWith("ADMIN_SECRET is required")) return "settings.accessStatus.secretNotSet";
+  if (error.message.includes("requires authenticated access")) return "settings.accessStatus.loginRequired";
+  return "settings.accessStatus.ownerOnly";
+}
+
 /** Settings > Advanced > Access: owner-only summary of who gets in without a password. Others see one line. */
 export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation();
   const { data, error } = useAccessStatus();
-  if (error) {
+  if (error && !data) {
     return (
       <SettingsSection title={t("settings.accessStatus.title")} icon={<Shield size="0.875rem" />} anchorId={anchorId}>
-        <p className="text-xs text-[var(--muted-foreground)]">
-          {error instanceof ApiError && error.status === 403
-            ? t("settings.accessStatus.ownerOnly")
-            : t("settings.accessStatus.loadFailed")}
-        </p>
+        <p className="text-xs text-[var(--muted-foreground)]">{t(refusalKey(error))}</p>
       </SettingsSection>
     );
   }
   if (!data) return null;
 
   const peers = visiblePasswordlessPeers(data.passwordlessPeers);
+  const keptOpen = peers.filter((peer) => data.loginKeepsOpen.includes(peer));
   const open = peers.length > 0;
   const setOrNot = (value: boolean) => t(value ? "settings.accessStatus.set" : "settings.accessStatus.notSet");
   const rows = [
@@ -61,9 +68,14 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
             {peers.includes("docker") && (
               <p className="mt-2 text-[var(--muted-foreground)]">{t("settings.accessStatus.dockerHint")}</p>
             )}
-            <p className="mt-2 text-[var(--muted-foreground)]">
-              {t(data.basicAuth ? "settings.accessStatus.bypassStep" : "settings.accessStatus.nextStep")}
-            </p>
+            {keptOpen.length < peers.length && (
+              <p className="mt-2 text-[var(--muted-foreground)]">{t("settings.accessStatus.nextStep")}</p>
+            )}
+            {keptOpen.map((peer) => (
+              <p key={peer} className="mt-2 text-[var(--muted-foreground)]">
+                {t(`settings.accessStatus.fix.${peer}`)}
+              </p>
+            ))}
             <button
               type="button"
               onClick={() => useUIStore.getState().openModal("docs-viewer", { initialDoc: "REMOTE_ACCESS.md" })}

@@ -642,13 +642,15 @@ const NO_PEER_FACTS: Omit<AccessFacts, "config"> = {
 /**
  * Kinds of remote device the current configuration lets in without a password. Asks the same
  * policy the hooks use about one sample device per kind, so the owner summary cannot drift from
- * enforcement. `bindHost` is the address the server actually listens on.
+ * enforcement. `bindHost` is the address the server actually listens on. `withLogin` asks which
+ * kinds would still get in once a login password is set.
  */
 export function getPasswordlessPeers(
   bindHost: string,
   interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+  withLogin = false,
 ): PasswordlessPeer[] {
-  const config = getAccessConfig();
+  const config = withLogin ? { ...getAccessConfig(), basicAuthConfigured: true } : getAccessConfig();
   const direct = !isLoopbackBind(bindHost);
   // A tailnet device connects directly only when the bind covers the tailnet address.
   const anyAddress = ["0.0.0.0", "::", ""].includes(bindHost);

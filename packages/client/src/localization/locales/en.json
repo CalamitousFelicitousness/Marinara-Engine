@@ -14857,5 +14857,7 @@
   "window.controls.pinHint": "Keep this window open when you click elsewhere.",
   "window.controls.resize": "Resize window with the arrow keys",
   "window.controls.unlockHint": "Let this window move and resize, and its button move again.",
-  "window.controls.unpinHint": "Let this window close when you click elsewhere."
+  "window.controls.unpinHint": "Let this window close when you click elsewhere.",
+  "connections.quickSwitcher.showModels": "Show models in Quick Switcher",
+  "connections.quickSwitcher.showModelsHelp": "Turn off to switch connections without loading model lists."
 }

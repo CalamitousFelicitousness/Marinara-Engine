@@ -9853,6 +9853,7 @@
   "ui.game.gameinventory.cancelSplit": "Cancel split",
   "ui.game.gameinventory.carriedBy": "carried by {{value1}}",
   "ui.game.gameinventory.chargesLeft": "{{now}} of {{max}} charges left",
+  "ui.game.gameinventory.closeInventory": "Close inventory",
   "ui.game.gameinventory.cursed": "Cursed: it stays bound.",
   "ui.game.gameinventory.damageAbility": "using {{name}}",
   "ui.game.gameinventory.damageAttack.spell": "spell",

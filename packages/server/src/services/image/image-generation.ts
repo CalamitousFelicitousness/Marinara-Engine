@@ -366,11 +366,6 @@ export async function generateImage(
         };
 
         switch (resolvedSource) {
-          case "openai":
-          default:
-            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest, () => {
-              toAPIsSubmissionStarted = true;
-            });
           case "codex_chatgpt":
             return generateChatGPTImage(scopedRequest);
           case "arli":
@@ -419,6 +414,11 @@ export async function generateImage(
             return generateAutomatic1111(normalizedBaseUrl, scopedRequest, serviceHint);
           case "gemini_image":
             return generateViaChatCompletions(normalizedBaseUrl, apiKey, scopedRequest);
+          case "openai":
+          default:
+            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest, () => {
+              toAPIsSubmissionStarted = true;
+            });
         }
       });
     // Admit on the resolved endpoint rather than a connection id: every caller reaches this

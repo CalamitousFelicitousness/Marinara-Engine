@@ -2395,7 +2395,9 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     const holdFast = rulesetCombatOptions(fiveE, running, "corwin").find((option) => option.label === "Hold Fast")!;
     // The biter shakes the hold off, so it is still the thing that bites back.
     running = act(fiveE, running, { actorId: "corwin", optionId: holdFast.id, targetIds: ["biter"] }, 19).state;
-    assert.equal(who(running, "corwin").concentrating?.label, "Hold Fast");
+    // Held on nobody, it is let go at once; held again here, so the bite has something to shake.
+    assert.equal(who(running, "corwin").concentrating, null, "a hold every target shook off holds nothing");
+    who(running, "corwin").concentrating = { actionId: holdFast.id, label: "Hold Fast" };
     running = endTurn(fiveE, running, "corwin").state;
     assert.equal(currentRulesetActor(running)?.id, "biter");
     const struck = act(fiveE, running, { actorId: "biter", optionId: "bite", targetIds: ["corwin"] }, 15, 6, 4, 3, 14);

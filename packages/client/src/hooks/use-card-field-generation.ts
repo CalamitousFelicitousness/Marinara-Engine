@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -25,7 +25,9 @@ export function useCardFieldGeneration(
   };
   const identity = `${kind}:${id}`;
   const latest = useRef({ identity, card, onApply });
-  latest.current = { identity, card, onApply };
+  useLayoutEffect(() => {
+    latest.current = { identity, card, onApply };
+  });
   const alive = useRef(false);
   const active = useRef<{ identity: string; controller: AbortController } | null>(null);
   const [pending, setPending] = useState<{ identity: string; field: CardFieldKey } | null>(null);

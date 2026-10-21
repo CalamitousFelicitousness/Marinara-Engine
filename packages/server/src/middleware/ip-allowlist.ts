@@ -624,6 +624,23 @@ export function isLoopbackBind(host: string): boolean {
   return host === "localhost" || isLoopbackIp(host);
 }
 
+/** IPv4 allowlist entries shorter than /16 (or IPv6 shorter than /32) are reported as the open internet: they admit whole ISPs, not a home or office. */
+const BROAD_ALLOWLIST_V4_PREFIX = 16;
+const BROAD_ALLOWLIST_V6_PREFIX = 32;
+
+/** True when an allowlist entry is wide enough to admit public address space (private, CGNAT and loopback ranges never count). */
+function isBroadAllowlistEntry(entry: CIDREntry): boolean {
+  const isV4 =
+    entry.prefixLen >= 96 &&
+    entry.bytes.slice(0, 10).every((b) => b === 0) &&
+    entry.bytes[10] === 0xff &&
+    entry.bytes[11] === 0xff;
+  if (entry.prefixLen >= (isV4 ? 96 + BROAD_ALLOWLIST_V4_PREFIX : BROAD_ALLOWLIST_V6_PREFIX)) return false;
+  return ![...DEFAULT_PRIVATE_NETWORK_CIDRS, ...LOOPBACK_CIDRS].some(
+    (range) => range.prefixLen <= entry.prefixLen && matchesCIDR(entry.bytes, range),
+  );
+}
+
 /** A peer with no facts set; each sample below overrides only what makes it that kind of device. */
 const NO_PEER_FACTS: Omit<AccessFacts, "config"> = {
   loopbackIp: false,
@@ -662,6 +679,8 @@ export function getPasswordlessPeers(
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
+    // An allowlist that admits public ranges is the open internet in practice.
+    ["internet", { allowlisted: true }, direct && (getAllowlist()?.some(isBroadAllowlistEntry) ?? false)],
     ["privateNetwork", { privateNetworkIp: true }, direct],
     ["allowlist", { allowlisted: true }, direct && config.ipAllowlistConfigured],
     ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],

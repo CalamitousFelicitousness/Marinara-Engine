@@ -489,13 +489,17 @@ for (const setup of [
       `${what}: the fight waits on the one being asked, not on whoever is on turn`,
     );
     const carried = JSON.stringify(fight.encounter.window);
+    const answerable = (view(definition, held).options ?? []).length > 0;
     const went = commandRulesetCombatDirector(definition, held, { type: "continue" });
     assert.equal(went.ok, true);
-    assert.equal(
-      JSON.stringify(held.rulesetFight!.encounter.window),
-      carried,
-      `${what}: and asking again moves nothing, because the answer is theirs to give`,
-    );
+    if (answerable)
+      assert.equal(
+        JSON.stringify(held.rulesetFight!.encounter.window),
+        carried,
+        `${what}: and asking again moves nothing, because the answer is theirs to give`,
+      );
+    // Asked with nothing to answer with, a player is never shown an empty prompt: it lets it go by.
+    else assert.notEqual(held.rulesetFight!.encounter.window?.id, "w1", `${what}: an empty ask passes by itself`);
   }
 
   const before = view(definition, state);

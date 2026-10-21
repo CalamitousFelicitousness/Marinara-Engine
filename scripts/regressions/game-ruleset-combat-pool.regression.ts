@@ -794,7 +794,7 @@ try {
     const saved = swing(once, state, "ada", "Stern Word", "hollow", 7, 8, 2);
     assert.equal(
       rulesetCombatEventLine(firstOf(saved.events, "save"), names, t),
-      "Hollow rolls Steel: 2 successes from 3 dice at 7 or more (7, 8, 2), needing 2 successes, a success.",
+      "Hollow rolls Steel against Ada’s Stern Word: 2 successes from 3 dice at 7 or more (7, 8, 2), needing 2 successes, a success.",
     );
     const gripped = swing(
       once,

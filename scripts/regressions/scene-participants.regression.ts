@@ -127,35 +127,6 @@ try {
     .join("\n");
   assert.ok(sent.includes("Scene persona") && sent.includes("Alice") && sent.includes("Bob"));
   assert.ok(!sent.includes("Charlie"), "Excluded character cards are not sent to the planner");
-  // The starred Roleplay settings profile, as a new Roleplay chat would get it, with its own prompt preset.
-  const writingPreset = await api("POST", "/api/prompts", { name: "House style" });
-  await api("POST", `/api/prompts/${writingPreset.id}/sections`, {
-    presetId: writingPreset.id,
-    identifier: "house-style",
-    name: "House style",
-    content: "HOUSE-STYLE: write dialogue in double quotes.",
-  });
-  const profile = await api("POST", "/api/chat-presets", {
-    name: "Scene defaults",
-    mode: "roleplay",
-    settings: { promptPresetId: writingPreset.id, metadata: { illustratorRunInterval: 7, enableAgents: false } },
-  });
-  await api("POST", `/api/chat-presets/${profile.id}/set-active`);
-  // With no preset picked for the scene, the planner follows the profile's prompt preset, as the scene chat will.
-  await api("POST", "/api/scene/plan", {
-    chatId: origin.id,
-    connectionId: conn.id,
-    prompt: "Visit the library",
-    promptPreferences: selected,
-  });
-  assert.match(
-    requests
-      .at(-1)!
-      .messages.map((m) => m.content)
-      .join("\n"),
-    /<scene_writing_instructions>[\s\S]*HOUSE-STYLE: write dialogue in double quotes\./u,
-    "the starred profile's writing rules reach the planner",
-  );
 
   // In Individual group mode the opening is credited to the initiator, so the planner writes it in their voice.
   const individualProfile = await api("POST", "/api/chat-presets", {
@@ -209,6 +180,35 @@ try {
   });
   assert.deepEqual(castPlan.plan.characterIds, [ids[1], ids[0]], "the opening character stays in the scene");
   providerContent = JSON.stringify(plan);
+  // The starred Roleplay settings profile, as a new Roleplay chat would get it, with its own prompt preset.
+  const writingPreset = await api("POST", "/api/prompts", { name: "House style" });
+  await api("POST", `/api/prompts/${writingPreset.id}/sections`, {
+    presetId: writingPreset.id,
+    identifier: "house-style",
+    name: "House style",
+    content: "HOUSE-STYLE: write dialogue in double quotes.",
+  });
+  const profile = await api("POST", "/api/chat-presets", {
+    name: "Scene defaults",
+    mode: "roleplay",
+    settings: { promptPresetId: writingPreset.id, metadata: { illustratorRunInterval: 7, enableAgents: false } },
+  });
+  await api("POST", `/api/chat-presets/${profile.id}/set-active`);
+  // With no preset picked for the scene, the planner follows the profile's prompt preset, as the scene chat will.
+  await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: selected,
+  });
+  assert.match(
+    requests
+      .at(-1)!
+      .messages.map((m) => m.content)
+      .join("\n"),
+    /<scene_writing_instructions>[\s\S]*HOUSE-STYLE: write dialogue in double quotes\./u,
+    "the starred profile's writing rules reach the planner",
+  );
   const payload = {
     originChatId: origin.id,
     connectionId: conn.id,

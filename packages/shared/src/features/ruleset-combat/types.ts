@@ -175,6 +175,9 @@ export interface RulesetCombatOnFell {
 
 export interface RulesetCombatApplies {
   condition: string;
+  /** The one entry or creature action its holder is warded from, picked as it was cast (1.705): an
+   *  entry `<catalog>/<entry>`, or `action:<name>`. Wish's immunity to a single spell. */
+  wardsOff?: string;
   /** The creature type its user named as they used it (1.270), remembered by what it puts on. */
   kind?: string;
   /** The form its user picked (1.342), taken by whoever it lands on while a condition with `shape`
@@ -1107,6 +1110,9 @@ export interface RulesetCombatAction {
   /** Its user names one or more of these creature types and tags as they use it (1.700), the
    *  kinds its zone strikes, among those its targetTypes names where it names any: Forbiddance. */
   kindsOf?: Array<{ id: string; label: string }>;
+  /** Its user picks the one entry or creature action in the fight what it puts on wards off (1.705),
+   *  offered as its option's `kindsOf`: Wish. */
+  wardPick?: true;
   /** Its user names its damage type as they use it (1.700), one of `modes`. */
   damageTypeChoice?: true;
   /** A form is picked as it is used (1.342), from its `modes`; `formCap` keeps out the forms above
@@ -1910,6 +1916,8 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
+  /** The one entry or creature action it wards its holder from (1.705), as it was picked. */
+  wardsOff?: string;
   /** What its `harms` have dealt in all, where its `attaches` lets go at a most (1.623). */
   harmedTotal?: number;
   /** What of a block's health it has kept off healing (1.697), given back as it ends. */
@@ -4250,8 +4258,11 @@ export interface RulesetCombatOption {
    *  choice names them as `designates`. */
   designates?: { count: number; ids: string[] };
   /** The creature types and tags its zone may strike (1.700), one or more named as it is cast:
-   *  the choice names them as `kinds`. Forbiddance. */
+   *  the choice names them as `kinds`. Forbiddance. Or (1.705) the entries and creature actions in
+   *  the fight what it puts on may ward off, exactly one named (`kindsOne`): Wish. */
   kindsOf?: Array<{ id: string; label: string }>;
+  /** Exactly one of `kindsOf` is named (1.705). */
+  kindsOne?: true;
   /** What it may be stored in instead of done (1.471): its user's own item (`item`, its place on
    *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
    *  levels still free there. The choice names one as `storesIn`. */
@@ -4572,6 +4583,8 @@ export interface RulesetCombatZoneRule {
    *  blocks `spells` (1.549), a wall or not: Forcecage. Nor is a shot from afar made across one that
    *  blocks `ranged` (1.606): Cube of Force. */
   blocks?: { move?: boolean; sight?: boolean; spells?: boolean; ranged?: boolean };
+  /** What the wall is made of, and how thick (1.706), for a sense that sees through only so much. */
+  material?: { of: string; inches: number };
   /** What it does from one of its caster's turns on (1.504), its amounts in the fight's own: Storm of
    *  Vengeance. */
   stages?: Array<{

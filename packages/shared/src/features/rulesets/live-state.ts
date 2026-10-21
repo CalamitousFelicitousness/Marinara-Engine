@@ -102,6 +102,9 @@ export interface RulesetLiveState {
   /** The inventory stack whose item keeps each condition on while it is worn (1.611), keyed by
    *  condition: Armor of Invulnerability's. */
   wornFrom?: Record<string, string>;
+  /** The one entry or creature action each condition wards its holder off (1.705), keyed by
+   *  condition, as it was picked: Wish's. */
+  wardsOff?: Record<string, string>;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.473). */
@@ -232,6 +235,7 @@ export const rulesetLiveStateSchema = z
     dayClocks: boundedRecord(liveDayClock, MAX_LIVE_CONDITIONS, "days conditions last").optional(),
     dayRests: boundedRecord(liveDayRest, MAX_LIVE_CONDITIONS, "days resting counts as").optional(),
     wornFrom: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "conditions worn items keep on").optional(),
+    wardsOff: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "what conditions ward off").optional(),
   })
   .strip();
 
@@ -808,6 +812,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (dayRests) state.dayRests = dayRests;
   const wornFrom = keepValid(source.wornFrom, liveStackId, MAX_LIVE_CONDITIONS);
   if (wornFrom) state.wornFrom = wornFrom;
+  const wardsOff = keepValid(source.wardsOff, liveStackId, MAX_LIVE_CONDITIONS);
+  if (wardsOff) state.wardsOff = wardsOff;
   return state;
 }
 
@@ -843,6 +849,9 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   // And the item that keeps one on (1.611).
   const wornFrom = Object.entries(state.wornFrom ?? {}).filter(([condition]) => held.has(condition));
   if (wornFrom.length > 0) normalized.wornFrom = Object.fromEntries(wornFrom);
+  // And what one wards off (1.705).
+  const wardsOff = Object.entries(state.wardsOff ?? {}).filter(([condition]) => held.has(condition));
+  if (wardsOff.length > 0) normalized.wardsOff = Object.fromEntries(wardsOff);
   return normalized;
 }
 
@@ -1003,6 +1012,13 @@ export function rulesetLiveWithDayClock(
   if (Object.keys(dayRests).length > 0) next.dayRests = dayRests;
   else delete next.dayRests;
   return next;
+}
+
+/** A live state with `condition` warding its holder off one entry or creature action (1.705),
+ *  written as a fight that put it on is over. */
+export function rulesetLiveWithWardsOff(stored: unknown, condition: string, pick: string): RulesetLiveState {
+  const state = readStoredLiveStateAsIs(stored);
+  return { ...state, wardsOff: { ...state.wardsOff, [condition]: pick } };
 }
 
 /** A live state with `condition` kept on only while the item on inventory stack `stackId` is worn

@@ -2402,6 +2402,8 @@
   "game.combat.ruleset.kinds.prompt": "Which kinds does {{label}} strike?",
   "game.combat.ruleset.kinds.use_one": "Continue against it",
   "game.combat.ruleset.kinds.use_other": "Continue against {{count}}",
+  "game.combat.ruleset.kinds.ward_prompt": "What does {{label}} ward off?",
+  "game.combat.ruleset.kinds.ward_use": "Continue",
   "game.combat.ruleset.log.title": "What happened",
   "game.combat.ruleset.menu.again": "{{label}} again",
   "game.combat.ruleset.menu.avert": "Avert eyes from {{target}}",

@@ -405,12 +405,21 @@ export function RulesetCombatMenu({
   // ── The kinds its zone strikes (1.700) ──
   if (step?.stage === "kinds" && step.option.kindsOf?.length) {
     const option = step.option;
+    // Exactly one where it wards off one thing (1.705): Wish's.
     const toggle = (id: string) =>
-      setKindsPicked(kindsPicked.includes(id) ? kindsPicked.filter((one) => one !== id) : [...kindsPicked, id]);
+      setKindsPicked(
+        kindsPicked.includes(id)
+          ? kindsPicked.filter((one) => one !== id)
+          : option.kindsOne
+            ? [id]
+            : [...kindsPicked, id],
+      );
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-white/60" id="ruleset-kinds-prompt">
-          {t("game.combat.ruleset.kinds.prompt", { label: rulesetOptionLabel(option, t) })}
+          {t(option.kindsOne ? "game.combat.ruleset.kinds.ward_prompt" : "game.combat.ruleset.kinds.prompt", {
+            label: rulesetOptionLabel(option, t),
+          })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-kinds-prompt">
           {option.kindsOf!.map((kind, index) => {
@@ -445,7 +454,9 @@ export function RulesetCombatMenu({
             }}
             className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
           >
-            {t("game.combat.ruleset.kinds.use", { count: kindsPicked.length })}
+            {option.kindsOne
+              ? t("game.combat.ruleset.kinds.ward_use")
+              : t("game.combat.ruleset.kinds.use", { count: kindsPicked.length })}
           </button>
         </div>
         <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />

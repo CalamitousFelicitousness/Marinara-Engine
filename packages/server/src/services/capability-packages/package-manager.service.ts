@@ -2742,6 +2742,27 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Sight through so much of each material (1.706): a sense's `throughWalls` naming materials, a
+ *  cast wall's `material`, or what the board's walls are made of (`boardWalls`). Ring of X-ray Vision. */
+function carriesWallMaterials706(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWallMaterials706(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.throughWalls) || plainRecord(record.material) || record.boardWalls !== undefined) return true;
+  return featureValues(record).some((one) => carriesWallMaterials706(one, depth + 1));
+}
+
+/** A ward picked as it is cast (1.705): Wish's immunity to a single spell. */
+function carriesWardPick705(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWardPick705(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.wardPick !== undefined) return true;
+  return featureValues(record).some((one) => carriesWardPick705(one, depth + 1));
+}
+
 /** A heal of all the health each target is missing (1.704): Wish. */
 function carriesHealsAll704(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9236,6 +9257,20 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Sight through so much of each material, 1.706.
+  if (
+    !declaresApi(706) &&
+    (carriesWallMaterials706(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWallMaterials706(document)))
+  )
+    return "A ruleset with sight through so much of each material (a sense's throughWalls naming materials, a wall's material, or combat.sight.boardWalls) requires schemaVersion 2 and capabilityApi 1.706 or newer";
+  // A ward picked as it is cast, 1.705.
+  if (
+    !declaresApi(705) &&
+    (carriesWardPick705(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWardPick705(document)))
+  )
+    return "A ruleset with a ward picked as it is cast (wardPick) requires schemaVersion 2 and capabilityApi 1.705 or newer";
   // A heal of all one is missing, 1.704.
   if (
     !declaresApi(704) &&

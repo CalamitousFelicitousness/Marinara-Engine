@@ -3068,6 +3068,15 @@ export function rulesetKeptOnCondition(kept: RulesetKeptOn): string {
   return typeof kept === "string" ? kept : kept.condition;
 }
 
+/** What a wall is made of and how thick it is, in inches (1.706). */
+export interface RulesetWallMaterial {
+  of: string;
+  inches: number;
+}
+const wallMaterialSchema: z.ZodType<RulesetWallMaterial, z.ZodTypeDef, unknown> = z
+  .object({ of: sheetId, inches: z.number().int().min(1).max(1200) })
+  .strict();
+
 const uniqueIds = (max: number) =>
   z
     .array(sheetId)
@@ -3458,6 +3467,7 @@ export interface RulesetCatalogZone {
   damageType?: string;
   whileHeld?: { condition: string; amount: { dice?: string; flat?: number }; damageType?: string };
   blocks?: Array<"move" | "sight" | "spells" | "ranged">;
+  material?: RulesetWallMaterial;
   cover?: "half" | "three-quarters";
   turnsShots?: { spares?: string[] };
   side?: { distance: number; triggers: Array<"enter" | "turn-start" | "turn-end"> };
@@ -4071,6 +4081,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .max(4)
       .refine((blocks) => new Set(blocks).size === blocks.length, { message: "Each is named once" })
       .optional(),
+    /** What a wall that blocks sight is made of, and how thick it is in inches (Capability API 1.706),
+     *  for a sense that sees through only so much of it (a sense's `throughWalls`): 5e's Wall of Stone,
+     *  `{ "of": "stone", "inches": 6 }`; Wall of Iron, `{ "of": "metal", "inches": 1 }`. */
+    material: wallMaterialSchema.optional(),
     /** Cover it gives (Capability API 1.502): an attack or effect whose line to its target crosses a
      *  standing cell of it is against at least this much cover, as the ruleset's `combat.cover` grades
      *  it. 5e's Blade Barrier, three-quarters. */
@@ -7439,6 +7453,12 @@ const catalogMechanicsObject = z
      *  `amount`, which it needs none of: 5e's Wish, "up to twenty creatures ... regain all hit points".
      *  A "heal". */
     healsAll: z.literal(true).optional(),
+    /** Its user picks, as they use it, one entry or creature action of anybody in the fight, and
+     *  what it puts on wards its holder off that one alone (Capability API 1.705), from anybody but
+     *  themselves, whatever level it is: an entry `<catalog>/<entry>`, or a creature's action by its
+     *  name. 5e's Wish, "immunity to a single spell or other magical effect for 8 hours" (a lich's
+     *  life drain). Needs `applies`. */
+    wardPick: z.literal(true).optional(),
     /** Each target is won over by a contest of checks instead of a roll to hit or a save (Capability
      *  API 1.512): its user throws the best of `attacker`, the target the best of `defender`, and a
      *  tie goes to `ties` (the defender when left out). Only on a target it wins does the rest of it
@@ -7681,6 +7701,8 @@ function zoneIssue(mechanics: {
   const walled = (kind: string) => kind !== "spells" && kind !== "ranged";
   if ((zone.blocks?.some(walled) || zone.side) && !wall) return 'Only a wall "blocks" or has a "side"';
   if (zone.sections && !zone.blocks?.some(walled)) return 'A wall in "sections" is one that "blocks"';
+  if (zone.material && !zone.blocks?.includes("sight"))
+    return 'A wall\'s "material" is what sight goes through, so it "blocks" sight';
   if (zone.sections?.broken?.save && !mechanics.save) {
     return "A broken section's save is rolled against the entry's own difficulty, so it has a save";
   }
@@ -8360,6 +8382,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["movesTarget"],
       message: '"movesTarget" moves the one creature it is aimed at, so it has no "area", one target and not "self"',
+    });
+  }
+  if (mechanics.wardPick && (!mechanics.applies?.length || mechanics.kindChoice === "many")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["wardPick"],
+      message:
+        '"wardPick" wards off one picked entry through what it puts on, so it has "applies" and no "kindChoice" of many',
     });
   }
   if (mechanics.healsAll && (mechanics.kind !== "heal" || mechanics.sharesHeal || mechanics.usesChosen)) {
@@ -12996,7 +13026,8 @@ export interface RulesetCombatSense {
   sheet?: RulesetValueRef;
   blind?: true;
   seesTrue?: true;
-  throughWalls?: true;
+  /** Every wall (1.666), or (1.706) only as many inches of each material as it names. */
+  throughWalls?: true | Record<string, number>;
 }
 /** Conditions kept off when a creature that is `from` puts them on (1.191). */
 export interface RulesetConditionImmunityFrom {
@@ -13016,7 +13047,20 @@ const combatSenseSchema: z.ZodType<RulesetCombatSense, z.ZodTypeDef, unknown> = 
     seesTrue: z.literal(true).optional(),
     /** It sees into and through solid matter (Capability API 1.666), within its range: a wall
      *  between keeps nothing from it. 5e's X-ray vision (Ring of X-ray Vision). */
-    throughWalls: z.literal(true).optional(),
+    throughWalls: z
+      .union([
+        z.literal(true),
+        /** Or only so much of what walls are made of (Capability API 1.706): the most inches of
+         *  each material it sees through, every wall it looks through added up; any other material,
+         *  and a wall the board knows nothing of, it does not. 5e's Ring of X-ray Vision, `{"stone":
+         *  12, "metal": 1, "wood": 36, "dirt": 36}`, lead never named. */
+        z
+          .record(sheetId, z.number().int().min(1).max(1200))
+          .refine((most) => Object.keys(most).length >= 1 && Object.keys(most).length <= 16, {
+            message: "A sense sees through 1 to 16 materials",
+          }),
+      ])
+      .optional(),
   })
   .strict();
 
@@ -13031,6 +13075,7 @@ export interface RulesetCombatSight {
   unseenAttacks?: true;
   eyes?: string;
   darkness?: RulesetCombatDarkness;
+  boardWalls?: RulesetWallMaterial;
 }
 const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = z
   .object({
@@ -13061,6 +13106,11 @@ const combatSightSchema: z.ZodType<RulesetCombatSight, z.ZodTypeDef, unknown> = 
       })
       .strict()
       .optional(),
+    /** What a board's own walls (a wall or mountain tile, a prop that blocks sight, ground risen
+     *  between) are made of, each cell this thick in inches (Capability API 1.706), for a sense that
+     *  sees through only so much (`throughWalls`): `{ "of": "stone", "inches": 60 }`. Unsaid, such a
+     *  sense sees through none of them. */
+    boardWalls: wallMaterialSchema.optional(),
   })
   .strict();
 

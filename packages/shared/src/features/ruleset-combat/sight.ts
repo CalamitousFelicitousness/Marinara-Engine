@@ -37,7 +37,8 @@ import type {
   RulesetEncounterState,
   RulesetHidingTraits,
 } from "./types.js";
-import type { TacticalGrid } from "../tactical-combat/types.js";
+import { TERRAIN_DATA, type TacticalGrid } from "../tactical-combat/types.js";
+import { elevationAt } from "../tactical-combat/math.js";
 import { rulesetDroppedItems, rulesetItemOn } from "./ammo.js";
 import { rulesetStandingZones, rulesetZoneLights } from "./zones.js";
 
@@ -70,6 +71,51 @@ export function rulesetSenseRanges(
     }
   }
   return ranges;
+}
+
+/**
+ * Whether a sense that sees through only so much of each material (1.706) sees from `a` to `b`: the
+ * walls on the line between them added up by what they are made of, a cast wall by its own
+ * `material`, the board's own (a solid tile, a prop, risen ground) by `combat.sight.boardWalls`, and
+ * none past what it names. A wall of nothing it knows stops it. The Ring of X-ray Vision's 1 foot of
+ * stone, and never lead.
+ */
+function seesThroughWalls(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  grid: TacticalGrid,
+  a: RulesetCombatCell,
+  b: RulesetCombatCell,
+  most: Readonly<Record<string, number>>,
+): boolean {
+  const cast = new Map<string, { of: string; inches: number }>();
+  for (const { zone, action } of rulesetStandingZones(state)) {
+    const material = action.zone?.material;
+    if (!material || !action.zone?.blocks?.sight) continue;
+    for (const cell of zone.cells ?? []) cast.set(`${cell.x},${cell.y}`, material);
+  }
+  const board = definition.combat?.sight?.boardWalls;
+  const ridge = Math.max(elevationAt(grid, a.x, a.y), elevationAt(grid, b.x, b.y));
+  const through = new Map<string, number>();
+  const add = (material: { of: string; inches: number }) =>
+    through.set(material.of, (through.get(material.of) ?? 0) + material.inches);
+  for (const cell of cellsBetween(a, b)) {
+    if ((cell.x === a.x && cell.y === a.y) || (cell.x === b.x && cell.y === b.y)) continue;
+    const key = `${cell.x},${cell.y}`;
+    const terrain = grid.tiles[cell.y]?.[cell.x];
+    const solid = terrain === undefined || TERRAIN_DATA[terrain]?.blocksSight === true;
+    const risen = elevationAt(grid, cell.x, cell.y) > ridge;
+    const walled = ((grid.walls?.[key] ?? 0) & 2) === 2;
+    if (!solid && !risen && !walled) continue;
+    const own = walled ? cast.get(key) : undefined;
+    if (own) add(own);
+    // A wall the board stands (a prop's) or its own ground, of what the ruleset says it is.
+    if (solid || risen || (walled && !own)) {
+      if (!board) return false;
+      add(board);
+    }
+  }
+  return [...through].every(([of, inches]) => inches <= (most[of] ?? 0));
 }
 
 /** Every cell a straight line from one cell's middle to another's passes through, both ends included. */
@@ -798,13 +844,27 @@ function sees(
     if (light === "dim") return dark.seeIn || !clearly;
     return dark.seeIn && !clearly;
   };
-  // A sense that sees through solid matter (1.666) looks past the walls within its range.
-  const xray = (combat.senses ?? []).some(
+  // A sense that sees through solid matter (1.666) looks past the walls within its range; one that
+  // sees through only so much of each material (1.706), past as much as it does.
+  const piercing = (combat.senses ?? []).filter(
     (sense) => sense.throughWalls && (!sightless || sense.blind) && (ranges[sense.id] ?? 0) >= away,
   );
+  const xray = piercing.some((sense) => sense.throughWalls === true);
+  const most: Record<string, number> = {};
+  for (const sense of piercing) {
+    if (typeof sense.throughWalls !== "object") continue;
+    for (const [of, inches] of Object.entries(sense.throughWalls)) most[of] = Math.max(most[of] ?? 0, inches);
+  }
+  const limited = !xray && Object.keys(most).length > 0;
   // Any cell the viewer fills to any cell the seen one does (1.194): one clear line is enough.
   const clear = (a: RulesetCombatCell, b: RulesetCombatCell) => {
-    if ((!xray && !rulesetLineOfSight(grid, a, b)) || !lit(b)) return false;
+    if (
+      (!xray &&
+        !rulesetLineOfSight(grid, a, b) &&
+        !(limited && seesThroughWalls(definition, state, grid, a, b, most))) ||
+      !lit(b)
+    )
+      return false;
     if (fogs.length === 0) return true;
     const line = cellsBetween(a, b).map((cell) => `${cell.x},${cell.y}`);
     return fogs.every((fog) => !line.some((key) => fog.cells.has(key)) || pierces(fog.pierced));

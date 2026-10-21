@@ -29,6 +29,7 @@ import {
   evaluateRulesetSheetLive,
   readRulesetLive,
   rulesetLiveWithDayClock,
+  rulesetLiveWithWardsOff,
   rulesetLiveWithDaySave,
   rulesetLiveWithWornFrom,
   rulesetRecoverPicks,
@@ -3583,6 +3584,7 @@ function applyConditionId(
     ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(days !== undefined ? { days } : {}),
+    ...(applies.wardsOff ? { wardsOff: applies.wardsOff } : {}),
     ...(days !== undefined &&
     typeof applies.lastsDays === "object" &&
     "restingCounts" in applies.lastsDays &&
@@ -7732,6 +7734,13 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
   }
+  // The one thing it wards off (1.705): one its option offered, its first where none is named (a
+  // creature's own choice).
+  if (option.kindsOne && choice.kinds === undefined && option.kindsOf?.length)
+    choice = { ...choice, kinds: [option.kindsOf[0]!.id] };
+  if (option.kindsOne && (!Array.isArray(choice.kinds) || choice.kinds.length !== 1)) {
+    return refusal(state, choice.actorId, "unknown-mode", option.id);
+  }
   // The kinds its zone strikes (1.700): one or more its option offered, none twice.
   if (
     choice.kinds !== undefined &&
@@ -10014,6 +10023,12 @@ export function liftRulesetFightEffects(
           entry.restingCounts,
         );
       }
+      // And what it wards off (1.705), as it was picked: Wish's.
+      for (const entry of combatant.tracked) {
+        if (entry.wardsOff === undefined || entry.rounds !== null) continue;
+        if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
+        combatant.sheet.live = rulesetLiveWithWardsOff(combatant.sheet.live, entry.condition, entry.wardsOff);
+      }
       // And the worn item that keeps it on (1.611), off once it is taken off.
       for (const entry of combatant.tracked) {
         if (entry.wornItem === undefined || entry.rounds !== null) continue;
@@ -11489,7 +11504,11 @@ function withChosenKinds<T extends RulesetCombatAction | undefined>(
   action: T,
   kinds: readonly string[] | undefined,
 ): T {
-  if (!action?.kindsOf || !kinds?.length) return action;
+  if (!kinds?.length) return action;
+  // The one thing what it puts on wards off (1.705): Wish.
+  if (action?.wardPick && action.applies)
+    return { ...action, applies: action.applies.map((entry) => ({ ...entry, wardsOff: kinds[0]! })) };
+  if (!action?.kindsOf) return action;
   return { ...action, targetTypes: { ...(action.targetTypes ?? {}), is: chosenKinds(definition, kinds) } };
 }
 

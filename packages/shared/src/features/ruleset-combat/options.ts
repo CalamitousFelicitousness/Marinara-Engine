@@ -2574,6 +2574,44 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
   return id === undefined ? undefined : rulesetCombatant(state, id);
 }
 
+/** How a creature's action with no entry is named as a ward's pick (1.705): `action:<name>`. */
+function wardPickOf(action: RulesetCombatAction): string | undefined {
+  if (action.entry) return action.entry;
+  const name = action.label.trim().toLowerCase();
+  return name ? `action:${name}` : undefined;
+}
+
+/**
+ * What a ward picked as it is cast may ward off (1.705): every entry and creature action anybody in
+ * the fight has, but the standard ones everybody has, once each, by name. Wish.
+ */
+export function rulesetWardPicks(state: RulesetEncounterState): Array<{ id: string; label: string }> {
+  const picks = new Map<string, string>();
+  for (const one of state.combatants) {
+    if (one.defeated) continue;
+    for (const action of one.actions) {
+      // Nor the contests the rules give everybody: a grapple, a shove.
+      if (action.standard || action.contest || action.onDeath || action.wardPick) continue;
+      const id = wardPickOf(action);
+      if (id && !picks.has(id)) picks.set(id, action.label);
+    }
+  }
+  return [...picks]
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+}
+
+/** The one thing each ward picked as it was cast wards this combatant off (1.705), from its fight's
+ *  conditions and from its sheet. */
+function wardPicksOn(target: RulesetCombatant): string[] {
+  const live = target.sheet?.live as RulesetLiveState | undefined;
+  const held = new Set(live?.conditions ?? []);
+  return [
+    ...target.tracked.flatMap((entry) => (entry.wardsOff ? [entry.wardsOff] : [])),
+    ...Object.entries(live?.wardsOff ?? {}).flatMap(([condition, pick]) => (held.has(condition) ? [pick] : [])),
+  ];
+}
+
 /**
  * Whether a ward keeps this action off this target (1.179): the target stands in a zone that wards
  * off the action's catalog at its level or lower, and its maker stands outside that zone. Read at
@@ -2587,6 +2625,11 @@ export function rulesetWarded(
   target: RulesetCombatant,
   payWith?: string,
 ): boolean {
+  // The one thing a ward picked as it was cast keeps off (1.705), from anybody but themselves: Wish.
+  if (actor.id !== target.id) {
+    const pick = wardPickOf(action);
+    if (pick && wardPicksOn(target).includes(pick)) return true;
+  }
   const catalog = action.catalog;
   if (!catalog) return false;
   const wards = rulesetWardsOn(state, target);
@@ -3773,6 +3816,13 @@ function optionFrom(
   }
   // The kinds its zone may strike, one or more named as it is cast (1.700): Forbiddance.
   if (action.kindsOf?.length) option.kindsOf = action.kindsOf.map((kind) => ({ ...kind }));
+  // Or the one entry or creature action in the fight it wards off (1.705): Wish.
+  if (action.wardPick) {
+    const picks = rulesetWardPicks(state);
+    if (picks.length === 0) return null;
+    option.kindsOf = picks;
+    option.kindsOne = true;
+  }
   // What its user may pick to end on each target (1.374): Cleansing Touch's one spell.
   if (action.endsSpells?.chosen) {
     const ends = action.endsSpells;

@@ -2797,6 +2797,7 @@ export function rulesetZoneAction(
       ...(blocks.includes("ranged") ? { ranged: true } : {}),
     };
   }
+  if (zone.material) out.material = { ...zone.material };
   if (zone.cover) out.cover = zone.cover;
   if (zone.turnsShots) out.turnsShots = zone.turnsShots.spares ? { spares: [...zone.turnsShots.spares] } : {};
   // Its stages (1.504), their amounts in the fight's own.
@@ -3931,6 +3932,8 @@ function mechanicsAction(
   const healthPool = amountOf(mechanics.healthPool);
   if (healthPool) action.healthPool = healthPool;
   if (mechanics.sharesHeal) action.sharesHeal = mechanics.sharesHeal;
+  // The one thing it wards off, picked as it is used (1.705): Wish.
+  if (mechanics.wardPick && mechanics.applies?.length) action.wardPick = true;
   // Won by a contest of checks, and moved where its user picks (1.512): Telekinesis.
   if (mechanics.contest) {
     action.contested = {

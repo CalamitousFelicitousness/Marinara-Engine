@@ -1050,7 +1050,8 @@ export function App() {
         }
 
         const health = (await res.json()) as HealthResponse;
-        if (cancelled) {
+        // An untrusted caller gets only `{ status: "ok" }`, which says nothing about the build.
+        if (cancelled || !health.version) {
           return;
         }
 

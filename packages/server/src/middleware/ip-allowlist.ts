@@ -482,6 +482,23 @@ export function isTailscaleIp(ip: string): boolean {
   return matchesCIDR(bytes, TAILSCALE_CIDR);
 }
 
+// Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows, utun* on macOS, tun* on Android.
+const TAILSCALE_INTERFACE_NAME = /^(tailscale|utun|tun)/i;
+
+/**
+ * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
+ * Carriers use the same range for mobile data, so the address alone does not prove a tailnet.
+ */
+function hasTailscaleInterfaceAddress(interfaces: ReturnType<typeof networkInterfaces>, address?: string): boolean {
+  return Object.entries(interfaces).some(
+    ([name, addresses]) =>
+      TAILSCALE_INTERFACE_NAME.test(name) &&
+      (addresses ?? []).some(
+        (a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)),
+      ),
+  );
+}
+
 /** True if the given IP is in the Docker bridge range (172.16.0.0/12). */
 export function isDockerIp(ip: string): boolean {
   const bytes = ipToBytes(ip);
@@ -595,7 +612,8 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     allowlisted: isInIpAllowlist(ip),
     privateNetworkIp: isPrivateNetworkIp(ip),
     tailscaleIp: isTailscaleIp(ip),
-    tailscaleLocalAddress: typeof localAddress === "string" && isTailscaleIp(localAddress),
+    tailscaleLocalAddress:
+      typeof localAddress === "string" && hasTailscaleInterfaceAddress(dockerInterfaces, localAddress),
     dockerIp: isDockerIp(ip),
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
@@ -677,9 +695,7 @@ export function getPasswordlessPeers(
   const anyAddress = ["0.0.0.0", "::", ""].includes(bindHost);
   const tailscaleBind = anyAddress || isTailscaleIp(bindHost);
   const tailscaleHere =
-    tailscaleBind &&
-    (config.tailscaleMode === "enabled" ||
-      Object.values(interfaces).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address))));
+    tailscaleBind && (config.tailscaleMode === "enabled" || hasTailscaleInterfaceAddress(interfaces));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
@@ -732,7 +748,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
       logger.warn(
         tailscaleMode === "enabled"
           ? "[auth-bypass] BYPASS_AUTH_TAILSCALE=true — clients in 100.64.0.0/10 will skip Basic Auth and IP allowlist"
-          : "[auth-bypass] Direct Tailscale connection detected — the peer and local socket are both in 100.64.0.0/10 and will skip Basic Auth and IP allowlist",
+          : "[auth-bypass] Direct Tailscale connection detected — the peer is in 100.64.0.0/10, the local socket is on a Tailscale interface, and the peer will skip Basic Auth and IP allowlist",
       );
       bypassAnnounced.tailscale = true;
     }

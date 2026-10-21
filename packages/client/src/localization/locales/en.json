@@ -6176,6 +6176,7 @@
   "ui.cardFields.personaDialoguePlaceholder": "Write a few example exchanges that show how your persona speaks.",
   "ui.cardFields.personaSummaryHelp": "A summary for your persona library, separate from the full description.",
   "ui.cardFields.seedPlaceholder": "Anything prewritten here will be used as a base for the AI generation with the wand button above.",
+  "ui.cardLibrary.sections.openingMessage": "Opening Message",
   "ui.cardversionhistory.automaticVersioning": "Automatic versioning",
   "ui.cardversionhistory.automaticVersioningDescription": "Save prior revisions and automatically increase the card version whenever the card changes.",
   "ui.cardversionhistory.currentRevision": "Current revision",

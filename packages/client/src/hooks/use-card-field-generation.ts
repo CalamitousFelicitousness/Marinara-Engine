@@ -62,7 +62,7 @@ export function useCardFieldGeneration(
     const controller = new AbortController();
     active.current = { identity, controller };
     const draft = { ...card };
-    const snapshot = JSON.stringify(draft);
+    const snapshot = draft[field];
     setPending({ identity, field });
     const stillHere = () => {
       const ui = useUIStore.getState();
@@ -76,7 +76,7 @@ export function useCardFieldGeneration(
     try {
       const result = await mutation.mutateAsync({ field, draft, controller });
       if (!stillHere()) return;
-      if (JSON.stringify(latest.current.card) !== snapshot) {
+      if (latest.current.card[field] !== snapshot) {
         toast.info(t("ui.cardFields.draftChanged"));
         return;
       }

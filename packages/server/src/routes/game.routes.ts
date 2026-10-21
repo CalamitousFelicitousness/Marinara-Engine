@@ -7295,13 +7295,35 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       appearance: setupPersona?.appearance ?? "",
       scenario: setupPersona?.scenario ?? "",
     };
+    const setupLorebookRequested =
+      (setupConfig.activeLorebookIds?.length ?? 0) > 0 || (setupConfig.activeLorebookEntryIds?.length ?? 0) > 0;
+    const setupPromptMacroContext =
+      setupPersonaFields.example || setupLorebookRequested
+        ? await buildPromptMacroContext({
+            db: app.db,
+            characterIds: setupConfig.partyCharacterIds,
+            personaName: setupPersona?.name ?? "User",
+            personaDescription: setupPersonaFields.description,
+            personaFields: setupPersonaFields,
+            variables: {},
+            chatId,
+            lastGenerationType: "game_setup",
+            idleDuration: "0 seconds",
+          })
+        : null;
     if (setupPersona) {
       const parts = [`Name: ${setupPersona.name}`];
       if (setupPersona.description) parts.push(`Description: ${setupPersona.description}`);
       if (setupPersona.personality) parts.push(`Personality: ${setupPersona.personality}`);
       if (setupPersona.backstory) parts.push(`Backstory: ${setupPersona.backstory}`);
       if (setupPersona.appearance) parts.push(`Appearance: ${setupPersona.appearance}`);
-      if (setupPersonaFields.example) parts.push(`Example dialogue: ${setupPersonaFields.example}`);
+      if (setupPersonaFields.example && setupPromptMacroContext) {
+        const example = resolveMacrosWithVariableSnapshot(setupPersonaFields.example, setupPromptMacroContext);
+        if (example.content.trim()) {
+          parts.push(`Example dialogue: ${example.content}`);
+          example.commit();
+        } else example.rollback();
+      }
       personaCard = parts.join("\n");
     }
 
@@ -7355,18 +7377,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     let setupLorebookContext: string | undefined;
-    if ((setupConfig.activeLorebookIds?.length ?? 0) > 0 || (setupConfig.activeLorebookEntryIds?.length ?? 0) > 0) {
-      const setupPromptMacroContext = await buildPromptMacroContext({
-        db: app.db,
-        characterIds: setupConfig.partyCharacterIds,
-        personaName: personaName ?? "User",
-        personaDescription: setupPersonaFields.description,
-        personaFields: setupPersonaFields,
-        variables: {},
-        chatId,
-        lastGenerationType: "game_setup",
-        idleDuration: "0 seconds",
-      });
+    if (setupLorebookRequested && setupPromptMacroContext) {
       const resolveSetupLorebookMacrosForFinal = (
         value: string,
         lorebookEntryCounts?: Readonly<Record<string, number>>,

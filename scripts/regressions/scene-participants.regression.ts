@@ -264,6 +264,23 @@ try {
     ["A library.", "Welcome."],
     "only the guide is left out",
   );
+  // A scene whose plan had no guide: the copy still keeps the description, which is marked too.
+  const guideMessage = (await api("GET", `/api/chats/${scene.id}/messages`)).find(
+    (message: { content: string }) => message.content === "Explore the library.",
+  );
+  await createChatsStorage(app.db).removeMessage(guideMessage.id);
+  const noGuideFork = await api("POST", "/api/scene/fork", {
+    sceneChatId: scene.id,
+    mode: "clone",
+    includeParticipationGuide: false,
+  });
+  assert.deepEqual(
+    (await api("GET", `/api/chats/${noGuideFork.chatId}/messages`))
+      .map((message: { content: string }) => message.content)
+      .filter((content: string) => content === "A library." || content === "Welcome."),
+    ["A library.", "Welcome."],
+    "with no guide in the scene, nothing else is left out",
+  );
   const store = createChatsStorage(app.db);
   const chars = createCharactersStorage(app.db);
   const meta = (await api("GET", `/api/chats/${origin.id}`)).metadata;

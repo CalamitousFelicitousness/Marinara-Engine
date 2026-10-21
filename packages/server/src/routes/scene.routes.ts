@@ -661,10 +661,12 @@ export async function sceneRoutes(app: FastifyInstance) {
         role: "narrator",
         characterId: null,
         content: plan.description,
+        // Marked too, so a scene whose plan had no guide still reads as one where only marked guides are left out.
+        extra: { sceneDescriptionMessage: true },
       });
     }
 
-    // 2. Inject description + firstMessage as the opening character message
+    // 2. The opening message, the opening character's own
     const firstMsgCharId =
       initiatorCharId && finalParticipantIds.includes(initiatorCharId)
         ? initiatorCharId
@@ -1008,8 +1010,11 @@ export async function sceneRoutes(app: FastifyInstance) {
       }
 
       let skippedParticipationGuide = false;
-      // Newer scenes mark their guide; older ones wrote it as the first narrator message.
-      const guideIsMarked = sceneMessages.some((msg) => parseExtra(msg.extra).sceneParticipationGuide === true);
+      // Newer scenes mark their guide and description; older ones wrote the guide as the first narrator message.
+      const sceneIsMarked = sceneMessages.some((msg) => {
+        const flags = parseExtra(msg.extra);
+        return flags.sceneParticipationGuide === true || flags.sceneDescriptionMessage === true;
+      });
       const copiedCount = upToMessageId
         ? sceneMessages.findIndex((msg) => msg.id === upToMessageId) + 1
         : sceneMessages.length;
@@ -1019,7 +1024,7 @@ export async function sceneRoutes(app: FastifyInstance) {
       for (const msg of sceneMessages) {
         const isParticipationGuide =
           msg.role === "narrator" &&
-          (guideIsMarked ? parseExtra(msg.extra).sceneParticipationGuide === true : !skippedParticipationGuide);
+          (sceneIsMarked ? parseExtra(msg.extra).sceneParticipationGuide === true : !skippedParticipationGuide);
         if (!includeParticipationGuide && !skippedParticipationGuide && isParticipationGuide) {
           // /scene/create writes the generated participation guide as the first
           // narrator message; this option skips only that generated guide.

@@ -19,6 +19,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatantMind,
+  rulesetStatBlockFromCreature,
   supportedCapabilityApi,
   type CombatAiHints,
   type RulesetDefinition,
@@ -123,6 +124,27 @@ try {
     assert.equal(mindOf(bare, { type: "beast" }), "instinct");
     assert.equal(mindOf(bare, { type: "ooze" }), "mindless");
     assert.equal(mindOf(bare, { type: "humanoid" }), undefined, "played as it always was");
+
+    // A bestiary creature's own mind, morale and leader reach the fight (1.708, 1.709).
+    const doc = fiveE();
+    const creatures = doc.catalogs.find((one: { holds?: string }) => one.holds === "creatures");
+    const lurker = creatures.entries.find((one: { id: string }) => one.id === "thorn-lurker");
+    Object.assign(lurker.creature, { type: "undead", mind: "mindless", morale: 8, leader: true });
+    const withLurker = parsed(doc);
+    const entry = withLurker
+      .catalogs!.find((one) => one.holds === "creatures")!
+      .entries!.find((one) => one.id === "thorn-lurker")!;
+    const built = rulesetStatBlockFromCreature(withLurker, (entry as { creature: never }).creature)!;
+    const state = createRulesetEncounter({
+      definition: withLurker,
+      seed: 1,
+      roller: () => 10,
+      combatants: [{ id: "it", name: "It", side: "enemy", block: built }],
+    });
+    const it = rulesetCombatant(state, "it")!;
+    assert.equal(rulesetCombatantMind(withLurker, it), "mindless", "a zombie's own mind, from the bestiary");
+    assert.equal(it.block?.morale, 8);
+    assert.equal(it.block?.leader, true);
   }
 
   // ── How the Engine plays them ──

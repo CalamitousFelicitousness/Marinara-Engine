@@ -34,7 +34,12 @@ import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
 import { useTTSConfig } from "../../hooks/use-tts";
 import { AnimatedText } from "./AnimatedText";
-import { combatInterruptFields, worldElementId, type WorldElementSet } from "@marinara-engine/shared";
+import {
+  combatInterruptFields,
+  worldElementId,
+  type CombatOrders,
+  type WorldElementSet,
+} from "@marinara-engine/shared";
 import type {
   Combatant,
   CombatAttackResult,
@@ -456,6 +461,8 @@ interface GameCombatUIProps {
     outcome?: "victory" | "defeat" | "flee";
     onAction: (action: CombatPlayerAction) => void;
     onControl: (id: string, controller: "manual" | "ai") => void;
+    /** A companion's standing orders, or null to go back to its default. */
+    onOrders?: (id: string, orders: CombatOrders | null) => void;
     /** Present only for a fight the game's own ruleset resolves. The stage above is unchanged (the
      *  server keeps `party` and `enemies` in step with the fight), and this replaces the hardcoded
      *  attack/skill/defend menu with the ruleset's own legal menu. Absent, every path below is the
@@ -1839,6 +1846,7 @@ export function GameCombatUI({
         setParty(updated);
         onCombatantsChange?.(updated, enemies);
       }}
+      onOrders={directed?.onOrders}
     />
   );
 

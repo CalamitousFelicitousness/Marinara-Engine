@@ -52,6 +52,30 @@ export const combatTacticsSchema = z
     }
   });
 export type CombatTactics = z.infer<typeof combatTacticsSchema>;
+/**
+ * Where a companion the Engine plays stands in a fight, as its player orders: `guard` the leader (a
+ * companion's default), `follow` the leader onto whoever they are attacking, `protect` one friend
+ * (`protectId`), `hold` its ground, stay `back` out of harm's way, or `retreat` from the fight.
+ */
+export const COMBAT_POSTURES = ["guard", "follow", "protect", "hold", "back", "retreat"] as const;
+export type CombatPosture = (typeof COMBAT_POSTURES)[number];
+/** A companion's standing orders: its posture, and whether it keeps its best for when it matters
+ *  (`conserve`), heals and helps before anything else (`heal`), and beats opponents without killing
+ *  them (`spare`). */
+export const combatOrdersSchema = z
+  .object({
+    posture: z.enum(COMBAT_POSTURES).optional(),
+    protectId: z.string().min(1).max(256).optional(),
+    conserve: z.boolean().optional(),
+    heal: z.boolean().optional(),
+    spare: z.boolean().optional(),
+  })
+  .strict()
+  .refine((orders) => (orders.posture === "protect") === (orders.protectId !== undefined), {
+    message: "Protect names whom, and only protect does.",
+    path: ["protectId"],
+  });
+export type CombatOrders = z.infer<typeof combatOrdersSchema>;
 export type CombatAiHints = z.infer<typeof combatAiHintsSchema>;
 export type CombatController = "manual" | "ai";
 
@@ -70,6 +94,8 @@ export interface AiCombatant {
   combatClass?: string;
   tactics?: CombatTactics;
   aiHints?: CombatAiHints;
+  /** Its player's standing orders, for a companion the Engine plays. */
+  orders?: CombatOrders;
 }
 
 /** Domain-separated deterministic choices, independent of combat rolls. */
@@ -194,6 +220,8 @@ export function chooseCombatCandidate<T>(
   candidates: CombatAiCandidate<T>[],
   turn: number,
   difficulty: GameDifficulty = "normal",
+  /** Its standing orders: its own unless its caller worked out a companion's default. */
+  orders: CombatOrders | undefined = unit.orders,
 ): T {
   if (!candidates.length) throw new Error("AI needs at least one legal action.");
   const profile = unit.tactics!;
@@ -231,6 +259,19 @@ export function chooseCombatCandidate<T>(
     weights.setup = Math.min(weights.setup, 0.1);
     if (wounded) weights.risk = Math.max(weights.risk, 3);
   } else if (profile.mind === "genius") weights.risk = Math.max(weights.risk, 0.8);
+  // What its player told it: keep the best for later, heal first, beat without killing, keep out of
+  // harm's way, or get out of the fight.
+  if (orders?.conserve) weights.cost = Math.max(weights.cost, 1.2);
+  if (orders?.heal) {
+    weights.healing *= 2.5;
+    weights.support *= 2;
+  }
+  if (orders?.spare) weights.finish = 0;
+  if (orders?.posture === "back") weights.risk = Math.max(weights.risk, 2.5);
+  if (orders?.posture === "retreat") {
+    weights.risk = Math.max(weights.risk, 5);
+    weights.damage *= 0.25;
+  }
   const scores = candidates
     .map((candidate, i) => {
       let score =
@@ -246,6 +287,7 @@ export function chooseCombatCandidate<T>(
         (candidate.focus ?? 0) * weights.focus;
       if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
         score += 0.35;
+      if (candidate.hold && orders?.posture === "retreat") score += 0.8;
       if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {
         if (adjective === "patient") score += 0.65;
         if (adjective === "cowardly" && wounded) score += 0.8;

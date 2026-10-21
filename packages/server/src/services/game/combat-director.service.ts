@@ -1136,6 +1136,17 @@ export function commandCombatDirector(s: CombatDirectorState, command: DirectedC
     sync(s);
     return;
   }
+  if (command.type === "orders") {
+    const u = get(s, command.unitId);
+    if (!u || side(u) !== "party") throw new Error("Only a companion takes orders.");
+    const charge = command.orders?.protectId ? get(s, command.orders.protectId) : undefined;
+    if (command.orders?.protectId && (!charge || side(charge) !== "party" || charge.id === u.id))
+      throw new Error("A companion protects somebody else of the party.");
+    if (command.orders) u.orders = command.orders;
+    else delete u.orders;
+    sync(s);
+    return;
+  }
   if (command.type === "choose" || command.type === "fallback") {
     if (!s.window) throw new Error("No decision is pending.");
     takeChoice(

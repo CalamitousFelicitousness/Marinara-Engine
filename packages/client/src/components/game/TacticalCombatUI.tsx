@@ -1686,6 +1686,7 @@ export function TacticalCombatUI({
           defaultController="manual"
           locked={!playerPhase || animating}
           onChange={(unitId, controller) => sendAction({ type: "control", unitId, controller })}
+          onOrders={(unitId, orders) => sendAction({ type: "orders", unitId, orders })}
           className={GAME_SECTION_CLASS}
         />
       )}

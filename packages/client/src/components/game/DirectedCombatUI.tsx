@@ -181,7 +181,9 @@ export function DirectedCombatUI(props: Props) {
                       ? { type: "flee" }
                       : action.type === "control"
                         ? { type: "control", unitId: action.unitId, controller: action.controller }
-                        : { type: "tactical", action },
+                        : action.type === "orders"
+                          ? { type: "orders", unitId: action.unitId, orders: action.orders }
+                          : { type: "tactical", action },
                   ),
               }}
             />
@@ -202,6 +204,7 @@ export function DirectedCombatUI(props: Props) {
                   defaultController="ai"
                   locked={busy}
                   onChange={(unitId, controller) => send({ type: "control", unitId, controller })}
+                  onOrders={(unitId, orders) => send({ type: "orders", unitId, orders })}
                   className={GAME_SECTION_CLASS}
                 />
               }
@@ -220,6 +223,7 @@ export function DirectedCombatUI(props: Props) {
                 outcome: s.outcome,
                 onAction: (action) => send(action.type === "flee" ? { type: "flee" } : { type: "classic", action }),
                 onControl: (unitId, controller) => send({ type: "control", unitId, controller }),
+                onOrders: (unitId, orders) => send({ type: "orders", unitId, orders }),
                 ...(fight
                   ? {
                       ruleset: {

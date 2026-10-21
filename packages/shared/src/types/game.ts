@@ -1,5 +1,5 @@
 import type { CombatAttackTraits } from "../features/combat-conditions.js";
-import type { CombatAiHints, CombatController, CombatTactics } from "../features/combat-ai.js";
+import type { CombatAiHints, CombatController, CombatOrders, CombatTactics } from "../features/combat-ai.js";
 // ──────────────────────────────────────────────
 // Game Mode Types
 // ──────────────────────────────────────────────
@@ -687,6 +687,8 @@ export interface Combatant extends CombatAttackTraits, RulesetEncounterBlueprint
   tactics?: CombatTactics;
   aiHints?: CombatAiHints;
   controller?: CombatController;
+  /** Its player's standing orders, while the Engine plays it. */
+  orders?: CombatOrders;
   skillCooldowns?: Record<string, number>;
   id: string;
   name: string;

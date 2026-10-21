@@ -1,6 +1,7 @@
 import type { RulesetCheckSource } from "./rulesets/check-effects.js";
 import type { RulesetItemEffectFact } from "./rulesets/item-book.js";
 import type { CombatWeather } from "./combat-conditions.js";
+import type { CombatOrders } from "./combat-ai.js";
 import { z } from "zod";
 import type { Combatant, CombatPlayerAction, CombatSummary } from "../types/game.js";
 import type {
@@ -92,6 +93,8 @@ export type DirectedCommand =
   | { type: "continue" }
   | { type: "fallback" }
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
+  /** A companion's standing orders, or none to go back to its default. */
+  | { type: "orders"; unitId: string; orders: CombatOrders | null }
   | { type: "flee" };
 export interface CombatDecisionOption {
   id: string;

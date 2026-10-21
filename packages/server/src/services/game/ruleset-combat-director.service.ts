@@ -130,6 +130,7 @@ import {
   type TacticalBattlefieldBrief,
   type TacticalMadeBattlefield,
   type TacticalGrid,
+  type CombatOrders,
   type CombatTactics,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
@@ -993,10 +994,12 @@ function rulesetCandidates(
   everything = false,
   /** Who it is (1.708): a careful, cowardly or patient one keeps its dodge, getaway and hide. */
   tactics?: CombatTactics,
+  /** A companion's standing orders: one told to hold its ground weighs nowhere else to stand. */
+  orders?: CombatOrders,
 ): Array<CombatAiCandidate<RulesetCandidate>> {
   const worth = (candidate: CombatAiCandidate<RulesetCandidate>) => (candidate.damage ?? 0) + (candidate.healing ?? 0);
   const here = rulesetCandidatesFrom(definition, encounter, actorId, null);
-  const moved = rulesetCandidatesAfterMoving(definition, encounter, actorId);
+  const moved = orders?.posture === "hold" ? [] : rulesetCandidatesAfterMoving(definition, encounter, actorId);
   // Standing still is preferred when it can already do its best from where it is: a candidate that
   // walks first has to be strictly better than every one that does not, not merely as good.
   const staying = here.reduce((most, candidate) => Math.max(most, worth(candidate)), 0);
@@ -1025,7 +1028,7 @@ function rulesetCandidates(
     return !(action?.free && action.beforeAttack);
   });
   if (!own.some((candidate) => worth(candidate) > 0)) return own;
-  const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics);
+  const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics, orders);
   return own.filter(
     (candidate) =>
       (!candidate.hold && candidate.action.option.kind !== "standard") ||
@@ -1049,9 +1052,13 @@ function rulesetKeepsDefensive(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   tactics: CombatTactics | undefined,
+  orders?: CombatOrders,
 ): boolean {
   if (!tactics || tactics.mind === "mindless" || !definition.combat) return false;
+  // Told to get out of the fight, or to keep out of harm's way.
+  if (orders?.posture === "retreat") return true;
   const minded =
+    orders?.posture === "back" ||
     tactics.adjective === "cautious" ||
     tactics.adjective === "cowardly" ||
     tactics.adjective === "patient" ||
@@ -1137,6 +1144,7 @@ function weighRulesetTeam(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+  orders?: CombatOrders,
 ): void {
   const combat = definition.combat;
   if (!combat) return;
@@ -1162,7 +1170,7 @@ function weighRulesetTeam(
   const focus = new Set(allies.map((ally) => units.get(ally.id)?.tactics?.targetId).filter(Boolean));
   // Only one that means to keep itself whole takes these in place of closing in: anybody else's
   // standard action is what is left when nothing is in reach, and it walks instead.
-  const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics);
+  const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics, orders);
   for (const candidate of candidates) {
     const defensive = keeps ? rulesetDefensiveName(candidate.action.option) : undefined;
     if (defensive) {
@@ -2508,20 +2516,131 @@ function pickChoice(
       if (behavior.role) unit.tactics.role = behavior.role;
     }
   }
+  const orders = unit && actor ? rulesetOrdersFor(definition, encounter, actor, unit) : undefined;
   let candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
-    : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics);
+    : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics, orders);
   if (candidates.length === 0) return null;
   if (!unit || !actor) return candidates[0]!.action;
   if (unit.tactics!.mind === "mindless")
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
-  weighRulesetTeam(definition, state, encounter, actor, candidates);
+  weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
+  if (orders) weighRulesetOrders(state, encounter, actor, orders, candidates);
   const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
   const opening = !menu && !!behavior?.opens && !unit.tactics!.opened && encounter.round <= 2;
   if (behavior) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
-  const chosen = chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+  const chosen = chooseCombatCandidate(
+    unit,
+    candidates,
+    encounter.round,
+    normalizeGameDifficulty(state.difficulty),
+    orders,
+  );
   if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
   return chosen;
+}
+
+/**
+ * A companion's standing orders (P7): its player's, else its default, guarding the leader and keeping
+ * its best for when it matters, which it stops doing once the fight goes badly for the party. None
+ * for anybody else.
+ */
+function rulesetOrdersFor(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  unit: { orders?: CombatOrders },
+): CombatOrders | undefined {
+  if (actor.side !== "party") return undefined;
+  if (unit.orders) return unit.orders;
+  return { posture: "guard", ...(rulesetGoingBadly(definition, encounter, "party") ? {} : { conserve: true }) };
+}
+
+/** Whether a fight is going badly for a side: less than half its health left between those still in
+ *  it, or more of it down than of the other side. */
+function rulesetGoingBadly(definition: RulesetDefinition, encounter: RulesetEncounterState, side: string): boolean {
+  const combat = definition.combat;
+  if (!combat) return false;
+  const ours = encounter.combatants.filter((one) => one.side === side && !one.object);
+  const theirs = encounter.combatants.filter((one) => one.side !== side && !one.object);
+  const left = ours.reduce((sum, one) => sum + Math.max(0, rulesetCombatHealth(definition, combat, one).value), 0);
+  const most = ours.reduce((sum, one) => sum + Math.max(1, rulesetCombatHealth(definition, combat, one).max), 0);
+  const down = (who: RulesetCombatant[]) =>
+    who.filter((one) => !rulesetCombatStanding(one)).length / Math.max(1, who.length);
+  return left < most * 0.5 || down(ours) > down(theirs);
+}
+
+/** The party's leader: the first of it its player plays and still standing, else the first standing. */
+function rulesetPartyLeader(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+): RulesetCombatant | undefined {
+  const fight = fightOf(state);
+  const standing = encounter.combatants.filter((one) => one.side === "party" && rulesetCombatStanding(one));
+  return (fight ? standing.find((one) => rulesetController(state, fight, one) === "manual") : undefined) ?? standing[0];
+}
+
+/**
+ * What a companion's orders say it goes for (P7), onto each candidate: whoever the leader is
+ * attacking (`follow`), an opponent beside the one it guards or protects, and help for that one;
+ * never finishing anybody with a blow that would kill rather than knock out (`spare`); and nowhere
+ * to walk to while it holds its ground. The weights its orders change are `chooseCombatCandidate`'s.
+ */
+function weighRulesetOrders(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  orders: CombatOrders,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  const leader = rulesetPartyLeader(state, encounter);
+  const charge =
+    orders.posture === "protect"
+      ? rulesetCombatant(encounter, orders.protectId!)
+      : orders.posture === "guard"
+        ? leader
+        : undefined;
+  const guarded = charge && charge.id !== actor.id && rulesetCombatStanding(charge) ? charge : undefined;
+  const strength = orders.posture === "protect" ? 0.6 : 0.3;
+  const near = (a: RulesetCombatant, b: RulesetCombatant) =>
+    !!rulesetPositionOf(a) && !!rulesetPositionOf(b) && rulesetGap(a, b) <= 1;
+  // Whoever the leader went at last, still standing.
+  let followed: string | undefined;
+  if (orders.posture === "follow" && leader && leader.id !== actor.id) {
+    for (const { event } of [...(fightOf(state)?.events ?? [])].reverse()) {
+      const by = "sourceId" in event ? event.sourceId : "actorId" in event ? event.actorId : undefined;
+      const at = "targetId" in event ? event.targetId : undefined;
+      if (by !== leader.id || typeof at !== "string") continue;
+      const target = rulesetCombatant(encounter, at);
+      if (target && target.side !== actor.side && rulesetCombatStanding(target)) {
+        followed = target.id;
+        break;
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+    const harms = !!target && target.side !== actor.side && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0);
+    let focus = 0;
+    if (harms && target!.id === followed) focus += 0.6;
+    if (harms && guarded && near(target!, guarded)) focus += strength;
+    if (
+      !harms &&
+      guarded &&
+      target?.id === guarded.id &&
+      ((candidate.healing ?? 0) > 0 || (candidate.support ?? 0) > 0)
+    )
+      focus += strength * 0.7;
+    if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
+    // A blow that would kill: only one in melee by somebody pulling their blows knocks out instead.
+    if (orders.spare && harms && (candidate.finish ?? 0) > 0) {
+      const action = actor.actions.find((one) => one.id === candidate.action.option.id);
+      if (!actor.knocksOut || action?.range) {
+        candidate.damage = 0;
+        candidate.finish = 0;
+      }
+    }
+  }
 }
 
 /** Whether a pick is the action or spell an `opens` names: its own id, or the catalog entry it was
@@ -2844,6 +2963,28 @@ function playRulesetTurn(
     true,
   );
   if (looking) applyChoice(definition, state, fight, { actorId, optionId: looking.id, targetIds: [] });
+  // A companion's orders (P7): pulling its blows when told to spare, falling back when told to
+  // retreat, and never walking into the fight when told to hold or to retreat.
+  const unit = state.party.find((one) => one.id === actorId);
+  const orders = actor && unit ? rulesetOrdersFor(definition, fight.encounter, actor, unit) : undefined;
+  if (orders?.spare && actor && !actor.knocksOut) {
+    const pull = rulesetCombatOptions(definition, fight.encounter, actorId).find((option) => {
+      const action = actor.actions.find((one) => one.id === option.id);
+      return !!action?.switches && "knockOut" in action.switches;
+    });
+    if (pull) applyChoice(definition, state, fight, { actorId, optionId: pull.id, targetIds: [] });
+  }
+  if (orders?.posture === "retreat" && actor) {
+    const now = rulesetCombatant(fight.encounter, actorId)!;
+    const beside = fight.encounter.combatants.some(
+      (one) =>
+        one.side !== now.side && rulesetCombatStanding(one) && rulesetPositionOf(one) && rulesetGap(now, one) <= 1,
+    );
+    const away = beside ? null : rulesetRetreatCell(definition, fight.encounter, actorId);
+    if (away)
+      applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
+  }
+  const stays = orders?.posture === "hold" || orders?.posture === "retreat";
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
   let defended = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
@@ -2851,7 +2992,7 @@ function playRulesetTurn(
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
-      if (defended || !walkTowardsTrouble(definition, state, fight, actorId)) break;
+      if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId)) break;
       continue;
     }
     if (picked.defensive) defended = true;
@@ -2859,7 +3000,12 @@ function playRulesetTurn(
     // anywhere it can get to. On a board that means it is out of reach, and the action is worth
     // more as a sprint towards the fight than as a dodge nobody is swinging at; the standard is
     // what is left once there is nowhere better to stand.
-    if (picked.option.kind === "standard" && !picked.defensive && walkTowardsTrouble(definition, state, fight, actorId))
+    if (
+      picked.option.kind === "standard" &&
+      !picked.defensive &&
+      !stays &&
+      walkTowardsTrouble(definition, state, fight, actorId)
+    )
       continue;
     // A getaway is taken where it stands, and then it runs (1.708).
     if (picked.defensive === "disengage") {
@@ -3284,6 +3430,22 @@ export function commandRulesetCombatDirector(
     }
     if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
     fight.controllers[combatant.id] = command.controller;
+    return settled(state);
+  }
+
+  if (command.type === "orders") {
+    const unit = state.party.find((one) => one.id === command.unitId);
+    const combatant = rulesetCombatant(fight.encounter, command.unitId);
+    if (!unit || !combatant || combatant.side !== "party")
+      return refuse("Only a companion takes orders.", "ruleset_combat_unknown-actor");
+    const charge = command.orders?.protectId;
+    if (charge !== undefined) {
+      const one = rulesetCombatant(fight.encounter, charge);
+      if (!one || one.side !== "party" || one.id === combatant.id)
+        return refuse("A companion protects somebody else of the party.", "ruleset_combat_unknown-actor");
+    }
+    if (command.orders) unit.orders = command.orders;
+    else delete unit.orders;
     return settled(state);
   }
 

@@ -35,6 +35,7 @@ import {
   TERRAIN_DATA,
   combatBossSchema,
   combatInterruptFields,
+  combatOrdersSchema,
   combatTacticsSchema,
   combatAiHintsSchema,
   normalizeCharacterLookupName,
@@ -143,6 +144,7 @@ const directedCombatantFields = z.object({
   tactics: combatTacticsSchema.optional(),
   aiHints: combatAiHintsSchema.optional(),
   controller: z.enum(["manual", "ai"]).optional(),
+  orders: combatOrdersSchema.optional(),
   skillCooldowns: z.record(z.number().int().min(0).max(100)).optional(),
   statusEffects: z
     .array(
@@ -275,6 +277,7 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fallback") }),
   z.object({ type: z.literal("flee") }),
   z.object({ type: z.literal("control"), unitId: key, controller: z.enum(["manual", "ai"]) }),
+  z.object({ type: z.literal("orders"), unitId: key, orders: combatOrdersSchema.nullable() }),
 ]);
 const queues = new Map<string, Promise<unknown>>();
 async function serialized<T>(key: string, fn: () => Promise<T>): Promise<T> {

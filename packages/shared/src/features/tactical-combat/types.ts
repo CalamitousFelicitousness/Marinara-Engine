@@ -1,5 +1,5 @@
 import type { CombatWeather, CombatAttackTraits, GameDifficulty } from "../combat-conditions.js";
-import type { CombatController, CombatTactics } from "../combat-ai.js";
+import type { CombatController, CombatOrders, CombatTactics } from "../combat-ai.js";
 import type { WorldElementSet } from "../world/elements.js";
 // ──────────────────────────────────────────────
 // Tactical Combat — shared types
@@ -227,6 +227,8 @@ export interface TacticalUnit extends CombatAttackTraits {
   spellSlots?: Record<string, number>;
   tactics?: CombatTactics;
   controller?: CombatController;
+  /** Its player's standing orders, while the Engine plays it. */
+  orders?: CombatOrders;
   // ── carried from Combatant ──
   id: string;
   name: string;
@@ -276,6 +278,8 @@ export interface TacticalUnit extends CombatAttackTraits {
 
 export type TacticalAction =
   | { type: "control"; unitId: string; controller: CombatController }
+  /** A companion's standing orders, or none to go back to its default. */
+  | { type: "orders"; unitId: string; orders: CombatOrders | null }
   | { type: "move"; unitId: string; to: TacticalCoord }
   | { type: "attack"; unitId: string; targetId: string; to?: TacticalCoord }
   | { type: "skill"; unitId: string; skillName: string; targetId?: string; tile?: TacticalCoord; to?: TacticalCoord }

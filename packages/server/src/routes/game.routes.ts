@@ -12904,6 +12904,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const lorePersonaId = chat.personaId || experienceSetupConfig?.personaId || null;
         const lorePersona = lorePersonaId ? await characters.getPersona(lorePersonaId) : null;
         const lorePersonaFields = {
+          example: lorePersona?.mes_example ?? "",
           description: lorePersona?.description ?? "",
           personality: lorePersona?.personality ?? "",
           backstory: lorePersona?.backstory ?? "",

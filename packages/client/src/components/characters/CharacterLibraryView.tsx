@@ -178,7 +178,14 @@ function getPersonaSections(persona: Persona): LibrarySection[] {
 
 function estimatePersonaTokens(persona: Persona) {
   return estimateTextTokens(
-    [persona.description, persona.personality, persona.scenario, persona.backstory, persona.appearance]
+    [
+      persona.description,
+      persona.personality,
+      persona.scenario,
+      persona.backstory,
+      persona.appearance,
+      persona.mes_example,
+    ]
       .map(getText)
       .join(""),
   );

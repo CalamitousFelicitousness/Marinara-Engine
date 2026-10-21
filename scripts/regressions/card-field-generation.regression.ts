@@ -235,6 +235,21 @@ try {
   response = await app.inject({ method: "GET", url: `/api/characters/personas/${persona.id}` });
   assert.equal(response.json().summary, longSummary);
   assert.equal(response.json().mes_example, "Saved example");
+  const summarySearch = await app.inject({
+    method: "GET",
+    url: "/api/characters/personas/list?search=Thoughtful%20scientist",
+  });
+  assert.equal(summarySearch.statusCode, 200, summarySearch.body);
+  assert.deepEqual(
+    summarySearch.json().items.map((item: { id: string }) => item.id),
+    [persona.id],
+    "paginated library search finds text present only in the new persona summary",
+  );
+  const noMatch = await app.inject({
+    method: "GET",
+    url: "/api/characters/personas/list?search=no-such-persona-summary",
+  });
+  assert.deepEqual(noMatch.json().items, [], "the search still filters unrelated personas");
   const duplicate = await characters.duplicatePersona(persona.id);
   assert.equal(duplicate?.summary, longSummary);
   assert.equal(duplicate?.mes_example, "Saved example");

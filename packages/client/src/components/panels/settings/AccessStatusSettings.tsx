@@ -1,14 +1,21 @@
 import { Fragment } from "react";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUIStore } from "../../../stores/ui.store";
 import { useAccessStatus, visiblePasswordlessPeers } from "../../diagnostics/use-access-warning-banner";
 import { SettingsSection } from "./SettingControls";
 
-/** Settings > Advanced > Access: owner-only summary of who gets in without a password. Hidden for everyone else. */
+/** Settings > Advanced > Access: owner-only summary of who gets in without a password. Others see one line. */
 export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation();
-  const { data } = useAccessStatus();
+  const { data, isError } = useAccessStatus();
+  if (isError) {
+    return (
+      <SettingsSection title={t("settings.accessStatus.title")} icon={<Shield size="0.875rem" />} anchorId={anchorId}>
+        <p className="text-xs text-[var(--muted-foreground)]">{t("settings.accessStatus.ownerOnly")}</p>
+      </SettingsSection>
+    );
+  }
   if (!data) return null;
 
   const peers = visiblePasswordlessPeers(data.passwordlessPeers);

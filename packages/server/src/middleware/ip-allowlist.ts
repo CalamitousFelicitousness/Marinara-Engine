@@ -19,6 +19,7 @@ import os, { networkInterfaces } from "node:os";
 import {
   getAdminSecret,
   getBasicAuthConfig,
+  getHost,
   getDockerBypassMode,
   getIpAllowlist,
   getTailscaleBypassMode,
@@ -623,29 +624,48 @@ function getAccessConfig(): AccessFacts["config"] {
 
 export type PasswordlessPeer = "internet" | "privateNetwork" | "tailscale" | "docker" | "proxy";
 
+/** True when the server listens on loopback only, so other devices reach it only through a local proxy. */
+export function isLoopbackOnlyBind(): boolean {
+  const host = getHost();
+  return host === "localhost" || isLoopbackIp(host);
+}
+
 /**
- * Kinds of remote visitor the current configuration lets in without a password. Asks the same
- * policy the hooks use about one sample peer per kind, so the owner summary cannot drift from
- * enforcement. Facts a sample leaves unset read as false.
+ * Kinds of remote device the current configuration lets in without a password. Asks the same
+ * policy the hooks use about one sample device per kind, so the owner summary cannot drift from
+ * enforcement. A remote device names this server by a LAN address or hostname, so it looks
+ * relayed when it arrives through a local proxy or the Docker gateway. Unset facts read as false.
  */
 export function getPasswordlessPeers(): PasswordlessPeer[] {
   const config = getAccessConfig();
-  const samples: Record<PasswordlessPeer, Partial<AccessFacts>> = {
-    internet: {},
-    privateNetwork: { privateNetworkIp: true },
-    tailscale: { tailscaleIp: true, privateNetworkIp: true },
-    docker: { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() },
-    proxy: { loopbackIp: true, forwardingHeaders: true },
-  };
-  return (Object.keys(samples) as PasswordlessPeer[]).filter((peer) => {
-    const policy = evaluateAccessPolicy({ ...samples[peer], config } as AccessFacts);
-    return !policy.authRequired && !policy.lockedDown && (!config.ipAllowlistConfigured || policy.ipAllowed);
-  });
+  const direct = !isLoopbackOnlyBind();
+  const tailscaleHere =
+    config.tailscaleMode === "enabled" ||
+    Object.values(networkInterfaces()).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address)));
+  const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
+  const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
+    ["internet", {}, direct],
+    ["privateNetwork", { privateNetworkIp: true }, direct],
+    ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
+    [
+      "docker",
+      { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime(), relayedHost: true },
+      direct && dockerHere,
+    ],
+    ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, true],
+  ];
+  return samples
+    .filter(([, facts, reachable]) => {
+      if (!reachable) return false;
+      const policy = evaluateAccessPolicy({ ...facts, config } as AccessFacts);
+      return !policy.authRequired && !policy.lockedDown && (!config.ipAllowlistConfigured || policy.ipAllowed);
+    })
+    .map(([peer]) => peer);
 }
 
 /** True when the request reached this server through a proxy or tunnel. */
-export function isProxiedRequest(request: Pick<FastifyRequest, "headers">): boolean {
-  return hasProxyForwardingHeaders(request) || hasRelayedHost(request);
+export function isProxiedRequest(request: AccessRequest): boolean {
+  return hasProxyForwardingHeaders(request) || hasRelayedHost(request) || isHttp10(request);
 }
 
 /** Log each automatic or explicit trust bypass once, the first time a peer takes it. */

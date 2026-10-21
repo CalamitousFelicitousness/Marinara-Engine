@@ -2,7 +2,9 @@
 // owner gets configuration facts without secret values, and the "who gets in without a
 // password" list follows the same policy the hooks enforce.
 import assert from "node:assert/strict";
+import { networkInterfaces } from "node:os";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import { isTailscaleIp } from "../../packages/server/src/middleware/ip-allowlist.js";
 import { accessStatusRoutes } from "../../packages/server/src/routes/access-status.routes.js";
 
 const ENV_KEYS = [
@@ -19,9 +21,14 @@ const ENV_KEYS = [
   "MARINARA_DOCKER_GROUP",
   "MARINARA_DOCKER_USER",
   "MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK",
+  "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+// Direct Tailscale peers are trusted automatically when this machine has a tailnet address.
+const tailscale = Object.values(networkInterfaces()).some((list) => list?.some((a) => isTailscaleIp(a.address)))
+  ? ["tailscale"]
+  : [];
 const SECRETS = { BASIC_AUTH_PASS: "pass-value-must-not-leak", ADMIN_SECRET: "admin-value-must-not-leak" };
 
 function setEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
@@ -67,36 +74,53 @@ try {
   // An open install: a remote visitor without the admin secret still learns nothing.
   setEnv({ ALLOW_UNAUTHENTICATED_REMOTE: "true", ADMIN_SECRET: SECRETS.ADMIN_SECRET });
   assert.equal((await status("203.0.113.5")).statusCode, 403);
-  // The owner reaching it through a proxy with the admin secret sees the open doors and the proxy.
+  // The owner reaching a loopback-only install through a proxy with the admin secret: only the proxy is a way in.
   const proxied = await status("127.0.0.1", {
     "x-forwarded-for": "203.0.113.5",
     "x-admin-secret": SECRETS.ADMIN_SECRET,
   });
   assert.equal(proxied.statusCode, 200);
-  assert.deepEqual(proxied.json().passwordlessPeers, ["internet", "privateNetwork", "tailscale", "docker", "proxy"]);
+  assert.deepEqual(proxied.json().passwordlessPeers, ["proxy"]);
   assert.equal(proxied.json().viaProxy, true);
   assert.equal(proxied.json().loopbackOnly, true);
 
-  // The list follows the enforced policy for each kind of visitor.
+  // The list follows the enforced policy for a remote device of each kind.
   const peers = async (env: Parameters<typeof setEnv>[0]) => {
     setEnv(env);
     return (await status("127.0.0.1")).json().passwordlessPeers;
   };
+  const NETWORK = { HOST: "0.0.0.0" } as const;
+  // A plain loopback-only native install lets nobody else in, and never lists LAN or internet kinds.
   assert.deepEqual(await peers({}), []);
-  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), [
+  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), []);
+  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_REMOTE: "true" }), ["proxy"]);
+  assert.deepEqual(await peers({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
+  assert.deepEqual(await peers({ ...NETWORK }), tailscale);
+  assert.deepEqual(await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), [
     "privateNetwork",
-    "tailscale",
+    ...tailscale,
+  ]);
+  assert.deepEqual(await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_REMOTE: "true" }), [
+    "internet",
+    "privateNetwork",
+    ...tailscale,
+    "proxy",
+  ]);
+  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_TAILSCALE: "true" }), ["tailscale"]);
+  // A default Docker install: a LAN device names the host by its own address, so gateway trust ends.
+  assert.deepEqual(await peers({ ...NETWORK, MARINARA_DOCKER: "true" }), tailscale);
+  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_DOCKER: "true" }), tailscale);
+  assert.deepEqual(await peers({ ...NETWORK, BYPASS_AUTH_DOCKER: "true", REQUIRE_AUTH_FOR_DOCKER_PROXY: "false" }), [
+    ...tailscale,
     "docker",
   ]);
-  assert.deepEqual(await peers({ BYPASS_AUTH_TAILSCALE: "true" }), ["tailscale"]);
-  assert.deepEqual(await peers({ BYPASS_AUTH_DOCKER: "true" }), ["docker"]);
-  assert.deepEqual(await peers({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
-  // Docker's automatic trust stands down once a password is set.
-  assert.deepEqual(await peers({ MARINARA_DOCKER: "true" }), ["docker"]);
-  assert.deepEqual(await peers({ MARINARA_DOCKER: "true", BASIC_AUTH_USER: "owner", ...SECRETS }), []);
   // A password wins over the unauthenticated opt-ins; an allowlist keeps everyone else out.
-  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", BASIC_AUTH_USER: "owner", ...SECRETS }), []);
-  assert.deepEqual(await peers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), []);
+  const login = { BASIC_AUTH_USER: "owner", ...SECRETS };
+  assert.deepEqual(await peers({ ...NETWORK, ...login, ALLOW_UNAUTHENTICATED_REMOTE: "true" }), tailscale);
+  assert.deepEqual(
+    await peers({ ...NETWORK, ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }),
+    [],
+  );
 } finally {
   await app.close();
   for (const key of ENV_KEYS) {

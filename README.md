@@ -134,14 +134,14 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes. Tagged releases use
 
 ## Installation
 
-| Platform                 | Guide                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------- |
-| 🐳 Docker / Podman       | [Container Installation Guide](docs/installation/containers.md) — recommended                |
-| 🪟 Windows               | [Windows Installation Guide](docs/installation/windows.md)                                   |
-| 🍎🐧 macOS / Linux       | [macOS / Linux Installation Guide](docs/installation/macos-linux.md)                         |
+| Platform                 | Guide                                                                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🐳 Docker / Podman       | [Container Installation Guide](docs/installation/containers.md) — recommended                                                                   |
+| 🪟 Windows               | [Windows Installation Guide](docs/installation/windows.md)                                                                                      |
+| 🍎🐧 macOS / Linux       | [macOS / Linux Installation Guide](docs/installation/macos-linux.md)                                                                            |
 | 🤖 Android APK Bootstrap | [Download APK](https://github.com/Pasta-Devs/Marinara-Engine/releases/latest/download/marinara-engine-android.apk) · [Guide](android/README.md) |
-| 🤖 Android Manual Termux | [Android (Termux) Installation Guide](docs/installation/android-termux.md) — manual fallback |
-| 📱 iOS / iPadOS          | [iOS / iPadOS PWA Guide](docs/installation/ios-pwa.md)                                       |
+| 🤖 Android Manual Termux | [Android (Termux) Installation Guide](docs/installation/android-termux.md) — manual fallback                                                    |
+| 📱 iOS / iPadOS          | [iOS / iPadOS PWA Guide](docs/installation/ios-pwa.md)                                                                                          |
 
 > **Recommended Android path:** tap **Download APK** above, open it, then tap **Install / Start Marinara**. Choose app or browser on its launcher; the APK remembers the choice and signs in automatically. It creates and uses its private localhost credential automatically; users never provide a signing key or local-access secret. Android still shows its required app-install and Termux permission prompts. If Android blocks the automatic handoff, the [Android APK Guide](android/README.md) has the manual fallback.
 
@@ -149,7 +149,7 @@ Each guide covers installation, updating, and LAN access for that platform. See 
 
 Upgrading from an older release? See [Upgrading Marinara Engine](docs/UPGRADING.md) for the platform-by-platform upgrade path.
 
-Security defaults are intentionally local-first: loopback access works out of the box, while ordinary LAN and public clients require Basic Auth unless you explicitly opt back in. Direct Tailscale sockets and actual same-host Docker container networks are detected and trusted automatically, Docker only while no Basic Auth or IP allowlist is set; unrelated CGNAT, LAN, host-network, and proxy-forwarded traffic still follows normal access control, including visitors that a reverse proxy or tunnel on the same machine forwards to loopback. Set `BYPASS_AUTH_TAILSCALE=true` or `BYPASS_AUTH_DOCKER=true` only when you need the legacy broad compatibility bypass, or `false` when you want matching direct clients to authenticate too. Set `REQUIRE_AUTH_FOR_DOCKER_PROXY=false` or `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false` only when every upstream client is trusted. `ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true` restores unauthenticated access for other trusted private networks; public clients still require `ALLOW_UNAUTHENTICATED_REMOTE=true`. Powerful actions such as backups, bulk import, update apply, sidecar install/download/delete, haptics, and custom tool mutation also require `ADMIN_SECRET`; see [Access Control](docs/CONFIGURATION.md#access-control).
+Security defaults are intentionally local-first: loopback access works out of the box, while ordinary LAN and public clients require Basic Auth unless you explicitly opt back in. Direct Tailscale sockets and actual same-host Docker container networks are detected and trusted automatically, Docker only while no Basic Auth or IP allowlist is set; unrelated CGNAT, LAN, host-network, and proxy-forwarded traffic still follows normal access control, including visitors that a reverse proxy or tunnel on the same machine forwards to loopback. Set `BYPASS_AUTH_TAILSCALE=true` or `BYPASS_AUTH_DOCKER=true` only when you need the legacy broad compatibility bypass, or `false` when you want matching direct clients to authenticate too. Set `REQUIRE_AUTH_FOR_DOCKER_PROXY=false` or `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false` only when the proxy itself requires a login from every visitor. Requests over HTTP/1.0 (nginx's default `proxy_pass`) and Tailscale Serve/Funnel count as relayed. `ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true` restores unauthenticated access for other trusted private networks; public clients still require `ALLOW_UNAUTHENTICATED_REMOTE=true`. Powerful actions such as backups, bulk import, update apply, sidecar install/download/delete, haptics, and custom tool mutation also require `ADMIN_SECRET`; see [Access Control](docs/CONFIGURATION.md#access-control).
 
 ---
 
@@ -237,7 +237,7 @@ The full guide library is browsable inside the app: open **Documentation** from 
 | [docs/media/tts-setup.md](docs/media/tts-setup.md)                                   | Text to speech (TTS) setup and voices                                                                              |
 | [docs/media/scene-video.md](docs/media/scene-video.md)                               | Scene-video provider setup and the Gallery animation workflow                                                      |
 | [docs/game/storyboard.md](docs/game/storyboard.md)                                   | Storyboard Agent installation, global defaults, and Roleplay and Game Mode workflows                               |
-| [docs/game/ltx-2-3-storyboards.md](docs/game/ltx-2-3-storyboards.md)                   | Krea 2 first frames, local LTX 2.3 ComfyUI animation, and tested Game Mode settings                               |
+| [docs/game/ltx-2-3-storyboards.md](docs/game/ltx-2-3-storyboards.md)                 | Krea 2 first frames, local LTX 2.3 ComfyUI animation, and tested Game Mode settings                                |
 | [docs/agents/agents-overview.md](docs/agents/agents-overview.md)                     | Agent system overview: downloading agents, phases, per-chat setup, and custom agents                               |
 | [docs/extending/custom-tools.md](docs/extending/custom-tools.md)                     | Function calling, custom tools, webhooks, scripts, and agent tool enablement                                       |
 | [docs/prompts/presets.md](docs/prompts/presets.md)                                   | Preset editor, prompt sections, groups, ordering, and variables                                                    |
@@ -255,7 +255,7 @@ The full guide library is browsable inside the app: open **Documentation** from 
 | [android/README.md](android/README.md)                                               | Android Termux bootstrap + WebView shell guide                                                                     |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                                                   | Contributor workflow, validation, versioning, and release steps                                                    |
 | [CHANGELOG.md](CHANGELOG.md)                                                         | Release notes                                                                                                      |
-| [AGENTS.md](AGENTS.md)                                                               | Maintainer notes for coding agents                                                                     |
+| [AGENTS.md](AGENTS.md)                                                               | Maintainer notes for coding agents                                                                                 |
 
 ---
 

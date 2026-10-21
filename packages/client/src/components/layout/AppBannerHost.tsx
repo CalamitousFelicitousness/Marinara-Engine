@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Single mount point for app-wide banners: shows only the most severe one
 // ──────────────────────────────────────────────
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useCsrfOriginBanner } from "../diagnostics/use-csrf-origin-banner";
 import { AppBanner, type AppBannerCandidate } from "../ui/AppBanner";
 
@@ -28,8 +28,7 @@ function pickAppBanner(candidates: (AppBannerCandidate | null)[], dismissed: (c:
   );
 }
 
-/** Wraps the app shell; while a banner shows, the shell is laid out below it instead of under it. */
-export function AppBannerHost({ children }: { children: ReactNode }) {
+export function AppBannerHost() {
   const candidates = [useCsrfOriginBanner()];
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const banner = pickAppBanner(candidates, (c) => dismissedIds.includes(c.id) || wasDismissed(c));
@@ -43,15 +42,5 @@ export function AppBannerHost({ children }: { children: ReactNode }) {
     }
   };
 
-  // `contents` keeps the shell's layout untouched while no banner shows. With a banner,
-  // contain-layout makes the shell's `fixed inset-0` (and its fixed panels) resolve against
-  // the area below the banner; max-h-full caps the chat surface's visual-viewport height there.
-  return (
-    <div className={banner ? "fixed inset-0 flex flex-col" : "contents"}>
-      {banner && <AppBanner key={banner.id} {...banner} onDismiss={() => dismiss(banner)} />}
-      <div className={banner ? "relative min-h-0 flex-1 contain-layout [&_.mari-app]:max-h-full" : "contents"}>
-        {children}
-      </div>
-    </div>
-  );
+  return banner ? <AppBanner key={banner.id} {...banner} onDismiss={() => dismiss(banner)} /> : null;
 }

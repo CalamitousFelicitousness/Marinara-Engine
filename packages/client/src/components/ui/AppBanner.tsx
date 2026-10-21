@@ -30,11 +30,7 @@ export function AppBanner({
   const Icon = critical ? ShieldAlert : TriangleAlert;
 
   return (
-    <div
-      role={critical ? "alert" : "status"}
-      aria-live={critical ? "assertive" : "polite"}
-      className="shrink-0 bg-[var(--background)] text-[var(--foreground)]"
-    >
+    <div className="fixed inset-x-0 top-0 z-[9999] max-h-[50dvh] overflow-y-auto bg-[var(--background)] text-[var(--foreground)] shadow-md">
       <div
         className={cn(
           "flex items-start gap-3 border-b pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-2 pl-[max(1rem,env(safe-area-inset-left))] text-sm",
@@ -48,8 +44,10 @@ export function AppBanner({
           className={cn("mt-3 h-4 w-4 shrink-0", critical ? "text-[var(--destructive)]" : "text-amber-600")}
         />
         <div className="min-w-0 flex-1 py-2">
-          <p className="font-semibold">{title}</p>
-          <div className="mt-1 leading-snug text-[var(--muted-foreground)]">{body}</div>
+          <div role={critical ? "alert" : "status"}>
+            <p className="font-semibold">{title}</p>
+            <div className="mt-1 leading-snug text-[var(--muted-foreground)]">{body}</div>
+          </div>
           {(actions || details) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-2">
               {actions}

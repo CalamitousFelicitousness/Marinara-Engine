@@ -8,7 +8,7 @@
 // Stays out of the way for the 99% case — when the origin is auto-trusted
 // (loopback / LAN / Tailscale-IP / Docker-IP / configured), the
 // hook returns null.
-import { createElement as h, Fragment, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { api } from "../../lib/api-client";
 import { copyToClipboard } from "../../lib/utils";
@@ -39,6 +39,7 @@ export function useCsrfOriginBanner(): AppBannerCandidate | null {
   const { t: localizeUi } = useUiTranslation();
   const [status, setStatus] = useState<OriginStatus | null>(null);
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +54,7 @@ export function useCsrfOriginBanner(): AppBannerCandidate | null {
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(copiedTimer.current);
     };
   }, []);
 
@@ -60,12 +62,12 @@ export function useCsrfOriginBanner(): AppBannerCandidate | null {
 
   const envLine = status.hint ? extractEnvLine(status.hint) : null;
   const offender = status.origin ?? window.location.origin;
-  const code = (text: string) => h("code", { className: codeClass }, text);
 
   const copyEnv = async () => {
     if (envLine && (await copyToClipboard(envLine))) {
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2_000);
+      window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 2_000);
     }
   };
 
@@ -73,53 +75,40 @@ export function useCsrfOriginBanner(): AppBannerCandidate | null {
     id: "csrf-origin",
     severity: "critical",
     title: localizeUi("ui.diagnostics.csrforiginwarningbanner.savesWillSilentlyFailThisOriginIsNotTrusted"),
-    body: h(
-      "span",
-      null,
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.marinaraSCsrfProtectionRejectsUnsafeApiRequestsFrom"),
-      " ",
-      code(offender),
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.addThisLineToYour"),
-      " ",
-      code(".env"),
-      " ",
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.noRestartNeededTakesEffectWithin2s"),
+    body: (
+      <>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.marinaraSCsrfProtectionRejectsUnsafeApiRequestsFrom")}{" "}
+        <code className={codeClass}>{offender}</code>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.addThisLineToYour")} <code className={codeClass}>.env</code>{" "}
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.noRestartNeededTakesEffectWithin2s")}
+      </>
     ),
-    actions:
-      envLine &&
-      h(
-        Fragment,
-        null,
-        h("code", { className: `${codeClass} min-w-0 flex-1 basis-48 break-all py-1 select-all` }, envLine),
-        h(
-          "button",
-          {
-            type: "button",
-            onClick: copyEnv,
-            className:
-              "min-h-11 shrink-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
-          },
-          copied
+    actions: envLine && (
+      <>
+        <code className={`${codeClass} min-w-0 flex-1 basis-48 py-1 break-all select-all`}>{envLine}</code>
+        <button
+          type="button"
+          onClick={copyEnv}
+          className="min-h-11 shrink-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+        >
+          {copied
             ? localizeUi("ui.diagnostics.csrforiginwarningbanner.copied")
-            : localizeUi("lorebook.editor.batch.copy"),
-        ),
-      ),
-    details: h(
-      "span",
-      null,
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.autoTrustedWithoutAddingHereLoopback"),
-      code("127.0.0.1"),
-      ", ",
-      code("localhost"),
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.lanIps"),
-      code("192.168.x.x"),
-      ", ",
-      code("10.x.x.x"),
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.tailscaleCgnat"),
-      code("100.64.0.0/10"),
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.dockerBridge"),
-      code("172.16.0.0/12"),
-      localizeUi("ui.diagnostics.csrforiginwarningbanner.publicIpsAndDnsNamesNeedToBeListed"),
+            : localizeUi("lorebook.editor.batch.copy")}
+        </button>
+      </>
+    ),
+    details: (
+      <>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.autoTrustedWithoutAddingHereLoopback")}
+        <code className={codeClass}>127.0.0.1</code>, <code className={codeClass}>localhost</code>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.lanIps")}
+        <code className={codeClass}>192.168.x.x</code>, <code className={codeClass}>10.x.x.x</code>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.tailscaleCgnat")}
+        <code className={codeClass}>100.64.0.0/10</code>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.dockerBridge")}
+        <code className={codeClass}>172.16.0.0/12</code>
+        {localizeUi("ui.diagnostics.csrforiginwarningbanner.publicIpsAndDnsNamesNeedToBeListed")}
+      </>
     ),
   };
 }

@@ -1212,25 +1212,23 @@ export function App() {
       <CustomThemeInjector />
       <PersonalExtensionInjector />
       <ChibiProfessorMariEasterEgg />
-      <AppBannerHost>
-        <Suspense fallback={null}>
-          <LazyAppShell
-            chatWindowIntroAllowed={
-              whatsNewResolved &&
-              !hasModalOpen &&
-              !hasAppDialogOpen &&
-              !whatsNewOpen &&
-              !migrationNoticePending &&
-              !migrationNotice &&
-              agentUpdatesResolved &&
-              !agentUpdateOpen &&
-              !seasonalGreetingOpen &&
-              (isLite || !showDownloadModal)
-            }
-            onChatWindowIntroOpenChange={setChatWindowIntroOpen}
-          />
-        </Suspense>
-      </AppBannerHost>
+      <Suspense fallback={null}>
+        <LazyAppShell
+          chatWindowIntroAllowed={
+            whatsNewResolved &&
+            !hasModalOpen &&
+            !hasAppDialogOpen &&
+            !whatsNewOpen &&
+            !migrationNoticePending &&
+            !migrationNotice &&
+            agentUpdatesResolved &&
+            !agentUpdateOpen &&
+            !seasonalGreetingOpen &&
+            (isLite || !showDownloadModal)
+          }
+          onChatWindowIntroOpenChange={setChatWindowIntroOpen}
+        />
+      </Suspense>
       <WhatsNewModal
         presentationAllowed={!hasModalOpen && !hasAppDialogOpen && (isLite || !showDownloadModal)}
         onOpenChange={setWhatsNewOpen}
@@ -1282,6 +1280,7 @@ export function App() {
         </Suspense>
       )}
       <AppDialogRenderer />
+      <AppBannerHost />
       <div
         ref={toasterHostRef}
         // Sonner slides top toasts upward and extends their hover area above the visible box.

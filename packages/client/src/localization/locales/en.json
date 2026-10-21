@@ -14642,6 +14642,7 @@
   "ui.trackerPanel.worldstatepanel.world": "World",
   "ui.ui.avatarcropwidget.avatarCrop": "Avatar Crop",
   "ui.ui.avatarcropwidget.dragTheSquareToPanTheCornersToResize": "Drag the square to pan, the corners to resize. The avatar shows exactly the region inside the square.",
+  "ui.ui.avatarcropwidget.full": "Full",
   "ui.ui.avatarcropwidget.fullImage": "Full image",
   "ui.ui.avatarcropwidget.openFullImage": "Open full image",
   "ui.ui.avatarcropwidget.removeAvatar": "Remove avatar",

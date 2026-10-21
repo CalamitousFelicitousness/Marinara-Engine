@@ -1,4 +1,9 @@
-import { applyClockCommandTags, TTS_SETTINGS_KEY, type RulesetClocks } from "@marinara-engine/shared";
+import {
+  applyClockCommandTags,
+  TTS_SETTINGS_KEY,
+  isStockMarinaraUniversalPreset,
+  type RulesetClocks,
+} from "@marinara-engine/shared";
 import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
@@ -3190,7 +3195,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           isSceneChat: chatMeta.sceneStatus === "active",
           chatParameters: chatMeta.chatParameters,
           baseReasoningEffort:
-            presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game"
+            presetId &&
+            resolvedPreset &&
+            !isStockMarinaraUniversalPreset(resolvedPreset) &&
+            chatMode !== "conversation" &&
+            chatMode !== "game"
               ? (parsePresetParameters(resolvedPreset.parameters).reasoningEffort ?? null)
               : reasoningEffort,
         });
@@ -3861,26 +3870,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           advancedMemoryPlacements = assembled.advancedMemoryPlacements ?? [];
           presetOwnsAgentPlacement = true;
           characterAdvancedPromptsInjected = true;
-          temperature = assembled.parameters.temperature;
-          topP = assembled.parameters.topP ?? 1;
-          topK = assembled.parameters.topK ?? 0;
-          minP = assembled.parameters.minP ?? 0;
-          frequencyPenalty = assembled.parameters.frequencyPenalty ?? 0;
-          presencePenalty = assembled.parameters.presencePenalty ?? 0;
-          showThoughts = assembled.parameters.showThoughts ?? true;
-          reasoningEffort = assembled.parameters.reasoningEffort ?? null;
-          verbosity = assembled.parameters.verbosity ?? null;
-          serviceTier = assembled.parameters.serviceTier ?? null;
-          assistantPrefill = assembled.parameters.assistantPrefill ?? "";
-          assistantReasoningPrefill = assembled.parameters.assistantReasoningPrefill ?? "";
-          customThinkingTags = normalizeThinkingTagPairs(assembled.parameters.customThinkingTags);
-          customParameters = mergeCustomParameters(customParameters, assembled.parameters.customParameters);
-          if (assembled.parameters.enabledParameters) {
-            enabledParameters = { ...(enabledParameters ?? {}), ...assembled.parameters.enabledParameters };
+          if (!isStockMarinaraUniversalPreset(resolvedPreset)) {
+            temperature = assembled.parameters.temperature;
+            topP = assembled.parameters.topP ?? 1;
+            topK = assembled.parameters.topK ?? 0;
+            minP = assembled.parameters.minP ?? 0;
+            frequencyPenalty = assembled.parameters.frequencyPenalty ?? 0;
+            presencePenalty = assembled.parameters.presencePenalty ?? 0;
+            showThoughts = assembled.parameters.showThoughts ?? true;
+            reasoningEffort = assembled.parameters.reasoningEffort ?? null;
+            verbosity = assembled.parameters.verbosity ?? null;
+            serviceTier = assembled.parameters.serviceTier ?? null;
+            assistantPrefill = assembled.parameters.assistantPrefill ?? "";
+            assistantReasoningPrefill = assembled.parameters.assistantReasoningPrefill ?? "";
+            customThinkingTags = normalizeThinkingTagPairs(assembled.parameters.customThinkingTags);
+            customParameters = mergeCustomParameters(customParameters, assembled.parameters.customParameters);
+            if (assembled.parameters.enabledParameters) {
+              enabledParameters = { ...(enabledParameters ?? {}), ...assembled.parameters.enabledParameters };
+            }
+            stopSequences = (assembled.parameters.stopSequences ?? [])
+              .map((value) => value.trim())
+              .filter((value) => value.length > 0);
           }
-          stopSequences = (assembled.parameters.stopSequences ?? [])
-            .map((value) => value.trim())
-            .filter((value) => value.length > 0);
 
           Object.assign(
             chatMeta,
@@ -8561,7 +8572,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
           const prepareProviderMessages = (messages: ChatMessage[]): ChatMessage[] => {
             return postProcessMessages(messages, {
-              ...parseStoredGenerationParameters(resolvedPreset?.parameters),
+              ...(resolvedPreset && !isStockMarinaraUniversalPreset(resolvedPreset)
+                ? parseStoredGenerationParameters(resolvedPreset.parameters)
+                : {}),
               ...providerRuntime.connectionParams,
               ...providerRuntime.chatParams,
             });

@@ -129,9 +129,8 @@ try {
       assert.doesNotMatch(text, /\{\{(?:user|char)\}\}|SUMMARY_METADATA_ONLY/u, context);
     }
   }
-  await storage.updatePersona(saved.id, {
-    mes_example: '{{random::PEEK_RANDOM_A::PEEK_RANDOM_B}} {{user}}: "Observe {{char}} with {{proofLabel}}. Straße İ ẞ."',
-  });
+  const stochasticExample =
+    '{{random::PEEK_RANDOM_A::PEEK_RANDOM_B}} {{user}}: "Observe {{char}} with {{proofLabel}}. Straße İ ẞ."';
   const stochasticCases = [
     "persona macro",
     "persona marker",
@@ -144,17 +143,30 @@ try {
     "unselected choice",
     "unused choice",
     "false conditional",
+    "false conditional quoted",
+    "unused variable quoted",
+    "false conditional partial quote",
+    "false conditional partial first line",
     "fallback",
   ] as const;
   for (const wrapFormat of ["xml", "markdown", "none"] as const) {
     for (const variant of stochasticCases) {
+      await storage.updatePersona(saved.id, {
+        mes_example:
+          variant === "false conditional partial first line"
+            ? `{{user}}: Hello.\n${stochasticExample}`
+            : stochasticExample,
+      });
       await storage.update(subject.id, {
         description: variant === "nested character marker" ? "CHARACTER_MARKER_SECTION\n{{persona}}" : "A subject.",
       });
       const preset = await presets.create({
         name: `Stochastic persona dialogue: ${variant}`,
         wrapFormat,
-        variableValues: { proofLabel: "PRESET_CHOICE_REFERENCE" },
+        variableValues: {
+          proofLabel: "PRESET_CHOICE_REFERENCE",
+          ...(variant === "unused variable quoted" ? { unusedIdentity: "{{persona}}" } : {}),
+        },
       });
       assert.ok(preset);
       const usesChoice = variant.endsWith("choice");
@@ -185,9 +197,9 @@ try {
         content:
           variant === "selected choice" || variant === "unselected choice"
             ? "{{identityChoice}}"
-            : variant === "false conditional"
+            : variant.startsWith("false conditional")
               ? "{{#if false}}{{persona}}{{/if}}"
-              : variant === "fallback" || variant === "unused choice"
+              : variant === "fallback" || variant === "unused choice" || variant === "unused variable quoted"
                 ? "Respond as the character."
                 : variant === "uppercase" || variant === "lowercase"
                   ? `{{${variant}}}{{persona}}{{/${variant}}}`
@@ -207,7 +219,15 @@ try {
         presetId: preset.id,
         name: "Instructions",
         identifier: "instructions",
-        content: "PEEK_STOCHASTIC_SECTION Respond as {{char}}.",
+        content:
+          "PEEK_STOCHASTIC_SECTION Respond as {{char}}." +
+          (variant === "false conditional quoted" || variant === "unused variable quoted"
+            ? '\nQuoted dialogue: PEEK_RANDOM_A Example Persona: "Observe Subject with PRESET_CHOICE_REFERENCE. Straße İ ẞ."'
+            : variant === "false conditional partial quote"
+              ? "\nQuoted prefix: PEEK_RANDOM_A unrelated text."
+              : variant === "false conditional partial first line"
+                ? "\nQuoted first line: Example Persona: Hello."
+                : ""),
         role: "system",
         enabled: true,
         isMarker: false,
@@ -237,7 +257,16 @@ try {
         const text = JSON.stringify(peek.json().messages);
         const context = `${wrapFormat}/${variant}/stochastic peek`;
         assert.match(text, /PEEK_STOCHASTIC_SECTION/u, context);
-        assert.equal(text.match(/PEEK_RANDOM_/giu)?.length ?? 0, 1, `${context}: dialogue appears exactly once`);
+        assert.equal(
+          text.match(/PEEK_RANDOM_/giu)?.length ?? 0,
+          variant === "false conditional partial quote" ? 2 : 1,
+          `${context}: complete dialogue appears once; an unrelated quoted prefix cannot suppress it`,
+        );
+        assert.equal(
+          text.match(/Observe Subject with PRESET_CHOICE_REFERENCE/giu)?.length ?? 0,
+          1,
+          `${context}: the complete Persona example reaches the model exactly once`,
+        );
         assert.match(text, /Example Persona:.*Observe Subject with PRESET_CHOICE_REFERENCE/iu, context);
         if (variant === "uppercase") {
           assert.match(text, /EXAMPLE PERSONA:.*OBSERVE SUBJECT WITH PRESET_CHOICE_REFERENCE/u, context);

@@ -4227,7 +4227,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 .toLowerCase()
                 .toUpperCase()
                 .normalize("NFC");
-              const hasEmittedPersonaExample = assembled.resolvedPersonaExamples.some((example) => {
+              const exampleAlreadyInPrompt = (example: string) => {
                 const normalizedExample = example
                   .split("\n")
                   .map((line) => line.trim())
@@ -4238,14 +4238,15 @@ export async function chatsRoutes(app: FastifyInstance) {
                   .toUpperCase()
                   .normalize("NFC");
                 return !!normalizedExample && normalizedContent.includes(normalizedExample);
-              });
+              };
+              const hasEmittedPersonaExample = assembled.resolvedPersonaExamples.some(exampleAlreadyInPrompt);
               if (!hasEmittedPersonaExample) {
                 const resolvedPersonaExample = resolveMacros(personaFields.example ?? "", {
                   ...promptMacroContext,
                   variables: assembled.macroVariables,
                   agentData: assembled.macroAgentData,
                 });
-                if (resolvedPersonaExample && !alreadyInPrompt(resolvedPersonaExample))
+                if (resolvedPersonaExample && !exampleAlreadyInPrompt(resolvedPersonaExample))
                   fieldParts.push(wrapContent(resolvedPersonaExample, "example_dialogue", wrapFormat, 2));
               }
               if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))

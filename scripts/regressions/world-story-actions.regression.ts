@@ -31,7 +31,10 @@ import {
   type StoryScriptInput,
   type StoryTurnWorld,
 } from "../../packages/shared/src/index.js";
-import { storyFightBlueprintEnemies } from "../../packages/server/src/services/game/story-fight.service.js";
+import {
+  storyFightBlueprintEnemies,
+  storyFightPromptText,
+} from "../../packages/server/src/services/game/story-fight.service.js";
 
 const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
 assert.ok(parsed.ok);
@@ -233,6 +236,9 @@ const missing = storyFightRoster(
 );
 assert.deepEqual(missing.opponents, [{ name: "Scarecrow", creature: "Scarecrow" }]);
 assert.deepEqual(missing.refused, ["monsters/goblin"]);
+// With every creature refused, the fight is still the story's, but its enemies are the writer's to choose.
+assert.match(storyFightPromptText(fight!, []), /Choose its enemies yourself\.$/u);
+assert.doesNotMatch(storyFightPromptText(fight!, []), /exactly these/u);
 // Without a ruleset to read ids, every id is refused.
 assert.deepEqual(storyFightRoster({ ...fight!, creatures: [{ creature: "monsters/goblin", count: 1 }] }), {
   opponents: [],

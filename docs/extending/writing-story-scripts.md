@@ -232,7 +232,8 @@ Each creature is a bestiary creature of the game's ruleset, by its id (`catalog/
 is a board painted by hand in the world (`b<n>`), fought on wherever the fight starts; without one the
 fight is fought where it starts, as any other. `note` tells the Game Master how it comes about. An id the
 game's ruleset does not have is refused: those creatures are left out of the fight and the refusal is
-logged, and a fight left with none is the Game Master's own.
+logged. A fight left with none still starts as the story set it, on its battlefield, but the Game Master
+picks its enemies.
 
 ### Endings
 

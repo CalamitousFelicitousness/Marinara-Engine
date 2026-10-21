@@ -15,7 +15,9 @@ if (browserArgIndex !== -1) {
     process.stderr.write("Could not start Marinara Engine: --open-browser requires exactly one URL value.\n");
     process.exit(1);
   }
-  if (serverArgs.length === 0) {
+  // Browser launchers put the entry first; Node options go before this wrapper
+  // and are already forwarded through process.execArgv.
+  if (serverArgs.length === 0 || serverArgs[0].startsWith("-")) {
     process.stderr.write("Could not start Marinara Engine: a server entrypoint is required with --open-browser.\n");
     process.exit(1);
   }

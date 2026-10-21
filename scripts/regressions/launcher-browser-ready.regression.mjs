@@ -13,6 +13,7 @@ const preload = join(scratch, "capture-browser.mjs");
 const capture = join(scratch, "browser.jsonl");
 const counter = join(scratch, "boots");
 const argumentsFile = join(scratch, "arguments.json");
+const execArgumentsFile = join(scratch, "exec-arguments.json");
 
 // Intercept only the OS browser opener. The supervisor and its server remain
 // real processes; the opener checks the HTTP listener instead of starting a GUI.
@@ -59,6 +60,7 @@ import { createServer } from "node:http";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 writeFileSync(${JSON.stringify(argumentsFile)}, JSON.stringify(process.argv.slice(2)));
+writeFileSync(${JSON.stringify(execArgumentsFile)}, JSON.stringify(process.execArgv));
 const boot = existsSync(${JSON.stringify(counter)}) ? Number(readFileSync(${JSON.stringify(counter)}, "utf8")) + 1 : 1;
 writeFileSync(${JSON.stringify(counter)}, String(boot));
 process.send?.({ type: "unrelated-message" });
@@ -76,10 +78,11 @@ process.exit(process.env.BROWSER_FIXTURE_RESTART === "true" && boot === 1 ? 75 :
 `,
 );
 
-async function run({ open = true, env = {}, browserUrl, browserHost, browserArgs } = {}) {
+async function run({ open = true, env = {}, browserUrl, browserHost, browserArgs, nodeArgs = [] } = {}) {
   rmSync(capture, { force: true });
   rmSync(counter, { force: true });
   rmSync(argumentsFile, { force: true });
+  rmSync(execArgumentsFile, { force: true });
   const host = env.BROWSER_FIXTURE_HOST ?? "127.0.0.1";
   const probe = createServer();
   await new Promise((done) => probe.listen(0, host, done));
@@ -89,6 +92,7 @@ async function run({ open = true, env = {}, browserUrl, browserHost, browserArgs
   const child = spawn(
     process.execPath,
     [
+      ...nodeArgs,
       "--import",
       pathToFileURL(preload).href,
       join(root, "scripts/run-server.mjs"),
@@ -161,6 +165,11 @@ try {
   assert.equal(disabled.status, 0, disabled.stderr);
   assert.deepEqual(disabled.records, [], "pnpm start and disabled auto-open must not start a browser");
 
+  const nodeFlag = await run({ nodeArgs: ["--trace-warnings"], env: { BROWSER_FIXTURE_DELAY: "0" } });
+  assert.equal(nodeFlag.status, 0, nodeFlag.stderr);
+  assert.equal(nodeFlag.records[0].status, 200, JSON.stringify(nodeFlag.records));
+  assert.ok(JSON.parse(readFileSync(execArgumentsFile, "utf8")).includes("--trace-warnings"));
+
   const openerFailed = await run({ env: { BROWSER_FIXTURE_DELAY: "0", BROWSER_FIXTURE_OPENER_FAIL: "true" } });
   assert.equal(openerFailed.status, 0, "A missing browser opener must not stop the server");
   assert.match(openerFailed.stderr, /Could not open the browser.*Open http/u);
@@ -204,17 +213,18 @@ try {
     assert.equal(existsSync(counter), false, "Argument errors must fail before starting a child");
     assert.deepEqual(missing.records, []);
   }
-  for (const browserUrl of ["dist/index.js", "http://127.0.0.1:7860"]) {
-    const missingEntry = spawnSync(
-      process.execPath,
-      [join(root, "scripts/run-server.mjs"), "--open-browser", browserUrl],
-      {
-        cwd: root,
-        input: 'console.log("unexpected Node stdin execution");\n',
-        encoding: "utf8",
-        timeout: 10_000,
-      },
-    );
+  for (const browserArgs of [
+    ["--open-browser", "dist/index.js"],
+    ["--open-browser", "http://127.0.0.1:7860"],
+    ["--open-browser", "http://127.0.0.1:7860", "--trace-warnings"],
+    ["--open-browser", "http://127.0.0.1:7860", "--require", "node:fs"],
+  ]) {
+    const missingEntry = spawnSync(process.execPath, [join(root, "scripts/run-server.mjs"), ...browserArgs], {
+      cwd: root,
+      input: 'console.log("unexpected Node stdin execution");\n',
+      encoding: "utf8",
+      timeout: 10_000,
+    });
     assert.equal(
       missingEntry.status,
       1,
@@ -223,6 +233,14 @@ try {
     assert.match(missingEntry.stderr, /a server entrypoint is required with --open-browser/u);
     assert.equal(missingEntry.stdout, "");
   }
+
+  const genericNodeArgs = spawnSync(
+    process.execPath,
+    [join(root, "scripts/run-server.mjs"), "--require", "node:fs", "--eval", 'process.stdout.write("forwarded")'],
+    { cwd: root, encoding: "utf8", timeout: 10_000 },
+  );
+  assert.equal(genericNodeArgs.status, 0, genericNodeArgs.stderr);
+  assert.equal(genericNodeArgs.stdout, "forwarded", "Non-browser Node argument forwarding remains supported");
 
   const entry = readFileSync(join(root, "packages/server/src/index.ts"), "utf8");
   assert.ok(

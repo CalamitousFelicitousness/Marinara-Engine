@@ -103,15 +103,34 @@ try {
     netmask: "255.192.0.0",
     cidr: "100.100.10.20/10",
   };
-  const tailnet = { interfaces: { tailscale0: [tailnetAddress] } };
+  const tailnet = { interfaces: { tailscale0: [tailnetAddress] }, platform: "linux" as const };
   const tailscaleRequest = { ...request("100.64.0.42"), raw: { socket: { localAddress: "100.100.10.20" } } } as never;
   const tailscale = getAccessPolicy(tailscaleRequest, tailnet);
   assert.equal(tailscale.trustedInterface, true, "auto mode trusts a Tailscale peer on a Tailscale local address");
   assert.equal(tailscale.reason, "tailscale");
   // Mobile carriers hand out the same range, so the local address must sit on a Tailscale interface.
-  const carrier = getAccessPolicy(tailscaleRequest, { interfaces: { rmnet0: [tailnetAddress] } });
+  const carrier = getAccessPolicy(tailscaleRequest, { interfaces: { rmnet0: [tailnetAddress] }, platform: "android" });
   assert.equal(carrier.trustedInterface, false, "a 100.64.0.0/10 address on mobile data is not a tailnet");
   assert.equal(carrier.reason, "locked-down");
+  // macOS and Android give every VPN the same interface name, so Tailscale's IPv6 range has to be there too.
+  const tailnetV6 = {
+    ...containerAddress,
+    address: "fd7a:115c:a1e0::1",
+    netmask: "ffff:ffff:ffff::",
+    family: "IPv6" as const,
+    cidr: "fd7a:115c:a1e0::1/48",
+    scopeid: 0,
+  };
+  for (const [platform, name, addresses, trusted] of [
+    ["darwin", "utun4", [tailnetAddress, tailnetV6], true],
+    ["darwin", "utun4", [tailnetAddress], false],
+    ["darwin", "tailscale0", [tailnetAddress, tailnetV6], false],
+    ["android", "tun0", [tailnetAddress, tailnetV6], true],
+    ["android", "tun0", [tailnetAddress], false],
+  ] as const) {
+    const policy = getAccessPolicy(tailscaleRequest, { interfaces: { [name]: [...addresses] }, platform });
+    assert.equal(policy.trustedInterface, trusted, `${platform} ${name} with ${addresses.length} address(es)`);
+  }
 
   process.env.BASIC_AUTH_USER = "mari";
   process.env.BASIC_AUTH_PASS = "secret";

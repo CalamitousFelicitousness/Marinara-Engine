@@ -484,18 +484,22 @@ export function isTailscaleIp(ip: string): boolean {
 
 // Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows. macOS (utun*) and Android (tun*) give
 // every VPN the same name, so there the interface must also hold Tailscale's IPv6 range.
-const GENERIC_VPN_NAME = process.platform === "darwin" ? /^utun\d/ : process.platform === "android" ? /^tun\d/ : null;
-const TAILSCALE_INTERFACE_NAME = GENERIC_VPN_NAME ?? /^tailscale/i;
+const GENERIC_VPN_NAMES: Partial<Record<NodeJS.Platform, RegExp>> = { darwin: /^utun\d/, android: /^tun\d/ };
 const TAILSCALE_IPV6_CIDR = parseCIDR("fd7a:115c:a1e0::/48")!;
 
 /**
  * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
  * Carriers use the same range for mobile data, so the address alone does not prove a tailnet.
  */
-function hasTailscaleInterfaceAddress(interfaces: ReturnType<typeof networkInterfaces>, address?: string): boolean {
+function hasTailscaleInterfaceAddress(
+  interfaces: ReturnType<typeof networkInterfaces>,
+  address: string | undefined,
+  platform: NodeJS.Platform,
+): boolean {
+  const genericName = GENERIC_VPN_NAMES[platform];
   return Object.entries(interfaces).some(([name, addresses = []]) => {
-    if (!TAILSCALE_INTERFACE_NAME.test(name)) return false;
-    if (GENERIC_VPN_NAME && !addresses.some((a) => matchesCIDR(ipToBytes(a.address) ?? [], TAILSCALE_IPV6_CIDR))) {
+    if (!(genericName ?? /^tailscale/i).test(name)) return false;
+    if (genericName && !addresses.some((a) => matchesCIDR(ipToBytes(a.address) ?? [], TAILSCALE_IPV6_CIDR))) {
       return false;
     }
     return addresses.some((a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)));
@@ -616,7 +620,8 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     privateNetworkIp: isPrivateNetworkIp(ip),
     tailscaleIp: isTailscaleIp(ip),
     tailscaleLocalAddress:
-      typeof localAddress === "string" && hasTailscaleInterfaceAddress(dockerInterfaces, localAddress),
+      typeof localAddress === "string" &&
+      hasTailscaleInterfaceAddress(dockerInterfaces, localAddress, dockerNetwork.platform ?? process.platform),
     dockerIp: isDockerIp(ip),
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
@@ -691,6 +696,7 @@ export function getPasswordlessPeers(
   bindHost: string,
   interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
   withLogin = false,
+  platform: NodeJS.Platform = process.platform,
 ): PasswordlessPeer[] {
   const config = withLogin ? { ...getAccessConfig(), basicAuthConfigured: true } : getAccessConfig();
   const direct = !isLoopbackBind(bindHost);
@@ -699,7 +705,8 @@ export function getPasswordlessPeers(
   const tailscaleBind = anyAddress || isTailscaleIp(bindHost);
   const tailscaleHere =
     tailscaleBind &&
-    (config.tailscaleMode === "enabled" || hasTailscaleInterfaceAddress(interfaces, anyAddress ? undefined : bindHost));
+    (config.tailscaleMode === "enabled" ||
+      hasTailscaleInterfaceAddress(interfaces, anyAddress ? undefined : bindHost, platform));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
@@ -782,6 +789,8 @@ export function isTrustedInterfaceRequest(
     interfaces?: ReturnType<typeof networkInterfaces>;
     gatewayIp?: string | null;
     containerInterfaceNames?: ReadonlySet<string>;
+    /** Host OS for the Tailscale interface rule; tests pin it. */
+    platform?: NodeJS.Platform;
   } = {},
 ): boolean {
   const policy = getAccessPolicy(request, dockerNetwork);

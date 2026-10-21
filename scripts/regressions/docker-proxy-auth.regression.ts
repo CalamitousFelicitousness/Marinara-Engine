@@ -191,6 +191,7 @@ try {
           },
         ],
       },
+      platform: "linux",
     }),
     true,
     "direct Tailscale traffic is trusted when the local socket address is on the Tailscale interface",

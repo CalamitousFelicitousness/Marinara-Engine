@@ -136,6 +136,21 @@ try {
       }
     }
 
+    // An Android install with a local secret keeps the details from on-device apps that lack it.
+    const androidSecret = "a".repeat(64);
+    process.env.MARINARA_ANDROID_SECRET = androidSecret;
+    try {
+      assert.deepEqual(
+        await health(),
+        { status: "ok" },
+        "a device-local caller without the Android secret gets only status",
+      );
+      const androidApp = await health({ "x-marinara-android-secret": androidSecret });
+      assert.equal(typeof androidApp.version, "string", "the Android app keeps the details");
+    } finally {
+      delete process.env.MARINARA_ANDROID_SECRET;
+    }
+
     // 7. A package whose activation failed shows as failed, with the time of
     //    the failure, even when the registry still reads "active".
     const manager = capabilityPackageManager as unknown as Record<string, unknown>;

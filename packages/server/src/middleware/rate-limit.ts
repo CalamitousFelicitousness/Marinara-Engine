@@ -103,6 +103,12 @@ export const RUNTIME_DIAGNOSTICS_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Owner notices; the client polls every 15 minutes and on tab focus. */
+export const OWNER_NOTICES_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 /** One document per guest frame mount; each response reads and embeds the trusted bundle. */
 export const MULTIPLAYER_GUEST_VIEW_RATE_LIMIT = {
   max: 30,

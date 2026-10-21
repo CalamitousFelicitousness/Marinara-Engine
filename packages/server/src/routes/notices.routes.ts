@@ -11,6 +11,7 @@ import { isAdminAuthorized } from "../middleware/privileged-gate.js";
 import { getRequestAccess } from "../middleware/ip-allowlist.js";
 import { isBasicAuthSatisfied } from "../middleware/basic-auth.js";
 import { compareVersions } from "./updates.routes.js";
+import { OWNER_NOTICES_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 const DEFAULT_NOTICES_URL = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Engine/notices/notices.json";
 const REFRESH_MS = 3 * 60 * 60_000;
@@ -144,7 +145,7 @@ export async function noticesRoutes(app: FastifyInstance) {
   timer.unref();
   app.addHook("onClose", async () => clearInterval(timer));
 
-  app.get("/", async (req) => ({
+  app.get("/", { config: { rateLimit: OWNER_NOTICES_RATE_LIMIT } }, async (req) => ({
     notices: isOwnerNoticesEnabled() && isNoticeOwner(req) ? parseOwnerNotices(cached, APP_VERSION) : [],
   }));
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { extractLeadingThinkingBlocks } from "../../packages/shared/src/utils/thinking-tags.js";
 import { buildGmFormatReminder } from "../../packages/server/src/services/game/gm-prompts.js";
+import { thinkingOnlyReplyPromotable } from "../../packages/server/src/services/generation/empty-response-reason.js";
 
 // Game Mode showed the GM's planning as narration. The format reminder told every model to
 // "Think step by step" with nowhere to put it, so a model without a native thinking channel
@@ -71,5 +72,59 @@ assert.ok(
   "the scene must start right after the thinking block",
 );
 assert.doesNotMatch(extraction.content, /Ort:|Nächster Schritt/, "no planning may reach the narration");
+
+// A reply with no visible text used to show its thinking as narration in Game Mode whatever the
+// reason. A reasoning model that spends its whole output budget thinking ends with "length" and
+// nothing else: that thinking is the GM's plan and must stay out of the narration box.
+const game = { chatMode: "game", reasoningRequested: true } as const;
+const plan = "Ort: Hafen von Brem. Nächster Schritt: die Schmugglerin.";
+assert.equal(
+  thinkingOnlyReplyPromotable({ ...game, finishReason: "length", providerThinking: plan }),
+  false,
+  "a Game Mode reply cut off mid-thought must not show its thinking as narration",
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({ ...game, finishReason: "stop", providerThinking: "" }),
+  false,
+  "thinking the model tagged inline (no provider reasoning) is never promoted in Game Mode",
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({ ...game, finishReason: "stop", providerThinking: "Nebel kriecht über die Kaimauer." }),
+  true,
+  "a finished Game Mode reply whose provider put the answer in the reasoning field is still recovered",
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({ ...game, finishReason: undefined, providerThinking: "Nebel." }),
+  true,
+  "a provider that reports no finish reason still gets the recovery",
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({
+    chatMode: "conversation",
+    reasoningRequested: false,
+    finishReason: "length",
+    providerThinking: "",
+  }),
+  true,
+  "Conversation recovery is unchanged",
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({
+    chatMode: "conversation",
+    reasoningRequested: true,
+    finishReason: "stop",
+    providerThinking: "x",
+  }),
+  false,
+);
+assert.equal(
+  thinkingOnlyReplyPromotable({
+    chatMode: "roleplay",
+    reasoningRequested: false,
+    finishReason: "stop",
+    providerThinking: "x",
+  }),
+  false,
+);
 
 console.log("game-gm-thinking-leak regression passed");

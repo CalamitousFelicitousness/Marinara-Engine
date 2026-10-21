@@ -674,7 +674,11 @@ import {
   tryClaimCustomLorebookReadBehindRun,
 } from "./generate/lorebook-keeper-utils.js";
 import { registerDryRunRoute } from "./generate/dry-run-route.js";
-import { describeEmptyModelResponse, sentOutputBudget } from "../services/generation/empty-response-reason.js";
+import {
+  describeEmptyModelResponse,
+  sentOutputBudget,
+  thinkingOnlyReplyPromotable,
+} from "../services/generation/empty-response-reason.js";
 import { registerRawRoute } from "./generate/raw-route.js";
 import { registerRetryAgentsRoute, type ActiveAgentRun } from "./generate/retry-agents-route.js";
 import { fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
@@ -9174,12 +9178,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           const promotableThinking = providerThinking.trim() || fullThinking.trim();
           // Some OpenAI-compatible providers misplace the actual assistant text
-          // in reasoning/thinking fields. Conversation mode only recovers when
-          // reasoning was not requested; game mode requests reasoning by default,
-          // so it still needs the recovery path to avoid empty GM turns.
+          // in reasoning/thinking fields; thinkingOnlyReplyPromotable says when
+          // that recovery applies (never to a cut-off Game Mode reply).
           const isGlmModel = conn.model.toLowerCase().includes("glm");
-          const shouldPromoteThinkingOnlyResponse =
-            chatMode === "conversation" ? !enableThinking && !resolvedEffort : chatMode === "game";
+          const shouldPromoteThinkingOnlyResponse = thinkingOnlyReplyPromotable({
+            chatMode,
+            reasoningRequested: Boolean(enableThinking || resolvedEffort),
+            finishReason,
+            providerThinking,
+          });
           if (!fullResponse.trim() && promotableThinking && shouldPromoteThinkingOnlyResponse) {
             if (isGlmModel) {
               logger.warn(

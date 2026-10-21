@@ -58,11 +58,21 @@ export class ToAPIsHttpError extends Error {
 /** A paid task may exist: callers must not submit an automatic replacement. */
 export class ToAPIsSubmittedTaskError extends Error {
   readonly retryable = false;
-  readonly [privateErrorLogFields]: { type: string; retryable: boolean; messageLength: number };
-  constructor(cause: unknown) {
+  readonly [privateErrorLogFields]: {
+    type: string;
+    retryable: boolean;
+    messageLength: number;
+    localReceiptId?: string;
+  };
+  constructor(cause: unknown, localReceiptId?: string) {
     super(cause instanceof Error ? cause.message : "ToAPIs task interrupted", { cause });
     this.name = "ToAPIsSubmittedTaskError";
-    this[privateErrorLogFields] = { type: this.name, retryable: false, messageLength: this.message.length };
+    this[privateErrorLogFields] = {
+      type: this.name,
+      retryable: false,
+      messageLength: this.message.length,
+      localReceiptId,
+    };
   }
 }
 async function api(
@@ -206,6 +216,7 @@ async function runTask(
       signal?.aborted
         ? signal.reason
         : new Error(`ToAPIs submission unconfirmed. Inspect local receipt ${localId}; do not automatically resubmit.`),
+      localId,
     );
   }
   receipt.taskId = typeof task.id === "string" ? task.id.trim() : "";
@@ -216,6 +227,7 @@ async function runTask(
     await saveAfterSubmission();
     throw new ToAPIsSubmittedTaskError(
       new Error(`ToAPIs returned no task ID. Reconcile local receipt ${localId} before resubmitting.`),
+      localId,
     );
   }
   let transientPollFailures = 0;
@@ -236,6 +248,8 @@ async function runTask(
         transientPollFailures = 0;
       } catch (error) {
         const transient = !(error instanceof ToAPIsHttpError) || error.status === 429 || error.status >= 500;
+        if (!signal?.aborted && !(error instanceof ToAPIsHttpError))
+          logger.debug(error, "[toapis] Poll transport failed for local receipt %s", localId);
         if (signal?.aborted || !transient || ++transientPollFailures >= 30) throw error;
         logRateLimited(
           "warn",
@@ -259,7 +273,7 @@ async function runTask(
       receipt.status = "interrupted";
       await saveAfterSubmission();
     }
-    throw new ToAPIsSubmittedTaskError(error);
+    throw new ToAPIsSubmittedTaskError(error, localId);
   }
 }
 

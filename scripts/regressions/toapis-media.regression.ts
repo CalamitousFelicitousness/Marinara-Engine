@@ -110,6 +110,7 @@ globalThis.fetch = async (input, init) => {
   if (mode === "stall") return json({ id: `fixture-${kind}`, status: "processing" });
   if (mode === "failed") return json({ id: `fixture-${kind}`, status: "failed" });
   if (mode === "poll-http") return json({ error: "fixture" }, 503);
+  if (mode === "poll-transport") throw new Error("fixture polling transport failure");
   if (mode === "poll-log") return json({ error: "fixture-provider-response-text" }, 503);
   if (mode === "poll-once" && transientPolls++ === 0) return json({ error: "fixture" }, 503);
   if (mode === "poll-unauthorized")
@@ -395,6 +396,21 @@ try {
     } finally {
       resetRateLimitedLogs();
     }
+  });
+  await check("polling transport diagnostics remain available at debug without paid replay", async () => {
+    await captureLogs(async (lines) => {
+      mode = "poll-transport";
+      await assert.rejects(image(), { message: /fixture polling transport failure/, retryable: false });
+      assert.equal(submissions().length, 1);
+      assert.equal(calls.filter((call) => call.method === "GET").length, 30);
+      const warnings = lines.filter((line) => Number(line.level) >= 40);
+      assert.equal(warnings.length, 1);
+      assert.ok(!JSON.stringify(warnings).includes("fixture polling transport failure"));
+      assert.ok(
+        JSON.stringify(lines.filter((line) => line.level === 20)).includes("fixture polling transport failure"),
+        "Transport diagnostic text must be present at debug",
+      );
+    });
   });
   await check("HTTP rejection details strip HTML and omit unrecognized task metadata", async () => {
     mode = "rejected-escaped";
@@ -777,6 +793,36 @@ try {
           assert.ok(JSON.stringify(warnings).includes('"status":401'));
           assert.ok(JSON.stringify(lines.filter((line) => line.level === 20)).includes("fixture rejection"));
           assert.equal(submissions().length, 1);
+        });
+      });
+      await check("real Gallery uncertain tasks retain a safe receipt pointer in serialized warnings", async () => {
+        await captureLogs(async (lines) => {
+          const receiptIds = new Set<string>();
+          for (const failure of ["uncertain", "missing-id"]) {
+            mode = failure;
+            const response = await galleryApp.inject({
+              method: "POST",
+              url: `/api/gallery/${chat!.id}/generate-image`,
+              payload: { prompt: "library", promptOverride: "library" },
+            });
+            assert.equal(response.statusCode, 502, response.body);
+            const receiptId = /local receipt ([a-f0-9-]{36})/i.exec(response.json().error)?.[1];
+            assert.ok(receiptId, "The existing UI message names its local receipt");
+            receiptIds.add(receiptId);
+            const warning = lines
+              .filter((line) => Number(line.level) >= 40 && String(line.msg).includes("[gallery/generate-image]"))
+              .at(-1);
+            assert.ok(warning);
+            assert.equal(warning.localReceiptId, receiptId);
+            const receipt = JSON.parse(await readFile(join(DATA_DIR, "toapis-tasks", `${receiptId}.json`), "utf8"));
+            assert.equal(receipt.localId, receiptId);
+            assert.equal(receipt.status, "submission_uncertain");
+            assert.ok(!JSON.stringify(warning).includes("fixture-key"));
+            assert.ok(!JSON.stringify(warning).includes('"stack"'));
+            assert.ok(!JSON.stringify(warning).includes('"cause"'));
+          }
+          assert.equal(receiptIds.size, 2, "Separate tasks retain distinguishable local receipt pointers");
+          assert.equal(submissions().length, 2);
         });
       });
     } finally {

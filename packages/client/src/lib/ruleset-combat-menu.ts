@@ -455,3 +455,33 @@ export function rulesetDefaultTargets(option: DirectedRulesetOption): string[] {
 export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
 }
+
+/** What paying for an option with a higher pool gets, in a few words for its button: more dice, more
+ *  targets, a bigger shape. Empty where the server sent nothing it adds. */
+export function rulesetPayGainText(
+  option: DirectedRulesetOption,
+  pool: string,
+  t: TFunction,
+  distance: RulesetBoardDistance | undefined,
+): string {
+  const said: string[] = [];
+  const gain = option.payGains?.[pool];
+  if (gain?.amount && (gain.amount.count > 0 || gain.amount.flat !== 0)) {
+    const dice = [
+      gain.amount.count > 0 && gain.amount.sides > 0 ? `${gain.amount.count}d${gain.amount.sides}` : "",
+      gain.amount.flat ? String(gain.amount.flat) : "",
+    ]
+      .filter(Boolean)
+      .join("+");
+    said.push(
+      t(gain.heals ? "game.combat.ruleset.upcast.gainHeal" : "game.combat.ruleset.upcast.gainDamage", { dice }),
+    );
+  }
+  const targets = option.targetsWith?.[pool];
+  if (targets !== undefined && targets > option.targets.count) {
+    said.push(t("game.combat.ruleset.upcast.gainTargets", { count: targets }));
+  }
+  if (gain?.size)
+    said.push(t("game.combat.ruleset.upcast.gainSize", { amount: rulesetDistanceText(gain.size, distance, t) }));
+  return said.join(", ");
+}

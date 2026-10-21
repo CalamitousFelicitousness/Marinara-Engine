@@ -10138,6 +10138,56 @@ function applyInWindow(
   choice: RulesetCombatChoice,
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
+  let step = answerInWindow(definition, combat, state, window, actor, choice, roller);
+  // An answer that was itself answered and has now been let through, or stopped, is settled before
+  // anybody else is asked: taken as it was chosen, or passed over.
+  for (let guard = 0; guard < 32 && step.state.window?.answered; guard++) {
+    const settled = settleAnswer(definition, combat, step.state, step.state.window, roller);
+    step = { state: settled.state, events: [...step.events, ...settled.events] };
+  }
+  return step;
+}
+
+/** An answer held while the other side was asked about it (counter-the-counter), now that they
+ *  have been: taken in the window it answered, paid for already, or passed over when it was stopped. */
+function settleAnswer(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const answered = window.answered!;
+  const plain = structuredClone(state);
+  delete plain.window!.answered;
+  const taker = rulesetCombatant(plain, answered.choice.actorId);
+  if (answered.cancelled || !taker) {
+    const { ctx, finish } = begin(definition, combat, plain, roller);
+    goOn(definition, combat, ctx);
+    noteOutcome(ctx);
+    return finish();
+  }
+  const step = takeReaction(definition, combat, plain, plain.window!, taker, answered.choice, roller, true);
+  // Refused now (its target gone, say): it was paid for and is simply lost, and the window goes on.
+  if (step.state === plain) {
+    const { ctx, finish } = begin(definition, combat, plain, roller);
+    goOn(definition, combat, ctx);
+    noteOutcome(ctx);
+    const gone = finish();
+    return { state: gone.state, events: [...step.events, ...gone.events] };
+  }
+  return step;
+}
+
+function answerInWindow(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+  actor: RulesetCombatant,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
   // An answer that names a window is checked against the open one. One that names none is taken as
   // meant for whatever is open, which is how a caller that never saves an answer may stay simple.
   if (choice.window !== undefined && choice.window !== window.id) {
@@ -10201,6 +10251,8 @@ function takeReaction(
   actor: RulesetCombatant,
   choice: RulesetCombatChoice,
   roller: RulesetCombatRoller,
+  /** Paid for already and let through by the other side (counter-the-counter): taken now. */
+  cleared = false,
 ): RulesetCombatStep {
   const trigger = window.trigger;
   if (
@@ -10216,7 +10268,11 @@ function takeReaction(
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
   const declared = actor.actions.find((entry) => entry.id === choice.optionId && entry.reaction);
-  const offered = rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
+  // Let through after it was paid for, it is no longer on the menu (its budget is spent): it was
+  // offered when it was chosen.
+  const offered = cleared
+    ? { budget: declared?.budget, payWith: choice.payWith !== undefined ? [choice.payWith] : undefined }
+    : rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!declared || !offered) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   // Filled in rather than picked, unless the entry says its holder picks: aimed back at whoever
   // caused the moment, or, for something its holder does to THEMSELVES, at its holder. Bracing
@@ -10288,20 +10344,60 @@ function takeReaction(
   // carries none, and reading the action's own budget would refuse it for want of something it
   // never asked for.
   const budget = offered.budget;
-  if (budget !== undefined) {
-    if ((taking.budgets[budget] ?? 0) < 1) return refusal(state, choice.actorId, "no-budget", choice.optionId);
-    spendBudget(ctx, taking, budget);
+  if (!cleared) {
+    if (budget !== undefined) {
+      if ((taking.budgets[budget] ?? 0) < 1) return refusal(state, choice.actorId, "no-budget", choice.optionId);
+      spendBudget(ctx, taking, budget);
+    }
+    const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
+    if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
+    if (paid.live && taking.sheet) taking.sheet.live = paid.live;
+    // Out of a worn item's charges (1.519).
+    if (paid.itemCharges) (taking.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
+    countRulesetSpend(taking, paid.cost);
+    for (const entry of paid.cost) {
+      ctx.events.push({
+        type: "spend",
+        actorId: taking.id,
+        pool: entry.pool,
+        label: entry.label,
+        amount: entry.amount,
+      });
+    }
+    spendAvailability(ctx, taking, action);
+    // A spell answering is itself something the other side may answer (counter-the-counter): it is
+    // held, paid for, while they are asked, and taken once nobody has stopped it. Used subtly
+    // (1.253), nobody sees it to answer it.
+    if (rulesetIsSpell(action) && !action.altered?.subtle) {
+      const answering = ctx.state.window!;
+      ctx.state.window = undefined;
+      const opened = openMoment(
+        ctx,
+        {
+          kind: "used",
+          sourceId: taking.id,
+          optionId: action.id,
+          label: action.label,
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+          ...(action.entry ? { entry: action.entry } : {}),
+        },
+        ctx.state.combatants,
+        {
+          kind: "answer",
+          actorId: taking.id,
+          optionId: action.id,
+          ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
+          choice: structuredClone(choice),
+        },
+      );
+      if (opened) {
+        ctx.state.window!.outer = answering;
+        noteOutcome(ctx);
+        return finish();
+      }
+      ctx.state.window = answering;
+    }
   }
-  const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
-  if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
-  if (paid.live && taking.sheet) taking.sheet.live = paid.live;
-  // Out of a worn item's charges (1.519).
-  if (paid.itemCharges) (taking.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
-  countRulesetSpend(taking, paid.cost);
-  for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: taking.id, pool: entry.pool, label: entry.label, amount: entry.amount });
-  }
-  spendAvailability(ctx, taking, action);
   const cancelSave = action.reaction?.cancelSave;
   if (cancelSave && !rollSave(ctx, taking, cancelSave.save, cancelSave.dc, trigger.sourceId)) {
     // A reaction is acting too (1.308): One with Shadows ends on it, as on one resolved in full.
@@ -10315,7 +10411,7 @@ function takeReaction(
   // would have done can change what this reaction is resolved against.
   if (
     action.reaction?.cancels &&
-    ctx.state.window?.resume?.kind === "action" &&
+    (ctx.state.window?.resume?.kind === "action" || ctx.state.window?.resume?.kind === "answer") &&
     reachesHeld(ctx, taking, action, choice.payWith, ctx.state.window.resume)
   ) {
     const stopped = ctx.state.window.resume;
@@ -10330,6 +10426,7 @@ function takeReaction(
       optionId: stopped.optionId,
       label: trigger.kind === "aimed" || trigger.kind === "used" ? trigger.label : action.label,
       byId: taking.id,
+      with: action.label,
     });
   }
   // Stepping in to be its target instead (1.456): the one within reach it was aimed at.
@@ -10510,7 +10607,7 @@ function reachesHeld(
   answering: RulesetCombatant,
   action: RulesetCombatAction,
   payWith: string | undefined,
-  held: RulesetActionResume,
+  held: Pick<RulesetActionResume, "actorId" | "optionId" | "payWith">,
 ): boolean {
   const reaction = action.reaction!;
   if (reaction.upTo !== "paid") return true;
@@ -10665,6 +10762,19 @@ function windowClosed(
   if (resume && (resume.kind === "walk" || rulesetLegacyWalk(resume))) {
     const walker = rulesetCombatant(ctx.state, resume.actorId);
     if (walker) walkOn(ctx, walker, { ...resume, kind: "walk" } as RulesetWalkResume);
+    return;
+  }
+  // An answer the other side was asked about (counter-the-counter): the window it answers is taken
+  // back up, and it is taken there, or passed over, next.
+  if (resume?.kind === "answer") {
+    const answering = window.outer;
+    if (answering) {
+      ctx.state.window = answering;
+      answering.answered = {
+        choice: resume.choice,
+        ...(resume.cancelled || over ? { cancelled: true as const } : {}),
+      };
+    }
     return;
   }
   if (resume?.kind === "fall") {

@@ -144,6 +144,7 @@ import {
   rulesetFills,
   rulesetWardedFrom,
   rulesetReachBarred,
+  rulesetCellBlocked,
 } from "./grid.js";
 import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import {
@@ -788,7 +789,7 @@ export function rulesetShotsTurned(
   const walls = rulesetStandingZones(state).filter(({ action: made }) => {
     const rule = made.zone?.turnsShots;
     if (!rule) return false;
-    const name = action.label.trim().toLowerCase();
+    const name = (action.label ?? "").trim().toLowerCase();
     return !rule.spares?.some((one) => one.trim().toLowerCase() === name);
   });
   if (walls.length === 0) return false;
@@ -1023,6 +1024,24 @@ export function rulesetAimLegal(
   if (!grid || !action?.area || !from || !reach) return false;
   if (!Number.isInteger(at.x) || !Number.isInteger(at.y)) return false;
   if (at.x < 0 || at.y < 0 || at.x >= grid.width || at.y >= grid.height) return false;
+  // A sphere or a cube is not centred inside solid rock or a standing wall: its point is somewhere
+  // it could be seen landing. A cone or a line only takes a direction from the cell, and a shape
+  // laid around props ignores where it was aimed (1.331).
+  if (
+    (action.area.shape === "burst" || action.area.shape === "box") &&
+    !action.area.aroundProp &&
+    rulesetCellBlocked(grid, at.x, at.y)
+  )
+    return false;
+  // A lasting sphere held on its caster (Spirit Guardians) goes wherever they are, so the only
+  // place it is aimed is where they stand: there is nothing to place.
+  if (
+    action.zone?.anchor === "caster" &&
+    action.area.shape !== "line" &&
+    action.area.shape !== "cone" &&
+    action.area.shape !== "wall"
+  )
+    return rulesetFootprint(actor!).some((cell) => cell.x === at.x && cell.y === at.y);
   // From whichever cell the actor fills (1.194).
   if (rulesetDistanceTo(at, actor) > reach.max) return false;
   // Not cast across a layered wall's layer that stops spells (1.439): Prismatic Wall's indigo.
@@ -2580,7 +2599,7 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
 /** How a creature's action with no entry is named as a ward's pick (1.705): `action:<name>`. */
 function wardPickOf(action: RulesetCombatAction): string | undefined {
   if (action.entry) return action.entry;
-  const name = action.label.trim().toLowerCase();
+  const name = (action.label ?? "").trim().toLowerCase();
   return name ? `action:${name}` : undefined;
 }
 
@@ -3797,6 +3816,23 @@ function optionFrom(
         payments.map((pool) => [pool, rulesetPaidTargetCount(definition, actor, action, pool)]),
       );
     }
+    // What each higher payment adds, so the menu can say it: Fireball's +1d6 a level, a Cloudkill
+    // that grows (1.267). Targets are `targetsWith`'s.
+    const gains: NonNullable<RulesetCombatOption["payGains"]> = {};
+    const step = action.use?.perCostStep ?? action.itemUse?.charges?.step?.amount;
+    for (const pool of payments) {
+      const steps = rulesetCostSteps(definition, action, pool, actor);
+      if (steps <= 0) continue;
+      const times = action.use?.stepsEvery ? Math.floor(steps / action.use.stepsEvery) : steps;
+      const gain: NonNullable<RulesetCombatOption["payGains"]>[string] = {};
+      if (step && times > 0) {
+        gain.amount = { count: step.count * times, sides: step.sides, flat: (step.flat ?? 0) * times };
+        if (action.heal && !action.damage) gain.heals = true;
+      }
+      if (action.area?.sizePerCostStep) gain.size = action.area.sizePerCostStep * steps;
+      if (Object.keys(gain).length) gains[pool] = gain;
+    }
+    if (Object.keys(gains).length) option.payGains = gains;
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;
@@ -4010,7 +4046,7 @@ function alterNeededOption(
       offers.unshift({
         id: one.id,
         label: one.label,
-        cost: one.usesSpentByLevel ? Math.max(1, level) : (one.use?.count ?? 1),
+        cost: one.usesSpentByLevel ? Math.max(1, level) : one.use ? (one.use.count ?? 1) : 0,
         ...(alter.budget ? { budget: alter.budget.to } : {}),
       });
     }
@@ -4170,7 +4206,7 @@ export function rulesetAlterOffers(
       {
         id: one.id,
         label: one.label,
-        cost: one.usesSpentByLevel ? Math.max(1, level) : (one.use?.count ?? 1),
+        cost: one.usesSpentByLevel ? Math.max(1, level) : one.use ? (one.use.count ?? 1) : 0,
         ...(one.usesSpentByLevel ? { perLevel: true as const } : {}),
         ...(alter.twins ? { twins: true as const } : {}),
         ...(alter.joins ? { joins: true as const } : {}),

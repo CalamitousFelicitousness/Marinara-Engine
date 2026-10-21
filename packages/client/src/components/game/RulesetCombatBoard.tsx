@@ -33,7 +33,9 @@ import {
   heightWash,
 } from "../../lib/tactical-board-look";
 import {
+  rulesetAimCatchesAllies,
   rulesetAimTake,
+  rulesetAimTemplate,
   rulesetAimTurning,
   rulesetBoardCells,
   type RulesetCellChoice,
@@ -115,6 +117,21 @@ export function RulesetCombatBoard({
   }, [step, reading]);
   const aimed = reading && step?.stage === "aim" ? byKey.get(rulesetCellKey(reading))?.aim : undefined;
   const caught = useMemo(() => new Set(aimed?.targetIds ?? []), [aimed]);
+  // The shape it would land in, drawn on the board while it is aimed, and who of the caster's own
+  // side it would catch, who are marked apart and warned about before the cast.
+  const aimedAt = aimed ? reading : null;
+  const template = useMemo(
+    () => new Set(rulesetAimTemplate(view, step, aimedAt).map(rulesetCellKey)),
+    [view, step, aimedAt],
+  );
+  const alliesCaught = useMemo(() => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [])), [view, aimed]);
+  // A cast that catches allies, or any aim tapped on a touch screen, is armed by the first pick of
+  // its square and cast by the second: the first only shows what it would do.
+  const [armed, setArmed] = useState<string | null>(null);
+  // Used with one that spares its user's side (Sculpt Spells), who is spared is picked next, so
+  // catching them is nothing to stop the cast for.
+  const sparing = !!step?.alters?.some((id) => step.option.alters?.find((offer) => offer.id === id)?.spares);
+  const lastPointer = useRef<string>("mouse");
 
   // The keyboard starts on whoever is up, so a player who never touches the pointer is already
   // where the turn is. It follows the turn, and nothing else moves it.
@@ -127,6 +144,7 @@ export function RulesetCombatBoard({
   // A step that ends, or a turn that moves on, leaves nothing half-described under the board.
   useEffect(() => {
     setReading(null);
+    setArmed(null);
   }, [step?.stage, step?.option.id, view.actorId, view.round]);
 
   const holdStep = useCallback((next: RulesetMenuStep | null) => setStep(next), []);
@@ -173,6 +191,14 @@ export function RulesetCombatBoard({
     }
     // A wall set down waits for the way it runs, and any square turns it (1.177).
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
+      const key = rulesetCellKey(cell);
+      const friendly = !sparing && rulesetAimCatchesAllies(view, cell.aim?.targetIds ?? []).length > 0;
+      if ((friendly || lastPointer.current === "touch") && armed !== key) {
+        setArmed(key);
+        setReading({ x: cell.x, y: cell.y });
+        return;
+      }
+      setArmed(null);
       const taken = rulesetAimTake(step.option, step.lay, cell);
       if ("lay" in taken) {
         setStep({ ...step, lay: taken.lay });
@@ -319,6 +345,15 @@ export function RulesetCombatBoard({
   const readingKey = reading ? rulesetCellKey(reading) : undefined;
   const readingHint = readingKey === undefined ? undefined : sentences.get(readingKey);
   const hint = readingHint ?? (rulesetNothingInReach(view) ? t("game.combat.ruleset.board.nothingInReach") : "");
+  const allyNames = view.combatants.filter((one) => alliesCaught.has(one.id)).map((one) => one.name);
+  const warning =
+    allyNames.length > 0
+      ? t(sparing ? "game.combat.ruleset.board.catchesAlliesSpared" : "game.combat.ruleset.board.catchesAllies", {
+          names: allyNames.join(", "),
+        })
+      : armed && readingKey === armed
+        ? t("game.combat.ruleset.board.tapAgain")
+        : "";
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-white">
@@ -403,7 +438,14 @@ export function RulesetCombatBoard({
                     sentences.get(key) ?? "",
                     cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                   ].join(" ")}
-                  onClick={() => takeCell(cell)}
+                  onPointerDown={(event) => {
+                    lastPointer.current = event.pointerType;
+                  }}
+                  onClick={(event) => {
+                    // A click the keyboard made has no pointer behind it.
+                    if (event.detail === 0) lastPointer.current = "keyboard";
+                    takeCell(cell);
+                  }}
                   onKeyDown={(event) => onKeyDown(event, cell)}
                   onFocus={() => {
                     setCursor({ x: cell.x, y: cell.y });
@@ -632,6 +674,12 @@ export function RulesetCombatBoard({
                       style={art?.aim && !isAimed && !cell.laid ? boardSliceStyle(art.aim) : undefined}
                     />
                   )}
+                  {template.has(key) && (
+                    <span
+                      data-template=""
+                      className="pointer-events-none absolute inset-0 bg-orange-500/35 ring-1 ring-inset ring-orange-200/70"
+                    />
+                  )}
                   {isActor && (
                     <span className="pointer-events-none absolute inset-0 rounded-[3px] border-2 border-dashed border-[var(--primary)]/80" />
                   )}
@@ -684,7 +732,8 @@ export function RulesetCombatBoard({
                     "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
                     onTurn && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
                     cell.targetable && "ring-2 ring-[var(--destructive)]",
-                    caught.has(combatant.id) && "ring-2 ring-amber-200",
+                    caught.has(combatant.id) &&
+                      (alliesCaught.has(combatant.id) ? "ring-4 ring-red-500" : "ring-2 ring-amber-200"),
                   )}
                   style={{
                     borderColor: ring,
@@ -762,6 +811,11 @@ export function RulesetCombatBoard({
           "z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur",
         )}
       >
+        {warning && (
+          <span data-warning="" className="mr-1 font-semibold text-red-300">
+            {warning}
+          </span>
+        )}
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
       </p>
 

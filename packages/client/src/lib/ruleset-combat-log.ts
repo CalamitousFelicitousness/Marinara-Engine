@@ -1509,10 +1509,12 @@ export function rulesetCombatEventLine(
     case "pass":
       return key("pass", { actor: names.combatant(event.actorId) });
     case "cancelled":
-      return key("cancelled", {
+      // Said with what stopped it: "Mage stops Elara with Counterspell".
+      return key(event.with ? "cancelledWith" : "cancelled", {
         actor: names.combatant(event.actorId),
         label: event.label,
         by: names.combatant(event.byId),
+        ...(event.with ? { with: event.with } : {}),
       });
     case "opportunity":
       return key("opportunity", {

@@ -9,6 +9,10 @@
 // The one number this file turns into another is the ruleset's own: a count of cells becomes the
 // ruleset's own distance by its own `perCell`, so the screen says "20 ft" or "8 paces" rather than
 // a cell count nobody at the table would recognise.
+//
+// The one shape it draws is an aimed area's template, with the Engine's own pure shape function: the
+// view sends the shape in cells so the template can be drawn before the cast, and who it would catch
+// still comes from the server's own aim entries.
 import type {
   DirectedRulesetCombatant,
   DirectedRulesetOption,
@@ -16,7 +20,7 @@ import type {
   RulesetCombatCell,
   TacticalTerrain,
 } from "@marinara-engine/shared";
-import { TERRAIN_DATA } from "@marinara-engine/shared";
+import { rulesetAreaCells, rulesetWallShape, TERRAIN_DATA, type TacticalGrid } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 import type { RulesetAimLay, RulesetMenuStep } from "./ruleset-combat-menu";
 
@@ -179,6 +183,82 @@ export function rulesetAimTake(
     return 1 + next.also.length >= area!.copies! ? { send: rulesetAimSoFar(next)! } : { lay: next };
   }
   return { send: { at } };
+}
+
+/**
+ * The cells a shape aimed at `at` would cover, with the copies already set down (1.178), so the
+ * board draws its template while it is aimed: a Fireball's sphere, a Lightning Bolt's line, a cone,
+ * a cube, a wall turned toward `at` once it was set down (1.177). Laid from whichever cell the
+ * actor fills nearest the aim (1.194), as the cast is. Empty when nothing is being aimed.
+ */
+export function rulesetAimTemplate(
+  view: DirectedRulesetView,
+  step: RulesetMenuStep | null,
+  at: RulesetCombatCell | null,
+): RulesetCombatCell[] {
+  const grid = view.grid as TacticalGrid | undefined;
+  const area = step?.stage === "aim" ? step.option.area : undefined;
+  const actor = view.combatants.find((combatant) => combatant.id === view.actorId);
+  if (!grid || !area || !step || step.option.teleport || typeof actor?.x !== "number" || typeof actor.y !== "number")
+    return [];
+  const span = Math.max(1, actor.span ?? 1);
+  const from = (aim: RulesetCombatCell) => ({
+    x: Math.min(Math.max(aim.x, actor.x!), actor.x! + span - 1),
+    y: Math.min(Math.max(aim.y, actor.y!), actor.y! + span - 1),
+  });
+  const lay = step.lay;
+  const shapes: RulesetCombatCell[][] = [];
+  if (area.shape === "wall") {
+    const first = lay?.at ?? at;
+    if (!first) return [];
+    const turned = lay?.at && at && (at.x !== lay.at.x || at.y !== lay.at.y) ? at : undefined;
+    shapes.push(rulesetWallShape(grid, area, first, from(first), turned, undefined, !!lay?.ring).cells);
+  } else {
+    for (const aim of [lay?.at, ...(lay?.also ?? []), at]) {
+      if (aim) shapes.push(rulesetAreaCells(area.shape, area.size, from(aim), aim, grid, area.width));
+    }
+  }
+  const seen = new Map<string, RulesetCombatCell>();
+  for (const cell of shapes.flat()) seen.set(rulesetCellKey(cell), cell);
+  return [...seen.values()];
+}
+
+/** Where a shape that may only be aimed at its user's own square lands (Spirit Guardians, a
+ *  self-centred burst): there is nothing to place, so it is sent there without a placing step. Null
+ *  for anything with a choice of where. */
+export function rulesetSelfAim(view: DirectedRulesetView, option: DirectedRulesetOption): RulesetCombatCell | null {
+  const aims = option.aim ?? [];
+  if (aims.length !== 1 || option.teleport || !option.area) return null;
+  if (option.area.shape === "wall" || (option.area.copies ?? 1) > 1) return null;
+  const actor = view.combatants.find((one) => one.id === (view.window?.actorId ?? view.actorId));
+  if (typeof actor?.x !== "number" || typeof actor.y !== "number") return null;
+  const span = Math.max(1, actor.span ?? 1);
+  const only = aims[0]!;
+  const inside = only.x >= actor.x && only.x < actor.x + span && only.y >= actor.y && only.y < actor.y + span;
+  return inside ? { x: only.x, y: only.y } : null;
+}
+
+/** The alterations worth offering for an option (1.253): one that only spares its user's side
+ *  (Sculpt Spells, Careful Spell) is left out of a shape no aim of which catches anybody of that
+ *  side. An option aimed at targets rather than a square keeps them all. */
+export function rulesetUsefulAlters(
+  view: DirectedRulesetView,
+  option: DirectedRulesetOption,
+): NonNullable<DirectedRulesetOption["alters"]> {
+  const offers = option.alters ?? [];
+  if (!option.area || !option.aim || !view.grid) return offers;
+  const actor = view.combatants.find((one) => one.id === (view.window?.actorId ?? view.actorId));
+  const own = new Set(view.combatants.filter((one) => one.side === actor?.side).map((one) => one.id));
+  if (option.aim.some((aim) => aim.targetIds.some((id) => own.has(id)))) return offers;
+  return offers.filter((offer) => !offer.spares || offer.id === option.alterNeeded);
+}
+
+/** Who an aim at this cell would catch of the actor's own side, the actor included: what the
+ *  board warns about before the cast. */
+export function rulesetAimCatchesAllies(view: DirectedRulesetView, targetIds: readonly string[]): string[] {
+  const actor = view.combatants.find((combatant) => combatant.id === view.actorId);
+  if (!actor) return [];
+  return targetIds.filter((id) => view.combatants.find((combatant) => combatant.id === id)?.side === actor.side);
 }
 
 /** Whether taking this option asks the player to pick a cell to walk to: a walk, or a legendary

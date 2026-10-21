@@ -3266,6 +3266,7 @@ console.info("game ruleset combat core regressions passed.");
     optionId: "scimitar",
     label: "Scimitar",
     byId: "corwin",
+    with: "Unmake",
   });
   assert.equal(eventsOf(stopped.events, "attack").length, 0, "the swing never lands");
   assert.equal(eventsOf(stopped.events, "damage").length, 0);

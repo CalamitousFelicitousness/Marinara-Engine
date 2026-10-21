@@ -112,6 +112,7 @@ import {
   type DirectedCommand,
   type DirectedRulesetCombatant,
   type DirectedRulesetOption,
+  rulesetPaidLevel,
   type DirectedRulesetView,
   type RulesetBoardLight,
   type RulesetCatalogEntriesById,
@@ -727,6 +728,27 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
   };
 }
 
+/** What a party member has left of the pools their actions spend (spell slots, ki, sorcery points),
+ *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
+function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
+  if (combatant.side !== "party" || !combatant.sheet) return undefined;
+  const spent = new Set<string>();
+  const groups = new Set<string>();
+  for (const action of combatant.actions) {
+    if (action.use?.pool) spent.add(action.use.pool);
+    if (action.use?.group) groups.add(action.use.group);
+  }
+  for (const pool of definition.sheet.live.pools) {
+    if ((pool.group && groups.has(pool.group)) || pool.pays?.some((group) => groups.has(group))) spent.add(pool.id);
+  }
+  if (spent.size === 0) return undefined;
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const pools = live.pools
+    .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
+    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max }));
+  return pools.length ? pools : undefined;
+}
+
 function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -769,6 +791,7 @@ function projectCombatant(
     ...(combatant.away?.left ? { left: true as const } : {}),
     ...(combatant.surprised ? { surprised: true as const } : {}),
     ...(deathTrack ? { deathTrack } : {}),
+    ...((pools) => (pools ? { pools } : {}))(spentPoolsOf(definition, combatant)),
     ...(saveModifiers.length ? { saveModifiers } : {}),
     ...(() => {
       // Its creature type and tags, by their labels (1.168).
@@ -827,8 +850,9 @@ export function rulesetMenu(
         ? rulesetFallTargets(definition, encounter, actor, action)
         : undefined;
     // Paying out of a higher pool is offered only where it gains something (more dice, more
-    // targets) or where only a higher pool can pay now: Misty Step and Shield are cast as they are.
-    const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
+    // targets, a level that stops or ends more) or where only a higher pool can pay now: Misty Step
+    // and Shield are cast as they are.
+    const grows = !!action && rulesetPaidLevelMatters(action);
     const payWith = option.payWith && (grows || option.upcastOnly) ? option.payWith : undefined;
     const { payWith: _offered, ...rest } = option;
     return {
@@ -840,6 +864,24 @@ export function rulesetMenu(
   });
 }
 
+/** Whether paying for an action out of a higher pool changes anything it does: more dice or targets
+ *  or a bigger shape, a level that stops (Counterspell) or ends (Dispel Magic) more, a held spell
+ *  harder to end, healing that grows with its level. */
+function rulesetPaidLevelMatters(action: RulesetCombatAction): boolean {
+  return (
+    !!action.use?.perCostStep ||
+    !!action.use?.targetsPerStep ||
+    !!action.area?.sizePerCostStep ||
+    action.reaction?.upTo === "paid" ||
+    !!action.endsSpells ||
+    !!action.ends ||
+    !!action.concentration ||
+    !!action.healAdd?.length ||
+    !!action.healsSelf?.length ||
+    !!action.altered?.sparesByLevel
+  );
+}
+
 /** What the sheet calls each pool, by id ("3rd-level slots" for `slots_3`), for a menu to show. */
 function rulesetPoolLabels(definition: RulesetDefinition, pools: string[]): Record<string, string> {
   const labels: Record<string, string> = {};
@@ -849,6 +891,53 @@ function rulesetPoolLabels(definition: RulesetDefinition, pools: string[]): Reco
     if (label) labels[id] = label;
   }
   return labels;
+}
+
+/** What a window holds while it is answered, where that is something being used (1.116): the level
+ *  it was paid at and where an area of it was aimed, for a prompt that says what it would stop. */
+function rulesetHeldUse(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  window: NonNullable<RulesetEncounterState["window"]>,
+): { level: number; at?: { x: number; y: number } } | undefined {
+  const resume = window.resume;
+  if (
+    (resume?.kind !== "action" && resume?.kind !== "answer") ||
+    (window.trigger.kind !== "used" && window.trigger.kind !== "aimed")
+  )
+    return undefined;
+  const caster = rulesetCombatant(encounter, resume.actorId);
+  const action = caster?.actions.find((entry) => entry.id === resume.optionId);
+  if (!caster || !action) return undefined;
+  return {
+    level: rulesetPaidLevel(definition, caster, action, resume.payWith),
+    ...(resume.kind === "action" && resume.at ? { at: { ...resume.at } } : {}),
+  };
+}
+
+/** Each answer that stops what is held only up to its own level (1.116), with whether it does so
+ *  outright or the check it needs: what a player weighs before spending a Counterspell. */
+function rulesetCounterOdds(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  window: NonNullable<RulesetEncounterState["window"]>,
+  answeringId: string,
+  options: DirectedRulesetOption[],
+): DirectedRulesetOption[] {
+  const held = rulesetHeldUse(definition, encounter, window);
+  const answering = rulesetCombatant(encounter, answeringId);
+  if (!held || !answering) return options;
+  return options.map((option) => {
+    const action = answering.actions.find((entry) => entry.id === option.id);
+    if (action?.reaction?.upTo !== "paid") return option;
+    const reach = rulesetPaidLevel(definition, answering, action);
+    if (held.level <= reach) return { ...option, counter: { sure: true, level: reach } };
+    const above = action.reaction.above;
+    return {
+      ...option,
+      counter: { level: reach, ...(above ? { dc: above.dc + held.level, modifier: above.modifier } : {}) },
+    };
+  });
 }
 
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs. */
@@ -960,10 +1049,19 @@ export function directedRulesetView(
             ...(held.window.trigger.kind === "hit"
               ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
               : {}),
+            ...((what) => (what ? { held: what } : {}))(rulesetHeldUse(definition, encounter, held.window)),
             controller: held.controller,
           },
           ...(held.controller === "manual" && !state.window
-            ? { options: rulesetMenu(definition, encounter, held.actorId, true) }
+            ? {
+                options: rulesetCounterOdds(
+                  definition,
+                  encounter,
+                  held.window,
+                  held.actorId,
+                  rulesetMenu(definition, encounter, held.actorId, true),
+                ),
+              }
             : {}),
         }
       : actor && !over && controller === "manual" && !state.window
@@ -2039,6 +2137,13 @@ export function rulesetStoppedWorth(
 ): number {
   const trigger = encounter.window?.trigger;
   if (!trigger || (trigger.kind !== "aimed" && trigger.kind !== "used")) return 0.4;
+  // Stopping an answer (a Counterspell at our own cast) is worth what that answer would have stopped:
+  // what our cast does to its side, read from where its caster stands.
+  const answering = encounter.window?.resume?.kind === "answer" ? encounter.window.outer : undefined;
+  const counterer = rulesetCombatant(encounter, trigger.sourceId);
+  if (answering && counterer) {
+    return rulesetStoppedWorth(definition, combat, { ...encounter, window: answering }, counterer);
+  }
   const source = rulesetCombatant(encounter, trigger.sourceId);
   const action = source?.actions.find((one) => one.id === trigger.optionId);
   if (!source || !action) return 0.4;

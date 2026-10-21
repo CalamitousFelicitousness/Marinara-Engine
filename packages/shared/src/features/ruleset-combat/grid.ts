@@ -723,6 +723,11 @@ export function rulesetAreaCells(
   const dy = Math.sign(toward.y - origin.y);
   // Aimed at the cell it is standing in: there is no direction, so the shape covers nothing.
   if (dx === 0 && dy === 0) return [];
+  if (shape === "line" && Math.max(1, Math.round(width)) === 1) {
+    // A one-cell line runs at whatever angle it was aimed (a Lightning Bolt is not held to the eight
+    // ways a grid runs): one cell for each step out, on the straight run toward the aim.
+    return lineCells(reach, origin, toward.x - origin.x, toward.y - origin.y, grid, 1);
+  }
   return shape === "line"
     ? lineCells(reach, origin, dx, dy, grid, Math.max(1, Math.round(width)))
     : coneCells(reach, origin, dx, dy, grid);
@@ -980,9 +985,14 @@ function lineCells(
     return cells;
   }
   const cells: RulesetCombatCell[] = [];
+  // The run toward the aim, one cell further out each step: along an axis or a diagonal `dx` and
+  // `dy` are 1 or 0, and at any other angle the cell nearest the straight run is taken.
+  const most = Math.max(Math.abs(dx), Math.abs(dy), 1);
+  // Rounded away from the middle either way, so a line aimed left is the mirror of one aimed right.
+  const round = (value: number) => Math.sign(value) * Math.round(Math.abs(value));
   // `blocksSight` reads off the board as solid, so the line ends at the edge whatever its size.
   for (let step = 1; step <= reach; step++) {
-    const cell = { x: origin.x + dx * step, y: origin.y + dy * step };
+    const cell = { x: origin.x + round((dx * step) / most), y: origin.y + round((dy * step) / most) };
     // What blocks sight ends the line where it stands, rather than letting it carry on behind; it
     // carries on across water, where nobody stands.
     if (blocksSight(grid, cell.x, cell.y)) break;

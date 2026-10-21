@@ -561,7 +561,9 @@ try {
             !line.startsWith("- [skill_check:") &&
             !line.startsWith("- For other checks") &&
             !line.startsWith("- If roll_dice has already returned") &&
-            !line.startsWith("- Do not use roll_dice for"),
+            !line.startsWith("- Do not use roll_dice for") &&
+            // What a ruleset makes that lasts a while (1.707) is said only where one is pinned.
+            !line.startsWith("  Something made to last only so long"),
         )
         .join("\n");
     assert.equal(strip(reminder), strip(legacyReminder));

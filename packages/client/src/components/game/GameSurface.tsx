@@ -10707,8 +10707,12 @@ function GameSurfaceComponent({
       ...(inventoryItemBook ? { onRest: (rest: string) => handleRulesetRest(cardTitle, rest) } : {}),
       onEnvelopeSave: (next) => handleSaveRulesetSheet(cardTitle, next),
       ...(items ? { items } : {}),
+      // Mid-fight the fight keeps the sheet's pools and tracks: a slot pressed back with + would be
+      // a free spell, so the sheet is shown and not edited until the fight is over.
+      ...(combatUiActive ? { readOnly: true } : {}),
     };
   }, [
+    combatUiActive,
     characterSheetCharId,
     findStoredGameCard,
     gameRuleset,

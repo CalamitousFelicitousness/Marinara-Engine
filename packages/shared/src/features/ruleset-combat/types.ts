@@ -2650,6 +2650,9 @@ export interface RulesetCombatWindow {
   waiting: string[];
   /** What this window interrupted, when something waits for it to close. */
   resume?: RulesetWindowResume;
+  /** An answer given in this window that has now been let through or stopped (counter-the-counter):
+   *  taken next, or passed over, before anybody else is asked. */
+  answered?: { choice: RulesetCombatChoice; cancelled?: true };
   /** What a hit's own maker has already answered it with (1.241): they are asked again for the rest,
    *  as a paladin smites and stuns with one blow, until they pass. */
   taken?: string[];
@@ -2827,7 +2830,20 @@ export interface RulesetReactionAgainst {
 
 /** What the fight goes back to once the window closes. A window opened after something has already
  *  happened carries none: there is nothing to pick up. */
-export type RulesetWindowResume = RulesetWalkResume | RulesetActionResume | RulesetFallResume;
+export type RulesetWindowResume = RulesetWalkResume | RulesetActionResume | RulesetFallResume | RulesetAnswerResume;
+
+/** An answer that is itself being answered: a Counterspell the other side may counter. It is paid
+ *  for, and held while they are asked; once nobody stops it, it is taken as it was chosen, in the
+ *  window it answers. */
+export interface RulesetAnswerResume {
+  kind: "answer";
+  actorId: string;
+  optionId: string;
+  payWith?: string;
+  choice: RulesetCombatChoice;
+  /** Somebody stopped it. What it cost stays spent. */
+  cancelled?: true;
+}
 
 /** A fall lands after the answers have put their conditions on its target (1.124). */
 export interface RulesetFallResume {
@@ -3868,7 +3884,7 @@ export type RulesetCombatEvent =
     }
   /** Something held open by a window was called off, and never happened. What it cost stays spent:
    *  it was paid for before anybody was asked. */
-  | { type: "cancelled"; actorId: string; optionId: string; label: string; byId: string }
+  | { type: "cancelled"; actorId: string; optionId: string; label: string; byId: string; with?: string }
   /** Both sides of a contest: what each threw, what it added and the total, and who won. What winning
    *  did follows as its own events (a condition, a push). */
   | {
@@ -4273,6 +4289,9 @@ export interface RulesetCombatOption {
   upcastOnly?: true;
   /** How many targets it takes when paid with each of `payWith`, where that grows (1.171). */
   targetsWith?: Record<string, number>;
+  /** What paying with each of `payWith` adds over its own cost: more dice, of healing where it
+   *  heals, and cells more of its shape (1.267). A pool missing here adds nothing but targets. */
+  payGains?: Record<string, { amount?: RulesetCombatAmount; heals?: true; size?: number }>;
   /** The cells of standing wall sections this attack may be pointed at instead (1.200). */
   walls?: RulesetCombatCell[];
   /** Lasting areas it may be aimed at instead of a creature, to end them (1.374): Dispel Magic on a

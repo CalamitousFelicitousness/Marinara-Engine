@@ -21,11 +21,14 @@ import {
   type RulesetCellChoice,
   rulesetOptionHasAim,
   rulesetOptionNeedsAim,
+  rulesetSelfAim,
+  rulesetUsefulAlters,
   rulesetOptionNeedsCell,
 } from "../../lib/ruleset-combat-board";
 import {
   rulesetDefaultTargets,
   rulesetPicksStep,
+  rulesetPayGainText,
   rulesetMenuGroups,
   rulesetOptionCostText,
   rulesetModeText,
@@ -242,6 +245,21 @@ export function RulesetCombatMenu({
       heightens,
     );
   };
+  /** A shape centred on its user is sent where it stands, with no square to place it on: what it
+   *  spares and heightens are still picked first. True when it was sent or that step opened. */
+  const sendSelfAimed = (
+    option: DirectedRulesetOption,
+    how: { payWith?: string; style?: string; mode?: string; amount?: number; alters?: string[] },
+  ): boolean => {
+    if (!view.grid || !rulesetOptionNeedsAim(option)) return false;
+    const at = rulesetSelfAim(view, option);
+    if (!at) return false;
+    const held: RulesetMenuStep = { stage: "aim", option, targets: [], ...how, cell: { at } };
+    if (picksFirst(held)) return true;
+    closeStep();
+    onChoose(option.id, [], how.payWith, { at }, how.style, how.mode, how.amount, how.alters);
+    return true;
+  };
   /** Which picking step this option opens, or null for one that is simply sent. On a board, a walk
    *  and a shape are picked on the board; everything else is the list below. */
   const stageFor = (option: DirectedRulesetOption): RulesetMenuStep["stage"] | null => {
@@ -265,7 +283,13 @@ export function RulesetCombatMenu({
       ...(typeof amount === "number" ? { amount } : {}),
       ...(alters?.length ? { alters } : {}),
     };
-    // What it may be used with comes first (1.253): Metamagic, which may give it another target.
+    // What it may be used with comes first (1.253): Metamagic, which may give it another target. One
+    // that only spares its user's side (Sculpt Spells, Careful Spell) is not offered for a shape no
+    // aim of which catches anybody of that side.
+    const offered = rulesetUsefulAlters(view, option);
+    if (offered.length !== (option.alters?.length ?? 0)) {
+      option = { ...option, alters: offered.length ? offered : undefined };
+    }
     if (option.alters?.length && alters === undefined) {
       setAltersPicked(option.alterNeeded ? [option.alterNeeded] : []);
       setStep({ stage: "alter", option, ...how, targets: [] });
@@ -287,6 +311,7 @@ export function RulesetCombatMenu({
       setStep({ stage: "pay", option: aimed, ...how, targets: [] });
       return;
     }
+    if (sendSelfAimed(aimed, how)) return;
     const stage = stageFor(aimed);
     if (stage) {
       setStep({
@@ -347,6 +372,16 @@ export function RulesetCombatMenu({
     // A pool that lets it take more targets aims at as many as it lets it (1.171).
     const count = payWith ? step.option.targetsWith?.[payWith] : undefined;
     const option = count !== undefined ? { ...step.option, targets: { ...step.option.targets, count } } : step.option;
+    if (
+      sendSelfAimed(option, {
+        ...(payWith ? { payWith } : {}),
+        ...(step.style ? { style: step.style } : {}),
+        ...(step.mode ? { mode: step.mode } : {}),
+        ...(step.amount !== undefined ? { amount: step.amount } : {}),
+        ...(step.alters ? { alters: step.alters } : {}),
+      })
+    )
+      return;
     const stage = stageFor(option);
     if (!stage) {
       send(option, rulesetDefaultTargets(option), payWith, step.style, step.mode);
@@ -594,11 +629,13 @@ export function RulesetCombatMenu({
                 )}
               >
                 <span className="block font-semibold">{offer.label}</span>
-                <span className="block text-[0.65rem] text-white/55">
-                  {t(offer.perLevel ? "game.combat.ruleset.alter.costPerLevel" : "game.combat.ruleset.alter.cost", {
-                    count: offer.cost,
-                  })}
-                </span>
+                {(offer.cost > 0 || offer.perLevel) && (
+                  <span className="block text-[0.65rem] text-white/55">
+                    {t(offer.perLevel ? "game.combat.ruleset.alter.costPerLevel" : "game.combat.ruleset.alter.cost", {
+                      count: offer.cost,
+                    })}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -839,6 +876,12 @@ export function RulesetCombatMenu({
                         option.payLabels?.[rulesetItemSlotPayment(pool)!.pool] ?? rulesetItemSlotPayment(pool)!.pool,
                     })
                   : t("game.combat.ruleset.upcast.pool", { pool: option.payLabels?.[pool] ?? pool })}
+              {/* What the higher payment gets: Fireball's +1d6, Hold Person's other target. */}
+              {rulesetPayGainText(option, pool, t, distance) && (
+                <span className="block text-[0.65rem] text-white/60">
+                  {rulesetPayGainText(option, pool, t, distance)}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1290,6 +1333,26 @@ export function RulesetCombatMenu({
                     : String(view.window.defense),
             },
           )}
+          {/* What is held, for an answer that stops it only up to its own level: Counterspell. */}
+          {view.window.held && (
+            <span className="block normal-case tracking-normal text-white/70">
+              {[
+                view.window.held.level > 0
+                  ? t("game.combat.ruleset.menu.heldLevel", {
+                      label: view.window.label ?? "",
+                      level: view.window.held.level,
+                    })
+                  : t("game.combat.ruleset.menu.heldFree", { label: view.window.label ?? "" }),
+                view.window.targetIds?.length
+                  ? t("game.combat.ruleset.menu.heldAt", { names: view.window.targetIds.map(nameOf).join(", ") })
+                  : view.window.held.at
+                    ? t("game.combat.ruleset.menu.heldArea", { x: view.window.held.at.x, y: view.window.held.at.y })
+                    : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            </span>
+          )}
         </p>
       ) : (
         <p className="hidden text-[0.65rem] uppercase tracking-wide text-white/45 sm:block">
@@ -1331,6 +1394,31 @@ export function RulesetCombatMenu({
                           save: option.cancelSave.label,
                           dc: option.cancelSave.dc,
                         })}
+                      </span>
+                    )}
+                    {/* Whether it stops what is held (1.116): outright, on a check, or not at all. */}
+                    {option.counter && (
+                      <span
+                        className={cn(
+                          "block text-[0.65rem]",
+                          option.counter.sure
+                            ? "text-emerald-300/80"
+                            : option.counter.dc !== undefined
+                              ? "text-amber-300/80"
+                              : "text-rose-300/80",
+                        )}
+                      >
+                        {option.counter.sure
+                          ? t("game.combat.ruleset.menu.counterSure")
+                          : option.counter.dc !== undefined
+                            ? t("game.combat.ruleset.menu.counterCheck", {
+                                modifier:
+                                  (option.counter.modifier ?? 0) >= 0
+                                    ? `+${option.counter.modifier ?? 0}`
+                                    : String(option.counter.modifier),
+                                dc: option.counter.dc,
+                              })
+                            : t("game.combat.ruleset.menu.counterNever")}
                       </span>
                     )}
                     {/* Breaks a command at a cost (1.591): a Geas. */}

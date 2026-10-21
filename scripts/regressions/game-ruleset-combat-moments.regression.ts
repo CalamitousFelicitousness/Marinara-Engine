@@ -247,7 +247,14 @@ try {
       window: window.id,
     });
     assert.deepEqual(eventsOf(smothered.events, "cancelled"), [
-      { type: "cancelled", actorId: "kindler", optionId: tossOption.id, label: "Coldfire Toss", byId: "pell" },
+      {
+        type: "cancelled",
+        actorId: "kindler",
+        optionId: tossOption.id,
+        label: "Coldfire Toss",
+        byId: "pell",
+        with: "Smother",
+      },
     ]);
     assert.deepEqual(eventsOf(smothered.events, "damage"), [], "the toss never happens");
     assert.deepEqual(eventsOf(smothered.events, "spend"), [
@@ -487,15 +494,24 @@ try {
     assert.ok(eventsOf(landed.events, "damage").length > 0);
     // Pell smothers it instead: nobody is asked about it being aimed, because it never is.
     const smother = rulesetCombatant(first.state, "pell")!.actions.find((action) => action.label === "Smother")!;
-    const stopped = act(variant, first.state, {
+    const smothering = act(variant, first.state, {
       actorId: "pell",
       optionId: smother.id,
       targetIds: [],
       window: first.state.window!.id,
     });
+    // The Kindler holds a Smother too, and Pell's is a spell it may answer (counter-the-counter).
+    assert.equal(smothering.state.window?.resume?.kind, "answer");
+    assert.deepEqual(smothering.state.window?.waiting, ["kindler"]);
+    const stopped = act(variant, smothering.state, {
+      actorId: "kindler",
+      optionId: RULESET_PASS_OPTION,
+      targetIds: [],
+      window: smothering.state.window!.id,
+    });
     assert.equal(stopped.state.window, undefined, "no aimed window for something that was called off");
-    // The Kindler holds a Smother too, yet Pell's own counter opens nothing for it: no chain.
-    assert.deepEqual(eventsOf(stopped.events, "window"), []);
+    assert.equal(eventsOf(stopped.events, "cancelled")[0]?.label, "Coldfire Toss");
+    assert.deepEqual(eventsOf(stopped.events, "window"), [], "and nothing more is asked");
   }
 
   // ── What the screen says ──

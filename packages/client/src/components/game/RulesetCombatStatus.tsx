@@ -103,6 +103,13 @@ export function RulesetCombatStatus({
               })}
             </span>
           )}
+          {/* What the actor's actions spend and has left of it (spell slots, ki), so nobody opens
+              the sheet mid-fight to count. */}
+          {actor?.pools?.map((pool) => (
+            <span key={pool.id} data-pool={pool.id} className={cn(pool.value === 0 && "opacity-50")}>
+              {t("game.combat.ruleset.status.pool", { label: pool.label, value: pool.value, max: pool.max })}
+            </span>
+          ))}
         </div>
 
         {/* Folded away on a phone, where the stage already shows both sides and every row this strip

@@ -364,6 +364,18 @@ export function GameCharacterSheet({
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<GameCardDraft>(() => createDraft(card.gameCard));
   const savedGameCardRef = useRef(JSON.stringify(card.gameCard));
+  // Escape closes the sheet as a backdrop click does, unless an edit is open: that is not thrown
+  // away by a key.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (isEditing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) closeRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isEditing]);
 
   useEffect(() => {
     // Layout and other metadata saves rebuild the card without changing its saved sheet.

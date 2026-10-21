@@ -5,6 +5,7 @@ import type { CombatOrders } from "./combat-ai.js";
 import { z } from "zod";
 import type { Combatant, CombatPlayerAction, CombatSummary } from "../types/game.js";
 import type {
+  RulesetCombatCell,
   RulesetCombatEvent,
   RulesetCombatOption,
   RulesetCombatSide,
@@ -174,6 +175,8 @@ export interface DirectedRulesetCombatant {
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** What this combatant is holding together, when the ruleset has concentration. */
   concentrating?: string;
+  /** A party member's pools their actions spend, as they stand (spell slots, ki): the fight's HUD. */
+  pools?: Array<{ id: string; label: string; value: number; max: number }>;
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
@@ -208,6 +211,10 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;
   /** What the sheet calls each pool `payWith` names, by pool id: "3rd-level slots", not "slots_3". */
   payLabels?: Record<string, string>;
+  /** An answer that stops what is held only up to its own level (1.116): Counterspell. `sure` when
+   *  it stops it outright; else the check it needs, its modifier against `dc`, and with neither it
+   *  cannot stop it at all. */
+  counter?: { sure?: true; level: number; dc?: number; modifier?: number };
 }
 export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */
@@ -280,6 +287,9 @@ export interface DirectedRulesetView {
     moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught" | "attacked";
     targetIds?: string[];
     label?: string;
+    /** What is held while they answer, where it is something being used: the level it was paid at
+     *  (0 for what costs nothing of a family, a cantrip), the cell an area was aimed at. */
+    held?: { level: number; at?: RulesetCombatCell };
     /** For a held hit: what the roll came to, and what it was made against. */
     total?: number;
     defense?: number;

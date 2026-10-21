@@ -32,6 +32,7 @@ import {
   type RulesetDefinition,
   type RulesetEncounterState,
 } from "../../packages/shared/src/index.js";
+import { letAnswerThrough } from "./fixtures/ruleset-counter-pass.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-counter-reach-"));
 process.env.DATA_DIR = dataDir;
@@ -167,17 +168,22 @@ try {
   const answer = (held: ReturnType<typeof bolt>, payWith: string | undefined, ...faces: number[]) => {
     const option = rulesetWindowOptions(definition, held.state, "corwin").find((entry) => entry.label === "Counter");
     assert.ok(option, "Corwin may answer");
-    return applyRulesetCombatChoice(
+    const roller = dice(...faces);
+    return letAnswerThrough(
       definition,
-      held.state,
-      {
-        actorId: "corwin",
-        optionId: option.id,
-        targetIds: [],
-        window: held.state.window!.id,
-        ...(payWith ? { payWith } : {}),
-      },
-      dice(...faces),
+      applyRulesetCombatChoice(
+        definition,
+        held.state,
+        {
+          actorId: "corwin",
+          optionId: option.id,
+          targetIds: [],
+          window: held.state.window!.id,
+          ...(payWith ? { payWith } : {}),
+        },
+        roller,
+      ),
+      roller,
     );
   };
 
@@ -273,10 +279,14 @@ try {
     const entries = spells(counterReaction({ above: undefined }));
     const held = bolt(fight(definition, entries), "slots_4");
     const option = rulesetWindowOptions(definition, held.state, "corwin").find((entry) => entry.label === "Counter")!;
-    const tried = applyRulesetCombatChoice(
+    const tried = letAnswerThrough(
       definition,
-      held.state,
-      { actorId: "corwin", optionId: option.id, targetIds: [], window: held.state.window!.id },
+      applyRulesetCombatChoice(
+        definition,
+        held.state,
+        { actorId: "corwin", optionId: option.id, targetIds: [], window: held.state.window!.id },
+        dice(),
+      ),
       dice(),
     );
     assert.deepEqual(eventsOf(tried.events, "counter"), [
@@ -288,10 +298,14 @@ try {
     const plain = spells(counterReaction({ upTo: undefined, above: undefined }));
     const old = bolt(fight(definition, plain), "slots_5");
     const oldOption = rulesetWindowOptions(definition, old.state, "corwin").find((entry) => entry.label === "Counter")!;
-    const stopped = applyRulesetCombatChoice(
+    const stopped = letAnswerThrough(
       definition,
-      old.state,
-      { actorId: "corwin", optionId: oldOption.id, targetIds: [], window: old.state.window!.id },
+      applyRulesetCombatChoice(
+        definition,
+        old.state,
+        { actorId: "corwin", optionId: oldOption.id, targetIds: [], window: old.state.window!.id },
+        dice(),
+      ),
       dice(),
     );
     assert.equal(eventsOf(stopped.events, "cancelled").length, 1);

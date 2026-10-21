@@ -2742,6 +2742,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Losing heart (1.709): `combat.morale`, or a stat block's `morale` score or `leader`. */
+function carriesMorale709(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMorale709(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.morale === "number" || plainRecord(record.morale)?.check !== undefined || record.leader === true)
+    return true;
+  return featureValues(record).some((one) => carriesMorale709(one, depth + 1));
+}
+
 /** How much thought a creature puts into a fight (1.708): a stat block's or a creature type's `mind`,
  *  or `combat.minds`. */
 const MINDS_708 = new Set(["mindless", "instinct", "cunning", "tactical", "genius"]);
@@ -9280,6 +9291,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Losing heart, 1.709.
+  if (
+    !declaresApi(709) &&
+    (carriesMorale709(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMorale709(document)))
+  )
+    return "A ruleset with losing heart in a fight (combat.morale, or a creature's morale score or leader) requires schemaVersion 2 and capabilityApi 1.709 or newer";
   // How much thought a creature puts into a fight, 1.708.
   if (
     !declaresApi(708) &&

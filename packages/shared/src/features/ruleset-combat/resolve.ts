@@ -8,6 +8,7 @@
 
 import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
+import { rulesetCombatantMind } from "./mind.js";
 import {
   rulesetPoolMaxSuccesses,
   rulesetSheetBuildSchema,
@@ -24,6 +25,7 @@ import {
   type RulesetInsideRoom,
   type RulesetTargetIs,
   type RulesetValueRef,
+  type RulesetMoraleTrigger,
 } from "../../schemas/ruleset.schema.js";
 import {
   evaluateRulesetSheetLive,
@@ -14399,9 +14401,19 @@ function teleportHeld(
 /** Gone from the fight alive, of its own accord (1.279): a teleport that leaves it. Nothing brings
  *  it back, and what it held up ends as it would for one sent away. */
 function leaveFight(ctx: RulesetCombatContext, one: RulesetCombatant, action: RulesetCombatAction, by?: string): void {
-  one.defeated = true;
-  one.away = { by: by ?? one.id, label: action.label, left: true };
   ctx.events.push({ type: "left", actorId: one.id, label: action.label, ...(by ? { by } : {}) });
+  outOfFight(ctx, one, { by: by ?? one.id, label: action.label, left: true });
+}
+
+/** Out of the fight alive for good: what it held up ends. */
+function outOfFight(
+  ctx: RulesetCombatContext,
+  one: RulesetCombatant,
+  away: NonNullable<RulesetCombatant["away"]>,
+): void {
+  one.defeated = true;
+  one.away = away;
+  delete one.routed;
   endSummons(ctx, one);
   endZones(ctx, one);
   endConcentration(ctx, one, "spent");
@@ -17800,6 +17812,11 @@ function beginNextTurn(
         return;
       }
     }
+    // Whether it loses heart, or gets away now that it has (1.709): out, the turn goes with it.
+    if (moraleTurn(ctx, actor) && rulesetEncounterOutcome(ctx.state) === "ongoing") {
+      beginNextTurn(definition, combat, ctx);
+      return;
+    }
     // What its low health may set off as its turn starts (1.490): Berserk.
     rollAtTurnStart(ctx, actor);
     // What a condition's table makes of this turn (1.264), once nothing else is left to change it.
@@ -17955,6 +17972,99 @@ function rollAtTurnStart(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
     for (const applies of rule.applies)
       applyConditionId(ctx, actor, applies.condition, applies, { sourceId: actor.id });
   }
+}
+
+/**
+ * Whether a combatant with a stat block loses heart as its turn starts (1.709). Each of
+ * `combat.morale.on` that has happened and not yet been checked for it is checked now, in the order
+ * the ruleset names them, and the first that breaks it decides: it gives up where its mind is among
+ * `surrenders` and an opponent is beside it (or there is no board), else it runs. One already running
+ * is out once a turn of its starts at the board's edge. True when it is out of the fight.
+ */
+function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean {
+  if (!actor.block || actor.calledBy !== undefined || actor.object || actor.defeated) return false;
+  if (!rulesetCombatStanding(actor)) return false;
+  if (actor.routed) {
+    if (!rulesetAtBoardEdge(ctx.state, actor)) return false;
+    ctx.events.push({ type: "fled", actorId: actor.id });
+    outOfFight(ctx, actor, { by: actor.id, label: "Fled", left: true });
+    return true;
+  }
+  const morale = ctx.combat.morale;
+  if (!morale) return false;
+  const mind = rulesetCombatantMind(ctx.definition, actor) ?? "tactical";
+  if (mind === "mindless") return false;
+  if (morale.unlessImmune && rulesetImmuneToCondition(actor, morale.unlessImmune, ctx.definition, ctx.state))
+    return false;
+  const side = ctx.state.combatants.filter(
+    (one) => one.side === actor.side && one.calledBy === undefined && !one.object,
+  );
+  // Fallen for good: down, slain, or gone off alive. Not one only sent away for a while.
+  const fallen = side.filter(
+    (one) => one.down || (one.defeated && (!one.away || !!one.away.left || !!one.away.surrendered)),
+  );
+  const happened = (trigger: RulesetMoraleTrigger): boolean => {
+    if (trigger === "first-fall") return fallen.length > 0;
+    if (trigger === "half-down") return side.length > 1 && fallen.length * 2 >= side.length;
+    if (trigger === "leader-down") return fallen.some((one) => one.id !== actor.id && one.block?.leader);
+    const health = rulesetCombatHealth(ctx.definition, ctx.combat, actor);
+    return health.value < health.max * (morale.hurtBelow ?? 0.5);
+  };
+  for (const trigger of morale.on) {
+    if (actor.moraleChecked?.includes(trigger) || !happened(trigger)) continue;
+    actor.moraleChecked = [...(actor.moraleChecked ?? []), trigger];
+    const check = morale.check;
+    let roll: number | undefined;
+    let score: number | undefined;
+    let held: boolean;
+    if ("roll" in check) {
+      score = actor.block.morale ?? check.score;
+      const dice = parseRulesetCombatDice(check.roll);
+      // With no morale score, nothing to break: it fights on.
+      if (score === undefined || !dice) continue;
+      roll = rollAmount(ctx, dice).total;
+      held = roll <= score;
+    } else held = throwSave(ctx, actor, check.save, check.difficulty);
+    const pinned =
+      !ctx.state.board?.grid ||
+      ctx.state.combatants.some(
+        (one) =>
+          one.side !== actor.side &&
+          rulesetCombatStanding(one) &&
+          !!rulesetPositionOf(one) &&
+          !!rulesetPositionOf(actor) &&
+          rulesetGap(one, actor) <= 1,
+      );
+    const outcome = held ? "held" : morale.surrenders?.includes(mind) && pinned ? "surrender" : "flee";
+    ctx.events.push({
+      type: "morale",
+      actorId: actor.id,
+      trigger,
+      outcome,
+      ...(roll !== undefined ? { roll } : {}),
+      ...(score !== undefined ? { score } : {}),
+    });
+    if (outcome === "held") continue;
+    if (outcome === "surrender") {
+      outOfFight(ctx, actor, { by: actor.id, label: "Surrendered", surrendered: true });
+      return true;
+    }
+    actor.routed = true;
+    if (!rulesetAtBoardEdge(ctx.state, actor)) return false;
+    ctx.events.push({ type: "fled", actorId: actor.id });
+    outOfFight(ctx, actor, { by: actor.id, label: "Fled", left: true });
+    return true;
+  }
+  return false;
+}
+
+/** Whether a combatant fills a cell on the board's edge, or there is no board to cross (1.709). */
+export function rulesetAtBoardEdge(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
+  const grid = state.board?.grid;
+  if (!grid || !rulesetPositionOf(combatant)) return true;
+  return rulesetFootprint(combatant).some(
+    (cell) => cell.x <= 0 || cell.y <= 0 || cell.x >= grid.width - 1 || cell.y >= grid.height - 1,
+  );
 }
 
 /**
@@ -18216,6 +18326,7 @@ export function rulesetEncounterSummary(
           defeated: combatant.defeated,
           ...(combatant.away?.left ? { left: true as const } : {}),
           ...(combatant.knockedOut ? { knockedOut: true as const } : {}),
+          ...(combatant.away?.surrendered ? { surrendered: true as const } : {}),
         };
       }),
     ...(state.board?.broken?.length ? { broken: [...state.board.broken] } : {}),

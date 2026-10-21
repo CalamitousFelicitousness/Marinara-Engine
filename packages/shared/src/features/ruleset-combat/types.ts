@@ -19,6 +19,7 @@ import type {
   RulesetRegeneration,
   RulesetHangsOn,
   RulesetTargetIs,
+  RulesetMoraleTrigger,
   RulesetUseChance,
   RulesetInsideRoom,
   RulesetValueRef,
@@ -784,6 +785,9 @@ export interface RulesetStatBlock {
   alignment?: string;
   /** How much thought it puts into a fight (1.708), over its type's and its score's. */
   mind?: CombatMind;
+  /** Its morale score, and whether its side follows it (1.709). */
+  morale?: number;
+  leader?: true;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */
@@ -2303,6 +2307,8 @@ export interface RulesetCombatant {
     /** Gone into this combatant (1.643), and back beside them once they no longer hold `while` from
      *  it: a ghost's Possession. */
     possessing?: string;
+    /** Gave up (1.709): out of the fight alive, the other side's to deal with. */
+    surrendered?: true;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
    *  reaction until it ends. `surpriseOut` are the actions that end it if taken first (Feral
@@ -2429,6 +2435,10 @@ export interface RulesetCombatant {
   /** How many more of their own turns each making of what they made to last only so long stays, and
    *  how many it made (1.707), by item. */
   madeFor?: Record<string, Array<{ rounds: number; count: number }>>;
+  /** What has set off a morale check of theirs already (1.709), each checked once. */
+  moraleChecked?: RulesetMoraleTrigger[];
+  /** Broken and running (1.709): out of the fight as a turn of theirs starts at the board's edge. */
+  routed?: true;
   /** The side they fight on of their own, while something that `controls` them has them on another
    *  (1.524): Magic Jar. */
   ownSide?: "party" | "enemy";
@@ -3891,6 +3901,17 @@ export type RulesetCombatEvent =
   | { type: "itemsMade"; actorId: string; label: string; count: number }
   /** What they made to last only so long, gone as its time ran out (1.707): Creation's. */
   | { type: "itemsVanished"; actorId: string; label: string; count: number }
+  /** A morale check (1.709): what set it off, the roll or save, and whether it held, fled or gave up. */
+  | {
+      type: "morale";
+      actorId: string;
+      trigger: RulesetMoraleTrigger;
+      outcome: "held" | "flee" | "surrender";
+      roll?: number;
+      score?: number;
+    }
+  /** Broken and got away off the edge of the board (1.709). */
+  | { type: "fled"; actorId: string }
   /** Killed outright by massive damage (1.656). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */
@@ -4479,6 +4500,8 @@ export interface RulesetEncounterSummary {
     left?: true;
     /** Knocked out, not slain (1.667). */
     knockedOut?: true;
+    /** Gave up, alive (1.709). */
+    surrendered?: true;
   }>;
   /** What was broken on the board (1.316), by label, in the order it broke. */
   broken?: string[];

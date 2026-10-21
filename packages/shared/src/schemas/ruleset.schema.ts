@@ -9974,6 +9974,11 @@ const creatureFields = {
   /** How much thought it puts into a fight (Capability API 1.708), over its type's and its score's:
    *  a 5e zombie or skeleton `mindless`, whatever its Intelligence. */
   mind: z.enum(COMBAT_MINDS).optional(),
+  /** Its morale score (Capability API 1.709), what a `combat.morale` check that rolls is thrown
+   *  against: it breaks on a roll above it. Old-School Essentials' 2 to 12, 12 never breaking. */
+  morale: z.number().int().min(0).max(100).optional(),
+  /** The one its side follows (Capability API 1.709): its fall is `combat.morale`'s "leader-down". */
+  leader: z.literal(true).optional(),
   /** Damage types, matched without case: half, double, none at all. A resistance or an immunity may
    *  say what gets through it (`{ "type": "cut", "except": ["silver"] }`): a blow from a weapon item
    *  with any of those tags is taken as it comes. */
@@ -13222,6 +13227,10 @@ export interface RulesetBehaviorDrops {
   pickUp?: string;
 }
 /** What a turn may hold besides walking: breaking free, and the standard actions. */
+/** What sets off a `combat.morale` check (Capability API 1.709). */
+export const RULESET_MORALE_TRIGGERS = ["first-fall", "half-down", "leader-down", "hurt"] as const;
+export type RulesetMoraleTrigger = (typeof RULESET_MORALE_TRIGGERS)[number];
+
 export const RULESET_BEHAVIOR_ONLY = ["move", "escape", ...RULESET_COMBAT_STANDARD_ACTIONS] as const;
 const conditionBehaviorSchema: z.ZodType<RulesetConditionBehavior, z.ZodTypeDef, unknown> = z
   .object({
@@ -15858,6 +15867,46 @@ const combatObjectSchema = z
           }),
       })
       .strict()
+      .optional(),
+    /**
+     * When a combatant the Engine plays loses heart (Capability API 1.709). Each of `on` is checked
+     * once per combatant, as its turn starts after it has happened: `first-fall` once anybody of its
+     * side has fallen, `half-down` once half its side has, `leader-down` once a `leader` of its side
+     * has, `hurt` once its own health is below `hurtBelow` of its most (half when unsaid). The check
+     * either `roll`s the dice against its stat block's `morale` (else `score`), breaking on a roll
+     * above it, or throws `save` against `difficulty`, breaking on a failure. Only combatants with a
+     * stat block check; a mindless one, a summoned one, and one immune to `unlessImmune` never do.
+     * One that breaks flees: it gets away from whoever is on it and runs for the edge of the board,
+     * leaving the fight as a turn of its starts there (at once, with no board). One whose mind is
+     * among `surrenders` and has an opponent beside it surrenders instead, out of the fight alive.
+     * Old-School Essentials: 2d6 against morale, on the first death and half down. 5e (the Dungeon
+     * Master's Guide's variant): a DC 10 Wisdom save, unless immune to frightened.
+     */
+    morale: z
+      .object({
+        check: z.union([
+          z.object({ roll: catalogDice, score: z.number().int().min(0).max(100).optional() }).strict(),
+          z.object({ save: sheetId, difficulty: z.number().int().min(1).max(100) }).strict(),
+        ]),
+        on: z
+          .array(z.enum(RULESET_MORALE_TRIGGERS))
+          .min(1)
+          .max(RULESET_MORALE_TRIGGERS.length)
+          .refine((on) => new Set(on).size === on.length, { message: "Name each once" }),
+        hurtBelow: z.number().min(0.05).max(0.95).optional(),
+        surrenders: z
+          .array(z.enum(COMBAT_MINDS))
+          .min(1)
+          .max(COMBAT_MINDS.length)
+          .refine((minds) => new Set(minds).size === minds.length, { message: "Name each once" })
+          .optional(),
+        unlessImmune: sheetId.optional(),
+      })
+      .strict()
+      .refine((morale) => morale.hurtBelow === undefined || morale.on.includes("hurt"), {
+        message: '"hurtBelow" goes with "on" naming "hurt"',
+        path: ["hurtBelow"],
+      })
       .optional(),
     /** How much of a live pool one combatant may spend in a fight per turn or per round. A cost past
      *  it is not affordable. Read once as the fight begins. An opponent written in plain numbers pays
@@ -18753,6 +18802,17 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       limited.add(limit.pool);
       checkRef(limit.max, [...path, "max"], derivedIds);
     });
+    // Losing heart (1.709): a save the sheet has, and a condition it knows.
+    const morale = combat.morale;
+    if (morale) {
+      if (
+        "save" in morale.check &&
+        !def.sheet.saves.some((save) => save.id === (morale.check as { save: string }).save)
+      )
+        issue(at("morale", "check", "save"), `Unknown save "${morale.check.save}"`);
+      if (morale.unlessImmune && !def.sheet.live.conditions.some((entry) => entry.id === morale.unlessImmune))
+        issue(at("morale", "unlessImmune"), `Unknown condition "${morale.unlessImmune}"`);
+    }
     // A pool fight adds dice to a pool, so a condition's rolled number would be a number of dice
     // nobody could throw. Said per modifier, on conditions and on levels alike.
     if (pooled) {

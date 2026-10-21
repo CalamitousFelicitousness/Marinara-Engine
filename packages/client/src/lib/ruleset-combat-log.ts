@@ -1086,6 +1086,14 @@ export function rulesetCombatEventLine(
     // What was made vanishing as its time runs out (1.707).
     case "itemsVanished":
       return key("itemsVanished", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
+    // Losing heart (1.709), and getting away once broken.
+    case "morale":
+      return key(
+        event.outcome === "held" ? "moraleHeld" : event.outcome === "flee" ? "moraleFlee" : "moraleSurrender",
+        { actor: names.combatant(event.actorId) },
+      );
+    case "fled":
+      return key("fled", { actor: names.combatant(event.actorId) });
     // Knocked out by a pulled blow (1.667).
     case "knockedOut":
       return key("knockedOut", { actor: names.combatant(event.actorId), source: names.combatant(event.sourceId) });

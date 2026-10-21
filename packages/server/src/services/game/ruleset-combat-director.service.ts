@@ -73,6 +73,7 @@ import {
   rulesetBehaviorAnchor,
   rulesetGapFrom,
   rulesetGap,
+  rulesetAtBoardEdge,
   rulesetInCells,
   rulesetCombatantMind,
   withRulesetPlanMemo,
@@ -2432,6 +2433,12 @@ function playRulesetTurn(
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
     walkTowardsTrouble(definition, state, fight, actorId);
+  // Broken (1.709): its whole turn is getting away.
+  if (actor?.routed) {
+    runForTheEdge(definition, state, fight, actorId);
+    advanceTurn(definition, state, fight);
+    return;
+  }
   // Everybody it could fight is hidden from it (1.287): it looks for them first.
   const looking = searchOption(
     definition,
@@ -2474,6 +2481,73 @@ function playRulesetTurn(
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
   }
   advanceTurn(definition, state, fight);
+}
+
+/**
+ * A broken creature's turn (1.709): it gets away from an opponent beside it, else dashes, and runs
+ * for the nearest edge of the board, where it is out of the fight as its next turn starts.
+ */
+function runForTheEdge(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): void {
+  const standard = (name: string) =>
+    rulesetCombatOptions(definition, fight.encounter, actorId).find(
+      (option) => option.kind === "standard" && rulesetStandardName(option.id) === name,
+    );
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  if (!actor) return;
+  const beside = fight.encounter.combatants.some(
+    (one) =>
+      one.side !== actor.side &&
+      rulesetCombatStanding(one) &&
+      !!rulesetPositionOf(one) &&
+      !!rulesetPositionOf(actor) &&
+      rulesetGap(one, actor) <= 1,
+  );
+  const first = (beside ? standard("disengage") : undefined) ?? standard("dash");
+  if (first) applyChoice(definition, state, fight, { actorId, optionId: first.id, targetIds: [] });
+  for (let leg = 0; leg < 2; leg++) {
+    const now = rulesetCombatant(fight.encounter, actorId);
+    if (!now || rulesetAtBoardEdge(fight.encounter, now)) break;
+    const to = rulesetEdgeCell(definition, fight.encounter, actorId);
+    if (!to) break;
+    if (applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to }).refused)
+      break;
+  }
+}
+
+/** The cell a running creature may walk to nearest the board's edge (1.709), furthest from its
+ *  opponents among those as near: null when none is nearer the edge than where it stands. */
+function rulesetEdgeCell(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+): { x: number; y: number } | null {
+  const actor = rulesetCombatant(encounter, actorId);
+  const from = rulesetPositionOf(actor);
+  const grid = encounter.board?.grid;
+  if (!actor || !from || !grid) return null;
+  const span = rulesetSpanOf(actor);
+  const edge = (cell: { x: number; y: number }) =>
+    Math.min(cell.x, cell.y, grid.width - (cell.x + span), grid.height - (cell.y + span));
+  const foes = encounter.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  const away = (cell: { x: number; y: number }) =>
+    foes.length === 0 ? 0 : Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
+  let best: { cell: { x: number; y: number }; edge: number; away: number } | null = null;
+  const here = edge(from);
+  for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
+    const near = edge(cell);
+    if (near >= here) continue;
+    const far = away(cell);
+    if (!best || near < best.edge || (near === best.edge && far > best.away))
+      best = { cell: { x: cell.x, y: cell.y }, edge: near, away: far };
+  }
+  return best?.cell ?? null;
 }
 
 /**

@@ -872,6 +872,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["knockedOut", say({ type: "knockedOut", actorId: "lurker", sourceId: "brenna" })],
     ["itemsMade", say({ type: "itemsMade", actorId: "brenna", label: "Goodberry", count: 10 })],
     ["itemsVanished", say({ type: "itemsVanished", actorId: "brenna", label: "Iron Bar", count: 1 })],
+    ["morale", say({ type: "morale", actorId: "lurker", trigger: "hurt", outcome: "flee", roll: 9, score: 7 })],
+    ["fled", say({ type: "fled", actorId: "lurker" })],
     [
       "reflected",
       say({
@@ -1509,6 +1511,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("knockedOut"), "Brenna knocks Thorn Lurker out: unconscious and stable.");
   assert.equal(printed.get("itemsMade"), "Brenna makes 10 Goodberry.");
   assert.equal(printed.get("itemsVanished"), "1 Iron Bar made by Brenna vanishes.");
+  assert.equal(printed.get("morale"), "Thorn Lurker loses heart and flees!");
+  assert.equal(
+    say({ type: "morale", actorId: "lurker", trigger: "first-fall", outcome: "surrender" }),
+    "Thorn Lurker loses heart and surrenders.",
+  );
+  assert.equal(
+    say({ type: "morale", actorId: "lurker", trigger: "half-down", outcome: "held" }),
+    "Thorn Lurker stands firm.",
+  );
+  assert.equal(printed.get("fled"), "Thorn Lurker escapes off the edge of the fight.");
   assert.equal(printed.get("reflected"), "Thorn Lurker's Carapace (3): Ray has no effect on it.");
   assert.equal(
     say({

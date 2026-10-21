@@ -351,4 +351,5 @@ export {
   type RulesetHeldGroundRelease,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
+  rulesetAtBoardEdge,
 } from "./resolve.js";

@@ -102,6 +102,11 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   if (knocked.length > 0) {
     lines.push(`Knocked out, alive: ${knocked.map((enemy) => enemy.name).join(", ")}`);
   }
+  // Gave up (1.709): alive and the party's to deal with, captives for the story.
+  const yielded = summary.enemies.filter((enemy) => enemy.surrendered);
+  if (yielded.length > 0) {
+    lines.push(`Surrendered to the party, alive: ${yielded.map((enemy) => enemy.name).join(", ")}`);
+  }
   // What the fight broke (1.316): the story goes on with it broken.
   if (summary.broken?.length) lines.push(`Broken: ${summary.broken.join("; ")}`);
   lines.push(

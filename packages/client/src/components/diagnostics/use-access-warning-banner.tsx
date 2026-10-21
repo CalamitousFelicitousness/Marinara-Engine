@@ -16,6 +16,8 @@ export type AccessStatus = {
   loopbackOnly: boolean;
   host: string;
   basicAuth: boolean;
+  /** Where the login comes from: .env wins over the one saved in the app. */
+  loginSource: "env" | "app" | null;
   adminSecret: boolean;
   allowlist: boolean;
   passwordlessPeers: PasswordlessPeer[];

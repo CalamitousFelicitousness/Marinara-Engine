@@ -4,10 +4,9 @@
 // address gets 429 with Retry-After, even for the right password, until the
 // window ends. A correct password clears the count, a browser resending one
 // saved wrong password counts once, and loopback, IP_ALLOWLIST and the local
-// proxy rules keep working as before. A browser that signed in before keeps
-// getting in with the correct password while its address is locked, so visitors
-// sharing a local proxy's address cannot lock the owner out. Its cookie is keyed
-// by a server-only secret and buys only a few more tries.
+// proxy rules keep working as before. A browser that signed in keeps a session
+// cookie, keyed by a server-only secret and the password, so visitors sharing a
+// local proxy's address cannot lock the owner out.
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -200,12 +199,14 @@ try {
   assert.equal((await get("/", "127.0.0.1", RIGHT, owner)).statusCode, 200, "the owner's browser still gets in");
   assert.equal((await get("/api/chats", "127.0.0.1", RIGHT, owner)).statusCode, 200);
   assert.deepEqual((await get("/api/health", "127.0.0.1", RIGHT, owner)).json(), { status: "ok", sidecars: {} });
+  // The cookie is the browser's session: it signs in without a password, and a
+  // stale saved password sent next to it is not counted as a guess.
+  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 200, "the cookie signs the browser in");
   assert.equal(
-    (await get("/", "127.0.0.1", basic("cookie-guess"), owner)).statusCode,
-    401,
-    "the cookie does not let wrong passwords through",
+    (await get("/", "127.0.0.1", basic("stale-saved"), owner)).statusCode,
+    200,
+    "a stale password next to the cookie is ignored",
   );
-  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 401, "nor stand in for the password");
   assert.equal(
     (await get("/", "127.0.0.1", RIGHT, { ...proxied, cookie: "marinara_signed_in=made-up" })).statusCode,
     429,
@@ -248,31 +249,16 @@ try {
   );
   process.env.BASIC_AUTH_PASS = "secret";
 
-  // ── A copied cookie gets only a few tries of its own ──
-  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
-    const response = await get("/", "127.0.0.1", basic(`copied-cookie-${index}`), owner);
-    assert.equal(response.statusCode, 401, `copied cookie: try ${index + 1} is still answered`);
-  }
-  assert.equal(
-    (await get("/", "127.0.0.1", RIGHT, owner)).statusCode,
-    429,
-    "after its own tries the cookie no longer gets past the lock",
-  );
-
-  // ── A signed-in browser's health guesses count against its own tries too ──
+  // ── A signed-in browser's health check needs no password, even while its address is locked ──
   const healthOwner = "203.0.113.70";
   const healthOwnerHeaders = { ...HOST, cookie: signedInCookie };
   await guessWrong("/", healthOwner, BASIC_AUTH_FAILURE_LIMIT, "health-owner");
-  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
-    const response = await get("/api/health", healthOwner, basic(`health-owner-cookie-${index}`), healthOwnerHeaders);
-    assert.deepEqual(response.json(), { status: "ok" });
-  }
   assert.deepEqual(
-    (await get("/api/health", healthOwner, RIGHT, healthOwnerHeaders)).json(),
-    { status: "ok" },
-    "health guesses with the cookie use up its tries",
+    (await get("/api/health", healthOwner, undefined, healthOwnerHeaders)).json(),
+    { status: "ok", sidecars: {} },
+    "the session gets the details",
   );
-  assert.equal((await get("/", healthOwner, RIGHT, healthOwnerHeaders)).statusCode, 429);
+  assert.equal((await get("/", healthOwner, RIGHT)).statusCode, 429, "the address itself stays locked");
   Date.now = realNow;
   process.env.IP_ALLOWLIST = "192.168.1.20";
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {

@@ -281,6 +281,10 @@ export function csrfProtectionHook(request: FastifyRequest, reply: FastifyReply,
   // These two device-local routes authenticate the request itself with either
   // a one-time HMAC proof or the full 256-bit per-install secret.
   if (ANDROID_SELF_AUTHENTICATING_PATHS.has(requestPath)) return done();
+  // The sign-in form checks the password itself, and a plain HTML form cannot send
+  // the CSRF header. A post the browser marks as cross-site stays refused.
+  const fetchSite = firstHeader(request.headers["sec-fetch-site"])?.toLowerCase();
+  if (requestPath === "/login" && fetchSite !== "cross-site" && fetchSite !== "same-site") return done();
 
   const origin = firstHeader(request.headers.origin);
   const referer = firstHeader(request.headers.referer);

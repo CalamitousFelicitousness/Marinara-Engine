@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { resolveMacros } from "../../packages/shared/src/index.js";
+import { characterDataSchema, resolveMacros } from "../../packages/shared/src/index.js";
 const { buildApp } = await import("../../packages/server/src/app.js");
 const { getDB } = await import("../../packages/server/src/db/connection.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { resolveChatUserIdentity } = await import("../../packages/server/src/services/chat-user-identity.js");
 const { encodePersonaCreate } = await import("../../packages/server/src/services/personas/persona-projector.js");
 const { expandMarker } = await import("../../packages/server/src/services/prompt/marker-expander.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const app = await buildApp();
 await app.ready();
 try {
@@ -65,6 +67,48 @@ try {
   });
   assert.match(game.gmCtx.playerCard ?? "", /Example dialogue: Example Persona/);
   assert.match(game.gmCtx.playerCard ?? "", /Observe/);
+  await storage.updatePersona(saved.id, {
+    summary: "SUMMARY_METADATA_ONLY",
+    mes_example: '{{user}}: "PEEK_DIALOGUE {{char}}."\n{{char}}: "Acknowledged."',
+  });
+  const subject = await storage.create(characterDataSchema.parse({ name: "Subject", description: "A subject." }));
+  assert.ok(subject);
+  const presets = createPromptsStorage(await getDB());
+  const chats = createChatsStorage(await getDB());
+  for (const wrapFormat of ["xml", "markdown", "none"] as const) {
+    for (const includePersona of [true, false]) {
+      const preset = await presets.create({ name: "Persona dialogue preview", wrapFormat });
+      assert.ok(preset);
+      await presets.createSection({
+        presetId: preset.id,
+        name: "Identity",
+        identifier: "identity",
+        content: includePersona ? "{{persona}}" : "Respond as the character.",
+        role: "system",
+        enabled: true,
+        isMarker: false,
+        order: 0,
+      });
+      const chat = await chats.create({
+        name: "Persona dialogue preview",
+        mode: "roleplay",
+        characterIds: [subject.id],
+        personaId: saved.id,
+        promptPresetId: preset.id,
+      });
+      assert.ok(chat);
+      await chats.patchMetadata(chat.id, { enableAgents: false, enableTools: false, enableMemoryRecall: false });
+      await chats.createMessage({ chatId: chat.id, role: "user", content: "Hello." });
+      const peek = await app.inject({ method: "POST", url: `/api/chats/${chat.id}/peek-prompt`, payload: {} });
+      assert.equal(peek.statusCode, 200, peek.body);
+      assert.equal(peek.json().source, "live_preview");
+      const text = JSON.stringify(peek.json().messages);
+      const context = `${wrapFormat}/${includePersona ? "persona macro" : "fallback"}/peek`;
+      assert.equal(text.split("PEEK_DIALOGUE").length - 1, 1, `${context}: example appears exactly once`);
+      assert.match(text, /Example Persona:.*PEEK_DIALOGUE Subject/u, `${context}: speakers resolve`);
+      assert.doesNotMatch(text, /\{\{(?:user|char)\}\}|SUMMARY_METADATA_ONLY/u, context);
+    }
+  }
   console.info("Persona dialogue survives persistence, selected identity, macros, and the assembled persona marker.");
 } finally {
   await app.close();

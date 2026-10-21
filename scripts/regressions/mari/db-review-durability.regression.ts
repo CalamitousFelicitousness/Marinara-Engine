@@ -123,6 +123,44 @@ try {
         );
       }
 
+      const directCreate = await mari.executeAction({
+        action: "persona.create",
+        personaId: "direct-fields-persona",
+        name: "Direct Fields Persona",
+        description: "Preserve this description.",
+        ...authored,
+        apply: true,
+      });
+      assert.equal(directCreate.ok, true, "Mari accepts card fields at the top level");
+      const expectedFields: Record<string, string> = { ...authored };
+      const assertDirectFields = async () => {
+        const result = await mari.executeAction({ action: "persona.get", personaId: "direct-fields-persona" });
+        assert.equal(result.ok, true);
+        const row = result.output as Record<string, unknown>;
+        assert.equal(row.description, "Preserve this description.");
+        for (const [field, value] of Object.entries(expectedFields)) {
+          assert.equal(row[field], value, `${field} survives the Persona command`);
+        }
+      };
+      await assertDirectFields();
+      for (const [field, shape, value] of [
+        ["summary", "top-level", "A revised top-level summary."],
+        ["mes_example", "patch", "{{user}}: Revised nested dialogue."],
+        ["summary", "patch", "A revised nested summary."],
+        ["mes_example", "top-level", "{{user}}: Revised top-level dialogue."],
+      ] as const) {
+        const update = { [field]: value };
+        const updated = await mari.executeAction({
+          action: "persona.update",
+          personaId: "direct-fields-persona",
+          ...(shape === "top-level" ? update : { patch: update }),
+          apply: true,
+        });
+        assert.equal(updated.ok, true, `${field}-only ${shape} update succeeds: ${JSON.stringify(updated)}`);
+        expectedFields[field] = value;
+        await assertDirectFields();
+      }
+
       const cliCreate = await mari.executeCli({
         argv: ["personas", "create", "--id", "cli-persona", "--name", "CLI Persona", "--apply"],
       });

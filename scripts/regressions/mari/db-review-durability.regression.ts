@@ -90,10 +90,47 @@ try {
       const fetched = await mari.executeAction({ action: "persona.get", personaId: "created-persona" });
       assert.equal(fetched.ok, true, "the created persona is persisted");
       assert.equal(
+        (fetched.output as Record<string, unknown>).summary,
+        "",
+        "a legacy create defaults summary",
+      );
+      assert.equal(
+        (fetched.output as Record<string, unknown>).mes_example,
+        "",
+        "a legacy create defaults dialogue",
+      );
+      assert.equal(
         (fetched.output as Record<string, unknown>).useCharacterSheetAsReference,
         "false",
         "the persona stores the required character-sheet reference default",
       );
+
+      const authored = { summary: "A scientist's library summary.", mes_example: "{{user}}: Observe carefully." };
+      const authoredCreate = await mari.executeAction({
+        action: "persona.create",
+        personaId: "authored-persona",
+        data: { name: "Authored Persona", ...authored },
+        apply: true,
+      });
+      assert.equal(authoredCreate.ok, true, "Mari accepts the new card fields in a persona draft");
+      const authoredRead = await mari.executeAction({ action: "persona.get", personaId: "authored-persona" });
+      assert.equal(authoredRead.ok, true);
+      for (const [field, value] of Object.entries(authored)) {
+        assert.equal(
+          (authoredRead.output as Record<string, unknown>)[field],
+          value,
+          `${field} survives creation`,
+        );
+      }
+
+      const cliCreate = await mari.executeCli({
+        argv: ["personas", "create", "--id", "cli-persona", "--name", "CLI Persona", "--apply"],
+      });
+      assert.equal(cliCreate.ok, true, "the CLI create also receives every required persona default");
+      const cliRead = await mari.executeAction({ action: "persona.get", personaId: "cli-persona" });
+      assert.equal(cliRead.ok, true);
+      assert.equal((cliRead.output as Record<string, unknown>).summary, "");
+      assert.equal((cliRead.output as Record<string, unknown>).mes_example, "");
     } finally {
       if (db) await db._fileStore.close();
       if (previousBlockStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;

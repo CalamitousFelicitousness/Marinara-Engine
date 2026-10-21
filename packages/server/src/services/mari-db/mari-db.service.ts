@@ -1424,6 +1424,8 @@ export function buildPersonaCreateRow(data: Row, id: string, timestamp: string):
         : "true",
     creatorNotes: firstString(data, ["creatorNotes", "creator_notes", "creator-notes"]) ?? "",
     phoneticName: firstString(data, ["phoneticName", "phonetic_name", "phonetic-name"]) ?? "",
+    summary: firstString(data, ["summary"]) ?? "",
+    mes_example: firstString(data, ["mes_example"]) ?? "",
     description: firstString(data, ["description"]) ?? "",
     personality: firstString(data, ["personality"]) ?? "",
     scenario: firstString(data, ["scenario"]) ?? "",

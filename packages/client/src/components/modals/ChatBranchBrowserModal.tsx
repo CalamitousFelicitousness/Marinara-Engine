@@ -11,6 +11,7 @@ import { useCharacterSummaries } from "../../hooks/use-characters";
 import { useChat, useChatGroup, useChatMessageCount, useChatTranscriptPreview } from "../../hooks/use-chats";
 import { getChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { orderBranches, previewSpeakerName, visibleBranchMessages } from "../../lib/chat-branch-preview";
+import { getChatActivityTime } from "../../lib/chat-recency";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat.store";
@@ -108,7 +109,7 @@ export function ChatBranchBrowserModal({
                   <span className="block truncate text-[0.8125rem] font-medium text-[var(--foreground)]">
                     {getChatDisplayName(branch)}
                   </span>
-                  <ChatBranchTail chatId={branch.id} updatedAt={branch.updatedAt} lines={2} />
+                  <ChatBranchTail chatId={branch.id} activityAt={getChatActivityTime(branch)} lines={2} />
                 </span>
               </button>
             );
@@ -132,7 +133,7 @@ export function ChatBranchBrowserModal({
                     {getChatDisplayName(selected)}
                   </div>
                   <div className="truncate text-[0.6875rem] text-[var(--muted-foreground)]">
-                    {localizeUi("chat.branches.updatedAt", { date: formatBranchDate(selected.updatedAt) })}
+                    {localizeUi("chat.branches.updatedAt", { date: formatBranchDate(getChatActivityTime(selected)) })}
                     {typeof selectedCount?.count === "number" && (
                       <> · {localizeUi("chat.branches.messageCount", { count: selectedCount.count })}</>
                     )}

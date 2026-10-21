@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 /** Matches the sidebar hover peek, so both read one cached window per chat. */
 const BRANCH_TAIL_MESSAGE_COUNT = 4;
 
-export function formatBranchDate(value: string): string {
+export function formatBranchDate(value: string | number): string {
   return new Date(value).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -22,13 +22,14 @@ export function formatBranchDate(value: string): string {
 
 interface ChatBranchTailProps {
   chatId: string;
-  updatedAt: string;
+  /** From getChatActivityTime, so opening a branch does not move its date. */
+  activityAt: number;
   /** Snippet line clamp: 1 in the popover, 2 in the browser list. */
   lines?: 1 | 2;
   className?: string;
 }
 
-export function ChatBranchTail({ chatId, updatedAt, lines = 1, className }: ChatBranchTailProps) {
+export function ChatBranchTail({ chatId, activityAt, lines = 1, className }: ChatBranchTailProps) {
   const { t: localizeUi } = useUiTranslation();
   const { data: tail, isLoading } = useChatMessagePeek(chatId, BRANCH_TAIL_MESSAGE_COUNT, true);
   const { data: count } = useChatMessageCount(chatId);
@@ -42,7 +43,7 @@ export function ChatBranchTail({ chatId, updatedAt, lines = 1, className }: Chat
   return (
     <div className={cn("min-w-0", className)}>
       <div className="truncate text-[0.625rem] text-[var(--muted-foreground)]">
-        {formatBranchDate(updatedAt)}
+        {formatBranchDate(activityAt)}
         {typeof count?.count === "number" && <> · {localizeUi("chat.branches.messageCount", { count: count.count })}</>}
       </div>
       <p

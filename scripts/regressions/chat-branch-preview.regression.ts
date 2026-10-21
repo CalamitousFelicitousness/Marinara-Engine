@@ -76,4 +76,17 @@ assert.match(selectorSource, /openModal\("chat-branch-browser"/u, "the branches 
 assert.match(selectorSource, /<ChatBranchTail /u, "drawer rows show the branch tail");
 assert.match(modalRendererSource, /case "chat-branch-browser":/u, "the browser is registered with ModalRenderer");
 
+// Opening a chat touches updatedAt, so a branch date read from it moves on every switch.
+const browserSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/modals/ChatBranchBrowserModal.tsx"),
+  "utf8",
+);
+for (const [name, source] of [
+  ["drawer", selectorSource],
+  ["browser", browserSource],
+] as const) {
+  assert.doesNotMatch(source, /(?<!chat\.branches)\.updatedAt\b/u, `${name} branch dates must not read updatedAt`);
+  assert.match(source, /getChatActivityTime\(/u, `${name} branch dates come from getChatActivityTime`);
+}
+
 console.log("chat-branch-preview regression passed.");

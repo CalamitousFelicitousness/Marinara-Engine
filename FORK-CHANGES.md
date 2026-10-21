@@ -1548,6 +1548,11 @@ generation refreshes it, and inside a `flex-col-reverse` scroller so it opens at
 and holds its place as older pages load. A divider marks the branch point (`branchMessageId`), and
 the header names the parent branch. Below `sm` the list and transcript are separate screens.
 
+Branch dates in the drawer and the browser come from `getChatActivityTime` (last message, then
+creation), the same value `orderBranches` sorts by. Upstream's drawer printed `updatedAt`, which
+`setActiveChatId` bumps through `POST /chats/:id/touch` on every open, so switching between
+branches restamped each one with the time it was viewed.
+
 Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPanel.tsx`,
 `packages/client/src/components/layout/ModalRenderer.tsx`, `packages/client/src/hooks/use-chats.ts`,
 and `packages/client/src/localization/locales/en.json`.

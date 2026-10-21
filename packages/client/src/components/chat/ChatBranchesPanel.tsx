@@ -27,6 +27,7 @@ import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { getChatDisplayName } from "../../lib/chat-display";
 import { openChatStats } from "../../lib/chat-insights";
 import { orderBranches } from "../../lib/chat-branch-preview";
+import { getChatActivityTime } from "../../lib/chat-recency";
 import { api } from "../../lib/api-client";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
@@ -272,7 +273,7 @@ export function ChatBranchesPanel({ activeChatId, activeChatName, groupId }: Cha
 
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[0.8125rem] font-medium">{getChatDisplayName(branch)}</div>
-                  <ChatBranchTail chatId={branch.id} updatedAt={branch.updatedAt} />
+                  <ChatBranchTail chatId={branch.id} activityAt={getChatActivityTime(branch)} />
                 </div>
               </button>
 

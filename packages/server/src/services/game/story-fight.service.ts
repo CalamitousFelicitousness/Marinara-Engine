@@ -66,8 +66,8 @@ export async function storyFightOpponents(
   return roster;
 }
 
-/** The prompt line that tells the blueprint writer who this fight is with; with no opponents left (all
- *  refused), the enemies are the writer's own to choose. */
+/** The prompt line that tells the blueprint writer who this fight is with; with no opponents (none named,
+ *  or every one refused), the enemies are the writer's own to choose. */
 export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<{ name: string; creature: string }>) {
   const header = `This fight is set by the story: "${fight.name}".${fight.note ? ` ${fight.note}` : ""}`;
   if (!opponents.length) return [header, "Choose its enemies yourself."].join("\n");

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
@@ -203,6 +203,25 @@ try {
     assert.match(missing.stderr, /requires exactly one URL value/u);
     assert.equal(existsSync(counter), false, "Argument errors must fail before starting a child");
     assert.deepEqual(missing.records, []);
+  }
+  for (const browserUrl of ["dist/index.js", "http://127.0.0.1:7860"]) {
+    const missingEntry = spawnSync(
+      process.execPath,
+      [join(root, "scripts/run-server.mjs"), "--open-browser", browserUrl],
+      {
+        cwd: root,
+        input: 'console.log("unexpected Node stdin execution");\n',
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    );
+    assert.equal(
+      missingEntry.status,
+      1,
+      "A browser switch without a server entry must not start Node's stdin/REPL mode",
+    );
+    assert.match(missingEntry.stderr, /a server entrypoint is required with --open-browser/u);
+    assert.equal(missingEntry.stdout, "");
   }
 
   const entry = readFileSync(join(root, "packages/server/src/index.ts"), "utf8");

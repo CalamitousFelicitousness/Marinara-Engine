@@ -15,6 +15,10 @@ if (browserArgIndex !== -1) {
     process.stderr.write("Could not start Marinara Engine: --open-browser requires exactly one URL value.\n");
     process.exit(1);
   }
+  if (serverArgs.length === 0) {
+    process.stderr.write("Could not start Marinara Engine: a server entrypoint is required with --open-browser.\n");
+    process.exit(1);
+  }
   try {
     // Launchers append :PORT to HOST. Bracket only a verified raw IPv6 literal,
     // keeping the existing port, Android entry path and query intact.

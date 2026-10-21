@@ -36,14 +36,16 @@ stay as they were.
   "events": [],
   "cutscenes": [],
   "fights": [],
-  "endings": []
+  "endings": [],
+  "knowledge": []
 }
 ```
 
 Ids are 1 to 40 lowercase letters, digits, `_` or `-`, unique within their list. A story holds at most
-64 flags, 64 directions, 128 events, 64 cutscenes, 32 fights and 16 endings. No text in it may hold a line break, square
-brackets or `{{`, and names written into a tag (a group, a background) may not hold a double quote:
-nothing a story says can pass for one of the Game Master's tags.
+64 flags, 64 directions, 256 events (128 before Capability API 1.349), 64 cutscenes, 32 fights, 16 endings
+and 600 knowledge entries. No text in it may hold a line break, square brackets or `{{`, and names written
+into a tag (a group, a background) may not hold a double quote: nothing a story says can pass for one of
+the Game Master's tags.
 
 ### Flags
 

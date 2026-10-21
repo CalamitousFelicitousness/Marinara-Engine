@@ -846,7 +846,7 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
             localizeUi("ui.game.worldview.clocks"),
             shown.clocks.map((clock) => (
               <div key={clock.flag} className={cn(row, "flex items-center gap-3")}>
-                <StoryClockDial clock={clock} size={32} />
+                <StoryClockDial clock={clock} size={32} decorative />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-white/85">{clock.title}</span>

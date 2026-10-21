@@ -3811,8 +3811,9 @@ function GameSurfaceComponent({
     // An Experience's people (1.346) speak with their own expressions, once the game has met them.
     const people = mapPackQuery.data?.people;
     if (people) {
+      const byPerson = new Map(people.people.map((each) => [each.person, each]));
       for (const npc of npcs) {
-        const entry = npc.worldId ? people.people.find((each) => each.person === npc.worldId) : undefined;
+        const entry = npc.worldId ? byPerson.get(npc.worldId) : undefined;
         if (!npc.name || !entry?.expressions || map.has(normalizeTextForMatch(npc.name))) continue;
         const sprites: SpriteInfo[] = Object.entries(entry.expressions).flatMap(([expression, path]) =>
           path && people.urls[path] ? [{ expression, filename: path, url: people.urls[path]! }] : [],

@@ -12,9 +12,10 @@ export function MariConnectionGuidance({ showSelectionHint = false }: { showSele
       <p>{t("professorMari.connectionGuidance.model")}</p>
       <p>{t("professorMari.connectionGuidance.context")}</p>
       <ul className="list-disc space-y-1 pl-4">
-        {["tier16k", "tier32k", "tier64k", "tier128k"].map((tier) => (
-          <li key={tier}>{t(`professorMari.connectionGuidance.${tier}`)}</li>
-        ))}
+        <li>{t("professorMari.connectionGuidance.tier16k")}</li>
+        <li>{t("professorMari.connectionGuidance.tier32k")}</li>
+        <li>{t("professorMari.connectionGuidance.tier64k")}</li>
+        <li>{t("professorMari.connectionGuidance.tier128k")}</li>
       </ul>
     </div>
   );

@@ -6,6 +6,12 @@ import { seedUIState } from "./ui-state-fixture.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const guidanceSelector = '[data-component="ProfessorMari.ConnectionGuidance"]';
 const contextRecommendation = "I'd recommend 32k tokens as the practical minimum for me, with 64k preferred.";
+const tierRecommendations = [
+  "16k: tight; only for short questions and small edits.",
+  "32k: a reasonable starting point for everyday use.",
+  "64k: more room for character cards, lorebooks, tool results, and longer tasks.",
+  "128k: useful for extensive work, but unnecessary as a minimum.",
+];
 
 test.beforeEach(() => acquireMariThreadLock());
 test.afterEach(() => releaseMariThreadLock());
@@ -50,6 +56,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(transcriptGuidance).toContainText('clicking the "chains" icon in the input box below');
       await expect(transcriptGuidance).toContainText(contextRecommendation);
       await expect(transcriptGuidance.locator("li")).toHaveCount(4);
+      await expect(transcriptGuidance.locator("li")).toHaveText(tierRecommendations);
       await transcriptGuidance
         .getByText("128k: useful for extensive work, but unnecessary as a minimum.", { exact: true })
         .scrollIntoViewIfNeeded();
@@ -58,6 +65,7 @@ for (const theme of ["dark", "light"] as const) {
       const picker = pane.locator(".mari-connection-picker");
       await expect(picker.getByRole("button", { name: "Add a connection" })).toBeVisible();
       await expect(picker.locator(guidanceSelector)).toContainText(contextRecommendation);
+      await expect(picker.locator(guidanceSelector).locator("li")).toHaveText(tierRecommendations);
       await expect(picker.locator(guidanceSelector)).not.toContainText('clicking the "chains" icon');
       await picker
         .locator(guidanceSelector)
@@ -86,6 +94,7 @@ for (const theme of ["dark", "light"] as const) {
       ).toHaveCount(0);
       await pane.getByRole("button", { name: "Connection: Mari guidance fixture", exact: true }).click();
       await expect(picker.locator(guidanceSelector)).toContainText(contextRecommendation);
+      await expect(picker.locator(guidanceSelector).locator("li")).toHaveText(tierRecommendations);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
       expect(errors).toEqual([]);
     } finally {

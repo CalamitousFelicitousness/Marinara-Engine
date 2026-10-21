@@ -3109,7 +3109,7 @@ const zoneInsideSchema: z.ZodType<RulesetZoneInside, z.ZodTypeDef, unknown> = z
   });
 export interface RulesetForbids {
   components?: string[];
-  teleport?: true | RulesetForbidsTeleport;
+  teleport?: true | "into" | RulesetForbidsTeleport;
   casts?: string[];
 }
 /** Teleporting out only past a save (Capability API 1.550): 5e's Forcecage. */
@@ -3130,6 +3130,9 @@ const forbidsSchema: z.ZodType<RulesetForbids, z.ZodTypeDef, unknown> = z
          *  into it or within it is not stopped. 5e's Forcecage, `{"save": "cha_save", "difficulty":
          *  "caster"}`. */
         z.object({ save: sheetId, difficulty: z.literal("caster") }).strict(),
+        /** Or (Capability API 1.700) nobody at all, whoever the zone works on, teleports into it;
+         *  teleporting out of it or within it stays allowed. 5e's Forbiddance. */
+        z.literal("into"),
       ])
       .optional(),
     /** Nothing from these catalogs is cast from inside it (Capability API 1.468): 5e's Antimagic
@@ -7266,7 +7269,13 @@ const catalogMechanicsObject = z
     /** Its user names a creature type of `combat.creatureTypes` as they use it (Capability API
      *  1.270), picked like a weapon's mode: what it puts on remembers it, for an aura with
      *  `chosenKind` to reach only that kind (5e's Antipathy/Sympathy). */
-    kindChoice: z.literal(true).optional(),
+    kindChoice: z.union([z.literal(true), z.literal("many")]).optional(),
+    /** With `kindChoice: "many"` on an entry with a zone (Capability API 1.700), its user names one
+     *  or more kinds of `combat.creatureTypes` as they use it, and the zone's strikes reach only
+     *  those, in place of its `targetTypes`' kinds: 5e's Forbiddance. Named as it is used, a damage
+     *  type of these (Capability API 1.700), offered as modes: the type its damage and its zone's
+     *  strikes deal. Forbiddance's `["radiant", "necrotic"]`. */
+    damageTypeChoice: z.array(promptSafeText(40)).min(2).max(8).optional(),
     /** The forms it changes its target into (Capability API 1.342), picked as it is used: see
      *  `shapeFormsSchema`. 5e's Wild Shape, Polymorph, True Polymorph, Shapechange. */
     forms: shapeFormsSchema.optional(),
@@ -7803,7 +7812,47 @@ const catalogMechanicsSchema: z.ZodType<
   }
   const cureParts =
     (mechanics.ends?.conditions.length ?? 0) + (mechanics.tracks?.length ?? 0) + (mechanics.unseals ? 1 : 0);
-  if (mechanics.kindChoice && !mechanics.applies?.length) {
+  if (mechanics.kindChoice === "many" && !mechanics.zone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["kindChoice"],
+      message: 'The kinds chosen are what its zone strikes, so "kindChoice": "many" goes with "zone"',
+    });
+  }
+  if (mechanics.damageTypeChoice && !mechanics.amount && !mechanics.zone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["damageTypeChoice"],
+      message: '"damageTypeChoice" names the type of what it deals: it goes with "amount" or a "zone"',
+    });
+  }
+  // Picked as a mode (1.700), so beside nothing else picked as one.
+  if (
+    mechanics.damageTypeChoice &&
+    (mechanics.appliesOneOf ||
+      mechanics.cureOneOf ||
+      mechanics.kindChoice === true ||
+      mechanics.forms ||
+      mechanics.calls ||
+      mechanics.conjures ||
+      mechanics.contest?.takesMode ||
+      mechanics.zone?.inside?.chooses)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["damageTypeChoice"],
+      message:
+        '"damageTypeChoice" is picked as a mode, so it goes without "appliesOneOf", "cureOneOf", "kindChoice": true, "forms", "calls", "conjures", "takesMode" or a zone that chooses whom it works on',
+    });
+  }
+  if (mechanics.kindChoice === "many" && mechanics.zone?.inside?.chooses) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["kindChoice"],
+      message: 'A zone that chooses whom it works on picks one kind: it goes without "kindChoice": "many"',
+    });
+  }
+  if (mechanics.kindChoice === true && !mechanics.applies?.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["kindChoice"],
@@ -8447,8 +8496,9 @@ const catalogEntryRowSchema = z
 // system's vocabulary, and nothing in it is text a fight interprets.
 
 /** How many actions one creature may carry. Generous, because a written opponent has its strikes,
- *  the sequence that spends them and a thing it does once a fight. */
-export const RULESET_CREATURE_MAX_ACTIONS = 12;
+ *  the sequence that spends them and a thing it does once a fight. 16 from Capability API 1.701,
+ *  12 before: 5e's vampire, with its bat and mist forms beside its own. */
+export const RULESET_CREATURE_MAX_ACTIONS = 16;
 
 /** What a creature can take: a plain number, or dice thrown once when the fight is created. The
  *  average is what a forecast reads, so a menu never promises a die nobody has thrown. */
@@ -11385,8 +11435,18 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       );
     // A kind named as it is used (Capability API 1.274), as a spell names one (1.270): a scroll of
     // Antipathy/Sympathy.
-    if (use.kindChoice && !use.applies?.length) {
+    if (use.kindChoice === true && !use.applies?.length) {
       issue("kindChoice", 'The kind chosen is remembered by what it puts on, so "kindChoice" goes with "applies"');
+    }
+    // Kinds its zone strikes, and a damage type, named as it is used (Capability API 1.700).
+    if (use.kindChoice === "many" && !use.zone) {
+      issue("kindChoice", 'The kinds chosen are what its zone strikes, so "kindChoice": "many" goes with "zone"');
+    }
+    if (use.damageTypeChoice && !use.amount && !use.zone) {
+      issue(
+        "damageTypeChoice",
+        '"damageTypeChoice" names the type of what it deals: it goes with "amount" or a "zone"',
+      );
     }
     if (
       use.chargeStep &&
@@ -22360,6 +22420,14 @@ function useIssues(
     health && "track" in health ? definition.sheet.live.tracks.find((one) => one.id === health.track) : null;
   if (use.kindChoice && !definition.combat?.creatureTypes)
     add([...at, "kindChoice"], "This ruleset has no creature types to choose from");
+  // The types picked among as it is used (1.700), the ruleset's own.
+  use.damageTypeChoice?.forEach((type, typeIndex) => {
+    if (
+      definition.combat?.damageTypes &&
+      !definition.combat.damageTypes.some((one) => one.trim().toLowerCase() === type.trim().toLowerCase())
+    )
+      add([...at, "damageTypeChoice", typeIndex], `Unknown damage type "${type}"`);
+  });
   if (use.teleport && !definition.combat?.distance)
     add([...at, "teleport"], '"teleport" is measured in cells, so the combat block declares "distance" too');
   if (use.temporary && (track?.levels?.length || track?.boxes)) {
@@ -23746,6 +23814,14 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.damageType && declaredTypes && !declaredTypes.has(mechanics.damageType.trim().toLowerCase())) {
       add([index, "mechanics", "damageType"], `Unknown damage type "${mechanics.damageType}"`);
     }
+    // The types picked among as it is used (1.700), the ruleset's own and none twice.
+    mechanics?.damageTypeChoice?.forEach((type, typeIndex) => {
+      const key = type.trim().toLowerCase();
+      if (declaredTypes && !declaredTypes.has(key))
+        add([index, "mechanics", "damageTypeChoice", typeIndex], `Unknown damage type "${type}"`);
+      if (mechanics.damageTypeChoice!.findIndex((other) => other.trim().toLowerCase() === key) !== typeIndex)
+        add([index, "mechanics", "damageTypeChoice", typeIndex], `Damage type "${type}" is named twice`);
+    });
     // What the harm carries past an exception is what a weapon's tags carry, so it is the ruleset's
     // own item tags, exactly as an exception's names are.
     if (mechanics?.qualities) {

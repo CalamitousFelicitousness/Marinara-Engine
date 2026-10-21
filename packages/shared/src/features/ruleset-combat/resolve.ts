@@ -22,6 +22,7 @@ import {
   type RulesetConditionHarms,
   type RulesetConditionInside,
   type RulesetInsideRoom,
+  type RulesetTargetIs,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import {
@@ -311,6 +312,7 @@ import {
   rulesetRowsReach,
   rulesetRaisableCorpse,
   rulesetSlotUsed,
+  rulesetTeleportIntoBarred,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -5993,6 +5995,14 @@ function placeZone(
     ...(rule.layers?.spares && typeof rule.layers.spares === "object"
       ? { spared: [...(resume.designates ?? [])] }
       : {}),
+    // The kinds it strikes and the damage type it deals, named as it was cast (1.700).
+    ...(action.kindsOf && resume.kinds?.length ? { strikesIs: chosenKinds(ctx.definition, resume.kinds) } : {}),
+    ...(resume.mode
+      ? (() => {
+          const type = action.modes?.find((one) => one.id === resume.mode)?.damageType;
+          return type ? { damageType: type } : {};
+        })()
+      : {}),
     // What its caster stored in it (1.401).
     ...(rule.detonates?.stores && resume.mode
       ? (() => {
@@ -6179,9 +6189,12 @@ function zoneStrike(
     return;
   }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
-  // What it deals at its triggers may be another type than as it appeared (1.198).
-  const struckType = action.zone?.damageType;
+  // What it deals at its triggers may be another type than as it appeared (1.198), or the one
+  // named as it was cast (1.700).
+  const struckType = zone.damageType ?? action.zone?.damageType;
   if (struckType && again.damage) again.damage = { ...again.damage, type: struckType };
+  // Only the kinds named as it was cast (1.700), in place of its own.
+  if (zone.strikesIs) again.targetTypes = { ...(again.targetTypes ?? {}), is: zone.strikesIs };
   const from = ctx.events.length;
   // The zone acting, not its caster (1.180).
   const byZone = ctx.byZone;
@@ -7662,7 +7675,11 @@ function applyChoice(
   // How well its user knows where it goes, leaving the fight (1.617).
   if (
     !mode &&
-    (namedIn?.kindChoice || namedIn?.conjures || namedIn?.shapes || (namedIn?.teleport?.familiarity && !choice.at))
+    (namedIn?.kindChoice ||
+      namedIn?.damageTypeChoice ||
+      namedIn?.conjures ||
+      namedIn?.shapes ||
+      (namedIn?.teleport?.familiarity && !choice.at))
   ) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
@@ -7701,6 +7718,19 @@ function applyChoice(
     )
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
+  }
+  // The kinds its zone strikes (1.700): one or more its option offered, none twice.
+  if (
+    choice.kinds !== undefined &&
+    !(
+      option.kindsOf &&
+      Array.isArray(choice.kinds) &&
+      choice.kinds.length > 0 &&
+      new Set(choice.kinds).size === choice.kinds.length &&
+      choice.kinds.every((id) => option.kindsOf!.some((kind) => kind.id === id))
+    )
+  ) {
+    return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
   // Whom a layered wall spares (1.439): those its option offered, no more than it spares.
   const designated = option.designates;
@@ -8201,7 +8231,11 @@ function applyChoice(
   }
 
   const own = working.actions.find((entry) => entry.id === option.id)!;
-  const action = mode ? (rulesetModedAction(definition, own, mode.id) ?? own) : own;
+  const action = withChosenKinds(
+    definition,
+    mode ? (rulesetModedAction(definition, own, mode.id) ?? own) : own,
+    choice.kinds,
+  );
   // Where initiative is a number attacks move, the style it is made in: the one asked for, which has
   // to be one this attack is offered in, or the first when none was asked for.
   const offeredStyles = rulesetAttackStyles(combat, working, action);
@@ -8446,6 +8480,7 @@ function applyChoice(
     ...(alters?.length && picks.spared ? { spares: [...picks.spared] } : {}),
     ...(alters?.length && picks.heightened ? { heightens: picks.heightened } : {}),
     ...(choice.designates?.length ? { designates: [...choice.designates] } : {}),
+    ...(choice.kinds?.length ? { kinds: [...choice.kinds] } : {}),
   };
   // A cast taking rounds (1.408): begun now, and landing as its last round is spent.
   if (action.castingRounds) {
@@ -11421,6 +11456,25 @@ function departuresOf(ctx: RulesetCombatContext, caller: RulesetCombatant): void
  * goes on as it was handed out once it closes. Anything that turn's start was asking waits behind
  * it. The fight as it was when nobody's lair is due.
  */
+/** The kinds a zone strikes (1.700), named as it was cast, as creature types and tags. */
+function chosenKinds(definition: RulesetDefinition, kinds: readonly string[]): RulesetTargetIs {
+  const types = definition.combat?.creatureTypes?.types ?? [];
+  const typed = kinds.filter((id) => types.some((type) => type.id === id));
+  const tagged = kinds.filter((id) => !typed.includes(id));
+  return { ...(typed.length ? { types: typed } : {}), ...(tagged.length ? { tags: tagged } : {}) };
+}
+
+/** An action reaching only the kinds named as it was cast (1.700), where it names them: named none,
+ *  it reaches whom its own `targetTypes` say. */
+function withChosenKinds<T extends RulesetCombatAction | undefined>(
+  definition: RulesetDefinition,
+  action: T,
+  kinds: readonly string[] | undefined,
+): T {
+  if (!action?.kindsOf || !kinds?.length) return action;
+  return { ...action, targetTypes: { ...(action.targetTypes ?? {}), is: chosenKinds(definition, kinds) } };
+}
+
 /** A zone somebody set up before a fight (1.409): one of their own entries with a zone, by id or
  *  name, set down where they stand (`self`) or between them and their nearest foe (`between`, the
  *  default); for a glyph that stores another entry, that one too, by name. Or any other entry of
@@ -11446,6 +11500,9 @@ export interface RulesetStandingZone {
   /** Whom a zone's inside works on, by a tag they carry (1.613): Hallow's "creatures that follow a
    *  specific deity or leader". */
   tag?: string;
+  /** The kinds a zone strikes (1.700), creature types or tags by id or name, as its caster named
+   *  them: Forbiddance's. */
+  kinds?: string[];
 }
 
 /** Where a zone set up before a fight is set down (1.409), on a board. */
@@ -11642,6 +11699,18 @@ export function rulesetStandingAtStart(
       skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it does not stand.`);
       continue;
     }
+    // The kinds it strikes, as its caster named them (1.700): its own when none were.
+    const kinds = (one.kinds ?? []).flatMap((name) => {
+      const kind = action.kindsOf?.find((entry) => entry.id === name || lower(entry.label) === lower(name));
+      if (kind) return [kind.id];
+      skipped.push(`${caster.name}'s ${action.label} cannot be set against "${name}", so it is not.`);
+      return [];
+    });
+    // Its damage type (1.700): the first when none was named, and said.
+    const typed = mode ?? (action.damageTypeChoice ? action.modes?.find((entry) => entry.damageType) : undefined);
+    if (typed && !mode) {
+      skipped.push(`${caster.name}'s ${action.label} was given no damage type, so it deals ${lower(typed.label)}.`);
+    }
     const mark = ctx.events.length;
     if (action.concentration) startConcentration(ctx, caster, action);
     const at = standingCell(ctx.state, caster, one.at ?? "between");
@@ -11651,7 +11720,8 @@ export function rulesetStandingAtStart(
       optionId: action.id,
       targetIds: [],
       ...(at ? { at } : {}),
-      ...(mode ? { mode: mode.id } : {}),
+      ...(typed ? { mode: typed.id } : {}),
+      ...(kinds.length ? { kinds } : {}),
     });
     // Put down before anybody was looking: no blow it strikes as it appears, and a hidden one unsaid.
     if (caster.flags.freshZones) {
@@ -12625,7 +12695,11 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
       : undefined;
   const own = asUsed && hushed ? rulesetSuppressedAttack(asUsed, hushed) : asUsed;
   // Picked up in the mode it was made in, and with what it was altered with (1.253).
-  const moded = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
+  const moded = withChosenKinds(
+    ctx.definition,
+    own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own,
+    resume.kinds,
+  );
   let action =
     actor && moded ? rulesetResumedAction(actor, moded, resume.alters, resume.spares, resume.heightens) : moded;
   if (!actor || !action) return;
@@ -14158,6 +14232,8 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
         for (let x = here.x - reach; x <= here.x + reach; x++) {
           if (Math.max(Math.abs(x - here.x), Math.abs(y - here.y)) !== reach) continue;
           if (!rulesetRoomAt(ctx.state, grid, one, { x, y })) continue;
+          // Never into ground nobody may teleport into (1.700).
+          if (rulesetTeleportIntoBarred(ctx.state, one, { x, y })) continue;
           spot = { x, y };
           break;
         }

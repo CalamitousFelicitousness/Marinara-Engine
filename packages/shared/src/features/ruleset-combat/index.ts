@@ -238,6 +238,7 @@ export {
   rulesetStoreTargets,
   rulesetAimCells,
   rulesetTeleportCells,
+  rulesetTeleportIntoBarred,
   rulesetTeleportPassengers,
   rulesetRoomAt,
   rulesetAimedCells,

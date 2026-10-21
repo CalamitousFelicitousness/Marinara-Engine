@@ -2824,6 +2824,8 @@ export function rulesetZoneAction(
       ...(zone.forbids.components ? { components: [...zone.forbids.components] } : {}),
       // No teleporting into, out of or within it (1.414).
       ...(zone.forbids.teleport === true ? { teleport: true as const } : {}),
+      // Nobody into it at all (1.700): Forbiddance.
+      ...(zone.forbids.teleport === "into" ? { teleport: "into" as const } : {}),
       // Or out of it only past a save (1.550).
       ...(typeof zone.forbids.teleport === "object" ? { teleport: { ...zone.forbids.teleport } } : {}),
       // No casting from these catalogs inside it (1.468): an antimagic field's spells.
@@ -4213,13 +4215,35 @@ function mechanicsAction(
   }
   // A creature type named as it is used (1.270), picked like a weapon's mode: Antipathy/Sympathy.
   const creatureTypes = definition.combat?.creatureTypes;
-  if (mechanics.kindChoice && creatureTypes) {
+  // Or several, the kinds its zone strikes (1.700): Forbiddance.
+  if (mechanics.kindChoice === "many" && creatureTypes) {
+    action.kindsOf = [...creatureTypes.types, ...(creatureTypes.tags ?? [])].map((kind) => ({
+      id: kind.id,
+      label: kind.label,
+    }));
+  }
+  if (mechanics.kindChoice === true && creatureTypes) {
     action.kindChoice = true;
     action.modes = [...creatureTypes.types, ...(creatureTypes.tags ?? [])].map((kind) => ({
       id: `kind-${kind.id}`,
       label: kind.label,
       kind: kind.id,
     }));
+  }
+  // The damage type named as it is used (1.700), picked like a weapon's mode: Forbiddance's.
+  if (mechanics.damageTypeChoice) {
+    action.damageTypeChoice = true;
+    action.modes = [
+      ...(action.modes ?? []),
+      ...mechanics.damageTypeChoice.map((type) => ({
+        id: `damage-${type
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")}`,
+        label: type.trim().charAt(0).toUpperCase() + type.trim().slice(1),
+        damageType: type.trim(),
+      })),
+    ];
   }
   const revival = mechanics.revives && amountOf(mechanics.revives.health);
   if (mechanics.revives && revival) action.revives = { withinRounds: mechanics.revives.withinRounds, amount: revival };

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION, rulesetItemSlotPayment } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
+import { useRulesetKinds } from "./RulesetKindsContext";
 import { useTranslation } from "react-i18next";
 import {
   rulesetAimSoFar,
@@ -114,6 +115,9 @@ export function RulesetCombatMenu({
   const [altersPicked, setAltersPicked] = useState<string[]>([]);
   // Who of its user's side is ticked to be spared in the spare step (1.254).
   const [sparesPicked, setSparesPicked] = useState<string[]>([]);
+  // The kinds ticked in the kinds step (1.700), handed up as it goes on.
+  const [kindsPicked, setKindsPicked] = useState<string[]>([]);
+  const nameKinds = useRulesetKinds();
   // Held by the owner only when it passes BOTH halves (`step` may be null, never left out): with one
   // of them missing the menu keeps its own, or a pick would be handed up and never come back down.
   const held = onStepChange !== undefined && heldStep !== undefined;
@@ -167,6 +171,7 @@ export function RulesetCombatMenu({
       stepStage === "style" ||
       stepStage === "mode" ||
       stepStage === "alter" ||
+      stepStage === "kinds" ||
       stepStage === "spare" ||
       stepStage === "heighten" ||
       stepStage === "pay" ||
@@ -301,10 +306,16 @@ export function RulesetCombatMenu({
     closeStep();
     onChoose(option.id, [], payWith, { storesIn: place });
   };
-  const take = (option: DirectedRulesetOption, cast = false) => {
+  const take = (option: DirectedRulesetOption, cast = false, named = false) => {
     // Whether to store it instead comes first (1.471): a Ring of Spell Storing.
     if (!cast && option.storesIn?.length) {
       setStep({ stage: "store", option, targets: [] });
+      return;
+    }
+    // Then the kinds its zone strikes (1.700): Forbiddance's.
+    if (!named && option.kindsOf?.length && nameKinds) {
+      setKindsPicked([]);
+      setStep({ stage: "kinds", option, targets: [] });
       return;
     }
     // Where attacks move initiative, how the attack is made comes first: it decides what it does.
@@ -385,6 +396,57 @@ export function RulesetCombatMenu({
               </button>
             );
           })}
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── The kinds its zone strikes (1.700) ──
+  if (step?.stage === "kinds" && step.option.kindsOf?.length) {
+    const option = step.option;
+    const toggle = (id: string) =>
+      setKindsPicked(kindsPicked.includes(id) ? kindsPicked.filter((one) => one !== id) : [...kindsPicked, id]);
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-kinds-prompt">
+          {t("game.combat.ruleset.kinds.prompt", { label: rulesetOptionLabel(option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-kinds-prompt">
+          {option.kindsOf!.map((kind, index) => {
+            const picked = kindsPicked.includes(kind.id);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={kind.id}
+                type="button"
+                disabled={busy}
+                aria-pressed={picked}
+                onClick={() => toggle(kind.id)}
+                className={cn(
+                  buttonClass,
+                  picked
+                    ? "border-[var(--primary)]/60 bg-[var(--primary)]/25 text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:bg-white/10",
+                )}
+              >
+                {kind.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy || kindsPicked.length === 0}
+            onClick={() => {
+              nameKinds?.(option.id, kindsPicked);
+              take(option, true, true);
+            }}
+            className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+          >
+            {t("game.combat.ruleset.kinds.use", { count: kindsPicked.length })}
+          </button>
         </div>
         <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
       </div>

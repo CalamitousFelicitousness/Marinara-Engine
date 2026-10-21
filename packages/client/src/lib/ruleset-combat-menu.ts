@@ -64,6 +64,7 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "walkCarefully" | "stand" | "cl
 export interface RulesetMenuStep {
   stage:
     | "store"
+    | "kinds"
     | "style"
     | "mode"
     | "alter"

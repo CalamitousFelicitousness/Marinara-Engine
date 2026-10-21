@@ -46815,6 +46815,10 @@
                                     "difficulty"
                                   ],
                                   "additionalProperties": false
+                                },
+                                {
+                                  "type": "string",
+                                  "const": "into"
                                 }
                               ]
                             },
@@ -52839,8 +52843,24 @@
                       "const": true
                     },
                     "kindChoice": {
-                      "type": "boolean",
-                      "const": true
+                      "type": [
+                        "boolean",
+                        "string"
+                      ],
+                      "enum": [
+                        true,
+                        "many"
+                      ]
+                    },
+                    "damageTypeChoice": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "minItems": 2,
+                      "maxItems": 8
                     },
                     "forms": {
                       "type": "object",
@@ -77590,6 +77610,10 @@
                                         "difficulty"
                                       ],
                                       "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "string",
+                                      "const": "into"
                                     }
                                   ]
                                 },
@@ -97222,6 +97246,10 @@
                                           "difficulty"
                                         ],
                                         "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "into"
                                       }
                                     ]
                                   },
@@ -106596,7 +106624,7 @@
                           }
                         ]
                       },
-                      "maxItems": 12,
+                      "maxItems": 16,
                       "default": []
                     },
                     "spellcasting": {
@@ -106962,7 +106990,7 @@
                               "pattern": "^[a-z][a-z0-9_]*$"
                             },
                             "minItems": 1,
-                            "maxItems": 12
+                            "maxItems": 16
                           },
                           "$comment": {}
                         },
@@ -131131,6 +131159,10 @@
                                         "difficulty"
                                       ],
                                       "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "string",
+                                      "const": "into"
                                     }
                                   ]
                                 },
@@ -137055,8 +137087,24 @@
                           "const": true
                         },
                         "kindChoice": {
-                          "type": "boolean",
-                          "const": true
+                          "type": [
+                            "boolean",
+                            "string"
+                          ],
+                          "enum": [
+                            true,
+                            "many"
+                          ]
+                        },
+                        "damageTypeChoice": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "minItems": 2,
+                          "maxItems": 8
                         },
                         "forms": {
                           "type": "object",
@@ -155913,6 +155961,10 @@
                                               "difficulty"
                                             ],
                                             "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "string",
+                                            "const": "into"
                                           }
                                         ]
                                       },
@@ -161837,8 +161889,24 @@
                                 "const": true
                               },
                               "kindChoice": {
-                                "type": "boolean",
-                                "const": true
+                                "type": [
+                                  "boolean",
+                                  "string"
+                                ],
+                                "enum": [
+                                  true,
+                                  "many"
+                                ]
+                              },
+                              "damageTypeChoice": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "minItems": 2,
+                                "maxItems": 8
                               },
                               "forms": {
                                 "type": "object",
@@ -180701,6 +180769,10 @@
                                               "difficulty"
                                             ],
                                             "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "string",
+                                            "const": "into"
                                           }
                                         ]
                                       },
@@ -186625,8 +186697,24 @@
                                 "const": true
                               },
                               "kindChoice": {
-                                "type": "boolean",
-                                "const": true
+                                "type": [
+                                  "boolean",
+                                  "string"
+                                ],
+                                "enum": [
+                                  true,
+                                  "many"
+                                ]
+                              },
+                              "damageTypeChoice": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "minItems": 2,
+                                "maxItems": 8
                               },
                               "forms": {
                                 "type": "object",

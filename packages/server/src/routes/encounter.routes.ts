@@ -323,6 +323,7 @@ export const encounterBlueprintSchema = z
                   into: z.string().min(1).max(200).optional().catch(undefined),
                   spares: z.array(z.string().min(1).max(80)).max(8).optional().catch(undefined),
                   tag: z.string().min(1).max(80).optional().catch(undefined),
+                  kinds: z.array(z.string().min(1).max(80)).max(16).optional().catch(undefined),
                 })
                 .strip(),
             )
@@ -366,6 +367,7 @@ export const encounterBlueprintSchema = z
                   into: z.string().min(1).max(200).optional().catch(undefined),
                   spares: z.array(z.string().min(1).max(80)).max(8).optional().catch(undefined),
                   tag: z.string().min(1).max(80).optional().catch(undefined),
+                  kinds: z.array(z.string().min(1).max(80)).max(16).optional().catch(undefined),
                 })
                 .strip(),
             )
@@ -735,7 +737,7 @@ export function buildInitPrompt(
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
     inst += `- Surprise: give "surprised": true to every party member or enemy the scene shows was caught unaware (it did not notice the ambush or the attackers before the fight began). Leave it out for anyone who saw it coming, and for everybody when nobody was caught off guard.\n`;
     inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
-    inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". A spell cast beforehand that is not a ward on the ground (Heroes' Feast, Foresight, a buff) may be listed the same way with "on": ["names of those it was cast on"], and is in effect as the fight starts. A ward that works on one sort of creature (Hallow's extra effect) may add "kind": "that creature type". A spell cast beforehand that is done one of several ways (the creature Find Familiar calls) adds "mode": "that way's name". A spell cast beforehand into something that stores it (a Ring of Spell Storing, a shield guardian) adds "into": "that item's or creature's name", with "on": ["its holder's name"] when somebody else holds it. Only for what the scene says was really done; leave it out otherwise.\n`;
+    inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". A spell cast beforehand that is not a ward on the ground (Heroes' Feast, Foresight, a buff) may be listed the same way with "on": ["names of those it was cast on"], and is in effect as the fight starts. A ward that works on one sort of creature (Hallow's extra effect) may add "kind": "that creature type". A spell cast beforehand that is done one of several ways (the creature Find Familiar calls, or the damage type Forbiddance deals) adds "mode": "that way's name". A ward that strikes the sorts of creature its caster named (Forbiddance's) adds "kinds": ["those creature types"]. A spell cast beforehand into something that stores it (a Ring of Spell Storing, a shield guardian) adds "into": "that item's or creature's name", with "on": ["its holder's name"] when somebody else holds it. Only for what the scene says was really done; leave it out otherwise.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;
     inst += `  - abilities: ${sheet.abilities.join(", ") || "none"}\n`;

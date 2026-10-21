@@ -1101,6 +1101,11 @@ export interface RulesetCombatAction {
   inMode?: string;
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
+  /** Its user names one or more of these creature types and tags as they use it (1.700), the
+   *  kinds its zone strikes: Forbiddance. */
+  kindsOf?: Array<{ id: string; label: string }>;
+  /** Its user names its damage type as they use it (1.700), one of `modes`. */
+  damageTypeChoice?: true;
   /** A form is picked as it is used (1.342), from its `modes`; `formCap` keeps out the forms above
    *  what its target may become. */
   shapes?: true;
@@ -1735,6 +1740,8 @@ export interface RulesetCombatMode {
   cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
   /** The creature type named in this mode (1.270), remembered by what it puts on. */
   kind?: string;
+  /** The damage type it deals in this mode (1.700), and its zone's strikes too. */
+  damageType?: string;
   /** The form picked in this mode (1.342), taken by whoever what it puts on lands on. */
   form?: RulesetShapeForm;
   /** Who is called in this mode (1.344): Conjure Animals' two wolves or four. */
@@ -2840,6 +2847,8 @@ export interface RulesetActionResume {
   heightens?: string;
   /** Whom a layered wall spares, as they were picked (1.439). */
   designates?: string[];
+  /** The kinds its zone strikes, as they were named (1.700): ids of its action's `kindsOf`. */
+  kinds?: string[];
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.242). */
@@ -4235,6 +4244,9 @@ export interface RulesetCombatOption {
   /** Whom a layered wall may spare (1.439), picked as it is cast: at most `count` of `ids`. The
    *  choice names them as `designates`. */
   designates?: { count: number; ids: string[] };
+  /** The creature types and tags its zone may strike (1.700), one or more named as it is cast:
+   *  the choice names them as `kinds`. Forbiddance. */
+  kindsOf?: Array<{ id: string; label: string }>;
   /** What it may be stored in instead of done (1.471): its user's own item (`item`, its place on
    *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
    *  levels still free there. The choice names one as `storesIn`. */
@@ -4359,6 +4371,9 @@ export interface RulesetCombatChoice {
   carries?: string[];
   /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
   designates?: string[];
+  /** The kinds its zone strikes (1.700): one or more ids its option's `kindsOf` offers. Named
+   *  none, it strikes whom its own `targetTypes` say. */
+  kinds?: string[];
   /** Stored instead of done (1.471): one of its option's `storesIn`. */
   storesIn?: { holderId: string; item?: number };
   /** Which way a wall runs from `at` (1.177): toward this cell. Across the line to its maker when
@@ -4616,7 +4631,11 @@ export interface RulesetCombatZoneRule {
   };
   /** Components nothing used from inside it may need (1.179). */
   /** `teleport` an object (1.550): out of it only past that save. */
-  forbids?: { components?: string[]; teleport?: true | { save: string; difficulty: "caster" }; casts?: string[] };
+  forbids?: {
+    components?: string[];
+    teleport?: true | "into" | { save: string; difficulty: "caster" };
+    casts?: string[];
+  };
   /** Off these catalogs, at this level or lower, nothing from outside reaches inside (1.179). */
   wards?: {
     catalogs: string[];
@@ -4687,6 +4706,11 @@ export interface RulesetCombatZone {
   insideIs?: RulesetTargetIs;
   /** Creature types left out of what it keeps out, chosen as it was cast (1.613): Hallow's. */
   keptOutSpares?: string[];
+  /** The kinds its strikes reach, named as it was cast (1.700), in place of its entry's own:
+   *  Forbiddance's. */
+  strikesIs?: RulesetTargetIs;
+  /** The damage type its strikes deal, named as it was cast (1.700). */
+  damageType?: string;
   /** Whoever set it off by entering it (1.398), for a stored entry to be cast at (1.401). */
   trippedBy?: string;
   /** The id of its caster's own action stored in it (1.401), cast as it goes off. */

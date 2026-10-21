@@ -2742,7 +2742,29 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
-/** An item of only further uses, rolled for (1.696): a Necklace of Prayer Beads. */
+/** A creature with more than 12 actions (1.701): 5e's vampire, with its bat and mist forms. Before
+ *  it every list of actions held 12 at most, so any longer one is one. */
+function carriesManyActions701(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesManyActions701(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (Array.isArray(record.actions) && record.actions.length > 12) return true;
+  return featureValues(record).some((one) => carriesManyActions701(one, depth + 1));
+}
+
+/** A zone nobody teleports into, the kinds its strikes reach named as it is cast, or a damage type
+ *  named as it is cast (1.700): Forbiddance. */
+function carriesForbiddance700(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesForbiddance700(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.kindChoice === "many" || record.damageTypeChoice !== undefined) return true;
+  if (plainRecord(record.forbids)?.teleport === "into") return true;
+  return featureValues(record).some((one) => carriesForbiddance700(one, depth + 1));
+}
+
 /** A change to checks made only for some purposes (1.699): Gloves of Swimming and Climbing. */
 function carriesCheckPurposes699(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -2778,6 +2800,7 @@ function carriesDaySaveHarm697(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesDaySaveHarm697(one, depth + 1));
 }
 
+/** An item of only further uses, rolled for (1.696): a Necklace of Prayer Beads. */
 function carriesOnlyMoreUses696(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOnlyMoreUses696(one, depth + 1));
@@ -9178,6 +9201,20 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Creatures with more than 12 actions, 1.701.
+  if (
+    !declaresApi(701) &&
+    (carriesManyActions701(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesManyActions701(document)))
+  )
+    return "A ruleset with a creature of more than 12 actions requires schemaVersion 2 and capabilityApi 1.701 or newer";
+  // A zone nobody teleports into, and kinds and a damage type named as it is cast, 1.700.
+  if (
+    !declaresApi(700) &&
+    (carriesForbiddance700(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesForbiddance700(document)))
+  )
+    return 'A ruleset with a zone nobody teleports into (forbids.teleport "into"), kinds its zone strikes named as it is cast (kindChoice "many") or a damage type named as it is cast (damageTypeChoice) requires schemaVersion 2 and capabilityApi 1.700 or newer';
   // Changes to checks made only for some purposes, 1.699.
   if (
     !declaresApi(699) &&

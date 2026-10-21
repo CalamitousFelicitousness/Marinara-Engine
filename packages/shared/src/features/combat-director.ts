@@ -73,6 +73,8 @@ export type DirectedCommand =
       carries?: string[];
       /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
       designates?: string[];
+      /** The kinds its zone strikes (1.700): ids its option's `kindsOf` offers. */
+      kinds?: string[];
       /** Stored instead of done (1.471). */
       storesIn?: { holderId: string; item?: number };
       /** How many levels up a target moved to `to` is lifted (1.512): Telekinesis. */

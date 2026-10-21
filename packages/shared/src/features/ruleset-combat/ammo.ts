@@ -100,6 +100,16 @@ export function rulesetModedAction(
           damage: undefined,
         }
       : {}),
+    // The damage type named (1.700): Forbiddance's radiant or necrotic.
+    ...(mode.damageType && action.damage
+      ? {
+          damage: {
+            ...action.damage,
+            ...(mode.plus?.length ? { plus: [...(action.damage.plus ?? []), ...mode.plus] } : {}),
+            type: mode.damageType,
+          },
+        }
+      : {}),
   };
 }
 

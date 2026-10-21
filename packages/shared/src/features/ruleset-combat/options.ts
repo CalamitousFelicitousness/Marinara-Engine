@@ -435,6 +435,29 @@ function teleportBarred(definition: RulesetDefinition, state: RulesetEncounterSt
   return barred;
 }
 
+/**
+ * Whether teleporting to `at` would put this combatant into a standing zone that lets nobody
+ * teleport into it (1.700): Forbiddance. One they already stand in, even in part, they may teleport
+ * within; and out of any of them.
+ */
+export function rulesetTeleportIntoBarred(
+  state: RulesetEncounterState,
+  one: RulesetCombatant,
+  at: RulesetCombatCell,
+): boolean {
+  const from = rulesetPositionOf(one);
+  const span = rulesetSpanOf(one);
+  for (const { caster, zone, action } of rulesetStandingZones(state)) {
+    if (action.zone?.forbids?.teleport !== "into") continue;
+    const cells = new Set(rulesetZoneCells(state, caster, zone).map((cell) => `${cell.x},${cell.y}`));
+    const touches = (where: RulesetCombatCell) =>
+      rulesetFootprintAt(where, span).some((cell) => cells.has(`${cell.x},${cell.y}`));
+    if (from && touches(from)) continue;
+    if (touches(at)) return true;
+  }
+  return false;
+}
+
 /** Whether this combatant stands where it may not teleport from (1.414): Hallow. */
 export function rulesetTeleportBarredHere(
   definition: RulesetDefinition,
@@ -472,6 +495,8 @@ export function rulesetTeleportCells(
       const at = { x, y };
       if (rulesetGapFrom(at, span, actor) > teleport.distance) continue;
       if (rulesetFootprintAt(at, span).some((cell) => barred.has(`${cell.x},${cell.y}`))) continue;
+      // Nor into ground nobody may teleport into (1.700).
+      if (rulesetTeleportIntoBarred(state, actor, at)) continue;
       if (!rulesetRoomAt(state, grid, actor, at)) continue;
       if (
         teleport.seen &&
@@ -3745,6 +3770,8 @@ function optionFrom(
     const ids = state.combatants.filter((one) => !one.defeated && one.id !== actor.id).map((one) => one.id);
     if (ids.length > 0) option.designates = { count: spares.chosen, ids };
   }
+  // The kinds its zone may strike, one or more named as it is cast (1.700): Forbiddance.
+  if (action.kindsOf?.length) option.kindsOf = action.kindsOf.map((kind) => ({ ...kind }));
   // What its user may pick to end on each target (1.374): Cleansing Touch's one spell.
   if (action.endsSpells?.chosen) {
     const ends = action.endsSpells;

@@ -801,6 +801,9 @@ export function formatCatalogMechanics(
     }
     // No teleporting into, out of or within it (1.414).
     if (mechanics.zone.forbids?.teleport === true) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
+    // Nobody into it at all (1.700): Forbiddance.
+    else if (mechanics.zone.forbids?.teleport === "into")
+      parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleportInto"));
     // Or out of it only past a save (1.550).
     else if (mechanics.zone.forbids?.teleport)
       parts.push(

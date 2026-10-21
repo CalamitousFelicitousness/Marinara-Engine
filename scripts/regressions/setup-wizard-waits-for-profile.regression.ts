@@ -14,15 +14,17 @@ const require = createRequire(new URL("../../packages/client/package.json", impo
 const { QueryClient } = require("@tanstack/react-query") as typeof import("@tanstack/react-query");
 
 const queryClient = new QueryClient();
+// The key the wizard reads its starting choices from (must mirror chatKeys.detail in use-chats.ts).
+const chatDetailKey = ["chats", "detail", "new"] as const;
 let finishApply: (() => void) | undefined;
-const cachedChat = () => queryClient.getQueryData<{ metadata: Record<string, unknown> }>(["chat", "new"]);
+const cachedChat = () => queryClient.getQueryData<{ metadata: Record<string, unknown> }>(chatDetailKey);
 const apply = queryClient
   .getMutationCache()
   .build(queryClient, {
     mutationKey: CHAT_PRESET_APPLY_MUTATION_KEY,
     mutationFn: () => new Promise<void>((resolve) => (finishApply = resolve)),
     onSuccess: () => {
-      queryClient.setQueryData(["chat", "new"], { metadata: { conversationCommandToggles: { video: true } } });
+      queryClient.setQueryData(chatDetailKey, { metadata: { conversationCommandToggles: { video: true } } });
     },
   })
   .execute({ presetId: "profile", chatId: "new" });

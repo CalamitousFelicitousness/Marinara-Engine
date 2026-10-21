@@ -954,7 +954,7 @@ function WizardLoading({ onClose }: { onClose: () => void }) {
           role="status"
           className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
         >
-          <Loader2 size="1rem" className="animate-spin" aria-hidden="true" />
+          <Loader2 size="1rem" className="motion-safe:animate-spin" aria-hidden="true" />
           {t("navigation.common.loading")}
         </div>
       </div>

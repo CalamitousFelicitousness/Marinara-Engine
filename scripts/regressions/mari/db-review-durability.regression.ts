@@ -175,30 +175,32 @@ try {
         await assertDirectFields();
       }
 
-      const clearResults = [];
       for (const [field, shape, value] of [
         ["summary", "top-level", ""],
         ["mes_example", "patch", ""],
         ["summary", "patch", " \n "],
         ["mes_example", "top-level", " \n "],
       ] as const) {
+        const seeded = await mari.executeAction({
+          action: "persona.update",
+          personaId: "direct-fields-persona",
+          patch: { [field]: "Clear this field independently." },
+          apply: true,
+        });
+        assert.equal(seeded.ok, true);
+        expectedFields[field] = "Clear this field independently.";
+        await assertDirectFields();
         const update = { [field]: value };
-        clearResults.push(
-          await mari.executeAction({
-            action: "persona.update",
-            personaId: "direct-fields-persona",
-            ...(shape === "top-level" ? update : { patch: update }),
-            apply: true,
-          }),
-        );
+        const cleared = await mari.executeAction({
+          action: "persona.update",
+          personaId: "direct-fields-persona",
+          ...(shape === "top-level" ? update : { patch: update }),
+          apply: true,
+        });
+        assert.equal(cleared.ok, true, `${field} clears through ${shape}: ${JSON.stringify(cleared)}`);
+        expectedFields[field] = "";
+        await assertDirectFields();
       }
-      assert.ok(
-        clearResults.every((result) => result.ok),
-        `empty card fields can be cleared: ${JSON.stringify(clearResults)}`,
-      );
-      expectedFields.summary = "";
-      expectedFields.mes_example = "";
-      await assertDirectFields();
       for (const payload of [
         {},
         { summary: null, mes_example: 17 },

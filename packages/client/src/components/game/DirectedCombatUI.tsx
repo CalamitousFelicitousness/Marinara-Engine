@@ -71,6 +71,12 @@ export function DirectedCombatUI(props: Props) {
   }, [definition]);
   // What the ruleset calls the number an attack is rolled against, for the one prompt that shows it.
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
+  // The kinds a zone strikes, named in the menu as it is cast (1.700), sent with that option once.
+  // Every hook comes before the loading return, so the screen asks for the same hooks every time.
+  const namedKinds = useRef<{ optionId: string; kinds: string[] } | null>(null);
+  const nameKinds = useCallback((optionId: string, kinds: string[]) => {
+    namedKinds.current = { optionId, kinds };
+  }, []);
   if (loading || !s)
     return (
       <div className="flex h-full items-center justify-center p-4 text-[var(--foreground)]" role="status">
@@ -105,11 +111,6 @@ export function DirectedCombatUI(props: Props) {
   // The screen decides from the VIEW, never from what was asked for: a grid on it is a fight with
   // positions, and a fight without one keeps the Classic stage it has had since C3.
   const board = fight?.grid ? fight : undefined;
-  // The kinds a zone strikes, named in the menu as it is cast (1.700), sent with that option once.
-  const namedKinds = useRef<{ optionId: string; kinds: string[] } | null>(null);
-  const nameKinds = useCallback((optionId: string, kinds: string[]) => {
-    namedKinds.current = { optionId, kinds };
-  }, []);
   /** One ruleset choice, with the two cells only a positioned fight ever carries. */
   const choose = (
     optionId: string,

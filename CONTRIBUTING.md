@@ -364,11 +364,11 @@ Release helpers now in the repo:
 - `pnpm guard:installer-artifacts` fails when tracked installer binaries appear under `win/installer/*.exe`.
 - `pnpm release:notes -- <version>` renders the matching `CHANGELOG.md` entry for release publication and prepends the temporary Android APK / Termux notice.
 
-## Owner Notices
+## Marinara Notices
 
 Running installations fetch `notices.json` from the `notices` branch at startup and every hour, and show the owner
 (never an anonymous remote visitor) at most one matching notice as a banner. Owners can turn this off with
-`OWNER_NOTICES_ENABLED=false` (see `docs/CONFIGURATION.md`).
+`MARINARA_NOTICES_ENABLED=false` (see `docs/CONFIGURATION.md`).
 
 **When to post one:** only when the owner must act and something bad happens if they do not: a security risk, data
 loss, or an update that needs a manual step (for example "Docker users must do X"). Expect a handful per year. Never

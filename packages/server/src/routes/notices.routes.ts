@@ -1,17 +1,17 @@
 // ──────────────────────────────────────────────
-// Routes: Owner notices published on the repo's `notices` branch
+// Routes: Marinara notices published on the repo's `notices` branch
 // ──────────────────────────────────────────────
 // GET /api/notices — notices that match this version, for the owner only.
 // The file is remote content: validate it strictly and keep it plain text.
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { APP_VERSION } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
-import { isOwnerNoticesEnabled } from "../config/runtime-config.js";
+import { isMarinaraNoticesEnabled } from "../config/runtime-config.js";
 import { isAdminAuthorized } from "../middleware/privileged-gate.js";
 import { getRequestAccess } from "../middleware/ip-allowlist.js";
 import { isBasicAuthSatisfied } from "../middleware/basic-auth.js";
 import { compareVersions } from "./updates.routes.js";
-import { OWNER_NOTICES_RATE_LIMIT } from "../middleware/rate-limit.js";
+import { MARINARA_NOTICES_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 const DEFAULT_NOTICES_URL = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Engine/notices/notices.json";
 const REFRESH_MS = 60 * 60_000;
@@ -20,7 +20,7 @@ const MAX_FILE_CHARS = 64_000;
 const MAX_NOTICES = 20;
 const DAY_MS = 86_400_000;
 
-export interface OwnerNotice {
+export interface MarinaraNotice {
   id: string;
   level: "warning" | "critical";
   title: string;
@@ -90,9 +90,9 @@ async function readCapped(res: Response) {
 }
 
 /** Drops every notice that is malformed, expired, or for another version. */
-export function parseOwnerNotices(raw: unknown, version: string, now = Date.now()): OwnerNotice[] {
+export function parseMarinaraNotices(raw: unknown, version: string, now = Date.now()): MarinaraNotice[] {
   if (!Array.isArray(raw) || raw.length > MAX_NOTICES) return [];
-  const notices: OwnerNotice[] = [];
+  const notices: MarinaraNotice[] = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const item = entry as Record<string, unknown>;
@@ -123,8 +123,8 @@ export async function noticesRoutes(app: FastifyInstance) {
   let cached: unknown = [];
 
   const refresh = async () => {
-    if (!isOwnerNoticesEnabled()) return;
-    const url = process.env.OWNER_NOTICES_URL?.trim() || DEFAULT_NOTICES_URL;
+    if (!isMarinaraNoticesEnabled()) return;
+    const url = process.env.MARINARA_NOTICES_URL?.trim() || DEFAULT_NOTICES_URL;
     try {
       const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (res.status === 404) {
@@ -136,7 +136,7 @@ export async function noticesRoutes(app: FastifyInstance) {
       cached = JSON.parse(await readCapped(res));
     } catch (err) {
       // Keep the last good file; a failed fetch never blocks startup.
-      logger.warn(err, "[notices] Could not fetch owner notices");
+      logger.warn(err, "[notices] Could not fetch Marinara notices");
     }
   };
 
@@ -145,7 +145,7 @@ export async function noticesRoutes(app: FastifyInstance) {
   timer.unref();
   app.addHook("onClose", async () => clearInterval(timer));
 
-  app.get("/", { config: { rateLimit: OWNER_NOTICES_RATE_LIMIT } }, async (req) => ({
-    notices: isOwnerNoticesEnabled() && isNoticeOwner(req) ? parseOwnerNotices(cached, APP_VERSION) : [],
+  app.get("/", { config: { rateLimit: MARINARA_NOTICES_RATE_LIMIT } }, async (req) => ({
+    notices: isMarinaraNoticesEnabled() && isNoticeOwner(req) ? parseMarinaraNotices(cached, APP_VERSION) : [],
   }));
 }

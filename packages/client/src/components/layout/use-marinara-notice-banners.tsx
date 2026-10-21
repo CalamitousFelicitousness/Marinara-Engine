@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Owner notices: maintainer-published warnings from the `notices` branch
+// Marinara notices: maintainer-published warnings from the `notices` branch
 // ──────────────────────────────────────────────
 // The server validates the file and only answers the owner. Polls hourly so a tab
 // that stays open for days still sees a newly published notice.
@@ -9,7 +9,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { api } from "../../lib/api-client";
 import type { AppBannerCandidate } from "../ui/AppBanner";
 
-type OwnerNotice = {
+type MarinaraNotice = {
   id: string;
   level: "warning" | "critical";
   title: string;
@@ -20,15 +20,15 @@ type OwnerNotice = {
 
 const POLL_MS = 60 * 60_000;
 
-export function useOwnerNoticeBanners(): AppBannerCandidate[] {
+export function useMarinaraNoticeBanners(): AppBannerCandidate[] {
   const { t: localizeUi } = useUiTranslation();
-  const [notices, setNotices] = useState<OwnerNotice[]>([]);
+  const [notices, setNotices] = useState<MarinaraNotice[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       void api
-        .get<{ notices?: OwnerNotice[] } | null>("/notices")
+        .get<{ notices?: MarinaraNotice[] } | null>("/notices")
         .then((value) => {
           if (!cancelled && Array.isArray(value?.notices)) setNotices(value.notices);
         })

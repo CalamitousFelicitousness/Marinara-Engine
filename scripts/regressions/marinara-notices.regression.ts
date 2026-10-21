@@ -1,14 +1,14 @@
-// Owner notices are remote content from the `notices` branch. Pin the strict
+// Marinara notices are remote content from the `notices` branch. Pin the strict
 // filter (shape, expiry, version range, link allowlist) and that only the owner
 // receives them, never an anonymous remote visitor.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
-import { noticesRoutes, parseOwnerNotices, versionInRange } from "../../packages/server/src/routes/notices.routes.js";
+import { noticesRoutes, parseMarinaraNotices, versionInRange } from "../../packages/server/src/routes/notices.routes.js";
 import { APP_VERSION } from "../../packages/shared/src/constants/defaults.js";
 
-const ENV_KEYS = ["ADMIN_SECRET", "BASIC_AUTH_USER", "BASIC_AUTH_PASS", "OWNER_NOTICES_ENABLED", "OWNER_NOTICES_URL"];
+const ENV_KEYS = ["ADMIN_SECRET", "BASIC_AUTH_USER", "BASIC_AUTH_PASS", "MARINARA_NOTICES_ENABLED", "MARINARA_NOTICES_URL"];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 for (const key of ENV_KEYS) delete process.env[key];
 
@@ -23,7 +23,7 @@ const valid = {
   expires: "2026-12-31",
   link: "https://github.com/Pasta-Devs/Marinara-Engine/releases",
 };
-const parse = (entries: unknown[], version = "2.5.1") => parseOwnerNotices(entries, version, now);
+const parse = (entries: unknown[], version = "2.5.1") => parseMarinaraNotices(entries, version, now);
 
 const { id, level, title, text, action, link } = valid;
 assert.deepEqual(parse([valid]), [{ id, level, title, text, action, link }]);
@@ -35,7 +35,7 @@ assert.equal(parse([{ ...valid, level: "info" }]).length, 0, "unknown level is d
 assert.equal(parse([valid], "2.5.2").length, 0, "non-matching version is dropped");
 assert.equal(parse([{ ...valid, versions: "not a range" }]).length, 0, "invalid range is dropped");
 assert.equal(parse([valid, { ...valid, title: "Duplicate" }]).length, 1, "duplicate ids show once");
-assert.equal(parseOwnerNotices({ notices: [valid] }, "2.5.1", now).length, 0, "a non-array file is ignored");
+assert.equal(parseMarinaraNotices({ notices: [valid] }, "2.5.1", now).length, 0, "a non-array file is ignored");
 assert.equal(
   parse(Array.from({ length: 21 }, (_, i) => ({ ...valid, id: `n${i}` }))).length,
   0,
@@ -71,7 +71,7 @@ assert.ok(!versionInRange("2.5.1", ">2.5.1"));
 // ── Owner-only endpoint, fed by a local notices file ──
 const fileServer = createServer((_req, res) => res.end(JSON.stringify([{ ...valid, versions: `=${APP_VERSION}` }])));
 await new Promise<void>((resolve) => fileServer.listen(0, "127.0.0.1", resolve));
-process.env.OWNER_NOTICES_URL = `http://127.0.0.1:${(fileServer.address() as AddressInfo).port}/notices.json`;
+process.env.MARINARA_NOTICES_URL = `http://127.0.0.1:${(fileServer.address() as AddressInfo).port}/notices.json`;
 process.env.ADMIN_SECRET = "admin-secret";
 
 const app = Fastify();
@@ -95,9 +95,9 @@ try {
   assert.equal(await get("192.168.1.20"), 0, "an anonymous LAN visitor gets no notice data");
   assert.equal(await get("127.0.0.1", { "x-forwarded-for": "203.0.113.5" }), 0, "a proxied visitor is not the owner");
   assert.equal(await get("203.0.113.5", { "x-admin-secret": "admin-secret" }), 1, "the admin secret proves the owner");
-  process.env.OWNER_NOTICES_ENABLED = "false";
+  process.env.MARINARA_NOTICES_ENABLED = "false";
   assert.equal(await get("127.0.0.1"), 0, "the opt-out hides notices");
-  console.info("Owner notices regressions passed.");
+  console.info("Marinara notices regressions passed.");
 } finally {
   await app.close();
   fileServer.close();

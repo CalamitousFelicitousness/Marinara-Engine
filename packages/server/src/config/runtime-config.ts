@@ -530,8 +530,8 @@ export function isUpdatesApplyHardDisabled() {
   return BOOT_UPDATES_APPLY_HARD_DISABLED || isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
 }
 
-export function isOwnerNoticesEnabled() {
-  return !isDisabledFlag(process.env.OWNER_NOTICES_ENABLED);
+export function isMarinaraNoticesEnabled() {
+  return !isDisabledFlag(process.env.MARINARA_NOTICES_ENABLED);
 }
 
 export function isUpdatesRemoteApplyAllowed() {

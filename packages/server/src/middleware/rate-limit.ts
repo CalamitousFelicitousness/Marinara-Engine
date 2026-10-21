@@ -103,8 +103,8 @@ export const RUNTIME_DIAGNOSTICS_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
-/** Owner notices; each tab asks once on load and then hourly. */
-export const OWNER_NOTICES_RATE_LIMIT = {
+/** Marinara notices; each tab asks once on load and then hourly. */
+export const MARINARA_NOTICES_RATE_LIMIT = {
   max: 10,
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;

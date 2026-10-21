@@ -185,6 +185,38 @@ try {
     await connections.update(conn.id, { maxContext: 32_768 });
   }
 
+  // The whole-persona macro includes newly authored dialogue in selected Experience lore.
+  {
+    const chat = await createExperienceChat("Persona dialogue in selected lore");
+    const persona = await characters.createPersona("Dialogue traveler", "", undefined, {
+      summary: "METADATA_SYNOPSIS_STAYS_PRIVATE",
+      mes_example: "TRAVELER_DIALOGUE_REACHES_EXPERIENCE",
+    });
+    assert.ok(persona);
+    createdPersonaIds.push(persona.id);
+    await chats.update(chat.id, { personaId: persona.id });
+    const book = await lorebooks.create({ name: "Persona dialogue reference" });
+    createdLorebookIds.push(book.id);
+    const entry = await lorebooks.createEntry({
+      lorebookId: book.id,
+      name: "Selected identity",
+      content: "Identity: {{persona}}",
+    });
+    assert.ok(entry);
+    upstreamBodies = [];
+    const complete = await post(chat.id, { ...BASE_BODY, lorebookEntryIds: [entry.id] });
+    assert.equal(complete.statusCode, 200, complete.body);
+    const messages = JSON.stringify(upstreamBodies[0]?.messages);
+    assert.ok(
+      messages.includes("TRAVELER_DIALOGUE_REACHES_EXPERIENCE"),
+      "selected lore receives authored persona dialogue",
+    );
+    assert.ok(
+      !messages.includes("METADATA_SYNOPSIS_STAYS_PRIVATE"),
+      "the metadata summary stays outside model prompts",
+    );
+  }
+
   // Selected lore must arrive whole after macros, or fail visibly without a call (#6145).
   {
     const chat = await createExperienceChat("Expanded world lore");

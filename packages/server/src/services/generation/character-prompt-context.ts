@@ -112,6 +112,7 @@ const PERSONA_FALLBACK_FIELDS: Array<{
   { key: "backstory", label: "backstory", macroAliases: ["personaBackstory", "persona"] },
   { key: "appearance", label: "appearance", macroAliases: ["personaAppearance", "persona"] },
   { key: "scenario", label: "scenario", macroAliases: ["personaScenario", "persona"] },
+  { key: "mesExample", label: "example_dialogue", macroAliases: ["persona"] },
 ];
 
 function parseRecord(value: unknown): any {

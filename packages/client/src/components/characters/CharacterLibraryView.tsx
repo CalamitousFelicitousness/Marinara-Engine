@@ -140,7 +140,13 @@ function getCharacterSummary(char: ParsedCharacterRow) {
 }
 
 function getPersonaSummary(persona: Persona) {
-  return getCardLibrarySummary([persona.creatorNotes, persona.description, persona.personality, persona.backstory]);
+  return getCardLibrarySummary([
+    persona.summary,
+    persona.creatorNotes,
+    persona.description,
+    persona.personality,
+    persona.backstory,
+  ]);
 }
 
 function truncateText(content: string, maxLength: number) {
@@ -172,7 +178,14 @@ function getPersonaSections(persona: Persona): LibrarySection[] {
 
 function estimatePersonaTokens(persona: Persona) {
   return estimateTextTokens(
-    [persona.description, persona.personality, persona.scenario, persona.backstory, persona.appearance]
+    [
+      persona.description,
+      persona.personality,
+      persona.scenario,
+      persona.backstory,
+      persona.appearance,
+      persona.mes_example,
+    ]
       .map(getText)
       .join(""),
   );
@@ -214,7 +227,7 @@ function toPersonaLibraryCard(persona: Persona): LibraryCard {
     tokenEstimate: estimatePersonaTokens(persona),
     favorite: false,
     creatorNotes: getText(persona.creatorNotes),
-    hasExplicitSummary: false,
+    hasExplicitSummary: Boolean(getText(persona.summary)),
     sections: getPersonaSections(persona),
   };
 }

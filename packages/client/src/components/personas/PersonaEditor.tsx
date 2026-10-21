@@ -3970,12 +3970,12 @@ function PersonaCharacterSheetSection({
   );
 }
 
-const PERSONA_VERSION_COMPARE_FIELDS: Array<{ key: keyof PersonaCardSnapshot; label: string }> = [
+const PERSONA_VERSION_COMPARE_FIELDS: Array<{ key: keyof PersonaCardSnapshot; label: string; labelKey?: string }> = [
   { key: "name", label: "Name" },
   { key: "creator", label: "Creator" },
   { key: "creatorNotes", label: "Creator Notes" },
-  { key: "summary", label: "Summary" },
-  { key: "mes_example", label: "Example Dialogue" },
+  { key: "summary", label: "Summary", labelKey: "ui.characters.summary.label" },
+  { key: "mes_example", label: "Example Dialogue", labelKey: "chat.settings.inlineEditor.fields.exampleDialogue" },
   { key: "description", label: "Description" },
   { key: "personality", label: "Personality" },
   { key: "scenario", label: "Scenario" },
@@ -4357,7 +4357,9 @@ function PersonaVersionHistoryPanel({
                 return (
                   <div key={field.key} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-[var(--foreground)]">{field.label}</span>
+                      <span className="text-xs font-semibold text-[var(--foreground)]">
+                        {field.labelKey ? localizeUi(field.labelKey) : field.label}
+                      </span>
                       {changed && (
                         <span className="rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[0.625rem] font-medium text-[var(--primary)]">
                           {localizeUi("ui.personas.personaversionhistorypanel.changed")}

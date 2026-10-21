@@ -13996,6 +13996,8 @@
   "ui.rulesets.builder.steps": "Character builder steps",
   "ui.rulesets.builder.summary": "Character",
   "ui.rulesets.builder.takeBackOne": "Take back one from {{name}}",
+  "ui.rulesets.builder.takesAll_one": "Granted automatically ({{count}} taken). Where a choice is offered, pick one.",
+  "ui.rulesets.builder.takesAll_other": "Granted automatically ({{count}} taken). Where a choice is offered, pick one.",
   "ui.rulesets.builder.total": "Total",
   "ui.rulesets.builder.trainedNow": "Trained from your picks: {{names}}",
   "ui.rulesets.builder.unassigned": "Choose a value",

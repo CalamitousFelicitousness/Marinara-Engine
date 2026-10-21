@@ -2742,6 +2742,17 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A builder step that takes all it offers, or limits each entry by its own sheet value (1.713). */
+function carriesTakesAll713(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTakesAll713(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.kind === "catalog" && record.takesAll !== undefined) return true;
+  if (record.kind === "catalog" && plainRecord(record.upTo)?.per !== undefined) return true;
+  return featureValues(record).some((one) => carriesTakesAll713(one, depth + 1));
+}
+
 /** A condition that puts others on with it (1.712): unconscious, prone. */
 function carriesAlsoApplies712(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9325,6 +9336,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A builder step that takes all it offers, or reads each entry's own limit, 1.713.
+  if (!declaresApi(713) && carriesTakesAll713(ruleset))
+    return "A ruleset with a builder step that takes all it offers (takesAll) or limits each entry by its own value (upTo.per) requires schemaVersion 2 and capabilityApi 1.713 or newer";
   // A condition that puts others on with it, 1.712.
   if (
     !declaresApi(712) &&

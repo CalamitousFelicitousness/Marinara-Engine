@@ -1457,15 +1457,24 @@ const builderPointBuySchema = z
   })
   .strict();
 
-/** A catalog step's limit by a sheet value (1.87). */
+/** A catalog step's limit by a sheet value (1.87), or by one read for each entry (1.713). */
 export interface RulesetBuilderUpTo {
   filter: string;
   value: RulesetValueRef;
+  per?: { filter: string; prefix: string };
 }
 // Typed by hand: inferred, the value ref inside it makes every type holding a builder step too long for
 // the compiler to write out.
 const rulesetBuilderUpToSchema: z.ZodType<RulesetBuilderUpTo, z.ZodTypeDef, unknown> = z
-  .object({ filter: sheetId, value: rulesetValueRefSchema })
+  .object({
+    filter: sheetId,
+    value: rulesetValueRefSchema,
+    /** Read for each entry instead (Capability API 1.713): the sheet's field or derived value named
+     *  `prefix` and one of the entry's own `filter` values, the highest of those the sheet has, and
+     *  `value` for an entry naming none. 5e's class features up to that class's own level,
+     *  `{ "filter": "class_id", "prefix": "level_" }`. */
+    per: z.object({ filter: sheetId, prefix: sheetId }).strict().optional(),
+  })
   .strict();
 
 /** Counted choices and catalog quotas (Capability API 1.151). */
@@ -1827,6 +1836,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** Entries' `offeredWhen` and the step's `upTo` read the sheet as the steps before `before`
        *  make it (Capability API 1.160): multiclass prerequisites on the scores before this level. */
       reads: z.object({ before: sheetId }).strict().optional(),
+      /** Every entry it offers is taken without asking (Capability API 1.713): the class features a
+       *  character's levels give. Of each `exclusive` group it offers, the player picks one (an ability
+       *  score improvement, or a feat in its place), and a group not yet picked is what the step waits
+       *  on. `min`, `max` and `countFrom` say nothing for it. */
+      takesAll: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -2051,6 +2065,7 @@ export type RulesetBuilderStep =
         pool?: string;
         cost?: number | { filter: string };
         reads?: { before: string };
+        takesAll?: true;
       })
   | (BuilderStepBase & {
       kind: "fields";
@@ -18175,7 +18190,19 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             issue([...path, "upTo", "filter"], `No number filter "${step.upTo.filter}"`);
           }
           checkRef(step.upTo.value, [...path, "upTo", "value"], derivedIds, false);
+          const per = step.upTo.per;
+          if (per) {
+            const filter = filterOf(per.filter);
+            if (!filter || filter.type === "number")
+              issue([...path, "upTo", "per", "filter"], `No text or tags filter "${per.filter}"`);
+            if (![...fields, ...derivedIds].some((id) => id.startsWith(per.prefix)))
+              issue([...path, "upTo", "per", "prefix"], `No field or derived value starts with "${per.prefix}"`);
+          }
         }
+        // Taken without asking (1.713): nothing to count, price or hold to a quota.
+        if (step.takesAll)
+          for (const key of ["countFrom", "pool", "cost", "quotas", "distinctBy", "quotaBelow", "field"] as const)
+            if (step[key] !== undefined) issue([...path, key], `A step that takes all it offers has no "${key}"`);
         if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
         if (step.within) {
           if (!catalogSteps.has(step.within.step)) {

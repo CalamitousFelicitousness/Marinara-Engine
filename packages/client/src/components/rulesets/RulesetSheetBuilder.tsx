@@ -516,9 +516,11 @@ export function RulesetSheetBuilder({
           ))}
         {pricedPool(current.pool)}
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-          {most === 0
-            ? t("ui.rulesets.builder.pickNoneYet", { picked: picked.length })
-            : t("ui.rulesets.builder.pickCount", { count: most, picked: picked.length })}
+          {current.takesAll
+            ? t("ui.rulesets.builder.takesAll", { count: picked.length })
+            : most === 0
+              ? t("ui.rulesets.builder.pickNoneYet", { picked: picked.length })
+              : t("ui.rulesets.builder.pickCount", { count: most, picked: picked.length })}
         </p>
         <ul className="grid gap-1.5 sm:grid-cols-2">
           {options.map((entry) => {
@@ -532,8 +534,12 @@ export function RulesetSheetBuilder({
             const replaces =
               !!entry.exclusive &&
               options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));
+            // Taken without asking (1.713): only a choice within an `exclusive` group is the player's.
+            const locked = !!current.takesAll && !entry.exclusive;
             const full =
-              (!on && !replaces && (current.max > 1 || most === 0) && picked.length >= most) || takenAt !== undefined;
+              locked ||
+              (!current.takesAll && !on && !replaces && (current.max > 1 || most === 0) && picked.length >= most) ||
+              takenAt !== undefined;
             const infoId = `${current.id}:${entry.id}`;
             const infoDomId = `${infoBaseId}-${current.id}-${entry.id}`;
             return (
@@ -566,7 +572,7 @@ export function RulesetSheetBuilder({
                     <button
                       type="button"
                       aria-pressed={on}
-                      disabled={!stored && (full || !!reason)}
+                      disabled={locked || (!stored && (full || !!reason))}
                       onClick={() => toggle(entry.id)}
                       aria-label={t(stored ? "ui.rulesets.builder.unpick" : "ui.rulesets.builder.pick", {
                         name: entry.label,

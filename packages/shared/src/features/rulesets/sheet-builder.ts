@@ -560,6 +560,21 @@ export function rulesetBuilderOptions(
   const sheet =
     step.reads && build ? rulesetBuilderBuildBefore(definition, build, state, catalogs, step.reads.before) : build;
   const limit = step.upTo && sheet ? resolveRulesetValueRef(definition, sheet, step.upTo.value) : null;
+  // Or read for each entry (1.713): its own class's level, the highest the sheet has of those it names.
+  const per = step.upTo?.per;
+  const limitOf = (entry: RulesetCatalogEntry): number | null => {
+    if (!per || !sheet) return limit;
+    const read = [entry.filters?.[per.filter]].flat().flatMap((value) => {
+      if (typeof value !== "string") return [];
+      const id = `${per.prefix}${value}`;
+      if (definition.sheet.fields.some((field) => field.id === id))
+        return [resolveRulesetValueRef(definition, sheet, { field: id })];
+      if (definition.sheet.derived?.some((derived) => derived.id === id))
+        return [resolveRulesetValueRef(definition, sheet, { derived: id })];
+      return [];
+    });
+    return read.length > 0 ? Math.max(...read) : limit;
+  };
   const parentPicks = step.within ? rulesetBuilderPicks(definition, step.within.step, state, catalogs, build) : null;
   // An entry of an `exclusive` group is judged on the sheet without the step's picks of that group
   // (1.100): picking it drops them, so what they gave cannot be what lets it be picked (a feat in place of
@@ -583,7 +598,8 @@ export function rulesetBuilderOptions(
     }
     if (step.upTo && limit !== null) {
       const at = entry.filters?.[step.upTo.filter];
-      if (typeof at === "number" && at > limit) return false;
+      const most = limitOf(entry);
+      if (typeof at === "number" && most !== null && at > most) return false;
     }
     // Offered only while the sheet as it stands says so (1.99): a second class's prerequisites.
     if (
@@ -699,6 +715,15 @@ export function rulesetBuilderPicks(
   // `within` only ever names an earlier step (the ruleset is refused otherwise), so this ends.
   const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
+  // Taken without asking (1.713): everything it offers, and of each `exclusive` group the latest pick.
+  if (step.takesAll) {
+    const chosen = new Map<string, string>();
+    for (const id of state.picks?.[stepId] ?? []) {
+      const group = byId.get(id)?.exclusive;
+      if (group) chosen.set(group, id);
+    }
+    return offered.filter((entry) => !entry.exclusive || chosen.get(entry.exclusive) === entry.id);
+  }
   // One pick of an `exclusive` group counts (1.94): the latest, since picking replaces; earlier ones
   // of the same group count for nothing.
   const picked = (state.picks?.[stepId] ?? [])
@@ -726,7 +751,8 @@ export function rulesetBuilderPickAdded(
   const kept = stored.filter(
     (each) => each !== id && (!group || entries.find((entry) => entry.id === each)?.exclusive !== group),
   );
-  return step.max === 1 ? [id] : [...kept, id];
+  // A step that takes all it offers (1.713) stores only its groups' picks, one for each group.
+  return step.max === 1 && !step.takesAll ? [id] : [...kept, id];
 }
 
 /** The items a character may take without carrying them (1.215), as `<catalog>/<entry>`, from
@@ -2248,7 +2274,16 @@ export function rulesetBuilderRemaining(
       (step.requiredWhen && resolveRulesetValueRef(definition, build, step.requiredWhen) <= 0)
     )
       continue;
-    if (step.kind === "catalog") {
+    if (step.kind === "catalog" && step.takesAll) {
+      // Taken without asking (1.713): what waits is each offered group with nothing picked.
+      const picks = rulesetBuilderPicks(definition, step.id, state, catalogs, build);
+      const groups = new Set(
+        rulesetBuilderOptions(definition, step, state, catalogs, build).flatMap((entry) =>
+          entry.exclusive ? [entry.exclusive] : [],
+        ),
+      );
+      add(step.id, [...groups].filter((group) => !picks.some((entry) => entry.exclusive === group)).length);
+    } else if (step.kind === "catalog") {
       // Never more than the step can offer: a race with no subraces leaves nothing to choose.
       const offered = rulesetBuilderOptions(definition, step, state, catalogs, build).length;
       const picks = rulesetBuilderPicks(definition, step.id, state, catalogs, build);

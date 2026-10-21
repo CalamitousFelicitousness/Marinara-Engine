@@ -112,8 +112,9 @@ three Dottore repairs in a row with no push from a person, it stops and says so 
 `dottore_review.py`). The repair is reviewed again by the auto dispatcher; with that workflow disabled, the next
 review waits for a `/dottore` comment, so each repair is one `/dottore` away. Repairs go to the pull request's own
 branch, in this repository or in the fork it comes from. A fork's branch takes them only when its author left **Allow
-edits by maintainers** on (a fork owned by an organisation cannot); otherwise Dottore says so, and the repair prompt at
-the end of the walkthrough is the way to repair it. The pushed commit names the findings it repairs, carries the
+edits and access to secrets by maintainers** (**Allow edits from maintainers** on a fork without workflows) ticked; a
+fork owned by an organisation has no such option. Otherwise Dottore says so, and the repair prompt at the end of the
+walkthrough is the way to repair it. The pushed commit names the findings it repairs, carries the
 runner's own account of the change, and ends with a `Dottore-Autofix` trailer that counts the rounds.
 
 A repair runs in two jobs after the review job:

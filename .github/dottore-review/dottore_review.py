@@ -4324,8 +4324,8 @@ def autofix_prompt(args):
     elif pr.get("isCrossRepository") and not pr.get("maintainerCanModify"):
         note = (
             f"Dottore cannot push repairs to `{head_repo}`, because this pull request does not allow edits by"
-            " maintainers. Its author can tick **Allow edits by maintainers** on the pull request (a fork owned by an"
-            " organisation cannot), or use the repair prompt at the end of the review instead."
+            " maintainers. Its author can tick **Allow edits and access to secrets by maintainers** on the pull request"
+            " (a fork owned by an organisation cannot), or use the repair prompt at the end of the review instead."
         )
     elif os.environ.get("DOTTORE_SMALL_API", "").strip().lower() != "anthropic":
         # The repair runs Claude Code, which speaks only Claude's Messages format. Read raw, so a bad value gets this

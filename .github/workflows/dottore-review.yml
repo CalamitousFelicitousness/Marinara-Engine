@@ -475,7 +475,8 @@ jobs:
       - name: Push the repair
         if: env.RESULT == 'valid'
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          # The App token (contents only) pushes through the checkout's credentials; gh comments with GITHUB_TOKEN.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then

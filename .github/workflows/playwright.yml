@@ -101,6 +101,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Node regression shard
+        env:
+          # Node reuses compiled bytecode across the hundreds of child processes in one shard.
+          NODE_COMPILE_CACHE: ${{ runner.temp }}/node-compile-cache
         run: pnpm regression --shard ${{ matrix.shard }}/3
 
   # One verdict keeps the check name the shards replaced.

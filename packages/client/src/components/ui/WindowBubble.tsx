@@ -138,7 +138,8 @@ export function WindowBubble({
 }: WindowBubbleProps) {
   const { t } = useTranslation();
   const buttonLayout = useFloatingWindowStore((state) => state.buttonLayout);
-  locked = locked || (!isPhoneWindowLayout() && !!buttonLayout);
+  const arranged = !isPhoneWindowLayout() && !!buttonLayout;
+  locked = locked || arranged;
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const bubbleRef = buttonRef ?? ownRef;
   const dragRef = useRef<BubbleDrag | null>(null);
@@ -350,9 +351,11 @@ export function WindowBubble({
         aria-expanded={expanded}
         aria-describedby={describedBy ?? (hasBanner ? bannerId : undefined)}
         title={
-          locked
-            ? t("window.bubble.lockedHint", { title: label })
-            : (tooltip ?? t("window.bubble.hint", { title: label }))
+          arranged
+            ? t("chat.buttonLayout.buttonHint", { title: label })
+            : locked
+              ? t("window.bubble.lockedHint", { title: label })
+              : (tooltip ?? t("window.bubble.hint", { title: label }))
         }
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

@@ -36,6 +36,7 @@ import {
   normalizeTacticalFormation,
   placeSpawns,
   readRulesetLive,
+  rulesetHitChances,
   rulesetAimCells,
   rulesetAnswerDeflects,
   rulesetItemSlotPayment,
@@ -887,11 +888,18 @@ export function rulesetMenu(
     const grows = !!action && rulesetPaidLevelMatters(action);
     const payWith = option.payWith && (grows || option.upcastOnly) ? option.payWith : undefined;
     const { payWith: _offered, ...rest } = option;
+    const targetIds = fallers ?? rulesetOptionTargets(definition, encounter, actorId, option);
+    // The odds for each target a player may pick, where there is more than one to pick between.
+    const hitChances =
+      targetIds.length > 1 && option.forecast?.hitChance !== undefined
+        ? rulesetHitChances(definition, encounter, actorId, option.id, targetIds)
+        : undefined;
     return {
       ...rest,
       ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
-      targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
+      targetIds,
       ...(aim.length > 0 ? { aim } : {}),
+      ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
     };
   });
 }

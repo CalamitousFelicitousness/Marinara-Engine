@@ -220,6 +220,9 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
    *  it stops it outright; else the check it needs, its modifier against `dc`, and with neither it
    *  cannot stop it at all. */
   counter?: { sure?: true; level: number; dc?: number; modifier?: number };
+  /** An attack's chance to land on each of `targetIds`, by id: the forecast reads only the first,
+   *  and a player picking a target wants the odds for the one they pick. */
+  hitChances?: Record<string, number>;
 }
 export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */

@@ -1155,6 +1155,11 @@ export function RulesetCombatMenu({
                     value: combatant.health.value,
                     max: combatant.health.max,
                   })}
+                  {/* The odds against this one, which the option's own forecast gives only for the first. */}
+                  {option.hitChances?.[combatant.id] !== undefined &&
+                    ` · ${t("game.combat.ruleset.option.forecastHit", {
+                      percent: Math.round(option.hitChances[combatant.id]! * 100),
+                    })}`}
                 </span>
                 {times > 1 && (
                   <span className="mt-0.5 block text-[0.65rem] font-semibold tabular-nums text-white/80">

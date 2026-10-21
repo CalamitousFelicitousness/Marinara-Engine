@@ -3194,33 +3194,7 @@ function forecastFor(
     return chance === null ? undefined : { hitChance: Math.round(chance * 1000) / 1000 };
   }
   if (action.toHit !== undefined && target) {
-    // The same number the roll will be made against: the target's own defense plus whatever the
-    // ground they stand on is worth, and the same roll mode the distance between them asks for.
-    const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
-    const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
-    const bonus = rulesetBonusDice(
-      rulesetConditionModifiers(
-        definition,
-        combat,
-        actor,
-        "attacks",
-        state,
-        undefined,
-        undefined,
-        action.ability,
-      ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action, definition)),
-    );
-    // What the weapon adds against what the target is (1.187), as the roll will.
-    const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
-    const chance = rulesetCombatIsPool(combat)
-      ? rulesetPoolChance(
-          definition,
-          toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
-          Math.max(1, defense),
-          mode,
-          action.target,
-        )
-      : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
+    const chance = hitChanceAgainst(definition, combat, state, actor, action, target);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast
@@ -4243,6 +4217,65 @@ export function rulesetAttackStyles(
   return resource.styles.filter((style) => !style.spends || (!action.sequence && actor.initiative > line));
 }
 
+/** The chance an attack lands on this target: the same number the roll will be made against (the
+ *  target's own defense plus whatever the ground they stand on is worth) and the same roll mode. */
+function hitChanceAgainst(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): number | null {
+  if (action.toHit === undefined) return null;
+  const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
+  const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
+  const bonus = rulesetBonusDice(
+    rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability).filter(
+      ({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action, definition),
+    ),
+  );
+  // What the weapon adds against what the target is (1.187), as the roll will.
+  const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
+  return rulesetCombatIsPool(combat)
+    ? rulesetPoolChance(
+        definition,
+        toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
+        Math.max(1, defense),
+        mode,
+        action.target,
+      )
+    : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
+}
+
+/** An attack option's chance against each target it may be aimed at, for a player picking one: the
+ *  menu's own forecast reads only the first. Empty for anything not rolled to hit. */
+export function rulesetHitChances(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetIds: readonly string[],
+): Record<string, number> {
+  const combat = definition.combat;
+  const actor = rulesetCombatant(state, actorId);
+  const action = actor?.actions.find((one) => one.id === optionId);
+  if (!combat || !actor || !action || action.toHit === undefined || action.autoHit || action.contest) return {};
+  const chances: Record<string, number> = {};
+  for (const id of targetIds) {
+    const target = rulesetCombatant(state, id);
+    const chance = target ? hitChanceAgainst(definition, combat, state, actor, action, target) : null;
+    if (chance !== null) chances[id] = Math.round(chance * 1000) / 1000;
+  }
+  return chances;
+}
+
+/** What pushed an attack roll up and down, named: a condition's label, or an `@`-name. */
+export interface RulesetAttackModeWhy {
+  up: string[];
+  down: string[];
+}
+
 /** How this attack is rolled: the actor's own conditions and their target's, the help an ally gave
  *  and a dodging target, with advantage and disadvantage cancelling each other out. A ruleset that
  *  does not roll twice at all keeps its single roll whatever the fiction says. */
@@ -4254,8 +4287,16 @@ export function rulesetAttackMode(
   /** Where the two of them stand, which is what the distance rules read. Left out by a fight with
    *  no board, and then none of them says anything. */
   where?: { state: RulesetEncounterState; optionId: string; action?: RulesetCombatAction; opportunity?: true },
+  /** Filled with what pushed the roll each way (playtest): the labels of the conditions that did,
+   *  and `@`-names for the rest (`@helped`, `@dodging`, `@longRange`, `@unseen`...), for a log to say. */
+  why?: RulesetAttackModeWhy,
 ): RulesetCombatRollMode {
   if (!rulesetCombatAdvantage(combat)) return "normal";
+  const label = (id: string) => definition.sheet.live.conditions.find((one) => one.id === id)?.label ?? id;
+  const holding = (who: RulesetCombatant, effect: string) =>
+    rulesetActiveConditions(definition, combat, who, where?.state)
+      .filter((entry) => entry.effects.includes(effect as never))
+      .map((entry) => label(entry.condition));
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
   // What the weapon does differently against this target (1.189): an oathbow at its sworn enemy.
@@ -4296,9 +4337,25 @@ export function rulesetAttackMode(
     !!target.flags.dodging ||
     !!distance?.disadvantage ||
     blindStrike;
+  if (why) {
+    if (own.has("own-attacks-advantage")) why.up.push(...holding(actor, "own-attacks-advantage"));
+    if (theirs.has("attacks-against-advantage")) why.up.push(...holding(target, "attacks-against-advantage"));
+    if (actor.flags.helped) why.up.push("@helped");
+    if (distance) why.up.push(...distance.why.up);
+    if (blindSide) why.up.push("@unseen");
+    if (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target))
+      why.up.push("@above");
+    if (own.has("own-attacks-disadvantage")) why.down.push(...holding(actor, "own-attacks-disadvantage"));
+    if (theirs.has("attacks-against-disadvantage") && !againstWhenSeen)
+      why.down.push(...holding(target, "attacks-against-disadvantage"));
+    if (target.flags.dodging) why.down.push("@dodging");
+    if (distance) why.down.push(...distance.why.down);
+    if (blindStrike) why.down.push("@blind");
+  }
   // Changes that roll attacks twice (1.185): the attacker's own, some only against whoever put them
   // on (Chill Touch), and the target's against attackers of some kind (Protection from Evil and Good).
   const leans = new Set<string>();
+  const leanWhy: Record<string, string[]> = { advantage: [], disadvantage: [] };
   // Narrowed to an ability (1.188), only an attack made with it: what it is made with is the action's.
   const ability = blow?.ability;
   for (const entry of rulesetActiveConditions(definition, combat, actor, where?.state)) {
@@ -4312,6 +4369,7 @@ export function rulesetAttackMode(
       )
         continue;
       leans.add(modifier.mode);
+      (leanWhy[modifier.mode] ??= []).push(label(entry.condition));
     }
   }
   for (const entry of rulesetActiveConditions(definition, combat, target, where?.state)) {
@@ -4327,6 +4385,7 @@ export function rulesetAttackMode(
       // Opportunity attacks only (1.377): Escape the Horde.
       if (modifier.opportunity && !where?.opportunity) continue;
       leans.add(modifier.mode);
+      (leanWhy[modifier.mode] ??= []).push(label(entry.condition));
     }
   }
   for (const entry of against) if (entry.mode) leans.add(entry.mode);
@@ -4380,6 +4439,16 @@ export function rulesetAttackMode(
   const elusive = theirs.has("attacks-against-no-advantage") && !theirs.has("cannot-act");
   const up = !elusive && (advantage || leans.has("advantage"));
   const down = disadvantage || leans.has("disadvantage");
+  if (why) {
+    // What leaned it without a name above: a condition's own modifier, a creature's trait.
+    why.up.push(...(leanWhy.advantage ?? []));
+    why.down.push(...(leanWhy.disadvantage ?? []));
+    if (leans.has("advantage") && !why.up.length) why.up.push("@other");
+    if (leans.has("disadvantage") && !why.down.length) why.down.push("@other");
+    if (elusive) why.up.length = 0;
+    why.up = [...new Set(why.up)];
+    why.down = [...new Set(why.down)];
+  }
   if (up === down) return "normal";
   return up ? "advantage" : "disadvantage";
 }
@@ -4428,7 +4497,7 @@ function distanceModes(
   farIsFine = false,
   /** The reach the blow is made at, a weapon mode's own (1.190). */
   range?: { normal: number; long?: number },
-): { advantage: boolean; disadvantage: boolean } | null {
+): { advantage: boolean; disadvantage: boolean; why: { up: string[]; down: string[] } } | null {
   const from = rulesetPositionOf(actor);
   const to = rulesetPositionOf(target);
   if (!positioned(state) || !from || !to) return null;
@@ -4440,9 +4509,15 @@ function distanceModes(
   const thrown = !!reach?.shot && away > (reach?.swing ?? 0);
   const tooFar = !farIsFine && !!ranged && ranged.long === "disadvantage" && thrown && away > reach!.normal;
   const crowded = !!ranged && ranged.adjacentFoe === "disadvantage" && thrown && foeAdjacent(state, actor);
+  const close = adjacent && theirs.has("attacks-against-adjacent-advantage");
+  const far = !adjacent && theirs.has("attacks-against-far-disadvantage");
   return {
-    advantage: adjacent && theirs.has("attacks-against-adjacent-advantage"),
-    disadvantage: tooFar || crowded || (!adjacent && theirs.has("attacks-against-far-disadvantage")),
+    advantage: close,
+    disadvantage: tooFar || crowded || far,
+    why: {
+      up: close ? ["@close"] : [],
+      down: [...(tooFar ? ["@longRange"] : []), ...(crowded ? ["@crowded"] : []), ...(far ? ["@far"] : [])],
+    },
   };
 }
 

@@ -256,6 +256,7 @@ import {
   rulesetActionQualities,
   rulesetAroundTargets,
   rulesetAttackMode,
+  type RulesetAttackModeWhy,
   rulesetCombatOptions,
   rulesetUncompelledOptions,
   rulesetContestCheck,
@@ -14326,7 +14327,22 @@ function resolveAction(
   // Finished, rather than held for an answer to one of its rolls (1.180).
   if (!result) holderActed(ctx, actor, action, before, { targets, from: reachedFrom });
   if (!result && action.endsCondition) endOwnCondition(ctx, actor, action.endsCondition);
+  if (!result && !held) letGoOfNothing(ctx, actor, action);
   return result;
+}
+
+/** A concentration spell whose only work is the conditions it puts on others, which landed on
+ *  nobody (every target saved Hold Person): there is nothing to hold, so it ends at once rather
+ *  than sitting on the caster's token until a hit shakes it loose. */
+function letGoOfNothing(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  if (!action.concentration || actor.concentrating?.actionId !== action.id) return;
+  if (!action.applies?.length || action.zone || action.sustains || action.repeats || action.again || action.calls)
+    return;
+  if (action.targets.side === "self") return;
+  const holds = ctx.state.combatants.some((one) =>
+    one.tracked.some((entry) => entry.concentration && entry.source === actor.id),
+  );
+  if (!holds) endConcentration(ctx, actor, "spent");
 }
 
 /**
@@ -16208,12 +16224,20 @@ function resolveActionBodyIn(
       if (landed) noteHitBy(ctx, target, actor);
       critical = outcome === "critical";
     } else if (action.toHit !== undefined && !action.autoHit) {
-      mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
-        state: ctx.state,
-        optionId: action.id,
-        action,
-        ...(ctx.opportunity ? { opportunity: true } : {}),
-      });
+      const why: RulesetAttackModeWhy = { up: [], down: [] };
+      mode = rulesetAttackMode(
+        ctx.definition,
+        ctx.combat,
+        actor,
+        target,
+        { state: ctx.state, optionId: action.id, action, ...(ctx.opportunity ? { opportunity: true } : {}) },
+        why,
+      );
+      // What pushed the roll each way, for the log to say why it was rolled twice.
+      const modeWhy =
+        why.up.length || why.down.length
+          ? { ...(why.up.length ? { up: why.up } : {}), ...(why.down.length ? { down: why.down } : {}) }
+          : undefined;
       // What the weapon adds against what the target is (1.187).
       const toHit = action.toHit + rulesetToHitAgainst(ctx.definition, action, target, actor);
       // What the ground the target stands on is worth, said out loud before the roll it changed.
@@ -16251,6 +16275,7 @@ function resolveActionBodyIn(
           optionId: action.id,
           label: action.label,
           mode,
+          ...(modeWhy ? { why: modeWhy } : {}),
           rolls: thrown.rolls,
           kept: thrown.successes,
           modifier: toHit,
@@ -16388,6 +16413,7 @@ function resolveActionBodyIn(
           optionId: action.id,
           label: action.label,
           mode,
+          ...(modeWhy ? { why: modeWhy } : {}),
           rolls: second ? [...first, ...second] : first,
           kept,
           modifier: toHit,

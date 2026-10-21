@@ -329,7 +329,18 @@ export function rulesetCombatEventLine(
       const defense = pool
         ? (t("game.combat.ruleset.roll.needed", { count: event.defense }) as string)
         : defenseText(names, event.defense);
-      return key(
+      // Why it was rolled twice, or why the two cancelled: "Advantage: Hidden. Disadvantage: Dodging."
+      const reason = (list: string[] | undefined) =>
+        (list ?? [])
+          .map((one) => (one.startsWith("@") ? t(`game.combat.ruleset.roll.why.${one.slice(1)}`) : one))
+          .join(", ");
+      const why = [
+        event.why?.up?.length ? key("attackWhyUp", { list: reason(event.why.up) }) : "",
+        event.why?.down?.length ? key("attackWhyDown", { list: reason(event.why.down) }) : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const line = key(
         pool
           ? event.outcome === "miss"
             ? "attackPoolMiss"
@@ -358,6 +369,7 @@ export function rulesetCombatEventLine(
             : defense,
         },
       );
+      return why ? `${line} ${why}` : line;
     }
     case "save": {
       // Against the action that forced it, by name: Sacred Flame has no attack line to say so.

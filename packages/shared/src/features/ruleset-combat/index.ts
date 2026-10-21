@@ -256,6 +256,8 @@ export {
   rulesetLentMovement,
   rulesetBorrowedTurn,
   rulesetAttackMode,
+  rulesetHitChances,
+  type RulesetAttackModeWhy,
   rulesetAttachedHolds,
   rulesetAttachedOffLimits,
   rulesetWeaponNow,

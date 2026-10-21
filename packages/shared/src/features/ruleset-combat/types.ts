@@ -3308,6 +3308,10 @@ export type RulesetCombatEvent =
       optionId: string;
       label: string;
       mode: RulesetCombatRollMode;
+      /** What pushed the roll up and down: condition labels, or `@`-names a screen words itself
+       *  (`@helped`, `@dodging`, `@close`, `@far`, `@longRange`, `@crowded`, `@unseen`, `@blind`,
+       *  `@above`, `@other`). */
+      why?: { up?: string[]; down?: string[] };
       rolls: number[];
       kept: number;
       modifier: number;

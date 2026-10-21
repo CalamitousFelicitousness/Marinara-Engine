@@ -482,6 +482,30 @@ export function isTailscaleIp(ip: string): boolean {
   return matchesCIDR(bytes, TAILSCALE_CIDR);
 }
 
+// Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows. macOS (utun*) and Android (tun*) give
+// every VPN the same name, so there the interface must also hold Tailscale's IPv6 range.
+const GENERIC_VPN_NAMES: Partial<Record<NodeJS.Platform, RegExp>> = { darwin: /^utun\d/, android: /^tun\d/ };
+const TAILSCALE_IPV6_CIDR = parseCIDR("fd7a:115c:a1e0::/48")!;
+
+/**
+ * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
+ * Carriers use the same range for mobile data, so the address alone does not prove a tailnet.
+ */
+function hasTailscaleInterfaceAddress(
+  interfaces: ReturnType<typeof networkInterfaces>,
+  address: string | undefined,
+  platform: NodeJS.Platform,
+): boolean {
+  const genericName = GENERIC_VPN_NAMES[platform];
+  return Object.entries(interfaces).some(([name, addresses = []]) => {
+    if (!(genericName ?? /^tailscale/i).test(name)) return false;
+    if (genericName && !addresses.some((a) => matchesCIDR(ipToBytes(a.address) ?? [], TAILSCALE_IPV6_CIDR))) {
+      return false;
+    }
+    return addresses.some((a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)));
+  });
+}
+
 /** True if the given IP is in the Docker bridge range (172.16.0.0/12). */
 export function isDockerIp(ip: string): boolean {
   const bytes = ipToBytes(ip);
@@ -595,7 +619,9 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     allowlisted: isInIpAllowlist(ip),
     privateNetworkIp: isPrivateNetworkIp(ip),
     tailscaleIp: isTailscaleIp(ip),
-    tailscaleLocalAddress: typeof localAddress === "string" && isTailscaleIp(localAddress),
+    tailscaleLocalAddress:
+      typeof localAddress === "string" &&
+      hasTailscaleInterfaceAddress(dockerInterfaces, localAddress, dockerNetwork.platform ?? process.platform),
     dockerIp: isDockerIp(ip),
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
@@ -670,6 +696,7 @@ export function getPasswordlessPeers(
   bindHost: string,
   interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
   withLogin = false,
+  platform: NodeJS.Platform = process.platform,
 ): PasswordlessPeer[] {
   const config = withLogin ? { ...getAccessConfig(), basicAuthConfigured: true } : getAccessConfig();
   const direct = !isLoopbackBind(bindHost);
@@ -679,7 +706,7 @@ export function getPasswordlessPeers(
   const tailscaleHere =
     tailscaleBind &&
     (config.tailscaleMode === "enabled" ||
-      Object.values(interfaces).some((addresses) => addresses?.some((a) => isTailscaleIp(a.address))));
+      hasTailscaleInterfaceAddress(interfaces, anyAddress ? undefined : bindHost, platform));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
@@ -732,7 +759,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
       logger.warn(
         tailscaleMode === "enabled"
           ? "[auth-bypass] BYPASS_AUTH_TAILSCALE=true — clients in 100.64.0.0/10 will skip Basic Auth and IP allowlist"
-          : "[auth-bypass] Direct Tailscale connection detected — the peer and local socket are both in 100.64.0.0/10 and will skip Basic Auth and IP allowlist",
+          : "[auth-bypass] Direct Tailscale connection detected — the peer is in 100.64.0.0/10, the local socket is on a Tailscale interface, and the peer will skip Basic Auth and IP allowlist",
       );
       bypassAnnounced.tailscale = true;
     }
@@ -762,6 +789,8 @@ export function isTrustedInterfaceRequest(
     interfaces?: ReturnType<typeof networkInterfaces>;
     gatewayIp?: string | null;
     containerInterfaceNames?: ReadonlySet<string>;
+    /** Host OS for the Tailscale interface rule; tests pin it. */
+    platform?: NodeJS.Platform;
   } = {},
 ): boolean {
   const policy = getAccessPolicy(request, dockerNetwork);

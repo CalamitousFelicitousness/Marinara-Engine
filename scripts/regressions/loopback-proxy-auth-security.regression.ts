@@ -6,6 +6,7 @@
 // remote client. Direct loopback traffic and the server's own internal calls
 // stay passwordless.
 import assert from "node:assert/strict";
+import os from "node:os";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { basicAuthHook } from "../../packages/server/src/middleware/basic-auth.js";
@@ -96,7 +97,29 @@ try {
     401,
     "a trusted public proxy name does not skip the login",
   );
+  assert.equal(
+    (await inject("GET", "/api/chats", { host: "chat.example.com" })).statusCode,
+    401,
+    "a local proxy that adds no forwarding headers is still recognized by its public Host",
+  );
   delete process.env.TRUSTED_HOSTS;
+  assert.equal(
+    (await inject("GET", "/api/chats", { host: "192.168.1.20:7860" })).statusCode,
+    401,
+    "a loopback socket announcing a LAN address was relayed",
+  );
+  for (const host of [
+    "localhost:7860",
+    "[::1]:7860",
+    "0.0.0.0:7860",
+    "marinara.localhost",
+    "LOCALHOST.:7860",
+    "127.0.1.1:7860",
+    "[::ffff:127.0.0.1]:7860",
+    "[::]:7860",
+  ]) {
+    assert.equal((await inject("GET", "/api/chats", { host })).statusCode, 200, `${host} stays local`);
+  }
 
   const forwardingHeaders: Array<[string, string]> = [
     ["forwarded", "for=203.0.113.66;proto=https"],
@@ -169,6 +192,11 @@ try {
     403,
     "a listed loopback address must not admit every visitor of a local proxy",
   );
+  assert.equal(
+    (await inject("GET", "/api/chats", { host: "192.168.1.20:7860", authorization: BASIC })).statusCode,
+    403,
+    "a listed loopback address must not admit a relayed Host",
+  );
   delete process.env.IP_ALLOWLIST;
 
   // ── No auth configured: the remote lockdown applies ──
@@ -212,6 +240,15 @@ try {
     "REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false restores the legacy proxy trust",
   );
   delete process.env.REQUIRE_AUTH_FOR_LOOPBACK_PROXY;
+  process.env.BASIC_AUTH_USER = "mari";
+  process.env.BASIC_AUTH_PASS = "secret";
+  assert.equal(
+    (await inject("GET", "/api/chats", { host: "192.168.1.20:7860", authorization: BASIC })).statusCode,
+    200,
+    "a relayed Host with the right login passes",
+  );
+  delete process.env.BASIC_AUTH_USER;
+  delete process.env.BASIC_AUTH_PASS;
 
   // ── Request helper ──
   const fakeRequest = (headers: Record<string, string>, ip = "127.0.0.1") =>
@@ -220,6 +257,17 @@ try {
   assert.equal(isLoopbackRequest(fakeRequest({ "x-forwarded-for": "203.0.113.66" })), false);
   assert.equal(isLoopbackRequest(fakeRequest({ "x-forwarded-for": "   " })), true, "empty headers carry no client");
   assert.equal(isLoopbackRequest(fakeRequest({}, "192.168.1.20")), false);
+  assert.equal(isLoopbackRequest(fakeRequest({ host: "chat.example.com" })), false, "a relayed Host is not local");
+  assert.equal(
+    isLoopbackRequest(fakeRequest({ host: `${os.hostname()}:7860` })),
+    true,
+    "the machine's own hostname stays local",
+  );
+  assert.equal(
+    isLoopbackRequest(fakeRequest({ ":authority": "chat.example.com" })),
+    false,
+    "a relayed :authority is not local",
+  );
 
   // ── The server's own prompt-preview hop stays a trusted local call ──
   process.env.BASIC_AUTH_USER = "mari";
@@ -246,6 +294,11 @@ try {
   for (const header of ["x-forwarded-proto", "x-forwarded-host", "via", "origin"]) {
     assert.equal(innerPreviewHeaders?.[header], undefined, `the internal preview hop must not carry ${header}`);
   }
+  const innerHost = innerPreviewHeaders?.host;
+  assert.ok(
+    innerHost === undefined || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(innerHost)),
+    "the internal preview hop must not carry the visitor's Host",
+  );
 
   console.info("Loopback proxy authentication regressions passed.");
 } finally {

@@ -15,7 +15,7 @@
 
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { readFileSync } from "node:fs";
-import { networkInterfaces } from "node:os";
+import os, { networkInterfaces } from "node:os";
 import {
   getBasicAuthConfig,
   getDockerBypassMode,
@@ -27,6 +27,7 @@ import {
   isLoopbackProxyAuthRequired,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
+import { firstHeader, parseRequestHostname } from "./host-validation.js";
 
 // ── CIDR helpers ──
 
@@ -507,12 +508,34 @@ function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): bo
 }
 
 /**
+ * A browser on this computer addresses Marinara by a loopback name. A loopback socket that
+ * announces any other Host (a domain or a LAN address) was relayed by a local proxy or tunnel,
+ * even when that proxy adds no forwarding headers.
+ */
+function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
+  const hostname = parseRequestHostname(
+    firstHeader(request.headers.host) ?? firstHeader(request.headers[":authority"]),
+  );
+  if (!hostname) return false;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return false;
+  if (hostname === "0.0.0.0" || hostname === "::") return false;
+  // The machine's own name (Debian maps it to 127.0.1.1) is local too.
+  const own = os.hostname().toLowerCase();
+  if (hostname === own || hostname === `${own}.local`) return false;
+  return !isLoopbackIp(hostname);
+}
+
+/**
  * True when a loopback socket relays another client: a reverse proxy or tunnel
  * on this machine connects from 127.0.0.1 but announces itself with forwarding
  * headers. Such requests get the checks of a remote client, not loopback trust.
  */
 export function isForwardedLoopbackRequest(request: Pick<FastifyRequest, "headers" | "ip">): boolean {
-  return isLoopbackIp(request.ip) && hasProxyForwardingHeaders(request) && isLoopbackProxyAuthRequired();
+  return (
+    isLoopbackIp(request.ip) &&
+    (hasProxyForwardingHeaders(request) || hasRelayedHost(request)) &&
+    isLoopbackProxyAuthRequired()
+  );
 }
 
 /** True when the request comes from this machine itself rather than through a local proxy. */

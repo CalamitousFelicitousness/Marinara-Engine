@@ -165,7 +165,7 @@ The server logs an `[auth-bypass]` warning the first time one of these bypasses 
 
 ## Reverse proxies and tunnels on the same computer
 
-A reverse proxy or tunnel on the machine running Marinara, such as nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Serve or Funnel, or ngrok, connects to Marinara from loopback. Marinara recognizes this from the forwarding headers the proxy adds: `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto`, `CF-Connecting-IP`, `True-Client-IP`, the Tailscale identity headers, or `Via`. It then treats each request as the remote visitor it is:
+A reverse proxy or tunnel on the machine running Marinara, such as nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Serve or Funnel, or ngrok, connects to Marinara from loopback. Marinara recognizes this from the forwarding headers the proxy adds: `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto`, `CF-Connecting-IP`, `True-Client-IP`, the Tailscale identity headers, or `Via`. Marinara also recognizes a request whose Host names another computer, such as a domain or a LAN address, even when the proxy adds no headers. It then treats each request as the remote visitor it is:
 
 - Basic Auth applies, so set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. Without them, visitors see the setup page.
 - `IP_ALLOWLIST` blocks the forwarded visitors, because the proxy hides their real addresses.

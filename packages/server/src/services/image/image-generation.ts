@@ -85,6 +85,7 @@ import {
   buildAtlasCloudImageRequest,
   runAtlasCloudPrediction,
 } from "../media/atlas-cloud.js";
+import { generateToAPIsImage, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
   buildOpenAIChatGPTHeaders,
@@ -446,6 +447,14 @@ export async function generateImage(
       : primaryResult;
   } catch (error) {
     const fallback = request.fallback;
+    if (error instanceof ToAPIsSubmittedTaskError) throw error;
+    // The deadline races the worker, so it can arrive before the worker wraps its aborted task.
+    if (
+      error instanceof ImageGenerationDeadlineError &&
+      resolvedSource === "openai" &&
+      isToAPIsMediaUrl(normalizedBaseUrl)
+    )
+      throw error;
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;
     // An edit drawn without its picture is a new picture, so a fallback that drops the picture is not tried.
     if (request.referenceIsCanvas && !imageConnectionTakesReferencePicture(fallback)) {
@@ -1312,6 +1321,14 @@ function applyImageCustomFormParameters(request: ImageGenRequest, body: FormData
 }
 
 async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+  if (isToAPIsMediaUrl(baseUrl)) {
+    return generateToAPIsImage(
+      baseUrl,
+      apiKey,
+      { ...request, prompt: openAITextPrompt(request) },
+      openAIReferenceImages(request).map(decodeReferenceImage),
+    );
+  }
   const usesGptImageApi = isOpenAIGptImageModel(request.model);
   const references = openAIReferenceImages(request);
   const prompt = openAITextPrompt(request);

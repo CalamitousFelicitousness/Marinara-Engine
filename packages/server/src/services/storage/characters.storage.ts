@@ -904,6 +904,7 @@ export function createCharactersStorage(db: DB) {
             like(personas.scenario, pattern),
             like(personas.backstory, pattern),
             like(personas.appearance, pattern),
+            like(personas.mes_example, pattern),
             like(personas.tags, pattern),
           )
         : undefined;

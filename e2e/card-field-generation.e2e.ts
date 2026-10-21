@@ -10,6 +10,7 @@ import {
 } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
+import { clickTopbarPanel } from "./topbar-navigation.js";
 
 // This suite exercises the real editor, requests, and save/reopen lifecycle. Only the paid generation
 // response is replaced. Provider prompts and connection selection have server regression coverage.
@@ -138,6 +139,36 @@ async function capture(page: Page, info: TestInfo, name: string) {
 }
 
 for (const owner of ["character", "persona"] as const) {
+  test(`${owner} Card generation keeps edits to reference fields while applying its target`, async ({
+    page,
+    request,
+  }, info) => {
+    const id = await createEntity(request, owner, `Reference ${owner} ${info.testId}`);
+    let release!: () => void;
+    let arrived!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const started = new Promise<void>((resolve) => (arrived = resolve));
+    await page.route(`**${endpoint(owner, id)}/card-field/generate`, async (route) => {
+      arrived();
+      await held;
+      await route.fulfill({ json: { text: generatedText("description") } });
+    });
+    try {
+      await prepare(page);
+      const editor = await openCard(page, owner, id);
+      await fieldInput(editor, "Description").fill("An unchanged description seed.");
+      await wand(editor, "Description").click();
+      await started;
+      await fieldInput(editor, "Personality").fill("New reference details written while waiting.");
+      release();
+      await expect(fieldInput(editor, "Description")).toHaveValue(generatedText("description"));
+      await expect(fieldInput(editor, "Personality")).toHaveValue("New reference details written while waiting.");
+    } finally {
+      release();
+      await request.delete(endpoint(owner, id));
+    }
+  });
+
   test(`${owner} Card wands use unsaved seeds and references, update one draft field, and persist on Save`, async ({
     page,
     request,
@@ -271,3 +302,35 @@ for (const owner of ["character", "persona"] as const) {
     }
   });
 }
+
+test("persona dialogue is searchable in the panel, tag-filtered list and library details", async ({
+  page,
+  request,
+}, info) => {
+  const token = `dialoguesearchonly${info.testId.replace(/[^a-z]/giu, "")}`;
+  const name = `Dialogue library ${info.testId}`;
+  const tag = `dialogue-tag-${info.testId}`;
+  const response = await request.post(endpoint("persona"), {
+    data: { name, mes_example: `{{user}}: ${token}`, tags: [tag] },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const id = ((await response.json()) as { id: string }).id;
+  try {
+    await prepare(page);
+    await clickTopbarPanel(page, "personas");
+    await page.getByPlaceholder("Search personas", { exact: true }).fill(token);
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^Tags/u }).click();
+    await page.getByRole("button", { name: tag, exact: true }).click();
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open Library", exact: true }).click();
+    const library = page.locator('[data-component="CharacterLibraryView"]');
+    await library.getByPlaceholder("Search personas", { exact: true }).fill(token);
+    await library.getByRole("button").filter({ hasText: name }).first().click();
+    const heading = library.getByRole("heading", { name: "Example Dialogue", exact: true });
+    await expect(heading).toBeVisible();
+    await expect(heading.locator("..")).toContainText(token);
+  } finally {
+    await request.delete(endpoint("persona", id));
+  }
+});

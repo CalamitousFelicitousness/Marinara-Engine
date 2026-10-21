@@ -437,6 +437,7 @@ export function PersonasPanel() {
             { content: p.scenario },
             { content: p.backstory },
             { content: p.appearance },
+            { content: p.mes_example },
           ],
         },
         query,

@@ -173,6 +173,7 @@ function getPersonaSections(persona: Persona): LibrarySection[] {
     { title: "Scenario", content: getText(persona.scenario) },
     { title: "Backstory", content: getText(persona.backstory) },
     { title: "Appearance", content: getText(persona.appearance) },
+    { title: "chat.settings.inlineEditor.fields.exampleDialogue", content: getText(persona.mes_example) },
   ].filter((section) => section.content);
 }
 
@@ -359,7 +360,7 @@ function CardLibraryDetailCard({
               className="rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/65 p-4"
             >
               <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--marinara-chat-chrome-panel-muted)]">
-                {section.title}
+                {localizeUi(section.title)}
               </h3>
               <div className="mari-message-content mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--marinara-chat-chrome-panel-text)]">
                 {renderMarkdownBlocks(

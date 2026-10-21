@@ -552,10 +552,22 @@ let bypassAnnounced = { tailscale: false, docker: false, dockerProxyForwarded: f
 type DockerNetworkOverride = NonNullable<Parameters<typeof isTrustedInterfaceRequest>[1]>;
 
 /** Resolve the request and runtime config into plain facts, then let the pure access policy decide. */
-export function getAccessPolicy(
-  request: Pick<FastifyRequest, "headers" | "ip"> & Partial<Pick<FastifyRequest, "raw">>,
-  dockerNetwork: DockerNetworkOverride = {},
-): AccessPolicy {
+type AccessRequest = Pick<FastifyRequest, "headers" | "ip"> & Partial<Pick<FastifyRequest, "raw">>;
+
+// Hooks ask several times per request; the facts (hostname, Docker matching) are not free.
+const policyByRequest = new WeakMap<object, AccessPolicy>();
+
+export function getAccessPolicy(request: AccessRequest, dockerNetwork?: DockerNetworkOverride): AccessPolicy {
+  if (dockerNetwork) return computeAccessPolicy(request, dockerNetwork);
+  let policy = policyByRequest.get(request);
+  if (!policy) {
+    policy = computeAccessPolicy(request, {});
+    policyByRequest.set(request, policy);
+  }
+  return policy;
+}
+
+function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetworkOverride): AccessPolicy {
   const localAddress = request.raw?.socket?.localAddress;
   const defaultDockerNetwork = dockerNetwork.interfaces === undefined ? getDockerInterfaceSnapshot() : undefined;
   const dockerInterfaces = dockerNetwork.interfaces ?? defaultDockerNetwork!.interfaces;
@@ -598,7 +610,6 @@ export function getAccessPolicy(
   });
 }
 
-/** Request-aware variant that can withhold Docker trust for proxy-forwarded traffic. */
 /** Log each automatic or explicit trust bypass once, the first time a peer takes it. */
 function announceBypass(policy: AccessPolicy, ip: string): void {
   const tailscaleMode = getTailscaleBypassMode();

@@ -82,6 +82,19 @@ try {
   assert.equal(optIn.reason, "private-network-optin");
   delete process.env.ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK;
 
+  process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";
+  const remoteOptIn = getAccessPolicy(request("198.51.100.1"));
+  assert.equal(remoteOptIn.lockedDown, false);
+  assert.equal(remoteOptIn.reason, "remote-optin");
+  delete process.env.ALLOW_UNAUTHENTICATED_REMOTE;
+
+  const tailscale = getAccessPolicy({
+    ...request("100.64.0.42"),
+    raw: { socket: { localAddress: "100.100.10.20" } },
+  } as never);
+  assert.equal(tailscale.trustedInterface, true, "auto mode trusts a Tailscale peer on a Tailscale local address");
+  assert.equal(tailscale.reason, "tailscale");
+
   process.env.BASIC_AUTH_USER = "mari";
   process.env.BASIC_AUTH_PASS = "secret";
   process.env.ADMIN_SECRET = "admin";

@@ -51,6 +51,11 @@ function escapeQuotesInsideLineValues(raw: string): string {
       return false;
     }
   };
+  // A value runs on into another property only where what follows a comma parses as properties of its own.
+  const runsIntoAnotherProperty = (valueWithClose: string) => {
+    const boundary = /,\s*(?="[^"\n]+"\s*:)/u.exec(valueWithClose);
+    return boundary !== null && validProperties(valueWithClose.slice(boundary.index + 1));
+  };
   return raw
     .split("\n")
     .map((line) =>
@@ -59,7 +64,9 @@ function escapeQuotesInsideLineValues(raw: string): string {
         : line.replace(
             /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
             (match: string, open: string, value: string, close: string) =>
-              /,\s*"[^"\n]+"\s*:/u.test(value) ? match : `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
+              runsIntoAnotherProperty(`${value}${close}`)
+                ? match
+                : `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
           ),
     )
     .join("\n");

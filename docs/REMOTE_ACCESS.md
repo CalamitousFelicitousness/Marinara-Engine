@@ -131,7 +131,8 @@ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true
 
 This restores the older "open on the LAN, blocked from the public internet" behavior. It applies only to standard private-network ranges, for example `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`. The CGNAT range `100.64.0.0/10` also counts. CGNAT is a shared address system used by some internet providers, and Tailscale uses the same range. Public-internet addresses are still blocked with a 403.
 
-The `100.64.0.0/10` range also counts as private for this flag. Mobile carriers use this range too, so a phone on mobile data may count as a private-network client. Do not use this flag on a server that mobile data can reach.
+Some internet and mobile providers give their customers addresses in this range. If this computer has such an address, other customers of the same provider count as private-network clients.
+
 Warning: anyone on the same network can then reach Marinara with no password. That is fine on a network you control. It is not fine on shared Wi-Fi at a coffee shop, airport, or dorm. When in doubt, use Basic Auth instead.
 
 There is also a broader flag, `ALLOW_UNAUTHENTICATED_REMOTE=true`, which allows passwordless access from ANY address, including the public internet. Do not turn this on. If you truly need public access, use Basic Auth plus HTTPS, or put a reverse proxy in front that handles the login.
@@ -151,7 +152,9 @@ Automatic Docker trust applies only while neither Basic Auth nor `IP_ALLOWLIST` 
 
 Set a flag to `false` if you want normal Basic Auth and IP allowlist checks for those clients. Set it to `true` to retain the older broad bypass when automatic detection is unavailable: Tailscale then trusts all of `100.64.0.0/10`, while Docker also trusts its detected interfaces/gateway and the legacy `172.16.0.0/12` range. Use that compatibility mode only when every matching peer is trusted.
 
-For example, if your Tailnet includes less-trusted peers, turn the Tailscale bypass off: Forwarding headers on a Tailscale peer end the Tailscale trust in the same way,. `REQUIRE_AUTH_FOR_DOCKER_PROXY=false` turns this off too. Tailscale Serve and Funnel need a login, because they connect from loopback with forwarding headers. A direct `100.x` connection stays passwordless.
+Tailscale Serve and Funnel visitors connect from loopback with forwarding headers, so they must log in. There is no flag to turn that off. A direct `100.x` connection stays passwordless.
+
+For example, if your Tailnet includes less-trusted peers, turn the Tailscale bypass off:
 
 ```env
 BYPASS_AUTH_TAILSCALE=false
@@ -163,13 +166,13 @@ If you do not want detected Docker peers to bypass authentication, turn the Dock
 BYPASS_AUTH_DOCKER=false
 ```
 
-Marinara may also sit behind a reverse proxy or tunnel container on the Docker bridge or detected gateway. Forwarding headers, such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, or `X-Forwarded-Proto`, indicate that the Docker peer represents another client. A Host that names another computer, such as `marinara:7860` or a public name, or an HTTP/1.0 request, does the same. Then Marinara applies its normal Basic Auth and IP allowlist checks by default. A request to `localhost` or `127.0.0.1` from the host's own browser stays passwordless:
+Marinara may also sit behind a reverse proxy or tunnel container on the Docker bridge or detected gateway. Forwarding headers, such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, or `X-Forwarded-Proto`, indicate that the Docker peer represents another client. A Host that names another computer, such as `marinara:7860` or a public name, or an HTTP/1.0 request, does the same. Then Marinara applies its normal Basic Auth and IP allowlist checks by default. A request to `localhost` or `127.0.0.1` from the host's own browser stays passwordless while no login or allowlist is set:
 
 ```env
 REQUIRE_AUTH_FOR_DOCKER_PROXY=true
 ```
 
-To restore the legacy bypass, set this to `false`. Do that only when every client able to reach the proxy is trusted, because forwarded clients will inherit Docker's passwordless status. If you put a proxy in front of Docker, keep the `127.0.0.1` port publish from `docker-compose.yml` and set a login first.
+To restore the legacy bypass, set this to `false`. Do that only when the proxy itself requires a login from every visitor, because forwarded clients will inherit Docker's passwordless status. If you put a proxy in front of Docker, keep the `127.0.0.1` port publish from `docker-compose.yml` and set a login first.
 
 The server logs an `[auth-bypass]` warning the first time one of these bypasses lets a request through. That warning confirms the bypass is active.
 
@@ -183,7 +186,7 @@ A reverse proxy or tunnel on the machine running Marinara, such as nginx, Caddy,
 
 Your own browser on that machine, opened at `http://127.0.0.1:7860` or `http://localhost:7860`, stays passwordless.
 
-Caddy, Traefik, Cloudflare Tunnel, Tailscale, and ngrok add forwarding headers by default. nginx's default `proxy_pass` speaks HTTP/1.0, and browsers never do, so Marinara also treats a loopback request over HTTP/1.0 as relayed. For nginx, this line is still recommended in the `location` block:
+Caddy, Traefik, Cloudflare Tunnel, Tailscale, and ngrok add forwarding headers by default. For nginx, this line is still recommended in the `location` block:
 
 ```nginx
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

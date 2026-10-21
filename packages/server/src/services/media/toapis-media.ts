@@ -14,7 +14,8 @@ import type {
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch, resolveValidatedImage, validateOutboundUrl } from "../../utils/security.js";
-import { logger, logDebugOverride } from "../../lib/logger.js";
+import { logger, logDebugOverride, privateErrorLogFields } from "../../lib/logger.js";
+import { logRateLimited } from "../../lib/log-rate-limit.js";
 import { sanitizeApiError } from "../llm/base-provider.js";
 
 export function isToAPIsMediaUrl(baseUrl: string): boolean {
@@ -42,22 +43,26 @@ function apiUrl(base: string, path: string): string {
 
 const policy = { allowLocal: false, allowLoopback: false, allowMdns: false, allowedProtocols: ["https:"] };
 type Task = { id?: string; status?: string; result?: { data?: Array<{ url?: string }> }; data?: { url?: string } };
-class ToAPIsHttpError extends Error {
+export class ToAPIsHttpError extends Error {
+  readonly [privateErrorLogFields]: { type: string; status: number; messageLength: number };
   constructor(
     public readonly status: number,
     resource: string,
     details = "",
   ) {
     super(`ToAPIs ${resource} HTTP ${status}${details ? `: ${details}` : ""}`);
+    this[privateErrorLogFields] = { type: "ToAPIsHttpError", status, messageLength: this.message.length };
   }
 }
 
 /** A paid task may exist: callers must not submit an automatic replacement. */
 export class ToAPIsSubmittedTaskError extends Error {
   readonly retryable = false;
+  readonly [privateErrorLogFields]: { type: string; retryable: boolean; messageLength: number };
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : "ToAPIs task interrupted", { cause });
     this.name = "ToAPIsSubmittedTaskError";
+    this[privateErrorLogFields] = { type: this.name, retryable: false, messageLength: this.message.length };
   }
 }
 async function api(
@@ -102,6 +107,7 @@ async function api(
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 300);
+    logger.debug("[toapis] API HTTP %d rejection: %s", response.status, details);
     throw new ToAPIsHttpError(response.status, path.split("/")[0]!, details);
   }
   const result: unknown = await response.json();
@@ -176,8 +182,14 @@ async function runTask(
       logger.error(error, "[toapis] Could not save task receipt %s for task %s", localId, receipt.taskId || "unknown");
     });
   await save();
-  // A timeout while saving the receipt must not leave a late paid POST behind an unpaid fallback.
-  signal?.throwIfAborted();
+  // An abort before submission must leave an honest receipt and no late paid POST behind a fallback.
+  try {
+    signal?.throwIfAborted();
+  } catch (error) {
+    receipt.status = "not_submitted";
+    await saveAfterSubmission();
+    throw error;
+  }
   onSubmissionStart?.();
   let task: Task;
   try {
@@ -225,7 +237,18 @@ async function runTask(
       } catch (error) {
         const transient = !(error instanceof ToAPIsHttpError) || error.status === 429 || error.status >= 500;
         if (signal?.aborted || !transient || ++transientPollFailures >= 30) throw error;
-        logger.warn(error, "[toapis] Poll for task %s failed; retrying (%d/30)", receipt.taskId, transientPollFailures);
+        logRateLimited(
+          "warn",
+          `toapis:poll:${localId}`,
+          {
+            errorType: error instanceof Error ? error.name : typeof error,
+            status: error instanceof ToAPIsHttpError ? error.status : undefined,
+            errorLength: error instanceof Error ? error.message.length : 0,
+          },
+          "[toapis] Poll for task %s failed; retrying (%d/30)",
+          receipt.taskId,
+          transientPollFailures,
+        );
         continue;
       }
       receipt.status = typeof task.status === "string" ? task.status.slice(0, 80) : "unknown";

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { promises as dns } from "node:dns";
+import fs from "node:fs/promises";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
+import { Writable } from "node:stream";
+import pino from "../../packages/server/node_modules/pino/pino.js";
 
 // All HTTP and DNS are fixtures: no live API, pricing query, upload or paid task.
 process.env.TOAPIS_POLL_INTERVAL_MS = "1";
@@ -29,6 +33,7 @@ globalThis.fetch = async (input, init) => {
   calls.push({ url: url.href, method: init?.method || "GET", headers: new Headers(init?.headers), body });
   if (url.hostname === "media.toapis.com") {
     assert.equal(new Headers(init?.headers).has("Authorization"), false, "Never leak Key to storage");
+    if (mode === "download-error") return new Response("fixture-provider-download-text", { status: 503 });
     if (mode === "oversized-media")
       return new Response(
         Buffer.concat([url.pathname.endsWith(".png") ? Buffer.from(png, "base64") : mp4, Buffer.alloc(2048)]),
@@ -105,6 +110,7 @@ globalThis.fetch = async (input, init) => {
   if (mode === "stall") return json({ id: `fixture-${kind}`, status: "processing" });
   if (mode === "failed") return json({ id: `fixture-${kind}`, status: "failed" });
   if (mode === "poll-http") return json({ error: "fixture" }, 503);
+  if (mode === "poll-log") return json({ error: "fixture-provider-response-text" }, 503);
   if (mode === "poll-once" && transientPolls++ === 0) return json({ error: "fixture" }, 503);
   if (mode === "poll-unauthorized")
     return json(
@@ -135,6 +141,27 @@ async function check(name: string, run: () => void | Promise<void>) {
   await run();
   passed++;
   process.stdout.write(`PASS ${name}\n`);
+}
+async function captureLogs(run: (lines: Array<Record<string, unknown>>) => Promise<void>) {
+  const { logger } = await import("../../packages/server/src/lib/logger.js");
+  const lines: Array<Record<string, unknown>> = [];
+  const stream = Reflect.get(logger, pino.symbols.streamSym);
+  const level = logger.level;
+  const sink = new Writable({
+    write(chunk, _encoding, done) {
+      for (const line of String(chunk).split("\n")) if (line.trim()) lines.push(JSON.parse(line));
+      done();
+    },
+  });
+  Reflect.set(logger, pino.symbols.streamSym, sink);
+  logger.level = "debug";
+  try {
+    await run(lines);
+  } finally {
+    logger.level = level;
+    Reflect.set(logger, pino.symbols.streamSym, stream);
+    sink.end();
+  }
 }
 try {
   const { generateImage } = await import("../../packages/server/src/services/image/image-generation.js");
@@ -299,6 +326,72 @@ try {
     await assert.rejects(image(), /HTTP 401: fixture rejection/);
     assert.equal(submissions().length, 1);
   });
+  await check("marked provider errors serialize as metadata while ordinary errors keep causes", async () => {
+    const { logger } = await import("../../packages/server/src/lib/logger.js");
+    const { ToAPIsHttpError, ToAPIsSubmittedTaskError } =
+      await import("../../packages/server/src/services/media/toapis-media.js");
+    const provider = new ToAPIsHttpError(401, "images", "fixture-private-provider-text");
+    const errors = [
+      provider,
+      new ToAPIsSubmittedTaskError(provider),
+      new Error("fixture-private-wrapper-text", { cause: provider }),
+    ];
+    await captureLogs(async (lines) => {
+      const child = logger.child({ component: "fixture" });
+      for (const error of errors) {
+        logger.warn(error);
+        logger.error({ err: error }, "explicit error field");
+        child.fatal({ error }, "child error field");
+        logger.info("formatted error: %s", error);
+      }
+      assert.equal(lines.length, 12);
+      assert.ok(!JSON.stringify(lines).includes("fixture-private"));
+      assert.ok(!JSON.stringify(lines).includes('"stack"'));
+      assert.ok(!JSON.stringify(lines).includes('"cause"'));
+      assert.ok(JSON.stringify(lines).includes("ToAPIsHttpError"));
+      logger.debug(provider, "debug retains diagnostics");
+      assert.ok(JSON.stringify(lines.filter((line) => line.level === 20)).includes("fixture-private-provider-text"));
+      const ordinary = new Error("ordinary error", { cause: new Error("ordinary cause") });
+      logger.warn(ordinary, "ordinary control");
+      assert.deepEqual(lines.at(-1)!.err, JSON.parse(JSON.stringify(pino.stdSerializers.err(ordinary))));
+      const cyclic = new Error("ordinary cycle");
+      cyclic.cause = cyclic;
+      logger.warn(cyclic, "cyclic control");
+      assert.deepEqual(lines.at(-1)!.err, JSON.parse(JSON.stringify(pino.stdSerializers.err(cyclic))));
+      assert.equal(provider.message, "ToAPIs images HTTP 401: fixture-private-provider-text");
+    });
+  });
+  await check("provider reasons stay at debug across polling and image/video fallback warnings", async () => {
+    const { resetRateLimitedLogs } = await import("../../packages/server/src/lib/log-rate-limit.js");
+    try {
+      resetRateLimitedLogs();
+      await captureLogs(async (lines) => {
+        const warnings = () => lines.filter((line) => Number(line.level) >= 40);
+        const details = () => lines.filter((line) => Number(line.level) === 20);
+        mode = "poll-log";
+        await assert.rejects(image(), { message: /fixture-provider-response-text/, retryable: false });
+        assert.equal(submissions().length, 1);
+        assert.equal(warnings().length, 1, "Repeated polling failures share one rate-limit slot");
+        assert.ok(JSON.stringify(details()).includes("fixture-provider-response-text"));
+        mode = "rejected";
+        assert.equal((await image({ fallback: imageFallback })).base64, png);
+        assert.equal((await video({ referenceImage: undefined, fallback: videoFallback })).ext, "mp4");
+        assert.equal(warnings().length, 3, "Both pre-submission fallbacks retain a metadata warning");
+        assert.ok(JSON.stringify(details()).includes("fixture rejection"));
+        assert.ok(!JSON.stringify(warnings()).includes("fixture-provider-response-text"));
+        assert.ok(!JSON.stringify(warnings()).includes("fixture rejection"));
+        mode = "download-error";
+        await assert.rejects(image({ fallback: imageFallback }), {
+          message: /media download HTTP 503/,
+          retryable: false,
+        });
+        assert.equal(warnings().length, 3);
+        assert.ok(!JSON.stringify(details()).includes("fixture-provider-download-text"));
+      });
+    } finally {
+      resetRateLimitedLogs();
+    }
+  });
   await check("HTTP rejection details strip HTML and omit unrecognized task metadata", async () => {
     mode = "rejected-escaped";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 401: Invalid [redacted]" });
@@ -426,6 +519,53 @@ try {
     );
     assert.equal(calls.filter((call) => new URL(call.url).hostname === "api.openai.com").length, 1);
     assert.equal((await readdir(join(DATA_DIR, "toapis-tasks"))).length, receiptCount);
+  });
+  await check("deadline while saving an unpaid receipt preserves fallback and records no submission", async () => {
+    const originalWrite = fs.writeFile;
+    let receiptPath = "";
+    let releaseSave: (() => void) | undefined;
+    let receiptResaved: (() => void) | undefined;
+    const heldSave = new Promise<void>((resolve) => (releaseSave = resolve));
+    const resaved = new Promise<void>((resolve) => (receiptResaved = resolve));
+    let guardFired = false;
+    const guard = setTimeout(() => {
+      guardFired = true;
+      releaseSave?.();
+    }, 5000);
+    fs.writeFile = (async (...args: Parameters<typeof fs.writeFile>) => {
+      const result = await originalWrite(...args);
+      if (String(args[0]).includes("toapis-tasks")) {
+        const receipt = JSON.parse(String(args[1]));
+        if (receipt.status === "submitting") {
+          receiptPath = String(args[0]);
+          await heldSave;
+        } else if (String(args[0]) === receiptPath) receiptResaved?.();
+      }
+      return result;
+    }) as typeof fs.writeFile;
+    syncBuiltinESMExports();
+    let settleGuard: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await image({ fallback: imageFallback });
+      releaseSave?.();
+      await Promise.race([resaved, new Promise<void>((resolve) => (settleGuard = setTimeout(resolve, 500)))]);
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      assert.equal(result.base64, png);
+      assert.equal(guardFired, false);
+      assert.equal(receipt.status, "not_submitted");
+      assert.equal(receipt.taskId, "");
+      assert.equal(
+        calls.filter((call) => new URL(call.url).hostname === "toapis.com" && call.url.endsWith("/generations")).length,
+        0,
+      );
+      assert.equal(calls.filter((call) => new URL(call.url).hostname === "api.openai.com").length, 1);
+    } finally {
+      releaseSave?.();
+      clearTimeout(guard);
+      if (settleGuard) clearTimeout(settleGuard);
+      fs.writeFile = originalWrite;
+      syncBuiltinESMExports();
+    }
   });
   await check("image deadline never submits a paid fallback", async () => {
     mode = "stall";
@@ -616,6 +756,24 @@ try {
         const list = await galleryApp.inject(`/api/gallery/scene-videos/${chat!.id}`);
         assert.equal(list.statusCode, 200, list.body);
         assert.ok(list.body.includes("seedance-2-mini"), list.body);
+      });
+      await check("real Gallery rejection keeps its UI reason while serialized warning stays private", async () => {
+        await captureLogs(async (lines) => {
+          mode = "rejected";
+          const response = await galleryApp.inject({
+            method: "POST",
+            url: `/api/gallery/${chat!.id}/generate-image`,
+            payload: { prompt: "library", promptOverride: "library" },
+          });
+          assert.equal(response.statusCode, 502, response.body);
+          assert.match(response.json().error, /HTTP 401: fixture rejection/);
+          const warnings = lines.filter((line) => Number(line.level) >= 40);
+          assert.ok(warnings.some((line) => String(line.msg).includes("[gallery/generate-image]")));
+          assert.ok(!JSON.stringify(warnings).includes("fixture rejection"));
+          assert.ok(JSON.stringify(warnings).includes('"status":401'));
+          assert.ok(JSON.stringify(lines.filter((line) => line.level === 20)).includes("fixture rejection"));
+          assert.equal(submissions().length, 1);
+        });
       });
     } finally {
       await galleryApp.close();

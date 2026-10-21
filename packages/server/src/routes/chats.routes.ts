@@ -4215,10 +4215,9 @@ export async function chatsRoutes(app: FastifyInstance) {
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.appearance), "appearance", wrapFormat, 2),
                 );
-              if (personaFields.example && !alreadyInPrompt(personaFields.example))
-                fieldParts.push(
-                  wrapContent(resolvePromptMacros(personaFields.example), "example_dialogue", wrapFormat, 2),
-                );
+              const resolvedPersonaExample = resolvePromptMacros(personaFields.example ?? "");
+              if (resolvedPersonaExample && !alreadyInPrompt(resolvedPersonaExample))
+                fieldParts.push(wrapContent(resolvedPersonaExample, "example_dialogue", wrapFormat, 2));
               if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.scenario), "scenario", wrapFormat, 2));
               // Include enabled RPG attributes

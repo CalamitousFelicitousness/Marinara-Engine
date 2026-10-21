@@ -3187,6 +3187,8 @@ export class MariDbService {
           ["data", "persona", "row"],
           [
             "name",
+            "summary",
+            "mes_example",
             "description",
             "personality",
             "scenario",
@@ -3236,6 +3238,8 @@ export class MariDbService {
           ["patch", "data", "persona"],
           [
             "name",
+            "summary",
+            "mes_example",
             "description",
             "personality",
             "scenario",
@@ -3262,6 +3266,8 @@ export class MariDbService {
         );
         const patch: Row = { updatedAt: now() };
         assignStringField(patch, data, ["name"], "name");
+        assignStringField(patch, data, ["summary"], "summary");
+        assignStringField(patch, data, ["mes_example"], "mes_example");
         assignStringField(patch, data, ["description"], "description");
         assignStringField(patch, data, ["personality"], "personality");
         assignStringField(patch, data, ["scenario"], "scenario");
@@ -3295,7 +3301,7 @@ export class MariDbService {
         assignListField(patch, data, ["tags"], "tags");
         if (Object.keys(patch).length <= 1) {
           throw new Error(
-            "persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, imageAppearance, imageAppearanceEnabled, tags, comment, creator, or creatorNotes",
+            "persona.update needs a patch field such as name, summary, mes_example, description, personality, scenario, backstory, appearance, imageAppearance, imageAppearanceEnabled, tags, comment, creator, or creatorNotes",
           );
         }
         return this.executeMutation(

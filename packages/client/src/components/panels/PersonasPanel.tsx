@@ -430,6 +430,7 @@ export function PersonasPanel() {
           title: p.comment,
           meta: formatCardLibraryMeta(p.creator, p.personaVersion),
           summary: getCardLibrarySummary([p.summary, p.creatorNotes, p.description, p.personality, p.backstory]),
+          creatorNotes: p.creatorNotes,
           tags,
           sections: [
             { content: p.description },

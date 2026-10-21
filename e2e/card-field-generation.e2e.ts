@@ -303,29 +303,48 @@ for (const owner of ["character", "persona"] as const) {
   });
 }
 
-test("persona dialogue is searchable in the panel, tag-filtered list and library details", async ({
+test("persona summary, creator notes and dialogue stay searchable in the panel and library", async ({
   page,
   request,
 }, info) => {
   const token = `dialoguesearchonly${info.testId.replace(/[^a-z]/giu, "")}`;
+  const summaryToken = `summarysearchonly${info.testId.replace(/[^a-z]/giu, "")}`;
+  const creatorNotesToken = `creatornotessearchonly${info.testId.replace(/[^a-z]/giu, "")}`;
   const name = `Dialogue library ${info.testId}`;
   const tag = `dialogue-tag-${info.testId}`;
   const response = await request.post(endpoint("persona"), {
-    data: { name, mes_example: `{{user}}: ${token}`, tags: [tag] },
+    data: {
+      name,
+      summary: summaryToken,
+      creatorNotes: creatorNotesToken,
+      mes_example: `{{user}}: ${token}`,
+      tags: [tag],
+    },
   });
   expect(response.ok(), await response.text()).toBeTruthy();
   const id = ((await response.json()) as { id: string }).id;
   try {
     await prepare(page);
     await clickTopbarPanel(page, "personas");
-    await page.getByPlaceholder("Search personas", { exact: true }).fill(token);
-    await expect(page.getByText(name, { exact: true })).toBeVisible();
+    const panelSearch = page.getByPlaceholder("Search personas", { exact: true });
+    for (const query of [summaryToken, token, creatorNotesToken]) {
+      await panelSearch.fill(`missing${query}`);
+      await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+      await panelSearch.fill(query);
+      await expect(page.getByText(name, { exact: true })).toBeVisible();
+    }
     await page.getByRole("button", { name: /^Tags/u }).click();
     await page.getByRole("button", { name: tag, exact: true }).click();
     await expect(page.getByText(name, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open Library", exact: true }).click();
     const library = page.locator('[data-component="CharacterLibraryView"]');
-    await library.getByPlaceholder("Search personas", { exact: true }).fill(token);
+    const librarySearch = library.getByPlaceholder("Search personas", { exact: true });
+    for (const query of [summaryToken, creatorNotesToken, token]) {
+      await librarySearch.fill(`missing${query}`);
+      await expect(library.getByRole("button").filter({ hasText: name })).toHaveCount(0);
+      await librarySearch.fill(query);
+      await expect(library.getByRole("button").filter({ hasText: name }).first()).toBeVisible();
+    }
     await library.getByRole("button").filter({ hasText: name }).first().click();
     const heading = library.getByRole("heading", { name: "Example Dialogue", exact: true });
     await expect(heading).toBeVisible();

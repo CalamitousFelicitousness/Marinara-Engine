@@ -9,9 +9,10 @@ import type { FastifyInstance } from "fastify";
 import { getHost, getIpAllowlist } from "../config/runtime-config.js";
 import { getAccessPolicy, getPasswordlessPeers, isLoopbackBind, isProxiedRequest } from "../middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
+import { RUNTIME_DIAGNOSTICS_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 export async function accessStatusRoutes(app: FastifyInstance) {
-  app.get("/status", async (request, reply) => {
+  app.get("/status", { config: { rateLimit: RUNTIME_DIAGNOSTICS_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Access status" })) return;
     const policy = getAccessPolicy(request);
     // The address the server really listens on; HOST in .env can change without a restart.

@@ -105,23 +105,35 @@ try {
   // Legacy profiles can contain unvalidated extension fields. Exports are reads:
   // one malformed alternatives field must not abort the card or a mixed ZIP.
   const healthyAlternatives = [valid, { ...conflict, field: "appearance" as const }];
-  const exportRows = [healthyAlternatives, null, [valid, { id: "missing-fields" }], { legacy: "object" }].map(
-    (value, index) => ({
-      id: `export-alternatives-${index}`,
-      data: JSON.stringify({
-        ...characterDataSchema.parse({ name: `Export subject ${index}`, description: `BASE ${index}` }),
-        extensions: { cardFieldAlternatives: value },
-      }),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  const exportRows = [
+    healthyAlternatives,
+    alternatives,
+    JSON.stringify(alternatives),
+    null,
+    [valid, { id: "missing-fields" }],
+    { legacy: "object" },
+    [valid, { ...valid, field: "appearance" }],
+    undefined,
+    "[]",
+  ].map((value, index) => ({
+    id: `export-alternatives-${index}`,
+    data: JSON.stringify({
+      ...characterDataSchema.parse({ name: `Export subject ${index}`, description: `BASE ${index}` }),
+      extensions: { cardFieldAlternatives: value },
     }),
-  );
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
   await (await getDB()).insert(characters).values(exportRows);
   function assertExported(data: Record<string, any>, index: number) {
     assert.equal(data.description, `BASE ${index}`);
     assert.deepEqual(
       data.extensions.cardFieldAlternatives,
-      index === 0 ? healthyAlternatives.map((entry) => ({ ...entry, chatIds: [] })) : [],
+      index === 0
+        ? healthyAlternatives.map((entry) => ({ ...entry, chatIds: [] }))
+        : index === 1 || index === 2
+          ? portable
+          : [],
       "stored malformed alternatives fail closed while valid prose and empty overrides export faithfully",
     );
   }

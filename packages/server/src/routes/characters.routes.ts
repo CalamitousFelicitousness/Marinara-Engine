@@ -6,7 +6,6 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   canonicalizeLegacyPersonaInput,
-  normalizeCardFieldAlternatives,
   unassignCardFieldAlternatives,
   createCharacterSchema,
   updateCharacterSchema,
@@ -739,6 +738,16 @@ function streamNativeExport({ envelope, slot, parts }: NativeExport, space = 0) 
   return streamJsonWithSlot(envelope, slot, parts, space);
 }
 
+function cardFieldAlternativesForExport(value: unknown) {
+  try {
+    return unassignCardFieldAlternatives(value);
+  } catch (error) {
+    // Malformed stored shapes fail closed; foreign assignment conflicts are already cleared above.
+    if (error instanceof z.ZodError) return [];
+    throw error;
+  }
+}
+
 async function buildNativeCharacterExport(
   char: { id: string; createdAt: string; updatedAt: string; comment?: string | null; avatarPath?: string | null },
   data: any,
@@ -749,9 +758,7 @@ async function buildNativeCharacterExport(
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
   const portableExtensions: Record<string, unknown> = {
     ...extensions,
-    cardFieldAlternatives: unassignCardFieldAlternatives(
-      normalizeCardFieldAlternatives(extensions.cardFieldAlternatives),
-    ),
+    cardFieldAlternatives: cardFieldAlternativesForExport(extensions.cardFieldAlternatives),
   };
   delete portableExtensions.characterSheetImageId;
   const portableData = { ...data, extensions: portableExtensions };
@@ -794,9 +801,7 @@ export function buildCompatibleCharacterExport(
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
-  extensions.cardFieldAlternatives = unassignCardFieldAlternatives(
-    normalizeCardFieldAlternatives(extensions.cardFieldAlternatives),
-  );
+  extensions.cardFieldAlternatives = cardFieldAlternativesForExport(extensions.cardFieldAlternatives);
   delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [

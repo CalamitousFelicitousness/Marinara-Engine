@@ -59,6 +59,21 @@ export function rulesetCombatantBehavior(
 }
 
 /**
+ * Whether an action is a spell, as far as a fight can tell: cast with words, gestures or things
+ * (`components`), innately, from an item that casts, or held by concentration. A class feature (Second
+ * Wind), a creature's own blow and a torch lit are none of these.
+ */
+export function rulesetActionIsSpell(action: RulesetCombatant["actions"][number]): boolean {
+  return (
+    !!action.components?.length ||
+    !!action.innate ||
+    action.castLevel !== undefined ||
+    !!action.casts ||
+    !!action.concentration
+  );
+}
+
+/**
  * What a combatant is for in a fight, read off what it can do, for one whose data names no `role`:
  * one that heals others a `supporter`, one with spells that only put things on people a
  * `controller`, one with spells a `spellcaster`, one whose best blow is a shot a `marksman`, a hard
@@ -67,7 +82,7 @@ export function rulesetCombatantBehavior(
 export function rulesetCombatantRole(combatant: RulesetCombatant): CombatRole {
   const actions = combatant.actions;
   if (actions.some((action) => action.heal && action.targets.side !== "self")) return "supporter";
-  const spells = actions.filter((action) => (action.catalog && !action.itemUse) || action.concentration);
+  const spells = actions.filter(rulesetActionIsSpell);
   if (spells.length > 0)
     return spells.filter((action) => action.applies?.length && !action.damage).length * 2 >= spells.length
       ? "controller"

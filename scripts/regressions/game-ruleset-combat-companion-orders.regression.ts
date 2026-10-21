@@ -175,6 +175,17 @@ try {
     assert.equal(pick(guarded, { posture: "protect", protectId: "bram" })?.targetId, "ogre", "the one on its charge");
   }
 
+  // ── On a leash: nothing is worth walking more than three squares from its charge for ──
+  {
+    const loose = field([smash], {
+      orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 9 } },
+      goblin: { side: "enemy", block: block([smash], { health: 20 }), at: { x: 4, y: 9 } },
+    });
+    const picked = pick(loose);
+    const gap = (to: { x: number; y: number }) => Math.max(Math.abs(to.x - 8), Math.abs(to.y - 2));
+    assert.ok(!picked?.to || gap(picked.to) <= 3, `it stays by Ada: ${JSON.stringify(picked?.choice)}`);
+  }
+
   // ── Heal first ──
   {
     const hurt = (encounter: RulesetEncounterState) => {

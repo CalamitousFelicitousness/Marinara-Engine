@@ -438,6 +438,31 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     everyLine.length - 1,
     "asking for what came after the first printed line leaves exactly that one out",
   );
+
+  // A moment nobody answered is left out of the log, offer and passing alike; one somebody is still
+  // weighing is said.
+  const offer = {
+    type: "window",
+    window: "w9",
+    kind: "reaction",
+    waiting: ["lurker"],
+    sourceId: "brenna",
+    moment: "used",
+    label: "Longsword",
+  } as unknown as DirectedRulesetEvent;
+  const pass = { type: "pass", actorId: "lurker", window: "w9" } as unknown as DirectedRulesetEvent;
+  assert.deepEqual(
+    rulesetCombatLogLines(
+      [
+        { seq: 1, event: offer },
+        { seq: 2, event: pass },
+      ],
+      names,
+      t,
+    ),
+    [],
+  );
+  assert.equal(rulesetCombatLogLines([{ seq: 1, event: offer }], names, t).length, 1);
 }
 
 // ── The same code on Ember Roads: 2d6 against a Guard, and Grit for health ──

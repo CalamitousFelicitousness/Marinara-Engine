@@ -83,6 +83,7 @@ import {
   rulesetInCells,
   rulesetCombatantBehavior,
   rulesetCombatantRole,
+  rulesetActionIsSpell,
   rulesetCombatantMind,
   withRulesetPlanMemo,
   rulesetSheetBuildsByName,
@@ -1243,8 +1244,12 @@ function rulesetCandidates(
     }
     return true;
   });
-  if (!own.some((candidate) => worth(candidate) > 0)) return own;
   const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics, orders);
+  // Nothing to hurt or help from anywhere it can get to this turn: a dodge, a getaway or a hide only
+  // for one that keeps to them (and not past two turns of it). Anybody else goes looking for the
+  // fight, which a defensive pick would stop it doing, so healthy wolves would hide all fight.
+  if (!own.some((candidate) => worth(candidate) > 0))
+    return keeps ? own : own.filter((candidate) => rulesetDefensiveName(candidate.action.option) === undefined);
   return own.filter(
     (candidate) =>
       (!candidate.hold && candidate.action.option.kind !== "standard") ||
@@ -1767,6 +1772,14 @@ function rulesetCandidatesFrom(
     const { option, price } = way;
     // Nothing can come of it from here: a Hide in the open.
     if (option.futile) continue;
+    // Cast again while what it left still stands, it only puts back what is there and spends another
+    // slot on it: a Spiritual Weapon strikes again instead, and a standing zone stays where it is.
+    if (
+      !menu &&
+      (actor.summons?.some((one) => one.actionId === option.id) ||
+        actor.zones?.some((one) => one.actionId === option.id))
+    )
+      continue;
     // Turning a line or cone the actor carries (1.182) is weighed the same way, before any walk.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
       const turned = standing ? null : zoneTurnCandidate(encounter, actor, option, price);
@@ -2396,10 +2409,21 @@ function weighCaught(
       const health = rulesetCombatHealth(definition, combat, target);
       return total + average / Math.max(1, health.value + health.temp);
     }, 0);
-    // Its own side caught counts against it, and its own hide twice over.
+    // Never one that would likely drop somebody of its own side either: a mage's Fireball over the
+    // other mage. A friend it only grazes counts against it three times over, and its own hide four times.
+    if (
+      caught.some(
+        (target) =>
+          target.side === actor.side &&
+          target.id !== actor.id &&
+          rulesetCombatStanding(target) &&
+          average * chance >= rulesetCombatHealth(definition, combat, target).value,
+      )
+    )
+      return false;
     const hurt = friends.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return total + ((target.id === actor.id ? 2 : 1) * average) / Math.max(1, health.value + health.temp);
+      return total + ((target.id === actor.id ? 4 : 3) * average) / Math.max(1, health.value + health.temp);
     }, 0);
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0) return false;
@@ -2650,6 +2674,9 @@ export function rulesetClosingMove(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actorId: string,
+  /** Guarding or protecting somebody (P7): only cells within `within` of them, and back toward them
+   *  first when it has strayed further. */
+  leash?: RulesetLeash,
 ): RulesetCandidate | null {
   const actor = rulesetCombatant(encounter, actorId);
   const from = rulesetPositionOf(actor);
@@ -2670,14 +2697,17 @@ export function rulesetClosingMove(
       to: { x: best.cell.x, y: best.cell.y },
     };
   }
-  const foes = encounter.combatants
-    .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
-    // Every cell an opponent fills (1.194).
-    .flatMap((combatant) => rulesetFootprint(combatant));
+  const span = rulesetSpanOf(actor);
+  const strayed = !!leash && rulesetGapFrom(from, span, leash.charge) > leash.within;
+  const foes = strayed
+    ? rulesetFootprint(leash!.charge)
+    : encounter.combatants
+        .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
+        // Every cell an opponent fills (1.194).
+        .flatMap((combatant) => rulesetFootprint(combatant));
   if (foes.length === 0) return null;
   const walking = rulesetWalkingDistances(encounter.board.grid, foes, actor);
   // Somebody bigger than one cell is as near as the nearest cell they would fill (1.194).
-  const span = rulesetSpanOf(actor);
   const nearest = (cell: { x: number; y: number }) =>
     Math.min(...rulesetFootprintAt(cell, span).map((one) => walking.get(`${one.x},${one.y}`) ?? Infinity));
   const already = nearest(from);
@@ -2686,6 +2716,7 @@ export function rulesetClosingMove(
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
     const away = nearest(cell);
     if (away >= already) continue;
+    if (leash && !strayed && rulesetGapFrom(cell, span, leash.charge) > leash.within) continue;
     const better =
       !best ||
       away < best.away ||
@@ -2776,6 +2807,8 @@ function pickChoice(
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
   if (orders) weighRulesetOrders(state, encounter, actor, orders, candidates);
+  // Everything it had would take it off its leash: nothing to do but get back to its charge.
+  if (candidates.length === 0) return null;
   const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
   const opening = !menu && !!behavior?.opens && !unit.tactics!.opened && encounter.round <= 2;
   if (behavior) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
@@ -2787,10 +2820,13 @@ function pickChoice(
     orders,
   );
   if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
-  // Counted only on its own turn's choice, not on a reaction's.
+  // Counted only on its own turn's choice, not on a reaction's. Walking, dashing or waiting is not
+  // fighting, so only a blow or a spell lets it grow careful again, and then for one turn at most:
+  // otherwise a beast with nobody in reach hides, walks a step and hides again all fight.
   if (!menu && chosen) {
     if (rulesetDefensiveName(chosen.option)) unit.tactics!.wary = (unit.tactics!.wary ?? 0) + 1;
-    else delete unit.tactics!.wary;
+    else if (chosen.option.kind !== "move" && chosen.option.kind !== "end-turn" && chosen.option.kind !== "standard")
+      unit.tactics!.wary = Math.min(unit.tactics!.wary ?? 0, 1);
   }
   return chosen;
 }
@@ -2823,6 +2859,32 @@ function rulesetGoingBadly(definition: RulesetDefinition, encounter: RulesetEnco
   const down = (who: RulesetCombatant[]) =>
     who.filter((one) => !rulesetCombatStanding(one)).length / Math.max(1, who.length);
   return left < most * 0.5 || down(ours) > down(theirs);
+}
+
+/** How far a companion guarding or protecting somebody strays from them (P7), in squares. */
+const RULESET_LEASH = 3;
+interface RulesetLeash {
+  charge: RulesetCombatant;
+  within: number;
+}
+
+/** Whom a companion's orders keep it near (P7): the leader it guards or the friend it protects,
+ *  standing and somebody else. None for any other orders. */
+function rulesetLeashOf(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  orders: CombatOrders,
+): RulesetLeash | undefined {
+  const charge =
+    orders.posture === "protect"
+      ? rulesetCombatant(encounter, orders.protectId!)
+      : orders.posture === "guard"
+        ? rulesetPartyLeader(state, encounter)
+        : undefined;
+  return charge && charge.id !== actor.id && rulesetCombatStanding(charge) && rulesetPositionOf(charge)
+    ? { charge, within: RULESET_LEASH }
+    : undefined;
 }
 
 /** The party's leader: the first of it its player plays and still standing, else the first standing. */
@@ -2873,6 +2935,18 @@ function weighRulesetOrders(
       }
     }
   }
+  // Guarding or protecting somebody keeps it on a leash: nothing is worth walking more than three
+  // squares from them for, so it never runs off across the board after the first foe it sees. With
+  // nothing left, its turn walks back toward them (see `walkTowardsTrouble`).
+  if (guarded) {
+    const kept = candidates.filter(
+      (candidate) =>
+        !candidate.action.to ||
+        rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) <= RULESET_LEASH ||
+        rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) < rulesetGap(actor, guarded),
+    );
+    candidates.splice(0, candidates.length, ...kept);
+  }
   for (const candidate of candidates) {
     const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
     const harms = !!target && target.side !== actor.side && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0);
@@ -2887,12 +2961,7 @@ function weighRulesetOrders(
     )
       focus += strength * 0.7;
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
-    // Guarding or protecting somebody keeps it on a leash: what takes it more than three squares
-    // from them is worth a fifth, so it never runs off across the board after the first foe it sees.
-    if (guarded && candidate.action.to && rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) > 3) {
-      for (const key of ["damage", "finish", "setup", "support", "healing", "focus"] as const)
-        if (candidate[key] !== undefined) candidate[key] = candidate[key]! * 0.2;
-    }
+
     // A blow that would kill: only one in melee by somebody pulling their blows knocks out instead.
     if (orders.spare && harms && (candidate.finish ?? 0) > 0) {
       const action = actor.actions.find((one) => one.id === candidate.action.option.id);
@@ -2951,11 +3020,7 @@ function weighRulesetBehavior(
       case "wounded":
         return new Set(foes.filter((one) => health(one).value < health(one).max * 0.5).map((one) => one.id));
       case "casters":
-        return new Set(
-          foes
-            .filter((one) => one.actions.some((action) => (action.catalog && !action.itemUse) || action.concentration))
-            .map((one) => one.id),
-        );
+        return new Set(foes.filter((one) => one.actions.some(rulesetActionIsSpell)).map((one) => one.id));
       case "healers":
         return new Set(foes.filter((one) => one.actions.some((action) => action.heal)).map((one) => one.id));
       case "attacker":
@@ -3270,6 +3335,7 @@ function playRulesetTurn(
       applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
   }
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
+  const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
   let defended = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
@@ -3277,7 +3343,7 @@ function playRulesetTurn(
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
-      if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId)) break;
+      if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
     if (picked.defensive) defended = true;
@@ -3289,9 +3355,11 @@ function playRulesetTurn(
       picked.option.kind === "standard" &&
       !picked.defensive &&
       !stays &&
-      walkTowardsTrouble(definition, state, fight, actorId)
+      walkTowardsTrouble(definition, state, fight, actorId, leash)
     )
       continue;
+    // A sprint with nowhere to go is a turn spent on the spot.
+    if (picked.option.kind === "standard" && rulesetStandardName(picked.option.id) === "dash") break;
     // A getaway is taken where it stands, and then it runs (1.708).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
@@ -3489,11 +3557,12 @@ function walkTowardsTrouble(
   state: CombatDirectorState,
   fight: RulesetFightState,
   actorId: string,
+  leash?: RulesetLeash,
 ): boolean {
   if (!fight.encounter.board?.grid) return false;
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (!actor || (actor.movementLeft ?? 0) < 1) return false;
-  const closing = rulesetClosingMove(definition, fight.encounter, actorId);
+  const closing = rulesetClosingMove(definition, fight.encounter, actorId, leash);
   if (!closing) return false;
   const sprint = (definition.combat?.standard ?? []).includes("dash") && !actor.flags.dashed;
   if (sprint) {
@@ -3504,7 +3573,7 @@ function walkTowardsTrouble(
     });
     // A sprint the rules refused costs nothing: the walk below happens either way.
     if (!sprinted.refused) {
-      const again = rulesetClosingMove(definition, fight.encounter, actorId);
+      const again = rulesetClosingMove(definition, fight.encounter, actorId, leash);
       return !!again && !applyChoice(definition, state, fight, again.choice).refused;
     }
   }

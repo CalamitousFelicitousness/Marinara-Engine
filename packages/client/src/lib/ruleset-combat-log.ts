@@ -1741,8 +1741,17 @@ export function rulesetCombatLogLines(
   afterSeq = -1,
 ): Array<{ seq: number; text: string }> {
   const lines: Array<{ seq: number; text: string }> = [];
+  // A moment everybody let go by is no moment at all: neither the offer nor the passing is said, so
+  // a fight with a dozen unanswered openings does not read as a dozen of each. A pass on its own is
+  // said nowhere, since what somebody did not do is the absence of a line.
+  const passed = new Map<string, Set<string>>();
+  for (const { event } of events)
+    if (event.type === "pass") passed.set(event.window, (passed.get(event.window) ?? new Set()).add(event.actorId));
   for (const entry of events) {
     if (entry.seq <= afterSeq) continue;
+    if (entry.event.type === "pass") continue;
+    const window = entry.event.type === "window" ? entry.event : undefined;
+    if (window && !window.readied && window.waiting.every((id) => passed.get(window.window)?.has(id))) continue;
     // What is left of a budget is a number the status panel already shows, and the resolver reports
     // it BEFORE the action it paid for, so in a log it read as "0 Action left" and then the blow.
     if (entry.event.type === "budget") continue;

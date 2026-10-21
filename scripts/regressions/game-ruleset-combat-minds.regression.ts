@@ -243,6 +243,24 @@ try {
     if (gets) assert.ok(picked!.to && picked!.to.x < 4, "and runs from the hero");
   }
 
+  // A hurt animal hides for two turns at most, then fights; after a blow it is careful for one turn
+  // at most before it goes back in, not two more.
+  {
+    const { encounter, state } = fight(
+      { wolf: { x: 0, y: 0 }, hero: { x: 6, y: 0 } },
+      {
+        wolf: { side: "enemy", block: block({ type: "beast", mind: "instinct" }), health: 2 },
+        hero: { side: "party", block: block({ health: 40 }) },
+      },
+      { wolf: master },
+    );
+    const picks = Array.from({ length: 5 }, () => pickRulesetChoice(definition, state, encounter, "wolf"));
+    assert.ok(picks[0]?.defensive, `it starts careful: ${JSON.stringify(picks[0]?.choice)}`);
+    const seen = JSON.stringify(picks.map((one) => one?.choice.optionId));
+    assert.ok(picks[1]?.defensive && !picks[2]?.defensive, `two turns of it, then it fights: ${seen}`);
+    assert.ok(!picks[4]?.defensive, `one careful turn after a blow: ${seen}`);
+  }
+
   // A protective guard goes at whoever is on its hurt friend.
   {
     const { encounter, state } = fight(

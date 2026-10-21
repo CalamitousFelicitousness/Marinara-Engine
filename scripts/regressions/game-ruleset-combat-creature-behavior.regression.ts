@@ -205,6 +205,13 @@ try {
     assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "archer")!), "marksman");
     assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "brute")!), "bruiser");
     assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "priest")!), "supporter");
+    // A class feature or a torch from a catalog is no spell: a fighter with Second Wind is no caster.
+    const brute = rulesetCombatant(encounter, "brute")!;
+    const feature = { ...brute.actions[0]!, id: "second_wind", catalog: "features", damage: undefined };
+    brute.actions = [...brute.actions, feature];
+    assert.equal(rulesetCombatantRole(brute), "bruiser", "a catalog feature");
+    brute.actions = [...brute.actions, { ...feature, id: "bolt_spell", components: ["verbal"] }];
+    assert.equal(rulesetCombatantRole(brute), "spellcaster", "a spell cast with words");
   }
 
   // ── Its temperament and role, unless the Game Master gave one ──

@@ -153,6 +153,7 @@ async function runTask(
   kind: "images" | "videos",
   body: Record<string, unknown>,
   signal?: AbortSignal,
+  onSubmissionStart?: () => void,
 ): Promise<string> {
   const localId = randomUUID();
   const dir = join(DATA_DIR, "toapis-tasks");
@@ -175,6 +176,9 @@ async function runTask(
       logger.error(error, "[toapis] Could not save task receipt %s for task %s", localId, receipt.taskId || "unknown");
     });
   await save();
+  // A timeout while saving the receipt must not leave a late paid POST behind an unpaid fallback.
+  signal?.throwIfAborted();
+  onSubmissionStart?.();
   let task: Task;
   try {
     task = await api(base, key, `${kind}/generations`, body, signal);
@@ -257,6 +261,7 @@ export async function generateToAPIsImage(
   request: ImageGenRequest,
   references: Array<{ base64: string; mimeType: string }>,
   maxResponseBytes: number,
+  onSubmissionStart?: () => void,
 ): Promise<ImageGenResult> {
   if (!key.trim()) throw new Error("ToAPIs API key is required");
   if (request.model !== "gpt-image-2")
@@ -297,7 +302,7 @@ export async function generateToAPIsImage(
     "[image-gen/toapis] prompt: %s",
     request.prompt,
   );
-  const outputUrl = await runTask(base, key, "images", body, request.signal);
+  const outputUrl = await runTask(base, key, "images", body, request.signal, onSubmissionStart);
   try {
     const raw = await download(outputUrl, maxResponseBytes, request.signal);
     const info = resolveValidatedImage(raw);

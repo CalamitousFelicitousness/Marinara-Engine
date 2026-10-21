@@ -348,7 +348,7 @@ export async function generateImage(
     request.admissionMode ?? { kind: "foreground" },
   );
   let outcome: ConnectionAttemptOutcome = "failed";
-  let usesToAPIsTaskAdapter = false;
+  let toAPIsSubmissionStarted = false;
 
   try {
     const physicalRequest = () =>
@@ -368,8 +368,9 @@ export async function generateImage(
         switch (resolvedSource) {
           case "openai":
           default:
-            usesToAPIsTaskAdapter = isToAPIsMediaUrl(normalizedBaseUrl);
-            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
+            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest, () => {
+              toAPIsSubmissionStarted = true;
+            });
           case "codex_chatgpt":
             return generateChatGPTImage(scopedRequest);
           case "arli":
@@ -450,7 +451,7 @@ export async function generateImage(
     const fallback = request.fallback;
     if (error instanceof ToAPIsSubmittedTaskError) throw error;
     // The deadline races the worker, so it can arrive before the worker wraps its aborted task.
-    if (error instanceof ImageGenerationDeadlineError && usesToAPIsTaskAdapter) {
+    if (error instanceof ImageGenerationDeadlineError && toAPIsSubmissionStarted) {
       throw new ToAPIsSubmittedTaskError(error);
     }
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;
@@ -1318,7 +1319,12 @@ function applyImageCustomFormParameters(request: ImageGenRequest, body: FormData
   );
 }
 
-async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+async function generateOpenAI(
+  baseUrl: string,
+  apiKey: string,
+  request: ImageGenRequest,
+  onToAPIsSubmissionStart?: () => void,
+): Promise<ImageGenResult> {
   if (isToAPIsMediaUrl(baseUrl)) {
     return generateToAPIsImage(
       baseUrl,
@@ -1326,6 +1332,7 @@ async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGen
       { ...request, prompt: openAITextPrompt(request) },
       openAIReferenceImages(request).map(decodeReferenceImage),
       MAX_IMAGE_RESPONSE_BYTES,
+      onToAPIsSubmissionStart,
     );
   }
   const usesGptImageApi = isOpenAIGptImageModel(request.model);

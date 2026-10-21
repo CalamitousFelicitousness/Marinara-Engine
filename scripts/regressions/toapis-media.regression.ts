@@ -19,8 +19,8 @@ type Call = { url: string; method: string; headers: Headers; body: unknown };
 let calls: Call[] = [];
 let mode = "complete";
 let transientPolls = 0;
-let chatTransportGuardFired = false;
-let chatAbortReason: unknown;
+let transportGuardFired = false;
+let transportAbortReason: unknown;
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 globalThis.fetch = async (input, init) => {
@@ -51,18 +51,21 @@ globalThis.fetch = async (input, init) => {
     return json({ status: "completed", output: { url: "https://media.toapis.com/legacy.mp4" } });
   }
   assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer fixture-key");
-  if (url.pathname === "/v1/chat/completions" && mode === "stall-chat") {
+  if (
+    (url.pathname === "/v1/chat/completions" && mode === "stall-chat") ||
+    (url.pathname === "/v1/uploads/images" && mode === "stall-upload")
+  ) {
     const signal = init?.signal;
-    assert.ok(signal, "The chat-image request must honor the image deadline");
+    assert.ok(signal, "The stalled request must honor the image deadline");
     return new Promise<Response>((_resolve, reject) => {
       // The production deadline is unref'd; keep this stalled transport alive until it aborts.
       const transportTimeout = setTimeout(() => {
-        chatTransportGuardFired = true;
+        transportGuardFired = true;
         reject(new Error("Fixture transport did not abort"));
       }, 5000);
       const abort = () => {
         clearTimeout(transportTimeout);
-        chatAbortReason = signal.reason;
+        transportAbortReason = signal.reason;
         reject(signal.reason);
       };
       if (signal.aborted) abort();
@@ -127,8 +130,8 @@ async function check(name: string, run: () => void | Promise<void>) {
   calls = [];
   mode = "complete";
   transientPolls = 0;
-  chatTransportGuardFired = false;
-  chatAbortReason = undefined;
+  transportGuardFired = false;
+  transportAbortReason = undefined;
   await run();
   passed++;
   process.stdout.write(`PASS ${name}\n`);
@@ -408,6 +411,22 @@ try {
     await assert.rejects(video({ fallback: videoFallback }), { message: /exceeded 1024 bytes/, retryable: false });
     assert.equal(submissions().length, 1);
   });
+  await check("reference upload deadline can use fallback before a paid task starts", async () => {
+    const receiptCount = (await readdir(join(DATA_DIR, "toapis-tasks"))).length;
+    mode = "stall-upload";
+    const result = await image({ referenceImage: png, fallback: imageFallback });
+    assert.equal(result.base64, png);
+    assert.equal(transportGuardFired, false, "The provider deadline must fire before the fixture guard");
+    assert.ok(transportAbortReason instanceof Error);
+    assert.equal(transportAbortReason.name, "ImageGenerationDeadlineError");
+    assert.equal(calls.filter((call) => new URL(call.url).pathname === "/v1/uploads/images").length, 1);
+    assert.equal(
+      calls.filter((call) => new URL(call.url).hostname === "toapis.com" && call.url.endsWith("/generations")).length,
+      0,
+    );
+    assert.equal(calls.filter((call) => new URL(call.url).hostname === "api.openai.com").length, 1);
+    assert.equal((await readdir(join(DATA_DIR, "toapis-tasks"))).length, receiptCount);
+  });
   await check("image deadline never submits a paid fallback", async () => {
     mode = "stall";
     await assert.rejects(image({ fallback: imageFallback }), { message: /timed out/, retryable: false });
@@ -436,9 +455,9 @@ try {
   await check("a Gemini chat-image deadline on ToAPIs keeps its ordinary fallback", async () => {
     mode = "stall-chat";
     const result = await image({ model: "gemini-3-image", fallback: imageFallback });
-    assert.equal(chatTransportGuardFired, false, "The provider deadline must fire before the fixture guard");
-    assert.ok(chatAbortReason instanceof Error);
-    assert.equal(chatAbortReason.name, "ImageGenerationDeadlineError");
+    assert.equal(transportGuardFired, false, "The provider deadline must fire before the fixture guard");
+    assert.ok(transportAbortReason instanceof Error);
+    assert.equal(transportAbortReason.name, "ImageGenerationDeadlineError");
     assert.equal(result.base64, png);
     assert.equal(calls.filter((call) => new URL(call.url).pathname === "/v1/chat/completions").length, 1);
     assert.equal(

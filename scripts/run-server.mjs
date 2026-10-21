@@ -5,8 +5,39 @@ import { fileURLToPath } from "node:url";
 import { findChangedBuildFile } from "../packages/server/scripts/write-build-meta.mjs";
 
 const SERVER_ROOT = fileURLToPath(new URL("../packages/server/", import.meta.url));
+const serverArgs = process.argv.slice(2);
+const browserArgIndex = serverArgs.indexOf("--open-browser");
+let browserUrl = null;
+if (browserArgIndex !== -1) {
+  const [, rawUrl] = serverArgs.splice(browserArgIndex, 2);
+  try {
+    const url = new URL(rawUrl);
+    if (!["http:", "https:"].includes(url.protocol) || serverArgs.includes("--open-browser")) throw new Error();
+    browserUrl = url.href;
+  } catch {
+    process.stderr.write("Could not start Marinara Engine: --open-browser requires one HTTP or HTTPS URL.\n");
+    process.exit(1);
+  }
+}
+
+function openBrowser(url) {
+  const command =
+    process.platform === "win32"
+      ? "explorer.exe"
+      : process.platform === "darwin"
+        ? "open"
+        : process.platform === "android" || process.env.PREFIX?.includes("com.termux")
+          ? "termux-open-url"
+          : "xdg-open";
+  // Pass the URL as an argument, never as shell code (including on Windows).
+  const opener = spawn(command, [url], { stdio: "ignore", windowsHide: true, detached: true });
+  opener.once("error", (error) => {
+    process.stderr.write(`  [WARN] Could not open the browser (${error.message}). Open ${url} manually.\n`);
+  });
+  opener.unref();
+}
 // Only the launchers' own build is checked; a private build that a developer tool starts is left alone.
-const startsServerBuild = process.argv.slice(2).some((arg) => relative(join(SERVER_ROOT, "dist"), arg) === "index.js");
+const startsServerBuild = serverArgs.some((arg) => relative(join(SERVER_ROOT, "dist"), arg) === "index.js");
 
 // #6984: a built file changed after its build (a damaged write, an edit) stops every start, and the
 // launchers rebuild only when the version or commit changes. Rebuild before starting instead.
@@ -65,9 +96,15 @@ while (true) {
     process.exitCode = stopping ? 130 : 1;
     break;
   }
-  child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(2)], {
-    stdio: "inherit",
+  child = spawn(process.execPath, [...process.execArgv, ...serverArgs], {
+    stdio: browserUrl ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
     env: { ...process.env, MARINARA_RESTART_SUPERVISOR: String(process.pid) },
+  });
+  child.on("message", (message) => {
+    if (stopping || !browserUrl || message?.type !== "marinara:ready") return;
+    const url = browserUrl;
+    browserUrl = null; // In-app restarts and repeated ready messages must not open extra tabs.
+    openBrowser(url);
   });
   const code = await exitCode(child);
   if (stopping || code !== 75) {

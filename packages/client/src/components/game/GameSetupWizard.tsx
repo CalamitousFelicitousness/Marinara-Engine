@@ -1,4 +1,5 @@
 import {
+  audioConnectionSupportsGeneration,
   compileGameWorld,
   gameWorldFromSnapshot,
   normalizeGameDifficulty,
@@ -223,6 +224,8 @@ interface WizardConnection {
   audioSource?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
   defaultParameters?: string | null;
   isDefault?: boolean | string;
   defaultForAgents?: boolean | string;
@@ -864,13 +867,9 @@ export function GameSetupWizard({
     [audioConnections, audioConnectionId, preferredAudioConnectionId],
   );
   const audioConnectionSupportsSfx =
-    resolvedAudioConnection != null &&
-    (resolvedAudioConnection.audioSource ?? "elevenlabs") === "elevenlabs" &&
-    isConnectionFlagTrue(resolvedAudioConnection.audioSoundEffects);
+    resolvedAudioConnection != null && audioConnectionSupportsGeneration(resolvedAudioConnection, "sfx");
   const audioConnectionSupportsMusic =
-    resolvedAudioConnection != null &&
-    (resolvedAudioConnection.audioSource ?? "elevenlabs") === "elevenlabs" &&
-    isConnectionFlagTrue(resolvedAudioConnection.audioMusic);
+    resolvedAudioConnection != null && audioConnectionSupportsGeneration(resolvedAudioConnection, "music");
   const promptPresets = useMemo(
     () =>
       (promptPresetsList as Array<{
@@ -3291,9 +3290,7 @@ export function GameSetupWizard({
                       {resolvedAudioConnection != null &&
                         (!audioConnectionSupportsSfx || !audioConnectionSupportsMusic) && (
                           <p className="mt-2 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
-                            {localizeUi(
-                              "ui.game.gamesetupwizard.soundEffectAndMusicGenerationRequiresAnElevenlabsAudio",
-                            )}
+                            {localizeUi("connections.gameAudio.unavailable")}
                           </p>
                         )}
                     </div>

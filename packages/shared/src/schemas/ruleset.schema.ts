@@ -231,6 +231,9 @@ export const rulesetValueRefSchema = z
   });
 
 export type RulesetValueRef = z.infer<typeof rulesetValueRefSchema>;
+/** How many days an applied condition lasts outside a fight: a number off the sheet, until midnight
+ *  (1.698), or rolled (1.703), resting days counting `restingCounts` each. */
+export type RulesetLastsDays = RulesetValueRef | "midnight" | { dice: string; restingCounts?: number };
 
 /** `[[threshold, value], …]`, ascending: the value of the highest threshold at or below the input.
  *  An input below the first threshold reads as the first value. */
@@ -4198,13 +4201,17 @@ const itemRaisesSchema: z.ZodType<RulesetItemRaises, z.ZodTypeDef, unknown> = z.
 );
 
 /** A condition's `abilities` (1.462): see the combat condition's own. */
-export type RulesetConditionAbilityChange = { set: number } | { to: number } | { add: number; max?: number };
+/** `atMost` (1.703): lowered to that number only where it is higher, after everything else, as `to` is
+ *  but never raising one: 5e's Wish stress, "your Strength drops to 3, if it isn't 3 or lower already". */
+export type RulesetConditionAbilityChange =
+  { set: number } | { to: number } | { atMost: number } | { add: number; max?: number };
 export type RulesetConditionAbilities = Record<string, RulesetConditionAbilityChange>;
 const conditionAbilitiesSchema: z.ZodType<RulesetConditionAbilities, z.ZodTypeDef, unknown> = z.record(
   sheetId,
   z.union([
     z.object({ set: z.number().int() }).strict(),
     z.object({ to: z.number().int() }).strict(),
+    z.object({ atMost: z.number().int() }).strict(),
     z
       .object({ add: z.number().int().min(-100).max(100), max: z.number().int().min(-1000).max(1000).optional() })
       .strict(),
@@ -5344,7 +5351,7 @@ export interface RulesetCatalogApplies {
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
-  lastsDays?: RulesetValueRef | "midnight";
+  lastsDays?: RulesetLastsDays;
   whileItemWorn?: true;
   targetHolds?: RulesetTargetHolds;
   endsOnTarget?: string[];
@@ -5602,9 +5609,16 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
      *  applies it as it goes on (Capability API 1.610): no clock in the fight, and on a sheet it is
      *  still on as the fight ends, counted down by the days that pass. 5e's Quivering Palm, "a
      *  number of days equal to your monk level". Or `"midnight"` (Capability API 1.698): until the
-     *  next midnight, the sheet's next `pass` of a day, 5e's Midnight tears. */
+     *  next midnight, the sheet's next `pass` of a day, 5e's Midnight tears. Or `{ dice }` (Capability
+     *  API 1.703): rolled as it goes on, and with `restingCounts` each day its holder spends resting
+     *  (a `pass` with `resting`) counts as that many: 5e's Wish stress, "2d4 days. For each of those
+     *  days that you spend resting ..., your remaining recovery time decreases by 2 days". */
     lastsDays: z
-      .union([z.literal("midnight"), rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>])
+      .union([
+        z.literal("midnight"),
+        z.object({ dice: catalogDice, restingCounts: z.number().int().min(2).max(7).optional() }).strict(),
+        rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
+      ])
       .optional(),
     /** Put on by an item's use, it ends once that item is no longer worn (Capability API 1.611): 5e's
      *  Armor of Invulnerability, "for 10 minutes or until you are no longer wearing the armor". */
@@ -7421,6 +7435,10 @@ const catalogMechanicsObject = z
      *  API 1.510): 5e's Preserve Life, "divide those hit points among them ... no more than half of
      *  its hit point maximum". Needs a heal. */
     sharesHeal: z.union([z.literal(true), z.literal("half")]).optional(),
+    /** It heals each target all the health they are missing (Capability API 1.704), whatever its
+     *  `amount`, which it needs none of: 5e's Wish, "up to twenty creatures ... regain all hit points".
+     *  A "heal". */
+    healsAll: z.literal(true).optional(),
     /** Each target is won over by a contest of checks instead of a roll to hit or a save (Capability
      *  API 1.512): its user throws the best of `attacker`, the target the best of `defender`, and a
      *  tie goes to `ties` (the defender when left out). Only on a target it wins does the rest of it
@@ -8342,6 +8360,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["movesTarget"],
       message: '"movesTarget" moves the one creature it is aimed at, so it has no "area", one target and not "self"',
+    });
+  }
+  if (mechanics.healsAll && (mechanics.kind !== "heal" || mechanics.sharesHeal || mechanics.usesChosen)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["healsAll"],
+      message: '"healsAll" heals all the health each target is missing, so it is a "heal", not shared out or by uses',
     });
   }
   if (mechanics.sharesHeal && (mechanics.kind !== "heal" || (!mechanics.amount && !mechanics.amountAdd))) {

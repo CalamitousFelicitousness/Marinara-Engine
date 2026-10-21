@@ -97,6 +97,8 @@ export interface RulesetLiveState {
   daySaves?: Record<string, RulesetLiveDaySave>;
   /** Days left of each condition that lasts so many (1.610), keyed by condition: Quivering Palm's. */
   dayClocks?: Record<string, number>;
+  /** How many days each day its holder rests counts as, against `dayClocks` (1.703): Wish's stress's 2. */
+  dayRests?: Record<string, number>;
   /** The inventory stack whose item keeps each condition on while it is worn (1.611), keyed by
    *  condition: Armor of Invulnerability's. */
   wornFrom?: Record<string, string>;
@@ -187,6 +189,7 @@ const liveAbilityRaiseSchema = z
   .strict();
 
 const liveDayClock = z.number().int().min(1).max(3650);
+const liveDayRest = z.number().int().min(2).max(7);
 const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
 
 const liveDaySaveSchema = z
@@ -227,6 +230,7 @@ export const rulesetLiveStateSchema = z
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
     daySaves: boundedRecord(liveDaySaveSchema, MAX_LIVE_CONDITIONS, "saves made as days pass").optional(),
     dayClocks: boundedRecord(liveDayClock, MAX_LIVE_CONDITIONS, "days conditions last").optional(),
+    dayRests: boundedRecord(liveDayRest, MAX_LIVE_CONDITIONS, "days resting counts as").optional(),
     wornFrom: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "conditions worn items keep on").optional(),
   })
   .strip();
@@ -800,6 +804,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (daySaves) state.daySaves = daySaves;
   const dayClocks = keepValid(source.dayClocks, liveDayClock, MAX_LIVE_CONDITIONS);
   if (dayClocks) state.dayClocks = dayClocks;
+  const dayRests = keepValid(source.dayRests, liveDayRest, MAX_LIVE_CONDITIONS);
+  if (dayRests) state.dayRests = dayRests;
   const wornFrom = keepValid(source.wornFrom, liveStackId, MAX_LIVE_CONDITIONS);
   if (wornFrom) state.wornFrom = wornFrom;
   return state;
@@ -829,6 +835,11 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   // So do the days a condition lasts (1.610).
   const dayClocks = Object.entries(state.dayClocks ?? {}).filter(([condition]) => held.has(condition));
   if (dayClocks.length > 0) normalized.dayClocks = Object.fromEntries(dayClocks);
+  // And what resting counts against them (1.703).
+  const dayRests = Object.entries(state.dayRests ?? {}).filter(
+    ([condition]) => held.has(condition) && state.dayClocks?.[condition] !== undefined,
+  );
+  if (dayRests.length > 0) normalized.dayRests = Object.fromEntries(dayRests);
   // And the item that keeps one on (1.611).
   const wornFrom = Object.entries(state.wornFrom ?? {}).filter(([condition]) => held.has(condition));
   if (wornFrom.length > 0) normalized.wornFrom = Object.fromEntries(wornFrom);
@@ -974,10 +985,24 @@ export function rulesetLiveWithDaySave(
 }
 
 /** A live state with `condition` lasting `days` more (1.610), counted down as days pass: written as
- *  a fight that put it on is over. */
-export function rulesetLiveWithDayClock(stored: unknown, condition: string, days: number): RulesetLiveState {
+ *  a fight that put it on is over. With `restingCounts` (1.703), each day its holder rests counts as
+ *  that many. */
+export function rulesetLiveWithDayClock(
+  stored: unknown,
+  condition: string,
+  days: number,
+  restingCounts?: number,
+): RulesetLiveState {
   const state = readStoredLiveStateAsIs(stored);
-  return { ...state, dayClocks: { ...state.dayClocks, [condition]: Math.max(1, Math.min(3650, Math.trunc(days))) } };
+  const { [condition]: _was, ...dayRests } = state.dayRests ?? {};
+  if (restingCounts !== undefined && restingCounts >= 2) dayRests[condition] = Math.min(7, Math.trunc(restingCounts));
+  const next: RulesetLiveState = {
+    ...state,
+    dayClocks: { ...state.dayClocks, [condition]: Math.max(1, Math.min(3650, Math.trunc(days))) },
+  };
+  if (Object.keys(dayRests).length > 0) next.dayRests = dayRests;
+  else delete next.dayRests;
+  return next;
 }
 
 /** A live state with `condition` kept on only while the item on inventory stack `stackId` is worn
@@ -1188,8 +1213,9 @@ export type RulesetSheetOp =
    *  sheet's own. */
   | { op: "rest"; rest: string; dice?: number; pool?: string; extra?: { sides: number; add: number } }
   /** Days of game time pass (1.392): a spent row whose recharge takes days counts them, and fills
-   *  again once they reach its count. */
-  | { op: "pass"; days: number }
+   *  again once they reach its count. `resting` (1.703): spent resting, so a condition whose days
+   *  count more while its holder rests counts them so. */
+  | { op: "pass"; days: number; resting?: true }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
    *  `planRulesetUse` before it reaches `applyRulesetSheetOp`, because it needs the catalogs. */
   | { op: "use"; name: string; pool?: string; recover?: RulesetUseRecover[] };
@@ -1808,22 +1834,29 @@ export function applyRulesetSheetOp(
     next.daySaves = daySaves;
     // A condition that lasts so many days (1.610) comes off once they have passed.
     const dayClocks = { ...next.dayClocks };
+    const dayRests = { ...next.dayRests };
     for (const [condition, left] of Object.entries(dayClocks)) {
       if (!(next.conditions ?? []).includes(condition)) {
         delete dayClocks[condition];
+        delete dayRests[condition];
         continue;
       }
-      if (left > op.days) {
-        dayClocks[condition] = left - op.days;
+      // Days spent resting count more where it says so (1.703): Wish's stress, two a day.
+      const counted = op.resting && dayRests[condition] ? op.days * dayRests[condition] : op.days;
+      if (left > counted) {
+        dayClocks[condition] = left - counted;
         continue;
       }
       delete dayClocks[condition];
+      delete dayRests[condition];
       next.conditions = (next.conditions ?? []).filter((id) => id !== condition);
       const label = definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
       back.push(`${label} ended${giveBackLowered(condition)}${endHarm(condition, "expired")}`);
     }
     next.dayClocks = dayClocks;
-    const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}`;
+    if (Object.keys(dayRests).length > 0) next.dayRests = dayRests;
+    else delete next.dayRests;
+    const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}${op.resting ? " resting" : ""}`;
     return done(back.length ? `${days}: ${back.join(", ")}` : days);
   }
 

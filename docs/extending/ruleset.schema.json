@@ -43259,6 +43259,26 @@
                                       {
                                         "type": "object",
                                         "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "restingCounts": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                            "maximum": 7
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "dice"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
                                           "const": {
                                             "type": "number"
                                           },
@@ -50159,6 +50179,26 @@
                                           {
                                             "type": "string",
                                             "const": "midnight"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "dice": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                              },
+                                              "restingCounts": {
+                                                "type": "integer",
+                                                "minimum": 2,
+                                                "maximum": 7
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "dice"
+                                            ],
+                                            "additionalProperties": false
                                           },
                                           {
                                             "type": "object",
@@ -58959,6 +58999,26 @@
                               {
                                 "type": "object",
                                 "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "restingCounts": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 7
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "dice"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
                                   "const": {
                                     "type": "number"
                                   },
@@ -60852,6 +60912,26 @@
                               {
                                 "type": "object",
                                 "properties": {
+                                  "dice": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                  },
+                                  "restingCounts": {
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 7
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "dice"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
                                   "const": {
                                     "type": "number"
                                   },
@@ -61207,6 +61287,10 @@
                         true,
                         "half"
                       ]
+                    },
+                    "healsAll": {
+                      "type": "boolean",
+                      "const": true
                     },
                     "contest": {
                       "type": "object",
@@ -67132,6 +67216,26 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "restingCounts": {
+                                          "type": "integer",
+                                          "minimum": 2,
+                                          "maximum": 7
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "dice"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
                                         "const": {
                                           "type": "number"
                                         },
@@ -69050,6 +69154,26 @@
                                     {
                                       "type": "string",
                                       "const": "midnight"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "restingCounts": {
+                                          "type": "integer",
+                                          "minimum": 2,
+                                          "maximum": 7
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "dice"
+                                      ],
+                                      "additionalProperties": false
                                     },
                                     {
                                       "type": "object",
@@ -72519,6 +72643,26 @@
                                           {
                                             "type": "object",
                                             "properties": {
+                                              "dice": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                              },
+                                              "restingCounts": {
+                                                "type": "integer",
+                                                "minimum": 2,
+                                                "maximum": 7
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "dice"
+                                            ],
+                                            "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
                                               "const": {
                                                 "type": "number"
                                               },
@@ -74709,6 +74853,26 @@
                                   {
                                     "type": "string",
                                     "const": "midnight"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "restingCounts": {
+                                        "type": "integer",
+                                        "minimum": 2,
+                                        "maximum": 7
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "dice"
+                                    ],
+                                    "additionalProperties": false
                                   },
                                   {
                                     "type": "object",
@@ -77165,6 +77329,26 @@
                                       {
                                         "type": "string",
                                         "const": "midnight"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "restingCounts": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                            "maximum": 7
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "dice"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       {
                                         "type": "object",
@@ -82938,6 +83122,26 @@
                                               {
                                                 "type": "object",
                                                 "properties": {
+                                                  "dice": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                  },
+                                                  "restingCounts": {
+                                                    "type": "integer",
+                                                    "minimum": 2,
+                                                    "maximum": 7
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "dice"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
                                                   "const": {
                                                     "type": "number"
                                                   },
@@ -85158,6 +85362,26 @@
                                       {
                                         "type": "string",
                                         "const": "midnight"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "restingCounts": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                            "maximum": 7
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "dice"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       {
                                         "type": "object",
@@ -90137,6 +90361,26 @@
                                       {
                                         "type": "object",
                                         "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "restingCounts": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                            "maximum": 7
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "dice"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
                                           "const": {
                                             "type": "number"
                                           },
@@ -93835,6 +94079,26 @@
                                             {
                                               "type": "object",
                                               "properties": {
+                                                "dice": {
+                                                  "type": "string",
+                                                  "maxLength": 40,
+                                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                },
+                                                "restingCounts": {
+                                                  "type": "integer",
+                                                  "minimum": 2,
+                                                  "maximum": 7
+                                                },
+                                                "$comment": {}
+                                              },
+                                              "required": [
+                                                "dice"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
                                                 "const": {
                                                   "type": "number"
                                                 },
@@ -96025,6 +96289,26 @@
                                     {
                                       "type": "string",
                                       "const": "midnight"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "dice": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                        },
+                                        "restingCounts": {
+                                          "type": "integer",
+                                          "minimum": 2,
+                                          "maximum": 7
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "dice"
+                                      ],
+                                      "additionalProperties": false
                                     },
                                     {
                                       "type": "object",
@@ -98481,6 +98765,26 @@
                                         {
                                           "type": "string",
                                           "const": "midnight"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
                                         },
                                         {
                                           "type": "object",
@@ -104254,6 +104558,26 @@
                                                 {
                                                   "type": "object",
                                                   "properties": {
+                                                    "dice": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                    },
+                                                    "restingCounts": {
+                                                      "type": "integer",
+                                                      "minimum": 2,
+                                                      "maximum": 7
+                                                    },
+                                                    "$comment": {}
+                                                  },
+                                                  "required": [
+                                                    "dice"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
                                                     "const": {
                                                       "type": "number"
                                                     },
@@ -106474,6 +106798,26 @@
                                         {
                                           "type": "string",
                                           "const": "midnight"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
                                         },
                                         {
                                           "type": "object",
@@ -111449,6 +111793,26 @@
                                         {
                                           "type": "string",
                                           "const": "midnight"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
                                         },
                                         {
                                           "type": "object",
@@ -128032,6 +128396,26 @@
                                         {
                                           "type": "object",
                                           "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
                                             "const": {
                                               "type": "number"
                                             },
@@ -134426,6 +134810,26 @@
                                           {
                                             "type": "string",
                                             "const": "midnight"
+                                          },
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "dice": {
+                                                "type": "string",
+                                                "maxLength": 40,
+                                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                              },
+                                              "restingCounts": {
+                                                "type": "integer",
+                                                "minimum": 2,
+                                                "maximum": 7
+                                              },
+                                              "$comment": {}
+                                            },
+                                            "required": [
+                                              "dice"
+                                            ],
+                                            "additionalProperties": false
                                           },
                                           {
                                             "type": "object",
@@ -141163,6 +141567,26 @@
                                               {
                                                 "type": "string",
                                                 "const": "midnight"
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "dice": {
+                                                    "type": "string",
+                                                    "maxLength": 40,
+                                                    "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                  },
+                                                  "restingCounts": {
+                                                    "type": "integer",
+                                                    "minimum": 2,
+                                                    "maximum": 7
+                                                  },
+                                                  "$comment": {}
+                                                },
+                                                "required": [
+                                                  "dice"
+                                                ],
+                                                "additionalProperties": false
                                               },
                                               {
                                                 "type": "object",
@@ -149863,6 +150287,26 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "restingCounts": {
+                                        "type": "integer",
+                                        "minimum": 2,
+                                        "maximum": 7
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "dice"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
                                       "const": {
                                         "type": "number"
                                       },
@@ -151756,6 +152200,26 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "restingCounts": {
+                                        "type": "integer",
+                                        "minimum": 2,
+                                        "maximum": 7
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "dice"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
                                       "const": {
                                         "type": "number"
                                       },
@@ -152095,6 +152559,10 @@
                             true,
                             "half"
                           ]
+                        },
+                        "healsAll": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "contest": {
                           "type": "object",
@@ -160912,6 +161380,26 @@
                                                 {
                                                   "type": "object",
                                                   "properties": {
+                                                    "dice": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                    },
+                                                    "restingCounts": {
+                                                      "type": "integer",
+                                                      "minimum": 2,
+                                                      "maximum": 7
+                                                    },
+                                                    "$comment": {}
+                                                  },
+                                                  "required": [
+                                                    "dice"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
                                                     "const": {
                                                       "type": "number"
                                                     },
@@ -167645,6 +168133,26 @@
                                                     {
                                                       "type": "string",
                                                       "const": "midnight"
+                                                    },
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "dice": {
+                                                          "type": "string",
+                                                          "maxLength": 40,
+                                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                        },
+                                                        "restingCounts": {
+                                                          "type": "integer",
+                                                          "minimum": 2,
+                                                          "maximum": 7
+                                                        },
+                                                        "$comment": {}
+                                                      },
+                                                      "required": [
+                                                        "dice"
+                                                      ],
+                                                      "additionalProperties": false
                                                     },
                                                     {
                                                       "type": "object",
@@ -176345,6 +176853,26 @@
                                         {
                                           "type": "object",
                                           "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
                                             "const": {
                                               "type": "number"
                                             },
@@ -178238,6 +178766,26 @@
                                         {
                                           "type": "object",
                                           "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
                                             "const": {
                                               "type": "number"
                                             },
@@ -178577,6 +179125,10 @@
                                   true,
                                   "half"
                                 ]
+                              },
+                              "healsAll": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "contest": {
                                 "type": "object",
@@ -187400,6 +187952,26 @@
                                                 {
                                                   "type": "object",
                                                   "properties": {
+                                                    "dice": {
+                                                      "type": "string",
+                                                      "maxLength": 40,
+                                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                    },
+                                                    "restingCounts": {
+                                                      "type": "integer",
+                                                      "minimum": 2,
+                                                      "maximum": 7
+                                                    },
+                                                    "$comment": {}
+                                                  },
+                                                  "required": [
+                                                    "dice"
+                                                  ],
+                                                  "additionalProperties": false
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
                                                     "const": {
                                                       "type": "number"
                                                     },
@@ -194133,6 +194705,26 @@
                                                     {
                                                       "type": "string",
                                                       "const": "midnight"
+                                                    },
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "dice": {
+                                                          "type": "string",
+                                                          "maxLength": 40,
+                                                          "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                                        },
+                                                        "restingCounts": {
+                                                          "type": "integer",
+                                                          "minimum": 2,
+                                                          "maximum": 7
+                                                        },
+                                                        "$comment": {}
+                                                      },
+                                                      "required": [
+                                                        "dice"
+                                                      ],
+                                                      "additionalProperties": false
                                                     },
                                                     {
                                                       "type": "object",
@@ -202833,6 +203425,26 @@
                                         {
                                           "type": "object",
                                           "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
                                             "const": {
                                               "type": "number"
                                             },
@@ -204726,6 +205338,26 @@
                                         {
                                           "type": "object",
                                           "properties": {
+                                            "dice": {
+                                              "type": "string",
+                                              "maxLength": 40,
+                                              "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                            },
+                                            "restingCounts": {
+                                              "type": "integer",
+                                              "minimum": 2,
+                                              "maximum": 7
+                                            },
+                                            "$comment": {}
+                                          },
+                                          "required": [
+                                            "dice"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
                                             "const": {
                                               "type": "number"
                                             },
@@ -205065,6 +205697,10 @@
                                   true,
                                   "half"
                                 ]
+                              },
+                              "healsAll": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "contest": {
                                 "type": "object",
@@ -223709,6 +224345,26 @@
                             {
                               "type": "object",
                               "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "restingCounts": {
+                                  "type": "integer",
+                                  "minimum": 2,
+                                  "maximum": 7
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "dice"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
                                 "const": {
                                   "type": "number"
                                 },
@@ -225656,6 +226312,26 @@
                             {
                               "type": "string",
                               "const": "midnight"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "restingCounts": {
+                                  "type": "integer",
+                                  "minimum": 2,
+                                  "maximum": 7
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "dice"
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -227629,6 +228305,26 @@
                                 {
                                   "type": "object",
                                   "properties": {
+                                    "dice": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                    },
+                                    "restingCounts": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 7
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "dice"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
                                     "const": {
                                       "type": "number"
                                     },
@@ -229571,6 +230267,26 @@
                             {
                               "type": "object",
                               "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "restingCounts": {
+                                  "type": "integer",
+                                  "minimum": 2,
+                                  "maximum": 7
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "dice"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
                                 "const": {
                                   "type": "number"
                                 },
@@ -230742,6 +231458,19 @@
                       },
                       "required": [
                         "to"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "atMost": {
+                          "type": "integer"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "atMost"
                       ],
                       "additionalProperties": false
                     },
@@ -235445,6 +236174,26 @@
                             {
                               "type": "object",
                               "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "restingCounts": {
+                                  "type": "integer",
+                                  "minimum": 2,
+                                  "maximum": 7
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "dice"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
                                 "const": {
                                   "type": "number"
                                 },
@@ -238301,6 +239050,26 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "dice": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                      },
+                                      "restingCounts": {
+                                        "type": "integer",
+                                        "minimum": 2,
+                                        "maximum": 7
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "dice"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
                                       "const": {
                                         "type": "number"
                                       },
@@ -240211,6 +240980,26 @@
                                       {
                                         "type": "string",
                                         "const": "midnight"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "dice": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                          },
+                                          "restingCounts": {
+                                            "type": "integer",
+                                            "minimum": 2,
+                                            "maximum": 7
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "dice"
+                                        ],
+                                        "additionalProperties": false
                                       },
                                       {
                                         "type": "object",
@@ -242959,6 +243748,26 @@
                             {
                               "type": "object",
                               "properties": {
+                                "dice": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                                },
+                                "restingCounts": {
+                                  "type": "integer",
+                                  "minimum": 2,
+                                  "maximum": 7
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "dice"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
                                 "const": {
                                   "type": "number"
                                 },
@@ -245233,6 +246042,26 @@
                           {
                             "type": "string",
                             "const": "midnight"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "dice": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                              },
+                              "restingCounts": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 7
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "dice"
+                            ],
+                            "additionalProperties": false
                           },
                           {
                             "type": "object",

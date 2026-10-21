@@ -3545,6 +3545,11 @@ function applyConditionId(
     if (ref === undefined) return undefined;
     // Until the next midnight (1.698): the next day that passes on its sheet.
     if (ref === "midnight") return 1;
+    // Rolled as it goes on (1.703): Wish's stress, 2d4 days.
+    if (typeof ref === "object" && ref && "dice" in ref) {
+      const dice = parseRulesetCombatDice(ref.dice);
+      return dice ? Math.max(1, Math.min(3650, rollAmount(ctx, dice).total)) : undefined;
+    }
     const read = giver?.sheet
       ? rulesetSheetValue(ctx.definition, giver, ref)
       : typeof ref === "number"
@@ -3578,6 +3583,12 @@ function applyConditionId(
     ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(days !== undefined ? { days } : {}),
+    ...(days !== undefined &&
+    typeof applies.lastsDays === "object" &&
+    "restingCounts" in applies.lastsDays &&
+    applies.lastsDays.restingCounts
+      ? { restingCounts: applies.lastsDays.restingCounts }
+      : {}),
     ...(applies.wornItem ? { wornItem: applies.wornItem } : {}),
     ...(clock ? { clock } : {}),
     ...(applies.duration === "this-action" ? { thisAction: true as const } : {}),
@@ -9996,7 +10007,12 @@ export function liftRulesetFightEffects(
       for (const entry of combatant.tracked) {
         if (entry.days === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
-        combatant.sheet.live = rulesetLiveWithDayClock(combatant.sheet.live, entry.condition, entry.days);
+        combatant.sheet.live = rulesetLiveWithDayClock(
+          combatant.sheet.live,
+          entry.condition,
+          entry.days,
+          entry.restingCounts,
+        );
       }
       // And the worn item that keeps it on (1.611), off once it is taken off.
       for (const entry of combatant.tracked) {
@@ -17053,6 +17069,17 @@ function resolveActionBodyIn(
           amount: given,
           magical: magicalAction(action),
         });
+    } else if (heal && action.healsAll) {
+      // All they are missing (1.704): Wish.
+      const now = healthOf(ctx, target);
+      const given = Math.max(0, now.max - now.value);
+      dealHeal(ctx, target, {
+        sourceId: actor.id,
+        rolls: [],
+        flat: given,
+        amount: given,
+        magical: magicalAction(action),
+      });
     } else if (heal) {
       const rolled = healing && !action.healsMax && healedMax(ctx, target) ? maxAmount(healing, extra) : heal();
       dealHeal(ctx, target, {

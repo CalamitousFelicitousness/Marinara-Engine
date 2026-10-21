@@ -3913,7 +3913,11 @@ function mechanicsAction(
       : {}),
   };
   const plus = clausesOf(mechanics.plus, sourceDifficulty);
-  if (scaled && heals) action.heal = scaled;
+  // All they are missing (1.704), Wish: a heal whatever amount it names.
+  if (heals && mechanics.healsAll) {
+    action.heal = scaled ?? { count: 0, sides: 0, flat: 0 };
+    action.healsAll = true;
+  } else if (scaled && heals) action.heal = scaled;
   else if (scaled) {
     action.damage = {
       ...scaled,

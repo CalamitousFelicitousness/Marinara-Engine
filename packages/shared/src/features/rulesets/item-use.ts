@@ -325,8 +325,16 @@ export function useRulesetItemOutsideFight(input: {
         live = rulesetLiveWithWornFrom(live, applies.condition, stack.id);
       // Its days (1.610), off its user's sheet, or until midnight (1.698), counted as days pass.
       if (applies.lastsDays !== undefined) {
-        const days = applies.lastsDays === "midnight" ? 1 : sheetValue(applies.lastsDays);
-        if (days >= 1) live = rulesetLiveWithDayClock(live, applies.condition, days);
+        const ref = applies.lastsDays;
+        // Rolled as it goes on (1.703), resting days counting more.
+        const days =
+          ref === "midnight"
+            ? 1
+            : typeof ref === "object" && "dice" in ref
+              ? (rolled(ref)?.total ?? 0)
+              : sheetValue(ref);
+        const resting = typeof ref === "object" && "dice" in ref ? ref.restingCounts : undefined;
+        if (days >= 1) live = rulesetLiveWithDayClock(live, applies.condition, days, resting);
       }
       const label =
         definition.sheet.live.conditions.find((condition) => condition.id === applies.condition)?.label ??

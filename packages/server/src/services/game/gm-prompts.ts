@@ -1407,6 +1407,18 @@ function renderRulesetKindCheckLine(
   ].join(" ");
 }
 
+/** Whether any condition the ruleset applies wears off faster while its holder rests (1.703), read
+ *  once per ruleset. */
+const restingDaysRead = new WeakMap<object, boolean>();
+function countsRestingDays(ruleset: import("@marinara-engine/shared").RulesetDefinition): boolean {
+  let found = restingDaysRead.get(ruleset);
+  if (found === undefined) {
+    found = JSON.stringify(ruleset).includes('"restingCounts":');
+    restingDaysRead.set(ruleset, found);
+  }
+  return found;
+}
+
 /** The sheet command, the ruleset's own guidance for it, and the party's sheets as they stand.
  *  The command grammar is the Engine's and is the same for every ruleset; every NAME in it (pools,
  *  tracks, conditions, rests) comes from the ruleset and is shown on the sheets themselves. */
@@ -1455,6 +1467,12 @@ function renderRulesetSheetSection(
     ...(ruleset.sheet.lists.some((list) => list.pools?.rechargeDays)
       ? [
           `- [sheet: who="Name" op="pass" days="N"] - when N days of game time pass for them; what recharges after days (${[...new Set(ruleset.sheet.lists.flatMap((list) => Object.entries(list.pools?.rechargeDays ?? {}).map(([value, days]) => `${value}: ${days} days`)))].join(", ")}) comes back once they have.`,
+        ]
+      : []),
+    // Days spent resting (1.703): what wears off faster while its holder rests, Wish's stress.
+    ...(countsRestingDays(ruleset)
+      ? [
+          `- [sheet: who="Name" op="pass" days="N" resting="yes"] - N days they spent resting and doing nothing more than light activity; some conditions wear off faster for it.`,
         ]
       : []),
     // Dice a rest may spend to heal (1.335): 5e's Hit Dice, as many as the player chooses.

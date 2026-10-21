@@ -376,10 +376,13 @@ export function rulesetItemWhileLeft(
 function itemAbilityChanges(
   items: ReadonlyArray<RulesetSheetItem> | undefined,
   conditions: ReadonlyArray<Readonly<RulesetConditionAbilities>> = [],
-): Map<string, { set?: number; to?: number; add: number; topped: Array<{ add: number; max: number }> }> {
+): Map<
+  string,
+  { set?: number; to?: number; atMost?: number; add: number; topped: Array<{ add: number; max: number }> }
+> {
   const changes = new Map<
     string,
-    { set?: number; to?: number; add: number; topped: Array<{ add: number; max: number }> }
+    { set?: number; to?: number; atMost?: number; add: number; topped: Array<{ add: number; max: number }> }
   >();
   const seen = new Set<unknown>();
   const effects: Array<Readonly<RulesetConditionAbilities>> = [];
@@ -396,6 +399,8 @@ function itemAbilityChanges(
       const current = changes.get(id) ?? { add: 0, topped: [] };
       // Made a number whatever it was (1.462): the lowest of them, Feeblemind's 1.
       if ("to" in change) current.to = Math.min(current.to ?? change.to, change.to);
+      // Lowered to a number only where it is higher (1.703): the lowest of them.
+      else if ("atMost" in change) current.atMost = Math.min(current.atMost ?? change.atMost, change.atMost);
       else if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
       // On top of the score sets leave, up to its most (1.313).
       else if (change.max !== undefined) current.topped.push({ add: change.add, max: change.max });
@@ -605,6 +610,7 @@ export function rulesetChangedAbilityScores(
     let score = Math.min(most, Math.max(ability.min, Math.max(base + change.add, change.set ?? -Infinity)));
     for (const top of change.topped) score = Math.max(score, Math.min(score + top.add, top.max, most));
     if (change.to !== undefined) score = Math.min(most, Math.max(ability.min, change.to));
+    if (change.atMost !== undefined) score = Math.max(Math.min(score, ability.min), Math.min(score, change.atMost));
     out[ability.id] = score;
   }
   return out;
@@ -678,6 +684,8 @@ export function evaluateRulesetSheet(
     }
     // A condition that makes it a number makes it that, last (1.462).
     if (change?.to !== undefined) score = Math.min(most, Math.max(ability.min, change.to));
+    // One lowered to a number only where it is higher (1.703), Wish's stress, after that.
+    if (change?.atMost !== undefined) score = Math.max(Math.min(score, ability.min), Math.min(score, change.atMost));
     abilityScores[ability.id] = score;
     abilityMods[ability.id] = rulesetAbilityModifier(definition, score);
   }

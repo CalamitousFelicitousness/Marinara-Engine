@@ -172,7 +172,9 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     // Days of game time (1.392): a whole count.
     const days = readInteger(values.get("days"));
     if (days === null || days < 1) return parsed;
-    return { ...parsed, op: { op: "pass", days } };
+    // Spent resting (1.703): yes, true or on.
+    const resting = /^(yes|true|on)$/i.test(values.get("resting")?.trim() ?? "");
+    return { ...parsed, op: { op: "pass", days, ...(resting ? { resting: true as const } : {}) } };
   }
   if (name === "use") {
     // `spell=` is the word that goes with `cast=`; both are read as the general `name=`.
@@ -298,6 +300,7 @@ export function serializeSheetCommandTag(
         attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
     } else if (op.op === "pass") {
       attribute("days", op.days);
+      if (op.resting) attribute("resting", "yes");
     } else if (op.op === "rest") {
       attribute("rest", op.rest);
       if (op.dice) attribute("dice", op.dice);

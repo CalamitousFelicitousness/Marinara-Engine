@@ -22,6 +22,7 @@ import type {
   RulesetUseChance,
   RulesetInsideRoom,
   RulesetValueRef,
+  RulesetLastsDays,
   RulesetCatalogWhere,
 } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
@@ -262,7 +263,7 @@ export interface RulesetCombatApplies {
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
   value?: RulesetValueRef;
   /** Days it lasts, off its applier's sheet as it goes on (1.610): no clock in the fight. */
-  lastsDays?: RulesetValueRef | "midnight";
+  lastsDays?: RulesetLastsDays;
   /** Put on by an item's use, it ends once that item is no longer worn (1.611). */
   whileItemWorn?: true;
   /** The inventory stack of the item whose use put it on, where `whileItemWorn` (1.611). */
@@ -1008,6 +1009,8 @@ export interface RulesetCombatAction {
   /** Its heal one amount shared out among its targets, each up to their maximum or half of it
    *  (1.510): Preserve Life. */
   sharesHeal?: true | "half";
+  /** It heals each target all the health they are missing (1.704): Wish. */
+  healsAll?: true;
   /** Each target won over by a contest of checks instead of a roll or a save (1.512): Telekinesis. */
   contested?: {
     attacker: string[];
@@ -1940,6 +1943,8 @@ export interface RulesetTrackedCondition {
   rounds: number | null;
   /** Days it lasts once the fight is over (1.610), on a sheet: Quivering Palm. */
   days?: number;
+  /** Each day its holder rests counts as this many of them (1.703): Wish's stress. */
+  restingCounts?: number;
   /** The inventory stack whose item keeps it on while worn (1.611): Armor of Invulnerability. */
   wornItem?: string;
   saveEnds?: RulesetCombatSaveEnds;

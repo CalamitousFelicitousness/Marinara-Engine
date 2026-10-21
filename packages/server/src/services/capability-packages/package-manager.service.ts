@@ -2742,6 +2742,30 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A heal of all the health each target is missing (1.704): Wish. */
+function carriesHealsAll704(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHealsAll704(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.healsAll !== undefined) return true;
+  return featureValues(record).some((one) => carriesHealsAll704(one, depth + 1));
+}
+
+/** Wish's stress (1.703): an ability lowered to a number only where it is higher (`atMost`), or a
+ *  condition's days rolled (`lastsDays: { dice }`), resting days counting more. */
+function carriesWishStress703(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesWishStress703(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const abilities = plainRecord(record.abilities);
+  if (abilities && Object.values(abilities).some((change) => plainRecord(change)?.atMost !== undefined)) return true;
+  const days = plainRecord(record.lastsDays);
+  if (days && days.dice !== undefined) return true;
+  return featureValues(record).some((one) => carriesWishStress703(one, depth + 1));
+}
+
 /** A target test asking whether one stands in a zone some entries left (1.702): Magic Jar and Magic
  *  Circle. */
 function carriesZoneTargetTest702(value: unknown, depth = 0): boolean {
@@ -9212,6 +9236,20 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A heal of all one is missing, 1.704.
+  if (
+    !declaresApi(704) &&
+    (carriesHealsAll704(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHealsAll704(document)))
+  )
+    return "A ruleset with a heal of all the health its targets are missing (healsAll) requires schemaVersion 2 and capabilityApi 1.704 or newer";
+  // Wish's stress, 1.703.
+  if (
+    !declaresApi(703) &&
+    (carriesWishStress703(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesWishStress703(document)))
+  )
+    return "A ruleset with an ability lowered only where it is higher (atMost) or a condition's days rolled (lastsDays dice) requires schemaVersion 2 and capabilityApi 1.703 or newer";
   // Target tests of where one stands, 1.702.
   if (
     !declaresApi(702) &&

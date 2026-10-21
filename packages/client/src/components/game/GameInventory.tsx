@@ -130,7 +130,7 @@ interface GameInventoryProps {
    *  to the stack's id. */
   onFormItem?: (stackId: string, form: number) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
-  onUseItem?: (stackId: string, itemName: string, more?: number) => void;
+  onUseItem?: (stackId: string, itemName: string, more?: number, lasts?: number) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
   onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
   /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
@@ -162,6 +162,15 @@ const ITEMS_PER_PAGE = 20;
 
 /** A drop's change is fire-and-forget: whoever handles it says what went wrong, and a rejection it
  *  did not catch is not left unhandled here. */
+/** How long what a use makes may last (Capability API 1.707), each a button of its own picked by its
+ *  place from 1, when there are several to pick from; one plain button otherwise. */
+function lastsPicks(
+  lasts: ReadonlyArray<{ label?: string; minutes: number }> | undefined,
+): Array<{ label: string; at: number } | undefined> {
+  if (!lasts || lasts.length < 2) return [undefined];
+  return lasts.map((one, n) => ({ label: one.label ?? String(n + 1), at: n + 1 }));
+}
+
 function settle(result: unknown): void {
   void Promise.resolve(result).catch(() => undefined);
 }
@@ -237,8 +246,8 @@ export function GameInventory({
   }, []);
 
   const handleUse = useCallback(
-    (stackId: string, itemName: string, more?: number) => {
-      onUseItem?.(stackId, itemName, more);
+    (stackId: string, itemName: string, more?: number, lasts?: number) => {
+      onUseItem?.(stackId, itemName, more, lasts);
       setSelectedItem(null);
     },
     [onUseItem],
@@ -1145,24 +1154,33 @@ export function GameInventory({
                     {label}
                   </button>
                 ))}
-              {selectedInventoryItem && canInteract && onUseItem && (
-                <button
-                  onClick={() =>
-                    // A nickname is said with the item's own name, in the "Nickname (Name)" form the Game
-                    // Master's inventory block uses, so it knows what it is.
-                    handleUse(
-                      selectedInventoryItem.id,
-                      selectedInventoryItem.nickname
-                        ? `${selectedLabel} (${selectedInventoryItem.name})`
-                        : selectedLabel,
-                    )
-                  }
-                  className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
-                >
-                  <Wand2 size={12} />
-                  {localizeUi("ui.agents.agenteditor.use")}
-                </button>
-              )}
+              {selectedInventoryItem &&
+                canInteract &&
+                onUseItem &&
+                // What it makes lasting as long as its user picks (1.707): one button for each.
+                lastsPicks(selectedRulesetItem?.entry.item?.use?.makesItems?.lasts).map((pick) => (
+                  <button
+                    key={pick?.label ?? "use"}
+                    onClick={() =>
+                      // A nickname is said with the item's own name, in the "Nickname (Name)" form the Game
+                      // Master's inventory block uses, so it knows what it is.
+                      handleUse(
+                        selectedInventoryItem.id,
+                        `${
+                          selectedInventoryItem.nickname
+                            ? `${selectedLabel} (${selectedInventoryItem.name})`
+                            : selectedLabel
+                        }${pick ? `: ${pick.label}` : ""}`,
+                        undefined,
+                        pick?.at,
+                      )
+                    }
+                    className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
+                  >
+                    <Wand2 size={12} />
+                    {pick ? pick.label : localizeUi("ui.agents.agenteditor.use")}
+                  </button>
+                ))}
               {/* Its further uses (Capability API 1.466), each its own button. */}
               {selectedInventoryItem &&
                 canInteract &&
@@ -1175,16 +1193,23 @@ export function GameInventory({
                   const counted = at >= 0 ? item.moreUses?.[at]?.uses : undefined;
                   if (counted && rulesetOwnUsesMax(counted, selectedInventoryItem.id, at + 1, item.moreUsesRolled) < 1)
                     return null;
-                  return (
+                  return lastsPicks(more.use?.makesItems?.lasts).map((pick) => (
                     <button
-                      key={more.label}
-                      onClick={() => handleUse(selectedInventoryItem.id, `${selectedLabel}: ${more.label}`, n + 1)}
+                      key={`${more.label}-${pick?.label ?? ""}`}
+                      onClick={() =>
+                        handleUse(
+                          selectedInventoryItem.id,
+                          `${selectedLabel}: ${more.label}${pick ? ` (${pick.label})` : ""}`,
+                          n + 1,
+                          pick?.at,
+                        )
+                      }
                       className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
                     >
                       <Wand2 size={12} />
-                      {more.label}
+                      {pick ? `${more.label} (${pick.label})` : more.label}
                     </button>
-                  );
+                  ));
                 })}
             </div>
             {(typesItems || picksItems) && (

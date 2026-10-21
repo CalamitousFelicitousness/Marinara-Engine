@@ -12,6 +12,7 @@ import {
   GAME_INVENTORY_HOLDER_MAX_LENGTH,
   GAME_INVENTORY_ITEM_REF_PATTERN,
   GAME_INVENTORY_MAX_QUANTITY,
+  GAME_INVENTORY_VANISHES_MAX_MINUTES,
   GAME_INVENTORY_NAME_MAX_LENGTH,
   addGameInventoryPlaced,
   gameInventoryAddedItem,
@@ -66,6 +67,9 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
       holder: holder.optional(),
       among: z.array(z.string().trim().max(GAME_INVENTORY_HOLDER_MAX_LENGTH)).min(1).max(20).optional(),
       log: z.boolean().optional(),
+      /** It vanishes after this many minutes of game time (Capability API 1.707), on stacks of its own:
+       *  5e's Creation. */
+      lasts: z.number().int().min(1).max(GAME_INVENTORY_VANISHES_MAX_MINUTES).optional(),
     })
     .strict(),
   /** Out by name, from one bag when `from` is given and otherwise the player's first. `as` is what the
@@ -240,7 +244,14 @@ export function applyGameInventoryOps(
           break;
         }
         const destination = op.among ? { among: op.among.map((holder) => cleanGameInventoryHolder(holder)) } : bag;
-        const added = addGameInventoryPlaced(current, like, op.count, destination, makeId, rules);
+        const added = addGameInventoryPlaced(
+          current,
+          op.lasts ? { ...like, vanishesIn: op.lasts } : like,
+          op.count,
+          destination,
+          makeId,
+          rules,
+        );
         if (!added || added.shares.length === 0) {
           refuse(added ? "too-heavy" : "refused");
           break;

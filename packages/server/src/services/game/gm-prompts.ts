@@ -1922,6 +1922,12 @@ export function buildGmFormatReminder(
       ? []
       : [
           `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
+          // Things made to last only so long (1.707), counted on the game's clock: Creation's.
+          ...(ctx.ruleset
+            ? [
+                `  Something made to last only so long (a conjured or created object): add lasts="10 minutes", "12 hours" or "1 day" to the add, and it vanishes from the bag once that much game time has passed.`,
+              ]
+            : []),
           ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
             ? [
                 `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,

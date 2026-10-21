@@ -1083,6 +1083,9 @@ export function rulesetCombatEventLine(
     // Items made by a cast (1.668).
     case "itemsMade":
       return key("itemsMade", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
+    // What was made vanishing as its time runs out (1.707).
+    case "itemsVanished":
+      return key("itemsVanished", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     // Knocked out by a pulled blow (1.667).
     case "knockedOut":
       return key("knockedOut", { actor: names.combatant(event.actorId), source: names.combatant(event.sourceId) });

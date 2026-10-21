@@ -294,6 +294,8 @@ export interface RulesetSheetItem {
   stack?: { id: string; ref: string; holder?: string };
   /** Held for what a cast makes (1.668): the item it makes, by reference, none of it held yet. */
   made?: string;
+  /** What it holds was made to last only so long (1.707), so it is a place of its own. */
+  madeLasting?: true;
   /** Wielded only while what an item's use (`by`, its action id) called stands (1.686), first taken
    *  on `takes` where it says: a goat of terror's horns. Never written to the bag. */
   lent?: { by: string; takes?: string };

@@ -713,7 +713,11 @@ export async function combatDirectorRoutes(
         // with the party's sheets: a step either changes both or changes neither.
         const fightItems =
           s.style === "ruleset" && s.rulesetFight
-            ? rulesetFightItemChanges(previous.state.rulesetFight?.encounter, s.rulesetFight.encounter)
+            ? rulesetFightItemChanges(
+                previous.state.rulesetFight?.encounter,
+                s.rulesetFight.encounter,
+                session && "definition" in session ? session.definition.combat?.roundSeconds : undefined,
+              )
             : [];
         if (fightItems.length > 0)
           await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {

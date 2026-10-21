@@ -71,6 +71,35 @@ export interface InventoryTagRequest {
   /** A buy's price level and seller, as the Game Master named them (#6917). */
   level?: string;
   seller?: string;
+  /** An add that vanishes after so many minutes of game time (Capability API 1.707): 5e's Creation. */
+  lasts?: number;
+}
+
+/** The most a thing made to vanish lasts, in minutes (1.707): ten years. */
+const MOST_LASTS_MINUTES = 5_256_000;
+const LASTS_UNITS: ReadonlyArray<[RegExp, number]> = [
+  [/^(?:m|mins?|minutes?)$/, 1],
+  [/^(?:h|hrs?|hours?)$/, 60],
+  [/^(?:d|days?)$/, 1440],
+  [/^(?:w|weeks?)$/, 10080],
+];
+
+/** How long an add lasts (1.707), in minutes: "10 minutes", "12 hours", "1 day", "2 weeks", or a bare
+ *  number of minutes. Undefined when it says nothing it can read. */
+export function readInventoryLasts(text: string | undefined): number | undefined {
+  const match = /^(\d{1,7})\s*([a-z]*)$/i.exec(text?.trim().toLowerCase() ?? "");
+  if (!match) return undefined;
+  const count = Number.parseInt(match[1]!, 10);
+  const unit = match[2] ? LASTS_UNITS.find(([pattern]) => pattern.test(match[2]!))?.[1] : 1;
+  if (!unit || count < 1) return undefined;
+  return Math.min(MOST_LASTS_MINUTES, count * unit);
+}
+
+/** Minutes said the way a person would (1.707): "1 day", "12 hours", "10 minutes". */
+export function inventoryLastsWords(minutes: number): string {
+  const [count, unit] =
+    minutes % 1440 === 0 ? [minutes / 1440, "day"] : minutes % 60 === 0 ? [minutes / 60, "hour"] : [minutes, "minute"];
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
 }
 
 /** "damage=1d8, bulk: 2; hands" as parts: each `key=value` or `key: value`, split only before the
@@ -193,6 +222,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   const proposal = action === "add" ? readProposal(values) : undefined;
   const level = action === "buy" ? cleanName(values.get("level")) : undefined;
   const seller = action === "buy" || action === "sell" ? cleanName(values.get("seller")) : undefined;
+  const lasts = action === "add" ? readInventoryLasts(values.get("lasts")) : undefined;
   return {
     action,
     items,
@@ -202,6 +232,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
     ...(proposal ? { proposal } : {}),
     ...(level ? { level } : {}),
     ...(seller ? { seller } : {}),
+    ...(lasts ? { lasts } : {}),
   };
 }
 
@@ -272,6 +303,8 @@ export function serializeInventoryTag(
         /** A fake shown for what it truly is: its true name (a reveal, or a sale an honest buyer saw
          *  through). */
         revealed?: string;
+        /** How long an add lasts before it vanishes, in minutes (1.707). */
+        lasts?: number;
       }
     | { raw: string },
   outcome: InventoryTagOutcome,
@@ -291,6 +324,7 @@ export function serializeInventoryTag(
     if (input.level) attribute("level", input.level);
     if (input.seller) attribute("seller", input.seller);
     if (input.revealed) attribute("revealed", input.revealed);
+    if (input.lasts) attribute("lasts", inventoryLastsWords(input.lasts));
   }
   if (outcome.ok) {
     attribute("result", "ok");

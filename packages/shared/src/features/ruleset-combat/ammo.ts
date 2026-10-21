@@ -58,6 +58,10 @@ export function rulesetModedAction(
         }
       : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+    // How long what it makes lasts, as picked (1.707): Creation's material.
+    ...(mode.madeLasts !== undefined && action.makesItems
+      ? { makesItems: { ...action.makesItems, lasts: mode.madeLasts } }
+      : {}),
     // The familiarity picked (1.617), rolled on as it leaves the fight.
     ...(mode.familiar !== undefined && action.teleport
       ? { teleport: { ...action.teleport, familiar: mode.familiar } }
@@ -427,6 +431,8 @@ export interface RulesetFightItemChange {
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.170). */
   on?: boolean;
+  /** What was made to last only so long has this many minutes left (1.707). */
+  vanishesIn?: number;
 }
 
 /**
@@ -437,6 +443,7 @@ export interface RulesetFightItemChange {
 export function rulesetFightItemChanges(
   before: RulesetEncounterState | undefined,
   after: RulesetEncounterState,
+  roundSeconds?: number,
 ): RulesetFightItemChange[] {
   const changes: RulesetFightItemChange[] = [];
   for (const combatant of after.combatants) {
@@ -454,6 +461,7 @@ export function rulesetFightItemChanges(
         !combatant.usesLeft &&
         !combatant.on &&
         !combatant.became &&
+        !combatant.madeFor &&
         !combatant.actions.some((action) => action.storedIn?.item !== undefined))
     ) {
       continue;
@@ -499,6 +507,14 @@ export function rulesetFightItemChanges(
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
+      // What is left of the time what was made lasts (1.707), in minutes, its turns as the fight counts.
+      // Several makings on clocks of their own: the stack goes with the soonest of them.
+      const batches = held.madeLasting ? combatant.madeFor?.[String(index)] : undefined;
+      const madeLeft = batches?.length ? Math.min(...batches.map((batch) => batch.rounds)) : undefined;
+      const vanishesIn =
+        madeLeft !== undefined ? Math.max(1, Math.ceil((madeLeft * (roundSeconds ?? 6)) / 60)) : undefined;
+      const ticked =
+        madeLeft !== undefined && JSON.stringify(batches) !== JSON.stringify(earlier?.madeFor?.[String(index)]);
       if (
         taken === 0 &&
         !reloaded &&
@@ -510,7 +526,8 @@ export function rulesetFightItemChanges(
         !usesSpent &&
         !restored &&
         !switched &&
-        !turned
+        !turned &&
+        !ticked
       ) {
         return;
       }
@@ -532,6 +549,7 @@ export function rulesetFightItemChanges(
         ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
         ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
+        ...(vanishesIn !== undefined ? { vanishesIn } : {}),
       });
     });
   }
@@ -570,6 +588,7 @@ export function applyRulesetFightItemChanges(
         item: change.stack.ref,
         quantity: Math.min(GAME_INVENTORY_MAX_QUANTITY, -change.taken),
         ...(change.stack.holder !== undefined ? { holder: change.stack.holder } : {}),
+        ...(change.vanishesIn !== undefined ? { vanishesIn: change.vanishesIn } : {}),
       });
       continue;
     }
@@ -619,6 +638,8 @@ export function applyRulesetFightItemChanges(
       ...(change.form && quantity === 1 ? { form: change.form } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
+      // What was made again lasts as long as the last of it made (1.707).
+      ...(change.vanishesIn !== undefined ? { vanishesIn: change.vanishesIn } : {}),
     };
   }
   return { stacks: next, journal };

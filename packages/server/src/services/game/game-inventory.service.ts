@@ -23,6 +23,7 @@ import {
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   passRulesetItemTime,
+  rulesetItemVanishedLine,
   rulesetItemRechargeLine,
   readGameInventoryTurn,
   readRulesetInventedItems,
@@ -301,7 +302,12 @@ export async function passGameInventoryTime(db: DB, chatId: string, minutes: num
     if (!chat) return;
     const metadata = readMetadata(chat.metadata);
     if (metadata.gameRuleset == null) return;
-    if (!normalizeGameInventoryStacks(metadata.gameInventory).some((stack) => stack.item && stack.quantity === 1))
+    // Only items that wait for something to come back, or that vanish (1.707), count it.
+    if (
+      !normalizeGameInventoryStacks(metadata.gameInventory).some(
+        (stack) => (stack.item && stack.quantity === 1) || stack.vanishesIn,
+      )
+    )
       return;
     const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
     if (resolved.status !== "ok") return;
@@ -315,12 +321,19 @@ export async function passGameInventoryTime(db: DB, chatId: string, minutes: num
         minutes,
         roll: rollDieSecurely,
       });
+      const events = [
+        ...(passed.recharged.length > 0
+          ? [{ title: "Items recharged", content: rulesetItemRechargeLine(passed.recharged) }]
+          : []),
+        // What was made to last only so long (1.707): Creation's.
+        ...(passed.vanished.length > 0
+          ? [{ title: "Items vanished", content: rulesetItemVanishedLine(passed.vanished) }]
+          : []),
+      ];
       return {
         stacks: passed.changed ? passed.stacks : current,
-        journal: [],
-        ...(passed.recharged.length > 0
-          ? { events: [{ title: "Items recharged", content: rulesetItemRechargeLine(passed.recharged) }] }
-          : {}),
+        journal: passed.vanished.map((one) => ({ item: one.name, action: "removed" as const, quantity: one.count })),
+        ...(events.length > 0 ? { events } : {}),
         value: null,
       };
     });

@@ -30,6 +30,8 @@ const itemUseRequestSchema = z
     stackId: z.string().min(1).max(200),
     /** One of the item's further uses (Capability API 1.466), by its place in `moreUses` from 1. */
     more: z.number().int().min(1).max(16).optional(),
+    /** How long what it makes lasts (Capability API 1.707), by its place in `makesItems.lasts` from 1. */
+    lasts: z.number().int().min(1).max(8).optional(),
   })
   .strict();
 const startingGearRequestSchema = z
@@ -77,7 +79,14 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Invalid item use", issues: parsed.error.issues.slice(0, 10) });
     }
-    const used = await useGameRulesetItem(app.db, parsed.data.chatId, parsed.data.stackId, undefined, parsed.data.more);
+    const used = await useGameRulesetItem(
+      app.db,
+      parsed.data.chatId,
+      parsed.data.stackId,
+      undefined,
+      parsed.data.more,
+      parsed.data.lasts,
+    );
     if (!used.ok)
       return reply.status(used.status).send({ error: used.error, ...(used.reason ? { reason: used.reason } : {}) });
     return {

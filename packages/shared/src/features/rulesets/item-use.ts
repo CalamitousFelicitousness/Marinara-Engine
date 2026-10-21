@@ -10,6 +10,7 @@
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import {
   gameInventoryBagKey,
+  gameInventoryStackLabel,
   gameInventoryWearMet,
   gameInventoryWearNeeds,
   type GameInventoryStack,
@@ -137,6 +138,8 @@ export function useRulesetItemOutsideFight(input: {
   roll: (sides: number) => number;
   /** One of its further uses (1.267), by its place in `moreUses` from 1; its first use without it. */
   more?: number;
+  /** How long what it makes lasts (1.707), by its place in `makesItems.lasts` from 1; the first without it. */
+  lasts?: number;
 }): RulesetItemUseOutcome {
   const { definition, stacks, user, roll } = input;
   const stack = stacks.find((each) => each.id === input.stackId);
@@ -150,6 +153,8 @@ export function useRulesetItemOutsideFight(input: {
     return { ok: false, reason: "no-use" };
   const use = chosen?.use ?? item.use;
   if (!use) return { ok: false, reason: "no-use" };
+  // How long what it makes lasts (1.707), as its user picked.
+  if (input.lasts !== undefined && !use.makesItems?.lasts?.[input.lasts - 1]) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
   if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(item))) return { ok: false, reason: "not-worn" };
   // Bound by somebody who does not meet what it asks, it is not worn; nor used by them (1.614).
@@ -404,12 +409,22 @@ export function useRulesetItemOutsideFight(input: {
   // What it makes (1.692), into its user's bag beside it, as a fight writes what a cast made.
   const makes = works ? use.makesItems : undefined;
   const madeEntry = makes ? input.itemOf(makes.item) : undefined;
+  const madeLasts = makes?.lasts?.[(input.lasts ?? 1) - 1]?.minutes;
+  // What vanishes is a stack of its own, never one it tops up (1.707).
+  const lastingId = (n: number): string =>
+    `${stack.id}-made-${makes!.item.replace(/[^a-zA-Z0-9_-]/g, "-")}-lasting-${n}`;
   const madeInto =
-    makes && madeEntry
-      ? (stacks.find(
-          (one) => one.item === makes.item && gameInventoryBagKey(one.holder) === gameInventoryBagKey(stack.holder),
-        )?.id ?? `${stack.id}-made-${makes.item.replace(/[^a-zA-Z0-9_-]/g, "-")}`)
-      : undefined;
+    makes && madeEntry && madeLasts !== undefined
+      ? lastingId(
+          Array.from({ length: stacks.length + 1 }, (_, n) => n + 1).find(
+            (n) => !stacks.some((one) => one.id === lastingId(n)),
+          )!,
+        )
+      : makes && madeEntry
+        ? (stacks.find(
+            (one) => one.item === makes.item && gameInventoryBagKey(one.holder) === gameInventoryBagKey(stack.holder),
+          )?.id ?? `${stack.id}-made-${makes.item.replace(/[^a-zA-Z0-9_-]/g, "-")}`)
+        : undefined;
   const spent = applyRulesetFightItemChanges(stacks, [
     ...(makes && madeEntry && madeInto
       ? [
@@ -417,6 +432,7 @@ export function useRulesetItemOutsideFight(input: {
             stack: { id: madeInto, ref: makes.item, ...(stack.holder ? { holder: stack.holder } : {}) },
             name: madeEntry.name,
             taken: -makes.count,
+            ...(madeLasts !== undefined ? { vanishesIn: madeLasts } : {}),
           },
         ]
       : []),
@@ -776,11 +792,34 @@ export function passRulesetItemTime(input: {
   stacks: readonly GameInventoryStack[];
   minutes: number;
   roll: (sides: number) => number;
-}): { stacks: GameInventoryStack[]; recharged: RulesetItemRecharge[]; changed: boolean } {
+}): {
+  stacks: GameInventoryStack[];
+  recharged: RulesetItemRecharge[];
+  changed: boolean;
+  /** What vanished as its time ran out (1.707), by what it is called. */
+  vanished: Array<{ name: string; count: number; holder?: string }>;
+} {
   const recharged: RulesetItemRecharge[] = [];
   let changed = false;
   const minutes = Math.max(0, Math.floor(input.minutes));
-  const stacks = input.stacks.map((stack) => {
+  // What was made to vanish counts the time down, and goes once it has run out (1.707): Creation.
+  const vanished: Array<{ name: string; count: number; holder?: string }> = [];
+  const lasting: GameInventoryStack[] = [];
+  for (const stack of input.stacks) {
+    if (!stack.vanishesIn || minutes <= 0) {
+      lasting.push(stack);
+      continue;
+    }
+    changed = true;
+    if (stack.vanishesIn > minutes) lasting.push({ ...stack, vanishesIn: stack.vanishesIn - minutes });
+    else
+      vanished.push({
+        name: gameInventoryStackLabel(stack),
+        count: stack.quantity,
+        ...(stack.holder ? { holder: stack.holder } : {}),
+      });
+  }
+  const stacks = lasting.map((stack) => {
     if (!stack.item || stack.quantity !== 1) return stack;
     const entry = input.itemOf(stack.item);
     const item = entry?.entry.item;
@@ -876,7 +915,16 @@ export function passRulesetItemTime(input: {
     changed = true;
     return after;
   });
-  return { stacks: changed ? stacks : [...input.stacks], recharged, changed };
+  return { stacks: changed ? stacks : [...input.stacks], recharged, changed, vanished };
+}
+
+/** What vanished, in words for the Game Master (1.707): "Rope (2, Bram's) vanished". */
+export function rulesetItemVanishedLine(
+  vanished: ReadonlyArray<{ name: string; count: number; holder?: string }>,
+): string {
+  return vanished
+    .map((one) => `${one.name} (${one.count}${one.holder ? `, ${one.holder}'s` : ""}) vanished`)
+    .join(", ");
 }
 
 /** What a rest gave back, in words for the Game Master: "Dawn bell regains its charges (3 of 3)". */

@@ -7167,7 +7167,30 @@ const catalogMechanicsObject = z
      *  caster's hand (Capability API 1.668), used there as any held item is and written to their bag
      *  as the fight ends: 5e's Goodberry, ten berries. */
     makesItems: z
-      .object({ item: catalogEntryRef, count: z.number().int().min(1).max(100) })
+      .object({
+        item: catalogEntryRef,
+        count: z.number().int().min(1).max(100),
+        /** How long what it makes lasts before it vanishes, in minutes of game time (Capability API
+         *  1.707), counted in the fight by its rounds (`combat.roundSeconds`, 6 seconds when unsaid)
+         *  and after it on the game's clock, on a stack of its own. With more than one, its user picks
+         *  one as they use it, each by its `label`: 5e's Creation, vegetable matter a day, stone or
+         *  crystal 12 hours, precious metals an hour, gems 10 minutes, adamantine or mithral a minute. */
+        lasts: z
+          .array(
+            z
+              .object({
+                label: promptSafeText(40).optional(),
+                minutes: z.number().int().min(1).max(5_256_000),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(8)
+          .refine((lasts) => lasts.length === 1 || lasts.every((one) => one.label), {
+            message: "Each of several lasts is picked by its label",
+          })
+          .optional(),
+      })
       .strict()
       .optional(),
     /** Held on a sheet's list, how it changes one named entry of its holder's every time they use it

@@ -247,18 +247,21 @@ export function applyGameInventoryTags(
     bag: GameInventoryBagRef | undefined,
     note?: string,
     action: "add" | "earn" = "add",
+    /** Minutes of game time it lasts before it vanishes (1.707). */
+    lasts?: number,
   ): string => {
+    const vanishes = lasts ? { lasts } : {};
     const [result] = apply([
       bag
-        ? { op: "add", name: item, ...ref, count, holder: bag.holder, log: true }
-        : { op: "add", name: item, ...ref, count, among: ["", ...party.members], log: true },
+        ? { op: "add", name: item, ...ref, count, holder: bag.holder, log: true, ...vanishes }
+        : { op: "add", name: item, ...ref, count, among: ["", ...party.members], log: true, ...vanishes },
     ]);
-    const shown = { action, item, count, ...(named ? { who: named } : {}) };
+    const shown = { action, item, count, ...(named ? { who: named } : {}), ...vanishes };
     if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result), note);
     const answers = result.placed
       ? result.placed.map((share, index) =>
           serializeInventoryTag(
-            { action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
+            { action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}), ...vanishes },
             { ok: true, count: share.count, now: share.now },
             index === 0 ? note : undefined,
           ),
@@ -346,7 +349,7 @@ export function applyGameInventoryTags(
           }
           const note = invented?.notes.join(" ") || undefined;
           const ref = invented ? { item: invented.item } : {};
-          return addAnswered(item, ref, request.count, request.who, who.bag, note);
+          return addAnswered(item, ref, request.count, request.who, who.bag, note, "add", request.lasts);
         }
         if (
           request.action === "equip" ||

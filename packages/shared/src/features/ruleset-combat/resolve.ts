@@ -2535,6 +2535,37 @@ function makeItems(ctx: RulesetCombatContext, maker: RulesetCombatant, action: R
   if (!held) return;
   (maker.itemsUsed ??= {})[makes.at!] = (maker.itemsUsed[makes.at!] ?? 0) - makes.count;
   ctx.events.push({ type: "itemsMade", actorId: maker.id, label: held.name ?? makes.ref, count: makes.count });
+  // Lasting only so long (1.707), in its maker's turns: Creation's, by its material.
+  if (makes.lasting && makes.lasts) {
+    const rounds = Math.max(1, Math.ceil((makes.lasts * 60) / (ctx.definition.combat?.roundSeconds ?? 6)));
+    const key = String(makes.at);
+    maker.madeFor = { ...maker.madeFor, [key]: [...(maker.madeFor?.[key] ?? []), { rounds, count: makes.count }] };
+  }
+}
+
+/** What was made to last only so long runs out (1.707), counted down at its maker's turn's end, each
+ *  making on its own clock: as much of it as is left is gone, what was used first. */
+function vanishMade(ctx: RulesetCombatContext, maker: RulesetCombatant): void {
+  const next: NonNullable<RulesetCombatant["madeFor"]> = {};
+  for (const [key, batches] of Object.entries(maker.madeFor ?? {})) {
+    const at = Number(key);
+    const held = maker.sheet?.items?.[at];
+    const going = batches.filter((batch) => batch.rounds <= 1).reduce((sum, batch) => sum + batch.count, 0);
+    const staying = batches
+      .filter((batch) => batch.rounds > 1)
+      .map((batch) => ({ ...batch, rounds: batch.rounds - 1 }));
+    if (staying.length > 0) next[key] = staying;
+    if (!held || going < 1) continue;
+    // Used up first from what goes first: only so much of it as the rest of it does not account for.
+    const left = Math.max(0, held.quantity - (maker.itemsUsed?.[at] ?? 0));
+    const kept = staying.reduce((sum, batch) => sum + batch.count, 0);
+    const count = Math.min(going, Math.max(0, left - Math.min(left, kept)));
+    if (count < 1) continue;
+    (maker.itemsUsed ??= {})[at] = (maker.itemsUsed[at] ?? 0) + count;
+    ctx.events.push({ type: "itemsVanished", actorId: maker.id, label: held.name ?? held.made ?? "", count });
+  }
+  if (Object.keys(next).length > 0) maker.madeFor = next;
+  else delete maker.madeFor;
 }
 
 function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
@@ -4669,6 +4700,8 @@ function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entr
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
   // Let out on what was dealt from inside this turn (1.352).
   if (at === "turn-end") releaseOnHurt(ctx);
+  // What they made to last only so long (1.707): Creation's.
+  if (at === "turn-end" && actor.madeFor) vanishMade(ctx, actor);
   // A switch that stays on only so long (1.653): an Animated Shield's minute.
   if (at === "turn-end") {
     for (const [key, left] of Object.entries(actor.onFor ?? {})) {

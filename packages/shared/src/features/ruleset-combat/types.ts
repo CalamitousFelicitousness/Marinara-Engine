@@ -1276,7 +1276,9 @@ export interface RulesetCombatAction {
   conjures?: true;
   /** Makes items as it is used (1.668): `count` more of the item held at `at` in its user's items,
    *  set there with none of it as the fight began. Goodberry. */
-  makesItems?: { ref: string; count: number; at?: number };
+  /** `lasts` (1.707): the minutes what it makes lasts, as picked; `lasting`, that it lasts only so
+   *  long, so it is held in a place of its own. */
+  makesItems?: { ref: string; count: number; at?: number; lasts?: number; lasting?: true };
   /** Not used on the same creature again until its user takes this rest (1.304): Chains of Carceri. */
   oncePerTarget?: { until: string; whenSaved?: true };
   /** Kept up on later turns with `budget` (1.378): Intimidating Presence. */
@@ -1751,6 +1753,8 @@ export interface RulesetCombatMode {
   kind?: string;
   /** The damage type it deals in this mode (1.700), and its zone's strikes too. */
   damageType?: string;
+  /** How long what it makes lasts in this mode (1.707), in minutes: Creation's materials. */
+  madeLasts?: number;
   /** The form picked in this mode (1.342), taken by whoever what it puts on lands on. */
   form?: RulesetShapeForm;
   /** Who is called in this mode (1.344): Conjure Animals' two wolves or four. */
@@ -2419,6 +2423,9 @@ export interface RulesetCombatant {
   slotsFreed?: Record<string, Record<string, { off: RulesetSlotsFreedDamage; on: RulesetSlotsFreedDamage }>>;
   /** How many more of their own turns each switch they turned on stays on (1.653), by item. */
   onFor?: Record<string, number>;
+  /** How many more of their own turns each making of what they made to last only so long stays, and
+   *  how many it made (1.707), by item. */
+  madeFor?: Record<string, Array<{ rounds: number; count: number }>>;
   /** The side they fight on of their own, while something that `controls` them has them on another
    *  (1.524): Magic Jar. */
   ownSide?: "party" | "enemy";
@@ -3879,6 +3886,8 @@ export type RulesetCombatEvent =
   | { type: "reflected"; targetId: string; sourceId: string; label: string; by: string; roll: number; back: boolean }
   /** Items made by a cast (1.668): Goodberry's berries, into its caster's hand. */
   | { type: "itemsMade"; actorId: string; label: string; count: number }
+  /** What they made to last only so long, gone as its time ran out (1.707): Creation's. */
+  | { type: "itemsVanished"; actorId: string; label: string; count: number }
   /** Killed outright by massive damage (1.656). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */

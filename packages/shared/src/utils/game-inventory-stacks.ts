@@ -80,7 +80,14 @@ export interface GameInventoryStack {
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
   truly?: string;
+  /** The minutes of game time left before it vanishes (Capability API 1.707), counted as the clock
+   *  moves: 5e's Creation, a day of vegetable matter. Kept on a stack of any size, all of it made
+   *  together; nothing else is ever added to it, nor it to anything else. */
+  vanishesIn?: number;
 }
+
+/** The longest a thing made to vanish lasts, in minutes of game time (1.707): ten years. */
+export const GAME_INVENTORY_VANISHES_MAX_MINUTES = 5_256_000;
 
 /** Whose bag: `holder` as a stack has it, so `{}` is the player's own. */
 export interface GameInventoryBagRef {
@@ -391,9 +398,10 @@ function makeStack(stack: {
   storedEntries?: GameInventoryStoredEntry[];
   on?: boolean;
   truly?: string;
+  vanishesIn?: number;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
-  const { corroded, absorbedEver, callRoll, form, waits } = stack;
+  const { corroded, absorbedEver, callRoll, form, waits, vanishesIn } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -416,6 +424,7 @@ function makeStack(stack: {
     ...(storedEntries && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
+    ...(vanishesIn !== undefined && vanishesIn >= 1 ? { vanishesIn } : {}),
   };
 }
 
@@ -621,6 +630,10 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
         waits: readWaits(source.waits),
         storedEntries: readStoredEntries(source.storedEntries),
         on: source.on === true && quantity === 1,
+        vanishesIn:
+          typeof source.vanishesIn === "number" && Number.isInteger(source.vanishesIn) && source.vanishesIn >= 1
+            ? Math.min(GAME_INVENTORY_VANISHES_MAX_MINUTES, source.vanishesIn)
+            : undefined,
         quantity,
         stored,
         holder: cleanGameInventoryHolder(source.holder),
@@ -903,7 +916,7 @@ export function gameInventoryCount(
  */
 function addLike(
   stacks: GameInventoryStack[],
-  like: { name: string; nickname?: string; item?: string; truly?: string },
+  like: { name: string; nickname?: string; item?: string; truly?: string; vanishesIn?: number },
   amount: number,
   holder: string | undefined,
   makeId: () => string,
@@ -917,8 +930,9 @@ function addLike(
   const next = stacks.map((stack) => {
     if (gameInventoryStackKind(stack) !== kind || !inBag(stack, bag)) return stack;
     first ??= stack;
-    // A worn stack, or one switched on (one item only), takes nothing more.
-    if (gameInventoryStackWorn(stack) || stack.on) return stack;
+    // A worn stack, or one switched on (one item only), takes nothing more; nor does what is to vanish,
+    // or anything onto what is not (1.707): each lasts as long as it was made to.
+    if (gameInventoryStackWorn(stack) || stack.on || stack.vanishesIn || like.vanishesIn) return stack;
     const topUp = Math.min(Math.max(0, limit - stack.quantity), left);
     if (topUp < 1) return stack;
     left -= topUp;
@@ -940,6 +954,7 @@ function addLike(
         truly: like.truly,
         quantity,
         holder,
+        vanishesIn: like.vanishesIn,
       }),
     );
   }
@@ -1148,7 +1163,11 @@ export function giveGameInventoryStack(
     amount === source.quantity
       ? stacks.filter((stack) => stack.id !== id)
       : stacks.map((stack) => (stack.id === id ? { ...stack, quantity: stack.quantity - amount } : stack));
-  const existing = rest.find((stack) => gameInventoryStackKind(stack) === kind && inBag(stack, receiver));
+  // What is to vanish (1.707) joins nothing, and nothing joins it.
+  const existing = rest.find(
+    (stack) =>
+      gameInventoryStackKind(stack) === kind && inBag(stack, receiver) && !stack.vanishesIn && !source.vanishesIn,
+  );
   // A whole stack given to somebody with none of it keeps its id, so a selection follows it. Whoever
   // receives it is not wearing it and has not bound it.
   if (!existing && amount === source.quantity) {
@@ -1295,7 +1314,7 @@ export function placeGameInventoryAddition(
  */
 export function addGameInventoryPlaced(
   stacks: GameInventoryStack[],
-  like: { name: string; item?: string; truly?: string },
+  like: { name: string; item?: string; truly?: string; vanishesIn?: number },
   amount: number,
   destination: GameInventoryDestination,
   newId?: () => string,
@@ -1644,8 +1663,9 @@ function mergeAmount(
   rules: GameInventoryItemRules | undefined,
 ): number {
   if (from.id === into.id || gameInventoryStackKind(from) !== gameInventoryStackKind(into)) return 0;
-  // A worn or bound item is one item on its own.
+  // A worn or bound item is one item on its own, and what is to vanish lasts on its own (1.707).
   if (gameInventoryStackWorn(from) || gameInventoryStackWorn(into)) return 0;
+  if (from.vanishesIn || into.vanishesIn) return 0;
   return Math.max(0, Math.min(from.quantity, stackLimit(gameInventoryItemId(into), rules) - into.quantity));
 }
 

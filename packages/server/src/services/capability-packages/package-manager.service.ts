@@ -2742,6 +2742,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** What is made lasting a while before it vanishes (1.707): `makesItems.lasts`. 5e's Creation. */
+function carriesMadeLasting707(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMadeLasting707(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.makesItems)?.lasts !== undefined) return true;
+  return featureValues(record).some((one) => carriesMadeLasting707(one, depth + 1));
+}
+
 /** Sight through so much of each material (1.706): a sense's `throughWalls` naming materials, a
  *  cast wall's `material`, or what the board's walls are made of (`boardWalls`). Ring of X-ray Vision. */
 function carriesWallMaterials706(value: unknown, depth = 0): boolean {
@@ -9257,6 +9267,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // What is made lasting a while before it vanishes, 1.707.
+  if (
+    !declaresApi(707) &&
+    (carriesMadeLasting707(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMadeLasting707(document)))
+  )
+    return "A ruleset with what is made lasting a while before it vanishes (makesItems.lasts) requires schemaVersion 2 and capabilityApi 1.707 or newer";
   // Sight through so much of each material, 1.706.
   if (
     !declaresApi(706) &&

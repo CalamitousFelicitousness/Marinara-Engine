@@ -52683,6 +52683,31 @@
                           "minimum": 1,
                           "maximum": 100
                         },
+                        "lasts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "minutes": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 5256000
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "minutes"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -144041,6 +144066,31 @@
                               "minimum": 1,
                               "maximum": 100
                             },
+                            "lasts": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "minutes": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 5256000
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "minutes"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
                             "$comment": {}
                           },
                           "required": [
@@ -170631,6 +170681,31 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "lasts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "label": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "minutes": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 5256000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "minutes"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "$comment": {}
                                 },
@@ -197228,6 +197303,31 @@
                                     "type": "integer",
                                     "minimum": 1,
                                     "maximum": 100
+                                  },
+                                  "lasts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "label": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 40
+                                        },
+                                        "minutes": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 5256000
+                                        },
+                                        "$comment": {}
+                                      },
+                                      "required": [
+                                        "minutes"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
                                   },
                                   "$comment": {}
                                 },

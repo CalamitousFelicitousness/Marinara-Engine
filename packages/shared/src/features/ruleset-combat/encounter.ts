@@ -4245,7 +4245,22 @@ function mechanicsAction(
   // A weapon put in hand (1.306): which one is picked as it is used, its modes filled in once the
   // sheet's items and entries are known.
   if (mechanics.conjures) action.conjures = true;
-  if (mechanics.makesItems) action.makesItems = { ref: mechanics.makesItems.item, count: mechanics.makesItems.count };
+  if (mechanics.makesItems) {
+    const lasts = mechanics.makesItems.lasts;
+    action.makesItems = {
+      ref: mechanics.makesItems.item,
+      count: mechanics.makesItems.count,
+      // Lasting only so long (1.707): the first unless its user picks another.
+      ...(lasts?.length ? { lasts: lasts[0]!.minutes, lasting: true as const } : {}),
+    };
+    // Picked as it is used where there are several, Creation's materials.
+    if (lasts && lasts.length > 1 && !action.modes?.length)
+      action.modes = lasts.map((one, index) => ({
+        id: `lasts-${index}`,
+        label: one.label ?? `${one.minutes}`,
+        madeLasts: one.minutes,
+      }));
+  }
   // A form picked as it is used (1.342), its modes filled in once the fight's bestiary is known.
   if (mechanics.forms) {
     action.shapes = true;
@@ -5351,7 +5366,12 @@ function sheetCombatant(
   const heldItems = [...(input.items ?? [])];
   const placeMade = (makes: NonNullable<RulesetCombatAction["makesItems"]>) => {
     const entry = byRef.get(makes.ref);
-    let at = heldItems.findIndex((held) => held.stack?.ref === makes.ref || held.made === makes.ref);
+    // What lasts only so long (1.707) is held in a place of its own, never with what lasts.
+    let at = heldItems.findIndex((held) =>
+      makes.lasting
+        ? held.made === makes.ref && held.madeLasting
+        : !held.madeLasting && (held.stack?.ref === makes.ref || held.made === makes.ref),
+    );
     if (at < 0 && entry?.item) {
       at = heldItems.length;
       heldItems.push({
@@ -5360,10 +5380,11 @@ function sheetCombatant(
         worn: false,
         name: entry.label,
         made: makes.ref,
+        ...(makes.lasting ? { madeLasting: true as const } : {}),
         ...(input.holder !== undefined
           ? {
               stack: {
-                id: `st-made-${input.id}-${makes.ref.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+                id: `st-made-${input.id}-${makes.ref.replace(/[^a-zA-Z0-9_-]/g, "-")}${makes.lasting ? "-lasting" : ""}`,
                 ref: makes.ref,
                 ...(input.holder !== null ? { holder: input.holder } : {}),
               },
@@ -5377,7 +5398,12 @@ function sheetCombatant(
   // And what an item's use makes (1.692), its place held before the items' own uses are read.
   for (const owned of input.items ?? []) {
     for (const use of [owned.item.use, ...(owned.item.moreUses ?? []).map((more) => more.use)])
-      if (use?.makesItems) placeMade({ ref: use.makesItems.item, count: use.makesItems.count });
+      if (use?.makesItems)
+        placeMade({
+          ref: use.makesItems.item,
+          count: use.makesItems.count,
+          ...(use.makesItems.lasts?.length ? { lasts: use.makesItems.lasts[0]!.minutes, lasting: true as const } : {}),
+        });
   }
   // What an item's call lends its user to wield while it stands (1.686): a goat of terror's horns.
   (input.items ?? []).forEach((owned, index) => {

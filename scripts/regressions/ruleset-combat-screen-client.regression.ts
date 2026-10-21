@@ -871,6 +871,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["pushBraced", say({ type: "pushBraced", actorId: "brenna", label: "Dwarven Plate", cells: 2 })],
     ["knockedOut", say({ type: "knockedOut", actorId: "lurker", sourceId: "brenna" })],
     ["itemsMade", say({ type: "itemsMade", actorId: "brenna", label: "Goodberry", count: 10 })],
+    ["itemsVanished", say({ type: "itemsVanished", actorId: "brenna", label: "Iron Bar", count: 1 })],
     [
       "reflected",
       say({
@@ -1507,6 +1508,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("pushBraced"), "Brenna braces (Dwarven Plate) and is moved 2 less.");
   assert.equal(printed.get("knockedOut"), "Brenna knocks Thorn Lurker out: unconscious and stable.");
   assert.equal(printed.get("itemsMade"), "Brenna makes 10 Goodberry.");
+  assert.equal(printed.get("itemsVanished"), "1 Iron Bar made by Brenna vanishes.");
   assert.equal(printed.get("reflected"), "Thorn Lurker's Carapace (3): Ray has no effect on it.");
   assert.equal(
     say({

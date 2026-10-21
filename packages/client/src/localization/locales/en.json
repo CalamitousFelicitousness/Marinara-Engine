@@ -2412,6 +2412,7 @@
   "game.combat.ruleset.event.zoneStruckEnter": "{{target}} moves into {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneStruckMoving": "{{target}} is hurt crossing {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneStruckRam": "{{actor}} rams {{label}} into {{target}}.",
+  "game.combat.ruleset.event.zoneStruckReached": "{{actor}}’s {{label}} reaches {{target}}.",
   "game.combat.ruleset.event.zoneStruckStart": "{{target}} starts their turn in {{actor}}’s {{label}}.",
   "game.combat.ruleset.event.zoneTurned": "{{actor}} turns {{label}} to face another way.",
   "game.combat.ruleset.group.ability": "Abilities",

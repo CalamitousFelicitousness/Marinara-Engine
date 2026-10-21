@@ -2789,6 +2789,7 @@ export function rulesetZoneAction(
   if (terrain?.spareSlowWalkers) out.spareSlowWalkers = true;
   if (terrain?.endsWalk) out.endsWalk = true;
   if (zone.breaksConcentration) out.breaksConcentration = true;
+  if (zone.enterOnlyByMoving) out.enterOnlyByMoving = true;
   if (zone.damageCap !== undefined) out.damageCap = zone.damageCap;
   if (zone.damageType) out.damageType = zone.damageType;
   const sections = zone.sections;

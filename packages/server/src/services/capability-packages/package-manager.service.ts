@@ -2742,6 +2742,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A zone whose `enter` catches only a creature moving into it (1.711): Spirit Guardians. */
+function carriesEnterOnlyByMoving711(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesEnterOnlyByMoving711(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.zone)?.enterOnlyByMoving !== undefined) return true;
+  return Object.values(record).some((one) => carriesEnterOnlyByMoving711(one, depth + 1));
+}
+
 /** How a creature goes about a fight (1.710): a `behavior` saying its temperament, role, targets,
  *  openers, pack or ambush, on a creature, a creature type or `combat`. A condition's `behavior` says
  *  none of those. */
@@ -9305,6 +9315,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A zone caught only by moving into it, 1.711.
+  if (
+    !declaresApi(711) &&
+    (carriesEnterOnlyByMoving711(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesEnterOnlyByMoving711(document)))
+  )
+    return "A ruleset with a zone that catches only a creature moving into it (zone enterOnlyByMoving) requires schemaVersion 2 and capabilityApi 1.711 or newer";
   // How a creature goes about a fight, 1.710.
   if (
     !declaresApi(710) &&

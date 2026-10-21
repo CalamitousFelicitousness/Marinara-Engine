@@ -6162,6 +6162,8 @@ function zoneStrike(
   trigger: RulesetCombatZoneRule["triggers"][number] | "ram",
   /** Caught on a wall's chosen side (1.177), by the side's own triggers. */
   region: "zone" | "side" = "zone",
+  /** The zone came onto them, rather than they into it: said so in the log. */
+  reached = false,
 ): void {
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   // Standing where a section broke (1.200): what is left there catches as it says, in place of the wall.
@@ -6197,6 +6199,7 @@ function zoneStrike(
       outcome: "struck",
       targetId: target.id,
       trigger,
+      ...(reached ? { reached: true as const } : {}),
     });
   }
   if (inBroken) {
@@ -6476,10 +6479,12 @@ function moveZone(
   }
   place(to);
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at! } });
+  // Only a creature's own moving catches them in a zone that says so (1.711).
+  if (action.zone?.enterOnlyByMoving) return;
   for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
     if (before.has(id)) continue;
     const target = rulesetCombatant(ctx.state, id);
-    if (target) zoneStrike(ctx, caster, zone, target, "enter");
+    if (target) zoneStrike(ctx, caster, zone, target, "enter", "zone", true);
   }
 }
 
@@ -6497,10 +6502,11 @@ function turnZone(
   const before = new Set(rulesetZoneOccupants(ctx.state, caster, zone, action));
   zone.facing = { dx: Math.sign(toward.x - at.x), dy: Math.sign(toward.y - at.y) };
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "turned" });
+  if (action.zone?.enterOnlyByMoving) return;
   for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
     if (before.has(id)) continue;
     const target = rulesetCombatant(ctx.state, id);
-    if (target) zoneStrike(ctx, caster, zone, target, "enter");
+    if (target) zoneStrike(ctx, caster, zone, target, "enter", "zone", true);
   }
 }
 
@@ -12431,10 +12437,12 @@ function zonesEntered(
       if (was.zone.has(id)) continue;
       // Only the mover walks in, and only the mover's own zone moves onto anybody.
       if (id !== mover.id && caster.id !== mover.id) continue;
+      // Carried onto somebody, a zone that says so leaves them be (1.711): Spirit Guardians.
+      if (id !== mover.id && action.zone?.enterOnlyByMoving) continue;
       // At half speed over caltrops (1.636), let by.
       if (careful && id === mover.id && action.zone?.spareSlowWalkers) continue;
       const target = rulesetCombatant(ctx.state, id);
-      if (target) zoneStrike(ctx, caster, zone, target, "enter");
+      if (target) zoneStrike(ctx, caster, zone, target, "enter", "zone", id !== mover.id);
     }
     for (const id of rulesetZoneSideOccupants(ctx.state, caster, zone, action)) {
       if (was.side.has(id) || id !== mover.id) continue;

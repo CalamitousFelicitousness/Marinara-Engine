@@ -1287,7 +1287,9 @@ export function rulesetCombatEventLine(
               : event.trigger === "ram"
                 ? "zoneStruckRam"
                 : event.trigger === "enter"
-                  ? "zoneStruckEnter"
+                  ? event.reached
+                    ? "zoneStruckReached"
+                    : "zoneStruckEnter"
                   : event.trigger === "turn-end"
                     ? "zoneStruckEnd"
                     : "zoneStruckStart",

@@ -3431,6 +3431,7 @@ export interface RulesetCatalogZone {
   carried?: "own" | "any";
   triggers: Array<"enter" | "turn-start" | "turn-end">;
   atCast?: boolean;
+  enterOnlyByMoving?: true;
   move?: {
     budget: string;
     distance: number;
@@ -3750,6 +3751,10 @@ const catalogZoneSchema: z.ZodType<RulesetCatalogZone, z.ZodTypeDef, unknown> = 
       .max(3)
       .refine((triggers) => new Set(triggers).size === triggers.length, { message: "A trigger is named once" }),
     atCast: z.boolean().optional(),
+    /** Its `enter` catches only a creature that moves into it by its own movement or by being moved
+     *  (Capability API 1.711), never one the zone comes onto: carried with its caster, moved by them,
+     *  or turned to face elsewhere. 5e's Spirit Guardians and Moonbeam. */
+    enterOnlyByMoving: z.literal(true).optional(),
     /** Its caster may move it on their turn (Capability API 1.173), spending `budget`, up to
      *  `distance` in the catalog's unit: 5e's Moonbeam and Flaming Sphere. */
     move: z

@@ -3823,6 +3823,8 @@ export type RulesetCombatEvent =
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.173). */
       trigger?: RulesetCombatZoneRule["triggers"][number] | "moving" | "ram";
+      /** Caught by `enter` because the zone came onto them, not they into it. */
+      reached?: true;
       /** Where it was centred after moving or drifting (1.173). */
       to?: RulesetCombatCell;
     }
@@ -4637,6 +4639,8 @@ export interface RulesetCombatZoneRule {
   slippery?: true;
   /** A careful walk into it, at double the cost, is not caught by `enter` (1.636): caltrops. */
   spareSlowWalkers?: true;
+  /** `enter` catches only a creature moving into it, never one it is moved onto (1.711). */
+  enterOnlyByMoving?: true;
   /** Caught by `enter` and not saving, the walker stops there for the turn (1.636). */
   endsWalk?: true;
   /** Its hard going counts only for a step that brings the mover nearer its caster (1.182). */

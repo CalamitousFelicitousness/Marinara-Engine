@@ -46290,6 +46290,10 @@
                         "atCast": {
                           "type": "boolean"
                         },
+                        "enterOnlyByMoving": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "move": {
                           "type": "object",
                           "properties": {
@@ -79369,6 +79373,10 @@
                             "atCast": {
                               "type": "boolean"
                             },
+                            "enterOnlyByMoving": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "move": {
                               "type": "object",
                               "properties": {
@@ -100825,6 +100833,10 @@
                               },
                               "atCast": {
                                 "type": "boolean"
+                              },
+                              "enterOnlyByMoving": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "move": {
                                 "type": "object",
@@ -137860,6 +137872,10 @@
                             "atCast": {
                               "type": "boolean"
                             },
+                            "enterOnlyByMoving": {
+                              "type": "boolean",
+                              "const": true
+                            },
                             "move": {
                               "type": "object",
                               "properties": {
@@ -164475,6 +164491,10 @@
                                   },
                                   "atCast": {
                                     "type": "boolean"
+                                  },
+                                  "enterOnlyByMoving": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "move": {
                                     "type": "object",
@@ -191097,6 +191117,10 @@
                                   },
                                   "atCast": {
                                     "type": "boolean"
+                                  },
+                                  "enterOnlyByMoving": {
+                                    "type": "boolean",
+                                    "const": true
                                   },
                                   "move": {
                                     "type": "object",

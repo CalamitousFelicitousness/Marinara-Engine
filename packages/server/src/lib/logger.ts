@@ -96,7 +96,7 @@ function errorLogFields(value: unknown): unknown {
   if (!(value instanceof Error)) return undefined;
   const seen = new Set<object>();
   let current: unknown = value;
-  for (let depth = 0; depth < 32 && current && typeof current === "object"; depth++) {
+  while (current && typeof current === "object") {
     if (seen.has(current)) break;
     seen.add(current);
     const fields = Reflect.get(current, privateErrorLogFields);

@@ -331,10 +331,14 @@ try {
     const { ToAPIsHttpError, ToAPIsSubmittedTaskError } =
       await import("../../packages/server/src/services/media/toapis-media.js");
     const provider = new ToAPIsHttpError(401, "images", "fixture-private-provider-text");
+    let deeplyWrapped: Error = provider;
+    for (let depth = 0; depth < 40; depth++)
+      deeplyWrapped = new Error("fixture-private-deep-wrapper", { cause: deeplyWrapped });
     const errors = [
       provider,
       new ToAPIsSubmittedTaskError(provider),
       new Error("fixture-private-wrapper-text", { cause: provider }),
+      deeplyWrapped,
     ];
     await captureLogs(async (lines) => {
       const child = logger.child({ component: "fixture" });
@@ -344,7 +348,7 @@ try {
         child.fatal({ error }, "child error field");
         logger.info("formatted error: %s", error);
       }
-      assert.equal(lines.length, 12);
+      assert.equal(lines.length, 16);
       assert.ok(!JSON.stringify(lines).includes("fixture-private"));
       assert.ok(!JSON.stringify(lines).includes('"stack"'));
       assert.ok(!JSON.stringify(lines).includes('"cause"'));

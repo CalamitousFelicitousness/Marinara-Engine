@@ -1,4 +1,5 @@
 import {
+  audioConnectionSupportsGeneration,
   RULESET_PARTY_KEY,
   assignCombatTactics,
   combatTacticsSchema,
@@ -2512,19 +2513,16 @@ function GameSurfaceComponent({
       null
     );
   }, [connectionsList, chatMeta.gameAudioConnectionId, ttsChosenConnectionId]);
-  const gameAudioConnectionIsElevenLabs =
-    gameAudioConnection != null &&
-    ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
   // The card's own ElevenLabs switches count only while no Audio connection is its Source.
   const ttsSettingsElevenLabs = ttsConfig?.source === "elevenlabs" && !ttsChosenConnectionId;
   const generateGameSoundEffects =
     (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioSoundEffects)
+      ? audioConnectionSupportsGeneration(gameAudioConnection, "sfx")
       : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameSoundEffects === true) &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
     (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioMusic)
+      ? audioConnectionSupportsGeneration(gameAudioConnection, "music")
       : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameMusic === true) &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
@@ -2791,7 +2789,12 @@ function GameSurfaceComponent({
           (signal) =>
             api.post<{ tag: string; path: string }>(
               "/tts/game-audio",
-              { kind, prompt, ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}) },
+              {
+                kind,
+                prompt,
+                debugMode: useUIStore.getState().debugMode,
+                ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}),
+              },
               { signal },
             ),
           GAME_AUDIO_GENERATION_TIMEOUT_MS,
@@ -2895,6 +2898,7 @@ function GameSurfaceComponent({
                 {
                   kind: "music",
                   prompt,
+                  debugMode: useUIStore.getState().debugMode,
                   context: { axis, key },
                   ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}),
                 },

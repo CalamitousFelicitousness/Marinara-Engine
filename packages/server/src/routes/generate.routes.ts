@@ -11587,6 +11587,34 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : allResponses
                 .map((response, index) => agentReplyText(response, responseMessageIds.get(index)))
                 .join("\n\n");
+        let assistantMessageReadySent = false;
+        const sendAssistantMessageReady = async (savedMessage?: typeof currentIterationSavedMsg) => {
+          if (assistantMessageReadySent || generationSignal.aborted || input.impersonate) return;
+          const messageId = (currentIterationSavedMsg as { id?: unknown } | null)?.id;
+          if (typeof messageId !== "string" || !messageId) return;
+          const readyMessage = savedMessage ?? (await chats.getMessage(messageId));
+          if (!readyMessage || readyMessage.role !== "assistant") return;
+          // A false socket write can mean the event was queued under backpressure. Do not send it twice.
+          assistantMessageReadySent = true;
+          sendSseEvent(reply, {
+            type: "assistant_message_ready",
+            data: readyMessage,
+          });
+          // The client releases its composer on this event. Release the matching server slot at once,
+          // including while unrelated post-agent activation questions are still running.
+          if (chatMode === "roleplay" && assistantMessageReadySent) {
+            moveToActiveAgentRuns(messageId, lastSavedSwipeIndex ?? readyMessage.activeSwipeIndex ?? 0);
+          }
+        };
+
+        // No enabled editor can change this text. Speaker/emotion extraction may start now, without
+        // waiting for activation decisions for trackers or any other non-rewriting agent (#8026).
+        if (chatMode === "roleplay" && textRewriteRunAgents.length === 0) {
+          // Readiness also unlocks the next turn: commit this prompt's variable changes first.
+          await persistChatMacroVariables();
+          await sendAssistantMessageReady(currentIterationSavedMsg);
+        }
+
         const continuedTargetIndex = input.continueMessageId
           ? chatMessages.findIndex((message) => message.id === input.continueMessageId)
           : -1;
@@ -11637,31 +11665,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           (agent) => !inactivePostProcessingAgentIds.has(agent.id),
         );
         await persistChatMacroVariables();
-        let assistantMessageReadySent = false;
-        const sendAssistantMessageReady = async (savedMessage?: typeof currentIterationSavedMsg) => {
-          if (assistantMessageReadySent || generationSignal.aborted || input.impersonate) return;
-          const messageId = (currentIterationSavedMsg as { id?: unknown } | null)?.id;
-          if (typeof messageId !== "string" || !messageId) return;
-          const readyMessage = savedMessage ?? (await chats.getMessage(messageId));
-          if (!readyMessage || readyMessage.role !== "assistant") return;
-          assistantMessageReadySent = sendSseEvent(reply, {
-            type: "assistant_message_ready",
-            data: readyMessage,
-          });
-        };
 
         // Speech uses only the assistant message. Do not hold it behind
         // Illustrator, trackers, summaries, or other non-rewriting agents.
         if (activatedTextRewriteRunAgents.length === 0) {
           await sendAssistantMessageReady(currentIterationSavedMsg);
-          // Roleplay post-processing is anchored to the saved message/swipe
-          // below, so it no longer needs to hold the chat-wide generation slot.
-          if (chatMode === "roleplay" && assistantMessageReadySent) {
-            moveToActiveAgentRuns(
-              currentIterationSavedMsg!.id,
-              lastSavedSwipeIndex ?? currentIterationSavedMsg!.activeSwipeIndex ?? 0,
-            );
-          }
         }
 
         // ────────────────────────────────────────
@@ -14422,12 +14430,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // persisted edit (or no-op result) before releasing TTS.
         if (activatedTextRewriteRunAgents.length > 0) {
           await sendAssistantMessageReady();
-          if (chatMode === "roleplay" && assistantMessageReadySent) {
-            moveToActiveAgentRuns(
-              currentIterationSavedMsg!.id,
-              lastSavedSwipeIndex ?? currentIterationSavedMsg!.activeSwipeIndex ?? 0,
-            );
-          }
         }
 
         if (!recoveredAlreadyAppliedOwnerTurn && !generationSignal.aborted) {

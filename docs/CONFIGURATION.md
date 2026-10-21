@@ -116,7 +116,7 @@ BASIC_AUTH_USER=alice
 BASIC_AUTH_PASS=correct-horse-battery-staple
 ```
 
-The server reads `.env` by itself, no matter how you start it. This includes running `pnpm start` directly. The shell launchers (`start.bat`, `start.sh`, `start-termux.sh`) add two extras. They set `HOST=0.0.0.0` so other devices can reach the server, and they open the browser for you. With bare `pnpm start`, the server listens only on this computer unless you set `HOST` yourself.
+The server reads `.env` by itself, no matter how you start it. This includes running `pnpm start` directly. The shell launchers (`start.bat`, `start.sh`, `start-termux.sh`) add two extras. They set `HOST=0.0.0.0` so other devices can reach the server, and they open the browser for you after the server is ready. There is no fixed browser-opening delay: slow startup or a repaired build waits until initialization finishes, and a failed startup does not open a new browser tab. `AUTO_OPEN_BROWSER=false` still disables this. With bare `pnpm start`, the server listens only on this computer unless you set `HOST` yourself.
 
 ## Restart or hot reload
 

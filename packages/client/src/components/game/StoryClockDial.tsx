@@ -64,6 +64,9 @@ export function useStoryJournal(chatId: string | null, turnKey: string | null) {
       return { clocks: journal?.clocks ?? [], ending: journal?.ending ?? null, music: journal?.music ?? null };
     },
     enabled: Boolean(chatId),
+    // A new turn reads afresh, but the last turn's clocks and music cue hold until it has: an empty
+    // moment between them would stop the Experience's track and start it again. Never another game's.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === chatId ? previous : undefined),
     staleTime: 30_000,
     retry: false,
   });

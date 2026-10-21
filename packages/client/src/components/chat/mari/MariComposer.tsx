@@ -33,6 +33,7 @@ import { useUIStore } from "../../../stores/ui.store";
 import { InlineGhostText } from "../../ui/InlineGhostText";
 import { ConnectionModelPicker } from "../../connections/ConnectionModelPicker";
 import { MariRow } from "../mari-primitives";
+import { MariConnectionGuidance } from "./MariConnectionGuidance";
 import { MariAttachButton } from "../MariAttachButton";
 import { MariContextFacetChips } from "../MariContextFacetChips";
 import { MariSuggestionChips } from "../MariSuggestionChips";
@@ -526,6 +527,9 @@ export function MariComposer({
                       }}
                     />
                   )}
+                  <div className="px-3 py-2">
+                    <MariConnectionGuidance />
+                  </div>
                 </div>
                 {modelsConnection && (
                   <div className="mari-connection-picker__models">

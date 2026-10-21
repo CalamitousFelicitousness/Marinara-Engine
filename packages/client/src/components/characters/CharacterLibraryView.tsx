@@ -140,7 +140,13 @@ function getCharacterSummary(char: ParsedCharacterRow) {
 }
 
 function getPersonaSummary(persona: Persona) {
-  return getCardLibrarySummary([persona.creatorNotes, persona.description, persona.personality, persona.backstory]);
+  return getCardLibrarySummary([
+    persona.summary,
+    persona.creatorNotes,
+    persona.description,
+    persona.personality,
+    persona.backstory,
+  ]);
 }
 
 function truncateText(content: string, maxLength: number) {

@@ -17,6 +17,7 @@ import type {
 } from "@marinara-engine/shared";
 import { DEFAULT_GENERATION_PARAMS, resolveScopedRegexMode } from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
+import { createLibraryFoldersStorage } from "./library-folders.storage.js";
 
 function resolveTimestamps(overrides?: TimestampOverrides | null) {
   const normalized = normalizeTimestampOverrides(overrides);
@@ -137,7 +138,10 @@ export function createPromptsStorage(db: DB) {
     },
 
     async remove(id: string) {
-      await db.delete(promptPresets).where(eq(promptPresets.id, id));
+      await db.transaction(async (tx) => {
+        await tx.delete(promptPresets).where(eq(promptPresets.id, id));
+        await createLibraryFoldersStorage(tx).removeItemReferences("presets", [id]);
+      });
     },
 
     async setDefault(id: string) {

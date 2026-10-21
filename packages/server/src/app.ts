@@ -242,6 +242,15 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     app.log.warn(error, "Lorebook folder cleanup did not complete; it will retry next startup");
   }
   try {
+    const removedPresetFolderIds = await startup.phase("migrate.preset-folder-references", () =>
+      createLibraryFoldersStorage(db).pruneMissingPresetItemIds(),
+    );
+    if (removedPresetFolderIds > 0)
+      app.log.info("Removed %d missing preset ID(s) from library folders", removedPresetFolderIds);
+  } catch (error) {
+    app.log.warn(error, "Preset folder cleanup did not complete; it will retry next startup");
+  }
+  try {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");

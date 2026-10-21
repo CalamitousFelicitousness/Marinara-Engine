@@ -54,6 +54,19 @@ const originalRandom = Math.random;
 let stateBaseline: { id: string; chatId: string } | undefined;
 const originalPlanner = OpenAIProvider.prototype.chatComplete;
 OpenAIProvider.prototype.chatComplete = async (messages, options) => {
+  if (options.model === "thinking-narrator") {
+    order.push("thinking-main");
+    if (messages.some((message) => message.role === "tool"))
+      return { content: "", toolCalls: [], finishReason: "stop" };
+    options.onThinking?.("PRIVATE TOOL ROUND PLAN: roll first, then reveal the smuggler.");
+    return {
+      content: null,
+      toolCalls: [
+        { id: "plan-roll", type: "function", function: { name: "roll_dice", arguments: '{"notation":"1d2"}' } },
+      ],
+      finishReason: "tool_calls",
+    };
+  }
   if (options.model === "native-narrator") {
     order.push("native-main");
     const tool = messages
@@ -548,6 +561,42 @@ try {
   }
   Math.random = originalRandom;
   nativeDraft = "";
+
+  // A tool round's thinking is not the final reply's: an empty, finished reply after it must not
+  // show that planning as narration (#7932).
+  const thinkingConnection = await connections.create({
+    name: "Thinking narrator",
+    provider: "openai",
+    model: "thinking-narrator",
+    apiKey: "synthetic",
+    maxContext: 32768,
+  });
+  const thinkingChat = (await chats.create({
+    name: "Tool-round thinking",
+    mode: "game",
+    characterIds: [],
+    connectionId: thinkingConnection.id,
+    promptPresetId: null,
+  }))!;
+  await chats.patchMetadata(thinkingChat.id, { enableAgents: false, enableTools: false });
+  await chats.createMessage({ chatId: thinkingChat.id, role: "user", content: "Pick the lock." });
+  order.length = 0;
+  const thinkingResponse = await app.inject({
+    method: "POST",
+    url: "/api/generate/",
+    payload: { chatId: thinkingChat.id },
+  });
+  assert.deepEqual(order, ["thinking-main", "thinking-main"]);
+  const thinkingMessages = await chats.listMessages(thinkingChat.id);
+  assert.ok(
+    thinkingMessages.every((message) => !message.content.includes("PRIVATE TOOL ROUND PLAN")),
+    "an earlier tool round's planning never becomes the narration",
+  );
+  assert.doesNotMatch(
+    thinkingResponse.body,
+    /"type":"token","data":"[^"]*PRIVATE TOOL ROUND PLAN/,
+    "the planning is not streamed as narration either",
+  );
 
   const refusalChat = (await chats.create({
     name: "Refused commands",

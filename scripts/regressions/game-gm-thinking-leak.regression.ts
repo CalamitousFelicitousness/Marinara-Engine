@@ -38,6 +38,20 @@ assert.match(
   "the language line must apply to the scene text, not the planning",
 );
 
+// A [To the GM] turn answers out of character, so the reminder must not also demand scene text only.
+const talkToGm = buildGmFormatReminder({ hasSceneModel: false, turnNumber: 1, addressMode: "gm" } as ReminderContext);
+assert.match(talkToGm, /output only your out-of-character answer to the player: no notes, analysis, headings or plan/);
+assert.doesNotMatch(
+  talkToGm,
+  /output only the VN scene text/,
+  "a talk-to-GM turn must not be told to write only the scene",
+);
+assert.match(
+  talkToGm,
+  /put all of it inside one <think>\.\.\.<\/think> block/,
+  "a talk-to-GM turn still keeps its plan hidden",
+);
+
 // A reply that follows the reminder loses its plan to the thinking slot, whatever language it plans in.
 const reply = [
   "<think>",

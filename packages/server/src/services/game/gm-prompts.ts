@@ -1743,7 +1743,7 @@ export function buildGmFormatReminder(
     // The player sees every word of the reply, so planning written out in the open would be shown as narration.
     // A model that plans on the page has to do it inside a leading thinking block, which the Engine lifts out.
     `Before you write, decide the next turn privately: current location and time, the story up to this point, character behavior, dynamics, known vs. hidden information, stakes, cause and effect, sensory tone, and the next point at which player agency returns.`,
-    `The player sees everything you write. If you plan in writing, put all of it inside one <think>...</think> block at the very start of the reply and never outside it. After that, output only the VN scene text: no notes, analysis, headings or plan.`,
+    `The player sees everything you write. If you plan in writing, put all of it inside one <think>...</think> block at the very start of the reply and never outside it. After that, output only ${ctx.addressMode === "gm" ? "your out-of-character answer to the player" : "the VN scene text"}: no notes, analysis, headings or plan.`,
     ...(normalizedLanguage && normalizedLanguage.toLowerCase() !== "english"
       ? [
           `LANGUAGE:`,

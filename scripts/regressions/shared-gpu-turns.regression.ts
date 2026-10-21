@@ -158,11 +158,16 @@ async function main() {
 
   // ── 8) A media request waits no longer than MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS, and text queued behind it
   // then goes ahead ──
-  process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS = "50";
+  process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS = "300";
   const stalled = deferred();
   const stalledText = runSharedGpuTurn("text", LLM, () => stalled.promise);
   await tick();
-  const timedOut = runSharedGpuTurn("media", GPU, async () => "never");
+  // Checked from the start, so a slow tick can only make the wait end sooner, never unobserved.
+  const timedOut = assert.rejects(
+    runSharedGpuTurn("media", GPU, async () => "never"),
+    /Waited over 0 seconds for the shared GPU/u,
+    "the media wait has a deadline",
+  );
   await tick();
   let queuedTextRan = false;
   const queuedText = runSharedGpuTurn("text", LLM, async () => {
@@ -172,7 +177,7 @@ async function main() {
   assert.equal(queuedTextRan, false, "new text waits behind the waiting media request");
   // AbortSignal.timeout doesn't keep the process alive (a server always is), so hold it open across the wait.
   const keepAlive = setTimeout(() => undefined, 5_000);
-  await assert.rejects(timedOut, /Waited over 0 seconds for the shared GPU/u, "the media wait has a deadline");
+  await timedOut;
   clearTimeout(keepAlive);
   await queuedText;
   assert.equal(queuedTextRan, true, "text queued behind the timed-out media request goes ahead");

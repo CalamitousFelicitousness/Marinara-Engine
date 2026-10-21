@@ -127,7 +127,8 @@ export async function runSharedGpuTurn<T>(
   // A media request waits for its turn no longer than for a media permit, so a stalled text stream can't hold it, and
   // the text queued behind it, forever. Text keeps waiting for the render it follows.
   const waitMs = work === "media" ? resolveGlobalMediaGenerationWaitTimeoutMs() : Number.POSITIVE_INFINITY;
-  const deadline = Number.isFinite(waitMs) ? AbortSignal.timeout(waitMs) : null;
+  // AbortSignal.timeout takes at most 2^32 - 1 ms; a longer limit is as good as none.
+  const deadline = waitMs <= 0xffff_ffff ? AbortSignal.timeout(waitMs) : null;
   let release: () => void;
   try {
     release = await acquireTurn(

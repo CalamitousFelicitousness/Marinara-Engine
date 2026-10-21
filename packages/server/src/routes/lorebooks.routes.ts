@@ -18,6 +18,9 @@ import {
   promptDecisionCacheKey,
 } from "../services/decision/prompt-decisions.js";
 import type { FastifyInstance } from "fastify";
+import type { DB } from "../db/connection.js";
+import { eq } from "../db/file-query.js";
+import { lorebookEntries } from "../db/schema/index.js";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
@@ -886,28 +889,42 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "No matching entries found in the source lorebook" });
     }
 
-    const targetEntries = (await storage.listEntries(targetLorebookId)) as LorebookEntry[];
-    const maxTargetOrder = targetEntries.reduce((max, entry) => Math.max(max, entry.order ?? 0), 0);
     const created: LorebookEntry[] = [];
-    try {
+    const transfer = async (tx: DB) => {
+      const transactionalStorage = createLorebooksStorage(tx);
+      // Read again after admission: queued edits must not be replaced by stale copies.
+      sourceEntries.length = 0;
+      for (const entryId of entryIds) {
+        const entry = (await transactionalStorage.getEntry(entryId)) as LorebookEntry | null;
+        if (entry?.lorebookId === req.params.id) sourceEntries.push(entry);
+      }
+      if (!sourceEntries.length || !(await transactionalStorage.getById(targetLorebookId))) {
+        throw Object.assign(new Error("Source entries or target lorebook no longer exist"), { statusCode: 409 });
+      }
+      const targetEntries = (await transactionalStorage.listEntries(targetLorebookId)) as LorebookEntry[];
+      const maxTargetOrder = targetEntries.reduce((max, entry) => Math.max(max, entry.order ?? 0), 0);
       for (const [index, entry] of sourceEntries.entries()) {
-        const transferred = (await storage.createEntry(
+        const transferred = (await transactionalStorage.createEntry(
           buildTransferredEntryInput(entry, targetLorebookId, maxTargetOrder + (index + 1) * 10),
         )) as LorebookEntry | null;
-        if (transferred) created.push(transferred);
+        if (!transferred) throw new Error("Failed to create transferred lorebook entry");
+        created.push(transferred);
       }
-
       if (operation === "move") {
         for (const entry of sourceEntries) {
-          await storage.removeEntry(entry.id);
+          await tx.delete(lorebookEntries).where(eq(lorebookEntries.id, entry.id));
         }
-        await syncCharacterBookFromLorebook(app.db, req.params.id);
+        return sourceEntries.map((entry) => entry.id);
       }
-    } catch (err) {
-      if (created.length > 0) {
-        await Promise.allSettled(created.map((entry) => storage.removeEntry(entry.id)));
-      }
-      throw err;
+      return [];
+    };
+    if (operation === "move") {
+      // Acquire chat metadata queues BEFORE the transaction, matching ordinary deletion.
+      // Copies, removals and reference cleanup roll back together on any failure.
+      await createChatsStorage(app.db).pruneLorebookChatMetadata(transfer);
+      await syncCharacterBookFromLorebook(app.db, req.params.id);
+    } else {
+      await app.db.transaction(transfer);
     }
     await syncCharacterBookFromLorebook(app.db, targetLorebookId);
 

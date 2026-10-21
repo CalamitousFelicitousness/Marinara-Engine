@@ -150,7 +150,7 @@ const ITEMS_PER_PAGE = 20;
 
 /** Fields that keep Escape for themselves: in the window's own, it resets a name or drops a split or give. */
 const KEEPS_ESCAPE_SELECTOR =
-  "textarea, [contenteditable='true'], input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='color'], [type='file'])";
+  "textarea, select, [contenteditable='true'], input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='color'], [type='file'])";
 
 /** A drop's change is fire-and-forget: whoever handles it says what went wrong, and a rejection it
  *  did not catch is not left unhandled here. */
@@ -279,17 +279,22 @@ export function GameInventory({
   // Escape closes the window, as its X does. Read in the capture phase, before a picker `Modal` above
   // it takes the same press from its `document` listener and drops out of the overlay registry, so a
   // press that closes the picker leaves the window open. Claimed, so a window the game sits in stays.
+  // The latest `onClose` is read at the press, so a new one each render does not re-add the listener.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented || isModalOverlayOpen()) return;
       if (event.target instanceof Element && event.target.closest(KEEPS_ESCAPE_SELECTOR)) return;
       event.preventDefault();
-      onClose();
+      onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [open, onClose]);
+  }, [open]);
 
   useEffect(() => {
     if (!selectedItem) return;
@@ -619,6 +624,7 @@ export function GameInventory({
           <button
             onClick={onClose}
             aria-label={localizeUi("ui.game.gameinventory.closeInventory")}
+            title={localizeUi("ui.game.gameinventory.closeInventory")}
             className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
           >
             <X size={14} />

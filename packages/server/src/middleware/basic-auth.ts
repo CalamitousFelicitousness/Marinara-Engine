@@ -98,7 +98,9 @@ function buildExpectedHeader(user: string, pass: string): string {
 /** An .env login keeps its old fingerprint, so browsers that signed in before stay signed in. */
 function loginFingerprint(login: LoginConfig): Buffer {
   const id =
-    login.source === "env" ? buildExpectedHeader(login.user, login.pass) : `app:${login.user}:${login.salt}:${login.hash}`;
+    login.source === "env"
+      ? buildExpectedHeader(login.user, login.pass)
+      : `app:${login.user}:${login.salt}:${login.hash}`;
   return Buffer.from(id, "utf8");
 }
 
@@ -112,9 +114,7 @@ function loadConfig(): CachedConfig | null {
     cached.pass !== raw.pass ||
     cached.realm !== raw.realm
   ) {
-    const resolved = login
-      ? { login, realm: raw.realm, fingerprint: loginFingerprint(login), announced: false }
-      : null;
+    const resolved = login ? { login, realm: raw.realm, fingerprint: loginFingerprint(login), announced: false } : null;
     cached = { login, user: raw.user, pass: raw.pass, realm: raw.realm, resolved };
     if (!raw.user !== !raw.pass) {
       logger.warn(
@@ -290,7 +290,11 @@ function rememberFailure(request: FastifyRequest, header: string) {
 }
 
 /** Checks a Basic Authorization header and updates this client's wrong-password count; null when too busy. */
-async function checkCredentials(request: FastifyRequest, config: CachedConfig, header: string): Promise<boolean | null> {
+async function checkCredentials(
+  request: FastifyRequest,
+  config: CachedConfig,
+  header: string,
+): Promise<boolean | null> {
   const verdict = await verifyHeader(header, config);
   if (verdict === null) return null;
   if (verdict) {

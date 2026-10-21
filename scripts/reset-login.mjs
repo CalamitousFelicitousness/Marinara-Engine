@@ -17,7 +17,9 @@ const file = join(configured ? resolve(serverRoot, configured) : join(serverRoot
 
 if (existsSync(file)) {
   rmSync(file);
-  console.log(`Removed the app login (${file}). Remote devices need a new login; this computer still opens Marinara without one.`);
+  console.log(
+    `Removed the app login (${file}). Remote devices need a new login; this computer still opens Marinara without one.`,
+  );
 } else {
   console.log(`No app login found at ${file}.`);
 }

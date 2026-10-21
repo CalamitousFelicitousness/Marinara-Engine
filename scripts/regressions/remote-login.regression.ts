@@ -34,9 +34,8 @@ process.env.ENCRYPTION_KEY = "ab".repeat(32);
 
 // Imported after the env is set: DATA_DIR is read once at import.
 const credential = await import("../../packages/server/src/config/login-credential.js");
-const { BASIC_AUTH_FAILURE_LIMIT, basicAuthHook, loginRoutes } = await import(
-  "../../packages/server/src/middleware/basic-auth.js"
-);
+const { BASIC_AUTH_FAILURE_LIMIT, basicAuthHook, loginRoutes } =
+  await import("../../packages/server/src/middleware/basic-auth.js");
 const { csrfProtectionHook } = await import("../../packages/server/src/middleware/csrf-protection.js");
 const { hostValidationHook } = await import("../../packages/server/src/middleware/host-validation.js");
 const { ipAllowlistHook } = await import("../../packages/server/src/middleware/ip-allowlist.js");
@@ -133,9 +132,13 @@ try {
 
   // With a login set, the code is gone and the open remote opt-in no longer applies.
   const right = basic("owner", "first-password");
-  const again = await putLogin(REMOTE, { user: "intruder", password: "intruder-password", setupCode: code }, {
-    authorization: right,
-  });
+  const again = await putLogin(
+    REMOTE,
+    { user: "intruder", password: "intruder-password", setupCode: code },
+    {
+      authorization: right,
+    },
+  );
   assert.equal(again.statusCode, 403, "the code no longer works once a login exists");
   assert.equal((await get("/api/chats", "203.0.113.11")).statusCode, 401, "a login closes the open remote opt-in");
   delete process.env.ALLOW_UNAUTHENTICATED_REMOTE;
@@ -242,7 +245,10 @@ try {
   assert.equal((await putLogin("127.0.0.1", { user: "owner", password: "fifth-password" })).statusCode, 409);
   assert.equal((await deleteLogin()).statusCode, 409);
   assert.ok(existsSync(LOGIN_FILE), "a refused delete keeps the file");
-  assert.equal((await get("/api/chats", "203.0.113.50", { authorization: basic("envuser", "env-password") })).statusCode, 200);
+  assert.equal(
+    (await get("/api/chats", "203.0.113.50", { authorization: basic("envuser", "env-password") })).statusCode,
+    200,
+  );
   const ignored = await get("/api/chats", "203.0.113.50", { authorization: basic("owner", "fourth-password") });
   assert.equal(ignored.statusCode, 401, "the app login is ignored while .env sets one");
 

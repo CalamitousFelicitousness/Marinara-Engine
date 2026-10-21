@@ -1474,18 +1474,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         }
         const persona =
           chat.personaId && personaIds.includes(chat.personaId) ? await characters.getPersona(chat.personaId) : null;
-        const description = input.description?.toLowerCase() ?? "";
-        // Whole words only, so "Bram" doesn't match "Bramble" and "Al" doesn't match "also".
-        const named = (name: string) =>
-          name
-            ? description.search(
-                new RegExp(
-                  `(?<![\\p{L}\\p{N}])${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\p{L}\\p{N}])`,
-                  "u",
-                ),
-              )
-            : -1;
-        const namedCandidates = [
+        const people = [
           ...candidates,
           ...(persona
             ? [
@@ -1500,7 +1489,35 @@ export async function galleryRoutes(app: FastifyInstance) {
                 },
               ]
             : []),
-        ]
+        ];
+        const description = input.description ?? "";
+        // Whole words only, so "Bram" doesn't match "Bramble" and "Al" doesn't match "also".
+        const wordAt = (word: string) =>
+          description
+            .toLowerCase()
+            .search(
+              new RegExp(
+                `(?<![\\p{L}\\p{N}])${word.toLowerCase().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\p{L}\\p{N}])`,
+                "u",
+              ),
+            );
+        // A unique, capitalised part of a name counts too ("Lena" for "Dr. Lena Kowalski"), as in Conversation clips.
+        const namedByPart = namesMentionedByPart(
+          withoutQuotedSpeech(description),
+          people.map((person) => ({ id: person.name, name: person.name })),
+        );
+        const named = (name: string) => {
+          if (!name) return -1;
+          const whole = wordAt(name);
+          if (whole >= 0 || !namedByPart.has(name)) return whole;
+          const parts = name
+            .split(/[^\p{L}\p{N}]+/u)
+            .filter((part) => part.length >= 2)
+            .map(wordAt)
+            .filter((index) => index >= 0);
+          return parts.length ? Math.min(...parts) : -1;
+        };
+        const namedCandidates = people
           .filter((candidate) => named(candidate.name) >= 0)
           .sort((left, right) => named(left.name) - named(right.name));
         for (const candidate of [...namedCandidates, ...candidates]) {

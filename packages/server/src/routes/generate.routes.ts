@@ -12527,7 +12527,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       // Re-checked here, as the clip starts: another clip may have started since [video] was offered,
                       // or the reply may already have its Videos per reply clips.
                       videoRun = await claimRoleplayClip(request.messageId);
-                      if (!videoRun) return;
+                      if (!videoRun) {
+                        logger.info(
+                          "[roleplay/commands] Skipped a [video]: the Video Run Interval has not passed or the reply has its clips",
+                        );
+                        return;
+                      }
+                      // The stream now waits on a clip, not text, so the client can let the next message start.
+                      sendSseEvent(reply, { type: "video_started", data: { messageId: request.messageId } });
                       // The storyteller's subject and motion are the request; the Clip Director writes the clip to
                       // the video connection's instructions.
                       const prompt = await writeClipPrompt({

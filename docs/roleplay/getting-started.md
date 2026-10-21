@@ -139,7 +139,7 @@ You can also keep a note on a single message. Choose **Bookmark, pin or note** u
 
 In **Chat Settings → Agents → Roleplay Commands**, enable **Video clips** to let characters ask for a short video clip of a key moment instead of a still picture. It starts off, and needs the **Illustrator** agent in the chat and a video connection under Illustrator's **Scene Videos**.
 
-The model uses `[video: subject="the moment" motion="what moves and how the camera moves" characters="names"]`, and is told to prefer it over `[illustrate]` when the moment is about motion. What the clip starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the moment, the named character's avatar or sprite, or no picture. The clip plays in the reply when it is ready. It is offered only while the **Video Run Interval** allows a clip.
+The model uses `[video: subject="the moment" motion="what moves and how the camera moves" characters="names"]`, and is told to prefer it over `[illustrate]` when the moment is about motion. What the clip starts from follows Illustrator's **First frame** setting: a new Illustrator picture of the moment, the named character's avatar or sprite, or no picture. The clip plays in the reply when it is ready. It is offered only while the **Video Run Interval** allows a clip, and it counts toward **Videos per reply** like Illustrator's own clips.
 
 ## Character interruptions
 

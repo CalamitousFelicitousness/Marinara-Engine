@@ -105,11 +105,7 @@ try {
   };
   replies.main = 'Glass everywhere. [illustrate: subject="bottles flying off the counter"]';
   await h.generate(roleplay.id, "James throws the bottles.");
-  assert.match(
-    requests.planner.at(-1) ?? "",
-    /<optional_video>/u,
-    "the planner is offered a clip",
-  );
+  assert.match(requests.planner.at(-1) ?? "", /<optional_video>/u, "the planner is offered a clip");
   assert.equal((await h.attachments(roleplay.id, "video")).length, 3, "[illustrate] became a clip");
   assert.match(h.lastComfyInputs()?.text ?? "", /Bottles shatter and spin through the air/u);
   assert.equal(h.lastComfyInputs()?.image, png.toString("base64"), "it animates the shown picture");
@@ -143,6 +139,7 @@ try {
   replies.main = `Aster waits. ${command}`;
   const unattachedStream = await h.generate(unattached.id, "Aster looks outside.");
   assert.equal(h.hooks.beforeVideo, null, "the clip reached the video service");
+  assert.match(unattachedStream, /"type":"video_started"/u, "the stream tells the client a clip is coming");
   assert.match(unattachedStream, /"type":"video"/u, "the saved clip is reported as made");
   assert.match(unattachedStream, /"messageId":null/u, "reported as not attached");
   assert.match(unattachedStream, /"videoId":"[^"]+"/u, "with the saved clip's id");

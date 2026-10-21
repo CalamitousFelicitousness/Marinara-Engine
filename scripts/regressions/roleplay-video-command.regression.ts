@@ -136,6 +136,11 @@ try {
   // Names match whole words only: "brambles" doesn't name Bram, so James is the first one named.
   assert.equal((await roleplayVideo(pair.id, "The brambles part as James steps through")).statusCode, 200);
   assert.equal(h.lastComfyInputs()?.image, personaPng.toString("base64"), "a name inside a word doesn't count");
+  // A unique, capitalised part of a longer name counts too, as in Conversation clips: "Bram" for "Captain Bram Holloway".
+  await h.characters.update(bram.id, { name: "Captain Bram Holloway" }, undefined, { skipVersionSnapshot: true });
+  assert.equal((await roleplayVideo(pair.id, "Bram hides behind James")).statusCode, 200);
+  assert.equal(h.lastComfyInputs()?.image, bramPng.toString("base64"), "a short name finds its card's avatar");
+  await h.characters.update(bram.id, { name: "Bram" }, undefined, { skipVersionSnapshot: true });
 
   // Prompt review: a preview returns the written prompt and makes no clip; the reviewed prompt is the one sent.
   const clipsBefore = requests.comfy.length;

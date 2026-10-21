@@ -39,8 +39,8 @@ function closeOpenJsonContainers(raw: string): string | null {
  * Models often write dialogue in plain quotes inside a JSON string ("firstMessage": ""Hi," she says.",). When each
  * property sits on its own line, every quote between a string value's opening and closing quote belongs to the text,
  * so it is escaped. Only a `"key": "value"` line that isn't valid on its own is touched, so a valid line (even one
- * holding two properties) is never merged into one value, and a value that still holds a `"key":` pair is left for
- * jsonrepair, which keeps both properties.
+ * holding two properties) is never merged into one value, and a value that runs on into another property (`, "key":`)
+ * is left for jsonrepair, which keeps both properties.
  */
 function escapeQuotesInsideLineValues(raw: string): string {
   const validProperties = (line: string) => {
@@ -59,7 +59,7 @@ function escapeQuotesInsideLineValues(raw: string): string {
         : line.replace(
             /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
             (match: string, open: string, value: string, close: string) =>
-              /"[^"\n]+"\s*:/u.test(value) ? match : `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
+              /,\s*"[^"\n]+"\s*:/u.test(value) ? match : `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
           ),
     )
     .join("\n");

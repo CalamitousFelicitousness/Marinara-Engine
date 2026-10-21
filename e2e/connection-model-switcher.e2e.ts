@@ -51,6 +51,7 @@ async function setup(
   testInfo: TestInfo,
   theme: "dark" | "light",
   ui: Record<string, unknown> = {},
+  seedMode: "replace" | "if-missing" = "replace",
 ) {
   const provider = await startProvider();
   const suffix = `${testInfo.project.name} ${theme} ${Date.now()}`;
@@ -74,15 +75,19 @@ async function setup(
   expect((await request.patch(`/api/chats/${chat.id}`, { data: { connectionId: main.id } })).ok()).toBeTruthy();
 
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
-  await seedUIState(page, {
-    hasCompletedOnboarding: true,
-    sidebarOpen: false,
-    rightPanelOpen: false,
-    theme,
-    chatHelpSeenModes: ["conversation", "roleplay", "game"],
-    chatSettingsExpandedSections: { connection: true },
-    ...ui,
-  });
+  await seedUIState(
+    page,
+    {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      theme,
+      chatHelpSeenModes: ["conversation", "roleplay", "game"],
+      chatSettingsExpandedSections: { connection: true },
+      ...ui,
+    },
+    seedMode,
+  );
   await page.addInitScript(
     ({ chatId, version }) => {
       localStorage.setItem("marinara:whats-new:seen-version", version);
@@ -372,6 +377,31 @@ test("the models menu reads in light theme too (#7098)", async ({ page, request 
     await expect(modelRow(picker, "pinned", "vendor/gamma")).toBeVisible();
     await expectNoHorizontalScroll(page);
     await capture(page, testInfo, isPhone(testInfo) ? "mobile-models-step-light" : "desktop-models-menu-light");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("the Models toggle persists a changed preference after reload (#7928)", async ({ page, request }, testInfo) => {
+  const { cleanup } = await setup(page, request, testInfo, "dark", { quickSwitcherShowModels: true }, "if-missing");
+  const open = async () => {
+    await page
+      .getByRole("button", {
+        name: isPhone(testInfo) ? "Quick Switcher" : "Quick Connection Switcher",
+        exact: true,
+      })
+      .click();
+    return page.getByRole("button", { name: "Show models in Quick Switcher", exact: true });
+  };
+  try {
+    await page.goto("/");
+    const toggle = await open();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await page.reload();
+    await expect(await open()).toHaveAttribute("aria-pressed", "false");
   } finally {
     await cleanup();
   }

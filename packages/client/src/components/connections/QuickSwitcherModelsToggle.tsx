@@ -14,7 +14,7 @@ export function QuickSwitcherModelsToggle() {
       aria-label={t("connections.quickSwitcher.showModels")}
       title={t("connections.quickSwitcher.showModelsHelp")}
       onClick={() => setEnabled(!enabled)}
-      className="flex min-h-9 shrink-0 items-center gap-1 rounded-md px-2 text-[0.6875rem] text-foreground/65 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-[var(--primary)] aria-pressed:bg-foreground/10"
+      className="flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-[0.6875rem] text-foreground/65 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-[var(--primary)] aria-pressed:bg-foreground/10"
     >
       <List size="0.875rem" aria-hidden />
       {t("connections.modelPicker.title")}

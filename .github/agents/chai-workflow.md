@@ -99,7 +99,7 @@ Use this for code reviews, PR preparation, PR iteration, and ready-for-review ga
 - Never push directly to protected branches without explicit maintainer direction.
 - Do not auto-check PR validation boxes. Treat them as human verification tasks.
 - After pushing, inspect CI and review feedback when asked to ship or ready a PR.
-- Required checks and Dottore Review must complete before every merge to `staging`. Promotions from `staging` to `main` carry their changes' `staging` reviews and still follow the promotion PR's required checks. PRs from active Pasta-Devs organization members and owners do not require separate human approval; organization members with repository merge permission may merge internal PRs to `staging` after those gates. Outside and first-time contributors also require an approving review from `SpicyMarinara`. Only `SpicyMarinara` may promote `staging` to `main`.
+- Required checks and Dottore Review must complete before every merge to `staging`. Promotions from `staging` to `main` must complete their own Dottore Review and required checks, and carry their changes' `staging` review evidence. PRs from active Pasta-Devs organization members and owners do not require separate human approval; organization members with repository merge permission may merge internal PRs to `staging` after those gates. Outside and first-time contributors also require an approving review from `SpicyMarinara`. Only `SpicyMarinara` may promote `staging` to `main`.
 
 Maintainer-equivalent self-review questions:
 

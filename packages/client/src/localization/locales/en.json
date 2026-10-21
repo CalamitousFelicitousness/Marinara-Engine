@@ -3275,7 +3275,7 @@
   "generationParameters.level.maximum": "Maximum",
   "generationParameters.level.medium": "Medium",
   "generationParameters.level.xhigh": "Extra high",
-  "generationParameters.preset.hint": "Starting settings for chats that use this preset. Set token limits in Connections or Chat Settings > Advanced Parameters. Connection defaults and chat settings can override these values.",
+  "generationParameters.preset.hint": "Starting settings for chats using this preset, with context and output limits controlled in Connections or Chat Settings.",
   "generationParameters.preset.title": "Generation parameters",
   "generationParameters.providerDefaultLevel": "Provider default: {{level}}",
   "generationParameters.reasoningEffort.codexHelp": "How long Codex thinks before answering; Default keeps Codex's own level for the model.",

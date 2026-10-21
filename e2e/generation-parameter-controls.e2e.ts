@@ -114,17 +114,30 @@ test("game chat inherits connection send switches after editing another value an
           model: "gpt-5.5",
           apiKey: "synthetic-ui-fixture-key",
           baseUrl: "http://127.0.0.1:9/v1",
-          defaultParameters: {
-            reasoningEffort: enabled ? "high" : "low",
-            enabledParameters: { reasoningEffort: enabled },
-          },
         },
       });
       expect(response.ok()).toBeTruthy();
-      connections.push(await response.json());
+      const connection = await response.json();
+      connections.push(connection);
+      const defaults = await request.put(`/api/connections/${connection.id}/default-parameters`, {
+        data: { reasoningEffort: enabled ? "high" : "low", enabledParameters: { reasoningEffort: enabled } },
+      });
+      expect(defaults.ok()).toBeTruthy();
     }
-    const response = await request.post("/api/chats", {
-      data: { name: "Inherited reasoning game", mode: "game", characterIds: [], connectionId: connections[0].id },
+    const response = await request.post("/api/game/create", {
+      data: {
+        name: "Inherited reasoning game",
+        connectionId: connections[0].id,
+        setupConfig: {
+          genre: "Fantasy",
+          setting: "A quiet valley",
+          tone: "Heroic",
+          difficulty: "Normal",
+          gmMode: "standalone",
+          partyCharacterIds: [],
+          gameStyle: "classic",
+        },
+      },
     });
     expect(response.ok()).toBeTruthy();
     const created = await response.json();
@@ -151,30 +164,31 @@ test("game chat inherits connection send switches after editing another value an
     const drawer = page.locator(".mari-chat-settings-drawer");
     const parameters = drawer.locator('[data-chat-settings-section="advanced-parameters"]');
     await parameters.getByText("Advanced Parameters", { exact: true }).click();
-    const reasoning = parameters.getByRole("switch", { name: "Send Reasoning Effort parameter", exact: true });
-    await expect(reasoning).toHaveAttribute("aria-checked", "true");
+    const reasoning = parameters.getByRole("checkbox", { name: "Send Reasoning Effort parameter", exact: true });
+    await expect(reasoning).toBeChecked();
     const output = parameters.getByRole("textbox", { name: "Max Output Tokens", exact: true });
     await output.fill("12000");
     await output.press("Enter");
     await expect
       .poll(async () => {
         const saved = await (await request.get(`/api/chats/${chatId}`)).json();
-        return JSON.parse(saved.metadata).chatParameters;
+        return saved.metadata.chatParameters;
       })
       .toEqual({ maxTokens: 12000 });
+    await drawer.getByRole("button", { name: "Connection", exact: true }).click();
     const connectionSelect = drawer
       .locator("select")
       .filter({ has: page.locator(`option[value="${connections[0].id}"]`) })
       .first();
     await connectionSelect.selectOption(connections[1].id);
-    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await expect(reasoning).not.toBeChecked();
     await connectionSelect.selectOption(connections[0].id);
-    await expect(reasoning).toHaveAttribute("aria-checked", "true");
-    await reasoning.click();
-    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await expect(reasoning).toBeChecked();
+    await reasoning.locator("..").click();
+    await expect(reasoning).not.toBeChecked();
     await connectionSelect.selectOption(connections[1].id);
     await connectionSelect.selectOption(connections[0].id);
-    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await expect(reasoning).not.toBeChecked();
     await info.attach("game-reasoning-inheritance", {
       body: await page.screenshot({ animations: "disabled" }),
       contentType: "image/png",

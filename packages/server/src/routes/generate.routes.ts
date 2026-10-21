@@ -875,10 +875,7 @@ import {
 import { clampGenerationMaxOutputTokens } from "../services/generation/output-token-limits.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "../services/llm/connection-fallback-provider.js";
-import {
-  fitMessagesForModelAccess,
-  resolveModelAccessPolicy,
-} from "../services/generation/model-access-policy.js";
+import { fitMessagesForModelAccess, resolveModelAccessPolicy } from "../services/generation/model-access-policy.js";
 import {
   promptPreviewForAgents,
   resolveCustomWritableLorebookIds,

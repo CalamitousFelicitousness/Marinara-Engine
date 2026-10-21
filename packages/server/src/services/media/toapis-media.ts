@@ -93,7 +93,7 @@ async function api(
     }
     // Decode before redaction, and apply the display cap only after redacting complete private values.
     details = sanitizeApiError(details, details.length);
-    for (const privateValue of [key, decodeURIComponent(path.split("/")[2] || "")]) {
+    for (const privateValue of [key, key.trim(), decodeURIComponent(path.split("/")[2] || "")]) {
       if (privateValue) details = details.replaceAll(privateValue, "[redacted]");
     }
     details = details

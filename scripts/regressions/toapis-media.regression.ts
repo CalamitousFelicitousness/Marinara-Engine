@@ -308,11 +308,19 @@ try {
       assert.equal(error.message.includes("fixtu"), false, "Truncation must not expose a partial key");
       return true;
     });
+    mode = "rejected-escaped";
+    await assert.rejects(
+      generateImage("openai", "https://toapis.com/v1", "fixture-key ", "openai", {
+        model: "gpt-image-2",
+        prompt: "library",
+      }),
+      { message: "ToAPIs images HTTP 401: Invalid [redacted]" },
+    );
     mode = "rejected-html";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 403: Account not enabled" });
     mode = "rejected-metadata";
     await assert.rejects(image(), { message: "ToAPIs images HTTP 400" });
-    assert.equal(submissions().length, 5);
+    assert.equal(submissions().length, 6);
   });
   await check("poll rejection diagnostics redact credentials, task IDs and URLs", async () => {
     mode = "poll-unauthorized";

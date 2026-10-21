@@ -1019,11 +1019,17 @@ function rulesetCounterOdds(
   });
 }
 
-/** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs. */
+/** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs.
+ *  Nothing changes while it is drawn, so every fighter's sheet is worked out once for it, however
+ *  many options, targets and forecasts read it. */
 export function directedRulesetView(
   definition: RulesetDefinition,
   state: CombatDirectorState,
 ): DirectedRulesetView | undefined {
+  return withRulesetPlanMemo(() => rulesetViewOf(definition, state));
+}
+
+function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState): DirectedRulesetView | undefined {
   const fight = fightOf(state);
   if (!fight || !definition.combat) return undefined;
   const encounter = fight.encounter;

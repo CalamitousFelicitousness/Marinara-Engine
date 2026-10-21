@@ -4224,6 +4224,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 .map((line) => line.trim())
                 .join("\n")
                 .normalize("NFC")
+                .toLowerCase()
                 .toUpperCase()
                 .normalize("NFC");
               const hasEmittedPersonaExample = assembled.resolvedPersonaExamples.some((example) => {
@@ -4233,6 +4234,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                   .join("\n")
                   .trim()
                   .normalize("NFC")
+                  .toLowerCase()
                   .toUpperCase()
                   .normalize("NFC");
                 return !!normalizedExample && normalizedContent.includes(normalizedExample);

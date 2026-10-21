@@ -130,7 +130,7 @@ try {
     }
   }
   await storage.updatePersona(saved.id, {
-    mes_example: '{{random::PEEK_RANDOM_A::PEEK_RANDOM_B}} {{user}}: "Observe {{char}} with {{proofLabel}}. Straße İ."',
+    mes_example: '{{random::PEEK_RANDOM_A::PEEK_RANDOM_B}} {{user}}: "Observe {{char}} with {{proofLabel}}. Straße İ ẞ."',
   });
   const stochasticCases = [
     "persona macro",
@@ -241,11 +241,11 @@ try {
         assert.match(text, /Example Persona:.*Observe Subject with PRESET_CHOICE_REFERENCE/iu, context);
         if (variant === "uppercase") {
           assert.match(text, /EXAMPLE PERSONA:.*OBSERVE SUBJECT WITH PRESET_CHOICE_REFERENCE/u, context);
-          assert.match(text, /STRASSE İ/u, context);
+          assert.match(text, /STRASSE İ ẞ/u, context);
         }
         if (variant === "lowercase") {
           assert.match(text, /example persona:.*observe subject with preset_choice_reference/u, context);
-          assert.match(text, /straße i\u0307/u, context);
+          assert.match(text, /straße i\u0307 ß/u, context);
         }
         assert.doesNotMatch(text, /\{\{(?:random|user|char|proofLabel)|SUMMARY_METADATA_ONLY/iu, context);
       } finally {

@@ -146,7 +146,7 @@ BYPASS_AUTH_TAILSCALE=
 BYPASS_AUTH_DOCKER=
 ```
 
-Automatic mode trusts a Tailscale peer only when both ends of its direct socket use Tailnet addresses. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
+Automatic mode trusts a Tailscale peer only when both ends of its direct socket use Tailnet addresses and this computer's end is its Tailscale interface. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
 
 Automatic Docker trust applies only while neither Basic Auth nor `IP_ALLOWLIST` is set. Docker Desktop, OrbStack, and rootless Docker pass every device that opens a published port through the container's gateway, so Marinara cannot tell your own browser from a phone or a stranger on the network. Once you set a password or an allowlist, every Docker client must pass it, including the browser on the host. Set `BYPASS_AUTH_DOCKER=true` only if you trust every device that can reach the published port.
 

@@ -483,7 +483,9 @@ export function isTailscaleIp(ip: string): boolean {
 }
 
 // Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows, utun* on macOS, tun* on Android.
-const TAILSCALE_INTERFACE_NAME = /^(tailscale|utun|tun)/i;
+// ponytail: macOS/Android give every VPN the same name pattern; BYPASS_AUTH_TAILSCALE=false covers other VPNs there.
+const TAILSCALE_INTERFACE_NAME =
+  process.platform === "darwin" ? /^utun\d/ : process.platform === "android" ? /^tun\d/ : /^tailscale/i;
 
 /**
  * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
@@ -695,7 +697,8 @@ export function getPasswordlessPeers(
   const anyAddress = ["0.0.0.0", "::", ""].includes(bindHost);
   const tailscaleBind = anyAddress || isTailscaleIp(bindHost);
   const tailscaleHere =
-    tailscaleBind && (config.tailscaleMode === "enabled" || hasTailscaleInterfaceAddress(interfaces));
+    tailscaleBind &&
+    (config.tailscaleMode === "enabled" || hasTailscaleInterfaceAddress(interfaces, anyAddress ? undefined : bindHost));
   const dockerHere = config.dockerMode === "enabled" || isDockerRuntime();
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],

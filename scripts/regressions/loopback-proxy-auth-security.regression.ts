@@ -210,6 +210,11 @@ try {
   delete process.env.IP_ALLOWLIST;
 
   // ── No auth configured: the remote lockdown applies ──
+  const assertSafeLockdownHint = (body: string, label: string) => {
+    assert.doesNotMatch(body, /=false/u, `${label} must not suggest turning a check off`);
+    assert.doesNotMatch(body, /ALLOW_UNAUTHENTICATED/u, `${label} must not suggest an unauthenticated bypass`);
+    assert.match(body, /BASIC_AUTH_USER/u, `${label} must name Basic Auth`);
+  };
   delete process.env.BASIC_AUTH_USER;
   delete process.env.BASIC_AUTH_PASS;
   assert.equal((await inject("GET", "/api/chats", LOCAL_HOST)).statusCode, 200);
@@ -228,19 +233,18 @@ try {
   const lanPage = await inject("GET", "/", { host: "192.168.1.20:7860", accept: "text/html" }, "192.168.1.77");
   assert.equal(lanPage.statusCode, 403);
   assert.match(lanPage.body, /IP_ALLOWLIST=192\.168\.1\.77/u, "a LAN device still gets its allowlist snippet");
-  assert.match(lanPage.body, /ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true/u);
+  const lanJson = await inject("GET", "/api/chats", { host: "192.168.1.20:7860" }, "192.168.1.77");
+  assert.equal(lanJson.statusCode, 403);
+  assertSafeLockdownHint(lanPage.body, "the LAN lockdown page");
+  assertSafeLockdownHint(lanJson.body, "the LAN lockdown JSON");
   const lockdownPage = await inject("GET", "/", { ...PROXIED, accept: "text/html" });
   assert.equal(lockdownPage.statusCode, 403);
-  assert.match(
-    lockdownPage.body,
-    /REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false/u,
-    "the lockdown page names the proxy opt-out",
-  );
-  assert.doesNotMatch(
-    lockdownPage.body,
-    /IP_ALLOWLIST=127\.0\.0\.1/u,
-    "the page must not suggest allowlisting loopback",
-  );
+  const lockdownJson = await inject("GET", "/api/chats", PROXIED);
+  assert.equal(lockdownJson.statusCode, 403);
+  assertSafeLockdownHint(lockdownPage.body, "the proxied lockdown page");
+  assertSafeLockdownHint(lockdownJson.body, "the proxied lockdown JSON");
+  assert.doesNotMatch(lockdownPage.body, /IP_ALLOWLIST/u, "a proxied visitor gets no allowlist advice");
+  assert.doesNotMatch(lockdownJson.body, /IP_ALLOWLIST/u, "a proxied JSON visitor gets no allowlist advice");
 
   // ── Explicit opt-out for proxies that handle the login themselves ──
   process.env.REQUIRE_AUTH_FOR_LOOPBACK_PROXY = "false";

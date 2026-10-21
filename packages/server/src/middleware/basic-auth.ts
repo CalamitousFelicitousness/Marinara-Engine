@@ -59,21 +59,11 @@
 
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import {
-  getBasicAuthConfig,
-  isUnauthenticatedPrivateNetworkAllowed,
-  isUnauthenticatedRemoteAllowed,
-} from "../config/runtime-config.js";
+import { getBasicAuthConfig } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { deriveServerKey } from "../utils/crypto.js";
 import { cookieValue } from "./android-local-auth.js";
-import {
-  isForwardedLoopbackRequest,
-  isInIpAllowlist,
-  isLoopbackIp,
-  isPrivateNetworkIp,
-  isTrustedInterfaceRequest,
-} from "./ip-allowlist.js";
+import { getRequestAccess, isForwardedLoopbackRequest } from "./ip-allowlist.js";
 // Same grouping as the multiplayer peer server: an IPv4 address, or an IPv6 /64.
 import { multiplayerPeerSocketKey as clientAddressKey } from "../services/multiplayer/peer-server.js";
 
@@ -503,9 +493,7 @@ function sendLockdown(request: FastifyRequest, reply: FastifyReply, proxied: boo
 
 /** Loopback, IP_ALLOWLIST and trusted Tailscale/Docker peers skip the password; a local proxy's visitors do not. */
 function isTrustedPeer(request: FastifyRequest): boolean {
-  if (isForwardedLoopbackRequest(request)) return false;
-  const ip = request.ip;
-  return isLoopbackIp(ip) || isInIpAllowlist(ip) || isTrustedInterfaceRequest(request);
+  return getRequestAccess(request).trustedPeer;
 }
 
 export function hasBasicAuthConfigured(): boolean {
@@ -513,14 +501,11 @@ export function hasBasicAuthConfigured(): boolean {
 }
 
 export function isBasicAuthSatisfied(request: FastifyRequest): boolean {
-  const ip = request.ip;
-  if (isTrustedPeer(request)) return true;
+  const policy = getRequestAccess(request);
+  if (policy.trustedPeer) return true;
 
   const config = loadConfig();
-  if (!config) {
-    if (isPrivateNetworkIp(ip) && isUnauthenticatedPrivateNetworkAllowed()) return true;
-    return isUnauthenticatedRemoteAllowed();
-  }
+  if (!config) return !policy.lockedDown;
 
   if (lockoutSeconds(request, hasSignedInCookie(request, config)) > 0) return false;
   return hasCorrectPassword(request, config);
@@ -545,16 +530,16 @@ export function basicAuthHook(request: FastifyRequest, reply: FastifyReply, done
   // arriving from a trusted Tailscale / Docker interface (when its bypass
   // flag is on).
   const ip = request.ip;
-  if (isTrustedPeer(request)) return done();
+  const policy = getRequestAccess(request);
+  if (policy.trustedPeer) return done();
 
   const config = loadConfig();
 
   // No credentials configured → fail closed for every non-loopback IP unless
   // the operator has explicitly opted back into private/public unauthenticated access.
   if (!config) {
-    if (isPrivateNetworkIp(ip) && isUnauthenticatedPrivateNetworkAllowed()) return done();
-    if (isUnauthenticatedRemoteAllowed()) return done();
-    const proxied = isForwardedLoopbackRequest(request);
+    if (!policy.lockedDown) return done();
+    const proxied = policy.forwardedLoopback;
     if (!lockdownAnnounced) {
       logger.warn(
         proxied

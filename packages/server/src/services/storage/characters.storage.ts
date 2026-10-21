@@ -918,8 +918,10 @@ export function createCharactersStorage(db: DB) {
     async listPersonas(chatId?: string) {
       const rows = await db.select().from(personas).orderBy(desc(personas.updatedAt));
       if (!chatId) return rows;
-      return Promise.all(
-        rows.map(async (row) => applyPersonaCardFieldAlternatives(row, await eligibleChat(chatId, "persona", row.id))),
+      const [chat] = await db.select().from(chats).where(eq(chats.id, chatId));
+      if (!chat) return rows;
+      return rows.map((row) =>
+        cardEntityBelongsToChat(chat, "persona", row.id) ? applyPersonaCardFieldAlternatives(row, chatId) : row,
       );
     },
 

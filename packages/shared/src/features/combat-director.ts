@@ -206,6 +206,8 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   /** For an option that lands as a shape: the cells it may be aimed at, and who each aim would
    *  catch, so a board can draw the template before the choice is confirmed. */
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;
+  /** What the sheet calls each pool `payWith` names, by pool id: "3rd-level slots", not "slots_3". */
+  payLabels?: Record<string, string>;
 }
 export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */

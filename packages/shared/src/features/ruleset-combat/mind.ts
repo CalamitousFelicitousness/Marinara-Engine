@@ -1,4 +1,4 @@
-import type { CombatMind } from "../combat-minds.js";
+import type { CombatMind, CombatRole } from "../combat-minds.js";
 import type { RulesetCombatBehavior, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetAbilityScore, rulesetCreatureKind } from "./encounter.js";
 import type { RulesetCombatant } from "./types.js";
@@ -56,4 +56,26 @@ export function rulesetCombatantBehavior(
     (one): one is RulesetCombatBehavior => !!one,
   );
   return layers.length > 0 ? Object.assign({}, ...layers) : undefined;
+}
+
+/**
+ * What a combatant is for in a fight, read off what it can do, for one whose data names no `role`:
+ * one that heals others a `supporter`, one with spells that only put things on people a
+ * `controller`, one with spells a `spellcaster`, one whose best blow is a shot a `marksman`, a hard
+ * one to hit a `bulwark`, and anybody else a `bruiser`.
+ */
+export function rulesetCombatantRole(combatant: RulesetCombatant): CombatRole {
+  const actions = combatant.actions;
+  if (actions.some((action) => action.heal && action.targets.side !== "self")) return "supporter";
+  const spells = actions.filter((action) => (action.catalog && !action.itemUse) || action.concentration);
+  if (spells.length > 0)
+    return spells.filter((action) => action.applies?.length && !action.damage).length * 2 >= spells.length
+      ? "controller"
+      : "spellcaster";
+  const average = (action: (typeof actions)[number]) =>
+    action.damage ? action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat : 0;
+  const best = [...actions].filter((action) => action.damage).sort((a, b) => average(b) - average(a))[0];
+  if (best?.range && !best.reach) return "marksman";
+  if ((combatant.defense ?? 0) >= 17) return "bulwark";
+  return "bruiser";
 }

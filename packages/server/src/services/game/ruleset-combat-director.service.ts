@@ -38,6 +38,7 @@ import {
   readRulesetLive,
   rulesetAimCells,
   rulesetAnswerDeflects,
+  rulesetItemSlotPayment,
   rulesetBlowKind,
   rulesetCombatant,
   rulesetCreatureKind,
@@ -79,6 +80,7 @@ import {
   rulesetAtBoardEdge,
   rulesetInCells,
   rulesetCombatantBehavior,
+  rulesetCombatantRole,
   rulesetCombatantMind,
   withRulesetPlanMemo,
   rulesetSheetBuildsByName,
@@ -671,6 +673,9 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   for (const combatant of fight.encounter.combatants) {
     const unit = units.get(combatant.id);
     if (!unit) continue;
+    // Who plays a party member, as the fight has it: what the party panel shows.
+    if (combatant.side === "party")
+      unit.controller = rulesetController(state, fight, combatant) === "ai" ? "ai" : "manual";
     const health = rulesetCombatHealth(definition, combat, combatant);
     unit.maxHp = Math.max(1, Math.floor(health.max));
     // Somebody away from the fight is not dead: what they had stays theirs.
@@ -802,8 +807,13 @@ export function rulesetMenu(
   /** The open window's menu rather than this actor's turn: what they may spend out of turn. */
   inWindow = false,
 ): DirectedRulesetOption[] {
+  const asked = rulesetCombatant(encounter, actorId);
+  // A guard that cannot turn this hit aside (Shield against a roll it does not beat, or a natural
+  // 20) is not offered: taking it would only spend it.
   const menu = inWindow
-    ? rulesetWindowOptions(definition, encounter, actorId)
+    ? rulesetWindowOptions(definition, encounter, actorId).filter(
+        (option) => !asked || rulesetAnswerDeflects(definition, encounter, asked, option.id) !== false,
+      )
     : rulesetCombatOptions(definition, encounter, actorId);
   return menu.map((option) => {
     // A teleport is aimed as a shape is (1.276): at a cell it may go to, catching nobody.
@@ -816,12 +826,29 @@ export function rulesetMenu(
       inWindow && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && actor && action
         ? rulesetFallTargets(definition, encounter, actor, action)
         : undefined;
+    // Paying out of a higher pool is offered only where it gains something (more dice, more
+    // targets) or where only a higher pool can pay now: Misty Step and Shield are cast as they are.
+    const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
+    const payWith = option.payWith && (grows || option.upcastOnly) ? option.payWith : undefined;
+    const { payWith: _offered, ...rest } = option;
     return {
-      ...option,
+      ...rest,
+      ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
       targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });
+}
+
+/** What the sheet calls each pool, by id ("3rd-level slots" for `slots_3`), for a menu to show. */
+function rulesetPoolLabels(definition: RulesetDefinition, pools: string[]): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const pool of pools) {
+    const id = rulesetItemSlotPayment(pool)?.pool ?? pool;
+    const label = definition.sheet.live.pools.find((one) => one.id === id)?.label;
+    if (label) labels[id] = label;
+  }
+  return labels;
 }
 
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs. */
@@ -1586,6 +1613,13 @@ function rulesetCandidatesFrom(
     if (option.lend) continue;
     // Putting away a weapon put in hand (1.308) is its player's own call: the Engine keeps it.
     if (option.dismiss) continue;
+    // So is turning something off, or a light, pulling blows or an item's form: flicked every turn
+    // for a guessed worth, it only filled the log. Orders that want blows pulled pull them (P7). An
+    // item turned on (a flame tongue lit) is still weighed, once.
+    if (option.on !== undefined) {
+      const switches = actor.actions.find((entry) => entry.id === option.id)?.switches;
+      if (option.on || !switches || !("item" in switches)) continue;
+    }
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
     // could do without moving is already on the list.
     if (standing && option.targets.count <= 0 && !option.area) continue;
@@ -2507,6 +2541,8 @@ function pickChoice(
     if (!unit.tactics || (wanted !== undefined && unit.tactics.mind !== wanted)) {
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
+      // What it is for, read off what it can do, where the Engine's own reading has nothing to go on.
+      if (!unit.combatClass && !unit.skills?.length) unit.tactics.role = rulesetCombatantRole(actor);
     }
     // How its own data says it goes about a fight (1.710): its temperament, unless the Game Master
     // gave it one for this fight, and its role.

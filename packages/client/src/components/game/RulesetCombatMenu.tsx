@@ -147,8 +147,14 @@ export function RulesetCombatMenu({
   const groups = useMemo(() => rulesetMenuGroups(view.options), [view.options]);
   // A fresh menu is a fresh choice: the turn moved on, so a half-finished pick from the last one
   // must never be sent against it.
+  // Leaving the fight asks twice: one stray click is not a lost battle.
+  const [fleeing, setFleeing] = useState(false);
+  // A spell held together that a new one would end: asked about before it is let go.
+  const [dropping, setDropping] = useState<DirectedRulesetOption | null>(null);
   useEffect(() => {
     setStep(null);
+    setFleeing(false);
+    setDropping(null);
   }, [view.actorId, view.round, view.window?.id, setStep]);
   // Focus follows a NEW stage or a new option, never every pick: choosing the second of three
   // targets replaces `step`, and pulling focus back to the first button each time would take the
@@ -306,7 +312,14 @@ export function RulesetCombatMenu({
     closeStep();
     onChoose(option.id, [], payWith, { storesIn: place });
   };
-  const take = (option: DirectedRulesetOption, cast = false, named = false) => {
+  const take = (option: DirectedRulesetOption, cast = false, named = false, letGo = false) => {
+    // Starting another held spell ends the one held now: said first, never found out afterwards.
+    const holding = view.combatants.find((one) => one.id === (view.window?.actorId ?? view.actorId))?.concentrating;
+    if (!letGo && option.concentration && holding) {
+      setDropping(option);
+      return;
+    }
+    setDropping(null);
     // Whether to store it instead comes first (1.471): a Ring of Spell Storing.
     if (!cast && option.storesIn?.length) {
       setStep({ stage: "store", option, targets: [] });
@@ -756,6 +769,33 @@ export function RulesetCombatMenu({
     );
   }
 
+  // ── Letting go of a held spell for a new one ──
+  if (dropping) {
+    const holding = view.combatants.find((one) => one.id === (view.window?.actorId ?? view.actorId))?.concentrating;
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/80">
+          {t("game.combat.ruleset.menu.dropConcentration", {
+            label: rulesetOptionLabel(dropping, t),
+            holding: holding ?? "",
+          })}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            ref={first}
+            type="button"
+            disabled={busy}
+            onClick={() => take(dropping, false, false, true)}
+            className={cn(buttonClass, "border-amber-400/40 bg-amber-500/15 text-white hover:bg-amber-500/25")}
+          >
+            {t("game.combat.ruleset.menu.dropConcentrationYes", { label: rulesetOptionLabel(dropping, t) })}
+          </button>
+        </div>
+        <BackButton onClick={() => setDropping(null)} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
   // ── Paying for it out of another pool of the family ──
   const pools = step?.stage === "pay" ? (step.option.payWith ?? []) : [];
   if (step && pools.length > 0) {
@@ -794,8 +834,11 @@ export function RulesetCombatMenu({
                   })
                 : rulesetItemSlotPayment(pool)
                   ? // Out of a worn item's charges, a charge a level (1.519).
-                    t("game.combat.ruleset.upcast.itemSlot", { pool: rulesetItemSlotPayment(pool)!.pool })
-                  : t("game.combat.ruleset.upcast.pool", { pool })}
+                    t("game.combat.ruleset.upcast.itemSlot", {
+                      pool:
+                        option.payLabels?.[rulesetItemSlotPayment(pool)!.pool] ?? rulesetItemSlotPayment(pool)!.pool,
+                    })
+                  : t("game.combat.ruleset.upcast.pool", { pool: option.payLabels?.[pool] ?? pool })}
             </button>
           ))}
         </div>
@@ -1325,14 +1368,22 @@ export function RulesetCombatMenu({
               {t("game.combat.ruleset.menu.pass")}
             </button>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onFlee}
-            className={cn(buttonClass, "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white")}
-          >
-            {t("game.combat.ruleset.menu.flee")}
-          </button>
+          {/* Never on a question asked between turns: answering a reaction is not the moment to run. */}
+          {!view.window && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => (fleeing ? onFlee() : setFleeing(true))}
+              className={cn(
+                buttonClass,
+                fleeing
+                  ? "border-red-400/50 bg-red-500/15 text-red-100 hover:bg-red-500/25"
+                  : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
+              )}
+            >
+              {t(fleeing ? "game.combat.ruleset.menu.fleeConfirm" : "game.combat.ruleset.menu.flee")}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -4354,6 +4354,8 @@ export interface RulesetCombatOption {
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;
+  /** It is held together by concentration: starting it ends whatever its user holds now. */
+  concentration?: true;
   /** The pool of its target's sheet it gives back some of, so a picker can leave a full one alone. */
   restores?: string;
   /** Expected values, never a future die: `averageDamage` is the average of the amount rolled and

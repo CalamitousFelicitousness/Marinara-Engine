@@ -20,6 +20,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatantBehavior,
+  rulesetCombatantRole,
   rulesetEncounterSummary,
   supportedCapabilityApi,
   type RulesetCombatEvent,
@@ -184,6 +185,26 @@ try {
       targets: ["nearest"],
       temperament: "disciplined",
     });
+  }
+
+  // ── With no role of its own, one read off what it can do (not every creature a bruiser) ──
+  {
+    const { encounter } = fight({
+      archer: { side: "enemy", block: block([bolt]), at: { x: 2, y: 2 } },
+      brute: { side: "enemy", block: block([smash]), at: { x: 3, y: 2 } },
+      priest: {
+        side: "enemy",
+        block: block([
+          smash,
+          { id: "mend", name: "Mend", budget: "action", targets: "ally", heal: { count: 1, sides: 8, flat: 2 } },
+        ]),
+        at: { x: 4, y: 2 },
+      },
+      hero: { side: "party", block: block([smash]), at: { x: 9, y: 2 } },
+    });
+    assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "archer")!), "marksman");
+    assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "brute")!), "bruiser");
+    assert.equal(rulesetCombatantRole(rulesetCombatant(encounter, "priest")!), "supporter");
   }
 
   // ── Its temperament and role, unless the Game Master gave one ──

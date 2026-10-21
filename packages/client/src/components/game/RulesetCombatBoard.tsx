@@ -719,6 +719,25 @@ export function RulesetCombatBoard({
                   {combatant.surprised && !combatant.defeated && !combatant.down && (
                     <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
+                  {/* What holds them, a letter each (three at most), and a ring for a spell they hold
+                      together. The square's own sentence names them in full. */}
+                  {!combatant.defeated && (combatant.conditions.length > 0 || combatant.concentrating) && (
+                    <div className="absolute -right-1 -top-1 flex gap-px">
+                      {combatant.concentrating && (
+                        <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
+                          C
+                        </span>
+                      )}
+                      {combatant.conditions.slice(0, 3).map((condition) => (
+                        <span
+                          key={condition.id}
+                          className="flex h-3 w-3 items-center justify-center rounded-full border border-amber-200 bg-amber-600/85 text-[0.45rem] font-black uppercase leading-none text-white"
+                        >
+                          {condition.label.charAt(0)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the
                       combatant in the next row. */}

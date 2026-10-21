@@ -392,6 +392,20 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
     if (who.id === view.actorId) said.push(t("game.combat.ruleset.board.onTurn"));
     if (who.defeated) said.push(t("game.combat.ruleset.status.defeated"));
     else if (who.down) said.push(t("game.combat.ruleset.status.down"));
+    // What holds them, and what they hold together: what a token's marks stand for.
+    if (who.conditions.length > 0)
+      said.push(
+        t("game.combat.ruleset.board.conditions", {
+          list: who.conditions
+            .map((condition) =>
+              condition.rounds !== undefined
+                ? t("game.combat.ruleset.board.conditionRounds", { label: condition.label, count: condition.rounds })
+                : condition.label,
+            )
+            .join(", "),
+        }),
+      );
+    if (who.concentrating) said.push(t("game.combat.ruleset.status.concentrating", { label: who.concentrating }));
   }
   if (cell.reach) {
     said.push(

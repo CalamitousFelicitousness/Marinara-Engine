@@ -135,6 +135,7 @@ try {
     const knock = rulesetCombatOptions(definition, state, "hero").find((one) => one.label === "Knock out");
     assert.ok(knock, "the hero may pull their blows");
     assert.equal(knock.budget, undefined, "for nothing");
+    assert.equal(knock.on, false, "off until it is turned on, so the menu offers to turn it on");
     const step = applyRulesetCombatChoice(
       definition,
       state,
@@ -146,6 +147,13 @@ try {
       [true],
     );
     assert.equal(who(step.state, "hero").knocksOut, true);
+    const next = structuredClone(step.state);
+    who(next, "hero").flags.knockOutSwitched = undefined;
+    assert.equal(
+      rulesetCombatOptions(definition, next, "hero").find((one) => one.label === "Knock out")?.on,
+      true,
+      "and on once it is",
+    );
     assert.ok(
       !rulesetCombatOptions(definition, step.state, "hero").some((one) => one.label === "Knock out"),
       "once a turn",

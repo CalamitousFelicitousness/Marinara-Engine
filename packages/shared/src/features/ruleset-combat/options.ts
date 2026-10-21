@@ -3729,6 +3729,7 @@ function optionFrom(
       : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
+    ...(action.concentration ? { concentration: true as const } : {}),
     ...(action.switches && ("conjured" in action.switches || "called" in action.switches)
       ? { dismiss: true as const }
       : action.switches
@@ -3738,7 +3739,10 @@ function optionFrom(
                 ? rulesetItemOn(actor, action.switches.item)
                 : "shift" in action.switches || "take" in action.switches
                   ? false
-                  : !actor.doused,
+                  : // Pulling one's blows (1.667) is on while they are pulled; a carried light while lit.
+                    "knockOut" in action.switches
+                    ? !!actor.knocksOut
+                    : !actor.doused,
           }
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),

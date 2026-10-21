@@ -3,6 +3,7 @@ import { GenerationStreamOutput } from "../../packages/server/src/routes/generat
 import { createGenerationEventSink } from "../../packages/server/src/routes/generate/sse.js";
 import { runToolRounds, type ToolRoundsContext } from "../../packages/server/src/routes/generate/tool-rounds.js";
 import type { ChatMessage, ChatOptions } from "../../packages/server/src/services/llm/base-provider.js";
+import { thinkingOnlyReplyPromotable } from "../../packages/server/src/services/generation/empty-response-reason.js";
 
 // Pins the tool-call rounds moved out of generate.routes.ts (#7573).
 
@@ -203,6 +204,53 @@ const lookupCall = { id: "c1", type: "function" as const, function: { name: "loo
   if (!outcome.aborted) {
     assert.equal(outcome.narratorMessages.at(-1)?.content, "Prefill");
     assert.match(String(outcome.narratorMessages.at(-2)?.content), /^The engine ran a separate tool-planning pass/);
+  }
+}
+
+// (f) Each request reads requestOptions once, so the route can start the reply's thinking afresh there:
+// an empty, finished Game Mode reply after a tool round must not show that round's planning (#7932).
+{
+  let providerThinking = "";
+  let replyThinking = "";
+  const onThinking = (chunk: string) => {
+    providerThinking += chunk;
+    replyThinking += chunk;
+  };
+  const { ctx, calls } = setup(
+    [
+      async (_messages, options) => {
+        options.onThinking!("Plan: roll for the lock, then reveal the smuggler.");
+        return { content: null, toolCalls: [lookupCall], finishReason: "tool_calls" };
+      },
+      async () => ({ content: "", toolCalls: [], finishReason: "stop" }),
+    ],
+    {
+      chatMode: "game",
+      maxToolRounds: 1,
+      requestOptions: () => {
+        replyThinking = "";
+        return { model: "fixture", onThinking };
+      },
+    },
+  );
+  const outcome = await runToolRounds(ctx, "");
+  assert.equal(calls.length, 2);
+  assert.equal(outcome.aborted, false);
+  if (!outcome.aborted) {
+    assert.equal(outcome.fullResponse, "");
+    assert.equal(outcome.finishReason, "stop");
+    assert.match(providerThinking, /^Plan:/, "the tool round's thinking is still kept for the message");
+    assert.equal(replyThinking, "", "the final reply had no thinking of its own");
+    assert.equal(
+      thinkingOnlyReplyPromotable({
+        chatMode: "game",
+        reasoningRequested: true,
+        finishReason: outcome.finishReason,
+        providerThinking: replyThinking,
+      }),
+      false,
+      "an earlier tool round's planning never becomes the narration",
+    );
   }
 }
 

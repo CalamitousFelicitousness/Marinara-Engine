@@ -1154,12 +1154,12 @@ export async function sceneRoutes(app: FastifyInstance) {
     // The group mode the scene chat will have (the starred Roleplay profile's, else the merged default). In
     // Individual mode each character posts for themselves, so the opening is the opener's own; in merged mode one
     // narrating voice speaks for everyone, so the opening is written that way.
-    const starredGroupProfile = await createChatPresetsStorage(app.db).getActive("roleplay");
+    const starredRoleplayProfile = await createChatPresetsStorage(app.db).getActive("roleplay");
     const mergedGroupScene =
       characterIds.length > 1 &&
       normalizeGroupChatMode(
-        starredGroupProfile && !starredGroupProfile.isDefault
-          ? starredGroupProfile.settings.metadata?.groupChatMode
+        starredRoleplayProfile && !starredRoleplayProfile.isDefault
+          ? starredRoleplayProfile.settings.metadata?.groupChatMode
           : undefined,
       ) === "merged";
     const openerName = openerId && !mergedGroupScene ? await getCharacterName(chars, openerId) : "";
@@ -1271,7 +1271,7 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     // With no preset picked for the scene, the opening follows the writing rules the scene chat will use: the prompt
     // preset of the starred Roleplay settings profile, which /scene/create applies.
-    const starredProfile = preset ? null : await createChatPresetsStorage(app.db).getActive("roleplay");
+    const starredProfile = preset ? null : starredRoleplayProfile;
     const profilePresetId =
       starredProfile && !starredProfile.isDefault ? (starredProfile.settings.promptPresetId ?? null) : null;
     const writingPreset = preset ?? (profilePresetId ? await prompts.getById(profilePresetId) : null);

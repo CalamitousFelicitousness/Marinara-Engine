@@ -11563,6 +11563,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // No enabled editor can change this text. Speaker/emotion extraction may start now, without
         // waiting for activation decisions for trackers or any other non-rewriting agent (#8026).
         if (chatMode === "roleplay" && textRewriteRunAgents.length === 0) {
+          // Readiness also unlocks the next turn: commit this prompt's variable changes first.
+          await persistChatMacroVariables();
           await sendAssistantMessageReady(currentIterationSavedMsg);
         }
 

@@ -25,6 +25,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 
 function deferred() {
   let resolve!: () => void;
@@ -51,6 +52,7 @@ let failing: "post" | "rewrite" | "main" | undefined;
 let simulateBackpressure = false;
 const originalText = 'Dottore turns toward Mari. "The experiment is ready."';
 const rewrittenText = 'Dottore smiles at Mari. "Our experiment is ready."';
+const mainPrompts: string[] = [];
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -63,6 +65,7 @@ const provider = createServer(async (request, response) => {
       : prompt.includes("TTS_POST_FIXTURE")
         ? "post"
         : "main";
+  if (kind === "main") mainPrompts.push(prompt);
   if (held?.kind === kind) {
     held.gate.entered.resolve();
     await held.gate.promise;
@@ -165,15 +168,22 @@ try {
       done: Promise<unknown>;
       speechReady: Promise<void>;
     }) => Promise<void>,
+    options: { promptPresetId?: string; macroVariables?: Record<string, string> } = {},
   ) => {
     const chat = await chats.create({
       name: "Speech timing",
       mode: "roleplay",
       characterIds: [character.id],
       connectionId: connection.id,
+      promptPresetId: options.promptPresetId,
     });
     assert(chat);
-    await chats.patchMetadata(chat.id, { enableAgents: true, activeAgentIds: types, enableMemoryRecall: false });
+    await chats.patchMetadata(chat.id, {
+      enableAgents: true,
+      activeAgentIds: types,
+      enableMemoryRecall: false,
+      ...(options.macroVariables ? { macroVariables: options.macroVariables } : {}),
+    });
     const events: Array<Record<string, unknown>> = [];
     const speechReady = deferred();
     const sink = createGenerationEventSink({
@@ -211,6 +221,46 @@ try {
     assert.equal(activeGenerations.has(chatId), false, "the unlocked composer must match server readiness");
   });
   assert.equal(ready(events).length, 1, "finishing the remaining agents must not replay speech");
+
+  // Releasing the composer also lets the next turn read this turn's {{setvar}}/counter effects.
+  const prompts = createPromptsStorage(db);
+  const preset = await prompts.create({ name: "Readiness variables", parameters: { maxTokens: 512 } });
+  assert(preset);
+  await prompts.createSection({
+    presetId: preset.id,
+    identifier: "readiness-variables",
+    name: "Readiness variables",
+    content: "READINESS_BEFORE={{getvar::tts_turns}}; {{incvar::tts_turns}}",
+  });
+  held = { kind: "decision", gate: gate() };
+  let variableChatId = "";
+  await run(
+    [post.type],
+    async ({ chatId, events }) => {
+      variableChatId = chatId;
+      await bounded(held!.gate.entered.promise);
+      assert.equal(ready(events).length, 1);
+      const metadata = JSON.parse((await chats.getById(chatId))!.metadata);
+      assert.equal(metadata.macroVariables.tts_turns, "1", "ready speech must not expose uncommitted prompt variables");
+      const blockedActivation = held!;
+      held = undefined; // Only the first turn's activation is held; the next turn may finish normally.
+      try {
+        await runner(
+          { chatId, userMessage: "Continue again.", streaming: true },
+          createGenerationEventSink({ onEvent: () => {}, onFinish: () => {} }),
+        );
+        assert.ok(mainPrompts.at(-1)!.includes("READINESS_BEFORE=1"), "the next prompt sees committed variables");
+      } finally {
+        blockedActivation.gate.resolve();
+      }
+    },
+    { promptPresetId: preset.id, macroVariables: { tts_turns: "0" } },
+  );
+  assert.equal(
+    JSON.parse((await chats.getById(variableChatId))!.metadata).macroVariables.tts_turns,
+    "2",
+    "the first turn's later idempotent persistence must preserve the completed second turn",
+  );
 
   simulateBackpressure = true;
   events = await run([], async ({ done }) => {
